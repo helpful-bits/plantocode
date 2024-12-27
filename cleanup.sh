@@ -1,2 +1,2 @@
 #!/bin/bash
-rm app/_components/generate-prompt.tsx
+# No file deletions or renames in this update

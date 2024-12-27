@@ -3,11 +3,18 @@
 import { Input } from "@/components/ui/input";
 import { Dispatch, SetStateAction } from "react";
 
+interface FileInfo {
+  path: string;
+  size: number;
+  included: boolean;
+  forceExcluded: boolean;
+}
+
 interface FileBrowserProps {
-  foundFiles: any[];
+  foundFiles: FileInfo[];
   searchTerm: string;
   onSearchChange: (value: string) => void;
-  setFoundFiles: Dispatch<SetStateAction<any[]>>;
+  setFoundFiles: (files: FileInfo[]) => void;
 }
 
 export default function FileBrowser({
@@ -16,12 +23,14 @@ export default function FileBrowser({
   onSearchChange,
   setFoundFiles
 }: FileBrowserProps) {
-  const filteredFiles = foundFiles.filter((file) =>
+  const files = Array.isArray(foundFiles) ? foundFiles : [];
+  
+  const filteredFiles = files.filter((file) =>
     file.path.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleToggleFile = (path: string) => {
-    setFoundFiles((files) =>
+    setFoundFiles(
       files.map((f) =>
         f.path === path ? { ...f, included: !f.included } : f
       )
@@ -29,7 +38,7 @@ export default function FileBrowser({
   };
 
   const handleToggleForceExclude = (path: string) => {
-    setFoundFiles((files) =>
+    setFoundFiles(
       files.map((f) => {
         if (f.path === path) {
           const forceExcluded = !f.forceExcluded;
@@ -51,7 +60,7 @@ export default function FileBrowser({
   };
 
   const handleBulkToggle = (include: boolean) => {
-    setFoundFiles((files) =>
+    setFoundFiles(
       files.map((f) =>
         filteredFiles.some((ff) => ff.path === f.path)
           ? { ...f, included: include && !f.forceExcluded }
@@ -62,10 +71,10 @@ export default function FileBrowser({
 
   return (
     <div className="flex flex-col gap-2">
-      {foundFiles.length > 0 && (
+      {files.length > 0 && (
         <>
           <label className="font-bold text-foreground">
-            Found Files ({foundFiles.filter((f) => f.included).length}/{foundFiles.length}):
+            Found Files ({files.filter((f) => f.included).length}/{files.length}):
           </label>
 
           <div className="flex gap-2 items-center">
