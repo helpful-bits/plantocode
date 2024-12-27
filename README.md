@@ -1,81 +1,80 @@
 # O1 Pro Flow
 
-The O1 Pro Flow is a comprehensive utility that generates prompts for the O1 Pro model in ChatGPT and applies resulting code changes directly to your codebase. Below is an overview of its features, setup instructions, and usage.
+O1 Pro Flow is a comprehensive utility that helps you generate prompts for the O1 Pro model in ChatGPT and apply the resulting code changes directly to your codebase. It is built with Next.js 15.1.3 and React 18 (using the Next.js App Router). The application focuses on end-to-end automation: from generating AI-assisted code modifications to processing diffs and updating your local repository.
 
 ## Prerequisites
-- Node.js (v18+) and npm (or yarn) installed
-- A Git repository (files should be tracked or recognized via `git ls-files`)
+- Node.js (v18+) and npm (or yarn)
+- A Git repository
 - Next.js 15.1.3 with React 18
+- (Optional) `GROQ_API_KEY` for voice transcription
+- (Optional) `ANTHROPIC_API_KEY` for text correction via Anthropic's Claude
 
 ## Installation & Quick Start
 1. **Clone the Repository**:
     ```bash
     git clone https://github.com/mckaywrigley/o1-pro-flow
     ```
-
 2. **Install Dependencies**:
     ```bash
     cd o1-pro-flow
     npm install
     ```
-
 3. **Configure Environment Variables**:
     ```bash
     cp .env.example .env.local
     ```
-
 4. **Run the Development Server**:
     ```bash
     npm run dev
     ```
-
 5. **Open the App**:
-    - Navigate to [http://localhost:3000](http://localhost:3000) in your browser to access the O1 Pro Flow interface.
-    - The application stores your selected Project Directory and other settings (like file inclusions) in local storage, so you can easily reload them later.
-    - You can also leverage voice transcription to append audio-based instructions to your Task Description by setting the `GROQ_API_KEY` environment variable.
+   - Navigate to [http://localhost:3000](http://localhost:3000) and explore the interface.
+   - Local storage caches your Project Directory, file selections, and Task Description.
+   - If you set `GROQ_API_KEY`, you can record audio and use voice transcription for your Task Description.
 
-## Features
+## Core Features
+### Prompt Generation
+Generate prompts to instruct the O1 Pro model about specific code changes. You can:
+- Use a file browser to include or exclude files.
+- Paste file paths if needed.
+- Provide a Task Description detailing requested changes.
 
-- **Prompt Generation**: Easily create prompts to request changes from the O1 Pro model, leveraging your local codebase context. Use the built-in file browser or paste file paths manually.
-- **Voice Transcription**: Record audio directly in the browser to generate text for your Task Description if you have configured `GROQ_API_KEY`.
-- **File Browser**: Browse and select files from your local project directory.
-- **Syntax Highlighting**: View file contents with proper syntax highlighting.
-- **Git Integration**: Automatically detect git-tracked files.
+### Voice Transcription
+Record audio instructions directly in the browser. Transcriptions are handled by the Groq API, and (optionally) corrected via Anthropic's Claude.
 
-## Usage
+### File Browser
+Allows you to browse your Git repository and select files for context, excluding unneeded files to minimize token usage.
 
-1. **Generate O1 Prompt**:
-    - Provide your project directory (stored in local storage for convenience).
-    - Load files and optionally exclude/uncheck files you don't need.
-    - Or paste file paths one per line to override file selection.
-    - Optionally, record voice instructions if `GROQ_API_KEY` is set.
-    - Describe your changes in the Task Description.
-    - Click **Generate Prompt** to create your O1-compatible prompt.
+### Git Integration
+Uses `git ls-files` to identify and load tracked files.
 
-2. **Apply Changes**:
-    - Copy your generated prompt and send it to the O1 Pro model (e.g., ChatGPT).
-    - Paste the returned diff into the *Apply Changes* form, then click the apply button.
-    - Your local files (tracked by git) will be updated accordingly, including any deletions or renames in `cleanup.sh`.
+### Apply Changes
+After generating a diff from your AI model, paste it into the "Apply Changes" form. It will update, create, or remove files as specified. If renames or deletions are requested, a `cleanup.sh` script is generated.
 
 ## Project Structure
-- **app** (Next.js App Router)  
-  Contains routes and page components, including prompts generation and changes application.
-- **components**  
-  Shared UI and utility components following Shadcn UI structure.
-- **lib**  
-  Core libraries such as the XML parser, token estimator, file changes application, etc.
-- **actions**  
-  Server actions for reading directories, applying changes, and more.
-- **public**  
-  Static assets, fonts, etc.
-- **types**  
-  Type definitions used throughout the app.
+- `app` - Next.js App Router with server actions, pages, and layout
+- `components` - UI and utility components
+- `lib` - Utility libraries (token estimation, file changes, hashing, etc.)
+- `actions` - Server actions for reading directories, applying diffs, voice transcription, text correction
+- `public` - Static assets
+- `types` - Type definitions
+
+## Usage
+1. **Generate Prompt**  
+   Specify your Project Directory, then either select files from the file browser or paste file paths. Provide the Task Description. Optionally use voice transcription. Click "Generate Prompt" to produce a text prompt for the O1 Pro model.
+
+2. **Send Prompt to O1 Pro Model**  
+   Copy and paste the generated prompt into ChatGPT (or another environment) where you have the O1 Pro model.
+
+3. **Apply Changes**  
+   Paste the returned diff into the "Apply Changes" form to update your local codebase automatically. A `cleanup.sh` script is produced for any renames/deletions.
 
 ## Contributing
+Contributions are welcome. To contribute:
 1. Fork this repo and clone your fork.
-2. Create a new branch for your feature or bug fix.
-3. Make changes, ensuring code quality and consistency with the existing project structure.
-4. Submit a pull request with a clear summary of your modifications.
+2. Create a new branch.
+3. Make your changes, then test thoroughly.
+4. Submit a pull request explaining your modifications.
 
 ## License
 This project is open source under the MIT license.

@@ -2,15 +2,20 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { transcribeVoiceAction } from "@/actions/voice-transcription-actions";
+import { correctTaskDescriptionAction } from "@/actions/voice-correction-actions";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
+  foundFiles: string[];
 }
 
-export default function VoiceTranscription({ onTranscribed }: VoiceTranscriptionProps) {
+export default function VoiceTranscription({ onTranscribed, foundFiles }: VoiceTranscriptionProps) {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [rawText, setRawText] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showRevertOption, setShowRevertOption] = useState(false);
 
   const stopRecording = useCallback(async () => {
     try {
@@ -35,6 +40,7 @@ export default function VoiceTranscription({ onTranscribed }: VoiceTranscription
       recorder.ondataavailable = async (event) => {
         try {
           if (event.data.size > 0) {
+            setIsProcessing(true);
             const response = await transcribeVoiceAction({
               blob: event.data,
               mimeType: "audio/webm",
@@ -43,13 +49,25 @@ export default function VoiceTranscription({ onTranscribed }: VoiceTranscription
             if (!response.isSuccess) {
               throw new Error(response.message);
             }
-            onTranscribed(response.data);
+            
+            setRawText(response.data);
+            
+            // Automatically correct the text
+            const correctionResult = await correctTaskDescriptionAction(response.data, foundFiles);
+            if (correctionResult.isSuccess) {
+              onTranscribed(correctionResult.data);
+              setShowRevertOption(true);
+            } else {
+              // If correction fails, use raw text
+              onTranscribed(response.data);
+            }
           }
         } catch (err) {
           console.error("Error processing recording:", err);
           alert(err instanceof Error ? err.message : "Failed to process audio");
         } finally {
           await stopRecording();
+          setIsProcessing(false);
         }
       };
 
@@ -63,6 +81,11 @@ export default function VoiceTranscription({ onTranscribed }: VoiceTranscription
     }
   }
 
+  function revertToRaw() {
+    onTranscribed(rawText);
+    setShowRevertOption(false);
+  }
+
   const handleToggleRecording = async () => {
     if (!isRecording) {
       await startRecording();
@@ -71,7 +94,6 @@ export default function VoiceTranscription({ onTranscribed }: VoiceTranscription
     }
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopRecording();
@@ -79,13 +101,25 @@ export default function VoiceTranscription({ onTranscribed }: VoiceTranscription
   }, [stopRecording]);
 
   return (
-    <button
-      onClick={handleToggleRecording}
-      className={`bg-secondary text-secondary-foreground p-2 mt-2 rounded text-sm hover:bg-secondary/90 transition-colors ${
-        isRecording ? "bg-red-500" : ""
-      }`}
-    >
-      {isRecording ? "Stop Recording" : "Record Audio"}
-    </button>
+    <div className="flex flex-col gap-2">
+      <button
+        onClick={handleToggleRecording}
+        disabled={isProcessing}
+        className={`bg-secondary text-secondary-foreground p-2 mt-2 rounded text-sm hover:bg-secondary/90 transition-colors ${
+          isRecording ? "bg-red-500" : ""
+        } ${isProcessing ? "opacity-50 cursor-not-allowed" : ""}`}
+      >
+        {isProcessing ? "Processing..." : isRecording ? "Stop Recording" : "Record Audio"}
+      </button>
+
+      {showRevertOption && (
+        <button
+          onClick={revertToRaw}
+          className="bg-destructive text-destructive-foreground p-2 rounded text-sm self-start"
+        >
+          Revert to Original Text
+        </button>
+      )}
+    </div>
   );
 } 

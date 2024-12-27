@@ -4,24 +4,33 @@ import { useEffect, useState } from "react";
 import { readDirectoryAction } from "@/actions/read-directory-actions";
 import { Input } from "@/components/ui/input";
 import { estimateTokens } from "@/lib/token-estimator";
+import { hashString } from "@/lib/hash";
 
 import FileBrowser from "./file-browser";
 import PastePaths from "./paste-paths";
 import TaskDescriptionArea from "./task-description";
 import VoiceTranscription from "./voice-transcription";
 
-const PROJECT_DIR_KEY = "o1-pro-flow-project-dir";
-const TASK_DESC_KEY = "o1-pro-flow-task-desc";
-const SEARCH_TERM_KEY = "o1-pro-flow-search";
-const PASTED_PATHS_KEY = "o1-pro-flow-pasted-paths";
-const INCLUDED_FILES_KEY = "o1-pro-flow-included-files";
-const FORCE_EXCLUDED_FILES_KEY = "o1-pro-flow-force-excluded-files";
+const GLOBAL_PROJECT_DIR_KEY = "o1-pro-flow-project-dir";
+const TASK_DESC_KEY = "task-desc";
+const SEARCH_TERM_KEY = "search-term";
+const PASTED_PATHS_KEY = "pasted-paths";
+const INCLUDED_FILES_KEY = "included-files";
+const FORCE_EXCLUDED_FILES_KEY = "force-excluded-files";
 
 interface FileInfo {
   path: string;
   size: number;
   included: boolean;
   forceExcluded: boolean;
+}
+
+/**
+ * Generate a namespaced localStorage key using a hashed project directory.
+ */
+function getLocalKey(dir: string, suffix: string) {
+  const hash = hashString(dir);
+  return `gp-${hash}-${suffix}`;
 }
 
 export default function GeneratePromptForm() {
@@ -39,18 +48,22 @@ export default function GeneratePromptForm() {
   const [pastedPathsFound, setPastedPathsFound] = useState(0);
   const [tokenCount, setTokenCount] = useState<number>(0);
 
+  // Load states from localStorage specific to the directory
+  function loadCachedStates(dir: string) {
+    const cachedTask = localStorage.getItem(getLocalKey(dir, TASK_DESC_KEY));
+    const cachedSearch = localStorage.getItem(getLocalKey(dir, SEARCH_TERM_KEY));
+    const cachedPaths = localStorage.getItem(getLocalKey(dir, PASTED_PATHS_KEY));
+    if (cachedTask) setTaskDescription(cachedTask);
+    if (cachedSearch) setSearchTerm(cachedSearch);
+    if (cachedPaths) setPastedPaths(cachedPaths);
+  }
+
   useEffect(() => {
-    const savedDir = localStorage.getItem(PROJECT_DIR_KEY);
-    const savedTask = localStorage.getItem(TASK_DESC_KEY);
-    const savedSearch = localStorage.getItem(SEARCH_TERM_KEY);
-    const savedPaths = localStorage.getItem(PASTED_PATHS_KEY);
-
-    if (savedDir) setProjectDirectory(savedDir);
-    if (savedTask) setTaskDescription(savedTask);
-    if (savedSearch) setSearchTerm(savedSearch);
-    if (savedPaths) setPastedPaths(savedPaths || "");
-
+    const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY);
     if (savedDir) {
+      setProjectDirectory(savedDir);
+      loadCachedStates(savedDir);
+      // Automatically load files if we have a saved directory
       handleLoadFiles(savedDir);
     }
   }, []);
@@ -62,25 +75,29 @@ export default function GeneratePromptForm() {
     }
   }, [copySuccess]);
 
+  // Whenever the project directory changes, store globally and load from cache
   const handleDirectoryChange = (value: string) => {
     setProjectDirectory(value);
-    localStorage.setItem(PROJECT_DIR_KEY, value);
+    localStorage.setItem(GLOBAL_PROJECT_DIR_KEY, value);
+    loadCachedStates(value);
+    // Remove automatic file loading here
     setPrompt("");
+    setError(""); // Clear any existing errors
   };
 
   const handleTaskChange = (value: string) => {
     setTaskDescription(value);
-    localStorage.setItem(TASK_DESC_KEY, value);
+    localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY), value);
   };
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
-    localStorage.setItem(SEARCH_TERM_KEY, value);
+    localStorage.setItem(getLocalKey(projectDirectory, SEARCH_TERM_KEY), value);
   };
 
   const handlePastedPathsChange = (value: string) => {
     setPastedPaths(value);
-    localStorage.setItem(PASTED_PATHS_KEY, value);
+    localStorage.setItem(getLocalKey(projectDirectory, PASTED_PATHS_KEY), value);
   };
 
   const handleLoadFiles = async (dir?: string) => {
@@ -95,9 +112,15 @@ export default function GeneratePromptForm() {
     setLoadingStatus("Reading directory...");
 
     try {
-      const result = await readDirectoryAction(directory.trim());
+      const result = await readDirectoryAction(directory);
       if (!result.isSuccess) {
         setError(result.message);
+        return;
+      }
+
+      // Only check for empty files when explicitly loading
+      if (Object.keys(result.data).length === 0) {
+        setError("No files found. Is this a git repository?");
         return;
       }
 
@@ -105,15 +128,15 @@ export default function GeneratePromptForm() {
       let savedForceExcluded: string[] = [];
       try {
         savedIncludedFiles = JSON.parse(
-          localStorage.getItem(INCLUDED_FILES_KEY) || "[]"
+          localStorage.getItem(getLocalKey(directory, INCLUDED_FILES_KEY)) || "[]"
         );
         savedForceExcluded = JSON.parse(
-          localStorage.getItem(FORCE_EXCLUDED_FILES_KEY) || "[]"
+          localStorage.getItem(getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY)) || "[]"
         );
       } catch (e) {
         console.warn("Failed to parse saved files from localStorage");
-        localStorage.setItem(INCLUDED_FILES_KEY, "[]");
-        localStorage.setItem(FORCE_EXCLUDED_FILES_KEY, "[]");
+        localStorage.setItem(getLocalKey(directory, INCLUDED_FILES_KEY), "[]");
+        localStorage.setItem(getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY), "[]");
       }
 
       const files = Object.entries(result.data).map(([path, content]) => ({
@@ -123,17 +146,9 @@ export default function GeneratePromptForm() {
         included: savedIncludedFiles.includes(path) && !savedForceExcluded.includes(path),
       }));
 
-      localStorage.setItem(
-        INCLUDED_FILES_KEY,
-        JSON.stringify(files.filter(f => f.included).map(f => f.path))
-      );
-      localStorage.setItem(
-        FORCE_EXCLUDED_FILES_KEY,
-        JSON.stringify(files.filter(f => f.forceExcluded).map(f => f.path))
-      );
-
       setFoundFiles(files);
-    } catch {
+      setError(""); // Clear any errors if successful
+    } catch (error) {
       setError("Failed to read directory");
     } finally {
       setIsLoadingFiles(false);
@@ -246,18 +261,13 @@ ${taskDescription}`;
   };
 
   const handleFileSelectionChange = (files: FileInfo[]) => {
-    if (!Array.isArray(files)) {
-      console.warn('Files must be an array');
-      return;
-    }
-    
     setFoundFiles(files);
     localStorage.setItem(
-      INCLUDED_FILES_KEY,
+      getLocalKey(projectDirectory, INCLUDED_FILES_KEY),
       JSON.stringify(files.filter(f => f.included).map(f => f.path))
     );
     localStorage.setItem(
-      FORCE_EXCLUDED_FILES_KEY,
+      getLocalKey(projectDirectory, FORCE_EXCLUDED_FILES_KEY),
       JSON.stringify(files.filter(f => f.forceExcluded).map(f => f.path))
     );
   };
@@ -312,8 +322,9 @@ ${taskDescription}`;
         onTranscribed={(text) => {
           const newText = taskDescription + " " + text;
           setTaskDescription(newText);
-          localStorage.setItem(TASK_DESC_KEY, newText);
+          localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY), newText);
         }}
+        foundFiles={foundFiles.map((f) => f.path)}
       />
 
       {/* Generate Prompt */}

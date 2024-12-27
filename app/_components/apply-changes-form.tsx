@@ -1,8 +1,9 @@
 "use client";
 import { applyChangesAction } from "@/actions/apply-changes-actions";
 import { useEffect, useState } from "react";
+import { hashString } from "@/lib/hash";
 
-const PROJECT_DIR_KEY = 'o1-pro-flow-project-dir';
+const GLOBAL_PROJECT_DIR_KEY = 'o1-pro-flow-project-dir';
 
 export function ApplyChangesForm() {
   const [projectDirectory, setProjectDirectory] = useState<string>("");
@@ -10,19 +11,29 @@ export function ApplyChangesForm() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
 
+  function getLocalStorageKey(dir: string): string {
+    const hash = hashString(dir);
+    return `ac-${hash}-dir`;
+  }
+
+  // Whenever the directory changes, load from local storage if available
+  const handleDirectoryChange = (value: string) => {
+    setProjectDirectory(value);
+    const cachedDir = localStorage.getItem(getLocalStorageKey(value));
+    if (!cachedDir) {
+      // If no cache for this directory, store it
+      localStorage.setItem(getLocalStorageKey(value), value);
+    }
+    localStorage.setItem(GLOBAL_PROJECT_DIR_KEY, value);
+  };
+
   // Load saved directory on mount
   useEffect(() => {
-    const savedDir = localStorage.getItem(PROJECT_DIR_KEY);
+    const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY);
     if (savedDir) {
       setProjectDirectory(savedDir);
     }
   }, []);
-
-  // Save directory when it changes
-  const handleDirectoryChange = (value: string) => {
-    setProjectDirectory(value);
-    localStorage.setItem(PROJECT_DIR_KEY, value);
-  };
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
