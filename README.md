@@ -1,10 +1,14 @@
-# o1 XML Parser
+# Git Patch Generator
 
-A simple parse-and-apply tool that parses XML responses from o1 in ChatGPT and applies them to a target codebase.
+A tool that helps generate prompts and apply git patches from o1 in ChatGPT to your codebase.
 
-## Demo
+## Features
 
-Coming soon.
+- Generate prompts that include your current codebase
+- Apply git patches from o1 responses directly to your codebase
+- Works with IDE patch import functionality
+- Search and filter files to include in the prompt
+- Bulk include/exclude files by search or selection
 
 ## Quick Start
 
@@ -30,52 +34,13 @@ cp .env.example .env.local
 PROJECT_DIRECTORY=/path/to/your/project # Ex: /Users/you/your-project
 ```
 
-## The XML Prompt
+## Usage
 
-You are an expert software engineer.
-
-You are tasked with following my instructions.
-
-Use the included project instructions as a general guide.
-
-You will respond with 2 sections: A summary section and an XLM section.
-
-Here are some notes on how you should respond in the summary section:
-
-- Provide a brief overall summary
-- Provide a 1-sentence summary for each file changed and why.
-- Provide a 1-sentence summary for each file deleted and why.
-- Format this section as markdown.
-
-Here are some notes on how you should respond in the XML section:
-
-- Respond with the XML and nothing else
-- Include all of the changed files
-- Specify each file operation with CREATE, UPDATE, or DELETE
-- If it is a CREATE or UPDATE include the full file code. Do not get lazy.
-- Each file should include a brief change summary.
-- Include the full file path
-- I am going to copy/paste that entire XML section into a parser to automatically apply the changes you made, so put the XML block inside a markdown codeblock.
-- Make sure to enclose the code with ![CDATA[__CODE HERE__]]
-
-Here is how you should structure the XML:
-
-<code_changes>
-<changed_files>
-<file>
-<file_summary>**BRIEF CHANGE SUMMARY HERE**</file_summary>
-<file_operation>**FILE OPERATION HERE**</file_operation>
-<file_path>**FILE PATH HERE**</file_path>
-<file_code><![CDATA[
-__FULL FILE CODE HERE__
-]]></file_code>
-</file>
-**REMAINING FILES HERE**
-</changed_files>
-</code_changes>
-
-So the XML section will be:
-
-```xml
-__XML HERE__
-```
+1. Go to the web interface
+2. Enter your project directory
+3. Select which files to include in the prompt
+4. Enter your task description
+5. Click "Generate Prompt" to create a prompt that includes your codebase
+6. Copy the generated prompt and paste it into ChatGPT with the o1 model
+7. Copy the patch from o1's response
+8. Import the patch in your IDE or use `git apply`
