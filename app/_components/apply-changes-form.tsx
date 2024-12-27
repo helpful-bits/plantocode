@@ -2,7 +2,7 @@
 import { applyChangesAction } from "@/actions/apply-changes-actions";
 import { useEffect, useState } from "react";
 
-const PROJECT_DIR_KEY = 'o1-xml-parser-project-dir';
+const PROJECT_DIR_KEY = 'o1-pro-flow-project-dir';
 
 export function ApplyChangesForm() {
   const [projectDirectory, setProjectDirectory] = useState<string>("");
@@ -85,7 +85,7 @@ Be thorough and process all changes, even if there are many. Don't skip any modi
           type="text"
           value={projectDirectory}
           onChange={(e) => handleDirectoryChange(e.target.value)}
-          placeholder="e.g. /Users/myusername/projects/o1-xml-parser"
+          placeholder="e.g. /Users/myusername/projects/o1-pro-flow"
         />
       </div>
       <button

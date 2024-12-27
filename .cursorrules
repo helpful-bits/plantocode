@@ -8,7 +8,7 @@ Your goal is to completely finish whatever I ask for.
 
 ## Overview
 
-This is an XML parsing tool for XML responses from OpenAI's o1 pro model in ChatGPT.
+This is the O1 Pro Flow that helps generate prompts for and apply changes from the O1 pro model in ChatGPT.
 
 ## Tech Stack
 
@@ -35,6 +35,14 @@ This is an XML parsing tool for XML responses from OpenAI's o1 pro model in Chat
 ## Rules
 
 Follow these rules when building the project.
+
+### Updated Best Practices
+- Keep components small and focused: split large components into smaller, semantically meaningful ones.
+- Use standard React patterns like lifting state up, passing props down, and avoiding massive "god" components that handle too many concerns.
+- Ensure all server components are marked with `"use server"` at the top, and all client components with `"use client"`.
+- Keep imports consistent using the `@` alias, and follow the established kebab-case naming convention for files/folders.
+- Use one component per file, unless the component is very small or closely related to another.
+- Prefer functional components with hooks over class components.
 
 ### General Rules
 
@@ -84,6 +92,23 @@ It uses Next.js, Tailwind, Shadcn, and Framer Motion.
 #### General Rules
 
 - Use `lucide-react` for icons
+
+#### Server Actions Rules
+
+- All server actions must be async functions
+- Server actions must be marked with `"use server"` at the top of the file
+- Server actions should return Promises
+- When calling server actions from client components, always use await
+- Example of a server action:
+
+```ts
+"use server";
+
+export async function exampleAction(data: string): Promise<ActionResult> {
+  // Action logic here
+  return result;
+}
+```
 
 #### Components
 
