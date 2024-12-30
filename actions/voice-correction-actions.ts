@@ -16,7 +16,7 @@ export async function correctTaskDescriptionAction(rawText: string, foundFiles: 
         max_tokens: 2500,
         messages: [{
           role: "user",
-          content: `Please correct any spelling mistakes or unnatural phrasing in the following text:
+          content: `Please correct any spelling mistakes or unnatural phrasing in the following text, while preserving its meaning and intent.
 ---
 ${rawText}
 ---

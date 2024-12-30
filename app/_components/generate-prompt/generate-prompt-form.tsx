@@ -238,7 +238,9 @@ Please carefully review these existing project files to understand the current i
 
 ${fileContents}
 
-Task Description:
+========== END FORMAT INSTRUCTIONS ==========
+
+TASK DESCRIPTION:
 ${taskDescription}`;
 
       setPrompt(fullPrompt);
