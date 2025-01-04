@@ -5,11 +5,14 @@ import { readDirectoryAction } from "@/actions/read-directory-actions";
 import { Input } from "@/components/ui/input";
 import { estimateTokens } from "@/lib/token-estimator";
 import { hashString } from "@/lib/hash";
+import { getFormatInstructions } from "@/lib/format-instructions";
+import CodebaseStructure from "./_components/codebase-structure";
 
 import FileBrowser from "./file-browser";
 import PastePaths from "./paste-paths";
 import TaskDescriptionArea from "./task-description";
 import VoiceTranscription from "./voice-transcription";
+import { useFormat } from "@/lib/contexts/format-context";
 
 const GLOBAL_PROJECT_DIR_KEY = "o1-pro-flow-project-dir";
 const TASK_DESC_KEY = "task-desc";
@@ -17,6 +20,7 @@ const SEARCH_TERM_KEY = "search-term";
 const PASTED_PATHS_KEY = "pasted-paths";
 const INCLUDED_FILES_KEY = "included-files";
 const FORCE_EXCLUDED_FILES_KEY = "force-excluded-files";
+const CODEBASE_STRUCTURE_KEY = "codebase-structure";
 
 interface FileInfo {
   path: string;
@@ -47,15 +51,20 @@ export default function GeneratePromptForm() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [pastedPathsFound, setPastedPathsFound] = useState(0);
   const [tokenCount, setTokenCount] = useState<number>(0);
+  const [codebaseStructure, setCodebaseStructure] = useState("");
+  const { outputFormat, customFormat } = useFormat();
 
   // Load states from localStorage specific to the directory
   function loadCachedStates(dir: string) {
     const cachedTask = localStorage.getItem(getLocalKey(dir, TASK_DESC_KEY));
     const cachedSearch = localStorage.getItem(getLocalKey(dir, SEARCH_TERM_KEY));
     const cachedPaths = localStorage.getItem(getLocalKey(dir, PASTED_PATHS_KEY));
+    const cachedStructure = localStorage.getItem(getLocalKey(dir, CODEBASE_STRUCTURE_KEY));
+    
     if (cachedTask) setTaskDescription(cachedTask);
     if (cachedSearch) setSearchTerm(cachedSearch);
     if (cachedPaths) setPastedPaths(cachedPaths);
+    if (cachedStructure) setCodebaseStructure(cachedStructure);
   }
 
   useEffect(() => {
@@ -161,6 +170,11 @@ export default function GeneratePromptForm() {
     setTokenCount(count);
   };
 
+  const handleCodebaseStructureChange = (value: string) => {
+    setCodebaseStructure(value);
+    localStorage.setItem(getLocalKey(projectDirectory, CODEBASE_STRUCTURE_KEY), value);
+  };
+
   const handleGenerate = async () => {
     setIsLoading(true);
     setError("");
@@ -194,51 +208,35 @@ export default function GeneratePromptForm() {
         .map(([path, content]) => `${path}:\n${content}\n`)
         .join("\n");
 
-      const fullPrompt = `You are an expert software engineer. Please implement the following changes and respond with a simplified diff format that shows what changes to make.
-
-Here are the key requirements for the response format:
-- Include the full file path for each file
-- Mark added lines with '+'
-- Mark deleted lines with '-'
-- Include a few lines of context around the changes
-- Group changes by file
-- No need for git patch headers or complex metadata
-- For new files, use "NEW FILE:" header and include the complete file contents
-- Put any file deletions or renamings in a cleanup.sh script
-- After the code block, provide a brief summary of what changes were made and why
-
-Your response should be a single markdown code block followed by a short summary. Example format:
-
-\`\`\`txt
-file: path/to/file.ts
-... existing code ...
-- old line
-+ new line
-... existing code ...
-
-NEW FILE: path/to/new/file.ts
-import { something } from '@/lib/something';
- 
-export function NewComponent() {
-  return <div>New component</div>;
-}
-
-cleanup.sh
-#!/bin/bash
-rm path/to/old/file.ts
-mv path/to/original/file.ts path/to/new/location/file.ts
+      const formatInstructions = await getFormatInstructions(outputFormat, customFormat);
+      
+      let instructions = formatInstructions;
+      
+      if (outputFormat === "refactoring") {
+        if (codebaseStructure.trim()) {
+          const structureSection = `2. CURRENT DIRECTORY STRUCTURE
+The current project structure:
+\`\`\`
+${codebaseStructure}
 \`\`\`
 
-Summary of changes:
-- Updated Example component to render content instead of null
-- Added new NewComponent for feature X
-- Cleaned up old unused file and reorganized file structure
+`;
+          instructions = formatInstructions.replace("{{STRUCTURE_SECTION}}", structureSection);
+        } else {
+          instructions = formatInstructions
+            .replace("{{STRUCTURE_SECTION}}", "")
+            .replace(/(\d+)\./g, (match, num) => {
+              const section = parseInt(num);
+              return section > 2 ? `${section - 1}.` : `${section}.`;
+            });
+        }
+      }
+
+      const fullPrompt = `${instructions}
 
 Please carefully review these existing project files to understand the current implementation and context:
 
 ${fileContents}
-
-========== END FORMAT INSTRUCTIONS ==========
 
 TASK DESCRIPTION:
 ${taskDescription}`;
@@ -328,6 +326,14 @@ ${taskDescription}`;
         }}
         foundFiles={foundFiles.map((f) => f.path)}
       />
+
+      {outputFormat === "refactoring" && (
+        <CodebaseStructure
+          value={codebaseStructure}
+          onChange={handleCodebaseStructureChange}
+          projectDirectory={projectDirectory}
+        />
+      )}
 
       {/* Generate Prompt */}
       <button
