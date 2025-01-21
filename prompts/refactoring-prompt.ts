@@ -1,47 +1,62 @@
 "use server";
 
 export async function getRefactoringPrompt(): Promise<string> {
-  return `You are an expert software architect. Please analyze the codebase and break down the refactoring into smaller, manageable tasks.
+  return `<role>
+You are an expert software architect tasked with breaking down a refactoring project into manageable pieces. You will analyze the codebase and create a comprehensive plan that maintains code quality and ensures a smooth transition.
+</role>
 
-Your response should follow this structure:
+<guidelines>
+Please organize your response into these key sections:
 
-1. OVERVIEW
-- Brief summary of the current state
-- Key architectural goals of the refactoring
-- High-level approach to changes
+<overview>
+1. Project Overview
+   - Current state assessment
+   - Architectural goals
+   - High-level approach
+</overview>
 
+${`{{STRUCTURE_SECTION}}`.trim() ? `<structure>
 {{STRUCTURE_SECTION}}
+</structure>` : ''}
 
-3. TASK BREAKDOWN
-For each task, create a markdown file in the /work-in-progress/current/ directory:
+<tasks>
+2. Detailed Task Breakdown
+   Create a markdown file for each task in /work-in-progress/current/:
 
-/work-in-progress/current/01-task-name.md:
-\`\`\`markdown
-# Task Title
+<task_file>
+   /work-in-progress/current/01-task-name.md:
+   \`\`\`markdown
+   # Task Title
 
-## Overview
-Brief description of what this task accomplishes
+   ## Overview
+   Brief description of what this task accomplishes
 
-## Changes Required
-- List specific changes needed
-- Include file paths and what needs to change
-- Note any dependencies affected
-- For files that need to be replaced or moved, create the new file and mark the old file with "// =DEPRECATED=" at the top, along with a comment indicating where the new file is
+   ## Changes Required
+   - List specific changes needed
+   - Include file paths and what needs to change
+   - Note any dependencies affected
+   - For moved/replaced files, mark old files with "// =DEPRECATED=" and reference new location
 
-## Implementation Details
-Detailed technical steps for implementation
+   ## Implementation Details
+   Detailed technical steps for implementation
 
-## Dependencies
-- List any tasks that must be completed first
-- Note any tasks that depend on this one
-\`\`\`
+   ## Dependencies
+   - Prerequisites
+   - Dependent tasks
+   \`\`\`
+</task_file>
+</tasks>
 
-4. IMPLEMENTATION ORDER
-Explain the recommended order for tackling the tasks:
-1. First task because...
-2. Second task because...
-3. And so on...
+<sequence>
+3. Implementation Sequence
+   Provide a logical order for task execution with reasoning:
+   1. First task because...
+   2. Second task because...
+   3. And so on...
+</sequence>
+</guidelines>
 
-
-Please analyze the provided code and task description to create a detailed task breakdown following this format.`;
+<output_format>
+Your analysis should be thorough yet clear, focusing on actionable steps while maintaining the big picture.
+</output_format>`;
 } 

@@ -1,35 +1,103 @@
 "use server";
 
 export async function getDiffApplyPrompt(clipboardText: string): Promise<string> {
-  return `You are an expert software engineer. I need you to apply the following changes from a diff to my codebase. Please process all changes and respond with detailed, actionable modifications. Don't ask for permissions - apply all changes that are clearly specified in the diff.
+  return `<role>
+You are an expert software engineer tasked with applying code changes from a diff to the codebase. Your responsibility is to process and implement all changes specified in the diff accurately and thoroughly.
+</role>
 
-For files that need to be replaced or moved, create the new file and mark the old file with "// =DEPRECATED=" at the top, along with a comment indicating where the new file is.
-
+<input>
 Here is the diff to apply:
 
+<diff_content>
 ${clipboardText}
+</diff_content>
+</input>
 
-Please respond with:
-1. All file changes, showing the full updated file contents for modified files
-2. For any files that are being replaced or moved, show both the new file contents and the deprecated notice for the old file
-3. A summary of all changes made
+<output_format>
+Please provide your response in the following sections:
 
-Be thorough and process all changes, even if there are many. Don't skip any modifications that are clearly specified in the diff.`;
+<file_modifications>
+   <modified_file>
+   <file_path>Complete file path</file_path>
+   <file_content>
+   Complete updated contents for modified files
+   </file_content>
+   </modified_file>
+
+   <moved_file>
+   <old_file>
+   <file_path>Original file path</file_path>
+   <file_content>
+   // =DEPRECATED=
+   // Moved to: new_location
+   </file_content>
+   </old_file>
+   <new_file>
+   <file_path>New file path</file_path>
+   <file_content>
+   Complete contents at new location
+   </file_content>
+   </new_file>
+   </moved_file>
+</file_modifications>
+
+<summary>
+   Comprehensive overview of all implemented modifications
+</summary>
+</output_format>
+
+<focus>
+Process all changes thoroughly and implement everything specified in the diff without seeking additional permissions.
+</focus>`;
 }
 
 export async function getRefactoringApplyPrompt(clipboardText: string): Promise<string> {
-  return `You are an expert software engineer. I need you to implement the changes specified in the following task breakdown. Please process all changes and respond with detailed, actionable modifications.
+  return `<role>
+You are an expert software engineer tasked with implementing changes from a detailed task breakdown. Your responsibility is to process and implement all specified changes accurately and thoroughly.
+</role>
 
-For files that need to be replaced or moved, create the new file and mark the old file with "// =DEPRECATED=" at the top, along with a comment indicating where the new file is.
-
+<input>
 Here is the task breakdown to implement:
 
+<task_content>
 ${clipboardText}
+</task_content>
+</input>
 
-Please respond with:
-1. All file changes, showing the full updated file contents for modified files
-2. For any files that are being replaced or moved, show both the new file contents and the deprecated notice for the old file
-3. A summary of all changes made
+<output_format>
+Please provide your response in the following sections:
 
-Be thorough and process all changes, even if there are many. Don't skip any modifications that are clearly specified in the task breakdown.`;
+<file_modifications>
+   <modified_file>
+   <file_path>Complete file path</file_path>
+   <file_content>
+   Complete updated contents for modified files
+   </file_content>
+   </modified_file>
+
+   <moved_file>
+   <old_file>
+   <file_path>Original file path</file_path>
+   <file_content>
+   // =DEPRECATED=
+   // Moved to: new_location
+   </file_content>
+   </old_file>
+   <new_file>
+   <file_path>New file path</file_path>
+   <file_content>
+   Complete contents at new location
+   </file_content>
+   </new_file>
+   </moved_file>
+</file_modifications>
+
+<summary>
+   Comprehensive overview of all implemented modifications
+</summary>
+</output_format>
+
+<focus>
+Process all changes thoroughly and implement everything specified in the task breakdown without seeking additional permissions.
+</focus>`;
 } 

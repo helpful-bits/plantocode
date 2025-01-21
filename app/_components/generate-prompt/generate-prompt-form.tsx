@@ -205,8 +205,13 @@ export default function GeneratePromptForm() {
 
       const fileContents = Object.entries(result.data)
         .filter(([path]) => filesToUse.includes(path))
-        .map(([path, content]) => `${path}:\n${content}\n`)
-        .join("\n");
+        .map(([path, content]) => `<file>
+<file_path>${path}</file_path>
+<file_content>
+${content}
+</file_content>
+</file>`)
+        .join("\n\n");
 
       const formatInstructions = await getFormatInstructions(outputFormat, customFormat);
       
@@ -214,13 +219,9 @@ export default function GeneratePromptForm() {
       
       if (outputFormat === "refactoring") {
         if (codebaseStructure.trim()) {
-          const structureSection = `2. CURRENT DIRECTORY STRUCTURE
-The current project structure:
-\`\`\`
+          const structureSection = `<structure>
 ${codebaseStructure}
-\`\`\`
-
-`;
+</structure>`;
           instructions = formatInstructions.replace("{{STRUCTURE_SECTION}}", structureSection);
         } else {
           instructions = formatInstructions
@@ -234,12 +235,13 @@ ${codebaseStructure}
 
       const fullPrompt = `${instructions}
 
-Please carefully review these existing project files to understand the current implementation and context:
-
+<project_files>
 ${fileContents}
+</project_files>
 
-TASK DESCRIPTION:
-${taskDescription}`;
+<task>
+${taskDescription}
+</task>`;
 
       setPrompt(fullPrompt);
       await updateTokenCount(fullPrompt);
