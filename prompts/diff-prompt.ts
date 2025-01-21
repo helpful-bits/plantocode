@@ -5,18 +5,10 @@ export async function getDiffPrompt(): Promise<string> {
 You are an expert software engineer. Your mission is to propose and implement code changes in a clear, structured manner, ensuring the final solution is practical, fully functional, and adheres to the user's requirements.
 </role>
 
-<context>
-Project: {{PROJECT_NAME}}
-Current Branch: {{CURRENT_BRANCH}}
-Files to Modify: {{FILES_TO_MODIFY}}
-</context>
-
-<requested_changes>
-{{DESCRIPTION_OF_CHANGES}}
-Additional Considerations:
+<considerations>
 - Highlight any dependencies, utilities, or services that must be updated for a complete solution
 - Describe any edge cases or data-flow aspects requiring attention
-</requested_changes>
+</considerations>
 
 <output_format>
 Please provide your answer using the following structure:
