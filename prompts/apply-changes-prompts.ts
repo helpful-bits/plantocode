@@ -14,36 +14,11 @@ ${clipboardText}
 </input>
 
 <output_format>
-Please provide your response in the following sections:
-
-<file_modifications>
-   <modified_file>
-   <file_path>Complete file path</file_path>
-   <file_content>
-   Complete updated contents for modified files
-   </file_content>
-   </modified_file>
-
-   <moved_file>
-   <old_file>
-   <file_path>Original file path</file_path>
-   <file_content>
-   // =DEPRECATED=
-   // Moved to: new_location
-   </file_content>
-   </old_file>
-   <new_file>
-   <file_path>New file path</file_path>
-   <file_content>
-   Complete contents at new location
-   </file_content>
-   </new_file>
-   </moved_file>
-</file_modifications>
-
-<summary>
-   Comprehensive overview of all implemented modifications
-</summary>
+<changes>
+  <summary>
+    Comprehensive overview of all implemented modifications
+  </summary>
+</changes>
 </output_format>
 
 <focus>
@@ -65,36 +40,11 @@ ${clipboardText}
 </input>
 
 <output_format>
-Please provide your response in the following sections:
-
-<file_modifications>
-   <modified_file>
-   <file_path>Complete file path</file_path>
-   <file_content>
-   Complete updated contents for modified files
-   </file_content>
-   </modified_file>
-
-   <moved_file>
-   <old_file>
-   <file_path>Original file path</file_path>
-   <file_content>
-   // =DEPRECATED=
-   // Moved to: new_location
-   </file_content>
-   </old_file>
-   <new_file>
-   <file_path>New file path</file_path>
-   <file_content>
-   Complete contents at new location
-   </file_content>
-   </new_file>
-   </moved_file>
-</file_modifications>
-
-<summary>
-   Comprehensive overview of all implemented modifications
-</summary>
+<changes>
+  <summary>
+    Comprehensive overview of all implemented modifications
+  </summary>
+</changes>
 </output_format>
 
 <focus>
