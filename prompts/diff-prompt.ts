@@ -26,26 +26,38 @@ export async function getDiffPrompt(): Promise<string> {
 
   <output_format>
     <instructions>
-      <item>Do not get lazy. Always output the full code in the XML section.</item>
-      <item>Enclose this entire section in a markdown codeblock</item>
-      <item>Include all of the changed files</item>
-      <item>Specify each file operation with CREATE, UPDATE, or DELETE</item>
-      <item>For CREATE or UPDATE operations, include the full file code</item>
-      <item>Include the full file path (relative to the project directory, good: app/page.tsx, bad: /Users/mckaywrigley/Desktop/projects/new-chat-template/app/page.tsx)</item>
+      <item>Do not get lazy. For CREATE operations include complete file contents, for UPDATE operations include all relevant changes with sufficient context.</item>
+      <item>Use a simplified diff format</item>
+      <item>Enclose the changes in a markdown codeblock</item>
+      <item>For each file change, specify:</item>
+      <item>1. Operation type: CREATE, UPDATE, or DELETE</item>
+      <item>2. File path relative to project root</item>
+      <item>3. For CREATE: Full file contents</item>
+      <item>4. For UPDATE: Only the changed lines with + for additions and - for deletions</item>
+      <item>5. For DELETE: Just the operation and path</item>
     </instructions>
 
     <template>
       <code_changes>
-        <changed_files>
-          <file>
-            <file_operation>__FILE OPERATION HERE__</file_operation>
-            <file_path>__FILE PATH HERE__</file_path>
-            <code>
-__FULL FILE CODE HERE__
-            </code>
-          </file>
-          __REMAINING FILES HERE__
-        </changed_files>
+        <file>
+          <operation>CREATE</operation>
+          <path>path/to/new/file.ts</path>
+          <content>
+// Full content for new files
+          </content>
+        </file>
+        <file>
+          <operation>UPDATE</operation>
+          <path>path/to/existing/file.ts</path>
+          <changes>
+-old line
++new line
+          </changes>
+        </file>
+        <file>
+          <operation>DELETE</operation>
+          <path>path/to/deleted/file.ts</path>
+        </file>
       </code_changes>
     </template>
   </output_format>
