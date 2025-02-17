@@ -3,10 +3,6 @@
 export async function getDiffPrompt(): Promise<string> {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <prompt>
-  <context>
-    You are an O1 model with advanced reasoning capabilities. You can directly understand and implement code changes without needing step-by-step guidance.
-  </context>
-
   <role>
     As an expert software engineer, implement code changes that are practical and meet the requirements. Focus on direct solutions.
   </role>
