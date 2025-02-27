@@ -20,7 +20,6 @@ export async function correctTaskDescriptionAction(rawText: string, foundFiles: 
 ---
 ${rawText}
 ---
-If any file references are misspelled, here is a list of valid file names to consider: ${foundFiles.join(", ")}
 Return only the corrected text without any additional commentary.`
         }],
       }),

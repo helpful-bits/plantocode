@@ -317,7 +317,11 @@ ${taskDescription}
       />
 
       {/* Task Description */}
-      <TaskDescriptionArea taskDescription={taskDescription} onChange={handleTaskChange} />
+      <TaskDescriptionArea 
+        taskDescription={taskDescription} 
+        onChange={handleTaskChange}
+        foundFiles={foundFiles.map((f) => f.path)}
+      />
 
       {/* Voice Transcription */}
       <VoiceTranscription

@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
 interface TaskDescriptionProps {
   taskDescription: string;
   onChange: (value: string) => void;
+  foundFiles: string[];
 }
 
-export default function TaskDescriptionArea({ taskDescription, onChange }: TaskDescriptionProps) {
+export default function TaskDescriptionArea({ taskDescription, onChange, foundFiles }: TaskDescriptionProps) {
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
+  const [isImproving, setIsImproving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Capture and store the selection positions whenever the user selects text
@@ -21,26 +24,80 @@ export default function TaskDescriptionArea({ taskDescription, onChange }: TaskD
   // Insert or replace text at the stored cursor or selection range
   const insertTextAtCursor = useCallback(
     (newText: string) => {
-      const before = taskDescription.slice(0, selectionStart);
-      const after = taskDescription.slice(selectionEnd);
-      const updated = before + newText + after;
+      if (!textareaRef.current) return;
 
-      onChange(updated);
-
-      setTimeout(() => {
-        if (textareaRef.current) {
-          const pos = before.length + newText.length;
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(pos, pos);
-        }
-      }, 0);
+      const textarea = textareaRef.current;
+      textarea.focus();
+      
+      // Use the browser's native clipboard commands to maintain undo history
+      const originalText = textarea.value;
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+      
+      // Create an input event that can be undone
+      const event = new InputEvent('input', {
+        inputType: 'insertText',
+        data: newText,
+        bubbles: true,
+        cancelable: true,
+      });
+      
+      // Insert the text and dispatch the event
+      document.execCommand('insertText', false, newText);
+      textarea.dispatchEvent(event);
+      
+      // If execCommand failed (some browsers), fall back to direct manipulation
+      if (textarea.value === originalText) {
+        const before = textarea.value.slice(0, selectionStart);
+        const after = textarea.value.slice(selectionEnd);
+        const updated = before + newText + after;
+        textarea.value = updated;
+        textarea.dispatchEvent(event);
+      }
+      
+      // Update parent state
+      onChange(textarea.value);
+      
+      // Update cursor position
+      const newPosition = selectionStart + newText.length;
+      textarea.setSelectionRange(newPosition, newPosition);
     },
-    [taskDescription, selectionStart, selectionEnd, onChange]
+    [selectionStart, selectionEnd, onChange]
   );
 
+  const handleImproveSelection = async () => {
+    if (selectionStart === selectionEnd) return;
+
+    const selectedText = taskDescription.slice(selectionStart, selectionEnd);
+    if (!selectedText.trim()) return;
+
+    setIsImproving(true);
+    try {
+      const result = await improveSelectedTextAction(selectedText, foundFiles);
+      if (result.isSuccess) {
+        insertTextAtCursor(result.data);
+      }
+    } catch (error) {
+      console.error("Error improving text:", error);
+    } finally {
+      setIsImproving(false);
+    }
+  };
+
+  const hasSelection = selectionStart !== selectionEnd;
+
   return (
-    <div className="flex flex-col">
-      <label className="mb-2 font-bold text-foreground">Task Description:</label>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <label className="font-bold text-foreground">Task Description:</label>
+        <button
+          className="bg-secondary text-secondary-foreground p-2 rounded whitespace-nowrap text-sm disabled:opacity-50"
+          onClick={handleImproveSelection}
+          disabled={isImproving || !hasSelection}
+        >
+          {isImproving ? "Improving..." : "Improve Selection"}
+        </button>
+      </div>
+
       <textarea
         ref={textareaRef}
         id="taskDescArea"
@@ -50,10 +107,6 @@ export default function TaskDescriptionArea({ taskDescription, onChange }: TaskD
         onSelect={handleSelect}
         placeholder="Describe what changes you want to make..."
       />
-      {/* 
-        You can now call insertTextAtCursor("some text") from a parent component 
-        to reliably insert text at the currently selected position.
-      */}
     </div>
   );
 } 

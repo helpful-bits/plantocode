@@ -44,7 +44,7 @@ export async function getDiffPrompt(): Promise<string> {
 
     <diff_format>
       <principles>
-        <requirement>Essential changes only</requirement>
+        <requirement>Absolutely ALL changes</requirement>
         <requirement>Needed context</requirement>
         <requirement>Logical grouping</requirement>
       </principles>
