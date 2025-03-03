@@ -12,7 +12,7 @@ export async function correctTaskDescriptionAction(rawText: string, foundFiles: 
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-3-7-sonnet-20250219",
         max_tokens: 2500,
         messages: [{
           role: "user",

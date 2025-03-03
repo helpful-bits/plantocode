@@ -12,7 +12,7 @@ export async function improveSelectedTextAction(selectedText: string, foundFiles
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-3-7-sonnet-20250219",
         max_tokens: 2500,
         messages: [{
           role: "user",
@@ -24,6 +24,8 @@ export async function improveSelectedTextAction(selectedText: string, foundFiles
 - All special characters and symbols
 
 Do not change the formatting structure at all. Only improve the content while keeping the exact same format.
+
+IMPORTANT: Keep the original language of the text.
 
 Here is the text to improve:
 ${selectedText}
