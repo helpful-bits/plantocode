@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { readDirectoryAction } from "@/actions/read-directory-actions";
+import { readDirectoryAction, readExternalFileAction } from "@/actions/read-directory-actions";
 import { Input } from "@/components/ui/input";
 import { estimateTokens } from "@/lib/token-estimator";
 import { hashString } from "@/lib/hash";
 import { getFormatInstructions } from "@/lib/format-instructions";
 import CodebaseStructure from "./_components/codebase-structure";
+import path from "path";
 
 import FileBrowser from "./file-browser";
 import PastePaths from "./paste-paths";
@@ -53,6 +54,7 @@ export default function GeneratePromptForm() {
   const [tokenCount, setTokenCount] = useState<number>(0);
   const [codebaseStructure, setCodebaseStructure] = useState("");
   const { outputFormat, customFormat } = useFormat();
+  const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
 
   // Load states from localStorage specific to the directory
   function loadCachedStates(dir: string) {
@@ -179,12 +181,19 @@ export default function GeneratePromptForm() {
     setIsLoading(true);
     setError("");
     setLoadingStatus("Reading project files...");
+    setExternalPathWarnings([]);
 
     try {
+      // Get files from the project directory first
       const result = await readDirectoryAction(projectDirectory);
-
-      if (!result.isSuccess) {
+      let fileContentsMap: { [key: string]: string } = {};
+      
+      if (result.isSuccess) {
+        fileContentsMap = { ...result.data };
+      } else if (!pastedPaths.trim()) {
+        // Only show error if no pasted paths are available
         setError(result.message);
+        setIsLoading(false);
         return;
       }
 
@@ -193,9 +202,44 @@ export default function GeneratePromptForm() {
 
       if (!hasPastedPaths && !isAnyFileIncluded) {
         setError("Please include at least one file or paste file paths");
+        setIsLoading(false);
         return;
       }
 
+      // Collect paths from pasted content if available
+      if (hasPastedPaths) {
+        setLoadingStatus("Processing external file paths...");
+        const externalPaths = pastedPaths
+          .split("\n")
+          .map((p) => p.trim())
+          .filter((p) => !!p && !p.startsWith("#"));
+          
+        // Check if any path is absolute or outside the project
+        const externalPathsToProcess = externalPaths.filter(p => {
+          // If it's an absolute path or doesn't exist in our foundFiles,
+          // it's considered external
+          return path.isAbsolute(p) || !foundFiles.some(f => f.path === p);
+        });
+        
+        // Process each external path
+        const warnings: string[] = [];
+        for (const filePath of externalPathsToProcess) {
+          const externalFileResult = await readExternalFileAction(filePath);
+          if (externalFileResult.isSuccess && externalFileResult.data) {
+            // Merge with existing file contents
+            fileContentsMap = { ...fileContentsMap, ...externalFileResult.data };
+          } else {
+            console.warn(`Failed to read external file ${filePath}: ${externalFileResult.message}`);
+            warnings.push(`Could not read "${filePath}": ${externalFileResult.message}`);
+          }
+        }
+        
+        if (warnings.length > 0) {
+          setExternalPathWarnings(warnings);
+        }
+      }
+      
+      // Determine which files to include in the prompt
       const filesToUse = hasPastedPaths
         ? pastedPaths
             .split("\n")
@@ -203,7 +247,8 @@ export default function GeneratePromptForm() {
             .filter((p) => !!p && !p.startsWith("#"))
         : foundFiles.filter((f) => f.included).map((f) => f.path);
 
-      const fileContents = Object.entries(result.data)
+      // Generate file contents markup
+      const fileContents = Object.entries(fileContentsMap)
         .filter(([path]) => filesToUse.includes(path))
         .map(([path, content]) => `<file>
 <file_path>${path}</file_path>
@@ -381,6 +426,19 @@ ${taskDescription}
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {error && <div className="text-red-500 mt-4">{error}</div>}
+      
+      {externalPathWarnings.length > 0 && (
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
+          <h4 className="font-semibold text-yellow-800">Warning: Some external files could not be read</h4>
+          <ul className="list-disc pl-5 mt-2 text-sm text-yellow-700">
+            {externalPathWarnings.map((warning, i) => (
+              <li key={i}>{warning}</li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

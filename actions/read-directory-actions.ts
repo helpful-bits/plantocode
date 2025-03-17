@@ -25,6 +25,65 @@ const BINARY_EXTENSIONS = new Set([
   '.pyc',
 ]);
 
+/**
+ * Reads a single file from any location in the file system
+ * Supports absolute and relative paths
+ */
+export async function readExternalFileAction(filePath: string): Promise<ActionState<{ [key: string]: string }>> {
+  try {
+    if (!filePath) {
+      return {
+        isSuccess: false,
+        message: "No file path provided"
+      };
+    }
+
+    const fileInfo: { [key: string]: string } = {};
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+    
+    try {
+      // Check if file exists and is accessible
+      await fs.access(fullPath);
+      
+      // Skip binary files
+      const ext = path.extname(fullPath).toLowerCase();
+      if (BINARY_EXTENSIONS.has(ext)) {
+        return {
+          isSuccess: false,
+          message: `Cannot read binary file: ${filePath}`
+        };
+      }
+      
+      const buffer = await fs.readFile(fullPath);
+      if (await isBinaryFile(buffer)) {
+        return {
+          isSuccess: false,
+          message: `Cannot read binary file: ${filePath}`
+        };
+      }
+      
+      // Use original file path as the key
+      fileInfo[filePath] = buffer.toString('utf-8');
+      
+      return {
+        isSuccess: true,
+        message: "Successfully read file",
+        data: fileInfo
+      };
+    } catch (error) {
+      return {
+        isSuccess: false,
+        message: `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  } catch (error) {
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Failed to read file"
+    };
+  }
+}
+
 export async function readDirectoryAction(projectDirectory: string): Promise<ActionState<{ [key: string]: string }>> {
   try {
     const finalDirectory = projectDirectory?.trim() || process.env.PROJECT_DIRECTORY;
@@ -55,6 +114,9 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       if (BINARY_EXTENSIONS.has(ext)) continue;
       
       try {
+        // Check if file exists and is accessible
+        await fs.access(fullPath);
+        
         const buffer = await fs.readFile(fullPath);
         if (await isBinaryFile(buffer)) continue;
         

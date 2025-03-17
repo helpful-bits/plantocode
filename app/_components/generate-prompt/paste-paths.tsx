@@ -1,5 +1,6 @@
 "use client";
 import { Dispatch, SetStateAction, useEffect } from "react";
+import path from "path";
 
 interface PastePathsProps {
   pastedPaths: string;
@@ -22,9 +23,16 @@ export default function PastePaths({
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => !!l && !l.startsWith("#"));
+      
+      // Count files that exist in the project
       const available = foundFiles.map((f) => f.path);
       const matched = lines.filter((p) => available.includes(p)).length;
-      setPastedPathsFound(matched);
+      
+      // External paths are those that aren't in the project
+      const externalPaths = lines.filter((p) => !available.includes(p));
+      
+      // Set the total number found (from project + external)
+      setPastedPathsFound(matched + externalPaths.length);
     }
   }, [pastedPaths, foundFiles, setPastedPathsFound]);
 
@@ -34,7 +42,7 @@ export default function PastePaths({
         <label className="font-bold text-foreground">
           Or Paste File Paths (one per line):
           <span className="text-sm font-normal text-muted-foreground ml-2">
-            Overrides file selection when not empty
+            Supports project paths and external/absolute paths
           </span>
         </label>
         {pastedPaths.trim() && (
@@ -48,10 +56,20 @@ export default function PastePaths({
         className="border rounded bg-background text-foreground p-2 h-32 font-mono text-sm"
         value={pastedPaths}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="path/to/file1.ts
+        placeholder={`# Project paths
+path/to/file1.ts
 path/to/file2.ts
-path/to/file3.ts"
+
+# External paths (absolute or relative)
+/home/user/projects/other-project/src/main.ts
+../other-project/src/components/Button.tsx`}
       />
+      
+      <div className="text-xs text-muted-foreground">
+        <p>• You can use both paths within the project and external/absolute paths</p>
+        <p>• Lines starting with # are treated as comments</p>
+        <p>• External paths will be read from the file system directly</p>
+      </div>
     </div>
   );
 } 
