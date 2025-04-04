@@ -44,7 +44,7 @@ export async function getPathFinderPrompt(): Promise<string> {
       <example_output>
 File Paths:
 src/components/ExampleComponent.js
-src/components/RelatedComponent.js 
+src/components/RelatedComponent.js
 src/hooks/useExample.js
 src/hooks/useRelatedHook.js
 src/types/index.ts
@@ -53,7 +53,7 @@ package.json
 README.md
 docs/usage.md
 docs/architecture.md
-.cursorrules
+.cursor/rules
 tests/components/ExampleComponent.test.js
 
 Task Description:
@@ -83,7 +83,7 @@ Modify ExampleComponent.js to implement new feature using the hook system in src
       <rule>Include test files related to the components being modified.</rule>
       <rule>No comments or explanations for individual files.</rule>
     </file_paths_section>
-    
+
     <task_description_section>
       <rule>Start with "Task Description:" header.</rule>
       <rule>Single paragraph explaining the task comprehensively.</rule>
@@ -97,4 +97,4 @@ Modify ExampleComponent.js to implement new feature using the hook system in src
     </task_description_section>
   </rules>
 </prompt>`;
-} 
+}

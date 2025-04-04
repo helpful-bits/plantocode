@@ -32,7 +32,7 @@ ${`{{STRUCTURE_SECTION}}`.trim() ? `<structure>
    Brief description of what this task accomplishes
 
    ## Changes Required
-   - List specific changes needed
+   - List specific, actionable changes needed
    - Include file paths and what needs to change
    - Note any dependencies affected
    - For moved/replaced files, mark old files with "// =DEPRECATED=" and reference new location

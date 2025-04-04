@@ -1,15 +1,18 @@
 "use client";
 
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { generateDirectoryTree } from "@/lib/directory-tree";
+import { useProject } from "@/lib/contexts/project-context";
 
 interface CodebaseStructureProps {
   value: string;
   onChange: (value: string) => void;
-  projectDirectory: string;
 }
 
-export default function CodebaseStructure({ value, onChange, projectDirectory }: CodebaseStructureProps) {
+export default function CodebaseStructure({ value, onChange }: CodebaseStructureProps) {
+  const { projectDirectory } = useProject();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -35,6 +38,7 @@ export default function CodebaseStructure({ value, onChange, projectDirectory }:
       const tree = await generateDirectoryTree(projectDirectory);
       if (tree) {
         onChange(tree);
+        setIsExpanded(true); // Show the generated tree
       }
     } catch (error) {
       console.error('Failed to generate directory tree:', error);
@@ -48,20 +52,22 @@ export default function CodebaseStructure({ value, onChange, projectDirectory }:
       <div className="flex items-center justify-between">
         <label className="font-bold text-foreground">Codebase Structure:</label>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="secondary" size="sm"
             onClick={handleGenerateStructure}
             disabled={isGenerating || !projectDirectory}
-            className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded disabled:opacity-50"
           >
             {isGenerating ? "Generating..." : "Generate from Project"}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost" size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             {isExpanded ? "Hide" : "Show"}
-          </button>
+          </Button>
         </div>
+
       </div>
       
       {isExpanded && (
@@ -69,7 +75,7 @@ export default function CodebaseStructure({ value, onChange, projectDirectory }:
           <div className="text-sm text-muted-foreground">
             Define the current or planned directory structure using ASCII tree format.
           </div>
-          <textarea
+          <Textarea
             className="font-mono text-sm border rounded bg-background text-foreground p-2 h-48"
             value={value}
             onChange={handleChange}
@@ -79,13 +85,14 @@ export default function CodebaseStructure({ value, onChange, projectDirectory }:
   └── ..."
           />
           <div className="flex justify-end gap-2">
-            <button
+            <Button
+              variant="link" size="sm"
               onClick={handleExample}
-              className="text-sm text-primary hover:text-primary/80"
             >
               Insert Example
-            </button>
+            </Button>
           </div>
+
         </>
       )}
     </div>

@@ -42,5 +42,8 @@ next-env.d.ts
 *.iws
 *.ipr
 .idea_modules/
+
+# Cursor
 out/
 /pnpm-lock.yaml
+/work.patch

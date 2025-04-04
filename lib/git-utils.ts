@@ -12,9 +12,13 @@ const execAsync = promisify(exec);
  */
 export async function getAllNonIgnoredFiles(dir: string): Promise<string[]> {
   try {
+    // Check if it's a git directory first
+    await execAsync('git rev-parse --is-inside-work-tree', { cwd: dir });
+
     const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', { cwd: dir });
     return stdout.split('\n').filter(Boolean);
   } catch (error) {
+    // Handle cases where it's not a git repo or git commands fail
     console.error('Error getting non-ignored files:', error);
     return [];
   }

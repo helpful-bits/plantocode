@@ -1,5 +1,7 @@
 "use client";
 
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
@@ -67,7 +69,7 @@ export default function TaskDescriptionArea({ taskDescription, onChange, foundFi
   const handleImproveSelection = async () => {
     if (selectionStart === selectionEnd) return;
 
-    const selectedText = taskDescription.slice(selectionStart, selectionEnd);
+    const selectedText = taskDescription?.slice(selectionStart, selectionEnd) || "";
     if (!selectedText.trim()) return;
 
     setIsImproving(true);
@@ -76,6 +78,9 @@ export default function TaskDescriptionArea({ taskDescription, onChange, foundFi
       if (result.isSuccess) {
         insertTextAtCursor(result.data);
       }
+      // Reset selection after improving
+      setSelectionStart(textareaRef.current?.selectionStart || 0);
+      setSelectionEnd(textareaRef.current?.selectionStart || 0);
     } catch (error) {
       console.error("Error improving text:", error);
     } finally {
@@ -89,13 +94,13 @@ export default function TaskDescriptionArea({ taskDescription, onChange, foundFi
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <label className="font-bold text-foreground">Task Description:</label>
-        <button
-          className="bg-secondary text-secondary-foreground p-2 rounded whitespace-nowrap text-sm disabled:opacity-50"
+        <Button
+          variant="secondary" size="sm"
           onClick={handleImproveSelection}
           disabled={isImproving || !hasSelection}
         >
           {isImproving ? "Improving..." : "Improve Selection"}
-        </button>
+        </Button>
       </div>
 
       <textarea

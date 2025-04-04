@@ -17,6 +17,10 @@ export async function getFormatInstructions(format: OutputFormat, customFormat: 
   if (format === "path-finder") {
     return getPathFinderPrompt();
   }
+
+  if (format === "path-finder") {
+    return getPathFinderPrompt();
+  }
   
   return customFormat;
 } 
