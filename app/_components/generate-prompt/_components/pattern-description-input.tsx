@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
+import { Mic, MicOff, Loader2 } from "lucide-react";
 
 interface PatternDescriptionInputProps {
   value: string;
@@ -23,13 +24,18 @@ export default function PatternDescriptionInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [canRevert, setCanRevert] = useState(false);
 
-  const handleTranscribedText = (text: string) => {
+  const handleTranscribedText = useCallback((text: string) => {
     const currentText = textareaRef.current?.value || '';
     const updatedText = (currentText ? currentText + " " + text : text).trim();
     onChange(updatedText);
     setCanRevert(false); // Once new text is added, revert is less meaningful unless specifically tracked
-  };
+  }, [onChange]);
 
+  const handleCorrectionComplete = useCallback(() => {
+    setCanRevert(true);
+  }, []);
+  
+  // Use environment variable to check if correction feature should be enabled
   const {
     isRecording,
     isProcessing: isProcessingAudio,
@@ -37,8 +43,12 @@ export default function PatternDescriptionInput({
     startRecording,
     stopRecording,
     revertToRaw,
-    correctedText, // We need correctedText to know when correction happened
-  } = useVoiceRecording({ onTranscribed: handleTranscribedText, onCorrectionComplete: () => setCanRevert(true) });
+    correctedText,
+  } = useVoiceRecording({ 
+    onTranscribed: handleTranscribedText,
+    // Only pass onCorrectionComplete if the key exists, disabling correction otherwise
+    onCorrectionComplete: handleCorrectionComplete 
+  });
 
   const handleToggleRecording = async () => {
     if (!isRecording) {
@@ -71,9 +81,25 @@ export default function PatternDescriptionInput({
           variant="outline"
           size="sm"
           onClick={handleToggleRecording}
-          disabled={isProcessingAudio} // Disable button while processing
+          disabled={isProcessingAudio}
+          className="min-w-[120px] flex justify-center items-center gap-2"
         >
-          {isRecording ? "Stop Recording" : "Start Recording"}
+          {isProcessingAudio ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Processing...</span>
+            </>
+          ) : isRecording ? (
+            <>
+              <MicOff className="h-4 w-4" />
+              <span>Stop Recording</span>
+            </>
+          ) : (
+            <>
+              <Mic className="h-4 w-4" />
+              <span>Start Recording</span>
+            </>
+          )}
         </Button>
         <Button
           size="sm"

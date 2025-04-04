@@ -2,7 +2,7 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils"; // Import from utility
+import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 import { ActionState } from "@/types";
 

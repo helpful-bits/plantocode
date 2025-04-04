@@ -5,33 +5,28 @@ O1 Pro Flow is a comprehensive utility designed to streamline the workflow of ge
 ## Prerequisites
 - macOS or Linux (due to shell script usage for cleanup)
 - Git installed and available in PATH
-- Node.js (v18+) and npm (or yarn)
 - Node.js (v18+) and pnpm
 - A Git repository
 - Next.js 15.1.3 with React 18
 - (Optional) `GROQ_API_KEY` for voice transcription
-- (Optional) `ANTHROPIC_API_KEY` for text correction via Anthropic's Claude
+- (Optional) `ANTHROPIC_API_KEY` for text correction via Anthropic's Claude (specifically Sonnet 3.7 model as configured)
 - (Optional) Set `NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS=true` in your `.env` file if you provide `ANTHROPIC_API_KEY` to enable related features.
 
 ## Installation & Quick Start
-1. **Clone the Repository**:
-    ```bash
-    git clone https://github.com/mckaywrigley/o1-pro-flow
-    ```
-2. **Install Dependencies**:
+1. **Install Dependencies**:
     ```bash
     cd o1-pro-flow
     pnpm install
     ```
-3. **Configure Environment Variables**:
+2. **Configure Environment Variables**:
     ```bash
     cp .env.example .env.local
     ```
-4. **Run the Development Server**:
+3. **Run the Development Server**:
     ```bash
     pnpm dev
     ```
-5. **Open the App**:
+4. **Open the App**:
    - Navigate to [http://localhost:3000](http://localhost:3000) and explore the interface.
    - Local storage caches your Project Directory, file selections, and Task Description.
    - If you set `GROQ_API_KEY`, you can record audio and use voice transcription for your Task Description.

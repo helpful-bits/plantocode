@@ -1,10 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
-import { transcribeVoiceAction } from "@/actions/voice-transcription-actions";
-import { correctTaskDescriptionAction } from "@/actions/voice-correction-actions";
+import { Mic, MicOff, Loader2 } from "lucide-react";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
@@ -13,7 +12,15 @@ interface VoiceTranscriptionProps {
 
 export default function VoiceTranscription({ onTranscribed, foundFiles }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
-  
+
+  // Check if correction API key is available
+  const correctionEnabled = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS === 'true';
+
+  const handleCorrectionComplete = useCallback((raw: string, corrected: string) => {
+    if (raw !== corrected) {
+      setShowRevertOption(true);
+    }
+  }, []);
   const {
     isRecording,
     isProcessing,
@@ -24,11 +31,8 @@ export default function VoiceTranscription({ onTranscribed, foundFiles }: VoiceT
     revertToRaw
   } = useVoiceRecording({
     onTranscribed,
-    onCorrectionComplete: (raw, corrected) => {
-      if (raw !== corrected) {
-        setShowRevertOption(true);
-      }
-    },
+    // Only enable correction callback if API key exists
+    onCorrectionComplete: correctionEnabled ? handleCorrectionComplete : undefined,
     foundFiles
   });
 
@@ -48,11 +52,27 @@ export default function VoiceTranscription({ onTranscribed, foundFiles }: VoiceT
           disabled={isProcessing}
           variant={isRecording ? "destructive" : "secondary"}
           size="sm"
+          className="min-w-[120px] flex justify-center items-center gap-2"
         >
-          {isProcessing ? "Processing..." : isRecording ? "Stop Recording" : "Record Audio"}
+          {isProcessing ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Processing...</span>
+            </>
+          ) : isRecording ? (
+            <>
+              <MicOff className="h-4 w-4" />
+              <span>Stop Recording</span>
+            </>
+          ) : (
+            <>
+              <Mic className="h-4 w-4" />
+              <span>Record Audio</span>
+            </>
+          )}
         </Button>
 
-        {showRevertOption && rawText && (
+        {correctionEnabled && showRevertOption && rawText && (
           <Button
             onClick={() => { revertToRaw(); setShowRevertOption(false); }}
             variant="link"
@@ -63,7 +83,7 @@ export default function VoiceTranscription({ onTranscribed, foundFiles }: VoiceT
           </Button>
         )}
       </div>
-      {voiceError && <div className="text-sm text-destructive">{voiceError}</div>}
+      {voiceError && <div className="text-sm text-destructive mt-1">{voiceError}</div>}
     </div>
   );
 } 
