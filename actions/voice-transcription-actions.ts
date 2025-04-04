@@ -8,29 +8,54 @@ export async function transcribeVoiceAction(request: {
   languageCode?: string;
 }): Promise<ActionState<string>> {
   try {
+    console.log(`Transcribing audio: ${request.blob.size} bytes, type: ${request.mimeType}`);
+    
+    if (!request.blob || request.blob.size === 0) {
+      console.error("Empty audio blob received");
+      return {
+        isSuccess: false,
+        message: "Empty audio recording received. Please try again with a valid recording.",
+      };
+    }
+    
     const form = new FormData();
 
-    const blob = new Blob([request.blob], { type: request.mimeType });
-
+    // Normalize the MIME type to ensure extension compatibility
+    let normalizedMimeType = request.mimeType.split(';')[0].toLowerCase();
+    
     const extensionMap: Record<string, string> = {
       "audio/flac": "flac",
       "audio/mp3": "mp3", 
       "audio/mp4": "mp4",
-      "audio/mpeg": "mpeg",
-      "audio/mpga": "mpga",
+      "audio/mpeg": "mp3",
+      "audio/mpga": "mp3",
       "audio/m4a": "m4a",
       "audio/ogg": "ogg",
       "audio/opus": "opus",
       "audio/wav": "wav",
-      "audio/webm": "webm"
+      "audio/webm": "webm",
+      "audio/x-wav": "wav"
     };
-    const extension = extensionMap[request.mimeType] || "webm";
-    form.append("file", blob, `audiofile.${extension}`);
-
+    
+    // Default to webm if the mime type isn't recognized
+    const extension = extensionMap[normalizedMimeType] || "webm";
+    const filename = `audio-${Date.now()}.${extension}`;
+    
+    form.append("file", request.blob, filename);
     form.append("model", "whisper-large-v3-turbo");
     form.append("temperature", "0.0");
     form.append("response_format", "json");
     form.append("language", request.languageCode ?? "en");
+
+    console.log(`Sending audio file ${filename} to transcription API`);
+    
+    if (!process.env.GROQ_API_KEY) {
+      console.error("GROQ_API_KEY is not defined");
+      return {
+        isSuccess: false,
+        message: "Transcription service configuration error. Please contact support.",
+      };
+    }
 
     const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
@@ -42,14 +67,31 @@ export async function transcribeVoiceAction(request: {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Groq API error: ${errText}`);
+      console.error(`Groq API error (${response.status}): ${errText}`);
+      
+      if (response.status === 401) {
+        return {
+          isSuccess: false,
+          message: "Authentication error with transcription service. Please check API key configuration.",
+        };
+      }
+      
+      return {
+        isSuccess: false,
+        message: `Transcription service error (${response.status}): ${errText.substring(0, 100)}...`,
+      };
     }
 
     const data = await response.json();
     if (!data?.text) {
-      throw new Error("No transcription text in response");
+      console.error("Empty transcription result", data);
+      return {
+        isSuccess: false,
+        message: "No transcription text in response. Please try again with a clearer recording.",
+      };
     }
 
+    console.log("Transcription successful");
     return {
       isSuccess: true,
       message: "Voice transcribed successfully",
@@ -58,9 +100,11 @@ export async function transcribeVoiceAction(request: {
 
   } catch (error) {
     console.error("Error transcribing voice:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    
     return {
       isSuccess: false,
-      message: "Failed to transcribe voice",
+      message: `Failed to transcribe voice: ${errorMessage}`,
     };
   }
 } 
