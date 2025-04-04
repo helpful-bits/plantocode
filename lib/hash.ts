@@ -1,3 +1,4 @@
+
 /**
  * Simple string hashing function that works in the browser
  */
