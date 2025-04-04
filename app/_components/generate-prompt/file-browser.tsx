@@ -1,8 +1,9 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input"; // Assuming Input exists
 import { Dispatch, SetStateAction } from "react";
+import { cn } from "@/lib/utils"; // Add cn utility for conditional class names
 
 interface FileInfo {
   path: string;
@@ -41,45 +42,46 @@ export default function FileBrowser({
   };
 
   const handleToggleFile = (path: string) => {
-    setAllFilesMap(prevMap =>
-      prevMap[path] ? {
-        ...prevMap,
-        [path]: { ...prevMap[path], included: !prevMap[path].included }
-      } : prevMap
-    );
+    setAllFilesMap(prevMap => {
+      const newMap = { ...prevMap };
+      if (newMap[path]) {
+        newMap[path] = { ...newMap[path], included: !newMap[path].included };
+      }
+      return newMap;
+    });
   };
 
   const handleToggleForceExclude = (path: string) => {
     setAllFilesMap(prevMap => {
-      if (!prevMap[path]) return prevMap;
-      const currentFile = prevMap[path];
-      const forceExcluded = !currentFile.forceExcluded;
-      const updatedFile = {
-        ...currentFile,
-        forceExcluded,
-        included: forceExcluded ? false : currentFile.included, // Force exclude overrides include
-      };
-      return { ...prevMap, [path]: updatedFile };
+      const newMap = { ...prevMap };
+      if (newMap[path]) {
+        const currentFile = newMap[path];
+        const forceExcluded = !currentFile.forceExcluded;
+        newMap[path] = {
+          ...currentFile,
+          forceExcluded,
+          included: forceExcluded ? false : currentFile.included, // Force exclude overrides include
+        };
+      }
+      return newMap;
     });
   };
 
   const handleBulkToggle = (include: boolean) => {
     setAllFilesMap(prevMap => {
       const newMap = { ...prevMap };
-      const displayedPaths = new Set(displayedFiles.map(f => f.path));
-      
-      displayedPaths.forEach(path => {
-        if (newMap[path]) {
-          newMap[path] = {
-            ...newMap[path],
-            included: include && !newMap[path].forceExcluded
-          };
-        }
+      displayedFiles.forEach(file => {
+        newMap[file.path] = {
+          ...newMap[file.path],
+          included: include && !newMap[file.path].forceExcluded
+        };
       });
       
       return newMap;
     });
   };
+
+  const includedCount = displayedFiles.filter((f) => f.included).length;
 
   return (
     <div className="flex flex-col gap-2">
@@ -87,7 +89,7 @@ export default function FileBrowser({
         {displayedFiles.length > 0 && (
           <label className="font-bold text-foreground">
             Found Files ({displayedFiles.filter((f) => f.included).length}/{displayedFiles.length}):
-          </label>
+          </label> // This shows count for *displayed* files only
         )}
 
         <div className="flex flex-col sm:flex-row gap-2 items-center">
@@ -104,14 +106,14 @@ export default function FileBrowser({
               <Button
                 variant="secondary" size="sm"
                 onClick={() => handleBulkToggle(false)}
-                disabled={displayedFiles.length === 0}
+                disabled={displayedFiles.length === 0 || includedCount === 0}
               >
                 Exclude Filtered
               </Button>
               <Button
                 variant="secondary" size="sm"
                 onClick={() => handleBulkToggle(true)}
-                disabled={displayedFiles.length === 0}
+                disabled={displayedFiles.length === 0 || includedCount === displayedFiles.length}
               >
                 Include Filtered
               </Button>
@@ -121,10 +123,11 @@ export default function FileBrowser({
       </div>
 
       {displayedFiles.length > 0 ? (
-        <div className="border rounded bg-background p-2 max-h-48 overflow-y-auto">
+        <div className="border rounded bg-background p-2 max-h-60 overflow-y-auto">
           {displayedFiles.map((file) => (
             <div
               key={file.path}
+              // Highlight included files slightly
               className={`flex items-center justify-between gap-2 text-sm py-1 hover:bg-accent/50 rounded px-2 ${
                 file.included ? "bg-accent" : "" // Highlight included files
               } ${file.forceExcluded ? "opacity-50" : ""}`}
@@ -133,18 +136,20 @@ export default function FileBrowser({
                 <input
                   type="checkbox"
                   checked={file.included}
-                  disabled={file.forceExcluded}
                   onChange={() => handleToggleFile(file.path)}
+                  disabled={file.forceExcluded} // Disable include checkbox if force excluded
                   className="cursor-pointer flex-shrink-0"
                 />
                 <input
                   type="checkbox"
                   checked={file.forceExcluded}
                   onChange={() => handleToggleForceExclude(file.path)}
-                  className="cursor-pointer accent-destructive flex-shrink-0"
+                  // Use destructive variant styling for force exclude
+                  className={cn("cursor-pointer accent-destructive flex-shrink-0")}
                   title="Force exclude"
                 />
-                <span className="font-mono flex-1 truncate">{file.path}</span>
+                {/* Conditionally apply strikethrough if force excluded */}
+                <span className={cn("font-mono flex-1 truncate", file.forceExcluded && "line-through")}>{file.path}</span>
               </label>
               <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
             </div>

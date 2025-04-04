@@ -16,12 +16,12 @@ import PatternDescriptionInput from "./_components/pattern-description-input";
 import RegexInput from "./_components/regex-input";
 import PastePaths from "./paste-paths";
 import path from "path";
-import TaskDescriptionArea from "./task-description";
+import TaskDescriptionArea from "./_components/task-description";
 import VoiceTranscription from "./voice-transcription";
 import { useFormat } from "@/lib/contexts/format-context";
 
 const GLOBAL_PROJECT_DIR_KEY = "o1-pro-flow-project-dir";
-const TASK_DESC_KEY = "task-desc";
+const TASK_DESC_KEY = "task-description";
 const SEARCH_TERM_KEY = "search-term";
 const PASTED_PATHS_KEY = "pasted-paths";
 const INCLUDED_FILES_KEY = "included-files";
@@ -62,6 +62,8 @@ export default function GeneratePromptForm() {
   const [tokenCount, setTokenCount] = useState<number>(0);
   const [codebaseStructure, setCodebaseStructure] = useState("");
   const { outputFormat, customFormat } = useFormat();
+  const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
+  const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
 
   /**
@@ -69,7 +71,7 @@ export default function GeneratePromptForm() {
    */
   const getLocalKey = useCallback((dir: string, suffix: string) => {
     const hash = hashString(dir);
-    return `gp-${hash}-${outputFormat}-${suffix}`;
+    return `gp-${hash}-${suffix}`; // Key should be based on directory, not format
   }, [outputFormat]);
 
   // Load states from localStorage specific to the directory and format
@@ -86,11 +88,22 @@ export default function GeneratePromptForm() {
     if (cachedSearch) setSearchTerm(cachedSearch);
     if (cachedPaths) setPastedPaths(cachedPaths);
     if (cachedStructure) setCodebaseStructure(cachedStructure);
-    if (cachedPatternDesc) setPatternDescription(cachedPatternDesc); // Corrected state setter
-    if (cachedTitleRegex) setTitleRegex(cachedTitleRegex); // Corrected state setter
+    if (cachedPatternDesc) setPatternDescription(cachedPatternDesc);
+    if (cachedTitleRegex) setTitleRegex(cachedTitleRegex);
     if (cachedContentRegex) setContentRegex(cachedContentRegex);
-  }, [getLocalKey, setTaskDescription, setSearchTerm, setPastedPaths, setCodebaseStructure, setPatternDescription, setTitleRegex, setContentRegex]);
 
+    // File selections are loaded within handleLoadFiles/initial mount effect
+
+  }, [getLocalKey]);
+
+  // Save relevant states whenever they change
+  useEffect(() => {
+    if (projectDirectory) {
+      localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY), taskDescription);
+      localStorage.setItem(getLocalKey(projectDirectory, SEARCH_TERM_KEY), searchTerm);
+      localStorage.setItem(getLocalKey(projectDirectory, PASTED_PATHS_KEY), pastedPaths);
+    }
+  }, [taskDescription, searchTerm, pastedPaths, projectDirectory, getLocalKey]);
   const handleLoadFiles = useCallback(async (dir?: string) => {
     const directory = dir || projectDirectory;
     if (!directory?.trim()) {
@@ -98,6 +111,7 @@ export default function GeneratePromptForm() {
       return;
     }
 
+    // Always clear errors before loading files
     setError("");
     setIsLoadingFiles(true);
     setLoadingStatus("Reading directory...");
@@ -113,28 +127,26 @@ export default function GeneratePromptForm() {
 
       // Only check for empty files when explicitly loading
       if (Object.keys(result.data).length === 0) {
-        // Don't clear if successful but empty, just show message
+        // Display the git repository error message and empty the file map
         console.log("Directory read successfully, but no files found/readable.");
         setError("No files found. Is this a git repository?");
         setAllFilesMap({});
         return;
       }
 
+      // Load saved selections for this directory
       let savedIncludedFiles: string[] = [];
       let savedForceExcluded: string[] = [];
       try {
-        savedIncludedFiles = JSON.parse(
-          localStorage.getItem(getLocalKey(directory, INCLUDED_FILES_KEY)) || "[]"
-        );
-        savedForceExcluded = JSON.parse(
-          localStorage.getItem(getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY)) || "[]"
-        );
+        const key = getLocalKey(directory, INCLUDED_FILES_KEY);
+        const keyEx = getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY);
+        savedIncludedFiles = JSON.parse(localStorage.getItem(key) || "[]");
+        savedForceExcluded = JSON.parse(localStorage.getItem(keyEx) || "[]");
       } catch (e) {
         console.warn("Failed to parse saved files from localStorage");
-        localStorage.setItem(getLocalKey(directory, INCLUDED_FILES_KEY), "[]");
-        localStorage.setItem(getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY), "[]");
+        // Don't reset localStorage here, just proceed with empty arrays
       }
-
+      // Apply saved selections to the newly loaded file list
       const newFilesMap: FilesMap = {};
       Object.entries(result.data).forEach(([path, content]) => {
         newFilesMap[path] = {
@@ -155,22 +167,79 @@ export default function GeneratePromptForm() {
     }
   }, [projectDirectory, setError, setIsLoadingFiles, setLoadingStatus, setAllFilesMap, setFileContentsMap, getLocalKey]);
 
+  // Effect to load global project dir and initial files/states on mount
   useEffect(() => {
     const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY);
     if (savedDir) {
       setProjectDirectory(savedDir);
-      // loadCachedStates(savedDir); // Moved to handleDirectoryChange and format change effect
-      // Automatically load files if we have a saved directory
-      handleLoadFiles(savedDir);
-    }
-  }, [setProjectDirectory, handleLoadFiles]);
+      loadCachedStates(savedDir); // Load text/regex states first
 
-  // Reload cached states when output format changes
+      const loadFilesInitial = async (dir: string) => {
+        try {
+          setIsLoadingFiles(true);
+          const result = await readDirectoryAction(dir);
+          
+          if (result.isSuccess && Object.keys(result.data).length > 0) {
+            let savedIncludedFiles: string[] = [];
+            let savedForceExcluded: string[] = [];
+            try {
+              savedIncludedFiles = JSON.parse(
+                localStorage.getItem(getLocalKey(dir, INCLUDED_FILES_KEY)) || "[]",
+              );
+              savedForceExcluded = JSON.parse(
+                localStorage.getItem(getLocalKey(dir, FORCE_EXCLUDED_FILES_KEY)) || "[]",
+              );
+            } catch (e) {
+              console.warn("Failed to parse saved files from localStorage");
+            } // Don't reset localStorage
+
+            const newFilesMap: FilesMap = {};
+            Object.entries(result.data).forEach(([path, content]) => {
+              newFilesMap[path] = {
+                path,
+                size: new Blob([content as string]).size,
+                forceExcluded: savedForceExcluded.includes(path),
+                included: savedIncludedFiles.includes(path) && !savedForceExcluded.includes(path),
+              };
+            });
+            setFileContentsMap(result.data);
+            setAllFilesMap(newFilesMap); // Set the map with loaded selections
+          } else if (!result.isSuccess) {
+            // Silently handle error on initial load unless it's critical
+            console.warn("Initial file load failed:", result.message);
+          }
+        } catch (err) {
+          console.error("Failed to silently load files on mount:", err);
+          setIsLoadingFiles(false);
+          setLoadingStatus("");
+        }
+      };
+      
+      loadFilesInitial(savedDir);
+    }
+  }, [setProjectDirectory, getLocalKey, loadCachedStates]); // Only run on mount
+
+  // Save file selections whenever allFilesMap changes
+  useEffect(() => {
+    if (projectDirectory && Object.keys(allFilesMap).length > 0) { // Only save if there are files
+      const includedPaths = Object.values(allFilesMap)
+        .filter(f => f.included && !f.forceExcluded) // Only save explicitly included ones
+        .map(f => f.path);
+      const excludedPaths = Object.values(allFilesMap)
+        .filter(f => f.forceExcluded)
+        .map(f => f.path);
+
+      localStorage.setItem(getLocalKey(projectDirectory, INCLUDED_FILES_KEY), JSON.stringify(includedPaths));
+      localStorage.setItem(getLocalKey(projectDirectory, FORCE_EXCLUDED_FILES_KEY), JSON.stringify(excludedPaths));
+    }
+  }, [allFilesMap, projectDirectory, getLocalKey]); // Run whenever selections change
+
+  // Load cached states when project directory changes
   useEffect(() => {
     if (projectDirectory) {
       loadCachedStates(projectDirectory);
     }
-  }, [outputFormat, projectDirectory, loadCachedStates]);
+  }, [projectDirectory, loadCachedStates]);
 
   useEffect(() => {
     if (copySuccess) {
@@ -180,118 +249,175 @@ export default function GeneratePromptForm() {
   }, [copySuccess]);
 
   // Whenever the project directory changes, store globally and load from cache
-  const handleDirectoryChange = (value: string) => {
+  const handleDirectoryChange = useCallback((value: string) => {
     // The context setter already handles localStorage for GLOBAL_PROJECT_DIR_KEY
     setProjectDirectory(value);
     loadCachedStates(value);
-    // Remove automatic file loading here
+    // Reset state that shouldn't carry over between projects
     setPrompt("");
-    setError(""); // Clear any existing errors
-  };
+    setAllFilesMap({}); // Clear file map, will be reloaded by handleLoadFiles if needed
+    setFileContentsMap({});
+    // Clear errors unless it's the git repo warning which might persist if the new dir also lacks it
+    if (error !== "No files found. Is this a git repository?") {
+      setError("");
+    }
+  }, [setProjectDirectory, loadCachedStates, error]); // Dependencies for handleDirectoryChange
 
-  const handleTaskChange = (value: string) => {
+  const handleTaskChange = useCallback((value: string) => {
     setTaskDescription(value);
     localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY), value);
-  };
+  }, [projectDirectory, getLocalKey]);
 
-  const handleSearchChange = (value: string) => {
+  const handleSearchChange = useCallback((value: string) => {
     setSearchTerm(value);
     localStorage.setItem(getLocalKey(projectDirectory, SEARCH_TERM_KEY), value);
-  };
+  }, [projectDirectory, getLocalKey]);
 
-  const handlePastedPathsChange = (value: string) => {
+  const handlePastedPathsChange = useCallback((value: string) => {
     setPastedPaths(value);
     localStorage.setItem(getLocalKey(projectDirectory, PASTED_PATHS_KEY), value);
-  };
+  }, [projectDirectory, getLocalKey]);
 
-  const handlePatternDescriptionChange = (value: string) => {
+  const handlePatternDescriptionChange = useCallback((value: string) => {
     setPatternDescription(value);
     localStorage.setItem(getLocalKey(projectDirectory, PATTERN_DESC_KEY), value);
-  };
+  }, [projectDirectory, getLocalKey]);
 
-  const handleTitleRegexChange = (value: string) => {
+  const handleTitleRegexChange = useCallback((value: string) => {
     setTitleRegex(value);
-    localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), value); // Corrected key
-  };
+    localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), value);
+    setTitleRegexError(null); // Clear error on manual change
+  }, [projectDirectory, getLocalKey]);
 
-  const handleContentRegexChange = (value: string) => {
+  const handleContentRegexChange = useCallback((value: string) => {
     setContentRegex(value);
-    localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), value); // Corrected key
-  };
+    localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), value);
+    setContentRegexError(null); // Clear error on manual change
+  }, [projectDirectory, getLocalKey]);
 
-  // Memoized calculation for files displayed in the browser
+  const handleClearPatterns = useCallback(() => {
+    setTitleRegex("");
+    setContentRegex("");
+    localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), "");
+    localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), "");
+    setTitleRegexError(null);
+    setContentRegexError(null);
+  }, [projectDirectory, getLocalKey]);
+
+   // Memoized calculation for files displayed in the browser
   const displayedFiles = useMemo(() => {
-    let filesToDisplay = Object.values(allFilesMap);
+    let baseFiles = Object.values(allFilesMap).sort((a, b) => a.path.localeCompare(b.path)); // Sort for stable display
 
     // 1. Filter by searchTerm
     if (searchTerm) {
-      filesToDisplay = filesToDisplay.filter((file) =>
+      baseFiles = baseFiles.filter((file) =>
         file.path.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // 2. Filter by titleRegex
-    if (titleRegex.trim()) {
-      let isValidRegex = true;
+    const hasTitleRegex = titleRegex.trim();
+    const contentRegexTrimmed = contentRegex.trim();
+    const hasContentRegex = contentRegexTrimmed && Object.keys(fileContentsMap).length > 0;
+
+    // If no regex, return search-filtered list
+    if (!hasTitleRegex && !hasContentRegex) {
+      // Clear any previous regex errors if regex fields are now empty
+      if (titleRegexError && !hasTitleRegex) setTitleRegexError(null);
+      if (contentRegexError && !contentRegexTrimmed) setContentRegexError(null); // Use trimmed version here too
+      return baseFiles;
+    }
+
+    let titleMatches = new Set<string>();
+    let contentMatches = new Set<string>();
+    let titleError: string | null = null;
+    let contentError: string | null = null;
+
+    // 2. Apply titleRegex if present
+    if (hasTitleRegex) {
       try {
         const regex = new RegExp(titleRegex.trim());
-        filesToDisplay = filesToDisplay.filter((file) => regex.test(file.path));
-      } catch (e) {
-        console.error("Invalid title regex:", e);
-        // Optionally set an error state to show in UI near the regex input
-      }
-      // If regex is invalid, no title filtering is applied
-    }
-
-    // 3. Filter by contentRegex
-    // Only filter by content if the map has contents and regex is provided
-    if (contentRegex.trim() && Object.keys(fileContentsMap).length > 0) {
-      let isValidRegex = true;
-
-      try {
-        const regex = new RegExp(contentRegex.trim(), 'm'); // 'm' for multiline matching
-        filesToDisplay = filesToDisplay.filter((file) => {
-          const content = fileContentsMap[file.path];
-          return content ? regex.test(content) : false;
+        baseFiles.forEach((file) => {
+          if (regex.test(file.path)) {
+            titleMatches.add(file.path);
+          }
         });
       } catch (e) {
-        console.error("Invalid content regex:", e);
-        isValidRegex = false;
-        // Optionally set an error state
+        titleError = e instanceof Error ? e.message : "Invalid title regex";
       }
     }
 
-    return filesToDisplay;
-  }, [allFilesMap, searchTerm, titleRegex, contentRegex, fileContentsMap]);
+    // 3. Apply contentRegex if present
+    if (hasContentRegex) {
+      try {
+        const regex = new RegExp(contentRegexTrimmed, 'm'); // 'm' for multiline matching
+        baseFiles.forEach((file) => {
+          const content = fileContentsMap[file.path];
+          if (typeof content === 'string' && regex.test(content)) {
+            contentMatches.add(file.path);
+          }
+        });
+      } catch (e) {
+        contentError = e instanceof Error ? e.message : "Invalid content regex";
+      }
+    }
 
+    // Update error states outside the loop/try-catch
+    if (titleRegexError !== titleError) setTitleRegexError(titleError);
+    if (contentRegexError !== contentError) setContentRegexError(contentError);
 
-  const handleGenerateRegex = async () => {
-    if (!patternDescription.trim()) return;
+    // 4. Combine results using OR logic
+    const combinedPaths = new Set<string>();
+    // Only add matches if the corresponding regex was valid (no error)
+    if (hasTitleRegex && !titleError) titleMatches.forEach(path => combinedPaths.add(path));
+    if (hasContentRegex && !contentError) contentMatches.forEach(path => combinedPaths.add(path));
+
+    // Filter the original baseFiles list based on the combined matched paths
+    return baseFiles.filter(file => combinedPaths.has(file.path));
+
+  }, [allFilesMap, searchTerm, titleRegex, contentRegex, fileContentsMap, titleRegexError, contentRegexError]); // Include regex errors
+
+  const handleGenerateRegex = useCallback(async () => {
+    if (!patternDescription.trim()) {
+      setRegexGenerationError("Please enter a pattern description first.");
+      return;
+    }
 
     setIsGeneratingRegex(true);
     setRegexGenerationError("");
     try {
-      const result = await generateRegexPatternsAction(patternDescription);
-      if (result.isSuccess) {
-        handleTitleRegexChange(result.data.titleRegex || "");
-        handleContentRegexChange(result.data.contentRegex || "");
+      console.log("Generating regex patterns for:", patternDescription);
+      const result = await generateRegexPatternsAction(patternDescription, codebaseStructure);
+      console.log("Regex generation result:", result);
+      
+      if (result.isSuccess && result.data) {
+        console.log("Setting title regex:", result.data.titleRegex || "");
+        const newTitleRegex = result.data.titleRegex || "";
+        const newContentRegex = result.data.contentRegex || "";
+        setTitleRegex(newTitleRegex);
+        setContentRegex(newContentRegex);
+        localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), result.data.titleRegex || "");
+        localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), result.data.contentRegex || "");
+        setRegexGenerationError(""); // Clear any previous error on success
       } else {
-        setRegexGenerationError(result.message);
+        setRegexGenerationError(result.message || "Failed to generate regex patterns.");
       }
+    } catch (error) {
+      console.error("Error in handleGenerateRegex:", error);
+      setRegexGenerationError(error instanceof Error ? error.message : "Unexpected error generating regex patterns");
     } finally {
       setIsGeneratingRegex(false);
     }
-  };
+  }, [patternDescription, projectDirectory, getLocalKey, codebaseStructure]); // Added codebaseStructure dependency
 
   const updateTokenCount = async (text: string) => {
     const count = await estimateTokens(text);
     setTokenCount(count);
   };
 
-  const handleCodebaseStructureChange = (value: string) => {
+  const handleCodebaseStructureChange = useCallback((value: string) => {
     setCodebaseStructure(value);
     localStorage.setItem(getLocalKey(projectDirectory, CODEBASE_STRUCTURE_KEY), value);
-  };
+  }, [projectDirectory, getLocalKey]);
 
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -303,7 +429,13 @@ export default function GeneratePromptForm() {
       // Get files from the project directory first
       // Ensure file contents are loaded if not already
       if (Object.keys(fileContentsMap).length === 0 && projectDirectory?.trim()) {
-          await handleLoadFiles(projectDirectory);
+        // Use handleLoadFiles to ensure files are loaded before continuing
+        // await handleLoadFiles(projectDirectory); // Re-fetching might overwrite recent selections, rely on existing state
+        // If error occurred during loading, bail out early
+        if (error) {
+          setIsLoading(false);
+          return;
+        }
       }
       let currentFileContents = { ...fileContentsMap };
       
@@ -351,7 +483,7 @@ export default function GeneratePromptForm() {
             currentFileContents = { ...currentFileContents, ...externalFileResult.data };
           } else {
             console.warn(`Failed to read external file ${filePath}: ${externalFileResult.message}`);
-            warnings.push(`Could not read "${filePath}": ${externalFileResult.message}`);
+            warnings.push(`Could not read external path "${filePath}": ${externalFileResult.message}`);
           }
         }
         
@@ -365,7 +497,7 @@ export default function GeneratePromptForm() {
         ? pastedPaths
             .split("\n")
             .map((p) => p.trim())
-            .filter((p) => !!p && !p.startsWith("#") && currentFileContents[p]) // Only include if content was read
+            .filter((p) => !!p && !p.startsWith("#") && currentFileContents[p] !== undefined) // Only include if content was read (even if empty)
         : Object.values(allFilesMap).filter((f) => f.included).map((f) => f.path);
 
       // Generate file contents markup using currentFileContents
@@ -429,7 +561,7 @@ ${taskDescription}
   };
 
   return (
-    <div className="max-w-xl w-full mx-auto p-4 flex flex-col gap-4">
+    <div className="max-w-2xl w-full mx-auto p-4 flex flex-col gap-4">
       {error && <div className="text-destructive">{error}</div>}
 
       {/* Project Directory */}
@@ -460,6 +592,8 @@ ${taskDescription}
         onGenerateRegex={handleGenerateRegex}
         isGeneratingRegex={isGeneratingRegex}
         regexGenerationError={regexGenerationError}
+        projectDirectory={projectDirectory}
+        codebaseStructure={codebaseStructure}
       />
 
       {/* New: Regex Inputs */}
@@ -468,6 +602,9 @@ ${taskDescription}
         contentRegex={contentRegex}
         onTitleChange={handleTitleRegexChange}
         onContentChange={handleContentRegexChange}
+        titleRegexError={titleRegexError}
+        contentRegexError={contentRegexError}
+        onClearPatterns={handleClearPatterns}
       />
 
       {/* File Browser */}
@@ -510,7 +647,7 @@ ${taskDescription}
             localStorage.setItem(getLocalKey(projectDirectory || '', TASK_DESC_KEY), updatedText);
             return updatedText;
           });
-        }}
+        }} // Pass projectDirectory for getLocalKey usage
         foundFiles={Object.keys(allFilesMap)}
       />
 
@@ -565,7 +702,7 @@ ${taskDescription}
         </div>
       )}
 
-      {error && <div className="text-red-500 mt-4">{error}</div>}
+      {error && <div className="text-destructive mt-4">{error}</div>}
       
       {externalPathWarnings.length > 0 && (
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
@@ -579,4 +716,4 @@ ${taskDescription}
       )}
     </div>
   );
-} 
+}

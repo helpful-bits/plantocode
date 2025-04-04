@@ -15,7 +15,10 @@ export interface DeprecatedFile {
 export async function findDeprecatedFiles(projectDir: string): Promise<DeprecatedFile[]> {
   try {
     // Use git ls-files to get all tracked files
-    const { stdout } = await execAsync('git ls-files', { cwd: projectDir });
+    // Explicitly set shell path to avoid ENOENT errors in restricted environments
+    const { stdout } = await execAsync('git ls-files', {
+      cwd: projectDir,
+      shell: '/bin/sh' });
     const files = stdout.split('\n').filter(Boolean);
     
     const deprecatedFiles: DeprecatedFile[] = [];

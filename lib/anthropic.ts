@@ -50,6 +50,11 @@ export async function callAnthropicAPI<T>(
     }
 
     const data: AnthropicResponse = await response.json();
+    console.log("Anthropic API response received:", {
+      contentLength: data.content?.length || 0,
+      firstContentType: data.content?.[0]?.type || 'none',
+      hasText: typeof data.content?.[0]?.text === 'string'
+    });
 
     if (!data.content || data.content.length === 0 || typeof data.content[0].text !== 'string') {
        console.error("Anthropic returned an empty or invalid response:", JSON.stringify(data).slice(0, 500));
