@@ -3,13 +3,12 @@
 import { useState } from "react";
 import { findDeprecatedFilesAction, deleteDeprecatedFileAction } from "@/actions/deprecated-actions";
 import { DeprecatedFile } from "@/lib/find-deprecated";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useProject } from "@/lib/contexts/project-context";
 
-interface DeprecatedFilesManagerProps {
-  projectDirectory: string;
-}
-
-export function DeprecatedFilesManager({ projectDirectory }: DeprecatedFilesManagerProps) {
+export function DeprecatedFilesManager() {
+  const { projectDirectory } = useProject();
   const [deprecatedFiles, setDeprecatedFiles] = useState<(DeprecatedFile & { selected: boolean })[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -107,13 +106,13 @@ export function DeprecatedFilesManager({ projectDirectory }: DeprecatedFilesMana
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <button
-          className="bg-secondary text-secondary-foreground p-2 rounded"
+        <Button
+          variant="secondary"
           onClick={handleFindDeprecated}
-          disabled={isLoading}
+          disabled={isLoading || !projectDirectory}
         >
           {isLoading ? "Loading..." : "Find Deprecated Files"}
-        </button>
+        </Button>
       </div>
 
       {error && <div className="text-destructive">{error}</div>}
@@ -167,13 +166,14 @@ export function DeprecatedFilesManager({ projectDirectory }: DeprecatedFilesMana
           </ul>
 
           <div className="p-4 border-t">
-            <button
-              className="w-full bg-destructive text-destructive-foreground p-2 rounded disabled:opacity-50"
+            <Button
+              variant="destructive"
+              className="w-full"
               onClick={handleDeleteSelected}
               disabled={isLoading || selectedCount === 0}
             >
               {isLoading ? "Deleting..." : `Delete Selected Files (${selectedCount})`}
-            </button>
+            </Button>
           </div>
         </div>
       )}

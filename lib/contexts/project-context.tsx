@@ -37,4 +37,4 @@ export function useProject() {
     throw new Error("useProject must be used within a ProjectProvider");
   }
   return context;
-} 
+}

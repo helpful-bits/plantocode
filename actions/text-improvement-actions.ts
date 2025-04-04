@@ -1,22 +1,18 @@
 "use server";
 
 import { ActionState } from "@/types";
+import { callAnthropicAPI } from "@/lib/anthropic";
 
 export async function improveSelectedTextAction(selectedText: string, foundFiles: string[]): Promise<ActionState<string>> {
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": `${process.env.ANTHROPIC_API_KEY}`,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-3-7-sonnet-20250219",
-        max_tokens: 2500,
-        messages: [{
-          role: "user",
-          content: `Please improve the following text to make it clearer (and grammatically correct) while EXACTLY preserving its formatting style, including:
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return { isSuccess: false, message: "Anthropic API key not configured." };
+    }
+    
+    const payload = {
+      messages: [{
+        role: "user",
+        content: `Please improve the following text to make it clearer (and grammatically correct) while EXACTLY preserving its formatting style, including:
 - All line breaks
 - All indentation
 - All bullet points and numbering
@@ -31,17 +27,18 @@ Here is the text to improve:
 ${selectedText}
 
 Return only the improved text without any additional commentary, keeping the exact same formatting as the original.`
-        }],
-      }),
+      }],
+    };
+
+    const result = await callAnthropicAPI(payload, (data) => {
+      return data.content[0].text?.trim() || selectedText;
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Anthropic API error: ${errText}`);
+    if (!result.isSuccess) {
+      throw new Error(result.message);
     }
-
-    const data = await response.json();
-    const improvedText = data.content[0].text?.trim() || selectedText;
+    
+    const improvedText = result.data;
 
     return {
       isSuccess: true,

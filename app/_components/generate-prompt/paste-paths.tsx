@@ -1,11 +1,13 @@
 "use client";
 import { Dispatch, SetStateAction, useEffect } from "react";
-import path from "path";
+import { Textarea } from "@/components/ui/textarea";
+import path from "path"; // Import path for checking absolute paths
 
 interface PastePathsProps {
   pastedPaths: string;
   onChange: (value: string) => void;
-  foundFiles: any[];
+  foundFiles: { path: string }[]; // Array of file objects with path property
+  allFilesMap: { [path: string]: any }; // Use the map of all project files
   setPastedPathsFound: Dispatch<SetStateAction<number>>;
   pastedPathsFound: number;
 }
@@ -14,27 +16,30 @@ export default function PastePaths({
   pastedPaths,
   onChange,
   foundFiles,
+  allFilesMap,
   setPastedPathsFound,
-  pastedPathsFound,
+  pastedPathsFound
 }: PastePathsProps) {
   useEffect(() => {
-    if (foundFiles.length > 0) {
+    if (pastedPaths.trim()) { // Calculate whenever pastedPaths changes
       const lines = pastedPaths
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => !!l && !l.startsWith("#"));
       
       // Count files that exist in the project
-      const available = foundFiles.map((f) => f.path);
+      const available = Object.keys(allFilesMap);
+
       const matched = lines.filter((p) => available.includes(p)).length;
       
       // External paths are those that aren't in the project
       const externalPaths = lines.filter((p) => !available.includes(p));
       
       // Set the total number found (from project + external)
+      // This count is slightly approximate as external paths haven't been read yet
       setPastedPathsFound(matched + externalPaths.length);
     }
-  }, [pastedPaths, foundFiles, setPastedPathsFound]);
+  }, [pastedPaths, foundFiles, allFilesMap, setPastedPathsFound]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -47,12 +52,12 @@ export default function PastePaths({
         </label>
         {pastedPaths.trim() && (
           <span className="text-sm font-medium bg-secondary text-secondary-foreground px-2 py-1 rounded">
-            {pastedPathsFound} files found
+            {pastedPathsFound} path(s) specified
           </span>
         )}
       </div>
 
-      <textarea
+      <Textarea
         className="border rounded bg-background text-foreground p-2 h-32 font-mono text-sm"
         value={pastedPaths}
         onChange={(e) => onChange(e.target.value)}
