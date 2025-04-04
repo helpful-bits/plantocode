@@ -30,14 +30,6 @@ interface FileInfo {
   forceExcluded: boolean;
 }
 
-/**
- * Generate a namespaced localStorage key using a hashed project directory.
- */
-function getLocalKey(dir: string, suffix: string) {
-  const hash = hashString(dir);
-  return `gp-${hash}-${suffix}`;
-}
-
 export default function GeneratePromptForm() {
   const [projectDirectory, setProjectDirectory] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
@@ -56,7 +48,15 @@ export default function GeneratePromptForm() {
   const { outputFormat, customFormat } = useFormat();
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
 
-  // Load states from localStorage specific to the directory
+  /**
+   * Generate a namespaced localStorage key using a hashed project directory and current format.
+   */
+  function getLocalKey(dir: string, suffix: string) {
+    const hash = hashString(dir);
+    return `gp-${hash}-${outputFormat}-${suffix}`;
+  }
+
+  // Load states from localStorage specific to the directory and format
   function loadCachedStates(dir: string) {
     const cachedTask = localStorage.getItem(getLocalKey(dir, TASK_DESC_KEY));
     const cachedSearch = localStorage.getItem(getLocalKey(dir, SEARCH_TERM_KEY));
@@ -78,6 +78,13 @@ export default function GeneratePromptForm() {
       handleLoadFiles(savedDir);
     }
   }, []);
+
+  // Reload cached states when output format changes
+  useEffect(() => {
+    if (projectDirectory) {
+      loadCachedStates(projectDirectory);
+    }
+  }, [outputFormat]);
 
   useEffect(() => {
     if (copySuccess) {
