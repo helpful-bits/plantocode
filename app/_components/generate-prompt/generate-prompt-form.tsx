@@ -30,6 +30,7 @@ const CODEBASE_STRUCTURE_KEY = "codebase-structure";
 const PATTERN_DESC_KEY = "pattern-desc";
 const TITLE_REGEX_KEY = "title-regex";
 const CONTENT_REGEX_KEY = "content-regex";
+const REGEX_ACTIVE_KEY = "regex-active";
 
 interface FileInfo {
   path: string;
@@ -65,6 +66,7 @@ export default function GeneratePromptForm() {
   const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
   const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
+  const [isRegexActive, setIsRegexActive] = useState(true);
 
   /**
    * Generate a namespaced localStorage key using a hashed project directory and current format.
@@ -121,7 +123,7 @@ export default function GeneratePromptForm() {
       if (!result.isSuccess) {
         setAllFilesMap({});
         setFileContentsMap({});
-        setError(result.message);
+        setError(result.message || "Failed to read directory");
         return;
       }
 
@@ -160,7 +162,10 @@ export default function GeneratePromptForm() {
       setAllFilesMap(newFilesMap); // Store all files info map
       setError(""); // Clear any errors if successful
     } catch (err) {
-      setError("Failed to read directory");
+      console.error("Failed to read directory:", err);
+      setError("Failed to read directory. Please ensure the path is correct and accessible.");
+      setAllFilesMap({});
+      setFileContentsMap({});
     } finally {
       setIsLoadingFiles(false);
       setLoadingStatus("");
@@ -169,7 +174,7 @@ export default function GeneratePromptForm() {
 
   // Effect to load global project dir and initial files/states on mount
   useEffect(() => {
-    const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY);
+    const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY) || "";
     if (savedDir) {
       setProjectDirectory(savedDir);
       loadCachedStates(savedDir); // Load text/regex states first
@@ -210,12 +215,20 @@ export default function GeneratePromptForm() {
           }
         } catch (err) {
           console.error("Failed to silently load files on mount:", err);
+        } finally {
+          // Always reset loading state regardless of success or failure
           setIsLoadingFiles(false);
           setLoadingStatus("");
         }
       };
       
       loadFilesInitial(savedDir);
+    }
+
+    // Initialize regex active state
+    if (savedDir) {
+      const savedRegexActive = localStorage.getItem(getLocalKey(savedDir, REGEX_ACTIVE_KEY));
+      setIsRegexActive(savedRegexActive === null ? true : savedRegexActive === "true");
     }
   }, [setProjectDirectory, getLocalKey, loadCachedStates]); // Only run on mount
 
@@ -304,7 +317,13 @@ export default function GeneratePromptForm() {
     setContentRegexError(null);
   }, [projectDirectory, getLocalKey]);
 
-   // Memoized calculation for files displayed in the browser
+  const handleToggleRegexActive = useCallback(() => {
+    const newValue = !isRegexActive;
+    setIsRegexActive(newValue);
+    localStorage.setItem(getLocalKey(projectDirectory, REGEX_ACTIVE_KEY), String(newValue));
+  }, [isRegexActive, projectDirectory, getLocalKey]);
+
+  // Memoized calculation for files displayed in the browser
   const displayedFiles = useMemo(() => {
     let baseFiles = Object.values(allFilesMap).sort((a, b) => a.path.localeCompare(b.path)); // Sort for stable display
 
@@ -319,8 +338,8 @@ export default function GeneratePromptForm() {
     const contentRegexTrimmed = contentRegex.trim();
     const hasContentRegex = contentRegexTrimmed && Object.keys(fileContentsMap).length > 0;
 
-    // If no regex, return search-filtered list
-    if (!hasTitleRegex && !hasContentRegex) {
+    // If no regex or regex is inactive, return search-filtered list
+    if (!isRegexActive || (!hasTitleRegex && !hasContentRegex)) {
       // Clear any previous regex errors if regex fields are now empty
       if (titleRegexError && !hasTitleRegex) setTitleRegexError(null);
       if (contentRegexError && !contentRegexTrimmed) setContentRegexError(null); // Use trimmed version here too
@@ -374,7 +393,7 @@ export default function GeneratePromptForm() {
     // Filter the original baseFiles list based on the combined matched paths
     return baseFiles.filter(file => combinedPaths.has(file.path));
 
-  }, [allFilesMap, searchTerm, titleRegex, contentRegex, fileContentsMap, titleRegexError, contentRegexError]); // Include regex errors
+  }, [allFilesMap, searchTerm, titleRegex, contentRegex, fileContentsMap, titleRegexError, contentRegexError, isRegexActive]); // Add isRegexActive dependency
 
   const handleGenerateRegex = useCallback(async () => {
     if (!patternDescription.trim()) {
@@ -420,89 +439,115 @@ export default function GeneratePromptForm() {
   }, [projectDirectory, getLocalKey]);
 
   const handleGenerate = async () => {
+    /**
+     * Generates a prompt by:
+     * 1. Always reading fresh file contents directly from the file system
+     * 2. Using either the file browser selection or pasted paths to determine which files to include
+     * 3. Generating the formatted prompt with the latest file contents
+     */
     setIsLoading(true);
-    setError("");
-    setLoadingStatus("Reading project files...");
+    setError(""); // Clear previous errors
+    setLoadingStatus("Preparing files...");
     setExternalPathWarnings([]);
 
     try {
-      // Get files from the project directory first
-      // Ensure file contents are loaded if not already
-      if (Object.keys(fileContentsMap).length === 0 && projectDirectory?.trim()) {
-        // Use handleLoadFiles to ensure files are loaded before continuing
-        // await handleLoadFiles(projectDirectory); // Re-fetching might overwrite recent selections, rely on existing state
-        // If error occurred during loading, bail out early
-        if (error) {
+      // First, refresh file contents from the file system for project files
+      setLoadingStatus("Refreshing file contents from file system...");
+      
+      // Get fresh contents for project files
+      let currentFileContents: { [key: string]: string } = {};
+      
+      if (projectDirectory) {
+        const freshResult = await readDirectoryAction(projectDirectory);
+        if (freshResult.isSuccess && freshResult.data) {
+          currentFileContents = { ...freshResult.data };
+        } else {
+          setError("Failed to read current file contents: " + freshResult.message);
           setIsLoading(false);
+          setLoadingStatus("");
           return;
         }
-      }
-      let currentFileContents = { ...fileContentsMap };
-      
-      const result = await readDirectoryAction(projectDirectory);
-      
-      if (result.isSuccess) {
-        // Update the current contents but don't directly reassign state variable
-        currentFileContents = { ...result.data };
-        setFileContentsMap(result.data);
-      } else if (!pastedPaths.trim()) {
-        // Only show error if no pasted paths are available
-        setError(result.message);
+      } else {
+        setError("No project directory specified");
         setIsLoading(false);
+        setLoadingStatus("");
         return;
       }
 
       const hasPastedPaths = pastedPaths.trim().length > 0;
-      const isAnyFileIncluded = Object.values(allFilesMap).some((f) => f.included);
+      const isAnyFileIncludedFromBrowser = Object.values(allFilesMap).some((f) => f.included && !f.forceExcluded);
 
-      if (!hasPastedPaths && !isAnyFileIncluded) {
-        setError("Please include at least one file or paste file paths");
-        setIsLoading(false);
-        return;
-      }
+      // Determine which files to use based on pasted paths or browser selection
+      let filesToUse: string[] = [];
+      const warnings: string[] = [];
 
-      // Collect paths from pasted content if available
       if (hasPastedPaths) {
-        setLoadingStatus("Processing external file paths...");
-        const externalPaths = pastedPaths
+        setLoadingStatus("Processing pasted paths...");
+        const rawPastedPaths = pastedPaths
           .split("\n")
           .map((p) => p.trim())
           .filter((p) => !!p && !p.startsWith("#"));
-          
-        // Check if any path is absolute or doesn't exist in our project files map
-        const externalPathsToProcess = externalPaths.filter(p => {
-          return path.isAbsolute(p) || !currentFileContents[p]; // Check against current contents map
-        });
-        
-        // Process each external path
-        const warnings: string[] = [];
-        for (const filePath of externalPathsToProcess) {
-          const externalFileResult = await readExternalFileAction(filePath);
-          if (externalFileResult.isSuccess && externalFileResult.data) {
-            // Merge with existing file contents
-            currentFileContents = { ...currentFileContents, ...externalFileResult.data };
+
+        const projectFilePaths = new Set(Object.keys(currentFileContents)); // Use fresh file contents
+
+        for (const filePath of rawPastedPaths) {
+          if (projectFilePaths.has(filePath)) {
+            // Path is within the project, check if we have content
+            if (currentFileContents[filePath] !== undefined) {
+              filesToUse.push(filePath);
+            } else {
+              // Should theoretically not happen if we just got fresh content
+              warnings.push(`Could not find content for project path "${filePath}".`);
+              console.warn(`Content missing for project path: ${filePath}`);
+            }
           } else {
-            console.warn(`Failed to read external file ${filePath}: ${externalFileResult.message}`);
-            warnings.push(`Could not read external path "${filePath}": ${externalFileResult.message}`);
+            // Path is potentially external (absolute or relative outside project root handled by readExternal)
+            setLoadingStatus(`Reading external file: ${filePath}...`);
+            const externalFileResult = await readExternalFileAction(filePath);
+            if (externalFileResult.isSuccess && externalFileResult.data) {
+              // Merge external content into our temporary map for this generation
+              currentFileContents = { ...currentFileContents, ...externalFileResult.data };
+              // Add the path (using the key from externalFileResult.data which is the original path)
+              const addedPath = Object.keys(externalFileResult.data)[0];
+              filesToUse.push(addedPath);
+            } else {
+              warnings.push(`Could not read external path "${filePath}": ${externalFileResult.message}`);
+              console.warn(`Failed to read external file ${filePath}: ${externalFileResult.message}`);
+            }
           }
         }
-        
-        if (warnings.length > 0) {
-          setExternalPathWarnings(warnings);
-        }
-      }
-      
-      // Determine which files to include in the prompt
-      const filesToUse = hasPastedPaths
-        ? pastedPaths
-            .split("\n")
-            .map((p) => p.trim())
-            .filter((p) => !!p && !p.startsWith("#") && currentFileContents[p] !== undefined) // Only include if content was read (even if empty)
-        : Object.values(allFilesMap).filter((f) => f.included).map((f) => f.path);
 
-      // Generate file contents markup using currentFileContents
+        if (filesToUse.length === 0 && rawPastedPaths.length > 0) {
+             setError("None of the pasted paths could be read or found. Check paths and permissions.");
+             setIsLoading(false);
+             setLoadingStatus("");
+             if (warnings.length > 0) setExternalPathWarnings(warnings);
+             return;
+        }
+      } else if (isAnyFileIncludedFromBrowser) {
+        setLoadingStatus("Using selected files...");
+        // No pasted paths, use files selected in the browser
+        // But we need to use the paths from allFilesMap to filter the freshly loaded content
+        filesToUse = Object.values(allFilesMap)
+          .filter((f) => f.included && !f.forceExcluded) // Ensure forceExcluded is checked
+          .map((f) => f.path)
+          .filter(path => currentFileContents[path] !== undefined); // Ensure we have the fresh content
+      } else {
+        // Neither pasted paths nor browser selection
+        setError("Please include at least one file using the file browser or paste file paths.");
+        setIsLoading(false);
+        setLoadingStatus("");
+        return;
+      }
+
+      if (warnings.length > 0) {
+        setExternalPathWarnings(warnings);
+      }
+
+      // Generate file contents markup using the freshly loaded currentFileContents
+      setLoadingStatus("Generating prompt markup...");
       const fileContentMarkup = Object.entries(currentFileContents)
-        .filter(([path]) => filesToUse.includes(path))
+        .filter(([filePath]) => filesToUse.includes(filePath)) // Filter using the determined filesToUse
         .map(([path, content]) => `<file>
 <file_path>${path}</file_path>
 <file_content>
@@ -511,18 +556,16 @@ ${content}
 </file>`)
         .join("\n\n");
 
-      const formatInstructions = await getFormatInstructions(outputFormat, customFormat);
-      
-      let instructions = formatInstructions;
-      
+      let instructions = await getFormatInstructions(outputFormat, customFormat);
+
       if (outputFormat === "refactoring") {
         if (codebaseStructure.trim()) {
           const structureSection = `<structure>
 ${codebaseStructure}
 </structure>`;
-          instructions = formatInstructions.replace("{{STRUCTURE_SECTION}}", structureSection);
+          instructions = instructions.replace("{{STRUCTURE_SECTION}}", structureSection);
         } else {
-          instructions = formatInstructions
+          instructions = instructions
             .replace("{{STRUCTURE_SECTION}}", "")
             .replace(/(\d+)\./g, (match, num) => {
               const section = parseInt(num);
@@ -543,8 +586,12 @@ ${taskDescription}
 
       setPrompt(fullPrompt);
       await updateTokenCount(fullPrompt);
+      
+      // Update state with fresh file contents for future operations
+      setFileContentsMap(currentFileContents);
     } catch (error) {
       setError("Failed to generate prompt");
+      console.error("Error during prompt generation:", error); // Log the error
     } finally {
       setIsLoading(false);
       setLoadingStatus("");
@@ -605,6 +652,8 @@ ${taskDescription}
         titleRegexError={titleRegexError}
         contentRegexError={contentRegexError}
         onClearPatterns={handleClearPatterns}
+        isActive={isRegexActive}
+        onToggleActive={handleToggleRegexActive}
       />
 
       {/* File Browser */}
@@ -617,6 +666,7 @@ ${taskDescription}
         titleRegex={titleRegex}
         contentRegex={contentRegex} // Pass content regex for display/context if needed
         fileContentsMap={fileContentsMap}
+        isRegexActive={isRegexActive} // Pass isRegexActive to FileBrowser
       />
 
       {/* Pasted Paths */}

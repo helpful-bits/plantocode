@@ -294,7 +294,7 @@ export function useVoiceRecording({
       recorder.start();
       console.log("Recording started successfully.");
 
-      // Set maximum recording time (e.g., 20 seconds)
+      // Set maximum recording time (e.g., 90 seconds)
       recordingTimeoutRef.current = setTimeout(() => {
         console.log("Maximum recording time reached, stopping automatically.");
         // Check state before stopping
@@ -305,7 +305,7 @@ export function useVoiceRecording({
             stopRecording();
           }
         }
-      }, 20000);
+      }, 90000);
       
     } catch (err) {
       console.error("Failed to start recording:", err);
