@@ -31,6 +31,14 @@ export async function getDiffPrompt(): Promise<string> {
       <requirement>IMPORTANT: Do not include any XML content or XML tags inside the diff itself.</requirement>
     </git_patch_requirements>
 
+    <patch_compatibility>
+      <requirement>Include AT LEAST 3 context lines before/after changes, with function boundaries and complete signatures.</requirement>
+      <requirement>Include ALL imports when changing code near imports section.</requirement>
+      <requirement>Create precise hunk headers with exact line numbers and counts.</requirement>
+      <requirement>Use smaller, focused hunks instead of large ones for reliable application.</requirement>
+      <requirement>Ensure exact context matching - whitespace, indentation, and line endings must match precisely.</requirement>
+    </patch_compatibility>
+
     <file_move_reporting>
       <requirement>If files were moved/renamed, add a plain text block after the patch.</requirement>
       <requirement>This block must start with 'FILE MOVES:' on its own line.</requirement>
@@ -47,11 +55,16 @@ diff --git a/path/to/existing/file1.ts b/path/to/existing/file1.ts
 index abc1234..def5678 100644
 --- a/path/to/existing/file1.ts
 +++ b/path/to/existing/file1.ts
-@@ -10,7 +10,7 @@
- context line 1
+@@ -8,9 +8,9 @@ import { something } from 'somewhere';
+ 
+ function someFunction() {
+   const x = 1;
++  const y = 2;
+   context line 1
 -old line
 +new line
  context line 3
+ }
  
 diff --git a/path/to/old/moved_file.ts b/path/to/old/moved_file.ts
 deleted file mode 100644
@@ -86,10 +99,10 @@ OLD: path/to/old/moved_file.ts -> NEW: path/to/new/location/moved_file.ts
     </code_quality>
     
     <patch_integrity>
-      <rule>The generated patch must be complete and apply cleanly.</rule>
+      <rule>The generated patch must be complete and apply cleanly in all environments.</rule>
       <rule>Include all necessary file changes (creations, updates, deletions) in the single patch.</rule>
-      <rule>Provide sufficient context in hunks for updates.</rule>
-      <rule>Detect file moves/renames accurately.</rule>
+      <rule>Provide AT LEAST 3 context lines for each hunk, including surrounding function boundaries for maximum compatibility.</rule>
+      <rule>Ensure exact context matching, preserving whitespace, indentation, and line endings.</rule>
       <rule>Never include XML tags or markup inside the diff content.</rule>
     </patch_integrity>
 

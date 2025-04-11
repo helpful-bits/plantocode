@@ -2,8 +2,9 @@
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input"; // Assuming Input exists
-import { Dispatch, SetStateAction } from "react";
+import { Dispatch, SetStateAction, useState, useEffect } from "react";
 import { cn } from "@/lib/utils"; // Add cn utility for conditional class names
+import { ToggleLeft, ToggleRight } from "lucide-react";
 
 interface FileInfo {
   path: string;
@@ -23,7 +24,11 @@ interface FileBrowserProps {
   titleRegex?: string; // Used only for display context, filtering happens upstream
   contentRegex?: string;
   fileContentsMap?: { [key: string]: string };
+  isRegexActive?: boolean; // Add new prop for regex active state
 }
+
+// LocalStorage key for the show only selected preference
+const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
 
 export default function FileBrowser({
   displayedFiles,
@@ -32,8 +37,26 @@ export default function FileBrowser({
   onSearchChange,
   setAllFilesMap,
   titleRegex = "", // Prop kept for potential future use or context display
-  contentRegex = ""
+  contentRegex = "",
+  isRegexActive = true // Default to true for backward compatibility
 }: FileBrowserProps) {
+  
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
+  
+  // Load showOnlySelected preference from localStorage on mount
+  useEffect(() => {
+    const savedPreference = localStorage.getItem(SHOW_ONLY_SELECTED_KEY);
+    if (savedPreference !== null) {
+      setShowOnlySelected(savedPreference === "true");
+    }
+  }, []);
+  
+  // Save showOnlySelected preference to localStorage when it changes
+  const toggleShowOnlySelected = () => {
+    const newValue = !showOnlySelected;
+    setShowOnlySelected(newValue);
+    localStorage.setItem(SHOW_ONLY_SELECTED_KEY, String(newValue));
+  };
   
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -81,15 +104,45 @@ export default function FileBrowser({
     });
   };
 
+  // Filter files to show only selected if toggle is active
+  const filteredDisplayFiles = showOnlySelected 
+    ? displayedFiles.filter(file => file.included && !file.forceExcluded)
+    : displayedFiles;
+
   const includedCount = displayedFiles.filter((f) => f.included).length;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-2">
         {displayedFiles.length > 0 && (
-          <label className="font-bold text-foreground">
-            Found Files ({displayedFiles.filter((f) => f.included).length}/{displayedFiles.length}):
-          </label> // This shows count for *displayed* files only
+          <div className="flex justify-between items-center">
+            <label className="font-bold text-foreground">
+              Found Files ({displayedFiles.filter((f) => f.included).length}/{displayedFiles.length}):
+              {(titleRegex || contentRegex) && (
+                <span className="text-xs font-normal text-muted-foreground ml-2">
+                  {isRegexActive 
+                    ? "Regex filtering active" 
+                    : "Regex filtering paused"}
+                </span>
+              )}
+            </label>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleShowOnlySelected}
+              className={`p-1 h-auto flex items-center gap-1 ${showOnlySelected ? "text-primary" : "text-muted-foreground"}`}
+              title={showOnlySelected ? "Show all files" : "Show only selected files"}
+            >
+              {showOnlySelected ? (
+                <ToggleRight className="h-5 w-5" />
+              ) : (
+                <ToggleLeft className="h-5 w-5" />
+              )}
+              <span className="text-xs">
+                {showOnlySelected ? "Selected only" : "All files"}
+              </span>
+            </Button>
+          </div>
         )}
 
         <div className="flex flex-col sm:flex-row gap-2 items-center">
@@ -122,9 +175,9 @@ export default function FileBrowser({
         </div>
       </div>
 
-      {displayedFiles.length > 0 ? (
+      {filteredDisplayFiles.length > 0 ? (
         <div className="border rounded bg-background p-2 max-h-60 overflow-y-auto">
-          {displayedFiles.map((file) => (
+          {filteredDisplayFiles.map((file) => (
             <div
               key={file.path}
               // Highlight included files slightly
@@ -155,7 +208,11 @@ export default function FileBrowser({
             </div>
           ))}
         </div>
-      ) : (searchTerm || titleRegex || contentRegex) ? (
+      ) : showOnlySelected && displayedFiles.length > 0 ? (
+        <div className="border rounded bg-background p-2 text-muted-foreground text-center py-2">
+          No files are selected
+        </div>
+      ) : (searchTerm || (isRegexActive && (titleRegex || contentRegex))) ? (
         <div className="border rounded bg-background p-2 text-muted-foreground text-center py-2">
           No files match your search
         </div>
