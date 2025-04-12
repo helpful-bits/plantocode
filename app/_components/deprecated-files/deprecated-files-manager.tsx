@@ -150,7 +150,7 @@ export function DeprecatedFilesManager() {
   const totalSelectedCount = deprecatedFiles.filter(f => f.selected).length;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="max-w-[1400px] w-full mx-auto flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <Button
           variant="secondary"

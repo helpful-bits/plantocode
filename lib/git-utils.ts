@@ -20,7 +20,12 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<string[]> {
     // Explicitly set shell path.
     const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', { cwd: dir, shell: '/bin/sh' });
     return stdout.split('\n').filter(Boolean);
-  } catch (error) {
+  } catch (error: any) {
+    // If it's not a git repo, the error often includes "not a git repository"
+    if (error.stderr && error.stderr.toLowerCase().includes('not a git repository')) {
+      console.warn(`Directory is not a git repository: ${dir}`);
+      return []; // Return empty array, don't throw an error
+    }
     // Handle cases where it's not a git repo or git commands fail
     console.error(`Error getting non-ignored files in ${dir}:`, error.message || error);
     return [];

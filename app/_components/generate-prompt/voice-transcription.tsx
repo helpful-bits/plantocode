@@ -7,10 +7,10 @@ import { Mic, MicOff, Loader2 } from "lucide-react";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
-  foundFiles: string[];
+  foundFiles?: string[];
 }
 
-export default function VoiceTranscription({ onTranscribed, foundFiles }: VoiceTranscriptionProps) {
+export default function VoiceTranscription({ onTranscribed, foundFiles = [] }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
 
   // Check if correction API key is available

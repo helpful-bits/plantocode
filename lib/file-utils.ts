@@ -1,5 +1,3 @@
-"use server";
-
 /**
  * Checks if a buffer likely represents a binary file.
  * It looks for null bytes or a high percentage of non-printable ASCII characters.
@@ -24,4 +22,10 @@ export const BINARY_EXTENSIONS = new Set([
   '.mp3', '.mp4', '.wav', '.ogg', '.mov', '.avi', // Audio/Video
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', // Documents
   '.zip', '.tar', '.gz', '.7z', '.rar', // Archives
+  '.jar', '.war', '.ear', // Java Archives
   '.ttf', '.woff', '.woff2', '.otf', '.eot', // Fonts
+  '.exe', '.dll', '.so', '.dylib', // Executables/Libraries
+  '.pyc', // Python compiled
+  '.lockb', // pnpm lockfile binary variant
+  '.bin', '.dat', '.iso', // Generic binary/data/images
+]);

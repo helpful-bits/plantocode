@@ -3,7 +3,7 @@
 import { callAnthropicAPI } from "@/lib/anthropic";
 import { ActionState } from "@/types";
 
-export async function correctTaskDescriptionAction(rawText: string, foundFiles: string[]): Promise<ActionState<string>> {
+export async function correctTaskDescriptionAction(rawText: string): Promise<ActionState<string>> {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       return { isSuccess: false, message: "Anthropic API key not configured." };
@@ -20,15 +20,15 @@ Return only the corrected text without any additional commentary.`
       }],
     };
 
-    const result = await callAnthropicAPI(payload, (data) => {
-      return data.content[0].text?.trim() || rawText;
-    });
+    const result = await callAnthropicAPI(payload);
 
     if (!result.isSuccess) {
-      throw new Error(result.message);
+      return { isSuccess: false, message: result.message || "Failed to correct text via API" };
     }
     
-    const correctedText = result.data;
+    // Use result.data which is the string response
+    const correctedText = result.data || rawText; // Fallback to original if empty response
+
 
     return {
       isSuccess: true,

@@ -4,7 +4,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input"; // Assuming Input exists
 import { Dispatch, SetStateAction, useState, useEffect } from "react";
 import { cn } from "@/lib/utils"; // Add cn utility for conditional class names
-import { ToggleLeft, ToggleRight } from "lucide-react";
+import { ToggleLeft, ToggleRight, Info } from "lucide-react";
+import { formatPathForDisplay, normalizePath } from "@/lib/path-utils";
+import { useProject } from "@/lib/contexts/project-context";
 
 interface FileInfo {
   path: string;
@@ -41,7 +43,9 @@ export default function FileBrowser({
   isRegexActive = true // Default to true for backward compatibility
 }: FileBrowserProps) {
   
+  const { projectDirectory } = useProject();
   const [showOnlySelected, setShowOnlySelected] = useState(false);
+  const [showPathInfo, setShowPathInfo] = useState(false);
   
   // Load showOnlySelected preference from localStorage on mount
   useEffect(() => {
@@ -111,6 +115,11 @@ export default function FileBrowser({
 
   const includedCount = displayedFiles.filter((f) => f.included).length;
 
+  // Get normalized path for display
+  const getDisplayPath = (filePath: string) => {
+    return projectDirectory ? formatPathForDisplay(filePath) : filePath;
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-2">
@@ -126,22 +135,33 @@ export default function FileBrowser({
                 </span>
               )}
             </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleShowOnlySelected}
-              className={`p-1 h-auto flex items-center gap-1 ${showOnlySelected ? "text-primary" : "text-muted-foreground"}`}
-              title={showOnlySelected ? "Show all files" : "Show only selected files"}
-            >
-              {showOnlySelected ? (
-                <ToggleRight className="h-5 w-5" />
-              ) : (
-                <ToggleLeft className="h-5 w-5" />
-              )}
-              <span className="text-xs">
-                {showOnlySelected ? "Selected only" : "All files"}
-              </span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPathInfo(!showPathInfo)}
+                title="Toggle path information display"
+                className="p-1 h-auto"
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleShowOnlySelected}
+                className={`p-1 h-auto flex items-center gap-1 ${showOnlySelected ? "text-primary" : "text-muted-foreground"}`}
+                title={showOnlySelected ? "Show all files" : "Show only selected files"}
+              >
+                {showOnlySelected ? (
+                  <ToggleRight className="h-5 w-5" />
+                ) : (
+                  <ToggleLeft className="h-5 w-5" />
+                )}
+                <span className="text-xs">
+                  {showOnlySelected ? "Selected only" : "All files"}
+                </span>
+              </Button>
+            </div>
           </div>
         )}
 
@@ -175,6 +195,12 @@ export default function FileBrowser({
         </div>
       </div>
 
+      {showPathInfo && (
+        <div className="border rounded bg-background p-2 mb-2 text-xs text-muted-foreground">
+          <p>The paths shown below will be exactly how they appear in the prompt. Make sure to select the files you need for your task.</p>
+        </div>
+      )}
+
       {filteredDisplayFiles.length > 0 ? (
         <div className="border rounded bg-background p-2 max-h-60 overflow-y-auto">
           {filteredDisplayFiles.map((file) => (
@@ -202,7 +228,9 @@ export default function FileBrowser({
                   title="Force exclude"
                 />
                 {/* Conditionally apply strikethrough if force excluded */}
-                <span className={cn("font-mono flex-1 truncate", file.forceExcluded && "line-through")}>{file.path}</span>
+                <span className={cn("font-mono flex-1 truncate", file.forceExcluded && "line-through")}>
+                  {getDisplayPath(file.path)}
+                </span>
               </label>
               <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
             </div>

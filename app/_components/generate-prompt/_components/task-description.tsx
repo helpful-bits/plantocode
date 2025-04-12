@@ -8,10 +8,9 @@ import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 interface TaskDescriptionProps {
   taskDescription: string;
   onChange: (value: string) => void;
-  foundFiles: string[];
 }
 
-export default function TaskDescriptionArea({ taskDescription, onChange, foundFiles }: TaskDescriptionProps) {
+export default function TaskDescriptionArea({ taskDescription, onChange }: TaskDescriptionProps) {
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
   const [isImproving, setIsImproving] = useState(false);
@@ -74,7 +73,7 @@ export default function TaskDescriptionArea({ taskDescription, onChange, foundFi
 
     setIsImproving(true);
     try {
-      const result = await improveSelectedTextAction(selectedText, foundFiles);
+      const result = await improveSelectedTextAction(selectedText);
       if (result.isSuccess) {
         insertTextAtCursor(result.data);
       }

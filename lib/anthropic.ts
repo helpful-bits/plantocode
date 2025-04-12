@@ -1,5 +1,4 @@
 "use server";
-
 import { ActionState } from "@/types";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -19,9 +18,8 @@ export interface AnthropicResponse {
   usage?: { input_tokens: number, output_tokens: number };
 }
 
-export async function callAnthropicAPI<T>(
+export async function callAnthropicAPI(
   payload: Omit<AnthropicRequestPayload, 'model'> & { max_tokens?: number }, // Exclude model from input payload type
-  processResponse: (data: AnthropicResponse) => T
 ): Promise<ActionState<T>> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -50,20 +48,20 @@ export async function callAnthropicAPI<T>(
     }
 
     const data: AnthropicResponse = await response.json();
-    console.log("Anthropic API response received:", {
-      contentLength: data.content?.length || 0,
-      firstContentType: data.content?.[0]?.type || 'none',
-      hasText: typeof data.content?.[0]?.text === 'string'
-    });
+    // console.log("Anthropic API response received:", { // Reduced logging
+    //   contentLength: data.content?.length || 0,
+    //   firstContentType: data.content?.[0]?.type || 'none',
+    //   hasText: typeof data.content?.[0]?.text === 'string'
+    // });
 
     if (!data.content || data.content.length === 0 || typeof data.content[0].text !== 'string') {
        console.error("Anthropic returned an empty or invalid response:", JSON.stringify(data).slice(0, 500));
        throw new Error("Anthropic returned an invalid response structure.");
     }
 
-    const processedData = processResponse(data);
+    const responseText = data.content[0].text.trim();
 
-    return { isSuccess: true, message: "Anthropic API call successful", data: processedData };
+    return { isSuccess: true, message: "Anthropic API call successful", data: responseText };
 
   } catch (error) {
     console.error("Error calling Anthropic API:", error);

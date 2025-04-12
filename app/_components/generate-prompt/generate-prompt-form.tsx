@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, Suspense } from "react";
 import { readDirectoryAction, readExternalFileAction } from "@/actions/read-directory-actions";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { hashString } from "@/lib/hash";
 import { getFormatInstructions } from "@/lib/format-instructions";
 import CodebaseStructure from "./_components/codebase-structure";
 import { useProject } from "@/lib/contexts/project-context";
+import { normalizePath } from "@/lib/path-utils";
 
 import FileBrowser from "./file-browser";
 import PatternDescriptionInput from "./_components/pattern-description-input";
@@ -19,9 +20,11 @@ import path from "path";
 import TaskDescriptionArea from "./_components/task-description";
 import VoiceTranscription from "./voice-transcription";
 import { useFormat } from "@/lib/contexts/format-context";
+import { Session } from "@/types/session-types";
+import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
+import ProjectDirectorySelector from "./_components/project-directory-selector";
 
-const GLOBAL_PROJECT_DIR_KEY = "o1-pro-flow-project-dir";
-const TASK_DESC_KEY = "task-description";
+const TASK_DESC_KEY = "task-description"; // TODO: Consider making these format-specific?
 const SEARCH_TERM_KEY = "search-term";
 const PASTED_PATHS_KEY = "pasted-paths";
 const INCLUDED_FILES_KEY = "included-files";
@@ -31,6 +34,9 @@ const PATTERN_DESC_KEY = "pattern-desc";
 const TITLE_REGEX_KEY = "title-regex";
 const CONTENT_REGEX_KEY = "content-regex";
 const REGEX_ACTIVE_KEY = "regex-active";
+
+// Lazy load SessionManager only on the client-side to ensure localStorage is available
+const SessionManager = React.lazy(() => import("./_components/session-manager").then(module => ({ default: module.SessionManager })));
 
 interface FileInfo {
   path: string;
@@ -62,29 +68,33 @@ export default function GeneratePromptForm() {
   const [pastedPathsFound, setPastedPathsFound] = useState(0);
   const [tokenCount, setTokenCount] = useState<number>(0);
   const [codebaseStructure, setCodebaseStructure] = useState("");
-  const { outputFormat, customFormat } = useFormat();
+  const { outputFormat, customFormat, setCustomFormat } = useFormat();
   const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
   const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
   const [isRegexActive, setIsRegexActive] = useState(true);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [pathDebugInfo, setPathDebugInfo] = useState<{ original: string, normalized: string }[]>([]);
 
   /**
    * Generate a namespaced localStorage key using a hashed project directory and current format.
    */
-  const getLocalKey = useCallback((dir: string, suffix: string) => {
+  const getLocalKey = useCallback((dir: string, suffix: string, format: string = outputFormat) => {
+    if (!dir) return "";
     const hash = hashString(dir);
-    return `gp-${hash}-${suffix}`; // Key should be based on directory, not format
-  }, [outputFormat]);
+    return `o1-pro-flow-${hash}-${format}-${suffix}`;
+  }, [outputFormat]); // Now depends on outputFormat
 
-  // Load states from localStorage specific to the directory and format
-  const loadCachedStates = useCallback((dir: string) => {
-    const cachedTask = localStorage.getItem(getLocalKey(dir, TASK_DESC_KEY));
-    const cachedSearch = localStorage.getItem(getLocalKey(dir, SEARCH_TERM_KEY));
-    const cachedPaths = localStorage.getItem(getLocalKey(dir, PASTED_PATHS_KEY));
-    const cachedStructure = localStorage.getItem(getLocalKey(dir, CODEBASE_STRUCTURE_KEY));
-    const cachedPatternDesc = localStorage.getItem(getLocalKey(dir, PATTERN_DESC_KEY));
-    const cachedTitleRegex = localStorage.getItem(getLocalKey(dir, TITLE_REGEX_KEY));
-    const cachedContentRegex = localStorage.getItem(getLocalKey(dir, CONTENT_REGEX_KEY)); // Corrected key
+  // Load states from localStorage specific to the directory
+  const loadCachedStates = useCallback((dir: string, format: string = outputFormat) => {
+    const cachedTask = localStorage.getItem(getLocalKey(dir, TASK_DESC_KEY, format));
+    const cachedSearch = localStorage.getItem(getLocalKey(dir, SEARCH_TERM_KEY, format));
+    const cachedPaths = localStorage.getItem(getLocalKey(dir, PASTED_PATHS_KEY, format));
+    const cachedStructure = localStorage.getItem(getLocalKey(dir, CODEBASE_STRUCTURE_KEY, format));
+    const cachedPatternDesc = localStorage.getItem(getLocalKey(dir, PATTERN_DESC_KEY, format));
+    const cachedTitleRegex = localStorage.getItem(getLocalKey(dir, TITLE_REGEX_KEY, format)); // Corrected key
+    const cachedContentRegex = localStorage.getItem(getLocalKey(dir, CONTENT_REGEX_KEY, format)); // Corrected key
     
     if (cachedTask) setTaskDescription(cachedTask);
     if (cachedSearch) setSearchTerm(cachedSearch);
@@ -94,18 +104,27 @@ export default function GeneratePromptForm() {
     if (cachedTitleRegex) setTitleRegex(cachedTitleRegex);
     if (cachedContentRegex) setContentRegex(cachedContentRegex);
 
-    // File selections are loaded within handleLoadFiles/initial mount effect
-
-  }, [getLocalKey]);
+    const savedRegexActive = localStorage.getItem(getLocalKey(dir, REGEX_ACTIVE_KEY, format));
+    // Default to true if no setting found
+    setIsRegexActive(savedRegexActive === null ? true : savedRegexActive === "true");
+    setActiveSessionId(null); // Loading cached state means it's not a loaded session
+  }, [getLocalKey, outputFormat]); // Depends only on getLocalKey which depends on nothing changing
 
   // Save relevant states whenever they change
   useEffect(() => {
     if (projectDirectory) {
-      localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY), taskDescription);
-      localStorage.setItem(getLocalKey(projectDirectory, SEARCH_TERM_KEY), searchTerm);
-      localStorage.setItem(getLocalKey(projectDirectory, PASTED_PATHS_KEY), pastedPaths);
-    }
-  }, [taskDescription, searchTerm, pastedPaths, projectDirectory, getLocalKey]);
+      localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY, outputFormat), taskDescription);
+      localStorage.setItem(getLocalKey(projectDirectory, SEARCH_TERM_KEY, outputFormat), searchTerm);
+      localStorage.setItem(getLocalKey(projectDirectory, PASTED_PATHS_KEY, outputFormat), pastedPaths);
+      localStorage.setItem(getLocalKey(projectDirectory, PATTERN_DESC_KEY, outputFormat), patternDescription);
+      localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY, outputFormat), titleRegex);
+      localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY, outputFormat), contentRegex);
+      localStorage.setItem(getLocalKey(projectDirectory, CODEBASE_STRUCTURE_KEY, outputFormat), codebaseStructure);
+      localStorage.setItem(getLocalKey(projectDirectory, REGEX_ACTIVE_KEY, outputFormat), String(isRegexActive));
+      // Note: Included/Excluded files are saved in a separate effect triggered by allFilesMap changes
+    } // TODO: Debounce this?
+  }, [taskDescription, searchTerm, pastedPaths, patternDescription, titleRegex, contentRegex, codebaseStructure, isRegexActive, projectDirectory, getLocalKey, outputFormat]); // Added all relevant state dependencies
+
   const handleLoadFiles = useCallback(async (dir?: string) => {
     const directory = dir || projectDirectory;
     if (!directory?.trim()) {
@@ -113,6 +132,7 @@ export default function GeneratePromptForm() {
       return;
     }
 
+    console.log(`Attempting to load files for directory: ${directory}`);
     // Always clear errors before loading files
     setError("");
     setIsLoadingFiles(true);
@@ -124,13 +144,13 @@ export default function GeneratePromptForm() {
         setAllFilesMap({});
         setFileContentsMap({});
         setError(result.message || "Failed to read directory");
+        setIsLoadingFiles(false);
         return;
       }
 
       // Only check for empty files when explicitly loading
-      if (Object.keys(result.data).length === 0) {
-        // Display the git repository error message and empty the file map
-        console.log("Directory read successfully, but no files found/readable.");
+      if (!result.data || Object.keys(result.data || {}).length === 0) {
+        // Display the git repository error message OR the accessibility error, empty file map
         setError("No files found. Is this a git repository?");
         setAllFilesMap({});
         return;
@@ -140,8 +160,8 @@ export default function GeneratePromptForm() {
       let savedIncludedFiles: string[] = [];
       let savedForceExcluded: string[] = [];
       try {
-        const key = getLocalKey(directory, INCLUDED_FILES_KEY);
-        const keyEx = getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY);
+        const key = getLocalKey(directory, INCLUDED_FILES_KEY, outputFormat);
+        const keyEx = getLocalKey(directory, FORCE_EXCLUDED_FILES_KEY, outputFormat);
         savedIncludedFiles = JSON.parse(localStorage.getItem(key) || "[]");
         savedForceExcluded = JSON.parse(localStorage.getItem(keyEx) || "[]");
       } catch (e) {
@@ -150,7 +170,7 @@ export default function GeneratePromptForm() {
       }
       // Apply saved selections to the newly loaded file list
       const newFilesMap: FilesMap = {};
-      Object.entries(result.data).forEach(([path, content]) => {
+      Object.entries(result.data || {}).forEach(([path, content]) => {
         newFilesMap[path] = {
           path,
           size: new Blob([content as string]).size,
@@ -158,7 +178,7 @@ export default function GeneratePromptForm() {
           included: savedIncludedFiles.includes(path) && !savedForceExcluded.includes(path),
         };
       });
-      setFileContentsMap(result.data); // Store contents separately
+      setFileContentsMap(result.data || {}); // Store contents separately
       setAllFilesMap(newFilesMap); // Store all files info map
       setError(""); // Clear any errors if successful
     } catch (err) {
@@ -170,66 +190,19 @@ export default function GeneratePromptForm() {
       setIsLoadingFiles(false);
       setLoadingStatus("");
     }
-  }, [projectDirectory, setError, setIsLoadingFiles, setLoadingStatus, setAllFilesMap, setFileContentsMap, getLocalKey]);
+  }, [projectDirectory, getLocalKey, outputFormat]); // Removed state setters from dependency array as they are stable
 
   // Effect to load global project dir and initial files/states on mount
   useEffect(() => {
     const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY) || "";
     if (savedDir) {
       setProjectDirectory(savedDir);
-      loadCachedStates(savedDir); // Load text/regex states first
+      loadCachedStates(savedDir, outputFormat); // Load text/regex states first
 
-      const loadFilesInitial = async (dir: string) => {
-        try {
-          setIsLoadingFiles(true);
-          const result = await readDirectoryAction(dir);
-          
-          if (result.isSuccess && Object.keys(result.data).length > 0) {
-            let savedIncludedFiles: string[] = [];
-            let savedForceExcluded: string[] = [];
-            try {
-              savedIncludedFiles = JSON.parse(
-                localStorage.getItem(getLocalKey(dir, INCLUDED_FILES_KEY)) || "[]",
-              );
-              savedForceExcluded = JSON.parse(
-                localStorage.getItem(getLocalKey(dir, FORCE_EXCLUDED_FILES_KEY)) || "[]",
-              );
-            } catch (e) {
-              console.warn("Failed to parse saved files from localStorage");
-            } // Don't reset localStorage
-
-            const newFilesMap: FilesMap = {};
-            Object.entries(result.data).forEach(([path, content]) => {
-              newFilesMap[path] = {
-                path,
-                size: new Blob([content as string]).size,
-                forceExcluded: savedForceExcluded.includes(path),
-                included: savedIncludedFiles.includes(path) && !savedForceExcluded.includes(path),
-              };
-            });
-            setFileContentsMap(result.data);
-            setAllFilesMap(newFilesMap); // Set the map with loaded selections
-          } else if (!result.isSuccess) {
-            // Silently handle error on initial load unless it's critical
-            console.warn("Initial file load failed:", result.message);
-          }
-        } catch (err) {
-          console.error("Failed to silently load files on mount:", err);
-        } finally {
-          // Always reset loading state regardless of success or failure
-          setIsLoadingFiles(false);
-          setLoadingStatus("");
-        }
-      };
-      
-      loadFilesInitial(savedDir);
+      // Call handleLoadFiles to load files and apply saved selections
+      handleLoadFiles(savedDir);
     }
-
-    // Initialize regex active state
-    if (savedDir) {
-      const savedRegexActive = localStorage.getItem(getLocalKey(savedDir, REGEX_ACTIVE_KEY));
-      setIsRegexActive(savedRegexActive === null ? true : savedRegexActive === "true");
-    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setProjectDirectory, getLocalKey, loadCachedStates]); // Only run on mount
 
   // Save file selections whenever allFilesMap changes
@@ -242,17 +215,22 @@ export default function GeneratePromptForm() {
         .filter(f => f.forceExcluded)
         .map(f => f.path);
 
-      localStorage.setItem(getLocalKey(projectDirectory, INCLUDED_FILES_KEY), JSON.stringify(includedPaths));
-      localStorage.setItem(getLocalKey(projectDirectory, FORCE_EXCLUDED_FILES_KEY), JSON.stringify(excludedPaths));
+      localStorage.setItem(getLocalKey(projectDirectory, INCLUDED_FILES_KEY, outputFormat), JSON.stringify(includedPaths));
+      localStorage.setItem(getLocalKey(projectDirectory, FORCE_EXCLUDED_FILES_KEY, outputFormat), JSON.stringify(excludedPaths));
+      
+      // Clear active session when files are modified since we're no longer in the exact saved state
+      // setActiveSessionId(null); // Commented out: Keep session active even if file selection changes
     }
-  }, [allFilesMap, projectDirectory, getLocalKey]); // Run whenever selections change
+  }, [allFilesMap, projectDirectory, getLocalKey, outputFormat]); // Run whenever selections change or project changes
 
-  // Load cached states when project directory changes
+  // Load cached states and files when project directory context changes
   useEffect(() => {
     if (projectDirectory) {
-      loadCachedStates(projectDirectory);
-    }
-  }, [projectDirectory, loadCachedStates]);
+      loadCachedStates(projectDirectory, outputFormat);
+      handleLoadFiles(projectDirectory);
+      setActiveSessionId(null); // Clear active session when project changes explicitly
+    } else { setActiveSessionId(null); } // Also clear if dir is cleared
+  }, [projectDirectory, loadCachedStates, handleLoadFiles, outputFormat]);
 
   useEffect(() => {
     if (copySuccess) {
@@ -261,67 +239,75 @@ export default function GeneratePromptForm() {
     }
   }, [copySuccess]);
 
-  // Whenever the project directory changes, store globally and load from cache
-  const handleDirectoryChange = useCallback((value: string) => {
-    // The context setter already handles localStorage for GLOBAL_PROJECT_DIR_KEY
+  // Handler for when a directory is selected/entered in the selector component
+  const handleProjectDirectorySelected = useCallback(async (value: string) => {
+    if (!value) {
+      setError("Please select or enter a valid project directory");
+      return;
+    }
+
+    // Clear any previous errors
+    setError("");
+
+    // Update context and global storage (triggers useEffect above)
     setProjectDirectory(value);
-    loadCachedStates(value);
+    
     // Reset state that shouldn't carry over between projects
     setPrompt("");
-    setAllFilesMap({}); // Clear file map, will be reloaded by handleLoadFiles if needed
-    setFileContentsMap({});
-    // Clear errors unless it's the git repo warning which might persist if the new dir also lacks it
-    if (error !== "No files found. Is this a git repository?") {
-      setError("");
+    
+    // Load files from the selected directory
+    try {
+      await handleLoadFiles(value);
+    } catch (err) {
+      console.error("Error loading files:", err);
+      setError(`Failed to load files: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [setProjectDirectory, loadCachedStates, error]); // Dependencies for handleDirectoryChange
+  }, [setProjectDirectory, handleLoadFiles]);
 
-  const handleTaskChange = useCallback((value: string) => {
+  const handleTaskChange = (value: string) => {
     setTaskDescription(value);
-    localStorage.setItem(getLocalKey(projectDirectory, TASK_DESC_KEY), value);
-  }, [projectDirectory, getLocalKey]);
+    // Auto-save logic handled by the useEffect hook now
+  };
 
-  const handleSearchChange = useCallback((value: string) => {
+  const handleSearchChange = (value: string) => {
     setSearchTerm(value);
-    localStorage.setItem(getLocalKey(projectDirectory, SEARCH_TERM_KEY), value);
-  }, [projectDirectory, getLocalKey]);
+    // Auto-save logic handled by the useEffect hook now
+  };
 
-  const handlePastedPathsChange = useCallback((value: string) => {
+  const handlePastedPathsChange = (value: string) => {
     setPastedPaths(value);
-    localStorage.setItem(getLocalKey(projectDirectory, PASTED_PATHS_KEY), value);
-  }, [projectDirectory, getLocalKey]);
+    // Auto-save logic handled by the useEffect hook now
+  };
 
-  const handlePatternDescriptionChange = useCallback((value: string) => {
+  const handlePatternDescriptionChange = (value: string) => {
     setPatternDescription(value);
-    localStorage.setItem(getLocalKey(projectDirectory, PATTERN_DESC_KEY), value);
-  }, [projectDirectory, getLocalKey]);
+    // Auto-save logic handled by the useEffect hook now
+  };
 
-  const handleTitleRegexChange = useCallback((value: string) => {
+  const handleTitleRegexChange = (value: string) => {
     setTitleRegex(value);
-    localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), value);
+    // Auto-save logic handled by the useEffect hook now
     setTitleRegexError(null); // Clear error on manual change
-  }, [projectDirectory, getLocalKey]);
+  };
 
-  const handleContentRegexChange = useCallback((value: string) => {
+  const handleContentRegexChange = (value: string) => {
     setContentRegex(value);
-    localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), value);
+    // Auto-save logic handled by the useEffect hook now
     setContentRegexError(null); // Clear error on manual change
-  }, [projectDirectory, getLocalKey]);
+  };
 
   const handleClearPatterns = useCallback(() => {
     setTitleRegex("");
     setContentRegex("");
-    localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), "");
-    localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), "");
     setTitleRegexError(null);
     setContentRegexError(null);
-  }, [projectDirectory, getLocalKey]);
+  }, [projectDirectory, getLocalKey, outputFormat]);
 
   const handleToggleRegexActive = useCallback(() => {
     const newValue = !isRegexActive;
     setIsRegexActive(newValue);
-    localStorage.setItem(getLocalKey(projectDirectory, REGEX_ACTIVE_KEY), String(newValue));
-  }, [isRegexActive, projectDirectory, getLocalKey]);
+    // Auto-save logic handled by the useEffect hook now
+  }, [isRegexActive, projectDirectory, getLocalKey, outputFormat]);
 
   // Memoized calculation for files displayed in the browser
   const displayedFiles = useMemo(() => {
@@ -338,7 +324,7 @@ export default function GeneratePromptForm() {
     const contentRegexTrimmed = contentRegex.trim();
     const hasContentRegex = contentRegexTrimmed && Object.keys(fileContentsMap).length > 0;
 
-    // If no regex or regex is inactive, return search-filtered list
+    // If regex is inactive or no regex patterns, return search-filtered list
     if (!isRegexActive || (!hasTitleRegex && !hasContentRegex)) {
       // Clear any previous regex errors if regex fields are now empty
       if (titleRegexError && !hasTitleRegex) setTitleRegexError(null);
@@ -405,18 +391,16 @@ export default function GeneratePromptForm() {
     setRegexGenerationError("");
     try {
       console.log("Generating regex patterns for:", patternDescription);
-      const result = await generateRegexPatternsAction(patternDescription, codebaseStructure);
+      const result = await generateRegexPatternsAction(patternDescription, codebaseStructure || undefined); // Pass undefined if empty
       console.log("Regex generation result:", result);
       
       if (result.isSuccess && result.data) {
-        console.log("Setting title regex:", result.data.titleRegex || "");
         const newTitleRegex = result.data.titleRegex || "";
         const newContentRegex = result.data.contentRegex || "";
         setTitleRegex(newTitleRegex);
         setContentRegex(newContentRegex);
-        localStorage.setItem(getLocalKey(projectDirectory, TITLE_REGEX_KEY), result.data.titleRegex || "");
-        localStorage.setItem(getLocalKey(projectDirectory, CONTENT_REGEX_KEY), result.data.contentRegex || "");
         setRegexGenerationError(""); // Clear any previous error on success
+        setActiveSessionId(null); // Clear active session as regex changed
       } else {
         setRegexGenerationError(result.message || "Failed to generate regex patterns.");
       }
@@ -426,7 +410,7 @@ export default function GeneratePromptForm() {
     } finally {
       setIsGeneratingRegex(false);
     }
-  }, [patternDescription, projectDirectory, getLocalKey, codebaseStructure]); // Added codebaseStructure dependency
+  }, [patternDescription, codebaseStructure, projectDirectory, getLocalKey, outputFormat]); // Added codebaseStructure dependency
 
   const updateTokenCount = async (text: string) => {
     const count = await estimateTokens(text);
@@ -435,8 +419,8 @@ export default function GeneratePromptForm() {
 
   const handleCodebaseStructureChange = useCallback((value: string) => {
     setCodebaseStructure(value);
-    localStorage.setItem(getLocalKey(projectDirectory, CODEBASE_STRUCTURE_KEY), value);
-  }, [projectDirectory, getLocalKey]);
+    setActiveSessionId(null); // Structure changed, clear active session
+  }, []);
 
   const handleGenerate = async () => {
     /**
@@ -452,7 +436,7 @@ export default function GeneratePromptForm() {
 
     try {
       // First, refresh file contents from the file system for project files
-      setLoadingStatus("Refreshing file contents from file system...");
+      setLoadingStatus("Reading file contents...");
       
       // Get fresh contents for project files
       let currentFileContents: { [key: string]: string } = {};
@@ -475,7 +459,7 @@ export default function GeneratePromptForm() {
       }
 
       const hasPastedPaths = pastedPaths.trim().length > 0;
-      const isAnyFileIncludedFromBrowser = Object.values(allFilesMap).some((f) => f.included && !f.forceExcluded);
+      const isAnyFileIncludedFromBrowser = Object.values(allFilesMap || {}).some((f) => f.included && !f.forceExcluded);
 
       // Determine which files to use based on pasted paths or browser selection
       let filesToUse: string[] = [];
@@ -483,16 +467,32 @@ export default function GeneratePromptForm() {
 
       if (hasPastedPaths) {
         setLoadingStatus("Processing pasted paths...");
+        // Create a normalized map for better file path matching
+        const normalizedFileContentsMap = Object.keys(currentFileContents).reduce((acc, key) => {
+          const normalizedKey = normalizePath(key, projectDirectory);
+          acc[normalizedKey] = key; // Store the original key
+          return acc;
+        }, {} as Record<string, string>);
+        
         const rawPastedPaths = pastedPaths
           .split("\n")
           .map((p) => p.trim())
           .filter((p) => !!p && !p.startsWith("#"));
 
-        const projectFilePaths = new Set(Object.keys(currentFileContents)); // Use fresh file contents
+        const projectFilePaths = new Set(Object.keys(currentFileContents || {})); // Use fresh file contents
 
         for (const filePath of rawPastedPaths) {
-          if (projectFilePaths.has(filePath)) {
-            // Path is within the project, check if we have content
+          // Try to normalize the path if it's not an absolute path
+          const normalizedPath = normalizePath(filePath, projectDirectory);
+          
+          // Check if the path exists in our normalized map
+          if (normalizedFileContentsMap[normalizedPath]) {
+            // Use the original path from the map to ensure consistency
+            const originalPath = normalizedFileContentsMap[normalizedPath];
+            filesToUse.push(originalPath);
+          }
+          else if (projectFilePaths.has(filePath)) {
+            // Legacy path lookup - original path matches directly
             if (currentFileContents[filePath] !== undefined) {
               filesToUse.push(filePath);
             } else {
@@ -519,19 +519,41 @@ export default function GeneratePromptForm() {
 
         if (filesToUse.length === 0 && rawPastedPaths.length > 0) {
              setError("None of the pasted paths could be read or found. Check paths and permissions.");
-             setIsLoading(false);
+             setIsLoading(true); // Keep loading state if error occurs here
              setLoadingStatus("");
              if (warnings.length > 0) setExternalPathWarnings(warnings);
              return;
         }
       } else if (isAnyFileIncludedFromBrowser) {
         setLoadingStatus("Using selected files...");
-        // No pasted paths, use files selected in the browser
-        // But we need to use the paths from allFilesMap to filter the freshly loaded content
-        filesToUse = Object.values(allFilesMap)
-          .filter((f) => f.included && !f.forceExcluded) // Ensure forceExcluded is checked
-          .map((f) => f.path)
-          .filter(path => currentFileContents[path] !== undefined); // Ensure we have the fresh content
+        // No pasted paths, use files selected in the browser from the state
+        // Filter the *currentFileContents* using the selection state from *allFilesMap*
+        const selectedPaths = new Set(Object.values(allFilesMap).filter(f => f.included && !f.forceExcluded).map(f => f.path));
+        
+        // Log selected paths for debugging
+        console.log("Selected paths:", [...selectedPaths]);
+        
+        // Create a map of normalized paths to original paths for better matching
+        const normalizedToOriginal: Record<string, string> = {};
+        Object.keys(currentFileContents).forEach(originalPath => {
+          const normalizedPath = normalizePath(originalPath, projectDirectory);
+          normalizedToOriginal[normalizedPath] = originalPath;
+        });
+        
+        // Check both original and normalized paths to ensure we find matches
+        filesToUse = Object.keys(currentFileContents).filter(path => {
+          // First check direct path match
+          if (selectedPaths.has(path) && currentFileContents[path] !== undefined) {
+            return true;
+          }
+          
+          // If no direct match, try normalized path matching
+          const normalizedPath = normalizePath(path, projectDirectory);
+          return selectedPaths.has(normalizedPath) && currentFileContents[path] !== undefined;
+        });
+        
+        // Log resolved file paths for debugging
+        console.log("Files to use:", filesToUse);
       } else {
         // Neither pasted paths nor browser selection
         setError("Please include at least one file using the file browser or paste file paths.");
@@ -555,6 +577,11 @@ ${content}
 </file_content>
 </file>`)
         .join("\n\n");
+        
+      // Log final prompt paths for debugging
+      console.log("Final paths in prompt:", Object.entries(currentFileContents)
+        .filter(([filePath]) => filesToUse.includes(filePath))
+        .map(([path]) => path));
 
       let instructions = await getFormatInstructions(outputFormat, customFormat);
 
@@ -594,7 +621,7 @@ ${taskDescription}
       console.error("Error during prompt generation:", error); // Log the error
     } finally {
       setIsLoading(false);
-      setLoadingStatus("");
+      setLoadingStatus(""); // Clear loading status
     }
   };
 
@@ -607,43 +634,125 @@ ${taskDescription}
     }
   };
 
+  // Function to get the current state for saving a session
+  const getCurrentSessionState = useCallback((): Omit<Session, 'id' | 'name'> => {
+    const includedFiles = Object.values(allFilesMap || {})
+      .filter(f => f.included) // Save all included, regardless of forceExclude status
+      .map(f => f.path);
+    const forceExcludedFiles = Object.values(allFilesMap)
+      .filter(f => f.forceExcluded)
+      .map(f => f.path);
+
+    return {
+      projectDirectory,
+      taskDescription,
+      searchTerm,
+      pastedPaths,
+      patternDescription,
+      titleRegex,
+      contentRegex,
+      isRegexActive,
+      codebaseStructure,
+      includedFiles,
+      forceExcludedFiles,
+      outputFormat,
+    };
+  }, [
+    projectDirectory, taskDescription, searchTerm, pastedPaths, patternDescription,
+    titleRegex, contentRegex, isRegexActive, codebaseStructure, allFilesMap,
+    outputFormat
+  ]);
+
+  // Function to apply a loaded session's state
+  const applySessionState = useCallback(async (session: Session) => {
+    setTaskDescription(session.taskDescription);
+    setSearchTerm(session.searchTerm);
+    setPastedPaths(session.pastedPaths);
+    setPatternDescription(session.patternDescription);
+    setTitleRegex(session.titleRegex);
+    setContentRegex(session.contentRegex);
+    setIsRegexActive(session.isRegexActive);
+    setCodebaseStructure(session.codebaseStructure);
+    // Output format is handled by the context and session manager's filtering
+    if ('customFormat' in session) {
+      // Only set if it exists in the session object
+      setCustomFormat((session as any).customFormat);
+    }
+    setActiveSessionId(session.id); // Track which session is currently active
+
+    // Update file selections based on the loaded session
+    setAllFilesMap(prevMap => {
+      const newMap = { ...prevMap };
+      const includedSet = new Set(session.includedFiles);
+      const excludedSet = new Set(session.forceExcludedFiles);
+
+      for (const path in newMap) {
+        const isExcluded = excludedSet.has(path);
+        const isIncluded = includedSet.has(path) && !isExcluded;
+        newMap[path] = { ...newMap[path], included: isIncluded, forceExcluded: isExcluded };
+      }
+      return newMap;
+    });
+
+    // Re-calculate token count for the loaded state
+    setError(""); // Clear errors on successful load
+    // Note: Prompt itself is not saved in the session, it will be regenerated on demand
+  }, [setCustomFormat, setAllFilesMap]); // Add setters if they aren't stable
+
+  // Add this function to toggle debug mode
+  const toggleDebugMode = () => {
+    const newDebugMode = !debugMode;
+    setDebugMode(newDebugMode);
+    
+    // If enabling debug mode, generate path debug info
+    if (newDebugMode && projectDirectory) {
+      const debugInfo = Object.keys(allFilesMap).map(originalPath => ({
+        original: originalPath,
+        normalized: normalizePath(originalPath, projectDirectory)
+      }));
+      setPathDebugInfo(debugInfo);
+    } else {
+      setPathDebugInfo([]);
+    }
+  };
+
   return (
-    <div className="max-w-2xl w-full mx-auto p-4 flex flex-col gap-4">
-      {error && <div className="text-destructive">{error}</div>}
+    <div className="max-w-[1400px] w-full mx-auto p-4 flex flex-col gap-6">
+      {error && <div className="text-destructive bg-destructive/10 p-3 rounded-lg font-medium">{error}</div>}
 
       {/* Project Directory */}
-      <div className="flex flex-col gap-2">
-        <label className="mb-2 font-bold text-foreground">Project Directory:</label>
-        <div className="flex gap-2">
-          <Input
-            className="border rounded bg-background text-foreground p-2 flex-1"
-            type="text"
-            value={projectDirectory}
-            onChange={(e) => handleDirectoryChange(e.target.value)}
-            placeholder="e.g. /Users/myusername/projects/o1-pro-flow"
-          />
-          <Button
-            className="bg-secondary text-secondary-foreground p-2 rounded whitespace-nowrap"
-            onClick={() => handleLoadFiles(projectDirectory)}
-            disabled={isLoadingFiles}
-          >
-            {isLoadingFiles ? "Loading..." : "Load Files"}
-          </Button>
-        </div>
+      <div className="flex flex-col gap-2 bg-card p-5 rounded-lg shadow-sm border">
+        <label className="font-semibold text-lg text-card-foreground">Project Directory</label>
+        <ProjectDirectorySelector
+          value={projectDirectory}
+          onChange={handleProjectDirectorySelected}
+          isLoadingFiles={isLoadingFiles}
+        />
       </div>
 
-      {/* New: Pattern Description and Regex Generation */}
+      {/* Session Manager (Lazy Loaded) - Only show if project directory exists */}
+      <React.Suspense fallback={<div className="text-center text-muted-foreground">Loading Session Manager...</div>}>
+        <SessionManager
+          projectDirectory={projectDirectory}
+          getCurrentSessionState={getCurrentSessionState}
+          onLoadSession={applySessionState}
+          outputFormat={outputFormat}
+          activeSessionId={activeSessionId}
+        />
+      </React.Suspense>
+
+      {/* Pattern Description and Regex Generation */}
       <PatternDescriptionInput
         value={patternDescription}
         onChange={handlePatternDescriptionChange}
         onGenerateRegex={handleGenerateRegex}
         isGeneratingRegex={isGeneratingRegex}
         regexGenerationError={regexGenerationError}
-        projectDirectory={projectDirectory}
         codebaseStructure={codebaseStructure}
+        foundFiles={Object.keys(allFilesMap)}
       />
 
-      {/* New: Regex Inputs */}
+      {/* Regex Inputs */}
       <RegexInput
         titleRegex={titleRegex}
         contentRegex={contentRegex}
@@ -656,7 +765,7 @@ ${taskDescription}
         onToggleActive={handleToggleRegexActive}
       />
 
-      {/* File Browser */}
+      {/* File Browser - Only show if files loaded */}
       <FileBrowser
         displayedFiles={displayedFiles}
         allFilesMap={allFilesMap}
@@ -683,21 +792,19 @@ ${taskDescription}
       <TaskDescriptionArea 
         taskDescription={taskDescription} 
         onChange={handleTaskChange}
-        foundFiles={displayedFiles.map((f) => f.path)}
       />
 
       {/* Voice Transcription */}
       <VoiceTranscription
         onTranscribed={(text) => {
           // Use functional update to avoid issues with stale state in closure
-          setTaskDescription(prevTaskDesc => {
+          setTaskDescription((prevTaskDesc) => {
             const updatedText = (prevTaskDesc ? prevTaskDesc + " " : "") + text;
             // Save to localStorage inside the functional update to ensure consistency
-            // NOTE: Generally avoid side-effects here, but localStorage is sync and matches existing pattern
-            localStorage.setItem(getLocalKey(projectDirectory || '', TASK_DESC_KEY), updatedText);
+            // Auto-save is handled by the main useEffect hook
             return updatedText;
           });
-        }} // Pass projectDirectory for getLocalKey usage
+        }}
         foundFiles={Object.keys(allFilesMap)}
       />
 
@@ -706,64 +813,89 @@ ${taskDescription}
         <CodebaseStructure
           value={codebaseStructure}
           onChange={handleCodebaseStructureChange}
-        /> // Removed projectDirectory prop
+        />
       )}
 
       {/* Generate Prompt */}
-      <Button
-        className="bg-primary text-primary-foreground p-2 rounded disabled:opacity-50"
-        onClick={handleGenerate}
-        disabled={isLoading}
-      >
-        {isLoading ? loadingStatus : "Generate Prompt"}
-      </Button>
-
-      {/* Generated Prompt */}
-      {prompt && (
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-            <label className="font-bold text-foreground">Generated Prompt:</label>
-            <span className="text-sm text-muted-foreground">
-              ~{tokenCount.toLocaleString()} tokens
-            </span>
-          </div>
-          <textarea
-            className="border rounded bg-background text-foreground p-2 h-96 w-full font-mono text-sm"
-            value={prompt}
-            onChange={async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-              const newPrompt = e.target.value;
-              setPrompt(newPrompt);
-              await updateTokenCount(newPrompt);
-            }}
-          />
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-4 mt-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
+          <Button
+            variant="default"
+            className="flex-1 md:flex-none"
+            onClick={handleGenerate}
+            disabled={isLoading || !projectDirectory}
+          >
+            {isLoading ? `${loadingStatus || "Generating..."}` : "Generate Prompt"}
+          </Button>
+          
+          {prompt && (
             <Button
-              className="bg-secondary text-secondary-foreground p-2 rounded"
+              variant="outline"
               onClick={handleCopy}
+              disabled={isLoading}
+              className="flex-1 md:flex-none"
             >
-              {copySuccess ? "Copied!" : "Copy to Clipboard"}
+              {copySuccess ? "Copied!" : "Copy Prompt"}
             </Button>
-            {copySuccess && (
-              <span className="text-green-500 dark:text-green-400 text-sm">
-                ✓ Copied to clipboard
-              </span>
-            )}
+          )}
+          
+          <Button
+            variant="ghost"
+            onClick={toggleDebugMode}
+            className="text-xs text-muted-foreground"
+            size="sm"
+          >
+            {debugMode ? "Hide Debug Info" : "Debug Path Issues"}
+          </Button>
+        </div>
+        
+        {debugMode && (
+          <div className="bg-muted/30 p-3 rounded text-xs border">
+            <h3 className="font-semibold mb-2">Path Debug Information</h3>
+            <div className="bg-background p-2 rounded max-h-40 overflow-y-auto">
+              <p className="mb-2">This shows how file paths are being normalized. If you're having issues with path selection, check if the paths match what you expect.</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr>
+                    <th className="text-left p-1 border-b">Original Path</th>
+                    <th className="text-left p-1 border-b">Normalized Path</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pathDebugInfo.map((item, i) => (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-muted/20' : ''}>
+                      <td className="p-1 font-mono">{item.original}</td>
+                      <td className="p-1 font-mono">{item.normalized}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {error && <div className="text-destructive mt-4">{error}</div>}
-      
-      {externalPathWarnings.length > 0 && (
-        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
-          <h4 className="font-semibold text-yellow-800">Warning: Some external files could not be read</h4>
-          <ul className="list-disc pl-5 mt-2 text-sm text-yellow-700">
-            {externalPathWarnings.map((warning, i) => (
-              <li key={i}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+        {externalPathWarnings.length > 0 && (
+          <div className="bg-yellow-500/10 p-3 rounded text-sm border border-yellow-500/50">
+            <h3 className="font-semibold mb-2 text-yellow-700 dark:text-yellow-400">External Path Warnings</h3>
+            <ul className="list-disc pl-5 space-y-1">
+              {externalPathWarnings.map((warning, i) => (
+                <li key={i} className="text-muted-foreground">{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {prompt && (
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <label className="font-semibold">Prompt ({tokenCount.toLocaleString()} tokens):</label>
+            </div>
+            <div className="border rounded bg-card p-3 font-mono text-sm overflow-auto max-h-96 whitespace-pre-wrap">
+              {prompt}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
