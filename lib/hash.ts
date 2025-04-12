@@ -10,5 +10,5 @@ export function hashString(str: string): string {
     hash = hash & hash; // Convert to 32-bit integer
   }
   // Convert to hex string and take first 8 characters
-  return (hash >>> 0).toString(16).slice(0, 8);
+  return (hash >>> 0).toString(16).padStart(8, '0'); // Pad to ensure consistent length
 } 

@@ -48,3 +48,5 @@ next-env.d.ts
 out/
 /pnpm-lock.yaml
 /work.patch
+/actions/*.swp
+/.vscode/settings.json

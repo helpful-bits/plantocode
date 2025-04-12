@@ -2,32 +2,9 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { getAllNonIgnoredFiles } from "@/lib/git-utils";
+import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
-
-async function isBinaryFile(buffer: Buffer): Promise<boolean> {
-  if (buffer.length === 0) return false; // Empty file is not binary
-
-  const hasNullByte = buffer.includes(0);
-  if (hasNullByte) return true;
-
-  const nonPrintable = buffer.filter(byte => (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) || byte >= 127);
-  const ratio = nonPrintable.length / buffer.length;
-  
-  return ratio > 0.1;
-}
-
-const BINARY_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.ico', '.webp',
-  '.mp3', '.mp4', '.wav', '.ogg',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.tar', '.gz', '.7z',
-  '.ttf', '.woff', '.woff2',
-  '.exe', '.dll', '.so',
-  '.pyc',
-  '.lockb', // e.g., pnpm-lock.yaml binary representation
-]);
 
 /**
  * Reads a single file from any location in the file system
@@ -42,13 +19,11 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
       };
     }
 
-    // Use the provided file path as the key, potentially resolving relative paths
-    const resolvedPathKey = filePath;
+    // Use the provided file path as the key consistently
+    const resolvedPath = path.resolve(filePath); // Store resolved path for file access
     const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
     
     try {
-      await fs.access(fullPath);
-      
       // Skip binary files
       const ext = path.extname(fullPath).toLowerCase();
       if (BINARY_EXTENSIONS.has(ext)) {
@@ -62,9 +37,11 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
         return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
       }
       
-      // Use the resolved path key (original path) as the key
+      // Use the original path as key for consistency with user input
       const fileInfo: { [key: string]: string } = {};
-      fileInfo[resolvedPathKey] = buffer.toString('utf-8');
+      fileInfo[filePath] = buffer.toString('utf-8'); // Always use the original path the user provided
+      
+      console.log(`Read external file: ${filePath}`); // Add log for debugging
       
       return {
         isSuccess: true,
@@ -94,6 +71,13 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       };
     }
 
+    // Validate existence and access
+    try {
+      await fs.access(finalDirectory);
+    } catch (accessError) {
+      return { isSuccess: false, message: `Directory not found or inaccessible: ${finalDirectory}` };
+    }
+
     const files = await getAllNonIgnoredFiles(finalDirectory);
     
     if (files.length === 0) {
@@ -121,13 +105,19 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
         
         fileContents[file] = buffer.toString('utf-8');
       } catch (error) {
-        console.warn(`Failed to read file ${file}:`, error);
+        // Check if the error is due to the file not existing (e.g., deleted after ls-files)
+        if (error.code === 'ENOENT') {
+          console.warn(`File listed by git not found (might be deleted or renamed): ${file}`);
+        } else {
+          console.warn(`Failed to read file ${file}:`, error.message || error);
+        }
+        // Continue processing other files even if one fails
       }
     }
     
     return {
       isSuccess: true,
-      message: "Successfully read directory",
+      message: `Successfully read ${Object.keys(fileContents).length} text files`,
       data: fileContents
     };
   } catch (error) {
@@ -135,6 +125,5 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Failed to read directory"
-    };
-  }
+    };  }
 } 

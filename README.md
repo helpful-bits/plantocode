@@ -8,7 +8,7 @@ O1 Pro Flow is a comprehensive utility designed to streamline the workflow of ge
 - Node.js (v18+) and pnpm
 - A Git repository
 - Next.js 15.1.3 with React 18
-- (Optional) `GROQ_API_KEY` for voice transcription
+- (Optional) `GROQ_API_KEY` for voice transcription (using Whisper via Groq)
 - (Optional) `ANTHROPIC_API_KEY` for text correction via Anthropic's Claude (specifically Sonnet 3.7 model as configured)
 - (Optional) Set `NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS=true` in your `.env` file if you provide `ANTHROPIC_API_KEY` to enable related features.
 
@@ -47,7 +47,7 @@ Record audio instructions directly in the browser for the Task Description.
 - **Transcription:** Uses the Groq API (requires `GROQ_API_KEY`) for fast transcription via Whisper.
 - **Correction (Optional):** If `ANTHROPIC_API_KEY` and `NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS=true` are set, the transcribed text is automatically sent to Anthropic Claude (Sonnet 3.5) for correction and refinement. You can revert to the raw transcription if needed.
 
-### Text Improvement (Optional)
+### Text Improvement
 Select text within the Task Description area and use Anthropic Claude (if configured) to improve clarity and grammar while preserving formatting (line breaks, indentation, etc.).
 
 ### Output Formats
@@ -56,8 +56,10 @@ Select text within the Task Description area and use Anthropic Claude (if config
 - **Path Finder:** Generates a prompt asking the AI to identify all relevant files for a given task based on the provided context.
 - **Custom:** Define your own prompt structure.
 
-### Apply Changes
-After generating a diff from your AI model, paste it into the "Apply Changes" form. It will update, create, or remove files as specified. If renames or deletions are requested, a `cleanup.sh` script is generated.
+### Generate "Apply Changes" Prompt
+This tool focuses on *generating prompts*. The "Apply Changes" section does *not* directly modify your files. Instead, it takes the output (like a diff or refactoring plan) from your AI model (which you run separately) from your clipboard and generates a *new prompt*. You then send this new prompt to your AI model (like O1 Pro in ChatGPT) to actually perform the file modifications within its environment.
+
+**Important:** The tool itself does not execute code changes on your local machine. It prepares the instructions for the AI to do so.
 
 ## Project Structure
 - `app` - Next.js App Router with server actions, pages, and layout
@@ -77,7 +79,7 @@ After generating a diff from your AI model, paste it into the "Apply Changes" fo
    Copy and paste the generated prompt into ChatGPT (or another environment) where you have the O1 Pro model.
 
 3. **Apply Changes**  
-   Paste the returned diff into the "Apply Changes" form to update your local codebase automatically. A `cleanup.sh` script is produced for any renames/deletions.
+   Paste the diff or refactoring plan returned by the AI into the "Apply Changes" section of the tool. Click the button to generate a *new prompt*. Copy this new prompt and send it back to your AI model (e.g., O1 Pro) to execute the changes.
 
 ## Contributing
 Contributions are welcome. To contribute:

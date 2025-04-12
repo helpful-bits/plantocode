@@ -1,5 +1,4 @@
 "use server";
-
 import { callAnthropicAPI } from "@/lib/anthropic";
 import { ActionState } from "@/types";
 
@@ -74,69 +73,57 @@ Now, generate the JSON for the provided description.`,
       ],
     };
 
-    console.log("Sending payload to Anthropic for regex generation:", JSON.stringify(payload, null, 2));
+    console.log("Sending payload to Anthropic for regex generation...");
 
-    const result = await callAnthropicAPI(payload, (data) => {
-      console.log("Raw Anthropic response data:", JSON.stringify(data, null, 2));
-      const jsonResponse = data.content[0].text?.trim();
+    const result = await callAnthropicAPI(payload);
 
-      if (!jsonResponse) {
-         console.error("Anthropic returned an empty text response.");
-         throw new Error("Anthropic returned an empty text response.");
-      }
+    if (!result.isSuccess) {
+      console.error("Anthropic API call failed:", result.message);
+      return { isSuccess: false, message: result.message || "Failed to generate regex patterns via Anthropic" };
+    }
 
+    const jsonResponse = result.data;
+    if (!jsonResponse) {
+      console.error("Anthropic returned an empty text response.");
+      return { isSuccess: false, message: "Anthropic returned an empty text response." };
+    }
+
+    try {
       console.log("Raw JSON response string from Anthropic:", jsonResponse);
 
-      try {
-        // Attempt to extract JSON from potential markdown code blocks
-        const jsonMatch = jsonResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        const cleanedJsonResponse = (jsonMatch ? jsonMatch[1] : jsonResponse).trim();
+      // Attempt to extract JSON from potential markdown code blocks
+      const jsonMatch = jsonResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      const cleanedJsonResponse = (jsonMatch ? jsonMatch[1] : jsonResponse).trim();
 
-        console.log("Cleaned JSON response string:", cleanedJsonResponse);
-        const patterns = JSON.parse(cleanedJsonResponse);
-        console.log("Parsed patterns:", patterns);
+      console.log("Cleaned JSON response string:", cleanedJsonResponse);
+      const patterns = JSON.parse(cleanedJsonResponse);
+      console.log("Parsed patterns:", patterns);
 
-        // Validate the generated regex patterns
-        const titleRegex = patterns.titleRegex || "";
-        const contentRegex = patterns.contentRegex || "";
+      // Validate the generated regex patterns
+      const titleRegex = patterns.titleRegex || "";
+      const contentRegex = patterns.contentRegex || "";
 
-        if (titleRegex && !isValidRegex(titleRegex)) {
-          return { isSuccess: false, message: `AI generated an invalid title regex: ${titleRegex}`, data: patterns };
-        }
-        if (contentRegex && !isValidRegex(contentRegex)) {
-          return { isSuccess: false, message: `AI generated an invalid content regex: ${contentRegex}`, data: patterns };
-        }
-        return { isSuccess: true, message: "Regex patterns generated", data: patterns };
-      } catch (err) {
-        console.error("Error parsing JSON response:", err, jsonResponse);
-        let parseErrorMsg = `Failed to parse Anthropic response: ${err.message}`;
-        if (err instanceof SyntaxError && err.message.includes("Unterminated string")) {
-          parseErrorMsg += ". The response might have been truncated due to token limits.";
-        }
-        throw new Error(parseErrorMsg);
+      // Validate and return result directly from the callback
+      if (titleRegex && !isValidRegex(titleRegex)) {
+        throw new Error(`AI generated an invalid title regex: ${titleRegex}`);
       }
-    });
+      if (contentRegex && !isValidRegex(contentRegex)) {
+        throw new Error(`AI generated an invalid content regex: ${contentRegex}`);
+      }
 
-    // 'result' is ActionState<InnerResult>, where InnerResult might be an error state from processResponse
-    if (!result.isSuccess) {
-      // API call failed OR processResponse function returned failure
-      console.error("Anthropic API call failed:", result.message);
-      return { isSuccess: false, message: result.message || "Anthropic API call failed" };
+      return { 
+        isSuccess: true, 
+        message: "Regex patterns generated successfully", 
+        data: { titleRegex, contentRegex }
+      };
+    } catch (err: any) {
+      console.error("Error parsing JSON response:", err, jsonResponse);
+      let parseErrorMsg = `Failed to parse Anthropic response: ${err.message}`;
+      if (err instanceof SyntaxError && err.message.includes("Unterminated string")) {
+        parseErrorMsg += ". The response might have been truncated due to token limits.";
+      }
+      return { isSuccess: false, message: parseErrorMsg };
     }
-
-    // API call succeeded, processResponse also returned an object. Check its internal status.
-    const processedResultData = result.data; // This is the InnerResult object returned by processResponse
-
-    // Check if the InnerResult itself indicates failure (e.g., parsing or regex validation failed)
-    if (!processedResultData.isSuccess) {
-      console.error("Processing Anthropic response failed internally:", processedResultData.message);
-      // Return the failure state from InnerResult
-      return { isSuccess: false, message: processedResultData.message, data: processedResultData.data };
-    }
-
-    // Everything succeeded, return the successful state with valid regex data
-    return { isSuccess: true, message: "Regex patterns generated successfully", data: processedResultData.data };
-
   } catch (error) {
     console.error("Error generating regex patterns:", error);
     return { 

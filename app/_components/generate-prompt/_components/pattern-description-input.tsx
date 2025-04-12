@@ -13,8 +13,8 @@ interface PatternDescriptionInputProps {
   onGenerateRegex: () => void;
   isGeneratingRegex: boolean;
   regexGenerationError: string;
-  projectDirectory?: string;
   codebaseStructure?: string;
+  foundFiles?: string[];
 }
 
 export default function PatternDescriptionInput({
@@ -23,8 +23,8 @@ export default function PatternDescriptionInput({
   onGenerateRegex,
   isGeneratingRegex,
   regexGenerationError,
-  projectDirectory,
   codebaseStructure,
+  foundFiles = [],
 }: PatternDescriptionInputProps) {
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
@@ -55,8 +55,9 @@ export default function PatternDescriptionInput({
   } = useVoiceRecording({ 
     onTranscribed: handleTranscribedText,
     // Only pass onCorrectionComplete if the key exists, disabling correction otherwise
-    onCorrectionComplete: handleCorrectionComplete 
-  }); // Removed foundFiles, not needed here
+    onCorrectionComplete: handleCorrectionComplete,
+    foundFiles
+  });
 
   const handleToggleRecording = async () => {
     if (!isRecording) {
@@ -116,7 +117,7 @@ export default function PatternDescriptionInput({
 
     setIsImproving(true);
     try {
-      const result = await improvePatternDescriptionAction(selectedText, projectDirectory, codebaseStructure);
+      const result = await improvePatternDescriptionAction(selectedText, codebaseStructure);
       if (result.isSuccess) {
         insertTextAtCursor(result.data);
       }
@@ -133,20 +134,38 @@ export default function PatternDescriptionInput({
   const hasSelection = selectionStart !== selectionEnd;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3 bg-card p-5 rounded-lg shadow-sm border">
       <div className="flex items-center justify-between">
-        <label className="font-bold text-foreground">Describe File Patterns:</label>
+        <label className="font-semibold text-lg text-card-foreground flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          Describe File Patterns
+        </label>
         <Button
           variant="secondary" size="sm"
           onClick={handleImproveSelection}
           disabled={isImproving || !hasSelection}
+          className="h-8 flex items-center gap-1"
         >
-          {isImproving ? "Improving..." : "Improve Selection"}
+          {isImproving ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Improving...</span>
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>Improve Selection</span>
+            </>
+          )}
         </Button>
       </div>
 
       <div className="text-sm text-muted-foreground">
-        Describe the types of files or content you want to find (e.g., &quot;React components using useState&quot;, &quot;Markdown files with TODOs&quot;). AI will generate regex patterns.
+        Describe the types of files or content you want to find (e.g., "React components using useState", "Markdown files with TODOs"). AI will generate regex patterns.
       </div>
       <Textarea
         ref={textareaRef}
@@ -154,16 +173,16 @@ export default function PatternDescriptionInput({
         onSelect={handleSelect}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Enter your description here..."
-        className="resize-y min-h-[100px]"
+        className="resize-y min-h-[120px] bg-background/80"
       />
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start pt-1">
         <div className="flex flex-col gap-1">
           <Button
             variant="outline"
             size="sm"
             onClick={handleToggleRecording}
             disabled={isProcessingAudio}
-            className="min-w-[120px] flex justify-center items-center gap-2"
+            className="min-w-[120px] flex justify-center items-center gap-2 h-9"
           >
             {isProcessingAudio ? (
               <>
@@ -172,7 +191,7 @@ export default function PatternDescriptionInput({
               </>
             ) : isRecording ? (
               <>
-                <MicOff className="h-4 w-4" />
+                <MicOff className="h-4 w-4 text-red-500" />
                 <span>Stop Recording</span>
               </>
             ) : (
@@ -198,6 +217,7 @@ export default function PatternDescriptionInput({
           size="sm"
           onClick={onGenerateRegex}
           disabled={isGeneratingRegex || isProcessingAudio}
+          className="h-9 px-4 bg-primary text-primary-foreground hover:bg-primary/90"
         >
           {isGeneratingRegex ? (
             <>
@@ -209,8 +229,12 @@ export default function PatternDescriptionInput({
           )}
         </Button>
       </div>
-      {regexGenerationError && <div className="text-sm text-destructive">{regexGenerationError}</div>}
-      {voiceError && <div className="text-sm text-destructive">{voiceError}</div>}
+      {regexGenerationError && (
+        <div className="text-sm text-destructive bg-destructive/10 p-2 rounded mt-1">{regexGenerationError}</div>
+      )}
+      {voiceError && (
+        <div className="text-sm text-destructive bg-destructive/10 p-2 rounded mt-1">{voiceError}</div>
+      )}
     </div>
   );
 }

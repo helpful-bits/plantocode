@@ -15,7 +15,7 @@ export function FormatSelector() {
       >
         <option value="diff">Code Changes (Diff)</option>
         <option value="refactoring">Refactoring Plan</option>
-        <option value="path-finder">Path Finder</option>
+        <option value="path-finder">Path Finder</option> {/* Added Path Finder */}
         <option value="custom">Custom Format</option>
       </select>
       

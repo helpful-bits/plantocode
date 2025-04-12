@@ -8,7 +8,7 @@ export async function transcribeVoiceAction(request: {
   languageCode?: string;
 }): Promise<ActionState<string>> {
   try {
-    console.log(`Transcribing audio: ${request.blob.size} bytes, type: ${request.mimeType}`);
+    // console.log(`Transcribing audio: ${request.blob.size} bytes, type: ${request.mimeType}`); // Reduced logging
     
     if (!request.blob || request.blob.size === 0) {
       console.error("Empty audio blob received");
@@ -47,7 +47,7 @@ export async function transcribeVoiceAction(request: {
     form.append("response_format", "json");
     form.append("language", request.languageCode ?? "en");
 
-    console.log(`Sending audio file ${filename} to transcription API`);
+    // console.log(`Sending audio file ${filename} to transcription API`); // Reduced logging
     
     if (!process.env.GROQ_API_KEY) {
       console.error("GROQ_API_KEY is not defined");
@@ -91,7 +91,7 @@ export async function transcribeVoiceAction(request: {
       };
     }
 
-    console.log("Transcription successful");
+    // console.log("Transcription successful"); // Reduced logging
     return {
       isSuccess: true,
       message: "Voice transcribed successfully",
