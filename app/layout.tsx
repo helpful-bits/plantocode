@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { FormatProvider } from "@/lib/contexts/format-context";
 import { ProjectProvider } from "@/lib/contexts/project-context";
+import { DatabaseProvider } from "@/lib/contexts/database-context";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -27,11 +28,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <ProjectProvider>
-            <FormatProvider>
-              {children}
-            </FormatProvider>
-          </ProjectProvider>
+          <DatabaseProvider>
+            <ProjectProvider>
+              <FormatProvider>
+                {children}
+              </FormatProvider>
+            </ProjectProvider>
+          </DatabaseProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
 import { OutputFormat } from "@/types";
+import { useDatabase } from "./database-context";
 
 interface FormatContextType {
   outputFormat: OutputFormat;
@@ -10,33 +11,61 @@ interface FormatContextType {
   setCustomFormat: (format: string) => void;
 }
 
-const FORMAT_KEY = "o1-pro-flow-format";
-const CUSTOM_FORMAT_KEY = "o1-pro-flow-custom-format";
+const FORMAT_KEY = "format";
+const CUSTOM_FORMAT_KEY = "custom-format";
+// Remove localStorage keys - they're no longer needed
 
 const FormatContext = createContext<FormatContextType | undefined>(undefined);
 
 export function FormatProvider({ children }: { children: ReactNode }) {
   const [outputFormat, setOutputFormatState] = useState<OutputFormat>("diff");
   const [customFormat, setCustomFormatState] = useState<string>("");
+  const { repository } = useDatabase();
 
-  // Load saved format on mount
+  // Load saved format from database
   useEffect(() => {
-    const savedFormat = localStorage.getItem(FORMAT_KEY) as OutputFormat;
-    const savedCustomFormat = localStorage.getItem(CUSTOM_FORMAT_KEY);
+    const loadFormatPreferences = async () => {
+      try {
+        // Load from database
+        const savedFormat = await repository.getCachedState("global", "global", FORMAT_KEY);
+        const savedCustomFormat = await repository.getCachedState("global", "global", CUSTOM_FORMAT_KEY);
+        
+        if (savedFormat) {
+          setOutputFormatState(savedFormat as OutputFormat);
+        }
+
+        if (savedCustomFormat) {
+          setCustomFormatState(savedCustomFormat);
+        }
+      } catch (e) {
+        console.error("Failed to load format preferences from database:", e);
+      }
+    };
     
-    if (savedFormat) setOutputFormatState(savedFormat);
-    if (savedCustomFormat) setCustomFormatState(savedCustomFormat);
-  }, []);
+    loadFormatPreferences();
+  }, [repository]);
 
-  const setOutputFormat = (format: OutputFormat) => {
+  const setOutputFormat = useCallback(async (format: OutputFormat) => {
     setOutputFormatState(format);
-    localStorage.setItem(FORMAT_KEY, format);
-  };
+    
+    try {
+      // Save to database
+      await repository.saveCachedState("global", "global", FORMAT_KEY, format);
+    } catch (e) {
+      console.error("Failed to save output format to database:", e);
+    }
+  }, [repository]);
 
-  const setCustomFormat = (format: string) => {
+  const setCustomFormat = useCallback(async (format: string) => {
     setCustomFormatState(format);
-    localStorage.setItem(CUSTOM_FORMAT_KEY, format);
-  };
+    
+    try {
+      // Save to database
+      await repository.saveCachedState("global", "global", CUSTOM_FORMAT_KEY, format);
+    } catch (e) {
+      console.error("Failed to save custom format to database:", e);
+    }
+  }, [repository]);
 
   return (
     <FormatContext.Provider value={{ outputFormat, customFormat, setOutputFormat, setCustomFormat }}>

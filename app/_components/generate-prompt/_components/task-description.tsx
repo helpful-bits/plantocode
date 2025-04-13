@@ -7,10 +7,14 @@ import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
 interface TaskDescriptionProps {
   taskDescription: string;
-  onChange: (value: string) => void;
+  onChange: (value: string) => void; // Callback for parent state update
+  onInteraction: () => void; // Callback to notify parent about interaction
 }
 
-export default function TaskDescriptionArea({ taskDescription, onChange }: TaskDescriptionProps) {
+export default function TaskDescriptionArea({
+  taskDescription,
+  onChange,
+  onInteraction }: TaskDescriptionProps) {
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
   const [isImproving, setIsImproving] = useState(false);
@@ -57,6 +61,7 @@ export default function TaskDescriptionArea({ taskDescription, onChange }: TaskD
       
       // Update parent state
       onChange(textarea.value);
+      onInteraction(); // Notify parent about interaction
       
       // Update cursor position
       const newPosition = selectionStart + newText.length;
@@ -76,6 +81,7 @@ export default function TaskDescriptionArea({ taskDescription, onChange }: TaskD
       const result = await improveSelectedTextAction(selectedText);
       if (result.isSuccess) {
         insertTextAtCursor(result.data);
+        // insertTextAtCursor already calls onChange and onInteraction
       }
       // Reset selection after improving
       setSelectionStart(textareaRef.current?.selectionStart || 0);
@@ -107,7 +113,10 @@ export default function TaskDescriptionArea({ taskDescription, onChange }: TaskD
         id="taskDescArea"
         className="border rounded bg-background text-foreground p-2 h-32 w-full"
         value={taskDescription}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          onInteraction(); // Notify parent about interaction
+        }}
         onSelect={handleSelect}
         placeholder="Describe what changes you want to make..."
       />

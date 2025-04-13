@@ -9,7 +9,8 @@ import { Mic, MicOff, Loader2 } from "lucide-react";
 
 interface PatternDescriptionInputProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string) => void; // Updates parent state
+  onInteraction: () => void; // Notifies parent of user interaction
   onGenerateRegex: () => void;
   isGeneratingRegex: boolean;
   regexGenerationError: string;
@@ -20,6 +21,7 @@ interface PatternDescriptionInputProps {
 export default function PatternDescriptionInput({
   value,
   onChange,
+  onInteraction,
   onGenerateRegex,
   isGeneratingRegex,
   regexGenerationError,
@@ -36,8 +38,9 @@ export default function PatternDescriptionInput({
     const currentText = textareaRef.current?.value || '';
     const updatedText = (currentText ? currentText + " " + text : text).trim();
     onChange(updatedText);
+    onInteraction(); // Notify parent about interaction
     setCanRevertVoice(false); // Once new text is added, revert is less meaningful unless specifically tracked
-  }, [onChange]);
+  }, [onChange, onInteraction]);
 
   const handleCorrectionComplete = useCallback(() => {
     setCanRevertVoice(true);
@@ -102,6 +105,7 @@ export default function PatternDescriptionInput({
       }
 
       onChange(textarea.value); // Update parent state
+      onInteraction(); // Notify parent about interaction
 
       const newPosition = selectionStart + newText.length;
       textarea.setSelectionRange(newPosition, newPosition);
@@ -120,6 +124,7 @@ export default function PatternDescriptionInput({
       const result = await improvePatternDescriptionAction(selectedText, codebaseStructure);
       if (result.isSuccess) {
         insertTextAtCursor(result.data);
+        // insertTextAtCursor already calls onChange and onInteraction
       }
       // Reset selection after improving
       setSelectionStart(textareaRef.current?.selectionStart || 0);
@@ -171,7 +176,10 @@ export default function PatternDescriptionInput({
         ref={textareaRef}
         value={value}
         onSelect={handleSelect}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          onInteraction(); // Notify parent about interaction
+        }}
         placeholder="Enter your description here..."
         className="resize-y min-h-[120px] bg-background/80"
       />
@@ -205,7 +213,11 @@ export default function PatternDescriptionInput({
             <Button
               variant="link"
               size="sm"
-              onClick={() => { revertToRaw(); setCanRevertVoice(false); }}
+              onClick={() => {
+                revertToRaw();
+                setCanRevertVoice(false);
+                onInteraction(); // Notify parent about interaction
+              }}
               className="text-muted-foreground justify-start p-0 h-auto text-xs"
             >
               Revert to raw transcription

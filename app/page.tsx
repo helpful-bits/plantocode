@@ -4,8 +4,24 @@ import { Suspense } from "react";
 import { ApplyChangesForm } from "./_components/apply-changes/apply-changes-form";
 import GeneratePrompt from "./_components/generate-prompt/generate-prompt-root";
 import { FormatSelector } from "@/components/ui/format-selector";
+import { useDatabase } from "@/lib/contexts/database-context";
 
 export default function Home() {
+  const { isInitialized } = useDatabase();
+  
+  // Show a loading indicator while the database is initializing
+  if (!isInitialized) {
+    return (
+      <main className="container mx-auto py-8">
+        <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>
+        <div className="flex justify-center items-center h-[50vh] flex-col gap-4">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-center text-foreground">Initializing database...</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>

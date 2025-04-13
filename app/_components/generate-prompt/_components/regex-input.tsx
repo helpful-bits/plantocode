@@ -11,6 +11,7 @@ interface RegexInputProps {
   onContentChange: (value: string) => void;
   titleRegexError?: string | null;
   contentRegexError?: string | null;
+  onInteraction: () => void; // Notify parent of interaction
   onClearPatterns?: () => void;
   isActive: boolean;
   onToggleActive: () => void;
@@ -23,6 +24,7 @@ export default function RegexInput({
   onContentChange,
   titleRegexError,
   contentRegexError,
+  onInteraction,
   onClearPatterns,
   isActive,
   onToggleActive,
@@ -35,7 +37,10 @@ export default function RegexInput({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onToggleActive}
+            onClick={() => {
+              onToggleActive();
+              onInteraction(); // Notify parent of interaction
+            }}
             className={`p-1 h-auto ${isActive ? "text-primary" : "text-muted-foreground"}`}
             title={isActive ? "Deactivate regex patterns" : "Activate regex patterns"}
           >
@@ -53,7 +58,10 @@ export default function RegexInput({
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={onClearPatterns}
+            onClick={() => {
+              if (onClearPatterns) onClearPatterns();
+              onInteraction(); // Notify parent of interaction
+            }}
             className="text-destructive hover:text-destructive flex items-center gap-1"
           >
             <X className="h-4 w-4" />
@@ -67,8 +75,11 @@ export default function RegexInput({
           <label htmlFor="titleRegex" className="font-medium text-foreground">Title Regex:</label>
           <Textarea 
             id="titleRegex" 
-            value={titleRegex} 
-            onChange={(e) => onTitleChange(e.target.value)} 
+            value={titleRegex}
+            onChange={(e) => {
+                onTitleChange(e.target.value);
+                onInteraction(); // Notify parent of interaction
+            }}
             placeholder="Regex for file path..." 
             className={`h-20 font-mono text-sm ${!isActive ? "opacity-60" : ""}`} 
           />
@@ -80,8 +91,11 @@ export default function RegexInput({
           <label htmlFor="contentRegex" className="font-medium text-foreground">Content Regex:</label>
           <Textarea 
             id="contentRegex" 
-            value={contentRegex} 
-            onChange={(e) => onContentChange(e.target.value)} 
+            value={contentRegex}
+            onChange={(e) => {
+                onContentChange(e.target.value);
+                onInteraction(); // Notify parent of interaction
+            }}
             placeholder="Regex for file content..." 
             className={`h-20 font-mono text-sm ${!isActive ? "opacity-60" : ""}`} 
           />
