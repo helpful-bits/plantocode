@@ -135,10 +135,8 @@ export default function GeneratePromptForm() {
 
   // Function to be called when any form input/selection changes
   const handleUserInteraction = useCallback(() => {
-    if (activeSessionId) {
-      console.log("User interaction detected, clearing active session ID");
-      handleSetActiveSessionId(null); // Clear active session ID on interaction
-    }
+    // Previously, this function cleared the activeSessionId on any interaction.
+    // This behavior is removed to allow users to modify a loaded session without deselecting it immediately.
   }, [activeSessionId, handleSetActiveSessionId]);
 
   useEffect(() => {
@@ -201,40 +199,81 @@ export default function GeneratePromptForm() {
 
   // Save file selections whenever allFilesMap changes
   useEffect(() => {
-    if (projectDirectory && Object.keys(allFilesMap).length > 0) { // Only save if there are files
-      const includedPaths = Object.values(allFilesMap)
-        .map(f => f.path);
-      const excludedPaths = Object.values(allFilesMap)
-        .filter(f => f.forceExcluded)
-        .map(f => f.path);
+    // Debounce file selection saving
+    const timerId = setTimeout(async () => {
+      // Only proceed if projectDirectory is set and allFilesMap has data
+      if (projectDirectory && Object.keys(allFilesMap).length > 0) {
+        // Extract the lists based on the current state of allFilesMap
+        const includedPaths = Object.values(allFilesMap)
+          .filter(f => f.included) // Save all that are currently checked as included
+          .map(f => f.path);
+        const excludedPaths = Object.values(allFilesMap)
+          .filter(f => f.forceExcluded) // Save all that are currently checked as forceExcluded
+          .map(f => f.path);
 
-      // Debounce file selection saving
-      const timerId = setTimeout(async () => {
         try {
-          const saveOperations = [
-            saveCachedState(INCLUDED_FILES_KEY, JSON.stringify(includedPaths)).catch(err => {
-              console.error(`Error saving included files:`, err);
-              return null;
-            }),
-            saveCachedState(FORCE_EXCLUDED_FILES_KEY, JSON.stringify(excludedPaths)).catch(err => {
-              console.error(`Error saving excluded files:`, err);
-              return null;
-            })
-          ];
-          
-          await Promise.all(saveOperations);
-          
-          if (!saveOperations.includes(null)) {
-            console.log("Successfully saved file selections");
+          if (activeSessionId) {
+            // --- Active session context ---
+            console.log(`Active session (${activeSessionId}): Updating session file selections in DB.`);
+            // Fetch the session data to ensure we have the latest full state
+            const currentSession = await repository.getSession(activeSessionId);
+
+            if (currentSession) {
+              // Create the updated session object, merging new file lists
+              const updatedSession: Session = {
+                ...currentSession, // Preserve all existing fields
+                includedFiles: includedPaths, // Update with current included files
+                forceExcludedFiles: excludedPaths, // Update with current force-excluded files
+                updatedAt: Date.now(), // Update timestamp - Important for ordering/tracking
+              };
+              // Save the modified session object back to the database
+              await repository.saveSession(updatedSession);
+              console.log(`Successfully updated session ${activeSessionId} file selections.`);
+            } else {
+              // Session ID exists but session data couldn't be fetched - might have been deleted elsewhere
+              console.warn(`Active session ${activeSessionId} not found during file selection update. Saving selections to cache instead.`);
+              // Fallback: Save selections individually to the cache
+               await Promise.all([
+                 saveCachedState(INCLUDED_FILES_KEY, JSON.stringify(includedPaths)),
+                 saveCachedState(FORCE_EXCLUDED_FILES_KEY, JSON.stringify(excludedPaths))
+               ]);
+               console.log("Saved file selections to cache as fallback.");
+            }
+          } else {
+            // --- No active session context ---
+            console.log("No active session: Saving file selections to individual cache keys.");
+            // Save selections individually using the dedicated cache keys
+             await Promise.all([
+               saveCachedState(INCLUDED_FILES_KEY, JSON.stringify(includedPaths)),
+               saveCachedState(FORCE_EXCLUDED_FILES_KEY, JSON.stringify(excludedPaths))
+             ]);
+             console.log("Successfully saved file selections to cache.");
           }
         } catch (error) {
           console.error("Error saving file selections:", error);
+          // Optionally show error to user
+          // setIsError(true);
+          // setError("Failed to save file selections.");
         }
-      }, 500);
-      
-      return () => clearTimeout(timerId);
-    }
-  }, [allFilesMap, projectDirectory, outputFormat, saveCachedState]);
+      }
+       else {
+         // Log why saving is skipped
+         // if (!projectDirectory) console.log("Skipping file selection save: No project directory."); // Can be noisy
+         // if (Object.keys(allFilesMap).length === 0) console.log("Skipping file selection save: No files loaded."); // Can be noisy
+      }
+    }, 750); // Increased debounce slightly
+
+    // Cleanup function to clear the timeout if the component unmounts or dependencies change
+    return () => clearTimeout(timerId);
+
+  // Dependencies for the effect hook
+  }, [
+      allFilesMap,          // Trigger effect when file selections change
+      projectDirectory,     // Needed for context and repository calls
+      activeSessionId,      // Crucial for deciding save logic
+      repository,           // Needed for database operations
+      saveCachedState       // The save function itself (stable ref likely)
+  ]);
 
   // Define handleLoadFiles before checkActiveSessionId useEffect
   const handleLoadFiles = useCallback(async (dir?: string) => {
@@ -268,34 +307,46 @@ export default function GeneratePromptForm() {
         return;
       }
 
-        // **Important:** Only load file selections from cache if NOT restoring an active session.
-        // If an active session is being restored, its file selections will be applied later.
-        let fileSelectionsToApply: { included: string[]; excluded: string[] } | null = null;
+      // **Important:** Only load file selections from cache if NOT restoring an active session.
+      // If an active session is being restored, its file selections will be applied later by applySessionState.
+      let fileSelectionsToApply: { included: Set<string>; excluded: Set<string> } | null = null;
 
-        if (!activeSessionId) { // Only load from cache if no active session
-            try {
-                const savedIncludedFilesStr = await repository.getCachedState(directory, outputFormat, INCLUDED_FILES_KEY);
-                const savedForceExcludedStr = await repository.getCachedState(directory, outputFormat, FORCE_EXCLUDED_FILES_KEY);
-                fileSelectionsToApply = {
-                    included: savedIncludedFilesStr ? JSON.parse(savedIncludedFilesStr) : [],
-                    excluded: savedForceExcludedStr ? JSON.parse(savedForceExcludedStr) : []
-                };
-            } catch (e) {
-                console.warn("Failed to parse saved files from cache:", e);
-            }
+      // Only attempt to load cached selections if no active session ID is present *during this load operation*
+      // Note: `activeSessionId` state might update later, but we check its value *now*.
+      if (!activeSessionId) {
+        console.log(`No active session ID found for ${directory}/${outputFormat}, loading cached file selections.`);
+        try {
+          const savedIncludedFilesStr = await repository.getCachedState(directory, outputFormat, INCLUDED_FILES_KEY);
+          const savedForceExcludedStr = await repository.getCachedState(directory, outputFormat, FORCE_EXCLUDED_FILES_KEY);
+
+          const included = savedIncludedFilesStr ? JSON.parse(savedIncludedFilesStr) : [];
+          const excluded = savedForceExcludedStr ? JSON.parse(savedForceExcludedStr) : [];
+
+          fileSelectionsToApply = {
+            included: new Set(Array.isArray(included) ? included : []),
+            excluded: new Set(Array.isArray(excluded) ? excluded : []),
+          };
+          console.log("Loaded cached selections:", fileSelectionsToApply);
+        } catch (e) {
+          console.warn("Failed to parse saved files from cache:", e);
         }
+      } else {
+        console.log(`Active session ID (${activeSessionId}) exists for ${directory}/${outputFormat}, skipping load of cached file selections. Session restore will handle selections.`);
+      }
 
-        // Apply saved selections to the newly loaded file list
+      // Initialize the new files map
       const newFilesMap: FilesMap = {};
-      const savedIncludedFiles = fileSelectionsToApply?.included || [];
-      const savedForceExcluded = fileSelectionsToApply?.excluded || [];
+      const savedIncludedSet = fileSelectionsToApply?.included ?? new Set();
+      const savedExcludedSet = fileSelectionsToApply?.excluded ?? new Set();
       
       Object.entries(result.data || {}).forEach(([filePath, content]) => {
+        const isExcluded = savedExcludedSet.has(filePath);
+        const isIncluded = savedIncludedSet.has(filePath) && !isExcluded;
         newFilesMap[filePath] = {
           path: filePath,
           size: new Blob([content as string]).size,
-          forceExcluded: savedForceExcluded.includes(filePath),
-          included: savedIncludedFiles.includes(filePath) && !savedForceExcluded.includes(filePath),
+          forceExcluded: isExcluded,
+          included: isIncluded,
         };
       });
       setFileContentsMap(result.data || {}); // Store contents separately
@@ -386,7 +437,7 @@ export default function GeneratePromptForm() {
   const handleTaskChange = (value: string) => {
     // Always update local state immediately
     setTaskDescription(value);
-      handleUserInteraction(); // Clear active session ID
+    // Do not clear active session ID automatically on input change
     
     // Immediately save the task description to the database
     if (projectDirectory) {
@@ -419,53 +470,46 @@ export default function GeneratePromptForm() {
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
-    handleUserInteraction();
     // Don't clear active session ID automatically
   };
 
   const handlePastedPathsChange = (value: string) => {
     setPastedPaths(value);
-    handleUserInteraction();
     // Don't clear active session ID automatically
   };
 
   const handlePatternDescriptionChange = (value: string) => {
     setPatternDescription(value);
-    handleUserInteraction();
     // Don't clear active session ID automatically
   };
 
   const handleTitleRegexChange = (value: string) => {
     setTitleRegex(value);
-    handleUserInteraction();
     // Don't clear active session ID automatically
   };
 
   const handleContentRegexChange = (value: string) => {
     setContentRegex(value);
-    handleUserInteraction();
     // Don't clear active session ID automatically
   };
 
   const handleClearPatterns = useCallback(() => {
-    if (!titleRegex && !contentRegex) return; // No change if already empty
     setTitleRegex("");
     setContentRegex("");
     setTitleRegexError(null);
     setContentRegexError(null);
-    handleUserInteraction();
-  }, [titleRegex, contentRegex, handleUserInteraction]);
+    // Don't clear active session ID automatically
+  }, []);
 
   const handleToggleRegexActive = useCallback(() => {
     const newValue = !isRegexActive;
     setIsRegexActive(newValue);
-    handleUserInteraction();
     // Don't clear active session ID automatically
-  }, [isRegexActive, handleUserInteraction]);
+  }, [isRegexActive]);
 
   // Memoized calculation for files displayed in the browser
   const displayedFiles = useMemo(() => {
-     // Create a copy before sorting to avoid mutating the state directly
+    // Create a copy before sorting to avoid mutating the state directly
     let baseFiles = Object.values({ ...allFilesMap }).sort((a, b) => a.path.localeCompare(b.path));
 
     // 1. Filter by searchTerm
@@ -575,10 +619,11 @@ export default function GeneratePromptForm() {
   const handleCodebaseStructureChange = useCallback((value: string) => {
     setCodebaseStructure(value);
     handleUserInteraction(); // Clear active session ID
-  }, [handleUserInteraction]);
+  }, []); // Remove handleUserInteraction dependency as it no longer does anything relevant here
 
   // Update allFilesMap state from child components (FileBrowser, PastePaths)
-  const handleFilesMapChange = useCallback((newMap: FilesMap) => {    setAllFilesMap(newMap);
+  const handleFilesMapChange = useCallback((newMap: FilesMap) => {
+    setAllFilesMap(newMap);
   }, []);
 
   const handleGenerate = async () => {
@@ -826,7 +871,7 @@ ${taskDescription}
   const applySessionState = useCallback(async (session: Session) => {
     console.log("Applying session state:", session.name);
     setTaskDescription(session.taskDescription ?? ""); // Use default value if null/undefined
-    setSearchTerm(session.searchTerm);
+    setSearchTerm(session.searchTerm ?? ""); // Ensure searchTerm is also handled
     setPastedPaths(session.pastedPaths);
     setPatternDescription(session.patternDescription);
     setTitleRegex(session.titleRegex);
@@ -839,7 +884,7 @@ ${taskDescription}
       setCustomFormat((session as any).customFormat);
     }
     
-    // Set active session ID internally, parent will handle saving via callback
+    // Set active session ID locally. The SessionManager already called the parent setter.
     setActiveSessionId(session.id);
     
     // Update file selections based on the loaded session
@@ -1045,7 +1090,7 @@ ${taskDescription}
       {/* Voice Transcription */}
       <VoiceTranscription
         onTranscribed={(text) => {
-          handleUserInteraction(); // Transcription counts as interaction
+          // Transcription interaction does not clear session ID
           // Use functional update to avoid issues with stale state in closure
           setTaskDescription((prevTaskDesc) => {
             const updatedText = (prevTaskDesc ? prevTaskDesc + " " : "") + text;
