@@ -8,10 +8,11 @@ import { useProject } from "@/lib/contexts/project-context";
 
 interface CodebaseStructureProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string) => void; // Callback for parent state update
+  onInteraction: () => void; // Callback to notify parent about interaction
 }
 
-export default function CodebaseStructure({ value, onChange }: CodebaseStructureProps) {
+export default function CodebaseStructure({ value, onChange, onInteraction }: CodebaseStructureProps) {
   const { projectDirectory } = useProject();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -28,6 +29,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
   │   └── types/       # TypeScript types
   └── tests/         # Test files`;
     onChange(example);
+    onInteraction(); // Notify parent about interaction
   };
 
   const handleGenerateStructure = async () => {
@@ -39,6 +41,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
       if (tree) {
         onChange(tree);
         setIsExpanded(true); // Show the generated tree
+        onInteraction(); // Notify parent about interaction
       }
     } catch (error) {
       console.error('Failed to generate directory tree:', error);

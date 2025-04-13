@@ -7,10 +7,15 @@ import { Mic, MicOff, Loader2 } from "lucide-react";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
+  onInteraction: () => void; // Notify parent of interaction
   foundFiles?: string[];
 }
 
-export default function VoiceTranscription({ onTranscribed, foundFiles = [] }: VoiceTranscriptionProps) {
+export default function VoiceTranscription({
+  onTranscribed,
+  onInteraction,
+  foundFiles = []
+}: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
 
   // Check if correction API key is available
@@ -28,12 +33,15 @@ export default function VoiceTranscription({ onTranscribed, foundFiles = [] }: V
     rawText,
     startRecording,
     stopRecording,
-    revertToRaw
+    revertToRaw,
+    wrappedOnTranscribed
   } = useVoiceRecording({
     onTranscribed,
     // Only enable correction callback if API key exists
     onCorrectionComplete: correctionEnabled ? handleCorrectionComplete : undefined,
-    foundFiles
+    foundFiles,
+    // Pass the interaction handler
+    onInteraction
   });
 
   const handleToggleRecording = async () => {
@@ -74,7 +82,11 @@ export default function VoiceTranscription({ onTranscribed, foundFiles = [] }: V
 
         {correctionEnabled && showRevertOption && rawText && (
           <Button
-            onClick={() => { revertToRaw(); setShowRevertOption(false); }}
+            onClick={() => {
+              revertToRaw();
+              setShowRevertOption(false);
+              onInteraction(); // Reverting also counts as interaction
+            }}
             variant="link"
             size="sm"
             className="text-muted-foreground justify-start p-0 h-auto"

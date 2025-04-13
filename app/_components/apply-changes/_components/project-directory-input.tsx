@@ -1,8 +1,7 @@
 "use client";
 
 import { useProject } from "@/lib/contexts/project-context";
-import { useEffect, useState } from "react";
-import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants"; // Assuming constants are in lib/constants.ts
+import { useState } from "react";
 import ProjectDirectorySelector from "@/app/_components/generate-prompt/_components/project-directory-selector";
 
 export function ProjectDirectoryInput() {
@@ -10,13 +9,7 @@ export function ProjectDirectoryInput() {
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
   // This component now leverages ProjectDirectorySelector which handles directory selection safely
-  
-  useEffect(() => {
-    const savedDir = localStorage.getItem(GLOBAL_PROJECT_DIR_KEY);
-    if (savedDir) {
-      setProjectDirectory(savedDir);
-    }
-  }, [setProjectDirectory]);
+  // The ProjectProvider already handles loading the project directory
 
   // Handle directory change
   const handleDirectoryChange = (value: string) => {

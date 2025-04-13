@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { PROJECT_DIR_HISTORY_KEY, MAX_PROJECT_DIR_HISTORY } from "@/lib/constants";
-import { Trash2, FolderOpen, X, Check, AlertCircle } from "lucide-react";
+import { PROJECT_DIR_HISTORY_KEY, MAX_PROJECT_DIR_HISTORY, PROJECT_DIR_HISTORY_CACHE_KEY } from "@/lib/constants";
+import { Trash2, FolderOpen, X, Check, AlertCircle, RefreshCw } from "lucide-react";
 import { validateDirectoryAction } from "@/actions/validate-directory-action";
 import { useProject } from "@/lib/contexts/project-context";
 import { getDefaultPathForOS, normalizePath, getDirectoryName } from "@/lib/path-utils";
+import { useDatabase } from "@/lib/contexts/database-context";
 
 interface ProjectDirectorySelectorProps {
   value: string;
@@ -20,6 +21,7 @@ export default function ProjectDirectorySelector({
   onChange,
   isLoadingFiles,
 }: ProjectDirectorySelectorProps) {
+  const { repository } = useDatabase();
   const [history, setHistory] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState(value);
   const [showHistory, setShowHistory] = useState(false);
@@ -27,18 +29,30 @@ export default function ProjectDirectorySelector({
   const [validationStatus, setValidationStatus] = useState<{ isValid: boolean; message?: string } | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   
-  // Load history from localStorage on mount
+  // Load history from database on mount
   useEffect(() => {
-    try {
-      const storedHistory = localStorage.getItem(PROJECT_DIR_HISTORY_KEY);
-      if (storedHistory) {
-        setHistory(JSON.parse(storedHistory));
+    const loadHistory = async () => {
+      try {
+        // Load from database
+        const historyStr = await repository.getCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY);
+        
+        if (historyStr) {
+          setHistory(JSON.parse(historyStr));
+        }
+      } catch (e) {
+        console.error("Failed to load project directory history:", e);
+        
+        // Clear corrupted data
+        try {
+          await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+        } catch (err) {
+          console.error("Failed to clear corrupted history data:", err);
+        }
       }
-    } catch (e) {
-      console.error("Failed to load project directory history:", e);
-      localStorage.removeItem(PROJECT_DIR_HISTORY_KEY); // Clear corrupted data
-    }
-  }, []);
+    };
+    
+    loadHistory();
+  }, [repository]);
 
   // Update input value when the external value changes (e.g., loaded from context)
   useEffect(() => {
@@ -65,20 +79,30 @@ export default function ProjectDirectorySelector({
   }, []);
 
   // Add a directory to history
-  const addToHistory = useCallback((dir: string) => {
+  const addToHistory = useCallback(async (dir: string) => {
     if (!dir?.trim()) return; // Don't add empty strings
 
     setHistory((prevHistory) => {
       const newHistory = [dir, ...prevHistory.filter((item) => item !== dir)];
       const limitedHistory = newHistory.slice(0, MAX_PROJECT_DIR_HISTORY);
-      try {
-        localStorage.setItem(PROJECT_DIR_HISTORY_KEY, JSON.stringify(limitedHistory));
-      } catch (e) {
-        console.error("Failed to save project directory history:", e);
-      }
+      
+      // Save to database
+      (async () => {
+        try {
+          await repository.saveCachedState(
+            "global", 
+            "global", 
+            PROJECT_DIR_HISTORY_CACHE_KEY, 
+            JSON.stringify(limitedHistory)
+          );
+        } catch (e) {
+          console.error("Failed to save project directory history to database:", e);
+        }
+      })();
+      
       return limitedHistory;
     });
-  }, []);
+  }, [repository]);
 
   // Handle input change directly updating local state
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,7 +283,19 @@ export default function ProjectDirectorySelector({
     setHistory((prevHistory) => {
       const newHistory = prevHistory.filter(dir => dir !== dirToRemove);
       try {
-        localStorage.setItem(PROJECT_DIR_HISTORY_KEY, JSON.stringify(newHistory));
+        // Save to database
+        (async () => {
+          try {
+            await repository.saveCachedState(
+              "global", 
+              "global", 
+              PROJECT_DIR_HISTORY_CACHE_KEY, 
+              JSON.stringify(newHistory)
+            );
+          } catch (e) {
+            console.error("Failed to save updated project directory history to database:", e);
+          }
+        })();
       } catch (e) {
         console.error("Failed to save updated project directory history:", e);
       }
@@ -270,11 +306,36 @@ export default function ProjectDirectorySelector({
   const clearAllHistory = () => {
     setHistory([]);
     try {
-      localStorage.removeItem(PROJECT_DIR_HISTORY_KEY);
+      // Clear from database
+      (async () => {
+        try {
+          await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+        } catch (e) {
+          console.error("Failed to clear project directory history from database:", e);
+        }
+      })();
     } catch (e) {
       console.error("Failed to clear project directory history:", e);
     }
     setShowHistory(false);
+  };
+
+  // Handle reload files from disk
+  const handleReloadFiles = () => {
+    if (!inputValue?.trim()) {
+      setValidationStatus({
+        isValid: false,
+        message: "Please enter a directory path"
+      });
+      return;
+    }
+    
+    // Validate directory and then trigger the onChange to reload files
+    validateDirectory(inputValue).then(isValid => {
+      if (isValid) {
+        onChange(inputValue); // This will trigger a reload in the parent component
+      }
+    });
   };
 
   return (
@@ -326,11 +387,12 @@ export default function ProjectDirectorySelector({
           <Button
             type="button"
             variant="outline"
-            className="h-10 px-3"
-            onClick={() => validateDirectory(inputValue)}
+            className="h-10 px-3 flex gap-1 items-center"
+            onClick={handleReloadFiles}
             disabled={isLoadingFiles || isValidating || !inputValue}
           >
-            {isValidating ? "Checking..." : "Verify"}
+            <RefreshCw size={16} className="mr-1" />
+            {isValidating ? "Checking..." : "Reload"}
           </Button>
         </div>
         

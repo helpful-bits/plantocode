@@ -6,6 +6,7 @@ import path from "path"; // Import path for checking absolute paths
 interface PastePathsProps {
   pastedPaths: string;
   onChange: (value: string) => void;
+  onInteraction: () => void; // Notify parent of interaction
   foundFiles: { path: string }[]; // Array of file objects with path property
   allFilesMap: { [path: string]: any }; // Use the map of all project files
   setPastedPathsFound: Dispatch<SetStateAction<number>>;
@@ -15,6 +16,7 @@ interface PastePathsProps {
 export default function PastePaths({
   pastedPaths,
   onChange,
+  onInteraction,
   foundFiles,
   allFilesMap,
   setPastedPathsFound,
@@ -60,7 +62,10 @@ export default function PastePaths({
       <Textarea
         className="border rounded bg-background text-foreground p-2 h-32 font-mono text-sm"
         value={pastedPaths}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          onInteraction(); // Notify parent of interaction
+        }}
         placeholder={`# Project paths
 path/to/file1.ts
 path/to/file2.ts

@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils"; // Add cn utility for conditional class names
 import { ToggleLeft, ToggleRight, Info } from "lucide-react";
 import { formatPathForDisplay, normalizePath } from "@/lib/path-utils";
 import { useProject } from "@/lib/contexts/project-context";
+import { useDatabase } from "@/lib/contexts/database-context";
+import { useFormat } from "@/lib/contexts/format-context";
 
 interface FileInfo {
   path: string;
@@ -20,6 +22,7 @@ type FilesMap = { [path: string]: FileInfo };
 interface FileBrowserProps {
   displayedFiles: FileInfo[]; // Files matching current filters (search, regex)
   allFilesMap: FilesMap; // All files keyed by path for quick lookup
+  onFilesMapChange: (newMap: FilesMap) => void; // Callback to update parent's allFilesMap
   searchTerm: string;
   onSearchChange: (value: string) => void; // For the search input itself
   setAllFilesMap: Dispatch<SetStateAction<FilesMap>>; // To update the master list
@@ -27,39 +30,63 @@ interface FileBrowserProps {
   contentRegex?: string;
   fileContentsMap?: { [key: string]: string };
   isRegexActive?: boolean; // Add new prop for regex active state
+  onInteraction: () => void; // Notify parent of interaction
 }
 
-// LocalStorage key for the show only selected preference
-const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
+// Key for the show only selected preference
+const SHOW_ONLY_SELECTED_KEY = "show-only-selected";
 
 export default function FileBrowser({
   displayedFiles,
   allFilesMap,
+  onFilesMapChange,
   searchTerm,
   onSearchChange,
   setAllFilesMap,
   titleRegex = "", // Prop kept for potential future use or context display
+  onInteraction,
   contentRegex = "",
   isRegexActive = true // Default to true for backward compatibility
 }: FileBrowserProps) {
   
   const { projectDirectory } = useProject();
+  const { repository } = useDatabase();
+  const { outputFormat } = useFormat();
   const [showOnlySelected, setShowOnlySelected] = useState(false);
   const [showPathInfo, setShowPathInfo] = useState(false);
   
-  // Load showOnlySelected preference from localStorage on mount
+  // Load showOnlySelected preference from database on mount
   useEffect(() => {
-    const savedPreference = localStorage.getItem(SHOW_ONLY_SELECTED_KEY);
-    if (savedPreference !== null) {
-      setShowOnlySelected(savedPreference === "true");
-    }
-  }, []);
+    const loadPreference = async () => {
+      if (!projectDirectory) return;
+      
+      const savedPreference = await repository.getCachedState(
+        projectDirectory, 
+        outputFormat, 
+        SHOW_ONLY_SELECTED_KEY
+      );
+      
+      if (savedPreference !== null) {
+        setShowOnlySelected(savedPreference === "true");
+      }
+    };
+    
+    loadPreference();
+  }, [projectDirectory, repository, outputFormat]);
   
-  // Save showOnlySelected preference to localStorage when it changes
-  const toggleShowOnlySelected = () => {
+  // Save showOnlySelected preference to database when it changes
+  const toggleShowOnlySelected = async () => {
     const newValue = !showOnlySelected;
     setShowOnlySelected(newValue);
-    localStorage.setItem(SHOW_ONLY_SELECTED_KEY, String(newValue));
+    
+    if (projectDirectory) {
+      await repository.saveCachedState(
+        projectDirectory,
+        outputFormat,
+        SHOW_ONLY_SELECTED_KEY,
+        String(newValue)
+      );
+    }
   };
   
   const formatFileSize = (bytes: number) => {
@@ -69,16 +96,18 @@ export default function FileBrowser({
   };
 
   const handleToggleFile = (path: string) => {
-    setAllFilesMap(prevMap => {
-      const newMap = { ...prevMap };
-      if (newMap[path]) {
-        newMap[path] = { ...newMap[path], included: !newMap[path].included };
+    const newMap = { ...allFilesMap };
+    if (newMap[path]) {
+      newMap[path] = { ...newMap[path], included: !newMap[path].included };
+      // If we force include, ensure force exclude is false
+      if (newMap[path].included) {
+        newMap[path].forceExcluded = false;
       }
-      return newMap;
-    });
+    }
+    onFilesMapChange(newMap);
+    onInteraction(); // Notify parent
   };
-
-  const handleToggleForceExclude = (path: string) => {
+   const handleToggleForceExclude = (path: string) => {
     setAllFilesMap(prevMap => {
       const newMap = { ...prevMap };
       if (newMap[path]) {
@@ -90,22 +119,25 @@ export default function FileBrowser({
           included: forceExcluded ? false : currentFile.included, // Force exclude overrides include
         };
       }
+      onFilesMapChange(newMap); // Update parent state
+      onInteraction(); // Notify parent
       return newMap;
     });
   };
 
   const handleBulkToggle = (include: boolean) => {
-    setAllFilesMap(prevMap => {
-      const newMap = { ...prevMap };
+    const newMap = { ...allFilesMap };
       displayedFiles.forEach(file => {
+        // If including, only include if not force excluded
+        // If excluding, always set included to false
         newMap[file.path] = {
           ...newMap[file.path],
-          included: include && !newMap[file.path].forceExcluded
+          included: include ? !newMap[file.path].forceExcluded : false
         };
       });
-      
-      return newMap;
-    });
+
+      onFilesMapChange(newMap);
+      onInteraction();
   };
 
   // Filter files to show only selected if toggle is active
@@ -172,6 +204,7 @@ export default function FileBrowser({
             placeholder="Search files..."
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
+            onInput={onInteraction} // Also trigger interaction on input
             aria-label="Search files"
           />
           {displayedFiles.length > 0 && (
