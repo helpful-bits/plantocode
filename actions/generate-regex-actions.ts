@@ -1,10 +1,7 @@
 "use server";
-import { callAnthropicAPI } from "@/lib/anthropic";
+import { callAnthropicAPI, AnthropicResponse } from "@/lib/anthropic";
 import { ActionState } from "@/types";
 
-/**
- * Validates if a string is a valid JavaScript regular expression.
- */
 function isValidRegex(pattern: string): boolean {
   try {
     new RegExp(pattern);
@@ -15,18 +12,15 @@ function isValidRegex(pattern: string): boolean {
 }
 export async function generateRegexPatternsAction(
   description: string,
-  directoryTree?: string
+  directoryTree?: string,
 ): Promise<ActionState<{ titleRegex?: string; contentRegex?: string }>> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { isSuccess: false, message: "Anthropic API key not configured." };
-  }
   if (!description?.trim()) {
     return { isSuccess: false, message: "Pattern description cannot be empty." };
   }
 
   try {
-    // Add context from the project structure if available
     let structureContext = "";
+    // Add context from the project structure if available
     if (directoryTree && directoryTree.trim()) {
       structureContext = `
 To help with generating more accurate regex patterns, here is the current project directory structure:
@@ -38,10 +32,9 @@ Consider this structure when creating patterns to match files in the appropriate
 `;
     }
 
-    const payload = {
-      max_tokens: 1024, // Increased max_tokens to allow for longer regex strings
-      messages: [
-        {
+    const payload: { messages: { role: string; content: string }[], max_tokens: number } = {
+      max_tokens: 1024,
+      messages: [{
           role: "user",
           content: `Based on the following description of file patterns, generate appropriate JavaScript-compatible regular expressions for matching file paths (filenames/titles) and file content.${structureContext}
 
@@ -49,10 +42,10 @@ Description: "${description}"
 
 Provide the output ONLY as a JSON object with the keys "titleRegex" and "contentRegex". If a pattern is not applicable or cannot be generated for a category, omit the key or set its value to an empty string. Do not include any explanatory text outside the JSON object. Escaped backslashes are needed for JSON strings containing regex.
 Output *only* the raw JSON object, without any markdown formatting (like \`\`\`json).
-IMPORTANT: Do NOT use inline flags like (?i) within the regex patterns. Standard JavaScript RegExp syntax only.
+IMPORTANT: Do NOT use inline flags like (?i) or lookarounds within the regex patterns. Standard, widely compatible JavaScript RegExp syntax only.
 Example for "Find all TypeScript files in components folder":
 {
-  "titleRegex": "^components/.*\\.tsx?$",
+  "titleRegex": "^components\\/.*\\\\.tsx?$",
   "contentRegex": ""
 }
 
@@ -72,12 +65,11 @@ Now, generate the JSON for the provided description.`,
         },
       ],
     };
-
     console.log("Sending payload to Anthropic for regex generation...");
 
-    const result = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await callAnthropicAPI(payload);
 
-    if (!result.isSuccess) {
+    if (!result.isSuccess || !result.data) {
       console.error("Anthropic API call failed:", result.message);
       return { isSuccess: false, message: result.message || "Failed to generate regex patterns via Anthropic" };
     }
@@ -97,38 +89,33 @@ Now, generate the JSON for the provided description.`,
 
       console.log("Cleaned JSON response string:", cleanedJsonResponse);
       const patterns = JSON.parse(cleanedJsonResponse);
-      console.log("Parsed patterns:", patterns);
 
-      // Validate the generated regex patterns
       const titleRegex = patterns.titleRegex || "";
       const contentRegex = patterns.contentRegex || "";
 
-      // Validate and return result directly from the callback
       if (titleRegex && !isValidRegex(titleRegex)) {
         throw new Error(`AI generated an invalid title regex: ${titleRegex}`);
       }
       if (contentRegex && !isValidRegex(contentRegex)) {
         throw new Error(`AI generated an invalid content regex: ${contentRegex}`);
       }
-
-      return { 
-        isSuccess: true, 
-        message: "Regex patterns generated successfully", 
+      return {
+        isSuccess: true,
+        message: "Regex patterns generated successfully",
         data: { titleRegex, contentRegex }
       };
     } catch (err: any) {
       console.error("Error parsing JSON response:", err, jsonResponse);
       let parseErrorMsg = `Failed to parse Anthropic response: ${err.message}`;
       if (err instanceof SyntaxError && err.message.includes("Unterminated string")) {
-        parseErrorMsg += ". The response might have been truncated due to token limits.";
       }
       return { isSuccess: false, message: parseErrorMsg };
     }
   } catch (error) {
     console.error("Error generating regex patterns:", error);
-    return { 
-      isSuccess: false, 
-      message: error instanceof Error ? error.message : "Failed to generate regex patterns" 
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Failed to generate regex patterns"
     };
   }
 }

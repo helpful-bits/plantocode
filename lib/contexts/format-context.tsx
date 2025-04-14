@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
 import { OutputFormat } from "@/types";
 import { useDatabase } from "./database-context";
 
-interface FormatContextType {
+interface FormatContextType { // Define interface for context type
   outputFormat: OutputFormat;
   customFormat: string;
   setOutputFormat: (format: OutputFormat) => void;
@@ -13,40 +13,52 @@ interface FormatContextType {
 
 const FORMAT_KEY = "format";
 const CUSTOM_FORMAT_KEY = "custom-format";
-// Remove localStorage keys - they're no longer needed
 
 const FormatContext = createContext<FormatContextType | undefined>(undefined);
 
 export function FormatProvider({ children }: { children: ReactNode }) {
   const [outputFormat, setOutputFormatState] = useState<OutputFormat>("diff");
   const [customFormat, setCustomFormatState] = useState<string>("");
-  const { repository } = useDatabase();
+  const { repository, isInitialized } = useDatabase(); // Use isInitialized
+  const loadedRef = useRef(false); // Reference to track if format preferences have been loaded
 
-  // Load saved format from database
   useEffect(() => {
-    const loadFormatPreferences = async () => {
-      try {
-        // Load from database
-        const savedFormat = await repository.getCachedState("global", "global", FORMAT_KEY);
-        const savedCustomFormat = await repository.getCachedState("global", "global", CUSTOM_FORMAT_KEY);
-        
-        if (savedFormat) {
-          setOutputFormatState(savedFormat as OutputFormat);
-        }
+    // Only load once when initialized and not already loaded
+    if (isInitialized && !loadedRef.current) {
+      const loadFormatPreferences = async () => {
+        console.log("[FormatContext] Attempting to load format preferences from DB");
+        try {
+          // Load global format settings from database
+          const savedFormat = await repository.getCachedState("global", "global", FORMAT_KEY);
+          const savedCustomFormat = await repository.getCachedState("global", "global", CUSTOM_FORMAT_KEY);
+          
+          if (savedFormat) {
+            setOutputFormatState(savedFormat as OutputFormat); // Correct type assertion
+            console.log("[FormatContext] Loaded format:", savedFormat);
+          }
 
-        if (savedCustomFormat) {
-          setCustomFormatState(savedCustomFormat);
+          if (savedCustomFormat) {
+            setCustomFormatState(savedCustomFormat);
+            console.log("[FormatContext] Loaded custom format"); // Log loaded format
+          }
+          
+          // Mark as loaded to prevent repeated loading
+          loadedRef.current = true;
+        } catch (e) {
+          // It's okay if we can't load
+          console.error("Failed to load format preferences from database:", e);
+          // Still mark as loaded to prevent repeated failing attempts
+          loadedRef.current = true;
         }
-      } catch (e) {
-        console.error("Failed to load format preferences from database:", e);
-      }
-    };
-    
-    loadFormatPreferences();
-  }, [repository]);
+      };
+      
+      loadFormatPreferences();
+    }
+  }, [repository, isInitialized]); // Dependencies
 
   const setOutputFormat = useCallback(async (format: OutputFormat) => {
     setOutputFormatState(format);
+    console.log("[FormatContext] Setting output format:", format);
     
     try {
       // Save to database
@@ -58,6 +70,7 @@ export function FormatProvider({ children }: { children: ReactNode }) {
 
   const setCustomFormat = useCallback(async (format: string) => {
     setCustomFormatState(format);
+    console.log("[FormatContext] Setting custom format");
     
     try {
       // Save to database

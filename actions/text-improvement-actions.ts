@@ -1,18 +1,14 @@
 "use server";
 
 import { ActionState } from "@/types";
-import { callAnthropicAPI } from "@/lib/anthropic";
+import { callAnthropicAPI, AnthropicResponse } from "@/lib/anthropic";
 
 export async function improveSelectedTextAction(selectedText: string): Promise<ActionState<string>> {
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return { isSuccess: false, message: "Anthropic API key not configured." };
-    }
-    
     const payload = {
-      messages: [{
-        role: "user",
-        content: `Please improve the following text to make it clearer (and grammatically correct) while EXACTLY preserving its formatting style, including:
+        messages: [{
+          role: "user",
+          content: `Please improve the following text to make it clearer (and grammatically correct) while EXACTLY preserving its formatting style, including:
 - All line breaks
 - All indentation
 - All bullet points and numbering
@@ -27,19 +23,17 @@ Here is the text to improve:
 ${selectedText}
 
 Return only the improved text without any additional commentary, keeping the exact same formatting as the original.`
-      }],
+        }]
     };
 
-    const result = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await callAnthropicAPI(payload);
 
-    if (!result.isSuccess) {
+    if (!result.isSuccess || !result.data) {
       return { isSuccess: false, message: result.message || "Failed to improve pattern description via API" };
     }
     
-    // Use result.data which is the string response
-    const improvedText = result.data || selectedText; // Fallback to original if empty response
+    const improvedText = result.data || selectedText;
 
-    // The API call was successful, return the (potentially improved) text
     return {
       isSuccess: true,
       message: "Text improved successfully",
@@ -56,11 +50,6 @@ Return only the improved text without any additional commentary, keeping the exa
 
 export async function improvePatternDescriptionAction(selectedText: string, directoryTree?: string): Promise<ActionState<string>> {
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return { isSuccess: false, message: "Anthropic API key not configured." };
-    }
-
-    // Add context from the project structure if available
     let structureContext = "";
     if (directoryTree && directoryTree.trim()) {
       structureContext = `
@@ -72,9 +61,9 @@ ${directoryTree}
     }
 
     const payload = {
-      messages: [{
-        role: "user",
-        content: `Please improve the following text description to make it clearer and more precise for generating file path and content regular expressions. Focus on clarifying file types, content keywords, folder structures, exclusions, and overall intent. Preserve the original language and general meaning.${structureContext}
+        messages: [{
+          role: "user",
+          content: `Please improve the following text description to make it clearer and more precise for generating file path and content regular expressions. Focus on clarifying file types, content keywords, folder structures, exclusions, and overall intent. Preserve the original language and general meaning.${structureContext}
 
 When improving the text:
 - Be specific about file extensions (e.g., .tsx, .md, .json)
@@ -89,16 +78,15 @@ Here is the text to improve:
 ${selectedText}
 ---
 Return ONLY the improved text without any additional commentary or formatting.`
-      }],
+        }]
     };
 
-    const result = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await callAnthropicAPI(payload);
 
-    if (!result.isSuccess) {
+    if (!result.isSuccess || !result.data) {
       return { isSuccess: false, message: result.message || "Failed to improve text via API" };
     }
 
-    // Use result.data or fallback to original text
     const improvedText = result.data || selectedText;
 
     return { isSuccess: true, message: "Pattern description improved successfully", data: improvedText };

@@ -1,75 +1,73 @@
 "use client";
 
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { X, ToggleLeft, ToggleRight } from "lucide-react";
 
 interface RegexInputProps {
   titleRegex: string;
   contentRegex: string;
-  onTitleChange: (value: string) => void;
-  onContentChange: (value: string) => void;
+  onTitleRegexChange: (value: string) => void;
+  onContentRegexChange: (value: string) => void;
   titleRegexError?: string | null;
   contentRegexError?: string | null;
-  onInteraction: () => void; // Notify parent of interaction
+  onInteraction?: () => void;
   onClearPatterns?: () => void;
-  isActive: boolean;
-  onToggleActive: () => void;
+  isRegexActive: boolean;
+  onRegexActiveChange: (value: boolean) => void;
 }
 
 export default function RegexInput({
   titleRegex,
   contentRegex,
-  onTitleChange,
-  onContentChange,
+  onTitleRegexChange,
+  onContentRegexChange,
   titleRegexError,
   contentRegexError,
-  onInteraction,
+  onInteraction = () => {},
   onClearPatterns,
-  isActive,
-  onToggleActive,
+  isRegexActive,
+  onRegexActiveChange
 }: RegexInputProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 bg-card p-5 rounded-lg shadow-sm border">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <label className="font-bold text-foreground">Regex Patterns:</label>
-          <Button
-            variant="ghost"
-            size="sm"
+          <label className="font-bold text-foreground">File Filtering (Regex):</label>
+          <button
+            type="button"
             onClick={() => {
-              onToggleActive();
-              onInteraction(); // Notify parent of interaction
+              onRegexActiveChange(!isRegexActive);
+              onInteraction();
             }}
-            className={`p-1 h-auto ${isActive ? "text-primary" : "text-muted-foreground"}`}
-            title={isActive ? "Deactivate regex patterns" : "Activate regex patterns"}
+            className={`p-1 h-auto ${isRegexActive ? "text-primary" : "text-muted-foreground"}`}
+            title={isRegexActive ? "Deactivate regex patterns" : "Activate regex patterns"}
           >
-            {isActive ? (
+            {isRegexActive ? (
               <ToggleRight className="h-5 w-5" />
             ) : (
               <ToggleLeft className="h-5 w-5" />
             )}
-          </Button>
+          </button>
           <span className="text-xs text-muted-foreground">
-            {isActive ? "Active" : "Inactive"}
+            {isRegexActive ? "Active" : "Inactive"}
           </span>
         </div>
-        {(titleRegex || contentRegex) && (
-          <Button 
-            variant="outline" 
-            size="sm" 
+        {(titleRegex.trim() || contentRegex.trim()) && (
+            <button
+            type="button"
             onClick={() => {
               if (onClearPatterns) onClearPatterns();
-              onInteraction(); // Notify parent of interaction
+              onInteraction();
             }}
-            className="text-destructive hover:text-destructive flex items-center gap-1"
+            className="text-destructive hover:text-destructive/80 flex items-center gap-1 h-7 text-xs px-2 rounded hover:bg-destructive/10"
+            title="Clear both regex patterns"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
             <span>Clear Patterns</span>
-          </Button>
+          </button>
         )}
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <label htmlFor="titleRegex" className="font-medium text-foreground">Title Regex:</label>
@@ -77,11 +75,13 @@ export default function RegexInput({
             id="titleRegex" 
             value={titleRegex}
             onChange={(e) => {
-                onTitleChange(e.target.value);
-                onInteraction(); // Notify parent of interaction
+              onTitleRegexChange(e.target.value);
+              onInteraction();
             }}
-            placeholder="Regex for file path..." 
-            className={`h-20 font-mono text-sm ${!isActive ? "opacity-60" : ""}`} 
+            placeholder="Regex for file path..."
+            className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
+            disabled={!isRegexActive}
+            aria-label="Title Regex"
           />
           {titleRegexError ? (
             <p className="text-xs text-destructive">{titleRegexError}</p>
@@ -92,12 +92,14 @@ export default function RegexInput({
           <Textarea 
             id="contentRegex" 
             value={contentRegex}
-            onChange={(e) => {
-                onContentChange(e.target.value);
-                onInteraction(); // Notify parent of interaction
+             onChange={(e) => {
+               onContentRegexChange(e.target.value);
+               onInteraction();
             }}
-            placeholder="Regex for file content..." 
-            className={`h-20 font-mono text-sm ${!isActive ? "opacity-60" : ""}`} 
+            placeholder="Regex for file content..."
+            className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
+            disabled={!isRegexActive}
+            aria-label="Content Regex"
           />
           {contentRegexError ? (
             <p className="text-xs text-destructive">{contentRegexError}</p>

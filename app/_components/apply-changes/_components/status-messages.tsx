@@ -1,5 +1,5 @@
 "use client";
-
+// Ensure type safety
 interface StatusMessagesProps {
   errorMessage: string;
   successMessage: string;
@@ -8,8 +8,8 @@ interface StatusMessagesProps {
 export function StatusMessages({ errorMessage, successMessage }: StatusMessagesProps) {
   return (
     <>
-      {errorMessage && <div className="text-destructive">{errorMessage}</div>}
-      {successMessage && <div className="text-green-500 dark:text-green-400">{successMessage}</div>}
+      {errorMessage && <div className="text-destructive bg-destructive/10 p-2 rounded break-words">{errorMessage}</div>}
+      {successMessage && <div className="text-green-600 dark:text-green-500 bg-green-500/10 p-2 rounded break-words">{successMessage}</div>} {/* Added break-words */}
     </>
   );
 } 

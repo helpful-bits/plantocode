@@ -2,15 +2,14 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { ActionState } from '@/types/action-types';
+import { ActionState } from '@/types';
 import { existsSync } from 'fs';
 
-/**
- * Validates if a directory exists and is accessible
- * @param directoryPath Path to the directory to validate
- * @returns An ActionState with isSuccess true if the directory exists and is accessible
- */
-export async function validateDirectoryAction(directoryPath: string): Promise<ActionState<{ exists: boolean, isAccessible: boolean, stats?: any }>> {
+export async function validateDirectoryAction(directoryPath: string): Promise<ActionState<{
+  exists: boolean;
+  isAccessible: boolean;
+  stats?: any;
+}>> {
   if (!directoryPath?.trim()) {
     return {
       isSuccess: false,
@@ -18,12 +17,11 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
       data: { exists: false, isAccessible: false }
     };
   }
-
   try {
-    // Resolve the path to handle relative paths correctly
+    console.log(`[Validate] Validating directory: ${directoryPath}`);
     const resolvedPath = path.resolve(directoryPath);
-    
-    // Check if path exists immediately (sync check first for better error handling)
+
+    // Check if path exists
     if (!existsSync(resolvedPath)) {
       return {
         isSuccess: false,
@@ -31,7 +29,7 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
         data: { exists: false, isAccessible: false }
       };
     }
-
+    
     // Check if it's actually a directory
     const stats = await fs.stat(resolvedPath);
     
@@ -43,60 +41,85 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
       };
     }
 
-    // Try to read directory contents to check if it's accessible
-    const files = await fs.readdir(resolvedPath);
+    // Check if directory can be read
+    try {
+      const files = await fs.readdir(resolvedPath);
+      
+      // Check for git repository
+      let isGitRepo = false;
+      try {
+        const gitStats = await fs.stat(path.join(resolvedPath, '.git'));
+        isGitRepo = gitStats.isDirectory();
+      } catch (gitError) {
+        // Not a git repository, which is fine
+      }
 
-    // Helpful message if directory is empty
-    if (files.length === 0) {
+      if (files.length === 0) {
+        return {
+          isSuccess: true,
+          message: "Directory is empty",
+          data: {
+            exists: true, 
+            isAccessible: true,
+            stats: {
+              lastModified: stats.mtime,
+              created: stats.birthtime,
+              isGitRepository: isGitRepo,
+              isEmpty: true
+            }
+          }
+        };
+      }
+
+      // Count regular files
+      let fileCount = 0;
+      let dirCount = 0;
+      
+      // Only count top-level items to avoid slow performance on large directories
+      for (const file of files) {
+        try {
+          const filePath = path.join(resolvedPath, file);
+          const fileStat = await fs.stat(filePath);
+          if (fileStat.isFile()) fileCount++;
+          if (fileStat.isDirectory()) dirCount++;
+        } catch (err) {
+          // Skip files we can't access
+        }
+      }
+      
+      const directoryStats = {
+        isGitRepository: isGitRepo,
+        lastModified: stats.mtime,
+        created: stats.birthtime,
+        isEmpty: false,
+        fileCount,
+        dirCount
+      };
+
+      let successMessage = isGitRepo 
+        ? "Git repository detected" 
+        : `Directory contains ${fileCount} files and ${dirCount} folders`;
+
       return {
         isSuccess: true,
-        message: "Directory exists but is empty. Files may not be loaded correctly.",
-        data: { 
+        message: successMessage,
+        data: {
           exists: true, 
           isAccessible: true,
-          stats: {
-            lastModified: stats.mtime,
-            created: stats.birthtime,
-            isGitRepository: false,
-            isEmpty: true
-          }
+          stats: directoryStats
         }
       };
+    } catch (readError) {
+      // Directory exists but can't be read (permission issue)
+      return {
+        isSuccess: false,
+        message: "Directory exists but cannot be read. Please check permissions.",
+        data: { exists: true, isAccessible: false }
+      };
     }
-
-    // Check if it's a git repository (presence of .git folder is a basic check)
-    let isGitRepo = false;
-    try {
-      const gitStats = await fs.stat(path.join(resolvedPath, '.git'));
-      isGitRepo = gitStats.isDirectory();
-    } catch (e) {
-      // Not a git repo or .git is not accessible, which is fine
-    }
-
-    // Basic stats - last modified and created dates
-    const directoryStats = {
-      lastModified: stats.mtime,
-      created: stats.birthtime,
-      isGitRepository: isGitRepo,
-      isEmpty: false,
-      fileCount: files.length
-    };
-
-    return {
-      isSuccess: true,
-      message: isGitRepo 
-        ? "Directory is a valid git repository" 
-        : "Directory exists and is accessible",
-      data: { 
-        exists: true, 
-        isAccessible: true,
-        stats: directoryStats
-      }
-    };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error validating directory:", error);
-    
-    // Determine if it's a "not found" error or "permission denied" error
+
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const isNotFound = errorMessage.includes('ENOENT');
     const isPermissionDenied = errorMessage.includes('EACCES') || errorMessage.includes('permission denied');
@@ -106,7 +129,7 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
       message: isNotFound 
         ? "Directory does not exist" 
         : (isPermissionDenied 
-            ? "Directory exists but cannot be accessed due to permissions" 
+            ? "Directory exists but cannot be accessed due to insufficient permissions" 
             : `Failed to access directory: ${errorMessage}`),
       data: { 
         exists: !isNotFound, 

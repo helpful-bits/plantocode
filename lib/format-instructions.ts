@@ -18,9 +18,5 @@ export async function getFormatInstructions(format: OutputFormat, customFormat: 
     return getPathFinderPrompt();
   }
 
-  if (format === "path-finder") {
-    return getPathFinderPrompt();
-  }
-  
-  return customFormat;
-} 
+  return customFormat || "Please process the task described below using the provided files.";
+}

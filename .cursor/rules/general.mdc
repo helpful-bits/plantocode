@@ -1,29 +1,38 @@
 # O1 Pro Flow Development Rules
-
 ## Language Models
 
-- **Anthropic:** Exclusively use `claude-3-7-sonnet-20250219` for all tasks requiring Anthropic models. Do not use other versions or models unless explicitly approved.
+- **Anthropic:** Exclusively use `claude-3-5-sonnet-20240620` for all tasks requiring Anthropic models. Do not use other versions or models unless explicitly approved.
 ## Code Structure & Best Practices
 
-- **Framework:** Next.js App Router (v15+) with React (v18+).
-- **State Management:** Utilize React Context for global state where appropriate (e.g., `ProjectContext`, `FormatContext`). For local state, use `useState`.
-- **Server Actions:** Place server actions in the `actions/` directory. Ensure they are clearly named and handle potential errors gracefully, returning an `ActionState` object.
+- **Framework:** Next.js App Router (v15.3.0) with React (v18.3.1).
+
+- **State Management:** Utilize React Context for global state where appropriate (via `lib/contexts/`). For local state, use React's `useState`.
+- **Server Actions:** Place server actions in the `actions/` directory with descriptive names (e.g., `voice-transcription-actions.ts`, `text-improvement-actions.ts`). Ensure they handle errors gracefully.
 - **Components:**
-    - Reusable UI components go in `components/ui/`. Leverage shadcn/ui components where possible.
-    - Page-specific or feature-specific components go under `app/_components/` or co-located with their routes if specific to a single page.
+    - Reusable UI components in `components/ui/`.
+    - Feature-specific components in `app/_components/` (e.g., `generate-prompt/`, `apply-changes/`).
     - Follow React best practices (composition, hooks, forwardRef, displayName).
-- **Utilities:** Place general utility functions in `lib/`. Domain-specific utilities can be in subdirectories (e.g., `lib/git-utils.ts`). Create helpers for repeated logic like API calls (`lib/anthropic.ts`).
-- **Hooks:** Custom hooks for shared component logic go in `hooks/` (e.g., `hooks/useVoiceRecording.ts`).
-- **Styling:** Use Tailwind CSS via `globals.css` and `tailwind.config.ts`. Use `cn` utility for merging classes.
-- **Prompts:** Define LLM prompts in the `prompts/` directory, separating them logically.
-- **Types:** Define shared types in `types/`. Component-specific props can be defined within the component file.
+- **Utilities:** General utility functions in `lib/` with domain-specific utilities in subdirectories:
+    - Database operations: `lib/db/` 
+    - File operations: `lib/file-utils.ts`, `lib/directory-tree.ts`
+    - Path handling: `lib/path-utils.ts`
+    - API clients: `lib/anthropic.ts`
+- **API Routes:** Implement API routes in `app/api/` using Next.js App Router structure, properly handling errors and returning well-structured responses for database interactions.
+- **Database:** Database operations via `lib/db/repository.ts` with setup in `lib/db/setup.ts`.
+- **Hooks:** Custom hooks in `hooks/` directory for shared component logic.
+- **Styling:** Tailwind CSS via `globals.css` and `tailwind.config.ts`. Use `clsx` and `tailwind-merge` utilities for merging classes.
+- **Prompts:** LLM prompts defined in `prompts/` directory (e.g., `refactoring-prompt.ts`, `path-finder-prompt.ts`).
+- **Types:** Define shared types in `types/`. Component-specific types defined within component files or `types/` as appropriate.
 - **Code Quality:**
     - Follow ESLint rules defined in `.eslintrc.json`.
     - Avoid code duplication; refactor common logic into hooks or utilities.
     - Ensure all code is production-ready: no placeholders, TODOs, or incomplete implementations.
     - Add comments only where necessary to explain complex logic.
 - **Package Manager:** Use `pnpm` for dependency management.
-
-## Workflow
+- **Error Handling:** For API routes and server actions, use proper error handling with descriptive error messages.
+- **Session Management:** Application state (form inputs, file selections) is managed via sessions stored in the database, specific to a project directory and output format. The UI should only allow interaction after a session is created or loaded. Changes within an active session are auto-saved.
+## Development Workflow
 
 - Ensure README.md is kept up-to-date with setup instructions and features.
+- Follow consistent naming conventions for files and functions throughout the codebase.
+- When implementing database operations, use the repository pattern from `lib/db/repository.ts`.

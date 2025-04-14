@@ -2,46 +2,38 @@
 import { Dispatch, SetStateAction, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import path from "path"; // Import path for checking absolute paths
+import { normalizePath } from "@/lib/path-utils"; // Import normalizePath
 
 interface PastePathsProps {
-  pastedPaths: string;
+  value: string;
   onChange: (value: string) => void;
-  onInteraction: () => void; // Notify parent of interaction
-  foundFiles: { path: string }[]; // Array of file objects with path property
-  allFilesMap: { [path: string]: any }; // Use the map of all project files
-  setPastedPathsFound: Dispatch<SetStateAction<number>>;
-  pastedPathsFound: number;
+  onParsePaths?: (paths: string[]) => void;
+  foundCount: number;
+  projectDirectory?: string;
+  warnings?: string[];
 }
 
 export default function PastePaths({
-  pastedPaths,
+  value,
   onChange,
-  onInteraction,
-  foundFiles,
-  allFilesMap,
-  setPastedPathsFound,
-  pastedPathsFound
+  onParsePaths,
+  foundCount,
+  projectDirectory,
+  warnings = []
 }: PastePathsProps) {
   useEffect(() => {
-    if (pastedPaths.trim()) { // Calculate whenever pastedPaths changes
-      const lines = pastedPaths
+    if (value.trim()) { // Calculate whenever value changes
+      const lines = value
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => !!l && !l.startsWith("#"));
       
-      // Count files that exist in the project
-      const available = Object.keys(allFilesMap);
-
-      const matched = lines.filter((p) => available.includes(p)).length;
-      
-      // External paths are those that aren't in the project
-      const externalPaths = lines.filter((p) => !available.includes(p));
-      
-      // Set the total number found (from project + external)
-      // This count is slightly approximate as external paths haven't been read yet
-      setPastedPathsFound(matched + externalPaths.length);
+      // Call onParsePaths if provided
+      if (onParsePaths) {
+        onParsePaths(lines);
+      }
     }
-  }, [pastedPaths, foundFiles, allFilesMap, setPastedPathsFound]);
+  }, [value, onParsePaths]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -52,19 +44,18 @@ export default function PastePaths({
             Supports project paths and external/absolute paths
           </span>
         </label>
-        {pastedPaths.trim() && (
+        {value.trim() && (
           <span className="text-sm font-medium bg-secondary text-secondary-foreground px-2 py-1 rounded">
-            {pastedPathsFound} path(s) specified
+            {foundCount} path(s) specified
           </span>
         )}
       </div>
 
       <Textarea
         className="border rounded bg-background text-foreground p-2 h-32 font-mono text-sm"
-        value={pastedPaths}
+        value={value}
         onChange={(e) => {
           onChange(e.target.value);
-          onInteraction(); // Notify parent of interaction
         }}
         placeholder={`# Project paths
 path/to/file1.ts
@@ -74,6 +65,14 @@ path/to/file2.ts
 /home/user/projects/other-project/src/main.ts
 ../other-project/src/components/Button.tsx`}
       />
+      
+      {warnings && warnings.length > 0 && (
+        <div className="text-amber-600 text-xs bg-amber-50 p-2 rounded">
+          {warnings.map((warning, i) => (
+            <p key={i}>⚠️ {warning}</p>
+          ))}
+        </div>
+      )}
       
       <div className="text-xs text-muted-foreground">
         <p>• You can use both paths within the project and external/absolute paths</p>

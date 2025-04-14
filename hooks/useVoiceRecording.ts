@@ -9,6 +9,7 @@ interface UseVoiceRecordingProps {
   onTranscribed: (text: string) => void;
   onCorrectionComplete?: (rawText: string, correctedText: string) => void;
   foundFiles?: string[];
+  languageCode?: string; // Add language code prop
   onInteraction?: () => void;
 }
 
@@ -20,12 +21,14 @@ interface VoiceRecordingState {
   correctedText: string | null;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
+  setLanguage: (lang: string) => void; // Add setter for language
   revertToRaw: () => void;
   wrappedOnTranscribed: (text: string) => void;
 }
 
 export function useVoiceRecording({
   onTranscribed,
+  languageCode: initialLanguageCode = 'en', // Default language
   onCorrectionComplete,
   foundFiles = [],
   onInteraction,
@@ -36,12 +39,13 @@ export function useVoiceRecording({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rawText, setRawText] = useState<string | null>(null);
+  const [language, setLanguage] = useState<string>(initialLanguageCode); // State for language
   const [correctedText, setCorrectedText] = useState<string | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingStartTimeRef = useRef<number | null>(null);
   const isStoppingRef = useRef<boolean>(false);
-  const foundFilesRef = useRef<string[]>(foundFiles);
+  const foundFilesRef = useRef<string[]>(foundFiles); // Keep foundFilesRef if needed
 
   const onTranscribedRef = useRef(onTranscribed);
   const onCorrectionCompleteRef = useRef(onCorrectionComplete);
@@ -98,17 +102,16 @@ export function useVoiceRecording({
 
   const handleTranscription = useCallback(async (blob: Blob): Promise<ActionState<string>> => {
     const actualMimeType = blob.type || (isSafari ? 'audio/mp4' : 'audio/webm');
-    return await transcribeVoiceAction({ blob, mimeType: actualMimeType });
-  }, [isSafari]);
+    return await transcribeVoiceAction({ blob, mimeType: actualMimeType, languageCode: language }); // Pass language
+  }, [isSafari, language]); // Add language dependency
 
-  const handleCorrection = useCallback(async (text: string): Promise<ActionState<string>> => {
-     const apiKeyExists = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS === 'true';
-
-     if (apiKeyExists && text.trim()) {
-         return await correctTaskDescriptionAction(text);
-     } else {
-        return { isSuccess: true, data: text, message: "Correction skipped." };
-     }
+  // Simplify the correction logic to always attempt to correct if text is provided
+  const handleCorrection = useCallback(async (text: string): Promise<ActionState<string>> => { // Added async keyword
+    if (text.trim()) {
+      return await correctTaskDescriptionAction(text);
+    } else {
+      return { isSuccess: true, data: text, message: "Empty text, correction skipped." };
+    }
   }, []);
 
   const processAudio = useCallback(async () => {
@@ -153,8 +156,7 @@ export function useVoiceRecording({
         
         currentRawText = transcriptionResult.data;
         setRawText(currentRawText);
-
-        const correctionResult = await handleCorrection(currentRawText);
+        const correctionResult = await handleCorrection(currentRawText); // Attempt correction
         let finalText = currentRawText;
         if (correctionResult.isSuccess && correctionResult.data) {
             finalText = correctionResult.data;
@@ -164,9 +166,9 @@ export function useVoiceRecording({
             setCorrectedText(currentRawText);
         }
 
-        onTranscribedRef.current(finalText);
-
-        if (onCorrectionCompleteRef.current && process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS === 'true' && correctionResult.isSuccess) {
+        onTranscribedRef.current(finalText); // Call original onTranscribed
+        
+        if (onCorrectionCompleteRef.current && correctionResult.isSuccess) { // Call correction complete callback
             onCorrectionCompleteRef.current(currentRawText, finalText);
         }
 
@@ -228,7 +230,7 @@ export function useVoiceRecording({
         if (!stream.active || !stream.getAudioTracks().length || stream.getAudioTracks()[0].readyState !== 'live') {
             cleanupMedia();
             throw new Error("No active audio input device detected or stream is dead.");
-        }
+        } // Check if stream is active
       } catch (err) {
         console.error("Error accessing media devices:", err);
         const permissionsError = err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
@@ -276,7 +278,7 @@ export function useVoiceRecording({
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording' && !isStoppingRef.current) {
           const currentRecorder = mediaRecorderRef.current;
           if (currentRecorder && currentRecorder.state === 'recording' && !isStoppingRef.current) {
-            stopRecording();
+            stopRecording(); // Stop recording if timeout reached
           }
         }
       }, 90000);
@@ -294,13 +296,13 @@ export function useVoiceRecording({
   const revertToRaw = useCallback(() => {
     if (rawText !== null) {
       onTranscribedRef.current(rawText);
-    }
+    } // Call onTranscribed with raw text
   }, [rawText]); 
 
   useEffect(() => {
+    // Cleanup function to stop recording and release resources
     return () => {
       console.log("Hook unmounting, ensuring cleanup.");
-      cleanupMedia();
     };
   }, [cleanupMedia]);
 
@@ -319,6 +321,7 @@ export function useVoiceRecording({
     correctedText,
     startRecording,
     stopRecording,
+    setLanguage, // Expose the language setter
     revertToRaw,
     wrappedOnTranscribed
   };

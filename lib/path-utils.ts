@@ -1,22 +1,25 @@
 /**
- * Path utilities for handling different operating systems
+ * Path utilities primarily for browser environment context
  */
-
-import path from "path";
+// Use basic string manipulation for browser compatibility
 
 /**
- * Gets a best-guess default path based on the current operating system
- * @param username Optional username for the path
+ * Gets a best-guess default path based on the browser's platform info
+ * @param username Optional username hint
  * @returns A default path appropriate for the detected OS
  */
 export function getDefaultPathForOS(username?: string): string {
   // Default username if not provided
   const user = username || '';
+
+  if (typeof navigator === 'undefined') {
+    return process.cwd(); // Fallback for server-side
+  }
   
   // Check for operating system
-  if (navigator.platform.includes('Win')) {
+  if (typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('WIN')) {
     return `C:\\Users\\${user}\\`;
-  } else if (navigator.platform.includes('Mac')) {
+  } else if (typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC')) {
     return `/Users/${user}/`;
   } else {
     // Linux or other Unix-like OS
@@ -25,25 +28,45 @@ export function getDefaultPathForOS(username?: string): string {
 }
 
 /**
+ * Formats a file path for display by making it relative to the base directory
+ * @param filePath The file path to format
+ * @param baseDir Optional base directory to make path relative to
+ * @returns A formatted path suitable for display in the UI
+ */
+export function formatPathForDisplay(filePath: string, baseDir?: string): string {
+  return normalizePath(filePath, baseDir);
+}
+
+/**
  * Normalizes file paths to ensure consistent handling throughout the application
- * 
+ * using forward slashes and handling relative paths against a base directory.
+ *
  * @param filePath The file path to normalize
  * @param baseDir Optional base directory to make paths relative to (if applicable)
- * @param addTrailingSlash Whether to add a trailing slash if missing (default: false)
  * @returns A normalized path for consistent comparison
  */
-export function normalizePath(filePath: string, baseDir?: string, addTrailingSlash: boolean = false): string {
+export function normalizePath(filePath: string, baseDir?: string, addTrailingSlash = false): string {
   if (!filePath) return filePath;
   
   let normalizedPath = filePath;
   
-  // For absolute paths that should be relative to the base directory
-  if (baseDir && path.isAbsolute(normalizedPath) && normalizedPath.startsWith(baseDir)) {
-    normalizedPath = path.relative(baseDir, normalizedPath);
-  }
-  
-  // Use forward slashes for consistency across platforms
+  // Convert backslashes to forward slashes
   normalizedPath = normalizedPath.replace(/\\/g, '/');
+
+  // If baseDir is provided, try to make the path relative
+  if (baseDir) {
+    // Normalize baseDir as well
+    let normBaseDir = baseDir.replace(/\\/g, '/');
+    // Ensure baseDir ends with a slash for accurate startsWith comparison
+    if (!normBaseDir.endsWith('/')) {
+      normBaseDir += '/';
+    }
+
+    // If the filePath starts with the baseDir, make it relative
+    if (normalizedPath.startsWith(normBaseDir)) {
+      normalizedPath = normalizedPath.substring(normBaseDir.length);
+    }
+  }
   
   // Add trailing separator if requested
   if (addTrailingSlash && !normalizedPath.endsWith('/')) {
@@ -54,77 +77,25 @@ export function normalizePath(filePath: string, baseDir?: string, addTrailingSla
 }
 
 /**
- * Joins path segments with appropriate separator for the OS
- * @param segments Path segments to join
- * @returns Joined path
- */
-export function joinPath(...segments: string[]): string {
-  const isWindows = navigator.platform.includes('Win');
-  const separator = isWindows ? '\\' : '/';
-  
-  return segments
-    .filter(segment => segment)
-    .join(separator);
-}
-
-/**
  * Extracts the directory name from a path
  * @param path The path
  * @returns The directory name
  */
-export function getDirectoryName(path: string): string {
-  if (!path) return '';
+export function getDirectoryName(filePath: string): string {
+    if (!filePath) return ''; // Return empty string if path is empty
   
-  // Remove trailing slashes
-  path = path.replace(/[\/\\]$/, '');
-  
-  // Find last separator
-  const lastSeparatorIndex = Math.max(
-    path.lastIndexOf('/'),
-    path.lastIndexOf('\\')
-  );
-  
-  if (lastSeparatorIndex === -1) {
-    return path; // No separator found, return the whole path
-  }
-  
-  return path.substring(lastSeparatorIndex + 1);
-}
+    // Remove trailing slashes
+    const cleanedPath = filePath.replace(/[\/\\]$/, '');
 
-/**
- * Ensures a path is properly displayed in the UI
- * This can be helpful for showing more user-friendly paths
- * 
- * @param filePath The file path to format for display
- * @returns A path formatted for display purposes
- */
-export function formatPathForDisplay(filePath: string): string {
-  if (!filePath) return '';
-  
-  // Replace home directory with ~ on Unix systems (just for display)
-  const home = process.env.HOME || process.env.USERPROFILE;
-  if (home && filePath.startsWith(home)) {
-    return filePath.replace(home, '~');
-  }
-  
-  return filePath;
-}
+    // Find last separator
+    const lastSeparatorIndex = Math.max(
+        cleanedPath.lastIndexOf('/'),
+        cleanedPath.lastIndexOf('\\')
+    );
 
-/**
- * Maps file paths between formats to handle situations where the same file 
- * might be referenced by different paths (absolute vs relative)
- * 
- * @param files An array of file paths to normalize
- * @param baseDir The project base directory
- * @returns An object mapping original paths to normalized paths
- */
-export function createPathMapping(files: string[], baseDir?: string): { [key: string]: string } {
-  const mapping: { [key: string]: string } = {};
-  
-  for (const file of files) {
-    const normalized = normalizePath(file, baseDir);
-    mapping[file] = normalized;
-  }
-  
-  return mapping;
-} 
+    if (lastSeparatorIndex === -1) {
+        return cleanedPath; // No separator found, return the whole path
+    }
+    
+    return cleanedPath.substring(0, lastSeparatorIndex);
+}

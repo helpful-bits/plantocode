@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Session } from "@/types"; // Import Session from types/index
+import { Save, Trash2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Session } from "@/types/session-types";
-import { Trash2, Save, Upload, Sparkles } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,102 +18,212 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useDatabase } from "@/lib/contexts/database-context";
+import { OutputFormat } from "@/types";
 
 interface SessionManagerProps {
   projectDirectory: string;
+  outputFormat: OutputFormat;
   getCurrentSessionState: () => Omit<Session, "id" | "name">;
   onLoadSession: (session: Session) => void;
-  outputFormat: string; // Pass output format to scope sessions
-  activeSessionId: string | null; // Add active session ID prop
-  setActiveSessionIdExternally: (id: string | null) => void; // Allow parent to set active session ID
+  activeSessionId: string | null;
+  setActiveSessionIdExternally: (id: string | null) => void;
+  onSessionStatusChange?: (hasActiveSession: boolean) => void;
 }
 
-export function SessionManager({
+const SessionManager = ({
   projectDirectory,
   getCurrentSessionState,
-  onLoadSession,
   outputFormat,
+  onLoadSession,
   activeSessionId: externalActiveSessionId,
   setActiveSessionIdExternally,
-}: SessionManagerProps) {
+  onSessionStatusChange,
+}: SessionManagerProps) => {
   const { repository } = useDatabase();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(externalActiveSessionId);
+  const [activeSessionId, setActiveSessionIdInternal] = useState<string | null>(externalActiveSessionId); // Use internal setter
   const [sessionNameInput, setSessionNameInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncingState, setIsSyncingState] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionInitialized, setSessionInitialized] = useState<boolean>(!!externalActiveSessionId);
   const sessionLoadedRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionNameInput, setEditSessionNameInput] = useState("");
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
 
+  // Add a reference to track if we've loaded sessions for the current project/format
+  const loadedProjectRef = useRef<string | null>(null);
+
+  // Load sessions from the database
   const loadSessions = useCallback(async () => {
     if (!projectDirectory || !outputFormat) {
       setSessions([]);
-      setError(null); // Clear error if no project/format
+      setError(null);
       return;
     }
     
     try {
-      // Load sessions from the database
-      const loadedSessions = await repository.getSessions(projectDirectory, outputFormat as any) || [];
-      console.log(`Loaded ${loadedSessions.length} sessions from database for ${projectDirectory}`);
+      setIsLoading(true);
+      const loadedSessions = await repository.getSessions(projectDirectory, outputFormat as OutputFormat) || [];
+      console.log(`Loaded ${loadedSessions.length} sessions from database for ${projectDirectory}/${outputFormat}`);
       setSessions(loadedSessions);
       setError(null);
+      
+      // Check if we have at least one session available and no session is currently active
+      if (loadedSessions.length > 0 && !activeSessionId) {
+        // Try to restore active session
+      }
+      
+      // Notify parent component about session status
+      if (onSessionStatusChange) {
+        onSessionStatusChange(!!activeSessionId || loadedSessions.length > 0);
+      }
     } catch (err) {
       console.error("Failed to load sessions:", err);
       setError("Failed to load sessions from database.");
       setSessions([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, [projectDirectory, outputFormat, repository]);
+  }, [projectDirectory, outputFormat, repository, activeSessionId, onSessionStatusChange]);
+
+  // Try to restore active session from database
+  const restoreActiveSession = useCallback(async () => {
+    if (!projectDirectory || !outputFormat) return;
+    
+    if (!sessionInitialized && !isRestoringSession) { // Only restore if not initialized and not already restoring
+      setIsRestoringSession(true);
+      try {
+        // Get active session ID from database
+        const storedSessionId = await repository.getActiveSessionId(projectDirectory, outputFormat as OutputFormat);
+        
+        if (storedSessionId) {
+          // Try to get the session details
+          const session = await repository.getSession(storedSessionId);
+          
+          if (session) {
+            console.log(`Restored session: ${session.name} (${session.id})`);
+            setActiveSessionIdInternal(session.id); // Use internal setter
+            setActiveSessionIdExternally(session.id);
+            onLoadSession(session);
+            setSessionInitialized(true);
+            sessionLoadedRef.current = true;
+          } else {
+            console.log(`Stored active session ID (${storedSessionId}) not found in database. Clearing active session.`);
+            setActiveSessionIdInternal(null);
+            setActiveSessionIdExternally(null);
+            await repository.setActiveSession(projectDirectory, outputFormat, null); // Clear invalid ID in DB
+          }
+        }
+      } catch (err) {
+        console.error("Failed to restore active session:", err);
+      } finally {
+        setIsRestoringSession(false);
+      }
+    }
+  }, [projectDirectory, outputFormat, repository, setActiveSessionIdExternally, onLoadSession, sessionInitialized, isRestoringSession]);
+
+  // Save form state to localStorage as a backup
+  const saveFormStateToLocalStorage = useCallback((sessionId: string, formState: any) => {
+    try {
+      if (!sessionId) return;
+      
+      const storageKey = `form-state-${sessionId}`;
+      const stateWithTimestamp = {
+        ...formState,
+        lastSaved: Date.now()
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(stateWithTimestamp));
+      localStorage.setItem(`last-active-session-${projectDirectory}-${outputFormat}`, sessionId);
+    } catch (err) {
+      console.error("Failed to save form state to localStorage:", err);
+    }
+  }, [projectDirectory, outputFormat]);
+
+  // Restore form state from localStorage
+  const restoreFormStateFromLocalStorage = useCallback((sessionId: string) => {
+    try {
+      if (!sessionId) return null;
+      
+      const storageKey = `form-state-${sessionId}`;
+      const storedState = localStorage.getItem(storageKey);
+      
+      if (storedState) {
+        const parsedState = JSON.parse(storedState);
+        console.log(`Restored form state from localStorage for session ${sessionId}`);
+        return parsedState;
+      }
+    } catch (err) {
+      console.error("Failed to restore form state from localStorage:", err);
+    }
+    return null;
+  }, []);
 
   // When component mounts or project/format changes, load sessions
   useEffect(() => {
-    if (projectDirectory && outputFormat) {
+    // Create a unique key for the current project/format combination
+    const projectFormatKey = projectDirectory && outputFormat ? `${projectDirectory}-${outputFormat}` : null;
+    
+    // Only load sessions if we have both project and format and either:
+    // 1. We haven't loaded sessions for this project/format yet, or
+    // 2. The project/format has changed since last load
+    if (projectDirectory && outputFormat && (!loadedProjectRef.current || loadedProjectRef.current !== projectFormatKey)) {
+      console.log(`[SessionManager] Loading sessions for project/format: ${projectFormatKey}`);
       loadSessions();
-      // Only reset the session loaded flag when project changes, not on first mount
+
+        // Also attempt to restore the active session for this new context
+        restoreActiveSession();
+
+        // Update the loaded project reference
+      loadedProjectRef.current = projectFormatKey;
+      
       if (initialLoadDoneRef.current) {
         sessionLoadedRef.current = false;
       } else {
         initialLoadDoneRef.current = true;
       }
-    } else {
-      setSessions([]); // Clear sessions if project directory is cleared
+    } else if (!projectDirectory || !outputFormat) {
+      setSessions([]);
       sessionLoadedRef.current = false;
+      
+      // Notify parent that we don't have an active session
+      if (onSessionStatusChange) {
+        onSessionStatusChange(false);
+      }
+      
+      // Clear the loaded project reference
+      loadedProjectRef.current = null;
     }
-    
-    // Cleanup function to reset on unmount
-    return () => {
-      // Don't reset sessionLoadedRef on unmount to preserve state during page refresh
+
+  }, [projectDirectory, outputFormat, loadSessions, restoreActiveSession, onSessionStatusChange]); // Added restoreActiveSession
+
+  // Handle beforeunload to save pending changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Handle any teardown logic here if needed
+      return null;
     };
-  }, [projectDirectory, outputFormat, loadSessions]);
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [projectDirectory, outputFormat, loadSessions, activeSessionId, getCurrentSessionState, onSessionStatusChange]);
 
   // Sync activeSessionId whenever external prop changes
   useEffect(() => {
-    setActiveSessionId(externalActiveSessionId);
-  }, [externalActiveSessionId]);
-
-  // Load the active session when sessions are loaded and active ID is set
-  useEffect(() => {
-    if (activeSessionId && sessions.length > 0 && !sessionLoadedRef.current) {
-      const activeSession = sessions.find(session => session.id === activeSessionId);
-      if (activeSession) {
-        // Check if this is coming from a restoration (like page refresh)
-        // or from a user clicking on a session
-        if (!sessionLoadedRef.current) {
-          console.log("Restoring session after refresh:", activeSession.name, activeSession);
-          // Automatically load the active session
-          onLoadSession(activeSession);
-          sessionLoadedRef.current = true;
-        }
-      } else {
-        console.warn("Active session ID exists but session not found in loaded sessions", {
-          activeSessionId
-        });
-         // If the active session ID is invalid, clear it
-         setActiveSessionIdExternally(null);      }
+    setActiveSessionIdInternal(externalActiveSessionId);
+    setSessionInitialized(!!externalActiveSessionId);
+    
+    // Notify parent about session status
+    if (onSessionStatusChange) {
+      onSessionStatusChange(!!externalActiveSessionId);
     }
-  }, [sessions, activeSessionId, onLoadSession]);
+  }, [externalActiveSessionId, onSessionStatusChange]);
 
   // Function to generate a meaningful title based on the session content
   const generateSessionTitle = useCallback(async (sessionData: Omit<Session, "id" | "name">) => {
@@ -165,56 +276,90 @@ export function SessionManager({
     }
   }, []);
 
+  // Create a new session
   const handleSave = async () => {
     if (!projectDirectory) {
       setError("Cannot save session without a project directory.");
       return;
     }
 
+    if (!outputFormat) {
+      setError("Cannot save session without an output format.");
+      return;
+    }
+
     let sessionName = sessionNameInput.trim();
     setIsLoading(true);
-    setSessionNameInput(""); // Clear input immediately
+    setSessionNameInput("");
     setError(null);
 
     try {
       const currentState = getCurrentSessionState();
+      currentState.updatedAt = Date.now(); // Ensure updatedAt is set
+
+      // Validate current state
+      if (!currentState.projectDirectory || !currentState.outputFormat) {
+        console.error("Missing required session fields in current state:", {
+          hasProjectDir: !!currentState.projectDirectory,
+          hasOutputFormat: !!currentState.outputFormat,
+        });
+        throw new Error("Session state missing required fields");
+      }
 
       // Auto-generate name if empty
       if (!sessionName) {
         sessionName = await generateSessionTitle(currentState);
       }
 
+      const sessionId = Date.now().toString() + Math.random().toString(36).substring(2, 8); // More unique ID
       const newSession: Session = {
         ...currentState,
-        id: Date.now().toString(),
+        id: sessionId,
         name: sessionName,
+        updatedAt: Date.now(),
       };
 
+      // Final validation before saving
+      if (!newSession.id || !newSession.name || !newSession.projectDirectory || !newSession.outputFormat) {
+        console.error("Missing required fields in new session:", {
+          id: newSession.id,
+          name: newSession.name,
+          projectDirectory: newSession.projectDirectory,
+          outputFormat: newSession.outputFormat
+        });
+        throw new Error("Cannot save session: Missing required fields");
+      }
+
+      console.log(`Saving new session: "${sessionName}" (ID: ${sessionId})`);
+      
       // Save to database
-      await repository.saveSession(newSession);
-      console.log(`Saved session "${sessionName}" to database`);
+      const savedSession = await repository.saveSession(newSession);
+      console.log(`Successfully saved session "${sessionName}" to database`);
+
       
       // Reload sessions to refresh the list
       await loadSessions();
-
-      // Set as active session and notify parent
-      setActiveSessionIdExternally(newSession.id);
       
-      // Set as active session and notify parent
-      setActiveSessionId(newSession.id);
-      onLoadSession(newSession);
-
+      // Reset pending changes
+      lastSavedStateRef.current = { ...currentState };
+      pendingChangesRef.current = {};
+      
+      // Notify parent about session status
+      if (onSessionStatusChange) {
+        onSessionStatusChange(true);
+      }
     } catch (err) {
       console.error("Failed to save session:", err);
-      setError("Failed to save the session.");
+      setError(`Failed to save the session: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Update session name
   const handleUpdateSessionName = async (sessionId: string) => {
     if (!projectDirectory) return;
-
+    setIsLoading(true); // Indicate loading state
     try {
       // Find the session to update
       const sessionToUpdate = sessions.find(s => s.id === sessionId);
@@ -226,7 +371,8 @@ export function SessionManager({
       // Update the session name
       const updatedSession = {
         ...sessionToUpdate,
-        name: editSessionNameInput.trim() || sessionToUpdate.name
+        name: editSessionNameInput.trim() || sessionToUpdate.name,
+        updatedAt: Date.now() // Update timestamp
       };
       
       // Save to database
@@ -241,27 +387,34 @@ export function SessionManager({
     } catch (err) {
       console.error("Failed to update session name:", err);
       setError("Failed to update the session name.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Start editing session name
   const startEditingSession = (session: Session, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingSessionId(session.id);
     setEditSessionNameInput(session.name);
   };
 
-  const cancelEditing = (e: React.MouseEvent) => {
+  // Cancel editing session name
+  const cancelEditing = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     setEditingSessionId(null);
     setEditSessionNameInput("");
   };
 
+  // Delete a session
   const handleDelete = async (sessionId: string) => {
     if (!projectDirectory) return;
-
+    setIsLoading(true); // Indicate loading state
     try {
       // Delete from database
       await repository.deleteSession(sessionId);
+      
+      // No localStorage removal needed
       
       // Reload sessions
       await loadSessions();
@@ -269,189 +422,198 @@ export function SessionManager({
       // If the deleted session was active, clear the active session
       if (activeSessionId === sessionId) {
         setActiveSessionIdExternally(null);
-        await repository.setActiveSession(projectDirectory, outputFormat as any, null);
+        setSessionInitialized(false);
+        // No need to call setActiveSession here, parent component will handle it
+        // await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, null);
+        
+        // Notify parent about session status
+        if (onSessionStatusChange) {
+          onSessionStatusChange(false);
+        }
       }
       
       setError(null);
     } catch (err) {
       console.error("Failed to delete session:", err);
       setError("Failed to delete the session.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Load session handler
   const handleLoadSession = async (session: Session) => {
     if (editingSessionId === session.id) return;
-    
-    onLoadSession(session);
-    setActiveSessionIdExternally(session.id); // Update parent's active ID
+      if (isSyncingState) return; // Prevent multiple loads
+    try {
+      setIsSyncingState(true);
 
-    // Update active session in database
-    await repository.setActiveSession(projectDirectory, outputFormat as any, session.id);
+    // Load the full session details again to ensure freshness
+    const fullSession = await repository.getSession(session.id);
+    if (!fullSession) {
+        throw new Error(`Session ${session.id} not found in database.`);
+    }
+
+    onLoadSession(fullSession); // Load the fresh session data
+      
+      setActiveSessionIdExternally(session.id);
+      setActiveSessionIdInternal(session.id); // Use internal setter
+      setSessionInitialized(true);
+      // Update active session in database
+      await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, session.id);
+      
+      // Notify parent about session status
+      if (onSessionStatusChange) {
+        onSessionStatusChange(true);
+      }
+    } catch (err) {
+      console.error("Failed to load session:", err);
+      setError("Failed to load the session.");
+    } finally {
+      setIsSyncingState(false);
+    }
+  };
+
+
+  // Create a new session dialog for initial setup
+  const renderNewSessionDialog = () => {
+    // Show this only if project/format is selected, DB is loaded, no session active, and no sessions exist yet
+    if (projectDirectory && outputFormat && !isLoading && !activeSessionId && sessions.length === 0 && !sessionInitialized) {
+      return (
+        <div className="border border-dashed border-primary/50 rounded-lg p-6 flex flex-col gap-4 items-center justify-center bg-primary/5 mt-4">
+          <h3 className="font-semibold text-lg text-foreground">Create Your First Session</h3>
+          <p className="text-sm text-muted-foreground text-center">
+            Create a session to start using the form. All your inputs will be saved automatically.
+          </p>
+          <div className="flex gap-2 w-full max-w-md">
+            <Input
+              type="text"
+              placeholder="Session name (auto-generated if empty)..."
+              value={sessionNameInput}
+              onChange={(e) => setSessionNameInput(e.target.value)}
+              className="h-9 flex-1"
+            />
+            <Button
+              aria-label="Create new session"
+              type="button"
+              onClick={handleSave}
+              size="sm"
+              className="whitespace-nowrap px-4 h-9"
+            >
+              <Plus className="h-4 w-4 mr-2" /> Create Session
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
-    <div className="border rounded-lg p-4 flex flex-col gap-4 bg-card shadow-sm">
-      <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
-        <Save className="h-4 w-4" /> Saved Sessions ({outputFormat})
-      </h3>
-      {error && <p className="text-sm text-destructive bg-destructive/10 p-2 rounded">{error}</p>}
-      <div className="flex gap-2">
-        <Input
-          type="text"
-          placeholder="Session name (auto-generated if empty)..."
-          value={sessionNameInput}
-          onChange={(e) => setSessionNameInput(e.target.value)}
-          disabled={!projectDirectory || isLoading}
-          className="h-9 flex-1 bg-background"
-        />
-        <Button
-          onClick={handleSave}
-          disabled={!projectDirectory || isLoading}
-          size="sm"
-          className="whitespace-nowrap px-4 flex items-center h-9"
-          variant="secondary"
-        >
-          {isLoading ? (
-            <>
-              <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" /> Save Current
-            </>
-          )}
-        </Button>
-      </div>
-      {sessions.length > 0 ? (
-        <ul className="space-y-2 max-h-40 overflow-y-auto bg-background/50 rounded-md p-2">
-          {sessions.map((session) => {
-            const isActive = session.id === activeSessionId;
-            const isEditing = session.id === editingSessionId;
-            
-            return (
-              <li
-                key={session.id}
-                className={`flex justify-between items-center p-3 rounded-md border cursor-pointer group transition-colors ${
-                  isActive
-                    ? 'bg-primary/20 border-primary shadow-sm'
-                    : 'bg-card hover:bg-muted/50'
-                }`}
-                onClick={() => handleLoadSession(session)}
-                title={isEditing ? "" : "Click to load session"}
-              >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {isActive && !isEditing && (
-                    <div className="flex items-center" title="Active Session">
-                      <Sparkles className="h-4 w-4 text-primary flex-shrink-0 animate-pulse" />
+    <>
+      <div className="border rounded-lg p-4 flex flex-col gap-4 bg-card shadow-sm">
+        <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
+          <Save className="h-4 w-4" /> Saved Sessions ({outputFormat})
+        </h3>
+        {error && <p className="text-sm text-destructive bg-destructive/10 p-2 rounded">{error}</p>}
+        <div className="flex gap-2 items-center"> {/* Align items center */}
+          <Input
+            type="text"
+            placeholder="Session name (auto-generated if empty)..."
+            value={sessionNameInput}
+            onChange={(e) => setSessionNameInput(e.target.value)}
+            disabled={!projectDirectory || !outputFormat || isLoading} // Also disable if no format
+            className="h-9 flex-1 bg-background"
+          />
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={!projectDirectory || isLoading}
+            size="sm"
+            className="whitespace-nowrap px-4 flex items-center h-9"
+            variant="outline" // Changed variant
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                Saving...
+              </>
+            ) : (
+              <> {/* Keep icon and text */}
+                <Save className="h-4 w-4 mr-2" /> Save Current
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Session List */}
+        <ScrollArea className="h-48 w-full rounded-md border bg-background/50"> {/* Added background */}
+          <div className="p-4 space-y-2">
+            {isLoading && sessions.length === 0 ? ( // Show spinner only if loading and list is empty
+              <div className="flex justify-center items-center h-32">
+                <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
+              </div>
+            ) : sessions.length > 0 ? (
+              sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${
+                    externalActiveSessionId === session.id // Compare with external prop
+                      ? "bg-primary/10 border border-primary/30"
+                      : "hover:bg-accent"
+                  }`}
+                  onClick={() => handleLoadSession(session)}
+                >
+                  {editingSessionId === session.id ? (
+                    <div className="flex-1 mr-2 flex items-center gap-2 w-full">
+                      <Input
+                        type="text"
+                        value={editSessionNameInput}
+                        onChange={(e) => setEditSessionNameInput(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleUpdateSessionName(session.id);
+                          if (e.key === 'Escape') cancelEditing(e);
+                        }}
+                        autoFocus
+                        className="h-8 text-sm flex-grow"
+                      />
+                      <Button type="button" variant="secondary" size="sm" onClick={() => handleUpdateSessionName(session.id)} className="h-8 px-3">Save</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={(e) => cancelEditing(e)} className="h-8 px-3">Cancel</Button>
                     </div>
+                  ) : (
+                    <span className="text-sm font-medium flex-1 mr-2 truncate" title={session.name}>
+                      {session.name || `Session ${session.id}`}
+                    </span>
                   )}
-                  <div className="flex flex-col min-w-0 flex-1">
-                    {isEditing ? (
-                      <div className="flex items-center gap-2 w-full" onClick={(e) => e.stopPropagation()}>
-                        <Input
-                          type="text"
-                          value={editSessionNameInput}
-                          onChange={(e) => setEditSessionNameInput(e.target.value)}
-                          className="h-7 py-1 text-sm"
-                          autoFocus
-                        />
-                        <div className="flex gap-1">
-                          <Button 
-                            size="icon" 
-                            variant="outline" 
-                            className="h-7 w-7" 
-                            onClick={(e) => handleUpdateSessionName(session.id)}
-                          >
-                            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3 w-3">
-                              <path d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                            </svg>
-                          </Button>
-                          <Button 
-                            size="icon" 
-                            variant="outline" 
-                            className="h-7 w-7" 
-                            onClick={cancelEditing}
-                          >
-                            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3 w-3">
-                              <path d="M11.7816 4.03157C12.0062 3.80702 12.0062 3.44295 11.7816 3.2184C11.5571 2.99385 11.193 2.99385 10.9685 3.2184L7.50005 6.68682L4.03164 3.2184C3.80708 2.99385 3.44301 2.99385 3.21846 3.2184C2.99391 3.44295 2.99391 3.80702 3.21846 4.03157L6.68688 7.49999L3.21846 10.9684C2.99391 11.193 2.99391 11.557 3.21846 11.7816C3.44301 12.0061 3.80708 12.0061 4.03164 11.7816L7.50005 8.31316L10.9685 11.7816C11.193 12.0061 11.5571 12.0061 11.7816 11.7816C12.0062 11.557 12.0062 11.193 11.7816 10.9684L8.31322 7.49999L11.7816 4.03157Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                            </svg>
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <span className={`text-sm truncate font-medium ${
-                          isActive ? 'text-primary' : 'group-hover:text-primary'
-                        }`}>
-                          {session.name}
-                        </span>
-                        {isActive && (
-                          <span className="text-xs text-primary/70">Active Session</span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-                {!isEditing && (
-                  <div className="flex gap-1 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-primary"
-                      onClick={(e) => startEditingSession(session, e)}
-                    >
-                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
-                        <path d="M11.8536 1.14645C11.6583 0.951184 11.3417 0.951184 11.1465 1.14645L3.71455 8.57836C3.62459 8.66832 3.55263 8.77461 3.50251 8.89155L2.04044 12.303C1.9599 12.491 2.00189 12.709 2.14646 12.8536C2.29103 12.9981 2.50905 13.0401 2.69697 12.9596L6.10847 11.4975C6.2254 11.4474 6.3317 11.3754 6.42166 11.2855L13.8536 3.85355C14.0488 3.65829 14.0488 3.34171 13.8536 3.14645L11.8536 1.14645ZM4.42166 9.28547L11.5 2.20711L12.7929 3.5L5.71455 10.5784L4.21924 11.2192L3.78081 10.7808L4.42166 9.28547Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
-                      </svg>
-                    </Button>
-                    
+                  <div className="flex gap-1 items-center">
+                    {!editingSessionId && (
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={(e) => startEditingSession(session, e)} title="Rename Session">✎</Button>
+                    )} {/* Edit Button */}
                     <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
+                      <AlertDialogTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={e => e.stopPropagation()} title="Delete Session"><Trash2 size={14} /></Button></AlertDialogTrigger> {/* Delete Button */}
                       <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Session</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete this session? This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => {
-                              handleDelete(session.id);
-                            }}
-                            className="bg-destructive hover:bg-destructive/90"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
+                        <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete the session &quot;{session.name}&quot;. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={() => handleDelete(session.id)}>Delete</AlertDialogAction></AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-md">
-          No saved sessions. Save your current search to access it later.
-        </div>
-      )}
-    </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">{!projectDirectory || !outputFormat ? "Select project and format first." : "No sessions saved yet."}</p>
+            )}
+          </div>
+        </ScrollArea>
+        {isSyncingState && (
+          <p className="text-xs text-muted-foreground">Syncing session state...</p>
+        )} {/* Syncing indicator */}
+      </div>
+      
+      {/* New Session Dialog */}
+      {renderNewSessionDialog()}
+    </>
   );
-}
+};
+
+export default SessionManager;

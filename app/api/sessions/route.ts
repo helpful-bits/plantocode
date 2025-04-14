@@ -3,7 +3,6 @@ import { sessionRepository } from '@/lib/db/repository';
 import { setupDatabase } from '@/lib/db/setup';
 import { OutputFormat } from '@/types';
 
-// Initialize database on server startup
 setupDatabase();
 
 // GET /api/sessions?projectDirectory=...&outputFormat=...
@@ -19,25 +18,37 @@ export async function GET(request: NextRequest) {
   try {
     const sessions = await sessionRepository.getSessions(projectDirectory, outputFormat);
     return NextResponse.json(sessions);
-  } catch (error) {
+  } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error fetching sessions:', error);
-    return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch sessions';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 // POST /api/sessions
 export async function POST(request: NextRequest) {
   try {
-    const session = await request.json();
+    const sessionData = await request.json();
+    
+    // Basic validation (can be expanded)
+    if (!sessionData.id || !sessionData.name || !sessionData.projectDirectory || !sessionData.outputFormat) {
+       return NextResponse.json({ error: 'Missing required session fields' }, { status: 400 });
+    }
+    
+    // Add/update timestamp before saving
+    const session = { ...sessionData, updatedAt: Date.now() };
+    
+    console.log(`API: Saving session ${session.id} for project ${session.projectDirectory}`);
     const savedSession = await sessionRepository.saveSession(session);
     return NextResponse.json(savedSession);
-  } catch (error) {
+  } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error saving session:', error);
-    return NextResponse.json({ error: 'Failed to save session' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Failed to save session';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
-// DELETE /api/sessions/:id
+// DELETE /api/sessions?id=...
 export async function DELETE(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('id');
   
@@ -48,8 +59,9 @@ export async function DELETE(request: NextRequest) {
   try {
     await sessionRepository.deleteSession(sessionId);
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error deleting session:', error);
-    return NextResponse.json({ error: 'Failed to delete session' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Failed to delete session';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

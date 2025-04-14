@@ -1,14 +1,15 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 import { Mic, MicOff, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Import Select components
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
-  onInteraction: () => void; // Notify parent of interaction
-  foundFiles?: string[];
+  onInteraction?: () => void; // Optional interaction handler
+  foundFiles?: string[]; // Keep if needed by useVoiceRecording
 }
 
 export default function VoiceTranscription({
@@ -17,9 +18,8 @@ export default function VoiceTranscription({
   foundFiles = []
 }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
+  const [languageCode, setLanguageCode] = useState('en'); // Default to English
 
-  // Check if correction API key is available
-  const correctionEnabled = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY_EXISTS === 'true';
 
   const handleCorrectionComplete = useCallback((raw: string, corrected: string) => {
     if (raw !== corrected) {
@@ -32,16 +32,18 @@ export default function VoiceTranscription({
     error: voiceError,
     rawText,
     startRecording,
-    stopRecording,
+    stopRecording, // Corrected property name
     revertToRaw,
+    setLanguage, // Get the setLanguage function from the hook
     wrappedOnTranscribed
   } = useVoiceRecording({
     onTranscribed,
-    // Only enable correction callback if API key exists
-    onCorrectionComplete: correctionEnabled ? handleCorrectionComplete : undefined,
+    // Always enable correction callback
+    onCorrectionComplete: handleCorrectionComplete,
     foundFiles,
     // Pass the interaction handler
-    onInteraction
+    onInteraction,
+    languageCode // Pass the current language code to the hook
   });
 
   const handleToggleRecording = async () => {
@@ -53,9 +55,11 @@ export default function VoiceTranscription({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 border rounded-lg p-4 bg-card shadow-sm">
+      <label className="font-semibold text-card-foreground">Record Task Description</label>
       <div className="flex gap-2 items-center">
         <Button
+          type="button" // Add type="button"
           onClick={handleToggleRecording}
           disabled={isProcessing}
           variant={isRecording ? "destructive" : "secondary"}
@@ -79,17 +83,28 @@ export default function VoiceTranscription({
             </>
           )}
         </Button>
+        <Select value={languageCode} onValueChange={setLanguageCode} disabled={isRecording || isProcessing}>
+          <SelectTrigger className="w-[100px] h-9" aria-label="Select transcription language">
+            <SelectValue placeholder="Language" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="en">English</SelectItem>
+            <SelectItem value="es">Spanish</SelectItem>
+            <SelectItem value="fr">French</SelectItem>
+            {/* Add more languages as needed */}
+          </SelectContent>
+        </Select>
 
-        {correctionEnabled && showRevertOption && rawText && (
-          <Button
+        {showRevertOption && rawText && (
+          <Button // Add type="button"
+            type="button"
             onClick={() => {
               revertToRaw();
-              setShowRevertOption(false);
               onInteraction(); // Reverting also counts as interaction
             }}
             variant="link"
             size="sm"
-            className="text-muted-foreground justify-start p-0 h-auto"
+            className="text-muted-foreground justify-start p-0 h-auto text-xs" // Made text smaller
           >
             Revert to raw transcription
           </Button>

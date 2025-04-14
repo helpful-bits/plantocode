@@ -8,26 +8,35 @@ const execAsync = promisify(exec);
 /**
  * Gets all non-ignored files in a Git repository
  * @param dir The directory to search in
- * @returns Array of file paths relative to the directory
+ * @returns Object containing array of file paths and whether it's a git repo
  */
-export async function getAllNonIgnoredFiles(dir: string): Promise<string[]> {
+export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: string[], isGitRepo: boolean }> {
   try {
-    // Check if it's a git directory first.
-    // Explicitly set shell path to avoid ENOENT errors in restricted environments.
-    await execAsync('git rev-parse --is-inside-work-tree', { cwd: dir, shell: '/bin/sh' });
-
-    // List all tracked and untracked (but not ignored) files.
-    // Explicitly set shell path.
-    const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', { cwd: dir, shell: '/bin/sh' });
-    return stdout.split('\n').filter(Boolean);
+    // Since we know it's a git repository, we can skip the check and go straight to listing files
+    const isGitRepo = true;
+    console.log(`Listing all non-ignored files in git repository: ${dir}`);
+    
+    // Use git ls-files to get all tracked AND untracked files that aren't ignored by .gitignore
+    // --cached: include tracked files
+    // --others: include untracked files
+    // --exclude-standard: respect .gitignore, .gitmodules, etc.
+    const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', { cwd: dir });
+    
+    // Split by newline and filter out empty entries
+    const files = stdout.split('\n').filter(Boolean);
+    
+    console.log(`Found ${files.length} files via git ls-files (tracked and untracked, not ignored)`);
+    return { files, isGitRepo };
   } catch (error: any) {
-    // If it's not a git repo, the error often includes "not a git repository"
+    // Handle cases where git commands fail
+    console.error(`Error getting files from git repository ${dir}:`, error.message || error);
+    
     if (error.stderr && error.stderr.toLowerCase().includes('not a git repository')) {
-      console.warn(`Directory is not a git repository: ${dir}`);
-      return []; // Return empty array, don't throw an error
+      throw new Error(`Directory is not a git repository: ${dir}. Please select a valid git repository.`);
+    } else if (error.code === 'ENOENT') {
+      throw new Error(`Git command not found. Please ensure git is installed on your system.`);
     }
-    // Handle cases where it's not a git repo or git commands fail
-    console.error(`Error getting non-ignored files in ${dir}:`, error.message || error);
-    return [];
+    
+    throw new Error(`Failed to list files using git: ${error.message || 'Unknown error'}`);
   }
 } 

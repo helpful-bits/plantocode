@@ -6,5 +6,6 @@ import { NextResponse } from 'next/server';
  * asynchronous operations to complete during beforeunload events.
  */
 export async function GET() {
+  // console.log("Heartbeat request received"); // Can be noisy
   return NextResponse.json({ status: 'ok' });
-} 
+}

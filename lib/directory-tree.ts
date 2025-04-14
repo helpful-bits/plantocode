@@ -1,6 +1,5 @@
 "use server";
 
-import { promises as fs } from "fs";
 import path from "path";
 import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 
@@ -65,8 +64,12 @@ function treeToString(node: TreeNode, prefix = '', isLast = true): string {
 
 export async function generateDirectoryTree(projectDir: string): Promise<string> {
   try {
+    if (!projectDir?.trim()) {
+      return ''; // Return empty string if no project directory
+    }
     const files = await getAllNonIgnoredFiles(projectDir);
     const tree = buildTree(files);
+    // Generate string representation
     return treeToString(tree).trim();
   } catch (error) {
     console.error('Error generating directory tree:', error);

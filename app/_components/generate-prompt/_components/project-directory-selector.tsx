@@ -1,52 +1,58 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { AlertCircle, Check, FolderOpen, Loader2, RefreshCw, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { PROJECT_DIR_HISTORY_KEY, MAX_PROJECT_DIR_HISTORY, PROJECT_DIR_HISTORY_CACHE_KEY } from "@/lib/constants";
-import { Trash2, FolderOpen, X, Check, AlertCircle, RefreshCw } from "lucide-react";
 import { validateDirectoryAction } from "@/actions/validate-directory-action";
-import { useProject } from "@/lib/contexts/project-context";
 import { getDefaultPathForOS, normalizePath, getDirectoryName } from "@/lib/path-utils";
 import { useDatabase } from "@/lib/contexts/database-context";
+import { useProject } from "@/lib/contexts/project-context";
+import { PROJECT_DIR_HISTORY_CACHE_KEY, MAX_PROJECT_DIR_HISTORY } from "@/lib/constants";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
-interface ProjectDirectorySelectorProps {
-  value: string;
-  onChange: (value: string) => void; // Called when directory is selected/entered
-  isLoadingFiles: boolean;
-}
-
-export default function ProjectDirectorySelector({
-  value,
-  onChange,
-  isLoadingFiles,
-}: ProjectDirectorySelectorProps) {
+export default function ProjectDirectorySelector() {
+  const { projectDirectory, setProjectDirectory } = useProject();
   const { repository } = useDatabase();
   const [history, setHistory] = useState<string[]>([]);
-  const [inputValue, setInputValue] = useState(value);
-  const [showHistory, setShowHistory] = useState(false);
+  const [inputValue, setInputValue] = useState(projectDirectory || "");
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
-  const [validationStatus, setValidationStatus] = useState<{ isValid: boolean; message?: string } | null>(null);
+  const [validationStatus, setValidationStatus] = useState<{ isValid: boolean; message: string } | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
-  
-  // Load history from database on mount
-  useEffect(() => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load history from database on mount or when repository is ready
+  useLayoutEffect(() => {
     const loadHistory = async () => {
+      if (!repository) return;
       try {
-        // Load from database
         const historyStr = await repository.getCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY);
-        
+
         if (historyStr) {
-          setHistory(JSON.parse(historyStr));
+          try {
+            const parsedHistory = JSON.parse(historyStr);
+            if (Array.isArray(parsedHistory) && parsedHistory.every(item => typeof item === 'string')) {
+              setHistory(parsedHistory);
+            } else {
+              setHistory([]);
+              await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+            }
+          } catch (parseError) {
+            console.error("Failed to parse history data:", parseError);
+            setHistory([]);
+            await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+          }
         }
       } catch (e) {
         console.error("Failed to load project directory history:", e);
+        setHistory([]);
         
-        // Clear corrupted data
         try {
           await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
         } catch (err) {
-          console.error("Failed to clear corrupted history data:", err);
+          console.error("Failed to initialize history data:", err);
         }
       }
     };
@@ -54,24 +60,20 @@ export default function ProjectDirectorySelector({
     loadHistory();
   }, [repository]);
 
-  // Update input value when the external value changes (e.g., loaded from context)
+  // Update input value when projectDirectory changes
   useEffect(() => {
-    setInputValue(value);
-    
-    // Reset validation status when value changes externally
-    if (value !== inputValue) {
-      setValidationStatus(null);
+    if (projectDirectory && projectDirectory !== inputValue) {
+      setInputValue(projectDirectory);
     }
-  }, [value, inputValue]);
+  }, [projectDirectory]);
 
   // Add click outside listener to close history dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (historyRef.current && !historyRef.current.contains(event.target as Node)) {
-        setShowHistory(false);
+        setShowHistoryDropdown(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -79,20 +81,20 @@ export default function ProjectDirectorySelector({
   }, []);
 
   // Add a directory to history
-  const addToHistory = useCallback(async (dir: string) => {
-    if (!dir?.trim()) return; // Don't add empty strings
+  const addToHistory = useCallback((dir: string) => {
+    if (!dir?.trim()) return;
 
     setHistory((prevHistory) => {
       const newHistory = [dir, ...prevHistory.filter((item) => item !== dir)];
       const limitedHistory = newHistory.slice(0, MAX_PROJECT_DIR_HISTORY);
       
-      // Save to database
       (async () => {
+        if (!repository) return;
         try {
           await repository.saveCachedState(
-            "global", 
-            "global", 
-            PROJECT_DIR_HISTORY_CACHE_KEY, 
+            "global",
+            "global",
+            PROJECT_DIR_HISTORY_CACHE_KEY,
             JSON.stringify(limitedHistory)
           );
         } catch (e) {
@@ -107,12 +109,12 @@ export default function ProjectDirectorySelector({
   // Handle input change directly updating local state
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
-    // Clear validation status when input changes
     setValidationStatus(null);
   };
 
   // Validate the directory path
-  const validateDirectory = async (directoryPath: string) => {
+  const validateDirectory = useCallback(async (directoryPath: string): Promise<boolean> => {
+    setValidationStatus(null);
     if (!directoryPath?.trim()) {
       setValidationStatus({
         isValid: false,
@@ -129,30 +131,32 @@ export default function ProjectDirectorySelector({
     
     try {
       const result = await validateDirectoryAction(directoryPath);
-      
-      const isValid = result.isSuccess;
-      
-      // We can provide more detailed feedback to the user
+      const isValid = result.isSuccess && result.data?.isAccessible;
+
       let message = result.message || (isValid ? "Directory is valid" : "Invalid directory");
       
-      // Add stats info if available
+      // Check specifically for git repository
       if (isValid && result.data?.stats) {
         const stats = result.data.stats;
-        if (stats.isGitRepository) {
-          message += " (Git repository)";
+        if (!stats.isGitRepository) {
+          setValidationStatus({
+            isValid: false,
+            message: "Not a git repository. Please select a valid git repository."
+          });
+          return false;
         }
-        if (stats.isEmpty) {
-          message += " - Warning: Directory is empty";
-        } else if (stats.fileCount) {
-          message += ` - Contains ${stats.fileCount} files/folders`;
+        
+        message = "Git repository detected";
+        if (stats.fileCount) {
+          message += ` with ${stats.fileCount} files and ${stats.dirCount} folders`;
         }
       }
       
       setValidationStatus({
-        isValid,
+        isValid: !!isValid,
         message
       });
-      
+
       return isValid;
     } catch (error) {
       console.error("Error validating directory:", error);
@@ -164,303 +168,241 @@ export default function ProjectDirectorySelector({
     } finally {
       setIsValidating(false);
     }
-  };
+  }, []);
 
   // Handle selection from datalist or pressing Enter
-  const handleSelectOrEnter = async (selectedValue: string) => {
-    const trimmedValue = selectedValue.trim();
-    if (!trimmedValue) return;
-    
-    setInputValue(trimmedValue); // Update display immediately
-    
-    // Validate directory before propagating change
-    const isValid = await validateDirectory(trimmedValue);
-    
-    if (isValid) {
-      onChange(trimmedValue); // Propagate change up only if valid
-      addToHistory(trimmedValue); // Add to history on selection/enter
-      setShowHistory(false); // Hide history after selection
-    }
-  };
+  const handleSelectOrEnter = useCallback(async (selectedValue: string) => {
+    if (isValidating) return;
 
+    const trimmedValue = selectedValue.trim();
+    setInputValue(trimmedValue);
+    
+    const isValid = await validateDirectory(trimmedValue);
+
+    if (isValid) {
+      setProjectDirectory(trimmedValue);
+      addToHistory(trimmedValue);
+      setShowHistoryDropdown(false);
+    }
+  }, [setProjectDirectory, addToHistory, validateDirectory, isValidating]);
+
+  // Handle keydown events (Enter, Escape)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleSelectOrEnter(inputValue);
+    } else if (e.key === 'Escape') {
+      setShowHistoryDropdown(false);
     }
   };
 
-  const handleDatalistSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handleSelectOrEnter(e.target.value);
-  };
-
-  const handleBrowseClick = () => {
-    // For the browser environment, we need to use a different approach
-    // since direct file system access is limited
-    
-    // First check which approach to use based on available APIs
+  // Handle browse button click with modern File System Access API
+  const handleBrowseClick = useCallback(() => {
     if ('showDirectoryPicker' in window) {
-      handleBrowseUsingFileSystemAPI();
-    } else {
-      fallbackDirectoryPrompt();
-    }
-  };
-  
-  // Modern approach using the File System Access API
-  const handleBrowseUsingFileSystemAPI = () => {
-    try {
-      // Use the modern File System Access API
-      // @ts-ignore - TypeScript may not recognize this API yet
-      window.showDirectoryPicker()
-        .then(async (dirHandle) => {
-          try {
-            // Get the directory path name 
-            const dirName = dirHandle.name;
+      (async () => {
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+          
+          // Use the DirectoryHandle to get relevant information
+          if (dirHandle) {
+            // We can't get the full path from the File System Access API for security reasons
+            // Instead, we use the directory name and user's OS to make a best guess
+            // This is an approximation that works better than previous approach
+            const userName = (navigator as any)?.userAgent || '';
+            const basePath = getDefaultPathForOS(userName);
             
-            // Prepare a reasonable default path
-            let defaultPath = '';
+            // Construct an approximate path based on OS and directory name
+            let dirPath = '';
             
-            // If we already have a path, try to substitute just the last part
-            if (inputValue.trim()) {
-              const lastSlash = Math.max(
-                inputValue.lastIndexOf('/'), 
-                inputValue.lastIndexOf('\\')
-              );
-              
-              if (lastSlash > 0) {
-                // Replace just the directory name at the end
-                defaultPath = inputValue.substring(0, lastSlash + 1) + dirName;
-              } else {
-                // No slashes, replace the entire path
-                defaultPath = getDefaultPathForOS(dirName);
-              }
+            if (navigator.platform.toUpperCase().includes('WIN')) {
+              dirPath = `${basePath}${dirHandle.name}`;
             } else {
-              // No existing path, use OS-specific default
-              defaultPath = getDefaultPathForOS(dirName);
+              dirPath = `${basePath}${dirHandle.name}`;
             }
             
-            // Let the user confirm/edit the full path
-            const userPath = window.prompt(
-              "Please confirm the full path to the project directory:",
-              defaultPath
-            );
-            
-            if (userPath) {
-              handleSelectOrEnter(userPath);
-            }
-          } catch (e) {
-            console.error("Error handling directory selection:", e);
+            setInputValue(dirPath);
+            handleSelectOrEnter(dirPath);
           }
-        })
-        .catch(err => {
-          // User likely canceled or permission denied
-          console.log("Directory selection was canceled or permission denied:", err);
-        });
-    } catch (e) {
-      console.error("Error with directory picker:", e);
-      fallbackDirectoryPrompt();
+        } catch (err) {
+          console.error("Error selecting directory:", err);
+          if (err instanceof Error && err.name !== 'AbortError') {
+            setValidationStatus({
+              isValid: false,
+              message: `Failed to select directory: ${err.message}`
+            });
+          }
+        }
+      })();
+    } else {
+      // Fallback for browsers without File System Access API
+      const defaultPath = getDefaultPathForOS();
+      const userPath = prompt("Enter directory path:", defaultPath || "");
+      
+      if (userPath) {
+        setInputValue(userPath);
+        handleSelectOrEnter(userPath);
+      }
     }
-  };
-  
-  // Fallback method using prompt
-  const fallbackDirectoryPrompt = () => {
-    // Try to determine a reasonable default path
-    let defaultPath = inputValue || getDefaultPathForOS();
-    
-    // Show prompt with current value or OS-specific default
-    const userPath = window.prompt(
-      "Please enter the full path to your project directory:",
-      defaultPath
-    );
-    
-    if (userPath) {
-      handleSelectOrEnter(userPath);
-    }
-  };
+  }, [handleSelectOrEnter]);
 
+  // Remove a directory from history
   const removeFromHistory = (dirToRemove: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent selecting the directory when clicking delete
+    e.stopPropagation();
     
     setHistory((prevHistory) => {
       const newHistory = prevHistory.filter(dir => dir !== dirToRemove);
-      try {
-        // Save to database
-        (async () => {
-          try {
-            await repository.saveCachedState(
-              "global", 
-              "global", 
-              PROJECT_DIR_HISTORY_CACHE_KEY, 
-              JSON.stringify(newHistory)
-            );
-          } catch (e) {
-            console.error("Failed to save updated project directory history to database:", e);
-          }
-        })();
-      } catch (e) {
-        console.error("Failed to save updated project directory history:", e);
-      }
+      
+      (async () => {
+        if (!repository) return;
+        try {
+          await repository.saveCachedState(
+            "global",
+            "global",
+            PROJECT_DIR_HISTORY_CACHE_KEY,
+            JSON.stringify(newHistory)
+          );
+        } catch (e) {
+          console.error("Failed to save updated history to DB:", e);
+        }
+      })();
+      
       return newHistory;
     });
   };
 
-  const clearAllHistory = () => {
-    setHistory([]);
-    try {
-      // Clear from database
-      (async () => {
+  // Clear all history with confirmation
+  const clearAllHistory = async () => {
+    if (confirm("Are you sure you want to clear all directory history?")) {
+      setHistory([]);
+      
+      if (repository) {
         try {
-          await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+          await repository.saveCachedState(
+            "global",
+            "global",
+            PROJECT_DIR_HISTORY_CACHE_KEY,
+            "[]"
+          );
         } catch (e) {
-          console.error("Failed to clear project directory history from database:", e);
+          console.error("Failed to clear history in database:", e);
         }
-      })();
-    } catch (e) {
-      console.error("Failed to clear project directory history:", e);
-    }
-    setShowHistory(false);
-  };
-
-  // Handle reload files from disk
-  const handleReloadFiles = () => {
-    if (!inputValue?.trim()) {
-      setValidationStatus({
-        isValid: false,
-        message: "Please enter a directory path"
-      });
-      return;
-    }
-    
-    // Validate directory and then trigger the onChange to reload files
-    validateDirectory(inputValue).then(isValid => {
-      if (isValid) {
-        onChange(inputValue); // This will trigger a reload in the parent component
       }
-    });
+    }
   };
 
   return (
-    <div className="relative w-full">
-      <div className="flex flex-col gap-2 w-full">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Input
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Enter or select project directory..."
-              className={`h-10 bg-background pr-9 ${
-                validationStatus 
-                  ? validationStatus.isValid 
-                    ? "border-green-500 focus-visible:ring-green-500" 
-                    : "border-red-500 focus-visible:ring-red-500"
-                  : ""
-              }`}
-              disabled={isLoadingFiles || isValidating}
-              onFocus={() => history.length > 0 && setShowHistory(true)}
-            />
-            {inputValue && (
-              <button 
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
-                onClick={() => {
-                  setInputValue('');
-                  onChange('');
-                  setValidationStatus(null);
-                }}
-                disabled={isLoadingFiles || isValidating}
-              >
-                <X size={16} />
-              </button>
+    <div className="bg-card border rounded-lg p-4 shadow-sm space-y-4">
+      <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
+        <FolderOpen className="h-4 w-4" /> Project Directory
+      </h3>
+      
+      <div className="relative flex items-center gap-2">
+        <div className="relative flex-1" ref={historyRef}>
+          <Input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => history.length > 0 && setShowHistoryDropdown(true)}
+            placeholder="Enter directory path or click Browse"
+            className={cn("w-full pr-10", 
+              validationStatus?.isValid ? "border-green-500 focus-visible:ring-green-500" : "",
+              validationStatus?.isValid === false && !isValidating ? "border-red-500 focus-visible:ring-red-500" : ""
             )}
-          </div>
+            disabled={isValidating}
+          />
           
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 px-3 flex gap-1 items-center whitespace-nowrap"
-            onClick={handleBrowseClick}
-            disabled={isLoadingFiles || isValidating}
-          >
-            <FolderOpen size={16} />
-            Browse
-          </Button>
+          {inputValue && (
+            <button
+              type="button"
+              onClick={() => {
+                setInputValue("");
+                setValidationStatus(null);
+                inputRef.current?.focus();
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              title="Clear input"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
           
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 px-3 flex gap-1 items-center"
-            onClick={handleReloadFiles}
-            disabled={isLoadingFiles || isValidating || !inputValue}
-          >
-            <RefreshCw size={16} className="mr-1" />
-            {isValidating ? "Checking..." : "Reload"}
-          </Button>
+          {/* History Dropdown */}
+          {showHistoryDropdown && history.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 border rounded-md bg-popover shadow-md">
+              <ScrollArea className="max-h-60">
+                <div className="p-1 space-y-0.5">
+                  {history.map((dir) => (
+                    <div
+                      key={dir}
+                      className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer text-sm"
+                      onClick={() => handleSelectOrEnter(dir)}
+                    >
+                      <span className="truncate flex-1">{dir}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => removeFromHistory(dir, e)}
+                        className="ml-2 text-muted-foreground hover:text-destructive"
+                        title="Remove from history"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              {history.length > 1 && (
+                <div className="border-t p-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearAllHistory}
+                    className="w-full text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Clear History
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         
-        {/* Validation status */}
-        {(validationStatus || isValidating) && (
-          <div className={`text-sm mt-1 flex items-center gap-1 ${
-            isValidating 
-              ? "text-blue-600"
-              : (validationStatus?.isValid 
-                ? "text-green-600" 
-                : "text-red-600")
-          }`}>
-            {isValidating ? (
-              <>
-                <div className="h-3 w-3 rounded-full bg-blue-500 animate-pulse"></div>
-                <span>Checking directory...</span>
-              </>
-            ) : validationStatus?.isValid ? (
-              <>
-                <Check size={14} className="inline" />
-                {validationStatus.message}
-              </>
-            ) : (
-              <>
-                <AlertCircle size={14} className="inline" />
-                {validationStatus?.message}
-              </>
-            )}
-          </div>
-        )}
+        <Button
+          type="button"
+          onClick={handleBrowseClick}
+          variant="secondary"
+          className="shrink-0"
+          disabled={isValidating}
+        >
+          Browse
+        </Button>
       </div>
       
-      {/* History dropdown */}
-      {showHistory && history.length > 0 && (
-        <div 
-          ref={historyRef}
-          className="absolute z-10 mt-1 w-full bg-popover shadow-md rounded-md border border-border overflow-hidden"
-        >
-          <div className="p-2 flex justify-between items-center border-b border-border">
-            <span className="text-sm font-medium">Recent Directories</span>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={clearAllHistory}
-              className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              Clear All
-            </Button>
-          </div>
-          <div className="max-h-60 overflow-y-auto">
-            {history.map((dir) => (
-              <div 
-                key={dir} 
-                className="flex items-center justify-between p-2 hover:bg-accent cursor-pointer border-b border-border last:border-b-0"
-                onClick={() => handleSelectOrEnter(dir)}
-              >
-                <span className="text-sm truncate flex-1 mr-2">{dir}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                  onClick={(e) => removeFromHistory(dir, e)}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            ))}
-          </div>
+      {/* Validation status */}
+      {(isValidating || validationStatus) && (
+        <div className={cn(
+          "text-sm flex items-center gap-2 p-2 rounded border",
+          isValidating ? "text-muted-foreground border-muted-foreground/30 bg-muted/20" : 
+            validationStatus?.isValid 
+              ? "text-green-500 border-green-500/30 bg-green-500/10" 
+              : "text-red-500 border-red-500/30 bg-red-500/10"
+        )}>
+          {isValidating ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Validating directory...</span>
+            </>
+          ) : validationStatus?.isValid ? (
+            <>
+              <Check className="h-4 w-4" />
+              <span>{validationStatus.message}</span>
+            </>
+          ) : (
+            <>
+              <AlertCircle className="h-4 w-4" />
+              <span>{validationStatus?.message}</span>
+            </>
+          )}
         </div>
       )}
     </div>

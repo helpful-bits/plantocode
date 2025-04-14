@@ -1,133 +1,71 @@
 "use client";
-
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
-import { GLOBAL_PROJECT_DIR_KEY, PROJECT_DIR_HISTORY_KEY, MAX_PROJECT_DIR_HISTORY, PROJECT_DIR_HISTORY_CACHE_KEY } from "@/lib/constants";
-import { useDatabase } from "./database-context";
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
+import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
+import { useDatabase } from "./database-context"; // Import useDatabase hook
 
 interface ProjectContextType {
   projectDirectory: string;
   setProjectDirectory: (dir: string) => void;
-  validateProjectDirectory: (dir: string) => Promise<{ isValid: boolean; message?: string }>;
-  clearHistory: () => void;
-  removeHistoryItem: (dir: string) => void;
-}
+ }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projectDirectory, setProjectDirectoryState] = useState("");
-  const { repository } = useDatabase();
-
-  // Load project directory from database on mount
+  const { repository } = useDatabase(); // Use the repository from context
+  const { isInitialized } = useDatabase(); // Use isInitialized hook
+  const loadedRef = useRef(false); // Reference to track if we've loaded the project directory
+  
+  // Load project directory from DB on mount
   useEffect(() => {
-    const loadProjectDirectory = async () => {
-      try {
-        // Load from database
-        const savedDir = await repository.getCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY);
-        
-        if (savedDir) {
-          setProjectDirectoryState(savedDir);
+    // Only load once when initialized and not already loaded
+    if (isInitialized && !loadedRef.current) {
+      const loadProjectDirectory = async () => {
+        console.log("[ProjectContext] Attempting to load global project directory from DB");
+        try {
+          // Load from database
+          const savedDir = await repository.getCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY); // Using global scope
+          
+          if (savedDir) {
+            setProjectDirectoryState(savedDir);
+          }
+          // Log loaded directory
+          console.log("[ProjectContext] Loaded global project directory:", savedDir || "(none)"); // Added log
+          
+          // Mark as loaded
+          loadedRef.current = true;
+        } catch (e) {
+          // It's okay if we can't load - we'll just start with an empty directory
+          console.error("Failed to load project directory:", e);
+          // Still mark as loaded to prevent repeated failing attempts
+          loadedRef.current = true;
         }
-      } catch (e) {
-        console.error("Failed to load project directory:", e);
-      }
-    };
-    
-    loadProjectDirectory();
-  }, [repository]);
+      };
+      
+      loadProjectDirectory();
+    }
+  }, [repository, isInitialized]); // Dependencies
 
   const setProjectDirectory = useCallback(async (dir: string) => {
-    setProjectDirectoryState(dir);
+    const trimmedDir = dir.trim(); // Trim whitespace
+    setProjectDirectoryState(trimmedDir); // Set state with trimmed dir
+    console.log(`[ProjectContext] Setting project directory: ${trimmedDir || '(cleared)'}`);
     
     try {
       // Store in database for global access
-      if (dir) {
-        // Save to database
-        await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, dir);
-        
-        // Also add to history
-        addToHistory(dir);
-      } else {
-        // Clear from database
-        await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, "");
+      if (trimmedDir) {
+        // Save to database, using 'global' context
+        await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, trimmedDir);
       }
     } catch (e) {
-      console.error("Failed to save project directory:", e);
+      console.error("Failed to save project directory to global cache:", e);
     }
+    // History logic is now handled within ProjectDirectorySelector
   }, [repository]);
-
-  const validateProjectDirectory = async (dir: string): Promise<{ isValid: boolean; message?: string }> => {
-    if (!dir?.trim()) {
-      return { isValid: false, message: "Directory path cannot be empty" };
-    }
-
-    try {
-      // We'll use the readDirectoryAction which is already set up to validate directories
-      // This is an indirect way to check directory validity - in a real implementation, 
-      // we might want a dedicated validation endpoint
-      // For now we'll return a mock success - this would be replaced with actual validation
-      return { isValid: true };
-    } catch (error) {
-      return { 
-        isValid: false, 
-        message: error instanceof Error ? error.message : "Failed to validate directory" 
-      };
-    }
-  };
-
-  const addToHistory = useCallback(async (dir: string) => {
-    if (!dir?.trim()) return;
-
-    try {
-      // Load from database
-      const historyStr = await repository.getCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY);
-      
-      // Parse history or initialize empty array
-      let history: string[] = historyStr ? JSON.parse(historyStr) : [];
-      
-      // Add to front, remove duplicates, limit size
-      history = [dir, ...history.filter(item => item !== dir)].slice(0, MAX_PROJECT_DIR_HISTORY);
-      
-      // Save to database
-      await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, JSON.stringify(history));
-    } catch (e) {
-      console.error("Failed to add to project directory history:", e);
-    }
-  }, [repository]);
-
-  const clearHistory = useCallback(async () => {
-    try {
-      // Clear from database
-      await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
-    } catch (e) {
-      console.error("Failed to clear project directory history:", e);
-    }
-  }, [repository]);
-
-  const removeHistoryItem = useCallback(async (dir: string) => {
-    try {
-      // Get history from database
-      const historyStr = await repository.getCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY);
-      
-      if (!historyStr) return;
-      
-      const history: string[] = JSON.parse(historyStr);
-      const updatedHistory = history.filter(item => item !== dir);
-      
-      // Save updated history to database
-      await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, JSON.stringify(updatedHistory));
-    } catch (e) {
-      console.error("Failed to remove item from project directory history:", e);
-    }
-  }, [repository]);
-
-  return (
+  
+    return (
     <ProjectContext.Provider value={{ 
-      projectDirectory, 
-      setProjectDirectory,
-      validateProjectDirectory,
-      clearHistory,
-      removeHistoryItem
+      projectDirectory, setProjectDirectory
     }}>
       {children}
     </ProjectContext.Provider>

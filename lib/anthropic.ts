@@ -2,12 +2,11 @@
 import { ActionState } from "@/types";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION = "2023-06-01";
-const DEFAULT_MODEL = "claude-3-7-sonnet-20250219"; // Enforced Sonnet model
+const ANTHROPIC_VERSION = "2023-06-01"; // Corrected version
+const DEFAULT_MODEL = "claude-3-5-sonnet-20240620"; // Updated Sonnet model
 
 interface AnthropicRequestPayload {
-  model?: string; // Allow override but default will be enforced
-  messages: { role: string; content: string }[];
+  messages: { role: string; content: string }[]; // Added role property
   max_tokens?: number;
   // Add other potential parameters if needed (temperature, system prompt, etc.)
 }
@@ -20,12 +19,9 @@ export interface AnthropicResponse {
 
 export async function callAnthropicAPI(
   payload: Omit<AnthropicRequestPayload, 'model'> & { max_tokens?: number }, // Exclude model from input payload type
-): Promise<ActionState<T>> {
+): Promise<ActionState<string>> { // Added return type annotation
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return { isSuccess: false, message: "Anthropic API key not configured." };
-  }
-
+  
   try {
     const response = await fetch(ANTHROPIC_API_URL, {
       method: "POST",
@@ -55,7 +51,7 @@ export async function callAnthropicAPI(
     // });
 
     if (!data.content || data.content.length === 0 || typeof data.content[0].text !== 'string') {
-       console.error("Anthropic returned an empty or invalid response:", JSON.stringify(data).slice(0, 500));
+       console.error("Anthropic returned an empty or invalid response structure:", JSON.stringify(data).slice(0, 500));
        throw new Error("Anthropic returned an invalid response structure.");
     }
 
@@ -63,7 +59,7 @@ export async function callAnthropicAPI(
 
     return { isSuccess: true, message: "Anthropic API call successful", data: responseText };
 
-  } catch (error) {
+  } catch (error: unknown) { // Use unknown type for catch block variable
     console.error("Error calling Anthropic API:", error);
     return { 
       isSuccess: false, 

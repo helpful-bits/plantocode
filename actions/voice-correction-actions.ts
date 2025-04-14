@@ -1,34 +1,27 @@
 "use server";
 
-import { callAnthropicAPI } from "@/lib/anthropic";
+import { callAnthropicAPI, AnthropicResponse } from "@/lib/anthropic";
 import { ActionState } from "@/types";
 
 export async function correctTaskDescriptionAction(rawText: string): Promise<ActionState<string>> {
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return { isSuccess: false, message: "Anthropic API key not configured." };
-    }
-    
     const payload = {
-      messages: [{
-        role: "user",
+        role: "user", // Changed role to "user"
         content: `Please correct any spelling mistakes or unnatural phrasing in the following text, while preserving its meaning and intent.
 ---
 ${rawText}
 ---
 Return only the corrected text without any additional commentary.`
-      }],
     };
 
-    const result = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await callAnthropicAPI(payload);
 
-    if (!result.isSuccess) {
+    if (!result.isSuccess || !result.data) {
       return { isSuccess: false, message: result.message || "Failed to correct text via API" };
     }
     
     // Use result.data which is the string response
     const correctedText = result.data || rawText; // Fallback to original if empty response
-
 
     return {
       isSuccess: true,

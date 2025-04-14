@@ -1,5 +1,5 @@
-export interface ActionState<T = void> {
+export type ActionState<TData = unknown> = { // Changed generic name for clarity
   isSuccess: boolean;
   message?: string;
-  data?: T;
-} 
+  data?: TData; // Make data optional
+};
