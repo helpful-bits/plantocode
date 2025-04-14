@@ -130,7 +130,10 @@ export function useVoiceRecording({
       
       const blobType = audioChunksRef.current[0]?.type || (isSafari ? 'audio/mp4' : 'audio/webm');
       const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
-      
+
+      // Clear chunks immediately after creating blob
+      audioChunksRef.current = [];
+
       if (audioBlob.size < 1000) { 
         console.warn(`Created audio blob is too small: ${audioBlob.size} bytes`);
         setError("Recording is too short or quiet. Please try again and speak clearly.");
@@ -139,7 +142,9 @@ export function useVoiceRecording({
         setIsRecording(false);
         return;
       }
-      
+
+      // Release microphone resources as soon as the blob is created
+      cleanupMedia();
       setError(null);
       setIsProcessing(true);
       setRawText(null);
@@ -184,9 +189,8 @@ export function useVoiceRecording({
         const message = err instanceof Error ? err.message : "Failed to process audio";
         setError(prevError => prevError || message);
       } finally {
-        audioChunksRef.current = []; 
         setIsProcessing(false);
-        cleanupMedia();
+        // cleanupMedia() // Moved earlier to release mic sooner
       }
   }, [handleTranscription, handleCorrection, isSafari, cleanupMedia]);
 

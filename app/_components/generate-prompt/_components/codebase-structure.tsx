@@ -2,6 +2,7 @@
 
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button"; // Fixed duplicate import
+import { useProject } from "@/lib/contexts/project-context"; // Import useProject
 import { useState, useCallback } from "react";
 import { generateDirectoryTree } from "@/lib/directory-tree";
 interface CodebaseStructureProps {

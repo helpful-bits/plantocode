@@ -289,7 +289,28 @@ export default function ProjectDirectorySelector() {
     }
   };
 
-  return (
+// Manually trigger validation and refresh of the current directory
+const handleRefresh = useCallback(async () => {
+    if (!projectDirectory || isValidating) return;
+
+    console.log(`[Refresh] Refreshing directory: ${projectDirectory}`);
+    const isValid = await validateDirectory(projectDirectory);
+
+    // Re-set the project directory in context even if it's the same value.
+    // This should trigger the useEffect in GeneratePromptForm to reload files.
+    if (isValid) {
+        setProjectDirectory(projectDirectory);
+        setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
+        
+        // Clear the success message after 3 seconds
+        setTimeout(() => {
+            setValidationStatus(null);
+        }, 3000);
+    }
+}, [projectDirectory, isValidating, validateDirectory, setProjectDirectory]);
+
+
+    return (
     <div className="bg-card border rounded-lg p-4 shadow-sm space-y-4">
       <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
         <FolderOpen className="h-4 w-4" /> Project Directory
@@ -376,6 +397,15 @@ export default function ProjectDirectorySelector() {
         >
           Browse
         </Button>
+          <Button
+              type="button"
+              onClick={handleRefresh}
+              variant="outline"
+              size="icon"
+              className="shrink-0 h-10 w-10" // Match input height
+              disabled={isValidating || !projectDirectory}
+              title={!projectDirectory ? "Select a directory first" : "Refresh file list for current directory"}
+          ><RefreshCw className="h-4 w-4" /></Button>
       </div>
       
       {/* Validation status */}
@@ -405,6 +435,7 @@ export default function ProjectDirectorySelector() {
           )}
         </div>
       )}
+
     </div>
   );
 }
