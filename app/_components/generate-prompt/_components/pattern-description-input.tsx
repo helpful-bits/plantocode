@@ -122,11 +122,11 @@ export default function PatternDescriptionInput({
 
   return (
     <div className="flex flex-col gap-3 bg-card p-5 rounded-lg shadow-sm border">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-muted-foreground">
-          Describe the types of files or content you want to find (e.g., &quot;React components using useState&quot;, &quot;Markdown files with TODOs&quot;). AI will generate regex patterns.
-        </div>
-        
+        {/* Section Heading */}
+        <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-lg text-card-foreground">Describe File Patterns</h3>
+
+            {/* Improve Selection Button */}
         <Button
           type="button"
           variant="secondary"
@@ -138,6 +138,12 @@ export default function PatternDescriptionInput({
           {isImproving ? "Improving..." : "Improve Selection"}
         </Button>
       </div>
+
+      {/* Explanatory Text */}
+      <p className="text-sm text-muted-foreground -mt-2">
+        Describe the types of files or content you want to find (e.g., "React components using useState", "Markdown files with TODOs"). AI will generate corresponding regex patterns below.
+      </p>
+
       <Textarea
         ref={textareaRef}
         value={value}
@@ -150,7 +156,7 @@ export default function PatternDescriptionInput({
           onInteraction(); // Notify parent about interaction
         }}
         placeholder="Enter your description here..."
-        className="resize-y min-h-[120px] bg-background/80"
+        className="resize-y min-h-[120px] bg-background/80" // Kept original height
       />
       <Button // Use primary variant for generate regex
         type="button" // Added type="button"

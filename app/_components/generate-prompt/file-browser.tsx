@@ -16,16 +16,20 @@ type FilesMap = { [path: string]: FileInfo };
 
 interface FileBrowserProps {
   allFilesMap?: FilesMap;
+  fileContentsMap?: { [key: string]: string }; // Add file contents map
   onFilesMapChange?: (newMap: FilesMap) => void;
   searchTerm?: string;
   onSearchChange?: (value: string) => void;
   titleRegex: string;
   contentRegex: string;
   isRegexActive: boolean;
+  titleRegexError: string | null; // Add error state props
+  contentRegexError: string | null;
+  onTitleRegexErrorChange: (error: string | null) => void; // Add error handler props
+  onContentRegexErrorChange: (error: string | null) => void;
   onInteraction?: () => void;
   debugMode?: boolean;
   isLoading?: boolean;
-  loadingStatus?: string;
   // Legacy prop names
   files?: FilesMap;
   onFilesChange?: (newMap: FilesMap) => void;
@@ -37,17 +41,21 @@ const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
 
 export default function FileBrowser({
   allFilesMap: propsAllFilesMap,
+  fileContentsMap = {}, // Default to empty object
   files: propsFiles,
   onFilesMapChange,
   onFilesChange,
   searchTerm: propSearchTerm,
   searchFilter,
   onSearchChange = () => {},
+  titleRegexError,
+  contentRegexError,
+  onTitleRegexErrorChange,
+  onContentRegexErrorChange,
   titleRegex,
   contentRegex,
   isRegexActive,
   onInteraction,
-  debugMode,
   isLoading,
   loadingStatus,
   loadingMessage
@@ -55,8 +63,7 @@ export default function FileBrowser({
   // Normalize props to use both naming conventions
   const allFilesMap = propsAllFilesMap || propsFiles || {};
   const searchTerm = propSearchTerm || searchFilter || "";
-  const loadingText = loadingMessage || loadingStatus || "";
-  
+
   const { projectDirectory } = useProject();
   const { repository } = useDatabase();
   const { outputFormat } = useFormat();
@@ -171,23 +178,92 @@ export default function FileBrowser({
 
   // Filter files based on search and showOnlySelected
   const filteredDisplayFiles = useMemo(() => {
-    if (!allFilesMap) return [];
-    
-    const filesArray = Object.values(allFilesMap);
-    
-    // First filter by showOnlySelected if needed
-    const selectedFiltered = showOnlySelected
-      ? filesArray.filter(file => file.included && !file.forceExcluded)
-      : filesArray;
-    
-    // Then filter by search term if present
-    if (!searchTerm) return selectedFiltered;
-    
+    if (!allFilesMap) return []; // Guard against null/undefined map
+    let filesToFilter = Object.values(allFilesMap);
+    let filteredFiles: FileInfo[] = [];
+
+    // --- 1. Filter by Search Term ---
     const lowerSearchTerm = searchTerm.toLowerCase();
-    return selectedFiltered.filter(file => 
-      file.path.toLowerCase().includes(lowerSearchTerm)
-    );
-  }, [allFilesMap, searchTerm, showOnlySelected]);
+    if (lowerSearchTerm) {
+      filesToFilter = filesToFilter.filter(file =>
+        file.path.toLowerCase().includes(lowerSearchTerm)
+      );
+    }
+
+    // --- 2. Filter by Regex (if active) ---
+    let currentTitleError: string | null = null;
+    let currentContentError: string | null = null;
+    const matchedPathsByRegex = new Set<string>();
+
+    if (isRegexActive) {
+      const titleRegexTrimmed = titleRegex.trim();
+      const contentRegexTrimmed = contentRegex.trim();
+      const hasTitleRegex = !!titleRegexTrimmed;
+      const hasContentRegex = !!contentRegexTrimmed;
+      const hasFileContents = Object.keys(fileContentsMap).length > 0;
+
+      if (hasTitleRegex || hasContentRegex) {
+        // Apply title regex
+        if (hasTitleRegex) {
+          try {
+            const regex = new RegExp(titleRegexTrimmed);
+            filesToFilter.forEach(file => {
+              if (regex.test(file.path)) {
+                matchedPathsByRegex.add(file.path); // Add matches from title regex
+              }
+            });
+            currentTitleError = null; // Clear error if regex is valid
+          } catch (e) {
+            currentTitleError = e instanceof Error ? e.message : "Invalid title regex";
+            console.error("Title Regex Error:", e);
+          }
+        }
+
+        // Apply content regex
+        if (hasContentRegex && hasFileContents) {
+          try {
+            const regex = new RegExp(contentRegexTrimmed, 'm'); // Multiline match
+            filesToFilter.forEach(file => {
+              const content = fileContentsMap[file.path];
+              if (typeof content === 'string' && regex.test(content)) {
+                matchedPathsByRegex.add(file.path); // Add matches from content regex
+              }
+            });
+            currentContentError = null; // Clear error if regex is valid
+          } catch (e) {
+            currentContentError = e instanceof Error ? e.message : "Invalid content regex";
+            console.error("Content Regex Error:", e);
+          }
+        }
+
+        // Filter based on the combined matches from *either* title or content regex
+        if (hasTitleRegex || hasContentRegex) {
+          filteredFiles = filesToFilter.filter(file => matchedPathsByRegex.has(file.path));
+        } else {
+          // If regex is active but neither pattern is valid or provided, return the search-filtered list
+          filteredFiles = filesToFilter;
+        }
+      } else {
+        // Regex is active, but no patterns provided
+        filteredFiles = filesToFilter;
+      }
+    } else {
+      // Regex is inactive, just use the search-filtered list
+      filteredFiles = filesToFilter;
+    }
+
+    // Set errors outside the main filtering logic if they changed
+    if (currentTitleError !== titleRegexError) onTitleRegexErrorChange(currentTitleError);
+    if (currentContentError !== contentRegexError) onContentRegexErrorChange(currentContentError);
+
+    // --- 3. Filter by "Show Only Selected" ---
+    if (showOnlySelected) {
+      filteredFiles = filteredFiles.filter(file => file.included && !file.forceExcluded);
+    }
+
+    return filteredFiles;
+
+  }, [allFilesMap, searchTerm, showOnlySelected, isRegexActive, titleRegex, contentRegex, fileContentsMap, titleRegexError, contentRegexError, onTitleRegexErrorChange, onContentRegexErrorChange]);
 
   // Sort files for display - group by directories first then alphabetically
   const displayedFiles = useMemo(() => {
@@ -303,7 +379,7 @@ export default function FileBrowser({
           <Loader2 className="h-8 w-8 animate-spin" />
           <div>
             <p className="font-medium">Loading files from git repository...</p>
-            {loadingText && <p className="text-sm">{loadingText}</p>}
+            {loadingMessage && <p className="text-sm">{loadingMessage}</p>}
           </div>
         </div>
       ) : displayedFiles.length > 0 ? (

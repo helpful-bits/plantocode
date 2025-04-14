@@ -633,74 +633,6 @@ export default function GeneratePromptForm() {
     // Debounced save handled by useEffect
   }, [isRegexActive]); // Added isRegexActive dependency
 
-  // Memoized calculation for files displayed in the browser
-  const displayedFiles = useMemo(() => {
-    let baseFiles = Object.values({ ...allFilesMap }).sort((a, b) => a.path.localeCompare(b.path));
-
-    if (searchTerm) {
-      baseFiles = baseFiles.filter((file) =>
-        file.path.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    const hasTitleRegex = titleRegex.trim();
-    const contentRegexTrimmed = contentRegex.trim();
-    const hasContentRegex = contentRegexTrimmed && Object.keys(fileContentsMap).length > 0;
-
-    // If regex is inactive or no regex patterns, return search-filtered list
-    if (!isRegexActive || (!hasTitleRegex && !hasContentRegex)) {
-      if (titleRegexError && !hasTitleRegex) setTitleRegexError(null);
-      if (contentRegexError && !contentRegexTrimmed) setContentRegexError(null);
-      return baseFiles;
-    }
-    let titleMatches = new Set<string>();
-    let contentMatches = new Set<string>();
-    let titleError: string | null = null;
-    let contentError: string | null = null;
-
-    // 2. Apply titleRegex if present
-    if (hasTitleRegex) {
-      try {
-        const regex = new RegExp(titleRegex.trim());
-        baseFiles.forEach((file) => {
-          if (regex.test(file.path)) {
-            titleMatches.add(file.path);
-          }
-        });
-      } catch (e) {
-        titleError = e instanceof Error ? e.message : "Invalid title regex";
-      }
-    }
-
-    // 3. Apply contentRegex if present
-    if (hasContentRegex) {
-      try {
-        const regex = new RegExp(contentRegexTrimmed, 'm'); // 'm' for multiline matching
-        baseFiles.forEach((file) => {
-          const content = fileContentsMap[file.path];
-          if (typeof content === 'string' && regex.test(content)) {
-            contentMatches.add(file.path);
-          }
-        });
-      } catch (e) {
-        contentError = e instanceof Error ? e.message : "Invalid content regex";
-      }
-    }
-
-    // Update error states outside the loop/try-catch
-    if (titleRegexError !== titleError) setTitleRegexError(titleError);
-    if (contentRegexError !== contentError) setContentRegexError(contentError);
-
-    // 4. Combine results using OR logic
-    const combinedPaths = new Set<string>();
-    // Only add matches if the corresponding regex was valid (no error)
-    if (hasTitleRegex && !titleError) titleMatches.forEach(path => combinedPaths.add(path));
-    if (hasContentRegex && !contentError) contentMatches.forEach(path => combinedPaths.add(path));
-
-    // Filter the original baseFiles list based on the combined matched paths
-    return baseFiles.filter(file => combinedPaths.has(file.path));
-
-  }, [allFilesMap, searchTerm, titleRegex, contentRegex, fileContentsMap, titleRegexError, contentRegexError, isRegexActive]); // Add isRegexActive dependency
-
   const handleGenerateRegex = useCallback(async () => {
     if (!patternDescription.trim()) {
       setRegexGenerationError("Please enter a pattern description first.");
@@ -1212,10 +1144,15 @@ ${taskDescription}
 
               {/* File Browser */}
               <FileBrowser
-                allFilesMap={allFilesMap}
+                allFilesMap={allFilesMap} // Pass the full map
+                fileContentsMap={fileContentsMap} // Pass the contents map
                 onFilesMapChange={handleFilesMapChange}
                 searchTerm={searchTerm}
                 onSearchChange={handleSearchChange}
+                titleRegexError={titleRegexError} // Pass error state
+                contentRegexError={contentRegexError}
+                onTitleRegexErrorChange={setTitleRegexError} // Pass error handlers
+                onContentRegexErrorChange={setContentRegexError}
                 titleRegex={titleRegex}
                 contentRegex={contentRegex}
                 isRegexActive={isRegexActive}
