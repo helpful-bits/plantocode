@@ -1,17 +1,21 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useFormat } from "@/lib/contexts/format-context";
+import { Textarea } from "./textarea"; // Import Textarea
 
+import { OutputFormat } from "@/types";
 export function FormatSelector() {
-  const { outputFormat, customFormat, setOutputFormat, setCustomFormat } = useFormat();
+  const { outputFormat, customFormat, setOutputFormat, setCustomFormat } = useFormat(); // Ensure setCustomFormat is used
 
   return (
-    <div className="flex flex-col gap-2">
-      <label className="font-bold text-foreground">Output Format:</label>
+    <div className="flex flex-col gap-2 bg-card p-5 rounded-lg shadow-sm border">
+      <label htmlFor="outputFormatSelect" className="font-semibold text-lg text-card-foreground">Output Format:</label>
       <select
-        className="border rounded bg-background text-foreground p-2"
+        id="outputFormatSelect"
+        className="border rounded bg-background text-foreground p-2 h-10"
         value={outputFormat}
-        onChange={(e) => setOutputFormat(e.target.value as any)}
+        onChange={(e) => setOutputFormat(e.target.value as OutputFormat)} // Use correct type assertion
       >
         <option value="diff">Code Changes (Diff)</option>
         <option value="refactoring">Refactoring Plan</option>
@@ -20,11 +24,11 @@ export function FormatSelector() {
       </select>
       
       {outputFormat === "custom" && (
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-muted-foreground">
+        <div className="flex flex-col gap-2 mt-2">
+          <label htmlFor="customFormatInput" className="text-sm text-muted-foreground">
             Custom Format Instructions:
           </label>
-          <textarea
+          <Textarea
             className="border rounded bg-background text-foreground p-2 h-32"
             value={customFormat}
             onChange={(e) => setCustomFormat(e.target.value)}

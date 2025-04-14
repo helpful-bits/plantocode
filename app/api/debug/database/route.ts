@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         tables: tables.map(t => t.name),
         message: `Found ${tables.length} tables`
       });
-    } catch (error) {
+    } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({ 
         success: false, 
         error: `Failed to check database: ${error}` 
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         success: true, 
         message: 'Database has been reset and reinitialized' 
       });
-    } catch (error) {
+    } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({ 
         success: false, 
         error: `Failed to reset database: ${error}` 
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
   if (action === 'cached-state') {
     try {
       const projectHash = searchParams.get('project_hash');
-      let query = "SELECT * FROM cached_state_items";
+      let query = "SELECT * FROM cached_state";
       let params: any[] = [];
       
       if (projectHash) {
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         entries,
         count: entries.length
       });
-    } catch (error) {
+    } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({ 
         success: false, 
         error: `Failed to retrieve cached state: ${error}` 
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
     }
     
     try {
-      let query = "DELETE FROM cached_state_items";
+      let query = "DELETE FROM cached_state";
       let params: any[] = [];
       
       if (projectHash) {
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
         success: true, 
         message: `Cleared ${rowsAffected} cached state entries ${targetDescription}` 
       });
-    } catch (error) {
+    } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({ 
         success: false, 
         error: `Failed to clear cached state: ${error}` 
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
       // First, attempt to write a test value
       await new Promise<void>((resolve, reject) => {
         db.run(`
-          INSERT OR REPLACE INTO cached_state_items
+          INSERT OR REPLACE INTO cached_state
           (project_hash, output_format, key, value, updated_at)
           VALUES (?, ?, ?, ?, ?)
         `, [testProject, testFormat, testKey, testValue, Date.now()], (err) => {
@@ -157,9 +157,9 @@ export async function GET(request: NextRequest) {
       // Then, try to read it back
       const readValue = await new Promise<string | null>((resolve, reject) => {
         db.get(`
-          SELECT value FROM cached_state_items
+          SELECT value FROM cached_state
           WHERE project_hash = ? AND output_format = ? AND key = ?
-        `, [testProject, testFormat, testKey], (err, row) => {
+        `, [testProject, testFormat, testKey], (err, row: any) => { // Added type annotation
           if (err) reject(err);
           else resolve(row ? row.value : null);
         });
@@ -171,7 +171,7 @@ export async function GET(request: NextRequest) {
       // Clean up the test data
       await new Promise<void>((resolve, reject) => {
         db.run(`
-          DELETE FROM cached_state_items
+          DELETE FROM cached_state
           WHERE project_hash = ? AND output_format = ? AND key = ?
         `, [testProject, testFormat, testKey], (err) => {
           if (err) reject(err);
@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
           ? "Database read/write test passed!" 
           : "Database read/write test FAILED: written value doesn't match read value"
       });
-    } catch (error) {
+    } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({
         success: false,
         error: `Database test failed: ${error}`,
@@ -215,7 +215,7 @@ export async function GET(request: NextRequest) {
       // Get task description entries across all formats
       const taskEntries = await new Promise<any[]>((resolve, reject) => {
         db.all(`
-          SELECT * FROM cached_state_items 
+          SELECT * FROM cached_state 
           WHERE project_hash = ? AND key = 'task-description'
         `, [projectHash], (err, rows) => {
           if (err) reject(err);
@@ -226,7 +226,7 @@ export async function GET(request: NextRequest) {
       // Get all entries for this project
       const allEntries = await new Promise<any[]>((resolve, reject) => {
         db.all(`
-          SELECT * FROM cached_state_items 
+          SELECT * FROM cached_state 
           WHERE project_hash = ?
           ORDER BY key, output_format
         `, [projectHash], (err, rows) => {
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
         keyCount: allEntries.length,
         message: `Found ${taskEntries.length} task description entries and ${allEntries.length} total entries for project` 
       });
-    } catch (error) {
+    } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({ 
         success: false, 
         error: `Failed to check task state: ${error}` 
@@ -252,63 +252,9 @@ export async function GET(request: NextRequest) {
     }
   }
   
-  // Manually set a cached state value
-  if (action === 'set-cache') {
-    const projectDirectory = searchParams.get('project');
-    const format = searchParams.get('format') || 'global';
-    const key = searchParams.get('key');
-    const value = searchParams.get('value');
-    
-    if (!projectDirectory || !key || value === null) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Must provide project, key, and value parameters' 
-      }, { status: 400 });
-    }
-    
-    try {
-      const projectHash = hashString(projectDirectory);
-      
-      // Set the cache value
-      await new Promise<void>((resolve, reject) => {
-        db.run(`
-          INSERT OR REPLACE INTO cached_state_items
-          (project_hash, output_format, key, value, updated_at)
-          VALUES (?, ?, ?, ?, ?)
-        `, [projectHash, format, key, value, Date.now()], (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      return NextResponse.json({ 
-        success: true, 
-        projectHash,
-        projectDirectory,
-        format,
-        key,
-        value,
-        message: `Successfully set cache value for ${key}` 
-      });
-    } catch (error) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Failed to set cache value: ${error}` 
-      }, { status: 500 });
-    }
-  }
-  
-  // Get available debug actions
+  // If no recognized action was provided
   return NextResponse.json({ 
-    success: true, 
-    availableActions: [
-      { action: 'check', description: 'Check database tables' },
-      { action: 'reset', description: 'Reset the database (requires confirmed=true parameter)' },
-      { action: 'cached-state', description: 'Get all cached state entries (filter with project_hash parameter)' },
-      { action: 'clear-cache', description: 'Clear cached state entries (requires confirmed=true, optional project_hash filter)' },
-      { action: 'test-db', description: 'Test database read/write operations' },
-      { action: 'task-state', description: 'Check task description state (requires project parameter)' },
-      { action: 'set-cache', description: 'Manually set a cached state value (requires project, key, value parameters, optional format)' }
-    ]
-  });
-} 
+    success: false, 
+    error: 'Invalid or missing action parameter. Supported actions: check, reset, cached-state, clear-cache, test-db, task-state' 
+  }, { status: 400 });
+}

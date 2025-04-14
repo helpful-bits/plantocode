@@ -1,9 +1,10 @@
 
 /**
- * Simple string hashing function that works in the browser
  */
 export function hashString(str: string): string {
-  let hash = 0;
+  // Treat empty string or 'global' as 'global' consistently
+  if (str === 'global' || !str) return 'global';
+  let hash = 5381; // djb2 seed
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;

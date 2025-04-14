@@ -10,7 +10,7 @@ export async function getPathFinderPrompt(): Promise<string> {
   <task>
     1. Analyze code files and task description
     2. Identify ALL relevant files including code, dependencies, documentation, and configuration
-    3. Prioritize comprehensiveness - include many paths rather than too few
+    3. Prioritize accuracy and relevance based on the task. Include necessary files, but avoid excessive unrelated files.
     4. VERIFY that all file paths actually exist in the repository
     5. Output plain text file paths list and task description paragraph
   </task>
@@ -23,7 +23,7 @@ export async function getPathFinderPrompt(): Promise<string> {
       • Plain text list of paths, one per line
       • All paths relative to repository root
       • ONLY include paths that actually exist in the repository
-      • Double-check all paths to ensure they are correct
+      • Double-check all paths to ensure they are correct and relevant to the task
       • Be COMPREHENSIVE - include many relevant paths
       • ALWAYS include project documentation (README.md, docs/, etc.)
       • ALWAYS include relevant .cursor rules if they exist

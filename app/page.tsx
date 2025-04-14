@@ -9,24 +9,25 @@ import { useDatabase } from "@/lib/contexts/database-context";
 export default function Home() {
   const { isInitialized } = useDatabase();
   
-  // Show a loading indicator while the database is initializing
   if (!isInitialized) {
     return (
-      <main className="container mx-auto py-8">
+      <main className="container mx-auto py-8 flex flex-col min-h-screen">
         <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>
-        <div className="flex justify-center items-center h-[50vh] flex-col gap-4">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-center text-foreground">Initializing database...</p>
+        {/* Added key prop for better performance */}
+        <div className="flex-grow flex justify-center items-center"> {/* Added key prop */}
+          <div className="flex justify-center items-center h-[50vh] flex-col gap-4">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="container mx-auto py-8">
+    <main className="container mx-auto py-8 flex flex-col min-h-screen">
       <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>
 
-      <div className="max-w-[1400px] mx-auto space-y-12">
+      <div className="max-w-[1400px] w-full mx-auto space-y-12"> {/* Ensure full width */}
         <div>
           <FormatSelector />
         </div>

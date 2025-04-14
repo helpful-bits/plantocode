@@ -8,11 +8,17 @@ import { hashString } from '@/lib/hash';
  */
 export class SessionRepository {
   /**
-   * Save a session to the database
+   * Save a session to the database (create or update)
    */
   saveSession = async (session: Session): Promise<Session> => {
+    console.log(`[Repo] Saving session: ${session.id} - ${session.name}`);
     return new Promise((resolve, reject) => {
       try {
+        if (!session.projectDirectory || !session.outputFormat) {
+          return reject(new Error("Missing required session fields: projectDirectory and outputFormat"));
+        }
+        const projectHash = hashString(session.projectDirectory);
+        
         // Extract included files and excluded files
         const includedFilesArray = session.includedFiles || [];
         const excludedFilesArray = session.forceExcludedFiles || [];
@@ -20,114 +26,167 @@ export class SessionRepository {
         // Begin transaction
         db.run('BEGIN TRANSACTION', async (err) => {
           if (err) {
-            return reject(err);
-          }
-
-          // First save or update the session
-          const sessionValues = {
-            id: session.id,
-            name: session.name,
-            projectDirectory: session.projectDirectory,
-            taskDescription: session.taskDescription || '',
-            searchTerm: session.searchTerm || '',
-            pastedPaths: session.pastedPaths || '',
-            patternDescription: session.patternDescription || '',
-            titleRegex: session.titleRegex || '',
-            contentRegex: session.contentRegex || '',
-            isRegexActive: session.isRegexActive,
-            codebaseStructure: session.codebaseStructure || '',
-            outputFormat: session.outputFormat,
-            customFormat: (session as any).customFormat || '',
-            updatedAt: Date.now(),
-          };
-
-          // Try to insert first
-          db.run(`
-            INSERT OR REPLACE INTO sessions 
-            (id, name, project_directory, task_description, search_term, pasted_paths, 
-             pattern_description, title_regex, content_regex, is_regex_active, 
-             codebase_structure, output_format, custom_format, updated_at)
-            VALUES 
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            sessionValues.id,
-            sessionValues.name,
-            sessionValues.projectDirectory,
-            sessionValues.taskDescription,
-            sessionValues.searchTerm,
-            sessionValues.pastedPaths,
-            sessionValues.patternDescription,
-            sessionValues.titleRegex,
-            sessionValues.contentRegex,
-            sessionValues.isRegexActive ? 1 : 0,
-            sessionValues.codebaseStructure,
-            sessionValues.outputFormat,
-            sessionValues.customFormat,
-            sessionValues.updatedAt
-          ], async (err) => {
-            if (err) {
-              db.run('ROLLBACK', () => reject(err));
-              return;
+            console.error("Begin transaction error:", err);
+            if (err.message && err.message.includes('cannot start a transaction within a transaction')) {
+              console.log("Detected nested transaction, proceeding without explicit transaction");
+              await handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, true); // Pass projectHash and true for noTransaction
+            } else {
+              return reject(err);
             }
+          } else {
+            await handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, false); // Pass projectHash and false for noTransaction
+          }
+          
+          // Helper function to handle session save logic - extracted to avoid code duplication
+          async function handleSessionSave(resolve: (value: Session) => void, reject: (reason: any) => void) {
+            // First save or update the session
+            const sessionValues = {
+              id: session.id,
+              name: session.name,
+              projectDirectory: session.projectDirectory,
+              projectHash, // Store the hash as well for safer queries
+              taskDescription: session.taskDescription || '',
+              searchTerm: session.searchTerm || '',
+              pastedPaths: session.pastedPaths || '',
+              patternDescription: session.patternDescription || '',
+              titleRegex: session.titleRegex || '',
+              contentRegex: session.contentRegex || '',
+              isRegexActive: session.isRegexActive,
+              codebaseStructure: session.codebaseStructure || '',
+              outputFormat: session.outputFormat,
+              customFormat: (session as any).customFormat || '',
+              updatedAt: Date.now(), // Use milliseconds timestamp
+            };
 
-            try {
-              // Delete existing included files for this session
-              await new Promise<void>((resolve, reject) => {
-                db.run(`DELETE FROM included_files WHERE session_id = ?`, [session.id], (err) => {
-                  if (err) reject(err);
-                  else resolve();
-                });
-              });
-
-              // Insert new included files
-              if (includedFilesArray.length > 0) {
-                for (const filePath of includedFilesArray) {
-                  await new Promise<void>((resolve, reject) => {
-                    db.run(`INSERT INTO included_files (session_id, file_path) VALUES (?, ?)`, 
-                      [session.id, filePath], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-                  });
-                }
-              }
-
-              // Delete existing excluded files for this session
-              await new Promise<void>((resolve, reject) => {
-                db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [session.id], (err) => {
-                  if (err) reject(err);
-                  else resolve();
-                });
-              });
-
-              // Insert new excluded files
-              if (excludedFilesArray.length > 0) {
-                for (const filePath of excludedFilesArray) {
-                  await new Promise<void>((resolve, reject) => {
-                    db.run(`INSERT INTO excluded_files (session_id, file_path) VALUES (?, ?)`, 
-                      [session.id, filePath], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-                  });
-                }
-              }
-
-              // Commit the transaction
-              db.run('COMMIT', (err) => {
-                if (err) {
-                  db.run('ROLLBACK', () => reject(err));
+            // Insert or replace the session data
+            // Update schema query to include project_hash if needed
+            db.run(`
+              INSERT OR REPLACE INTO sessions
+              (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
+               pattern_description, title_regex, content_regex, is_regex_active,
+               codebase_structure, output_format, custom_format, updated_at)
+              VALUES
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+            `, [
+              sessionValues.id,
+              sessionValues.name,
+              sessionValues.projectDirectory,
+              projectHash, // Add project_hash parameter
+              sessionValues.taskDescription,
+              sessionValues.searchTerm,
+              sessionValues.pastedPaths,
+              sessionValues.patternDescription,
+              sessionValues.titleRegex,
+              sessionValues.contentRegex,
+              sessionValues.isRegexActive ? 1 : 0,
+              sessionValues.codebaseStructure,
+              sessionValues.outputFormat,
+              sessionValues.customFormat,
+              sessionValues.updatedAt
+            ], async function(saveErr) {
+              if (saveErr) {
+                console.error("Error saving session:", saveErr);
+                // Only rollback if we're in a transaction
+                if (!err) {
+                  db.run('ROLLBACK', () => reject(saveErr));
                 } else {
+                  reject(saveErr);
+                }
+                return;
+              }
+
+              try {
+                // Delete existing included files for this session
+                await new Promise<void>((resolveDelete, rejectDelete) => {
+                  db.run(`DELETE FROM included_files WHERE session_id = ?`, [session.id], (deleteErr) => {
+                    if (deleteErr) { console.error("Error deleting included files:", deleteErr); rejectDelete(deleteErr); }
+                    else resolveDelete();
+                  });
+                });
+
+                // Insert new included files - safely handle each file path
+                if (includedFilesArray.length > 0) {
+                  const includedStmt = db.prepare(`INSERT INTO included_files (session_id, file_path) VALUES (?, ?)`);
+                  for (const filePath of includedFilesArray) {
+                    try {
+                      await new Promise<void>((resolveInsert, rejectInsert) => {
+                        includedStmt.run(session.id, filePath, (insertErr) => {
+                          if (insertErr) { 
+                            console.error("Error inserting included file:", insertErr, { filePath });
+                            // Skip this file instead of failing the entire transaction
+                            resolveInsert(); 
+                          }
+                          else resolveInsert();
+                        });
+                      });
+                    } catch (innerErr) {
+                      console.error("Error processing included file:", innerErr, { filePath });
+                      // Continue with next file
+                    }
+                  }
+                  includedStmt.finalize();
+                }
+
+                // Delete existing excluded files for this session
+                await new Promise<void>((resolveDelete, rejectDelete) => {
+                  db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [session.id], (deleteErr) => {
+                    if (deleteErr) { console.error("Error deleting excluded files:", deleteErr); rejectDelete(deleteErr); }
+                    else resolveDelete();
+                  });
+                });
+
+                // Insert new excluded files - safely handle each file path
+                if (excludedFilesArray.length > 0) {
+                  const excludedStmt = db.prepare(`INSERT INTO excluded_files (session_id, file_path) VALUES (?, ?)`);
+                  for (const filePath of excludedFilesArray) {
+                    try {
+                      await new Promise<void>((resolveInsert, rejectInsert) => {
+                        excludedStmt.run(session.id, filePath, (insertErr) => {
+                          if (insertErr) { 
+                            console.error("Error inserting excluded file:", insertErr, { filePath });
+                            // Skip this file instead of failing the entire transaction
+                            resolveInsert(); 
+                          }
+                          else resolveInsert();
+                        });
+                      });
+                    } catch (innerErr) {
+                      console.error("Error processing excluded file:", innerErr, { filePath });
+                      // Continue with next file
+                    }
+                  }
+                  excludedStmt.finalize();
+                }
+
+                // Only commit if we started a transaction
+                if (!err) {
+                  // Commit the transaction
+                  db.run('COMMIT', (commitErr) => {
+                    if (commitErr) {
+                      console.error("Commit error:", commitErr);
+                      db.run('ROLLBACK', () => reject(commitErr));
+                    } else {
+                      resolve(session);
+                    }
+                  });
+                } else {
+                  // If we're not in a transaction, just resolve
                   resolve(session);
                 }
-              });
-
-            } catch (error) {
-              db.run('ROLLBACK', () => reject(error));
-            }
-          });
+              } catch (fileError) {
+                console.error("Error processing files:", fileError);
+                // Only rollback if we started a transaction
+                if (!err) {
+                  db.run('ROLLBACK', () => reject(fileError));
+                } else {
+                  reject(fileError);
+                }
+              }
+            });
+          }
         });
       } catch (error) {
+        console.error("Outer catch error in saveSession:", error);
         reject(error);
       }
     });
@@ -136,14 +195,20 @@ export class SessionRepository {
   /**
    * Get all sessions for a specific project directory and output format
    */
-  getSessions = async (projectDirectory: string, outputFormat: OutputFormat): Promise<Session[]> => {
+  getSessions = async (projectDirectory: string, outputFormat: OutputFormat): Promise<Session[]> => { // Add async keyword
+    console.log(`[Repo] Getting sessions for Project: ${projectDirectory}, Format: ${outputFormat}`);
+    
+    // Generate project hash for safer SQL queries
+    const projectHash = hashString(projectDirectory);
+    
     return new Promise((resolve, reject) => {
       db.all(`
-        SELECT * FROM sessions 
-        WHERE project_directory = ? AND output_format = ?
-        ORDER BY updated_at
-      `, [projectDirectory, outputFormat], async (err, sessionRows) => {
+        SELECT * FROM sessions
+        WHERE project_hash = ? AND output_format = ?
+        ORDER BY updated_at DESC -- Show most recent first
+      `, [projectHash, outputFormat], async (err, sessionRows: any[]) => {
         if (err) {
+          console.error("Error fetching sessions:", err);
           return reject(err);
         }
 
@@ -154,70 +219,67 @@ export class SessionRepository {
         try {
           const sessions: Session[] = [];
           const sessionIds = sessionRows.map(row => row.id);
-          
+
+          if (sessionIds.length === 0) return resolve([]);
+
+          // Create placeholders for IN clause
+          const placeholders = sessionIds.map(() => '?').join(',');
+
           // Get included files for these sessions
-          const includedFiles = await new Promise<any[]>((resolve, reject) => {
-            db.all(`
-              SELECT * FROM included_files 
-              WHERE session_id IN (${sessionIds.map(() => '?').join(',')})
-            `, sessionIds, (err, rows) => {
-              if (err) reject(err);
-              else resolve(rows || []);
+          const includedFiles = await new Promise<any[]>((resolveFiles, rejectFiles) => {
+            db.all(`SELECT session_id, file_path FROM included_files WHERE session_id IN (${placeholders})`,
+              sessionIds, (errFiles, rows) => {
+                if (errFiles) { console.error("Error fetching included files:", errFiles); rejectFiles(errFiles); }
+                else resolveFiles(rows || []);
             });
           });
-          
+
           // Get excluded files for these sessions
-          const excludedFiles = await new Promise<any[]>((resolve, reject) => {
-            db.all(`
-              SELECT * FROM excluded_files 
-              WHERE session_id IN (${sessionIds.map(() => '?').join(',')})
-            `, sessionIds, (err, rows) => {
-              if (err) reject(err);
-              else resolve(rows || []);
+          const excludedFiles = await new Promise<any[]>((resolveFiles, rejectFiles) => {
+            db.all(`SELECT session_id, file_path FROM excluded_files WHERE session_id IN (${placeholders})`,
+              sessionIds, (errFiles, rows) => {
+              if (errFiles) { console.error("Error fetching excluded files:", errFiles); rejectFiles(errFiles); }
+              else resolveFiles(rows || []);
             });
           });
-          
-          // Group files by session ID
-          const includedFilesMap: Record<string, string[]> = {};
-          const excludedFilesMap: Record<string, string[]> = {};
-          
-          includedFiles.forEach(file => {
-            if (!includedFilesMap[file.session_id]) {
-              includedFilesMap[file.session_id] = [];
-            }
-            includedFilesMap[file.session_id].push(file.file_path);
-          });
-          
-          excludedFiles.forEach(file => {
-            if (!excludedFilesMap[file.session_id]) {
-              excludedFilesMap[file.session_id] = [];
-            }
-            excludedFilesMap[file.session_id].push(file.file_path);
-          });
-          
+
+          // Group files by session ID for efficient lookup
+          const includedFilesMap = includedFiles.reduce((acc, file) => {
+            if (!acc[file.session_id]) acc[file.session_id] = [];
+            acc[file.session_id].push(file.file_path);
+            return acc;
+          }, {} as Record<string, string[]>);
+
+          const excludedFilesMap = excludedFiles.reduce((acc, file) => {
+            if (!acc[file.session_id]) acc[file.session_id] = [];
+            acc[file.session_id].push(file.file_path);
+            return acc;
+          }, {} as Record<string, string[]>);
+
           // Create Session objects
           for (const row of sessionRows) {
             sessions.push({
               id: row.id,
               name: row.name,
               projectDirectory: row.project_directory,
-              taskDescription: row.task_description,
-              searchTerm: row.search_term,
-              pastedPaths: row.pasted_paths,
-              patternDescription: row.pattern_description,
-              titleRegex: row.title_regex,
-              contentRegex: row.content_regex,
+              taskDescription: row.task_description || '',
+              searchTerm: row.search_term || '',
+              pastedPaths: row.pasted_paths || '',
+              patternDescription: row.pattern_description || '',
+              titleRegex: row.title_regex || '',
+              contentRegex: row.content_regex || '',
               isRegexActive: !!row.is_regex_active,
-              codebaseStructure: row.codebase_structure,
+              codebaseStructure: row.codebase_structure || '',
               includedFiles: includedFilesMap[row.id] || [],
               forceExcludedFiles: excludedFilesMap[row.id] || [],
               outputFormat: row.output_format as OutputFormat,
-              ...(row.custom_format ? { customFormat: row.custom_format } : {})
+              // Ensure updatedAt is populated if needed later
             });
           }
-          
+
           resolve(sessions);
         } catch (error) {
+          console.error("Error assembling session objects:", error);
           reject(error);
         }
       });
@@ -228,9 +290,11 @@ export class SessionRepository {
    * Get a session by ID
    */
   getSession = async (sessionId: string): Promise<Session | null> => {
+     console.log(`[Repo] Getting session by ID: ${sessionId}`);
     return new Promise((resolve, reject) => {
-      db.get(`SELECT * FROM sessions WHERE id = ?`, [sessionId], async (err, row) => {
+      db.get(`SELECT * FROM sessions WHERE id = ?`, [sessionId], async (err, row: any) => {
         if (err) {
+          console.error("Error fetching session by ID:", err);
           return reject(err);
         }
 
@@ -240,42 +304,43 @@ export class SessionRepository {
 
         try {
           // Get included files
-          const includedFiles = await new Promise<string[]>((resolve, reject) => {
-            db.all(`SELECT file_path FROM included_files WHERE session_id = ?`, [sessionId], (err, rows) => {
-              if (err) reject(err);
-              else resolve((rows || []).map(row => row.file_path));
+          const includedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
+            db.all(`SELECT file_path FROM included_files WHERE session_id = ?`, [sessionId], (errFiles, rows: any[]) => {
+              if (errFiles) { console.error("Error fetching included files for session:", errFiles); rejectFiles(errFiles); }
+              else resolveFiles((rows || []).map(r => r.file_path));
             });
           });
-          
+
           // Get excluded files
-          const excludedFiles = await new Promise<string[]>((resolve, reject) => {
-            db.all(`SELECT file_path FROM excluded_files WHERE session_id = ?`, [sessionId], (err, rows) => {
-              if (err) reject(err);
-              else resolve((rows || []).map(row => row.file_path));
+          const excludedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
+            db.all(`SELECT file_path FROM excluded_files WHERE session_id = ?`, [sessionId], (errFiles, rows: any[]) => {
+              if (errFiles) { console.error("Error fetching excluded files for session:", errFiles); rejectFiles(errFiles); }
+              else resolveFiles((rows || []).map(r => r.file_path));
             });
           });
-          
+
           // Create and return the Session object
           const session: Session = {
             id: row.id,
             name: row.name,
             projectDirectory: row.project_directory,
-            taskDescription: row.task_description,
-            searchTerm: row.search_term,
-            pastedPaths: row.pasted_paths,
-            patternDescription: row.pattern_description,
-            titleRegex: row.title_regex,
-            contentRegex: row.content_regex,
+            taskDescription: row.task_description || '',
+            searchTerm: row.search_term || '',
+            pastedPaths: row.pasted_paths || '',
+            patternDescription: row.pattern_description || '',
+            titleRegex: row.title_regex || '',
+            contentRegex: row.content_regex || '',
             isRegexActive: !!row.is_regex_active,
-            codebaseStructure: row.codebase_structure,
+            codebaseStructure: row.codebase_structure || '',
             includedFiles,
             forceExcludedFiles: excludedFiles,
             outputFormat: row.output_format as OutputFormat,
-            ...(row.custom_format ? { customFormat: row.custom_format } : {})
+            // Ensure updatedAt is populated if needed later
           };
-          
+
           resolve(session);
         } catch (error) {
+          console.error("Error assembling single session object:", error);
           reject(error);
         }
       });
@@ -286,11 +351,11 @@ export class SessionRepository {
    * Delete a session by ID
    */
   deleteSession = async (sessionId: string): Promise<void> => {
+     console.log(`[Repo] Deleting session: ${sessionId}`);
     return new Promise((resolve, reject) => {
-      // The related included_files and excluded_files will be automatically deleted
-      // due to the ON DELETE CASCADE constraint
+      // Foreign key constraints with ON DELETE CASCADE handle related files
       db.run(`DELETE FROM sessions WHERE id = ?`, [sessionId], (err) => {
-        if (err) reject(err);
+        if (err) { console.error("Error deleting session:", err); reject(err); }
         else resolve();
       });
     });
@@ -302,42 +367,21 @@ export class SessionRepository {
   setActiveSession = async (
     projectDirectory: string,
     outputFormat: OutputFormat,
-    sessionId: string | null
+    sessionId: string | null // Allow null to clear active session
   ): Promise<void> => {
+    // Generate project hash for safer SQL queries
+    const projectHash = hashString(projectDirectory);
+    
     return new Promise((resolve, reject) => {
-      const projectHash = hashString(projectDirectory);
-      
-      // First check if the record exists
-      db.get(`
-        SELECT * FROM project_settings
-        WHERE project_hash = ? AND output_format = ?
-      `, [projectHash, outputFormat], (err, row) => {
+      db.run(`
+        INSERT OR REPLACE INTO project_settings (project_hash, output_format, active_session_id, updated_at)
+        VALUES (?, ?, ?, ?)
+      `, [projectHash, outputFormat, sessionId, Date.now()], (err) => {
         if (err) {
-          return reject(err);
-        }
-        
-        const timestamp = Date.now();
-        
-        if (row) {
-          // Update existing record
-          db.run(`
-            UPDATE project_settings
-            SET active_session_id = ?, updated_at = ?
-            WHERE project_hash = ? AND output_format = ?
-          `, [sessionId, timestamp, projectHash, outputFormat], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
+          console.error("Error setting active session:", err);
+          reject(err);
         } else {
-          // Insert new record
-          db.run(`
-            INSERT INTO project_settings
-            (project_hash, output_format, active_session_id, updated_at)
-            VALUES (?, ?, ?, ?)
-          `, [projectHash, outputFormat, sessionId, timestamp], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
+          resolve();
         }
       });
     });
@@ -350,93 +394,96 @@ export class SessionRepository {
     projectDirectory: string,
     outputFormat: OutputFormat
   ): Promise<string | null> => {
+    // Generate project hash for safer SQL queries
+    const projectHash = hashString(projectDirectory);
+    
     return new Promise((resolve, reject) => {
-      const projectHash = hashString(projectDirectory);
-      
       db.get(`
         SELECT active_session_id FROM project_settings
         WHERE project_hash = ? AND output_format = ?
-      `, [projectHash, outputFormat], (err, row) => {
+      `, [projectHash, outputFormat], (err, row: any) => {
         if (err) {
+          console.error("Error getting active session ID:", err);
           reject(err);
         } else {
-          resolve(row ? row.active_session_id : null);
+          resolve(row?.active_session_id || null);
         }
       });
     });
   };
 
   /**
-   * Save a cached state item
+   * Get a cached state value by key
+   */
+  getCachedState = async (
+    projectDirectory: string | null | undefined, // Allow null/undefined for global
+    outputFormat: OutputFormat,
+    key: string
+  ): Promise<string | null> => {
+    // Generate project hash for safer SQL queries
+    const projectHash = hashString(projectDirectory || 'global');
+    const safeOutputFormat = outputFormat || 'global';
+    
+    if (!key) {
+      console.error("Missing key in getCachedState");
+      return null;
+    }
+
+      console.log(`[Repo] Getting cached state for ${projectHash}/${safeOutputFormat}/${key}`);
+    return new Promise((resolve, reject) => {
+      db.get(`
+        SELECT value FROM cached_state
+        WHERE project_hash = ? AND output_format = ? AND key = ?
+      `, [projectHash, safeOutputFormat, key], (err, row: any) => {
+        if (err) {
+          console.error("Error getting cached state:", err);
+          reject(err);
+        } else { // Check if row exists before accessing value
+          console.log(`[Repo] Cache result for ${key}:`, row ? 'Found' : 'Not Found');
+          resolve(row?.value || null);
+        }
+      });
+    });
+  };
+
+  /**
+   * Save a cached state value
    */
   saveCachedState = async (
-    projectDirectory: string,
+    projectDirectory: string | null | undefined, // Allow null/undefined for global
     outputFormat: OutputFormat,
     key: string,
     value: string
   ): Promise<void> => {
+    if (!key) {
+      console.error("Missing key in saveCachedState");
+      return;
+    }
+    
+    // Generate project hash for safer SQL queries
+    const projectHash = hashString(projectDirectory || 'global');
+    const safeOutputFormat = outputFormat || 'global';
+    const timestamp = Date.now();
+    
+    // Ensure value is a string
+    const safeValue = value === null || value === undefined ? '' : String(value);
+    
     return new Promise((resolve, reject) => {
-      const projectHash = hashString(projectDirectory);
-      const timestamp = Date.now();
-      
-      // First check if the record exists
-      db.get(`
-        SELECT * FROM cached_state_items
-        WHERE project_hash = ? AND output_format = ? AND key = ?
-      `, [projectHash, outputFormat, key], (err, row) => {
+      db.run(`
+        INSERT OR REPLACE INTO cached_state (project_hash, output_format, key, value, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `, [projectHash, safeOutputFormat, key, safeValue, timestamp], (err) => {
         if (err) {
-          return reject(err);
-        }
-        
-        if (row) {
-          // Update existing record
-          db.run(`
-            UPDATE cached_state_items
-            SET value = ?, updated_at = ?
-            WHERE project_hash = ? AND output_format = ? AND key = ?
-          `, [value, timestamp, projectHash, outputFormat, key], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        } else {
-          // Insert new record
-          db.run(`
-            INSERT INTO cached_state_items
-            (project_hash, output_format, key, value, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-          `, [projectHash, outputFormat, key, value, timestamp], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        }
-      });
-    });
-  };
-
-  /**
-   * Get a cached state item
-   */
-  getCachedState = async (
-    projectDirectory: string,
-    outputFormat: OutputFormat,
-    key: string
-  ): Promise<string | null> => {
-    return new Promise((resolve, reject) => {
-      const projectHash = hashString(projectDirectory);
-      
-      db.get(`
-        SELECT value FROM cached_state_items
-        WHERE project_hash = ? AND output_format = ? AND key = ?
-      `, [projectHash, outputFormat, key], (err, row) => {
-        if (err) {
+          console.error("Error saving cached state:", err);
           reject(err);
         } else {
-          resolve(row ? row.value : null);
+          // console.log(`[Repo] Saved cached state for ${key}`); // Reduce noise
+          resolve();
         }
       });
     });
   };
 }
 
-// Create and export a singleton instance
-export const sessionRepository = new SessionRepository(); 
+// Create and export a singleton instance of the repository
+export const sessionRepository = new SessionRepository();

@@ -8,8 +8,6 @@ export async function transcribeVoiceAction(request: {
   languageCode?: string;
 }): Promise<ActionState<string>> {
   try {
-    // console.log(`Transcribing audio: ${request.blob.size} bytes, type: ${request.mimeType}`); // Reduced logging
-    
     if (!request.blob || request.blob.size === 0) {
       console.error("Empty audio blob received");
       return {
@@ -20,7 +18,6 @@ export async function transcribeVoiceAction(request: {
     
     const form = new FormData();
 
-    // Normalize the MIME type to ensure extension compatibility
     let normalizedMimeType = request.mimeType.split(';')[0].toLowerCase();
     
     const extensionMap: Record<string, string> = {
@@ -37,17 +34,16 @@ export async function transcribeVoiceAction(request: {
       "audio/x-wav": "wav"
     };
     
-    // Default to webm if the mime type isn't recognized
     const extension = extensionMap[normalizedMimeType] || "webm";
     const filename = `audio-${Date.now()}.${extension}`;
     
     form.append("file", request.blob, filename);
-    form.append("model", "whisper-large-v3-turbo");
+    form.append("model", "whisper-large-v3"); // Use standard Whisper model
     form.append("temperature", "0.0");
     form.append("response_format", "json");
-    form.append("language", request.languageCode ?? "en");
+    form.append("language", request.languageCode || "en");
 
-    // console.log(`Sending audio file ${filename} to transcription API`); // Reduced logging
+    console.log(`Sending ${filename} (${request.languageCode || 'en'}) to Groq Whisper API...`);
     
     if (!process.env.GROQ_API_KEY) {
       console.error("GROQ_API_KEY is not defined");
@@ -91,14 +87,13 @@ export async function transcribeVoiceAction(request: {
       };
     }
 
-    // console.log("Transcription successful"); // Reduced logging
-    return {
+    console.log(`Transcription successful: Received ${data.text?.length || 0} characters.`);
+    return <ActionState<string>>{
       isSuccess: true,
       message: "Voice transcribed successfully",
       data: data.text,
     };
-
-  } catch (error) {
+  } catch (error: unknown) { // Use unknown type for catch block variable
     console.error("Error transcribing voice:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     

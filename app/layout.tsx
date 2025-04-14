@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
 import { FormatProvider } from "@/lib/contexts/format-context";
 import { ProjectProvider } from "@/lib/contexts/project-context";
+import { ThemeProvider } from "@/components/theme-provider"; // Ensure ThemeProvider is imported
 import { DatabaseProvider } from "@/lib/contexts/database-context";
-
+// Uncommented Geist fonts
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",

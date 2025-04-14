@@ -111,8 +111,9 @@ OLD: path/to/old/moved_file.ts -> NEW: path/to/new/location/moved_file.ts
       <rule>The file moves block MUST come after the patch, and ONLY if moves occurred.</rule>
       <rule>Do not include any other text before the patch or after the optional file moves block.</rule>
       <rule>All patches must include the proper 'index' lines according to Git standards.</rule>
+      <rule>Ensure the diff is generated based *only* on the provided file contents and the task description.</rule>
       <rule>Never include XML content inside the Git diff itself.</rule>
     </output_structure>
   </rules>
-</prompt>`; 
-} 
+</prompt>`;
+}
