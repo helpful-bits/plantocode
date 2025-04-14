@@ -11,7 +11,7 @@ export class SessionRepository {
    * Save a session to the database (create or update)
    */
   saveSession = async (session: Session): Promise<Session> => {
-    console.log(`[Repo] Saving session: ${session.id} - ${session.name}`);
+    console.log(`[Repo] saveSession called for ID: ${session.id} - Name: ${session.name}`);
     return new Promise((resolve, reject) => {
       try {
         if (!session.projectDirectory || !session.outputFormat) {
@@ -55,8 +55,11 @@ export class SessionRepository {
               codebaseStructure: session.codebaseStructure || '',
               outputFormat: session.outputFormat,
               customFormat: (session as any).customFormat || '',
-              updatedAt: Date.now(), // Use milliseconds timestamp
+              updatedAt: Date.now(), // Use milliseconds timestamp,
             };
+
+            // Log the values being inserted/replaced
+            console.log(`[Repo] Preparing to INSERT/REPLACE session ${sessionValues.id} with values:`, sessionValues);
 
             // Insert or replace the session data
             // Update schema query to include project_hash if needed
@@ -103,6 +106,7 @@ export class SessionRepository {
                     else resolveDelete();
                   });
                 });
+                console.log(`[Repo] Deleted existing included_files for session ${session.id}`);
 
                 // Insert new included files - safely handle each file path
                 if (includedFilesArray.length > 0) {
@@ -125,6 +129,7 @@ export class SessionRepository {
                     }
                   }
                   includedStmt.finalize();
+                  console.log(`[Repo] Inserted ${includedFilesArray.length} included_files for session ${session.id}`);
                 }
 
                 // Delete existing excluded files for this session
@@ -134,6 +139,7 @@ export class SessionRepository {
                     else resolveDelete();
                   });
                 });
+                 console.log(`[Repo] Deleted existing excluded_files for session ${session.id}`);
 
                 // Insert new excluded files - safely handle each file path
                 if (excludedFilesArray.length > 0) {
@@ -156,6 +162,7 @@ export class SessionRepository {
                     }
                   }
                   excludedStmt.finalize();
+                  console.log(`[Repo] Inserted ${excludedFilesArray.length} excluded_files for session ${session.id}`);
                 }
 
                 // Only commit if we started a transaction
@@ -166,6 +173,7 @@ export class SessionRepository {
                       console.error("Commit error:", commitErr);
                       db.run('ROLLBACK', () => reject(commitErr));
                     } else {
+                      console.log(`[Repo] Successfully committed save for session ${session.id}`);
                       resolve(session);
                     }
                   });
@@ -178,6 +186,7 @@ export class SessionRepository {
                 // Only rollback if we started a transaction
                 if (!err) {
                   db.run('ROLLBACK', () => reject(fileError));
+                  console.log(`[Repo] Rolled back transaction for session ${session.id} due to file error`);
                 } else {
                   reject(fileError);
                 }
@@ -274,6 +283,7 @@ export class SessionRepository {
               forceExcludedFiles: excludedFilesMap[row.id] || [],
               outputFormat: row.output_format as OutputFormat,
               // Ensure updatedAt is populated if needed later
+              customFormat: row.custom_format || '',
             });
           }
 
@@ -336,6 +346,7 @@ export class SessionRepository {
             forceExcludedFiles: excludedFiles,
             outputFormat: row.output_format as OutputFormat,
             // Ensure updatedAt is populated if needed later
+            customFormat: row.custom_format || '',
           };
 
           resolve(session);

@@ -23,7 +23,7 @@ import { OutputFormat } from "@/types";
 interface SessionManagerProps {
   projectDirectory: string;
   outputFormat: OutputFormat;
-  getCurrentSessionState: () => Omit<Session, "id" | "name">;
+  getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">; // Adjusted type
   onLoadSession: (session: Session) => void;
   activeSessionId: string | null;
   setActiveSessionIdExternally: (id: string | null) => void;
@@ -55,6 +55,8 @@ const SessionManager = ({
 
   // Add a reference to track if we've loaded sessions for the current project/format
   const loadedProjectRef = useRef<string | null>(null);
+  const lastSavedStateRef = useRef<any>({});
+  const pendingChangesRef = useRef<Record<string, any>>({});
 
   // Load sessions from the database
   const loadSessions = useCallback(async () => {
@@ -277,7 +279,7 @@ const SessionManager = ({
   }, []);
 
   // Create a new session
-  const handleSave = async () => {
+  const handleSave = async () => { // This function creates a *new* session, not updates the active one
     if (!projectDirectory) {
       setError("Cannot save session without a project directory.");
       return;
@@ -295,7 +297,7 @@ const SessionManager = ({
 
     try {
       const currentState = getCurrentSessionState();
-      currentState.updatedAt = Date.now(); // Ensure updatedAt is set
+      // currentState.updatedAt = Date.now(); // updatedAt is set below
 
       // Validate current state
       if (!currentState.projectDirectory || !currentState.outputFormat) {
@@ -315,8 +317,9 @@ const SessionManager = ({
       const newSession: Session = {
         ...currentState,
         id: sessionId,
-        name: sessionName,
+        name: sessionName, // Use generated or provided name
         updatedAt: Date.now(),
+        customFormat: '', // Initialize empty custom format
       };
 
       // Final validation before saving
@@ -340,7 +343,9 @@ const SessionManager = ({
       // Reload sessions to refresh the list
       await loadSessions();
       
-      // Reset pending changes
+      // Set the newly created session as active
+      setActiveSessionIdExternally(sessionId);
+
       lastSavedStateRef.current = { ...currentState };
       pendingChangesRef.current = {};
       
@@ -444,23 +449,48 @@ const SessionManager = ({
   // Load session handler
   const handleLoadSession = async (session: Session) => {
     if (editingSessionId === session.id) return;
-      if (isSyncingState) return; // Prevent multiple loads
+    if (isSyncingState) return; // Prevent multiple loads
+    
+    setIsSyncingState(true);
+    
     try {
-      setIsSyncingState(true);
+      // Load the full session details again to ensure freshness
+      const fullSession = await repository.getSession(session.id).catch(err => {
+        console.error(`Error fetching session ${session.id}:`, err);
+        return null;
+      });
+      
+      if (!fullSession) {
+        console.warn(`Session ${session.id} not found in database.`);
+        setError(`Session "${session.name}" could not be loaded. It may have been deleted.`);
+        
+        // Remove the session from the local list if it's no longer in the database
+        setSessions(prev => prev.filter(s => s.id !== session.id));
+        
+        // If this was the active session, clear it
+        if (activeSessionId === session.id) {
+          setActiveSessionIdExternally(null);
+          setActiveSessionIdInternal(null);
+          setSessionInitialized(false);
+        }
+        
+        setIsSyncingState(false);
+        return;
+      }
 
-    // Load the full session details again to ensure freshness
-    const fullSession = await repository.getSession(session.id);
-    if (!fullSession) {
-        throw new Error(`Session ${session.id} not found in database.`);
-    }
-
-    onLoadSession(fullSession); // Load the fresh session data
+      onLoadSession(fullSession); // Load the fresh session data
       
       setActiveSessionIdExternally(session.id);
       setActiveSessionIdInternal(session.id); // Use internal setter
       setSessionInitialized(true);
+      
       // Update active session in database
-      await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, session.id);
+      try {
+        await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, session.id);
+      } catch (err) {
+        console.error("Failed to set active session in database:", err);
+        // Continue anyway as we've already loaded the session in memory
+      }
       
       // Notify parent about session status
       if (onSessionStatusChange) {
@@ -468,7 +498,7 @@ const SessionManager = ({
       }
     } catch (err) {
       console.error("Failed to load session:", err);
-      setError("Failed to load the session.");
+      setError(`Failed to load the session: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSyncingState(false);
     }
@@ -511,7 +541,7 @@ const SessionManager = ({
 
   return (
     <>
-      <div className="border rounded-lg p-4 flex flex-col gap-4 bg-card shadow-sm">
+      <div className="border rounded-lg p-4 flex flex-col gap-3 bg-card shadow-sm">
         <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
           <Save className="h-4 w-4" /> Saved Sessions ({outputFormat})
         </h3>
@@ -547,18 +577,30 @@ const SessionManager = ({
         </div>
 
         {/* Session List */}
-        <ScrollArea className="h-48 w-full rounded-md border bg-background/50"> {/* Added background */}
+        <ScrollArea 
+          className={`${
+            isLoading && sessions.length === 0 
+              ? 'h-16' 
+              : sessions.length === 0 
+                ? 'h-16' 
+                : sessions.length === 1 
+                  ? 'h-20' 
+                  : sessions.length === 2 
+                    ? 'h-32' 
+                    : 'h-48'
+          } w-full rounded-md border bg-background/50`}
+        >
           <div className="p-4 space-y-2">
             {isLoading && sessions.length === 0 ? ( // Show spinner only if loading and list is empty
-              <div className="flex justify-center items-center h-32">
-                <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
+              <div className="flex justify-center items-center h-8">
+                <Loader2 className="animate-spin h-4 w-4 text-muted-foreground" />
               </div>
             ) : sessions.length > 0 ? (
               sessions.map((session) => (
                 <div
                   key={session.id}
-                  className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${
-                    externalActiveSessionId === session.id // Compare with external prop
+                  className={`flex items-center justify-between p-2 h-10 rounded-md cursor-pointer transition-colors ${
+                    externalActiveSessionId === session.id 
                       ? "bg-primary/10 border border-primary/30"
                       : "hover:bg-accent"
                   }`}
@@ -601,12 +643,12 @@ const SessionManager = ({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">{!projectDirectory || !outputFormat ? "Select project and format first." : "No sessions saved yet."}</p>
+              <p className="text-sm text-muted-foreground text-center py-2">{!projectDirectory || !outputFormat ? "Select project and format first" : "No sessions saved yet"}</p>
             )}
           </div>
         </ScrollArea>
         {isSyncingState && (
-          <p className="text-xs text-muted-foreground">Syncing session state...</p>
+          <p className="text-xs text-muted-foreground mt-1">Syncing session state...</p>
         )} {/* Syncing indicator */}
       </div>
       

@@ -15,5 +15,6 @@ export type Session = {
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths relative to projectDirectory, forced exclusion
     outputFormat: OutputFormat;
+    customFormat: string; // Ensure customFormat is always defined (can be empty string)
     updatedAt?: number; // Timestamp of last update (optional)
 };

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)), -- Boolean represented as integer
   codebase_structure TEXT DEFAULT '',
   output_format TEXT NOT NULL,
+  custom_format TEXT DEFAULT '', -- Added custom_format field
   -- Use INTEGER for timestamp (milliseconds since epoch)
   -- Using default strftime for creation time is problematic if row is updated
   -- Instead, rely on application logic to set timestamps

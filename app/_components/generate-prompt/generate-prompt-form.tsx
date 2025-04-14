@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback, Suspense } from "react";
+import React, { useEffect, useState, useMemo, useCallback, Suspense, useRef } from "react";
 import { readDirectoryAction, readExternalFileAction } from "@/actions/read-directory-actions";
 import { Button } from "@/components/ui/button";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
@@ -17,7 +17,7 @@ import FileBrowser from "./file-browser";
 import RegexInput from "./_components/regex-input";
 import PastePaths from "./paste-paths";
 import path from "path";
-import TaskDescriptionArea from "./_components/task-description";
+import TaskDescriptionArea, { TaskDescriptionHandle } from "./_components/task-description";
 import VoiceTranscription from "./voice-transcription";
 import { OutputFormat } from "@/types";
 import { Input } from "@/components/ui/input";
@@ -112,6 +112,7 @@ export default function GeneratePromptForm() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [sessionSaveError, setSessionSaveError] = useState<string | null>(null); // State for auto-save errors
+  const taskDescriptionRef = useRef<TaskDescriptionHandle>(null);
 
   // Define the handleInteraction function to mark form interactions
   const handleInteraction = useCallback(() => {
@@ -158,6 +159,7 @@ export default function GeneratePromptForm() {
     if (cachedTitleRegex) setTitleRegex(cachedTitleRegex);
     if (cachedContentRegex) setContentRegex(cachedContentRegex);
 
+    // Load customFormat
     const savedRegexActive = await repository.getCachedState(dir, format, REGEX_ACTIVE_KEY);
     setIsRegexActive(savedRegexActive === null ? true : savedRegexActive === "true");
       console.log(`[Load State] Regex Active: ${isRegexActive}`);
@@ -200,7 +202,11 @@ export default function GeneratePromptForm() {
           repository.saveCachedState(projectDirectory, outputFormat, REGEX_ACTIVE_KEY, String(isRegexActive)).catch(err => {
             console.error(`Error saving regex active state:`, err);
             return null;
-          })
+          }),
+          repository.saveCachedState(projectDirectory, outputFormat, CUSTOM_FORMAT_KEY, customFormat).catch(err => {
+              console.error(`Error saving custom format state:`, err);
+              return null;
+          }),
         ];
         
         await Promise.all(saveOperations);
@@ -220,7 +226,7 @@ export default function GeneratePromptForm() {
     }
 
     // Debounce state saving to reduce database writes
-    const timerId = setTimeout(() => {
+    const timerId = setTimeout(async () => { // Added async
       // Only save to cache if NO session is active
       if (!activeSessionId) {
         // saveAllStates(); // Debounced save call
@@ -228,7 +234,9 @@ export default function GeneratePromptForm() {
     }, 750); // Debounce time slightly reduced
     
     return () => clearTimeout(timerId);
-  }, [taskDescription, searchTerm, pastedPaths, patternDescription, titleRegex, contentRegex, codebaseStructure, isRegexActive, projectDirectory, outputFormat, repository]);
+  }, [
+      taskDescription, searchTerm, pastedPaths, patternDescription, titleRegex, contentRegex, codebaseStructure, isRegexActive, customFormat, projectDirectory, outputFormat, repository
+  ]);
 
   // Save file selections whenever allFilesMap changes
   useEffect(() => {
@@ -572,6 +580,19 @@ export default function GeneratePromptForm() {
     }, 1000); // 1 second debounce
 
   }, [activeSessionId, projectDirectory, outputFormat, repository, setActiveSessionId]);
+
+  // New handler specifically for transcribed text
+  const handleTranscribedText = useCallback((text: string) => {
+    // Insert at cursor position instead of replacing entire content
+    if (taskDescriptionRef.current) {
+      taskDescriptionRef.current.insertTextAtCursorPosition(text);
+    } else {
+      // Fallback: Append to the end if ref not available
+      const newText = taskDescription + (taskDescription ? ' ' : '') + text;
+      setTaskDescription(newText);
+      handleInteraction();
+    }
+  }, [taskDescription, handleInteraction]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchTerm(value);
@@ -929,10 +950,10 @@ ${taskDescription}
   };
 
   // Function to get the current state for saving a session
-  const getCurrentSessionState = useCallback(() => {
+  const getCurrentSessionState = useCallback((): Omit<Session, "id" | "name" | "updatedAt"> => {
     const includedFiles = Object.values(allFilesMap)
       .filter(f => f.included && !f.forceExcluded)
-      .map(f => f.path);
+      .map(f => f.path); // Corrected map function
     
     const forceExcludedFiles = Object.values(allFilesMap)
       .filter(f => f.forceExcluded)
@@ -950,7 +971,8 @@ ${taskDescription}
       codebaseStructure,
       includedFiles,
       forceExcludedFiles,
-      outputFormat
+      outputFormat,
+      customFormat: customFormat || "", // Ensure customFormat is included, default to empty string
     };
   }, [
     projectDirectory, 
@@ -963,8 +985,10 @@ ${taskDescription}
     isRegexActive, 
     codebaseStructure, 
     allFilesMap, 
-    outputFormat
+    outputFormat,
+    customFormat // Add customFormat dependency
   ]);
+
 
   // Load session handler
   const handleLoadSession = useCallback((session: Session) => {
@@ -976,6 +1000,7 @@ ${taskDescription}
     setTitleRegex(session.titleRegex || "");
     setContentRegex(session.contentRegex || "");
     setCodebaseStructure(session.codebaseStructure || "");
+    setCustomFormat(session.customFormat || ""); // Load custom format
     setIsRegexActive(session.isRegexActive);
     
     // Handle included/excluded files if they exist
@@ -1015,15 +1040,45 @@ ${taskDescription}
     // Reset unsaved changes flag
     setHasUnsavedChanges(false);
     setSessionInitialized(true);
-  }, [allFilesMap]);
+  }, [allFilesMap, setCustomFormat]); // Add setCustomFormat dependency
 
   // Handle form state changes
   const handleFormStateChange = useCallback((hasChanges: boolean) => {
     setHasUnsavedChanges(hasChanges);
   }, []);
 
-  // Create form state object for the FormStateManager
-  const formState = useMemo(() => getCurrentSessionState(), [getCurrentSessionState]);
+    // Create form state object explicitly for the FormStateManager
+    // This ensures all relevant state variables are included and passed down
+    const formStateForManager = useMemo(() => {
+        // Log when this recalculates and what triggered it (implicitly by dependencies changing)
+        console.log('[GeneratePromptForm] Recalculating formStateForManager in useMemo');
+
+        const includedFiles = Object.values(allFilesMap)
+            .filter(f => f.included && !f.forceExcluded)
+            .map(f => f.path);
+        const forceExcludedFiles = Object.values(allFilesMap)
+            .filter(f => f.forceExcluded)
+            .map(f => f.path);
+        return {
+            projectDirectory,
+            taskDescription,
+            searchTerm,
+            pastedPaths,
+            patternDescription,
+            titleRegex,
+            contentRegex,
+            isRegexActive,
+            codebaseStructure,
+            includedFiles,
+            forceExcludedFiles,
+            outputFormat,
+            customFormat: customFormat || "",
+        };
+    }, [
+        projectDirectory, taskDescription, searchTerm, pastedPaths, patternDescription,
+        titleRegex, contentRegex, isRegexActive, codebaseStructure, allFilesMap,
+        outputFormat, customFormat
+    ]);
 
   // Add this function to toggle debug mode
   const toggleDebugMode = () => {
@@ -1062,9 +1117,28 @@ ${taskDescription}
 
   return (
     <div className="flex flex-col flex-1 p-2 md:p-4 space-y-6">
-      <div className="grid grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 gap-4">
         {/* Project Directory Selector - Always visible */}
         <ProjectDirectorySelector />
+      
+        {/* Session Manager - Now placed directly after Project Directory Selector */}
+        <Suspense fallback={<div>Loading session manager...</div>}>
+          <SessionManager
+            projectDirectory={projectDirectory}
+            getCurrentSessionState={getCurrentSessionState}
+            onLoadSession={handleLoadSession}
+            outputFormat={outputFormat}
+            activeSessionId={activeSessionId}
+            setActiveSessionIdExternally={handleSetActiveSessionId}
+            onSessionStatusChange={(hasSession) => setSessionInitialized(hasSession)}
+          />
+          {/* Display auto-save errors near session manager */}
+          {sessionSaveError && (
+            <div className="text-xs text-destructive text-center mt-0.5 -mb-2">
+              ⚠️ Auto-save failed: {sessionSaveError}
+            </div>
+          )}
+        </Suspense>
       
         {/* SessionGuard ensures all form components are only shown when a session exists */}
         <Suspense fallback={<div className="h-[300px] flex items-center justify-center">Loading session manager...</div>}>
@@ -1079,37 +1153,25 @@ ${taskDescription}
               activeSessionId={activeSessionId}
               projectDirectory={projectDirectory || ""}
               outputFormat={outputFormat}
-              formState={formState}
+              formState={formStateForManager} // Pass the explicitly constructed state
               onStateChange={handleFormStateChange}
               onSaveError={setSessionSaveError}
             >
               {/* Task Description with Voice Transcription */}
               <div className="flex flex-col w-full space-y-2">
                 <TaskDescriptionArea
+                  ref={taskDescriptionRef}
                   value={taskDescription}
                   onChange={handleTaskChange}
                   onInteraction={handleInteraction}
                 />
                 <div className="flex justify-end">
                   <VoiceTranscription
-                    onTranscription={handleTaskChange}
+                    onTranscribed={handleTranscribedText}
+                    onInteraction={handleInteraction}
+                    foundFiles={Object.keys(allFilesMap)}
                   />
                 </div>
-              </div>
-
-              {/* Search Term */}
-              <div className="flex flex-col space-y-2">
-                <label htmlFor="search-term" className="text-sm font-medium">
-                  Filter Files by Path (Optional):
-                </label>
-                <Input
-                  id="search-term"
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder="Enter path fragment to filter files"
-                  className="w-full"
-                />
               </div>
 
               {/* Pattern Description Input */}
@@ -1135,6 +1197,7 @@ ${taskDescription}
                 contentRegexError={contentRegexError}
                 isRegexActive={isRegexActive}
                 onRegexActiveChange={setIsRegexActive}
+                onInteraction={handleInteraction} // Pass interaction handler
               />
 
               {/* Paste Paths */}
@@ -1217,7 +1280,7 @@ ${taskDescription}
                       {copySuccess ? "Copied!" : "Copy to Clipboard"}
                     </Button>
                   </div>
-                  <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-sm">
+                  <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-sm max-h-[650px]">
                     {prompt}
                   </pre>
                 </div>
@@ -1232,25 +1295,6 @@ ${taskDescription}
             Please create a new session or load an existing one to begin.
           </div>
         )}
-        
-        {/* Session Manager - Always visible but will show create/select UI when no session exists */}
-        <Suspense fallback={<div>Loading session manager...</div>}>
-          <SessionManager
-            projectDirectory={projectDirectory}
-            getCurrentSessionState={getCurrentSessionState}
-            onLoadSession={handleLoadSession}
-            outputFormat={outputFormat}
-            activeSessionId={activeSessionId}
-            setActiveSessionIdExternally={handleSetActiveSessionId}
-            onSessionStatusChange={(hasSession) => setSessionInitialized(hasSession)}
-          />
-          {/* Display auto-save errors near session manager */}
-          {sessionSaveError && (
-            <div className="text-xs text-destructive text-center mt-1">
-              ⚠️ Auto-save failed: {sessionSaveError}
-            </div>
-          )}
-        </Suspense>
       </div>
     </div>
   );

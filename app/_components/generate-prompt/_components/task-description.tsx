@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
+
+export interface TaskDescriptionHandle {
+  insertTextAtCursorPosition: (text: string) => void;
+}
 
 interface TaskDescriptionProps {
   value: string;
@@ -11,16 +15,25 @@ interface TaskDescriptionProps {
   onInteraction: () => void; // Callback for interaction
 } // Added interface definition
 
-export default function TaskDescriptionArea({
+export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function TaskDescriptionArea({
   value,
   onChange,
   onInteraction,
-}: TaskDescriptionProps) {
+}: TaskDescriptionProps, ref) {
   // State related to "Improve Selection" (kept but maybe disabled if API key isn't present)
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
   const [isImproving, setIsImproving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Expose the insertTextAtCursor method via ref
+  useImperativeHandle(ref, () => ({
+    insertTextAtCursorPosition: (text: string) => {
+      const currentSelectionStart = textareaRef.current?.selectionStart ?? value.length;
+      const currentSelectionEnd = textareaRef.current?.selectionEnd ?? value.length;
+      insertTextAtCursor(text, currentSelectionStart, currentSelectionEnd);
+    }
+  }));
 
   // Capture and store the selection positions whenever the user selects text
   const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
@@ -29,7 +42,7 @@ export default function TaskDescriptionArea({
   };
 
   // Insert or replace text at the stored cursor or selection range
-  const insertTextAtCursor = useCallback((newText: string, start: number, end: number) => {
+  const insertTextAtCursor = useCallback((newText: string, start: number = selectionStart, end: number = selectionEnd) => {
     if (!textareaRef.current) return;
     const textarea = textareaRef.current;
     textarea.focus();
@@ -47,12 +60,14 @@ export default function TaskDescriptionArea({
     // Use document.execCommand for better undo support in browsers that support it
     try {
       document.execCommand('insertText', false, newText);
+      // Manually dispatch input event to ensure React state updates
       const event = new InputEvent('input', { bubbles: true, cancelable: true });
       textarea.dispatchEvent(event);
     } catch (e) {
       const before = originalText.slice(0, start);
       const after = originalText.slice(end);
       textarea.value = before + newText + after;
+      // Manually dispatch input event to ensure React state updates
       const event = new InputEvent('input', { bubbles: true, cancelable: true });
       textarea.dispatchEvent(event); // Re-dispatch for consistency
     }
@@ -67,7 +82,7 @@ export default function TaskDescriptionArea({
     textarea.setSelectionRange(newPosition, newPosition);
     setSelectionStart(newPosition); // Update selection state
     setSelectionEnd(newPosition);
-  }, [onChange, onInteraction]);
+  }, [onChange, onInteraction, selectionStart, selectionEnd]);
 
   // Modify the handler function to not check for canImproveText
   const handleImproveSelection = async () => {
@@ -83,7 +98,7 @@ export default function TaskDescriptionArea({
     try {
       const result = await improveSelectedTextAction(selectedText);
       if (result.isSuccess && result.data) {
-        insertTextAtCursor(result.data);
+        insertTextAtCursor(result.data, currentSelectionStart, currentSelectionEnd);
         // insertTextAtCursor already calls onChange
       }
       // Reset selection after improving
@@ -126,4 +141,4 @@ export default function TaskDescriptionArea({
       />
     </div>
   );
-} 
+}); 
