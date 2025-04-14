@@ -166,7 +166,11 @@ export function useVoiceRecording({
             setCorrectedText(currentRawText);
         }
 
-        onTranscribedRef.current(finalText); // Call original onTranscribed
+        if (typeof onTranscribedRef.current === 'function') {
+            onTranscribedRef.current(finalText); // Call original onTranscribed
+        } else {
+            console.warn("onTranscribedRef.current is not a function");
+        }
         
         if (onCorrectionCompleteRef.current && correctionResult.isSuccess) { // Call correction complete callback
             onCorrectionCompleteRef.current(currentRawText, finalText);
@@ -295,7 +299,11 @@ export function useVoiceRecording({
 
   const revertToRaw = useCallback(() => {
     if (rawText !== null) {
-      onTranscribedRef.current(rawText);
+      if (typeof onTranscribedRef.current === 'function') {
+        onTranscribedRef.current(rawText);
+      } else {
+        console.warn("onTranscribedRef.current is not a function in revertToRaw");
+      }
     } // Call onTranscribed with raw text
   }, [rawText]); 
 
@@ -307,7 +315,11 @@ export function useVoiceRecording({
   }, [cleanupMedia]);
 
   const wrappedOnTranscribed = useCallback((text: string) => {
-    onTranscribedRef.current(text);
+    if (typeof onTranscribedRef.current === 'function') {
+      onTranscribedRef.current(text);
+    } else {
+      console.warn("onTranscribedRef.current is not a function in wrappedOnTranscribed");
+    }
     if (onInteractionRef.current) {
       onInteractionRef.current();
     }

@@ -6,12 +6,16 @@ import { ActionState } from "@/types";
 export async function correctTaskDescriptionAction(rawText: string): Promise<ActionState<string>> {
   try {
     const payload = {
-        role: "user", // Changed role to "user"
-        content: `Please correct any spelling mistakes or unnatural phrasing in the following text, while preserving its meaning and intent.
+      messages: [
+        {
+          role: "user", 
+          content: `Please correct any spelling mistakes or unnatural phrasing in the following text, while preserving its meaning and intent.
 ---
 ${rawText}
 ---
 Return only the corrected text without any additional commentary.`
+        }
+      ]
     };
 
     const result: ActionState<string> = await callAnthropicAPI(payload);
