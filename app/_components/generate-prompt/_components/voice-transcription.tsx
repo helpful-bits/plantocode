@@ -35,7 +35,7 @@ export default function VoiceTranscription({
     setLanguage, // Get the setLanguage function from the hook
   } = useVoiceRecording({
     onTranscribed, // Pass the callback prop
-    // Always enable correction callback
+    // Enable correction callback
     onCorrectionComplete: handleCorrectionComplete,
     // Pass the interaction handler
     onInteraction,

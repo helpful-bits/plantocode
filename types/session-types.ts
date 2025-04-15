@@ -1,4 +1,4 @@
-import { OutputFormat } from ".";
+import { OutputFormat } from "."; // Keep OutputFormat import
 
 // Define the possible statuses for Gemini processing
 export type GeminiStatus = 'idle' | 'running' | 'completed' | 'failed' | 'canceled'; // Keep GeminiStatus type
@@ -19,11 +19,14 @@ export type Session = {
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths forced excluded
     outputFormat: OutputFormat;
-    customFormat: string; // Custom format instructions if outputFormat is 'custom'
+    customFormat: string;
     geminiStatus: GeminiStatus; // Status of Gemini processing (non-optional)
-    geminiStartTime?: number | null;
+    geminiStartTime?: number | null; // Unix timestamp (ms) when processing started
     geminiEndTime?: number | null;
     geminiPatchPath?: string | null; // Path to the saved patch file
     geminiStatusMessage?: string | null;
+    geminiTokensReceived?: number; // Number of tokens received during streaming (optional)
+    geminiCharsReceived?: number; // Number of characters received during streaming
+    geminiLastUpdate?: number; // Timestamp of the last chunk update
     updatedAt?: number; // Timestamp of last update (managed by repository)
 };

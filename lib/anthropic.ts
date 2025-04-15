@@ -1,5 +1,5 @@
 "use server";
-import { ActionState } from "@/types";
+import { ActionState } from "@/types"; // Keep ActionState import
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"; // Keep API URL
 const ANTHROPIC_VERSION = "2023-06-01"; // Corrected version
@@ -66,7 +66,7 @@ export async function callAnthropicAPI(
        throw new Error("Anthropic returned an invalid response structure.");
     }
 
-    const responseText = data.content[0].text.trim();
+    const responseText = data.content[0].text.trim(); // Keep trim call
 
     return { isSuccess: true, message: "Anthropic API call successful", data: responseText };
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
+import { setupDatabase } from '@/lib/db/setup';
 import { OutputFormat } from '@/types'; // Keep OutputFormat import
 import { hashString } from '@/lib/hash'; // Ensure hashString is imported
 setupDatabase(); // Ensure database connection is initialized
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const safeValue = value === undefined || value === null ? "" : String(value);
     
     await sessionRepository.saveCachedState(projectDirectory, outputFormat as OutputFormat, key, safeValue); // Pass validated params and safeValue
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }); // Return success status
   } catch (error) {
     console.error('Error saving cached state:', error);
     

@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { migratePatchPaths } from '@/migrations/patch_path_migration'; // Keep migratePatchPaths import
+import { migratePatchPaths } from '@/migrations/patch_path_migration';
 import { setupDatabase } from '@/lib/db/setup';
 
 export async function GET(request: NextRequest) { // Keep function signature

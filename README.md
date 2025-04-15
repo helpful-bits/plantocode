@@ -70,12 +70,14 @@ Select text within the Task Description area and use Anthropic Claude (if config
 - **Path Finder:** Generates a prompt asking the AI to identify all relevant files for a given task based on the provided context.
 - **Custom:** Define your own prompt structure.
 
-### Send Prompt & Process Response (Gemini) - Background Task
+### Process Prompt with Gemini (Background Task)
 - Takes the generated prompt from Step 1.
 - Sends the prompt to the Google Gemini API (`gemini-2.5-pro-preview-03-25`) using the provided `GEMINI_API_KEY`.
-- Expects a Git patch in the response (typically for the "Code Changes (Diff)" format).
+- Expects a Git patch in the response (typically for the "Code Changes (Diff)" format), potentially wrapped in markdown code fences (```diff ... ```) which are automatically stripped.
 - Automatically streams the received patch content directly to a file in the `patches/` directory in the repository root. The filename includes an ISO timestamp and the current session name (e.g., `2024-07-28T10-30-05_123Z_MySessionName.patch`). **You can monitor this file in your IDE to see changes appear in real-time.**
 - The UI displays the processing status (running, completed, failed, canceled) and elapsed time by polling the session state in the database.
+- **Live Patch Viewer:** The UI shows the content of the patch file as it's being streamed, allowing you to see changes in near real-time.
+- **IDE Integration:** Provides a button to directly open the generated patch file in your default IDE/editor.
 - **Background Processing:** The server action runs independently. You can refresh the page, close the tab, or even restart the browser; the processing continues on the server. Re-opening the session will show the current status.
 - **Cancellation:** Allows canceling the ongoing Gemini processing request via a button in the UI.
 
@@ -105,12 +107,10 @@ This tool focuses on *generating prompts*. The "Apply Changes" section does *not
 2. **Send to Gemini (Optional)**
    If you generated a prompt suitable for patch generation (like the "Code Changes (Diff)" format), click "Send to Gemini & Save Patch". The response (assumed to be a patch) will be saved to the `patches/` directory in the repository root. The process runs in the background and updates its status in the session database. You can monitor the progress and elapsed time in the UI.
 2. **Send Prompt to O1 Pro Model**  
-   Copy and paste the generated prompt into ChatGPT (or another environment) where you have the O1 Pro model.
-
-3. **Apply Changes**  
-   Paste the diff or refactoring plan returned by the AI into the "Apply Changes" section of the tool. Click the button to generate a *new prompt*. Copy this new prompt and send it back to your AI model (e.g., O1 Pro) to execute the changes.
+   Alternatively, copy and paste the generated prompt into ChatGPT (or another environment) where you have the O1 Pro model.
+3. **Apply Changes**
+   If you used Gemini, the patch file is saved locally. Use the "Open in IDE" button or standard Git tools (`git apply patch-file.patch`) to apply the changes. If you used another AI model, paste the diff or refactoring plan returned by the AI into the "Apply Changes" section of the tool. Click the button to generate a *new prompt*. Copy this new prompt and send it back to your AI model (e.g., O1 Pro) to execute the changes.
 4. **Save/Load Sessions:** Use the "Saved Sessions" section to save your current setup or load a previous one. Your work is auto-saved to the active session.
-
 
 ## Contributing
 Contributions are welcome. To contribute:

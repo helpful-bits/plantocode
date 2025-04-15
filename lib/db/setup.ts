@@ -1,5 +1,5 @@
-import { db } from './index';
-import { runMigrations } from './migrations';
+import { db } from './index'; // Keep db import
+import { runMigrations } from './migrations'; // Keep runMigrations import
 
 let isDbInitialized = false; // Flag to prevent multiple initializations
 /**
@@ -17,7 +17,7 @@ export async function setupDatabase() { // Keep function signature
     return;
   }
   console.log("[Setup] Initializing database...");
-  await runMigrations();
+  await runMigrations(); // Await migrations
   console.log("[Setup] Running migrations...");
 
   // Verify database structure after initialization

@@ -14,7 +14,7 @@ const execAsync = promisify(exec);
  */
 export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: string[], isGitRepo: boolean }> {
   try {
-    // Check if it's a git repository first
+    // Assume it's a git repository; the command will fail if not
     const isGitRepo = true;
     console.log(`Listing all non-ignored files in git repository: ${dir}`);
     
@@ -40,7 +40,7 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
         // If access succeeds, the file exists
         existingFiles.push(file);
       } catch (error) {
-        // If access fails, the file doesn't exist (likely deleted)
+        // If access fails, the file doesn't exist (likely deleted or permission issue)
         console.log(`[Refresh] Skipping deleted file: ${file}`);
       }
     }
@@ -56,7 +56,7 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     
     if (error.stderr && error.stderr.toLowerCase().includes('not a git repository')) {
       throw new Error(`Directory is not a git repository: ${dir}. Please select a valid git repository.`);
-    } else if (error.code === 'ENOENT') {
+    } else if (error.code === 'ENOENT' || error.message?.includes('command not found')) {
       throw new Error(`Git command not found. Please ensure git is installed on your system.`);
     }
     

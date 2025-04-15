@@ -31,7 +31,7 @@ ${directoryTree}
 
 Consider this structure when creating patterns to match files in the appropriate directories.
 `;
-    } // Close if statement
+    }
 
     const payload: { messages: { role: string; content: string }[], max_tokens: number } = {
       max_tokens: 1024,
@@ -116,7 +116,7 @@ Now, generate the JSON for the provided description.`,
     console.error("Error generating regex patterns:", error);
     return {
       isSuccess: false,
-      message: error instanceof Error ? error.message : "Failed to generate regex patterns"
+      message: error instanceof Error ? error.message : "Failed to generate regex patterns",
     };
   }
 }

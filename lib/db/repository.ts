@@ -1,7 +1,7 @@
-import { db } from './index'; // Keep db import
-import { Session } from '@/types/session-types';
+import { db } from './index';
+import { Session } from '@/types/session-types'; // Keep Session import
 import { OutputFormat, GeminiStatus } from '@/types';
-import { hashString } from '@/lib/hash'; // Keep hashString import
+import { hashString } from '@/lib/hash';
 
 /**
  * Session Repository - Handles all session-related database operations
@@ -41,6 +41,8 @@ export class SessionRepository {
           async function handleSessionSave(
             resolve: (value: Session) => void, reject: (reason: any) => void, projectHash: string, session: Session, includedFilesArray: string[], excludedFilesArray: string[], noTransaction: boolean
           ) { // Added parameters
+            // Ensure Gemini fields have defaults if not provided
+            const currentGeminiStatus = session.geminiStatus || 'idle';
             // Prepare data for insertion/replacement
             const sessionValues: Omit<Session, 'includedFiles' | 'forceExcludedFiles' | 'updatedAt'> & { projectHash: string; updatedAt: number } = {
               id: session.id,
@@ -58,11 +60,14 @@ export class SessionRepository {
               outputFormat: session.outputFormat,
               customFormat: session.customFormat || '',
               updatedAt: Date.now(), // Use current timestamp for update
-              // Add Gemini fields (ensure they exist in the session object or provide defaults)
-              geminiStatus: session.geminiStatus || 'idle',
+              // Explicitly include Gemini fields, providing defaults if they are missing
+              geminiStatus: currentGeminiStatus,
               geminiStartTime: session.geminiStartTime || null,
               geminiEndTime: session.geminiEndTime || null,
-              geminiPatchPath: session.geminiPatchPath || null, // Handle Gemini fields
+              geminiPatchPath: session.geminiPatchPath || null,
+              geminiTokensReceived: session.geminiTokensReceived || 0,
+              geminiCharsReceived: session.geminiCharsReceived || 0,
+              geminiLastUpdate: session.geminiLastUpdate || null,
               geminiStatusMessage: session.geminiStatusMessage || null,
             };
             console.log(`[Repo] Preparing to INSERT/REPLACE session ${sessionValues.id} with values:`, sessionValues);
@@ -73,9 +78,9 @@ export class SessionRepository {
               (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
                pattern_description, title_regex, content_regex, is_regex_active,
                codebase_structure, output_format, custom_format, updated_at,
-               gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message)
+               gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update)
               VALUES -- Match the order of columns
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [ // Ensure values match the order of columns
               sessionValues.id,
               sessionValues.name,
@@ -97,6 +102,9 @@ export class SessionRepository {
               sessionValues.geminiEndTime,
               sessionValues.geminiPatchPath,
               sessionValues.geminiStatusMessage, // Add status message
+              sessionValues.geminiTokensReceived,
+              sessionValues.geminiCharsReceived,
+              sessionValues.geminiLastUpdate,
             ], async function(saveErr) {
               if (saveErr) {
                 console.error("Error saving session:", saveErr);
@@ -301,6 +309,9 @@ export class SessionRepository {
               geminiEndTime: row.gemini_end_time || null,
               geminiPatchPath: row.gemini_patch_path || null,
               geminiStatusMessage: row.gemini_status_message || null, // Add status message
+              geminiTokensReceived: row.gemini_tokens_received || 0,
+              geminiCharsReceived: row.gemini_chars_received || 0,
+              geminiLastUpdate: row.gemini_last_update || null,
             });
           }
 
@@ -370,6 +381,9 @@ export class SessionRepository {
             geminiEndTime: row.gemini_end_time || null,
             geminiPatchPath: row.gemini_patch_path || null,
             geminiStatusMessage: row.gemini_status_message || null, // Add status message
+            geminiTokensReceived: row.gemini_tokens_received || 0,
+            geminiCharsReceived: row.gemini_chars_received || 0,
+            geminiLastUpdate: row.gemini_last_update || null,
           };
 
           resolve(session);
@@ -463,7 +477,11 @@ export class SessionRepository {
       return null;
     }
 
+    // Only log for non-files keys to reduce noise
+    if (!key.includes('files')) {
       console.log(`[Repo] Getting cached state for ${projectHash}/${safeOutputFormat}/${key}`);
+    }
+
     return new Promise((resolve, reject) => {
       db.get(`
         SELECT value FROM cached_state -- Select only value
@@ -473,7 +491,10 @@ export class SessionRepository {
           console.error("Error getting cached state:", err);
           reject(err);
         } else { // Check if row exists before accessing value
-          console.log(`[Repo] Cache result for ${key}:`, row ? 'Found' : 'Not Found');
+          // Only log for non-files keys to reduce noise
+          if (!key.includes('files')) {
+            console.log(`[Repo] Cache result for ${key}:`, row ? 'Found' : 'Not Found');
+          }
           resolve(row?.value || null);
         }
       });
@@ -510,7 +531,7 @@ export class SessionRepository {
           console.error("Error saving cached state:", err);
           reject(err);
         } else {
-          // console.log(`[Repo] Saved cached state for ${key}`); // Reduce noise
+          // Completely remove logging for successful saves to reduce noise
           resolve();
         }
       });
@@ -521,14 +542,23 @@ export class SessionRepository {
    * Update only the Gemini-related status fields for a session.
    */
   updateSessionGeminiStatus = async (
-    sessionId: string,
+    sessionId: string | null | undefined, // Allow null/undefined session ID
     status: GeminiStatus, // Correct type usage
     startTime?: number | null,
     endTime?: number | null,   // Optional end time
     patchPath?: string | null, // Optional patch path
-    statusMessage?: string | null // Optional status message
+    statusMessage?: string | null, // Optional status message
+    streamStats?: {
+      tokensReceived?: number;
+      charsReceived?: number;
+    }
   ): Promise<void> => {
     console.log(`[Repo] Updating Gemini status for session ${sessionId} to ${status}, patchPath: ${patchPath}, msg: ${statusMessage}`);
+    // Guard against invalid session ID
+    if (!sessionId) {
+      console.warn(`[Repo] Attempted to update Gemini status for invalid sessionId: ${sessionId}`);
+      return Promise.resolve(); // Or reject, depending on desired behavior
+    }
     return new Promise((resolve, reject) => {
       // Construct the SET clause dynamically based on provided values
       const setClauses: string[] = ['gemini_status = ?', 'updated_at = ?'];
@@ -549,6 +579,23 @@ export class SessionRepository {
       if (statusMessage !== undefined) {
         setClauses.push('gemini_status_message = ?');
         values.push(statusMessage);
+      }
+      
+      // Add streaming stats if provided
+      // Only update stats if explicitly provided in the call
+      if (streamStats?.tokensReceived !== undefined) {
+        setClauses.push('gemini_tokens_received = ?');
+        values.push(streamStats.tokensReceived);
+      }
+      if (streamStats?.charsReceived !== undefined) {
+        setClauses.push('gemini_chars_received = ?');
+        values.push(streamStats.charsReceived);
+      }
+      
+      // Add last update timestamp if any streaming stats were provided
+      if (streamStats?.tokensReceived !== undefined || streamStats?.charsReceived !== undefined) {
+        setClauses.push('gemini_last_update = ?');
+        values.push(Date.now());
       }
 
       values.push(sessionId); // Add sessionId for the WHERE clause
@@ -574,8 +621,9 @@ export class SessionRepository {
           s.id, s.name, s.project_directory, s.task_description, 
           s.search_term, s.pasted_paths, s.pattern_description, 
           s.title_regex, s.content_regex, s.is_regex_active, 
-          s.codebase_structure, s.output_format, s.custom_format, 
-          s.updated_at, s.gemini_status, s.gemini_status_message, s.gemini_start_time, 
+          s.codebase_structure, s.output_format, s.custom_format,
+          s.updated_at, s.gemini_status, s.gemini_status_message, s.gemini_start_time,
+          s.gemini_tokens_received, s.gemini_chars_received, s.gemini_last_update, 
           s.gemini_end_time, s.gemini_patch_path 
         FROM sessions s
         ORDER BY s.updated_at DESC
@@ -610,7 +658,10 @@ export class SessionRepository {
               geminiStartTime: row.gemini_start_time || null,
               geminiEndTime: row.gemini_end_time || null,
               geminiPatchPath: row.gemini_patch_path || null,
-              geminiStatusMessage: row.gemini_status_message || null // Add status message
+              geminiStatusMessage: row.gemini_status_message || null, // Add status message
+              geminiTokensReceived: row.gemini_tokens_received || 0,
+              geminiCharsReceived: row.gemini_chars_received || 0,
+              geminiLastUpdate: row.gemini_last_update || null,
             };
 
             // Get included files for this session
@@ -653,4 +704,4 @@ export class SessionRepository {
 }
 
 // Create and export a singleton instance of the repository
-export const sessionRepository = new SessionRepository();
+export const sessionRepository = new SessionRepository(); // Keep export

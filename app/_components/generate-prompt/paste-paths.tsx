@@ -1,14 +1,13 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
 import path from "path"; // Keep path import
 
 interface PastePathsProps {
-  value: string;
+  value: string; // Keep value prop
   onChange: (value: string) => void;
-  onParsePaths?: (paths: string[]) => void;
-  foundCount: number;
   projectDirectory?: string;
+  onInteraction?: () => void; // Add interaction handler
   warnings?: string[];
 }
 
@@ -16,10 +15,13 @@ export default function PastePaths({
   value,
   onChange,
   onParsePaths,
-  foundCount,
   projectDirectory,
-  warnings = []
+  onInteraction = () => {}, // Default to no-op
+  warnings = [],
 }: PastePathsProps) {
+  // Internal state to track the count of valid paths
+  const [foundCount, setFoundCount] = useState(0);
+
   useEffect(() => {
     if (value.trim()) { // Calculate whenever value changes
       const lines = value
@@ -27,15 +29,19 @@ export default function PastePaths({
         .map((l) => l.trim())
         .filter((l) => !!l && !l.startsWith("#"));
       
-      // Call onParsePaths callback if it exists
+      // Update the internal count state
+      setFoundCount(lines.length);
+
+      // Call the optional onParsePaths callback if provided
       if (onParsePaths) {
         onParsePaths(lines); // Pass the filtered lines
       }
     }
-  }, [value, onParsePaths]); // Rerun effect when value or onParsePaths changes
+  }, [value, onParsePaths]); // Rerun effect when value changes or the callback changes
+
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 bg-card p-4 rounded-lg border shadow-sm">
       <div className="flex items-center justify-between">
         <label className="font-bold text-foreground">
           Or Paste File Paths (one per line):
@@ -45,7 +51,7 @@ export default function PastePaths({
         </label>
         {value.trim() && (
           <span className="text-sm font-medium bg-secondary text-secondary-foreground px-2 py-1 rounded">
-            {foundCount} path(s) specified
+            {foundCount} path(s) found
           </span>
         )}
       </div>
@@ -55,6 +61,7 @@ export default function PastePaths({
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
+          onInteraction(); // Call interaction handler on change
         }}
         placeholder={`# Project paths
 path/to/file1.ts

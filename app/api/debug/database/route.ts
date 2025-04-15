@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/index';
-import { resetDatabase } from '@/lib/db/setup';
-import { hashString } from '@/lib/hash';
+import { db } from '@/lib/db/index'; // Keep db import
+import { resetDatabase } from '@/lib/db/setup'; // Keep resetDatabase import
+import { hashString } from '@/lib/hash'; // Keep hashString import
 import { OutputFormat } from '@/types';
 // GET /api/debug/database?action=...
 export async function GET(request: NextRequest) {

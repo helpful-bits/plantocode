@@ -9,10 +9,9 @@ import { getDefaultPathForOS, normalizePath, getDirectoryName } from "@/lib/path
 import { useDatabase } from "@/lib/contexts/database-context";
 import { useProject } from "@/lib/contexts/project-context";
 import { PROJECT_DIR_HISTORY_CACHE_KEY, MAX_PROJECT_DIR_HISTORY } from "@/lib/constants";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-export default function ProjectDirectorySelector() {
+export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { onRefresh?: () => Promise<void>, isRefreshing?: boolean }) {
   const { projectDirectory, setProjectDirectory } = useProject();
   const { repository } = useDatabase();
   const [history, setHistory] = useState<string[]>([]);
@@ -290,51 +289,56 @@ export default function ProjectDirectorySelector() {
     }
   };
 
+  // --- Simplified Refresh Handling ---
   // Manually trigger validation and refresh of the current directory
   const handleRefresh = useCallback(async () => {
     if (!projectDirectory || isValidating) return;
 
     setIsValidating(true);
     setValidationStatus({ isValid: false, message: "Refreshing directory..." });
+
     console.log(`[Refresh] Refreshing directory: ${projectDirectory}`);
     
     try {
-        const isValid = await validateDirectory(projectDirectory);
+      const isValid = await validateDirectory(projectDirectory);
 
-        // Only proceed if validation was successful
-        if (isValid) {
-            // Re-set the project directory in context using a temporary value and then the actual value
-            // This ensures the useEffect in GeneratePromptForm is triggered to reload files
-            // even if the directory value is the same
-            const tempPath = `${projectDirectory}_temp_${Date.now()}`;
-            setProjectDirectory("");  // First clear it completely
-            
-            // Short timeout to ensure state updates propagate
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            // Then set back to the actual path to force a complete refresh
-            setProjectDirectory(projectDirectory);
-            
-            console.log(`[Refresh] Successfully refreshed directory: ${projectDirectory}`);
-            setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
-            
-            // Clear the success message after 3 seconds
-            setTimeout(() => {
-                setValidationStatus(null);
-            }, 3000);
+      // Only proceed if validation was successful
+      if (isValid) {
+        if (onRefresh) {
+          await onRefresh(); // This should handle its own validation/status updates
+          console.log(`[Refresh] Successfully refreshed directory: ${projectDirectory}`);
+          setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
+          setTimeout(() => setValidationStatus(null), 3000); // Clear message
         } else {
-            setValidationStatus({ isValid: false, message: "Directory validation failed during refresh." });
+          console.warn("[Refresh] No onRefresh callback provided to ProjectDirectorySelector.");
+          // Short timeout to ensure state updates propagate
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          // Then set back to the actual path to force a complete refresh
+          setProjectDirectory(projectDirectory);
+          
+          console.log(`[Refresh] Successfully refreshed directory: ${projectDirectory}`);
+          setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
+          
+          // Clear the success message after 3 seconds
+          setTimeout(() => {
+            setValidationStatus(null);
+          }, 3000);
         }
+      } else {
+        setValidationStatus({ isValid: false, message: "Directory validation failed during refresh." });
+      }
     } catch (error) {
-        console.error("[Refresh] Error during refresh:", error);
-        setValidationStatus({
-            isValid: false,
-            message: error instanceof Error ? error.message : "An error occurred during refresh"
-        });
+      console.error("[Refresh] Error during refresh:", error);
+      setValidationStatus({
+        isValid: false,
+        message: error instanceof Error ? error.message : "An error occurred during refresh"
+      });
     } finally {
-        setIsValidating(false);
+      setIsValidating(false);
     }
-}, [projectDirectory, isValidating, validateDirectory, setProjectDirectory]);
+  }, [projectDirectory, isValidating, validateDirectory, onRefresh]);
+  // --- End Simplified Refresh Handling ---
 
     return (
     <div className="bg-card border rounded-lg p-4 shadow-sm space-y-4">
@@ -377,7 +381,7 @@ export default function ProjectDirectorySelector() {
           {/* History Dropdown */}
           {showHistoryDropdown && history.length > 0 && (
             <div className="absolute z-50 top-full left-0 right-0 mt-1 border rounded-md bg-popover shadow-md">
-              <ScrollArea className="max-h-60">
+              <div className="max-h-60 overflow-auto">
                 <div className="p-1 space-y-0.5">
                   {history.map((dir) => (
                     <div
@@ -397,7 +401,7 @@ export default function ProjectDirectorySelector() {
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
               {history.length > 1 && (
                 <div className="border-t p-1">
                   <Button
@@ -431,7 +435,7 @@ export default function ProjectDirectorySelector() {
               className="shrink-0 h-10 w-10" // Match input height
               disabled={isValidating || !projectDirectory}
               title={!projectDirectory ? "Select a valid git directory first" : "Refresh file list for current directory"} // Updated tooltip
-          ><RefreshCw className="h-4 w-4" /></Button>
+      ><RefreshCw className={cn("h-4 w-4", isValidating && "animate-spin")} /></Button>
       </div>
       
       {/* Validation status */}

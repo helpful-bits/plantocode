@@ -3,7 +3,7 @@ import "./globals.css";
 import { FormatProvider } from "@/lib/contexts/format-context";
 import { ProjectProvider } from "@/lib/contexts/project-context";
 import { ThemeProvider } from "@/components/theme-provider";
-import { DatabaseProvider } from "@/lib/contexts/database-context"; // Keep DatabaseProvider import
+import { DatabaseProvider } from "@/lib/contexts/database-context";
 
 export const metadata: Metadata = {
   title: "O1 Pro Flow", // Keep title

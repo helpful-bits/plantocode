@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runMigrations } from '@/lib/db/migrations';
+import { runMigrations } from '@/lib/db/migrations'; // Keep runMigrations import
 import { setupDatabase } from '@/lib/db/setup';
-
+import { db } from '@/lib/db';
 /**
  * API endpoint to force migrations to run
  * GET /api/migration
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     await setupDatabase();
     
     // Then explicitly run migrations
-    runMigrations();
+    await runMigrations(); // Await migrations to ensure they complete
     
     return NextResponse.json({ 
       success: true, 

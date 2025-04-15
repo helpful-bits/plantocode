@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
-import { setupDatabase } from '@/lib/db/setup';
+import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
 import { Session } from '@/types';
 // GET /api/session?id=...
 export async function GET(request: NextRequest) {

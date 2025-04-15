@@ -1,11 +1,11 @@
 import path from 'path';
 import fs from 'fs';
-import { db } from './index';
+import { db } from './index'; // Keep db import
 
 /**
  * Function to run migrations
  */
-export function runMigrations() {
+export async function runMigrations(): Promise<void> { // Make function async
   if (!db || typeof db.run !== 'function') {
     console.error("Database not initialized. Skipping migrations.");
     return;
@@ -15,72 +15,105 @@ export function runMigrations() {
 
   // Create migrations folder if it doesn't exist
   fs.mkdirSync(migrationsFolder, { recursive: true });
-
+  console.log("Migrations folder:", migrationsFolder);
   // First, check if we have already run migrations by trying to query the migrations table
-  db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'", (err, row) => {
-    if (err) {
-      console.error("Error checking migrations table:", err);
-      return;
-    }
+  try {
+    const tableExists = await new Promise((resolve, reject) => {
+      db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'", (err, row) => {
+        if (err) {
+          console.error("Error checking migrations table:", err);
+          reject(err);
+        } else {
+          resolve(!!row);
+        }
+      });
+    });
 
     // If migrations table doesn't exist, create it
-    if (!row) {
-      db.run(`CREATE TABLE migrations (
+    if (!tableExists) {
+      console.log("Migrations table not found, creating...");
+      await new Promise<void>((resolve, reject) => {
+        db.run(`CREATE TABLE migrations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         applied_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
       )`, (createErr) => {
-        if (createErr) {
-          console.error("Error creating migrations table:", createErr);
-          return;
-        }
-        console.log("Created migrations table.");
-        // Now run all migrations since this is a fresh database
-        applyMigrations(migrationsFolder);
+          if (createErr) {
+            console.error("Error creating migrations table:", createErr);
+            reject(createErr);
+          } else {
+            console.log("Created migrations table.");
+            resolve();
+          }
+        });
       });
+      // Now run all migrations since this is a fresh database
+      await applyMigrations(migrationsFolder);
     } else {
       // If migrations table exists, get the list of applied migrations
-      db.all("SELECT name FROM migrations", (fetchErr, rows: any[]) => {
+      const appliedMigrations = await new Promise<Set<string>>((resolve, reject) => {
+        db.all("SELECT name FROM migrations", (fetchErr, rows: any[]) => {
         if (fetchErr) {
           console.error("Error fetching applied migrations:", fetchErr);
-          return;
+          reject(fetchErr);
+        } else {
+          resolve(new Set(rows?.map(r => r.name) || []));
         }
-        const appliedMigrations = new Set(rows?.map(r => r.name) || []);
-        applyMigrations(migrationsFolder, appliedMigrations);
       });
+      });
+      // Apply migrations after resolving the Promise, not inside it
+      await applyMigrations(migrationsFolder, appliedMigrations);
     }
-  });
+  } catch (error) {
+    console.error("Error during migration setup:", error);
+  }
 }
 
 /**
  * Helper function to actually apply the migrations
  */
-function applyMigrations(migrationsFolder: string, appliedMigrations: Set<string> = new Set()) {
+async function applyMigrations(migrationsFolder: string, appliedMigrations: Set<string> = new Set()): Promise<void> { // Make async
   const files = fs.readdirSync(migrationsFolder)
     .filter(file => file.endsWith('.sql'))
     .sort(); // Sort to run migrations in order
 
-  console.log(`Already applied: ${Array.from(appliedMigrations).join(', ')}`);
+  console.log(`[Migration] Found ${files.length} SQL files. Already applied: ${appliedMigrations.size}`);
 
-  files.forEach(file => {
+  for (const file of files) {
     if (appliedMigrations.has(file)) {
-      console.log(`Skipping already applied migration: ${file}`);
-      return;
+      console.log(`[Migration] Skipping already applied: ${file}`); // Restored log message with file name
+      continue; // Changed from 'return' to 'continue' to process all migration files
     }
 
     const filePath = path.join(migrationsFolder, file);
     const sql = fs.readFileSync(filePath, 'utf8');
-    console.log(`Running migration: ${file}`);
+    console.log(`[Migration] Running: ${file}`);
 
-    db.exec(sql, (execErr) => {
-      if (execErr) {
-        console.error(`Error running migration ${file}:`, execErr);
-      } else {
-        db.run('INSERT INTO migrations (name) VALUES (?)', [file], (recordErr) => {
-          if (recordErr) console.error(`Error recording migration ${file}:`, recordErr);
-          else console.log(`Successfully ran and recorded migration: ${file}`);
+    // Wrap execution in a promise
+    try {
+      await new Promise<void>((resolve, reject) => {
+        db.exec(sql, (execErr) => {
+          if (execErr) {
+            console.error(`[Migration] Error running ${file}:`, execErr);
+            reject(execErr);
+          } else {
+            // Record the migration in the migrations table
+            db.run('INSERT INTO migrations (name) VALUES (?)', [file], (recordErr) => {
+              if (recordErr) {
+                console.error(`[Migration] Error recording ${file}:`, recordErr);
+                reject(recordErr); // Reject if recording fails
+              } else {
+                console.log(`[Migration] Successfully ran and recorded: ${file}`);
+                resolve();
+              }
+            });
+          }
         });
-      }
-    });
-  });
+      });
+    } catch (error) {
+      console.error(`[Migration] Failed to apply migration ${file}. Stopping further migrations.`);
+      break; // Stop applying migrations if one fails
+    }
+  }
+  console.log("[Migration] Finished applying migrations.");
 }

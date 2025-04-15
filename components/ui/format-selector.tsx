@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useFormat } from "@/lib/contexts/format-context"; // Keep useFormat import
+import { useFormat } from "@/lib/contexts/format-context";
 import { Textarea } from "./textarea"; // Import Textarea
 // Keep OutputFormat import
 import { OutputFormat } from "@/types"; // Keep OutputFormat import

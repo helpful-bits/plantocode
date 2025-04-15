@@ -9,7 +9,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
   exists: boolean;
   isAccessible: boolean;
   stats?: any;
-}>> { // Keep function signature
+}>> { // Fixed type signature
   if (!directoryPath?.trim()) { // Handle empty input
     return {
       isSuccess: false,
@@ -129,7 +129,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       };
     }
   } catch (error: unknown) {
-    console.error("Error validating directory:", error);
+    console.error(`Error validating directory ${directoryPath}:`, error); // Add path to log
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const isNotFound = errorMessage.includes('ENOENT');

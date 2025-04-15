@@ -3,7 +3,7 @@
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/lib/contexts/project-context"; // Import useProject
-import { Loader2 } from "lucide-react"; // Import Loader2
+import { Loader2 } from "lucide-react"; // Keep Loader2 import
 import { useState } from "react";
 import { generateDirectoryTree } from "@/lib/directory-tree";
 interface CodebaseStructureProps { // Keep interface definition
@@ -38,7 +38,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
       setError("Failed to generate directory tree. Is `tree` command available?");
       console.error('Failed to generate directory tree:', error);
     } finally {
-      setIsGenerating(false);
+      setIsGenerating(false); // Ensure loading state is reset
     }
   };
 
@@ -54,9 +54,9 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
             disabled={isGenerating || !projectDirectory}
           >
             {isGenerating ? (
-              <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+              <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> // Keep Loader2 icon
             ) : null} {/* Add Loader2 icon */}
-            {isGenerating ? "Generating..." : "Generate Tree"} {/* Update button text */}
+            {isGenerating ? "Generating..." : "Generate Tree"} {/* Keep button text */}
             {/* Added Loader2 icon */}
             {/* Update button text */}
           </Button>

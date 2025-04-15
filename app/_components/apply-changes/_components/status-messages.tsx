@@ -2,7 +2,7 @@
 
 interface StatusMessagesProps {
   errorMessage: string;
-  successMessage: string;
+  successMessage: string; // Keep successMessage prop
 }
 
 export function StatusMessages({ errorMessage, successMessage }: StatusMessagesProps) {

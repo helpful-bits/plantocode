@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'; // Keep Loader2 import
 import { Suspense } from "react"; // Keep Suspense import
 import { ApplyChangesForm } from "./_components/apply-changes/apply-changes-form";
 import GeneratePrompt from "./_components/generate-prompt/generate-prompt-root";
-import { FormatSelector } from "@/components/ui/format-selector";
+import { FormatSelector } from "@/components/ui/format-selector"; // Keep FormatSelector import
 import { useDatabase } from "@/lib/contexts/database-context"; // Keep useDatabase import
 
 export default function Home() {
@@ -15,7 +15,7 @@ export default function Home() {
         <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>
         <div className="flex-grow flex justify-center items-center">
           <div className="flex justify-center items-center h-[50vh] flex-col gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" /> {/* Keep Loader2 */}
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         </div>
       </main>

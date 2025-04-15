@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
 import { Button } from "@/components/ui/button";
 import { improvePatternDescriptionAction } from "@/actions/text-improvement-actions";
-// Keep props as defined
+import { Loader2 } from "lucide-react"; // Import Loader2
+
 interface PatternDescriptionInputProps {
-  value: string;
-  onChange?: (value: string) => void;
+  value: string; onChange: (value: string) => void; // Keep onChange prop
   onInteraction?: () => void;
   onGenerateRegex: () => void;
   isGenerating?: boolean;
@@ -17,7 +17,7 @@ interface PatternDescriptionInputProps {
 
 export default function PatternDescriptionInput({
   value,
-  onChange, // Keep onChange prop
+  onChange,
   onInteraction = () => {}, // Default to no-op if not provided
   onGenerateRegex, // Keep onGenerateRegex prop
   isGenerating = false, // Keep isGenerating prop
@@ -107,7 +107,7 @@ export default function PatternDescriptionInput({
       console.error("Error improving pattern description:", error);
     } finally {
       setIsImproving(false);
-      // Restore focus if textarea had it
+      // Restore focus if textarea had it, otherwise leave it
       if (originalFocus === textareaRef.current) textareaRef.current?.focus();
     }
   }; // Keep handleImproveSelection
@@ -115,7 +115,10 @@ export default function PatternDescriptionInput({
   const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd;
 
   return ( // Keep existing structure
-    <div className="flex flex-col gap-3 bg-card p-5 rounded-lg shadow-sm border">
+    <div className="flex flex-col gap-3 bg-card p-4 rounded-lg shadow-sm border">
+      <div className="flex items-center justify-between">
+        <label className="font-bold text-foreground">Regex Pattern Description:</label>
+      </div>
         {/* Section Heading */}
         <div className="flex items-center justify-between">
       </div>
@@ -143,7 +146,7 @@ export default function PatternDescriptionInput({
         type="button"
         size="sm"
         onClick={onGenerateRegex}
-        disabled={isGenerating || !value.trim()} // Remove hasAnthropicKey check
+        disabled={isGenerating || !value.trim()} // Disable if generating or no text
         className="h-9 px-4 bg-primary text-primary-foreground hover:bg-primary/90"
         title={!value.trim() ? "Enter a description first" : ""}
       >

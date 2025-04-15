@@ -3,7 +3,7 @@
 import path from 'path'; // Keep path import
 import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
 import { setupDatabase } from '@/lib/db/setup';
-import { Session } from '@/types';
+import { Session } from '@/types'; // Keep Session import
 
 /**
  * Migration script to update patch paths in the database from 
@@ -16,7 +16,7 @@ export async function migratePatchPaths(): Promise<{
 }> {
   try { // Keep try block
     // Ensure database is initialized
-    setupDatabase();
+    await setupDatabase(); // Await setup
     
     // Get all sessions
     const allSessions = await sessionRepository.getAllSessions();
