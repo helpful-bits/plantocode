@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
 import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants"; // Keep GLOBAL_PROJECT_DIR_KEY import
-import { useDatabase } from "./database-context"; // Import useDatabase hook
+import { useDatabase } from "./database-context";
  
 interface ProjectContextType {
   projectDirectory: string;
@@ -53,7 +53,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) { // Keep
     
     try {
       // Store in database for global access
-      if (trimmedDir) {
+      if (trimmedDir && repository) { // Check repository is available
         // Save to database, using 'global' context
         await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, trimmedDir);
       }

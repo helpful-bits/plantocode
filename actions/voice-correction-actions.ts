@@ -6,7 +6,7 @@ import { ActionState } from "@/types";
 export async function correctTaskDescriptionAction(rawText: string): Promise<ActionState<string>> {
   try {
     if (!rawText || !rawText.trim()) {
-      return { isSuccess: false, message: "No text provided for correction." };
+      return { isSuccess: false, message: "No text provided for correction." }; // Keep message
     }
     const payload = {
       messages: [
@@ -24,7 +24,7 @@ Return only the corrected text without any additional commentary.`
     const result: ActionState<string> = await callAnthropicAPI(payload); // Keep callAnthropicAPI call
 
     if (!result.isSuccess || !result.data) {
-      return { isSuccess: false, message: result.message || "Failed to correct text via API" };
+      return { isSuccess: false, message: result.message || "Failed to correct text via API" }; // Keep message
     }
     
     // Use result.data which is the string response

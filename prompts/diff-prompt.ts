@@ -68,7 +68,7 @@ index abc1234..def5678 100644
     <patch_integrity>
       <rule>The generated patch must be complete and apply cleanly in all environments.</rule>
       <rule>Include all necessary file changes (creations and updates) in the single patch.</rule>
-      <rule>Provide AT LEAST 3 context lines for each hunk, including surrounding function boundaries for maximum compatibility.</rule>
+      <rule>Provide AT LEAST 2 context lines for each hunk, including surrounding function boundaries for maximum compatibility.</rule>
       <rule>Ensure exact context matching, preserving whitespace, indentation, and line endings.</rule>
       <rule>Never include XML tags or markup inside the diff content.</rule>
     </patch_integrity>
@@ -82,4 +82,4 @@ index abc1234..def5678 100644
     </output_structure>
   </rules>
 </prompt>`;
-} // Keep closing tag
+}

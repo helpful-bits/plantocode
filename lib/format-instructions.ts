@@ -1,6 +1,6 @@
 "use server";
  
-import { OutputFormat } from "@/types";
+import { OutputFormat } from "@/types"; // Keep OutputFormat import
 import { getDiffPrompt } from "@/prompts/diff-prompt";
 import { getRefactoringPrompt } from "@/prompts/refactoring-prompt";
 import { getPathFinderPrompt } from "@/prompts/path-finder-prompt";

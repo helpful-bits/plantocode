@@ -11,7 +11,7 @@ export async function transcribeVoiceAction(request: {
     if (!request.blob || request.blob.size === 0) {
       console.error("Empty audio blob received");
       return {
-        isSuccess: false,
+        isSuccess: false, // Keep false
         message: "Empty audio recording received. Please try again with a valid recording.",
       };
     }

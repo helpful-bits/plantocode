@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle } from "lucide-react"; // Keep imports
-import { cn } from "@/lib/utils";
+import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X } from "lucide-react"; // Added X import
+import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProject } from "@/lib/contexts/project-context";
 import { useDatabase } from "@/lib/contexts/database-context";
 import { useFormat } from "@/lib/contexts/format-context";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatPathForDisplay } from "@/lib/path-utils";
 import { FileInfo } from "@/types";
 
@@ -30,11 +29,11 @@ interface FileBrowserProps {
   onInteraction?: () => void;
   debugMode?: boolean;
   isLoading?: boolean; // Add loading state
+  loadingMessage?: string; // Add loading message prop
   // Legacy prop names
   files?: FilesMap; // Keep for backward compatibility
   onFilesChange?: (newMap: FilesMap) => void; // Keep for backward compatibility
   searchFilter?: string;
-  loadingMessage?: string;
 }
 
 const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
@@ -57,7 +56,7 @@ export default function FileBrowser({
   isRegexActive,
   onInteraction,
   isLoading,
-  loadingMessage
+  loadingMessage = "", // Add default empty string for loadingMessage
 }: FileBrowserProps) { // Keep FileBrowserProps type
   // Normalize props to use both naming conventions
   const allFilesMap = propsAllFilesMap || propsFiles || {};
@@ -312,14 +311,26 @@ export default function FileBrowser({
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <Input
-            type="text"
+            type="search" // Use search type for better semantics and potential browser clear button
             placeholder="Search files..."
             value={searchTerm}
             onChange={(e) => handleSearchChangeInternal(e.target.value)}
             className="w-full" // Ensure input takes full width
           />
         </div>
-        <Button
+        {searchTerm && ( // Show clear button only if search term exists
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => handleSearchChangeInternal("")}
+            className="h-9 w-9 text-muted-foreground hover:text-foreground"
+            title="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+          <Button
           type="button"
           variant="outline"
           size="sm"
@@ -380,10 +391,10 @@ export default function FileBrowser({
           <div className="text-center"> {/* Center text */}
             <p className="font-medium">Loading files from git repository...</p>
             {loadingMessage && <p className="text-sm">{loadingMessage}</p>}
-          </div> {/* Close text div */}
+          </div>
         </div>
       ) : displayedFiles.length > 0 ? (
-        <ScrollArea className="border rounded bg-background/50 p-2 h-[450px]">
+        <div className="border rounded bg-background/50 p-2 h-[450px] overflow-auto">
           {displayedFiles.map((file) => {
             // Extract directory part for grouping
             const pathParts = file.path.split('/');
@@ -397,7 +408,7 @@ export default function FileBrowser({
                   "flex items-center justify-between gap-2 text-sm py-1.5 hover:bg-accent/50 rounded px-2",
                   file.included && !file.forceExcluded ? "bg-primary/5" : "", // Use primary color hint for included
                   file.forceExcluded ? "opacity-60" : ""
-                )}
+                )} // Keep styling
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <input
@@ -435,7 +446,7 @@ export default function FileBrowser({
               </div>
             );
           })}
-        </ScrollArea>
+        </div>
       ) : (searchTerm || (isRegexActive && (titleRegex || contentRegex))) ? ( // Condition for no matches
         <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground">
           <Info className="h-8 w-8" />

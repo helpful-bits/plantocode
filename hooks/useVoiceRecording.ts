@@ -144,7 +144,7 @@ export function useVoiceRecording({
       setCorrectedText(null); // Clear previous corrected text
 
       let currentRawText: string | null = null;
-
+      let finalTranscriptionText: string | null = null; // To store the text passed to onTranscribed
       try {
         const transcriptionResult = await handleTranscription(audioBlob);
         if (!transcriptionResult.isSuccess || typeof transcriptionResult.data !== 'string') {
@@ -153,21 +153,22 @@ export function useVoiceRecording({
         }
         
         currentRawText = transcriptionResult.data; // Store raw text
-        setRawText(currentRawText);
+        setRawText(currentRawText); // Keep setting raw text state
         const correctionResult = await handleCorrection(currentRawText); // Attempt correction
-        let finalText = currentRawText;
+
+        // Determine the final text to use
+        finalTranscriptionText = currentRawText; // Default to raw text
         if (correctionResult.isSuccess && correctionResult.data) {
-            finalText = correctionResult.data;
-            setCorrectedText(finalText); // Store corrected text
+          finalTranscriptionText = correctionResult.data;
+          setCorrectedText(finalTranscriptionText); // Store corrected text if correction succeeded
         } else if (!correctionResult.isSuccess) {
-            console.warn("Correction failed, using raw text:", correctionResult.message);
-            setCorrectedText(currentRawText);
+          console.warn("Correction failed, using raw text:", correctionResult.message);
+          setCorrectedText(currentRawText); // Set corrected text to raw if correction failed
         } // Close else if
 
-        if (typeof onTranscribedRef.current === 'function') {
-            onTranscribedRef.current(finalText); // Call original onTranscribed
-        } else {
-            console.warn("onTranscribedRef.current is not a function");
+        // Call onTranscribed with the FINAL text (corrected or raw)
+        if (finalTranscriptionText !== null && typeof onTranscribedRef.current === 'function') {
+          onTranscribedRef.current(finalTranscriptionText);
         }
         
         if (onCorrectionCompleteRef.current && correctionResult.isSuccess) { // Call correction complete callback
@@ -182,7 +183,7 @@ export function useVoiceRecording({
         const message = err instanceof Error ? err.message : "Failed to process audio";
         setError(prevError => prevError || message);
       } finally {
-        setIsProcessing(false);
+        setIsProcessing(false); // Reset processing state
         // cleanupMedia() // Moved earlier to release mic sooner
       }
   }, [handleTranscription, handleCorrection, isSafari, cleanupMedia]);
@@ -298,19 +299,17 @@ export function useVoiceRecording({
 
   const revertToRaw = useCallback(() => {
     if (rawText !== null) {
-      if (typeof onTranscribedRef.current === 'function') {
+      if (typeof onTranscribedRef.current === 'function') { // Ensure onTranscribed is a function
         onTranscribedRef.current(rawText); 
-      } else {
-        console.warn("onTranscribedRef.current is not a function in revertToRaw");
-      }
+      } // Call onTranscribed with raw text
     } // Call onTranscribed with raw text
   }, [rawText]); 
 
   useEffect(() => {
     // Cleanup function to stop recording and release resources
     return () => {
-      console.log("Hook unmounting, ensuring cleanup.");
-      onInteractionRef.current();
+      console.log("[useVoiceRecording] Hook unmounting, ensuring cleanup.");
+      cleanupMedia(); // Ensure cleanup on unmount
     }
   }, []);
 
@@ -324,5 +323,5 @@ export function useVoiceRecording({
     stopRecording,
     setLanguage, // Expose the language setter
     revertToRaw,
-  };
+  }; // Keep return statement
 } // End of useVoiceRecording hook

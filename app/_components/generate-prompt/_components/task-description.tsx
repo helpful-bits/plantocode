@@ -81,8 +81,8 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
   }, [onChange, onInteraction, selectionStart, selectionEnd]);
   // Modify the handler function to not check for canImproveText
   const handleImproveSelection = async () => { // Keep async keyword
-    const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
     const originalFocus = document.activeElement; // Remember focus
+    const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
     const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0;
 
     if (currentSelectionStart === currentSelectionEnd) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@/components/ui/input"; // Change Textarea to Input
+import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
 import { X, ToggleLeft, ToggleRight } from "lucide-react"; // Keep ToggleLeft/Right imports
 
 interface RegexInputProps {
@@ -29,7 +29,7 @@ export default function RegexInput({
   onRegexActiveChange // Changed to use the prop
 }: RegexInputProps) {
   return (
-    <div className="flex flex-col gap-4 bg-card p-5 rounded-lg shadow-sm border">
+    <div className="flex flex-col gap-4 bg-card p-4 rounded-lg shadow-sm border">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <label className="font-bold text-foreground">File Filtering (Regex):</label>
@@ -71,7 +71,7 @@ export default function RegexInput({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <label htmlFor="titleRegex" className="font-medium text-foreground">Title Regex:</label>
-          <Input 
+          <Textarea
             id="titleRegex" 
             value={titleRegex}
             onChange={(e) => {
@@ -89,7 +89,7 @@ export default function RegexInput({
         </div>
         <div className="flex flex-col gap-2">
           <label htmlFor="contentRegex" className="font-medium text-foreground">Content Regex:</label>
-          <Input 
+          <Textarea
             id="contentRegex" 
             value={contentRegex}
              onChange={(e) => {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/index'; // Keep db import
-import { hashString } from '@/lib/hash';
+import { db } from '@/lib/db/index';
+import { hashString } from '@/lib/hash'; // Keep hashString import
 import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
 import { runMigrations } from '@/lib/db/migrations';
 

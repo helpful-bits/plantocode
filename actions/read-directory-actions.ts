@@ -31,7 +31,7 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
         return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
       } 
       
-      const fileInfo: { [key: string]: string } = {};
+      const fileInfo: { [key: string]: string } = {}; // Keep fileInfo structure
       fileInfo[filePath] = buffer.toString('utf-8'); // Read as UTF-8
 
       return {
@@ -121,7 +121,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
         if (BINARY_EXTENSIONS.has(ext)) {
           binaryCount++;
           continue;
-        } // End if statement
+        }
 
         try {
           // Check if file exists

@@ -1,6 +1,6 @@
 "use client"; 
 
-import React from 'react'; // Keep React import
+import React, { useEffect } from 'react'; // Keep React import
 import { Session } from '@/types';
 
 interface SessionGuardProps {
@@ -9,6 +9,7 @@ interface SessionGuardProps {
   getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
   onLoadSession: (session: Session) => void;
   children: React.ReactNode;
+  sessionInitialized: boolean; // Add sessionInitialized prop
 }
 
 const SessionGuard: React.FC<SessionGuardProps> = ({

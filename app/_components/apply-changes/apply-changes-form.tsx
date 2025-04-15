@@ -1,10 +1,10 @@
 "use client";
  
 import { useState, useEffect } from "react";
-import { StatusMessages } from "./_components/status-messages";
+import { StatusMessages } from "./_components/status-messages"; // Keep StatusMessages import
 import { getRefactoringApplyPrompt, getDiffApplyPrompt } from "../../../prompts/apply-changes-prompts";
 import { useFormat } from "@/lib/contexts/format-context"; // Keep useFormat import
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Keep Button import
 import { Loader2, Clipboard } from "lucide-react"; // Keep Clipboard import
 
 export function ApplyChangesForm() {
@@ -45,7 +45,7 @@ export function ApplyChangesForm() {
       } else if (outputFormat === "path-finder") {
         setErrorMessage("Apply Changes is not applicable for Path Finder format.");
         setIsLoading(false);
-        return;
+        return; // Keep return
       }
       // Custom format implementation would go here
 

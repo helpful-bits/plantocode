@@ -6,7 +6,7 @@ import { callAnthropicAPI } from "@/lib/anthropic";
 export async function improveSelectedTextAction(selectedText: string): Promise<ActionState<string>> {
   try {
   if (!selectedText || !selectedText.trim()) {
-      return { isSuccess: false, message: "No text selected for improvement." };
+      return { isSuccess: false, message: "No text selected for improvement." }; // Keep message
   }
     const payload = {
         max_tokens: 1024, // Provide max_tokens
@@ -33,7 +33,7 @@ Return only the improved text without any additional commentary, keeping the exa
     const result: ActionState<string> = await callAnthropicAPI(payload);
 
     if (!result.isSuccess || !result.data) {
-      return { isSuccess: false, message: result.message || "Failed to improve pattern description via API" };
+      return { isSuccess: false, message: result.message || "Failed to improve text via API" };
     }
     
     const improvedText = result.data || selectedText; // Keep fallback

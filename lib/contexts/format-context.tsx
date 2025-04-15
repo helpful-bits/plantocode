@@ -1,7 +1,7 @@
 "use client";
  
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
-import { OutputFormat } from "@/types"; // Keep OutputFormat import
+import { OutputFormat } from "@/types";
 import { useDatabase } from "./database-context"; // Keep useDatabase import
  
 interface FormatContextType { // Define interface for context type

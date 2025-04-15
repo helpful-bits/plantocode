@@ -2,7 +2,7 @@
  
 import React, { Suspense } from "react"; // Keep Suspense import
 import GeneratePromptForm from "./generate-prompt-form";
-import { useDatabase } from "@/lib/contexts/database-context"; // Keep useDatabase import
+import { useDatabase } from "@/lib/contexts/database-context";
 import { Loader2 } from "lucide-react";
 
 function FormWithProviders() {
