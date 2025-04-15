@@ -1,7 +1,7 @@
 "use client";
 
-import { Textarea } from "@/components/ui/textarea";
-import { X, ToggleLeft, ToggleRight } from "lucide-react";
+import { Input } from "@/components/ui/input"; // Change Textarea to Input
+import { X, ToggleLeft, ToggleRight } from "lucide-react"; // Keep ToggleLeft/Right imports
 
 interface RegexInputProps {
   titleRegex: string;
@@ -10,9 +10,9 @@ interface RegexInputProps {
   onContentRegexChange: (value: string) => void;
   titleRegexError?: string | null;
   contentRegexError?: string | null;
-  onInteraction?: () => void;
-  onClearPatterns?: () => void;
-  isRegexActive: boolean;
+  onInteraction?: () => void; // Optional interaction handler
+  onClearPatterns?: () => void; // Optional clear handler
+  isRegexActive: boolean; // Keep isRegexActive prop
   onRegexActiveChange: (value: boolean) => void;
 }
 
@@ -23,10 +23,10 @@ export default function RegexInput({
   onContentRegexChange,
   titleRegexError,
   contentRegexError,
-  onInteraction = () => {},
+  onInteraction = () => {}, // Default to no-op
   onClearPatterns,
   isRegexActive,
-  onRegexActiveChange
+  onRegexActiveChange // Changed to use the prop
 }: RegexInputProps) {
   return (
     <div className="flex flex-col gap-4 bg-card p-5 rounded-lg shadow-sm border">
@@ -71,7 +71,7 @@ export default function RegexInput({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <label htmlFor="titleRegex" className="font-medium text-foreground">Title Regex:</label>
-          <Textarea 
+          <Input 
             id="titleRegex" 
             value={titleRegex}
             onChange={(e) => {
@@ -80,16 +80,16 @@ export default function RegexInput({
             }}
             placeholder="Regex for file path..."
             className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
-            disabled={!isRegexActive}
+            disabled={!isRegexActive} // Keep disabled state
             aria-label="Title Regex"
-          />
+          /> 
           {titleRegexError ? (
             <p className="text-xs text-destructive">{titleRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Matches against file paths (e.g., `src/.*\.ts$`).</p>)}
+          ) : (<p className="text-xs text-muted-foreground">Matches against file paths (e.g., `src/.*\.ts$`).</p>)} 
         </div>
         <div className="flex flex-col gap-2">
           <label htmlFor="contentRegex" className="font-medium text-foreground">Content Regex:</label>
-          <Textarea 
+          <Input 
             id="contentRegex" 
             value={contentRegex}
              onChange={(e) => {
@@ -98,10 +98,10 @@ export default function RegexInput({
             }}
             placeholder="Regex for file content..."
             className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
-            disabled={!isRegexActive}
+            disabled={!isRegexActive} // Keep disabled state
             aria-label="Content Regex"
           />
-          {contentRegexError ? (
+          {contentRegexError ? ( 
             <p className="text-xs text-destructive">{contentRegexError}</p>
           ) : (<p className="text-xs text-muted-foreground">Matches against file content (e.g., `useState\(`).</p>)}
         </div>

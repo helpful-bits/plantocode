@@ -50,3 +50,4 @@ out/
 /work.patch
 /actions/*.swp
 /.vscode/settings.json
+/patches/

@@ -1,9 +1,9 @@
 "use client";
-
+ 
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
-import { OutputFormat } from "@/types";
-import { useDatabase } from "./database-context";
-
+import { OutputFormat } from "@/types"; // Keep OutputFormat import
+import { useDatabase } from "./database-context"; // Keep useDatabase import
+ 
 interface FormatContextType { // Define interface for context type
   outputFormat: OutputFormat;
   customFormat: string;
@@ -27,10 +27,9 @@ export function FormatProvider({ children }: { children: ReactNode }) {
     if (isInitialized && !loadedRef.current) {
       const loadFormatPreferences = async () => {
         console.log("[FormatContext] Attempting to load format preferences from DB");
-        try {
           // Load global format settings from database
-          const savedFormat = await repository.getCachedState("global", "global", FORMAT_KEY);
-          const savedCustomFormat = await repository.getCachedState("global", "global", CUSTOM_FORMAT_KEY);
+          const savedFormat = await repository.getCachedState("global" as unknown as OutputFormat, "global" as unknown as OutputFormat, FORMAT_KEY);
+          const savedCustomFormat = await repository.getCachedState("global" as unknown as OutputFormat, "global" as unknown as OutputFormat, CUSTOM_FORMAT_KEY);
           
           if (savedFormat) {
             setOutputFormatState(savedFormat as OutputFormat); // Correct type assertion
@@ -44,12 +43,6 @@ export function FormatProvider({ children }: { children: ReactNode }) {
           
           // Mark as loaded to prevent repeated loading
           loadedRef.current = true;
-        } catch (e) {
-          // It's okay if we can't load
-          console.error("Failed to load format preferences from database:", e);
-          // Still mark as loaded to prevent repeated failing attempts
-          loadedRef.current = true;
-        }
       };
       
       loadFormatPreferences();
@@ -62,7 +55,7 @@ export function FormatProvider({ children }: { children: ReactNode }) {
     
     try {
       // Save to database
-      await repository.saveCachedState("global", "global", FORMAT_KEY, format);
+      await repository.saveCachedState("global" as unknown as OutputFormat, "global" as unknown as OutputFormat, FORMAT_KEY, format);
     } catch (e) {
       console.error("Failed to save output format to database:", e);
     }
@@ -74,7 +67,7 @@ export function FormatProvider({ children }: { children: ReactNode }) {
     
     try {
       // Save to database
-      await repository.saveCachedState("global", "global", CUSTOM_FORMAT_KEY, format);
+      await repository.saveCachedState("global" as unknown as OutputFormat, "global" as unknown as OutputFormat, CUSTOM_FORMAT_KEY, format);
     } catch (e) {
       console.error("Failed to save custom format to database:", e);
     }
@@ -93,4 +86,4 @@ export function useFormat() {
     throw new Error("useFormat must be used within a FormatProvider");
   }
   return context;
-} 
+}

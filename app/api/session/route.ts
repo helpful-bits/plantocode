@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup'; // Ensure DB is initialized
-
-// GET /api/session?id=... // Add comment
+import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
+import { setupDatabase } from '@/lib/db/setup';
+import { Session } from '@/types';
+// GET /api/session?id=...
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('id');
   
@@ -25,7 +25,4 @@ export async function GET(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch session';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-} 
-
-
-
+}

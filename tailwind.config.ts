@@ -3,7 +3,7 @@ import type { Config } from "tailwindcss";
 const config: Config = {
     darkMode: ["class"],
     content: [
-        "./pages/**/*.{ts,tsx}",
+        "./pages/**/*.{ts,tsx}", // Keep existing paths
         './app/**/*.{js,ts,jsx,tsx,mdx}',
         "./components/**/*.{ts,tsx}",
     ],

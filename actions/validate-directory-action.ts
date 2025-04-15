@@ -1,24 +1,24 @@
 'use server';
 
 import fs from 'fs/promises';
-import path from 'path';
+import path from 'path'; // Keep path import
 import { ActionState } from '@/types';
 import { existsSync } from 'fs';
 
-export async function validateDirectoryAction(directoryPath: string): Promise<ActionState<{
+export async function validateDirectoryAction(directoryPath: string, validateGitRepo: boolean = true): Promise<ActionState<{
   exists: boolean;
   isAccessible: boolean;
   stats?: any;
-}>> {
-  if (!directoryPath?.trim()) {
+}>> { // Keep function signature
+  if (!directoryPath?.trim()) { // Handle empty input
     return {
       isSuccess: false,
       message: "Directory path cannot be empty",
       data: { exists: false, isAccessible: false }
     };
   }
-  try {
-    console.log(`[Validate] Validating directory: ${directoryPath}`);
+  try { // Start try block
+    console.log(`[Validate] Validating directory: ${directoryPath} (Git required: ${validateGitRepo})`);
     const resolvedPath = path.resolve(directoryPath);
 
     // Check if path exists
@@ -30,10 +30,10 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
       };
     }
     
-    // Check if it's actually a directory
+    // Check if it's a directory
     const stats = await fs.stat(resolvedPath);
     
-    if (!stats.isDirectory()) {
+    if (!stats.isDirectory()) { // Check if it's a directory
       return {
         isSuccess: false,
         message: "Path exists but is not a directory",
@@ -41,16 +41,18 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
       };
     }
 
-    // Check if directory can be read
+    // Check directory contents and access
     try {
       const files = await fs.readdir(resolvedPath);
       
-      // Check for git repository
+      // Check for .git directory to identify a Git repository
       let isGitRepo = false;
-      try {
-        const gitStats = await fs.stat(path.join(resolvedPath, '.git'));
-        isGitRepo = gitStats.isDirectory();
-      } catch (gitError) {
+      try { // Use fs.access for existence check
+        await fs.access(path.join(resolvedPath, '.git'));
+        // Optional: Further check if it's a directory
+        // const gitStats = await fs.stat(path.join(resolvedPath, '.git'));
+        isGitRepo = true; // Assume it's a repo if .git exists and is accessible
+      } catch (gitError) { // Catch error if .git doesn't exist or isn't accessible
         // Not a git repository, which is fine
       }
 
@@ -88,7 +90,7 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
       }
       
       const directoryStats = {
-        isGitRepository: isGitRepo,
+        isGitRepository: isGitRepo, // Renamed for clarity
         lastModified: stats.mtime,
         created: stats.birthtime,
         isEmpty: false,
@@ -96,21 +98,30 @@ export async function validateDirectoryAction(directoryPath: string): Promise<Ac
         dirCount
       };
 
-      let successMessage = isGitRepo 
+      // If we require it to be a Git repo, fail if it isn't
+      if (validateGitRepo && !isGitRepo) {
+         return {
+           isSuccess: false,
+           message: "Directory is not a git repository. Please select a valid git repository.",
+           data: { exists: true, isAccessible: true, stats: directoryStats }
+         };
+      }
+
+      let successMessage = isGitRepo
         ? "Git repository detected" 
         : `Directory contains ${fileCount} files and ${dirCount} folders`;
 
-      return {
+      return { // Return success
         isSuccess: true,
         message: successMessage,
         data: {
           exists: true, 
           isAccessible: true,
-          stats: directoryStats
+          stats: directoryStats,
         }
       };
     } catch (readError) {
-      // Directory exists but can't be read (permission issue)
+      // Handle case where directory exists but cannot be read (permissions)
       return {
         isSuccess: false,
         message: "Directory exists but cannot be read. Please check permissions.",

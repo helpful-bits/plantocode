@@ -1,8 +1,7 @@
 "use client";
-import { Dispatch, SetStateAction, useEffect } from "react";
-import { Textarea } from "@/components/ui/textarea";
-import path from "path"; // Import path for checking absolute paths
-import { normalizePath } from "@/lib/path-utils"; // Import normalizePath
+import { useEffect } from "react";
+import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
+import path from "path"; // Keep path import
 
 interface PastePathsProps {
   value: string;
@@ -28,12 +27,12 @@ export default function PastePaths({
         .map((l) => l.trim())
         .filter((l) => !!l && !l.startsWith("#"));
       
-      // Call onParsePaths if provided
+      // Call onParsePaths callback if it exists
       if (onParsePaths) {
-        onParsePaths(lines);
+        onParsePaths(lines); // Pass the filtered lines
       }
     }
-  }, [value, onParsePaths]);
+  }, [value, onParsePaths]); // Rerun effect when value or onParsePaths changes
 
   return (
     <div className="flex flex-col gap-2">
@@ -79,6 +78,6 @@ path/to/file2.ts
         <p>• Lines starting with # are treated as comments</p>
         <p>• External paths will be read from the file system directly</p>
       </div>
-    </div>
-  );
-} 
+    </div> 
+  ); // Close return statement
+}

@@ -1,16 +1,16 @@
 "use client";
-
-import { createContext, useContext, useState, ReactNode, useEffect, useRef } from "react";
-import { Session } from "@/types/session-types";
+ 
+import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { Session } from "@/types/session-types"; // Keep Session import
 import { OutputFormat } from "@/types";
-
+import { hashString } from '@/lib/hash'; // Import hashString
 // Cache interface
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
 }
 
-interface Cache {
+interface DatabaseClientCache { // Renamed interface for clarity
   sessions: Record<string, CacheEntry<Session[]>>;
   activeSessionIds: Record<string, CacheEntry<string | null>>;
   sessionDetails: Record<string, CacheEntry<Session | null>>;
@@ -18,7 +18,7 @@ interface Cache {
 
 // Define API client for database operations
 class DatabaseClient {
-  private cache: Cache = {
+  private cache: DatabaseClientCache = { // Use renamed interface
     sessions: {},
     activeSessionIds: {},
     sessionDetails: {}
@@ -171,8 +171,7 @@ class DatabaseClient {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
         } catch (parseError) {
-          console.error('[DB Client] Error parsing error response:', parseError);
-        }
+          console.error('[DB Client] Error parsing error response:', parseError);        } // Close catch block
         
         console.error(`[DB Client] HTTP error saving session: ${response.status} ${response.statusText}`, { errorMessage });
         throw new Error(errorMessage);
@@ -267,11 +266,11 @@ class DatabaseClient {
       data: sessionId,
       timestamp: Date.now()
     };
-    
+
     const response = await fetch('/api/project-settings', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json', // Correct header name
       },
       body: JSON.stringify({ projectDirectory, outputFormat, sessionId }),
     });
@@ -292,7 +291,7 @@ class DatabaseClient {
       console.error('getCachedState called with empty key');
       return null;
     }
-
+    
     // For global keys, ensure consistent values
     const safeProjectDirectory = projectDirectory || 'global'; // Use 'global' if projectDirectory is empty/null
     const safeOutputFormat = outputFormat || 'global'; // Use 'global' if outputFormat is empty/null
@@ -322,7 +321,7 @@ class DatabaseClient {
     // Validate inputs to prevent common error cases
     if (!key) {
       console.error('saveCachedState called with empty key');
-      return;
+      return; 
     }
 
     // For global keys, ensure consistent values

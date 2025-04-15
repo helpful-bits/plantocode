@@ -1,5 +1,5 @@
-export type ActionState<TData = unknown> = { // Changed generic name for clarity
+export type ActionState<TData = unknown> = {
   isSuccess: boolean;
   message?: string;
-  data?: TData; // Make data optional
+  data?: TData;
 };

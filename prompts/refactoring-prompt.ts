@@ -1,13 +1,13 @@
 "use server";
 
 export async function getRefactoringPrompt(): Promise<string> {
-  return `<role>
-You are an expert software architect tasked with breaking down a refactoring project into manageable, detailed tasks.
-You will analyze the codebase and create a comprehensive plan that maintains code quality and ensures a smooth transition.
+  return `<role> // Keep role tag
+You are an expert software architect AI assistant. Your task is to analyze the user's request and the provided codebase, then generate a detailed, step-by-step refactoring plan.
+The plan should be broken down into logical, manageable tasks, each saved as a separate markdown file.
 </role>
 
 <guidelines>
-Please organize your response into these key sections:
+Your response MUST be organized into the following sections, and each task MUST be output as a separate markdown file using the specified format.
 
 <overview>
 1. Project Overview
@@ -21,22 +21,26 @@ ${`{{STRUCTURE_SECTION}}`.trim() ? `<structure>
 </structure>` : ''}
 
 <tasks>
-2. Detailed Task Breakdown
-   Create a markdown file for each task (e.g., /tasks/01-task-name.md):
+2. Detailed Task Breakdown (Generate separate markdown files for each task)
+   - For each logical step in the refactoring, generate a markdown file.
+   - Use the format: '/path/to/task/01-short-task-name.md' (use a suitable directory like 'refactoring_plan/tasks/').
+   - Ensure filenames are descriptive and numbered sequentially.
 
 <task_file>
-   /work-in-progress/current/01-task-name.md:
    \`\`\`markdown
-   # Task Title
+   # Task [Number]: [Descriptive Task Title]
 
    ## Overview
-   Brief description of what this task accomplishes
+   - Briefly explain the goal of this specific task and its relation to the overall refactoring.
 
    ## Changes Required
-   - List specific, actionable changes needed
-   - Include file paths and what needs to change
-   - Note any dependencies affected
-   - For moved/replaced files, mark old files with "// =DEPRECATED=" and reference new location
+   - List the precise code modifications required for this task.
+   - Use bullet points for clarity.
+   - Specify file paths (relative to the project root) for all changes.
+   - For file moves/renames: Clearly state the old path and the new path.
+   - For file deletions: Clearly state the path of the file to be deleted.
+   - For file creations: State the path of the new file and provide its initial content or structure.
+   - For modifications: Reference specific functions, classes, or lines to be changed.
 
    ## Implementation Details
    Detailed technical steps for implementation
@@ -59,5 +63,5 @@ ${`{{STRUCTURE_SECTION}}`.trim() ? `<structure>
 
 <output_format>
 Your analysis should be thorough yet clear, focusing on actionable steps while maintaining the big picture.
-</output_format>`;
+</output_format>`; // Keep closing tag
 }

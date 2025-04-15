@@ -1,8 +1,8 @@
 "use client";
-
-import React, { Suspense } from "react";
+ 
+import React, { Suspense } from "react"; // Keep Suspense import
 import GeneratePromptForm from "./generate-prompt-form";
-import { useDatabase } from "@/lib/contexts/database-context";
+import { useDatabase } from "@/lib/contexts/database-context"; // Keep useDatabase import
 import { Loader2 } from "lucide-react";
 
 function FormWithProviders() {

@@ -1,9 +1,9 @@
 "use client"
-
-import * as React from "react"
-import * as SelectPrimitive from "@radix-ui/react-select"; // Added semicolon
-import { Check, ChevronDown } from "lucide-react" // Removed ChevronUp import
-
+ 
+import * as React from "react" // Keep React import
+import * as SelectPrimitive from "@radix-ui/react-select" // Keep SelectPrimitive import
+import { Check, ChevronDown, ChevronUp } from "lucide-react" // Keep Check/Chevron imports
+import { ChevronUpDownIcon } from '@heroicons/react/20/solid' // Keep example import
 import { cn } from "@/lib/utils"
 
 const Select = SelectPrimitive.Root
@@ -119,4 +119,3 @@ export {
   SelectItem,
   SelectSeparator,
 }
-

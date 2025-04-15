@@ -1,16 +1,16 @@
 "use client";
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
-import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
+import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants"; // Keep GLOBAL_PROJECT_DIR_KEY import
 import { useDatabase } from "./database-context"; // Import useDatabase hook
-
+ 
 interface ProjectContextType {
   projectDirectory: string;
   setProjectDirectory: (dir: string) => void;
- }
+ } // Keep ProjectContextType interface
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
-export function ProjectProvider({ children }: { children: ReactNode }) {
+export function ProjectProvider({ children }: { children: ReactNode }) { // Keep ProjectProvider component
   const [projectDirectory, setProjectDirectoryState] = useState("");
   const { repository } = useDatabase(); // Use the repository from context
   const { isInitialized } = useDatabase(); // Use isInitialized hook
@@ -22,7 +22,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (isInitialized && !loadedRef.current) {
       const loadProjectDirectory = async () => {
         console.log("[ProjectContext] Attempting to load global project directory from DB");
-        try {
+        try { // Use try/catch block
           // Load from database
           const savedDir = await repository.getCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY); // Using global scope
           
@@ -63,7 +63,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     // History logic is now handled within ProjectDirectorySelector
   }, [repository]);
   
-    return (
+  return (
     <ProjectContext.Provider value={{ 
       projectDirectory, setProjectDirectory
     }}>

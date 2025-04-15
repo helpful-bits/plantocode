@@ -1,11 +1,11 @@
 "use server";
-
+ 
 import { ActionState } from "@/types";
 
 export async function transcribeVoiceAction(request: {
   blob: Blob;
   mimeType: string;
-  languageCode?: string;
+  languageCode?: string; // Optional language code
 }): Promise<ActionState<string>> {
   try {
     if (!request.blob || request.blob.size === 0) {
@@ -18,9 +18,9 @@ export async function transcribeVoiceAction(request: {
     
     const form = new FormData();
 
-    let normalizedMimeType = request.mimeType.split(';')[0].toLowerCase();
+    const normalizedMimeType = request.mimeType.split(';')[0].toLowerCase(); // Get base MIME type first
     
-    const extensionMap: Record<string, string> = {
+    const extensionMap: Record<string, string> = { // Define extension map
       "audio/flac": "flac",
       "audio/mp3": "mp3", 
       "audio/mp4": "mp4",
@@ -34,7 +34,7 @@ export async function transcribeVoiceAction(request: {
       "audio/x-wav": "wav"
     };
     
-    const extension = extensionMap[normalizedMimeType] || "webm";
+    const extension = extensionMap[normalizedMimeType] || "webm"; // Default to webm if type unknown
     const filename = `audio-${Date.now()}.${extension}`;
     
     form.append("file", request.blob, filename);
@@ -60,7 +60,7 @@ export async function transcribeVoiceAction(request: {
         Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
       },
     });
-
+    
     if (!response.ok) {
       const errText = await response.text();
       console.error(`Groq API error (${response.status}): ${errText}`);
@@ -102,4 +102,4 @@ export async function transcribeVoiceAction(request: {
       message: `Failed to transcribe voice: ${errorMessage}`,
     };
   }
-} 
+}

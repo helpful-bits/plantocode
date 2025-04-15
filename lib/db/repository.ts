@@ -1,7 +1,7 @@
-import { db } from './index';
+import { db } from './index'; // Keep db import
 import { Session } from '@/types/session-types';
-import { OutputFormat } from '@/types';
-import { hashString } from '@/lib/hash';
+import { OutputFormat, GeminiStatus } from '@/types';
+import { hashString } from '@/lib/hash'; // Keep hashString import
 
 /**
  * Session Repository - Handles all session-related database operations
@@ -16,11 +16,11 @@ export class SessionRepository {
       try {
         if (!session.projectDirectory || !session.outputFormat) {
           return reject(new Error("Missing required session fields: projectDirectory and outputFormat"));
-        }
+        } // Close validation check
         const projectHash = hashString(session.projectDirectory);
         
         // Extract included files and excluded files
-        const includedFilesArray = session.includedFiles || [];
+        const includedFilesArray = session.includedFiles || []; // Ensure arrays exist
         const excludedFilesArray = session.forceExcludedFiles || [];
 
         // Begin transaction
@@ -32,15 +32,17 @@ export class SessionRepository {
               await handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, true); // Pass projectHash and true for noTransaction
             } else {
               return reject(err);
-            }
+            } // Close nested transaction check
           } else {
-            await handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, false); // Pass projectHash and false for noTransaction
-          }
+            await handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, false);
+          } // Close else block
           
-          // Helper function to handle session save logic - extracted to avoid code duplication
-          async function handleSessionSave(resolve: (value: Session) => void, reject: (reason: any) => void) {
-            // First save or update the session
-            const sessionValues = {
+          // Helper function to handle session save logic
+          async function handleSessionSave(
+            resolve: (value: Session) => void, reject: (reason: any) => void, projectHash: string, session: Session, includedFilesArray: string[], excludedFilesArray: string[], noTransaction: boolean
+          ) { // Added parameters
+            // Prepare data for insertion/replacement
+            const sessionValues: Omit<Session, 'includedFiles' | 'forceExcludedFiles' | 'updatedAt'> & { projectHash: string; updatedAt: number } = {
               id: session.id,
               name: session.name,
               projectDirectory: session.projectDirectory,
@@ -54,26 +56,30 @@ export class SessionRepository {
               isRegexActive: session.isRegexActive,
               codebaseStructure: session.codebaseStructure || '',
               outputFormat: session.outputFormat,
-              customFormat: (session as any).customFormat || '',
-              updatedAt: Date.now(), // Use milliseconds timestamp,
+              customFormat: session.customFormat || '',
+              updatedAt: Date.now(), // Use current timestamp for update
+              // Add Gemini fields (ensure they exist in the session object or provide defaults)
+              geminiStatus: session.geminiStatus || 'idle',
+              geminiStartTime: session.geminiStartTime || null,
+              geminiEndTime: session.geminiEndTime || null,
+              geminiPatchPath: session.geminiPatchPath || null, // Handle Gemini fields
+              geminiStatusMessage: session.geminiStatusMessage || null,
             };
-
-            // Log the values being inserted/replaced
             console.log(`[Repo] Preparing to INSERT/REPLACE session ${sessionValues.id} with values:`, sessionValues);
 
-            // Insert or replace the session data
-            // Update schema query to include project_hash if needed
             db.run(`
+              -- Insert or update the main session data
               INSERT OR REPLACE INTO sessions
               (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
                pattern_description, title_regex, content_regex, is_regex_active,
-               codebase_structure, output_format, custom_format, updated_at)
-              VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
-            `, [
+               codebase_structure, output_format, custom_format, updated_at,
+               gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message)
+              VALUES -- Match the order of columns
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [ // Ensure values match the order of columns
               sessionValues.id,
               sessionValues.name,
-              sessionValues.projectDirectory,
+              sessionValues.projectDirectory, // Ensure project directory is saved
               projectHash, // Add project_hash parameter
               sessionValues.taskDescription,
               sessionValues.searchTerm,
@@ -85,12 +91,17 @@ export class SessionRepository {
               sessionValues.codebaseStructure,
               sessionValues.outputFormat,
               sessionValues.customFormat,
-              sessionValues.updatedAt
+              sessionValues.updatedAt,
+              sessionValues.geminiStatus, // Ensure geminiStatus is passed
+              sessionValues.geminiStartTime,
+              sessionValues.geminiEndTime,
+              sessionValues.geminiPatchPath,
+              sessionValues.geminiStatusMessage, // Add status message
             ], async function(saveErr) {
               if (saveErr) {
                 console.error("Error saving session:", saveErr);
                 // Only rollback if we're in a transaction
-                if (!err) {
+                if (!noTransaction) { // Use noTransaction flag
                   db.run('ROLLBACK', () => reject(saveErr));
                 } else {
                   reject(saveErr);
@@ -166,7 +177,7 @@ export class SessionRepository {
                 }
 
                 // Only commit if we started a transaction
-                if (!err) {
+                if (!noTransaction) { // Use noTransaction flag
                   // Commit the transaction
                   db.run('COMMIT', (commitErr) => {
                     if (commitErr) {
@@ -178,13 +189,13 @@ export class SessionRepository {
                     }
                   });
                 } else {
-                  // If we're not in a transaction, just resolve
+                  // If we're not in a transaction (due to nesting), just resolve
                   resolve(session);
                 }
               } catch (fileError) {
                 console.error("Error processing files:", fileError);
                 // Only rollback if we started a transaction
-                if (!err) {
+                if (!noTransaction) { // Use noTransaction flag
                   db.run('ROLLBACK', () => reject(fileError));
                   console.log(`[Repo] Rolled back transaction for session ${session.id} due to file error`);
                 } else {
@@ -192,7 +203,7 @@ export class SessionRepository {
                 }
               }
             });
-          }
+          } // End of handleSessionSave helper
         });
       } catch (error) {
         console.error("Outer catch error in saveSession:", error);
@@ -283,7 +294,13 @@ export class SessionRepository {
               forceExcludedFiles: excludedFilesMap[row.id] || [],
               outputFormat: row.output_format as OutputFormat,
               // Ensure updatedAt is populated if needed later
-              customFormat: row.custom_format || '',
+              customFormat: row.custom_format || '', // Add customFormat
+              // Add Gemini fields
+              geminiStatus: row.gemini_status as GeminiStatus || 'idle', // Add type assertion
+              geminiStartTime: row.gemini_start_time || null,
+              geminiEndTime: row.gemini_end_time || null,
+              geminiPatchPath: row.gemini_patch_path || null,
+              geminiStatusMessage: row.gemini_status_message || null, // Add status message
             });
           }
 
@@ -346,7 +363,13 @@ export class SessionRepository {
             forceExcludedFiles: excludedFiles,
             outputFormat: row.output_format as OutputFormat,
             // Ensure updatedAt is populated if needed later
-            customFormat: row.custom_format || '',
+            customFormat: row.custom_format || '', // Add customFormat
+            // Add Gemini fields
+            geminiStatus: row.gemini_status || 'idle',
+            geminiStartTime: row.gemini_start_time || null,
+            geminiEndTime: row.gemini_end_time || null,
+            geminiPatchPath: row.gemini_patch_path || null,
+            geminiStatusMessage: row.gemini_status_message || null, // Add status message
           };
 
           resolve(session);
@@ -443,7 +466,7 @@ export class SessionRepository {
       console.log(`[Repo] Getting cached state for ${projectHash}/${safeOutputFormat}/${key}`);
     return new Promise((resolve, reject) => {
       db.get(`
-        SELECT value FROM cached_state
+        SELECT value FROM cached_state -- Select only value
         WHERE project_hash = ? AND output_format = ? AND key = ?
       `, [projectHash, safeOutputFormat, key], (err, row: any) => {
         if (err) {
@@ -466,14 +489,13 @@ export class SessionRepository {
     key: string,
     value: string
   ): Promise<void> => {
+    // Generate project hash for safer SQL queries
+    const projectHash = hashString(projectDirectory || 'global'); // Use 'global' context if needed
+    const safeOutputFormat = outputFormat || 'global'; // Use 'global' context if needed
     if (!key) {
       console.error("Missing key in saveCachedState");
       return;
-    }
-    
-    // Generate project hash for safer SQL queries
-    const projectHash = hashString(projectDirectory || 'global');
-    const safeOutputFormat = outputFormat || 'global';
+    } // Close key check
     const timestamp = Date.now();
     
     // Ensure value is a string
@@ -490,6 +512,140 @@ export class SessionRepository {
         } else {
           // console.log(`[Repo] Saved cached state for ${key}`); // Reduce noise
           resolve();
+        }
+      });
+    });
+  };
+
+  /**
+   * Update only the Gemini-related status fields for a session.
+   */
+  updateSessionGeminiStatus = async (
+    sessionId: string,
+    status: GeminiStatus, // Correct type usage
+    startTime?: number | null,
+    endTime?: number | null,   // Optional end time
+    patchPath?: string | null, // Optional patch path
+    statusMessage?: string | null // Optional status message
+  ): Promise<void> => {
+    console.log(`[Repo] Updating Gemini status for session ${sessionId} to ${status}, patchPath: ${patchPath}, msg: ${statusMessage}`);
+    return new Promise((resolve, reject) => {
+      // Construct the SET clause dynamically based on provided values
+      const setClauses: string[] = ['gemini_status = ?', 'updated_at = ?'];
+      const values: any[] = [status, Date.now()];
+
+      if (startTime !== undefined) {
+        setClauses.push('gemini_start_time = ?');
+        values.push(startTime);
+      }
+      if (endTime !== undefined) {
+        setClauses.push('gemini_end_time = ?');
+        values.push(endTime);
+      }
+      if (patchPath !== undefined) {
+        setClauses.push('gemini_patch_path = ?'); // Ensure column name matches DB schema
+        values.push(patchPath);
+      }
+      if (statusMessage !== undefined) {
+        setClauses.push('gemini_status_message = ?');
+        values.push(statusMessage);
+      }
+
+      values.push(sessionId); // Add sessionId for the WHERE clause
+
+      const sql = `UPDATE sessions SET ${setClauses.join(', ')} WHERE id = ?`;
+
+      console.log(`[Repo] SQL: ${sql}`, values); // Log the SQL and values for debugging
+      db.run(sql, values, (err) => {
+        if (err) { console.error("Error updating Gemini status:", err); reject(err); }
+        else resolve();
+      });
+    });
+  };
+
+  /**
+   * Get all sessions from the database
+   */
+  getAllSessions = async (): Promise<Session[]> => {
+    return new Promise((resolve, reject) => {
+      // Get the main session data
+      db.all(`
+        SELECT 
+          s.id, s.name, s.project_directory, s.task_description, 
+          s.search_term, s.pasted_paths, s.pattern_description, 
+          s.title_regex, s.content_regex, s.is_regex_active, 
+          s.codebase_structure, s.output_format, s.custom_format, 
+          s.updated_at, s.gemini_status, s.gemini_status_message, s.gemini_start_time, 
+          s.gemini_end_time, s.gemini_patch_path 
+        FROM sessions s
+        ORDER BY s.updated_at DESC
+      `, [], async (err, rows) => {
+        if (err) {
+          console.error("Error getting all sessions:", err);
+          return reject(err);
+        }
+
+        try {
+          // For each session, get included and excluded files
+          const sessionsWithFiles = await Promise.all(rows.map(async (row) => {
+            // Convert row to Session object with empty file arrays initially
+            const session: Session = {
+              id: row.id,
+              name: row.name,
+              projectDirectory: row.project_directory,
+              taskDescription: row.task_description || '',
+              searchTerm: row.search_term || '',
+              pastedPaths: row.pasted_paths || '',
+              patternDescription: row.pattern_description || '',
+              titleRegex: row.title_regex || '',
+              contentRegex: row.content_regex || '',
+              isRegexActive: !!row.is_regex_active,
+              codebaseStructure: row.codebase_structure || '',
+              outputFormat: row.output_format as OutputFormat,
+              customFormat: row.custom_format || '',
+              includedFiles: [],
+              forceExcludedFiles: [],
+              updatedAt: row.updated_at,
+              geminiStatus: row.gemini_status || 'idle', 
+              geminiStartTime: row.gemini_start_time || null,
+              geminiEndTime: row.gemini_end_time || null,
+              geminiPatchPath: row.gemini_patch_path || null,
+              geminiStatusMessage: row.gemini_status_message || null // Add status message
+            };
+
+            // Get included files for this session
+            const includedFiles = await new Promise<string[]>((resolveIncluded, rejectIncluded) => {
+              db.all(`SELECT file_path FROM included_files WHERE session_id = ?`, [row.id], (inclErr, inclRows) => {
+                if (inclErr) {
+                  console.error("Error getting included files:", inclErr);
+                  rejectIncluded(inclErr);
+                } else {
+                  resolveIncluded(inclRows.map(r => r.file_path));
+                }
+              });
+            });
+            session.includedFiles = includedFiles;
+
+            // Get excluded files for this session
+            const excludedFiles = await new Promise<string[]>((resolveExcluded, rejectExcluded) => {
+              db.all(`SELECT file_path FROM excluded_files WHERE session_id = ?`, [row.id], (exclErr, exclRows) => {
+                if (exclErr) {
+                  console.error("Error getting excluded files:", exclErr);
+                  rejectExcluded(exclErr);
+                } else {
+                  resolveExcluded(exclRows.map(r => r.file_path));
+                }
+              });
+            });
+            session.forceExcludedFiles = excludedFiles;
+
+            return session;
+          }));
+
+          resolve(sessionsWithFiles);
+        } catch (processErr) {
+          console.error("Error processing sessions:", processErr);
+          reject(processErr);
         }
       });
     });

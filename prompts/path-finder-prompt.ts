@@ -1,7 +1,7 @@
 "use server";
 
 export async function getPathFinderPrompt(): Promise<string> {
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?> // Keep XML declaration
 <prompt>
   <role>
     Analyze the codebase to identify all relevant files for the specified task. Be thorough and comprehensive in your analysis.
@@ -40,7 +40,7 @@ export async function getPathFinderPrompt(): Promise<string> {
       • Provide clear implementation guidance
     </description>
 
-    <template>
+    <template> {/* Keep template structure */}
       <example_output>
 File Paths:
 src/components/ExampleComponent.js
@@ -61,7 +61,7 @@ Modify ExampleComponent.js to implement new feature using the hook system in src
       </example_output>
     </template>
   </output_format>
-
+// Keep rules section
   <rules>
     <output_format>
       <rule>Format your response as plain text, not XML.</rule>
@@ -74,7 +74,7 @@ Modify ExampleComponent.js to implement new feature using the hook system in src
       <rule>List one path per line, relative to repository root.</rule>
       <rule>Simple plain text format with no markup.</rule>
       <rule>VERIFY PATHS: Double-check that each path you list actually exists in the provided code files.</rule>
-      <rule>Don't include paths that you're not sure exist in the repository.</rule>
+      <rule>Only include paths confirmed to exist in the provided context.</rule> {/* Clarified verification */}
       <rule>BE COMPREHENSIVE - include many relevant paths (at least 8-15 files when possible).</rule>
       <rule>ALWAYS include .cursorrules if it exists in the repository.</rule>
       <rule>ALWAYS include README.md and documentation files.</rule>
@@ -97,4 +97,4 @@ Modify ExampleComponent.js to implement new feature using the hook system in src
     </task_description_section>
   </rules>
 </prompt>`;
-}
+} 

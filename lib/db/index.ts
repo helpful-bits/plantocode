@@ -1,10 +1,10 @@
-import * as sqlite3 from 'sqlite3';
+import * as sqlite3 from 'sqlite3'; // Keep sqlite3 import
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { runMigrations } from './migrations';
+import { runMigrations } from './migrations'; // Keep migrations import
 const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
-const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db');
+const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db'); // Keep database file path
 
 if (!fs.existsSync(APP_DATA_DIR)) {
   fs.mkdirSync(APP_DATA_DIR, { recursive: true });
@@ -42,7 +42,7 @@ export function initializeDatabase() { // Add export statement
 
 export { db, closeDatabase };
 
-function closeDatabase() {
+function closeDatabase() { // Keep closeDatabase function
   if (db) {
     db.close((err) => {
       if (err) {

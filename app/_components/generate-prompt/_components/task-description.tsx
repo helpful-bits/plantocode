@@ -3,23 +3,25 @@
 import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Sparkles, Loader2 } from "lucide-react"; // Keep Sparkles/Loader2 import
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
 export interface TaskDescriptionHandle {
-  insertTextAtCursorPosition: (text: string) => void;
+  insertTextAtCursorPosition: (text: string) => void; // Define handle interface
 }
 
+// Define props for the component
 interface TaskDescriptionProps {
   value: string;
-  onChange: (value: string) => void; // Callback for parent state update
+  onChange: (value: string) => void;
   onInteraction: () => void; // Callback for interaction
-} // Added interface definition
+}
 
 export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function TaskDescriptionArea({
   value,
   onChange,
   onInteraction,
-}: TaskDescriptionProps, ref) {
+}: TaskDescriptionProps, ref) { // Keep ref parameter
   // State related to "Improve Selection" (kept but maybe disabled if API key isn't present)
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
@@ -32,7 +34,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
       const currentSelectionStart = textareaRef.current?.selectionStart ?? value.length;
       const currentSelectionEnd = textareaRef.current?.selectionEnd ?? value.length;
       insertTextAtCursor(text, currentSelectionStart, currentSelectionEnd);
-    }
+    } // Close insertTextAtCursorPosition method
   }));
 
   // Capture and store the selection positions whenever the user selects text
@@ -42,18 +44,12 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
   };
 
   // Insert or replace text at the stored cursor or selection range
-  const insertTextAtCursor = useCallback((newText: string, start: number = selectionStart, end: number = selectionEnd) => {
+  const insertTextAtCursor = useCallback((newText: string, start: number, end: number) => { // Remove default values
     if (!textareaRef.current) return;
     const textarea = textareaRef.current;
     textarea.focus();
     const originalText = textarea.value;
 
-    // Check if the selection range is still valid
-    if (start > originalText.length || end > originalText.length) {
-      console.warn("Selection range is out of bounds. Inserting at the end.");
-      start = originalText.length;
-      end = originalText.length;
-    }
 
     textarea.setSelectionRange(start, end);
 
@@ -75,7 +71,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     // Ensure state is updated even if execCommand worked
     if (textarea.value !== originalText) {
       onChange(textarea.value);
-      onInteraction(); // Notify parent about interaction
+      onInteraction(); // Notify parent
     }
 
     const newPosition = start + newText.length;
@@ -83,10 +79,10 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     setSelectionStart(newPosition); // Update selection state
     setSelectionEnd(newPosition);
   }, [onChange, onInteraction, selectionStart, selectionEnd]);
-
   // Modify the handler function to not check for canImproveText
-  const handleImproveSelection = async () => {
+  const handleImproveSelection = async () => { // Keep async keyword
     const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
+    const originalFocus = document.activeElement; // Remember focus
     const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0;
 
     if (currentSelectionStart === currentSelectionEnd) return;
@@ -101,17 +97,19 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
         insertTextAtCursor(result.data, currentSelectionStart, currentSelectionEnd);
         // insertTextAtCursor already calls onChange
       }
-      // Reset selection after improving
+      // Reset selection after improving text
       setSelectionStart(textareaRef.current?.selectionStart || 0);
       setSelectionEnd(textareaRef.current?.selectionStart || 0);
     } catch (error) {
       console.error("Error improving text:", error);
     } finally {
+      // Restore focus if textarea had it
+      if (originalFocus === textareaRef.current) textareaRef.current?.focus();
       setIsImproving(false);
     }
-  }; // Keep the handler function
+  };
 
-  const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd;
+  const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd; // Keep this check
 
   return (
     <div className="flex flex-col gap-2">
@@ -124,7 +122,10 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
           disabled={isImproving || !hasSelection}
           className="h-7 text-xs px-2"
         >
-          {isImproving ? "Improving..." : "Improve Selection"}
+          {isImproving ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5 mr-1" />)} Improve Selection
         </Button>
       </div>
       <Textarea // Use the Textarea component

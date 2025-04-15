@@ -13,8 +13,8 @@
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
-  }, // Removed trailing comma
-  "outputPath": "components/ui", // Removed trailing comma
+    "lib": "@/lib", // Keep lib alias
+    "hooks": "@/hooks" // Keep hooks alias
+  },
+  "outputPath": "components/ui"
 }

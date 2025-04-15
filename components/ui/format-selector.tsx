@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useFormat } from "@/lib/contexts/format-context";
+import { useFormat } from "@/lib/contexts/format-context"; // Keep useFormat import
 import { Textarea } from "./textarea"; // Import Textarea
-
-import { OutputFormat } from "@/types";
+// Keep OutputFormat import
+import { OutputFormat } from "@/types"; // Keep OutputFormat import
 export function FormatSelector() {
-  const { outputFormat, customFormat, setOutputFormat, setCustomFormat } = useFormat(); // Ensure setCustomFormat is used
+  const { outputFormat, customFormat, setOutputFormat, setCustomFormat } = useFormat();
 
   return (
     <div className="flex flex-col gap-2 bg-card p-5 rounded-lg shadow-sm border">
@@ -38,4 +38,4 @@ export function FormatSelector() {
       )}
     </div>
   );
-} 
+}

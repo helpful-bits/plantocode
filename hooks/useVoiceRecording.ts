@@ -1,6 +1,6 @@
 "use client";
-
-import { useState, useCallback, useEffect, useRef } from 'react';
+ 
+import { useState, useCallback, useEffect, useRef } from 'react'; 
 import { transcribeVoiceAction } from '@/actions/voice-transcription-actions';
 import { correctTaskDescriptionAction } from '@/actions/voice-correction-actions';
 import { ActionState } from '@/types';
@@ -8,7 +8,6 @@ import { ActionState } from '@/types';
 interface UseVoiceRecordingProps {
   onTranscribed: (text: string) => void;
   onCorrectionComplete?: (rawText: string, correctedText: string) => void;
-  foundFiles?: string[];
   languageCode?: string; // Add language code prop
   onInteraction?: () => void;
 }
@@ -23,15 +22,14 @@ interface VoiceRecordingState {
   stopRecording: () => void;
   setLanguage: (lang: string) => void; // Add setter for language
   revertToRaw: () => void;
-  wrappedOnTranscribed: (text: string) => void;
+  // removed wrappedOnTranscribed as it's not directly needed externally
 }
 
 export function useVoiceRecording({
   onTranscribed,
   languageCode: initialLanguageCode = 'en', // Default language
   onCorrectionComplete,
-  foundFiles = [],
-  onInteraction,
+  onInteraction, // Use the interaction handler
 }: UseVoiceRecordingProps): VoiceRecordingState {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -45,7 +43,6 @@ export function useVoiceRecording({
   const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const recordingStartTimeRef = useRef<number | null>(null);
   const isStoppingRef = useRef<boolean>(false);
-  const foundFilesRef = useRef<string[]>(foundFiles); // Keep foundFilesRef if needed
 
   const onTranscribedRef = useRef(onTranscribed);
   const onCorrectionCompleteRef = useRef(onCorrectionComplete);
@@ -58,10 +55,6 @@ export function useVoiceRecording({
   useEffect(() => {
     onCorrectionCompleteRef.current = onCorrectionComplete;
   }, [onCorrectionComplete]);
-
-  useEffect(() => {
-    foundFilesRef.current = foundFiles;
-  }, [foundFiles]);
   
   useEffect(() => {
     onInteractionRef.current = onInteraction;
@@ -113,12 +106,12 @@ export function useVoiceRecording({
       return { isSuccess: true, data: text, message: "Empty text, correction skipped." };
     }
   }, []);
-
+  
   const processAudio = useCallback(async () => {
       const recordingDuration = recordingStartTimeRef.current 
         ? Date.now() - recordingStartTimeRef.current
         : 0;
-
+      
       if (audioChunksRef.current.length === 0) {
         console.warn(`No audio chunks were collected (${recordingDuration}ms).`);
         setError("No audio was recorded. Please check microphone permissions and try again.");
@@ -132,7 +125,7 @@ export function useVoiceRecording({
       const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
 
       // Clear chunks immediately after creating blob
-      audioChunksRef.current = [];
+      audioChunksRef.current = []; 
 
       if (audioBlob.size < 1000) { 
         console.warn(`Created audio blob is too small: ${audioBlob.size} bytes`);
@@ -143,12 +136,12 @@ export function useVoiceRecording({
         return;
       }
 
-      // Release microphone resources as soon as the blob is created
+      // Release microphone resources as soon as the blob is created and recorder stopped
       cleanupMedia();
       setError(null);
       setIsProcessing(true);
-      setRawText(null);
-      setCorrectedText(null);
+      setRawText(null); // Clear previous text
+      setCorrectedText(null); // Clear previous corrected text
 
       let currentRawText: string | null = null;
 
@@ -159,17 +152,17 @@ export function useVoiceRecording({
           throw new Error(transcriptionResult.message || 'Transcription failed');
         }
         
-        currentRawText = transcriptionResult.data;
+        currentRawText = transcriptionResult.data; // Store raw text
         setRawText(currentRawText);
         const correctionResult = await handleCorrection(currentRawText); // Attempt correction
         let finalText = currentRawText;
         if (correctionResult.isSuccess && correctionResult.data) {
             finalText = correctionResult.data;
-            setCorrectedText(finalText);
+            setCorrectedText(finalText); // Store corrected text
         } else if (!correctionResult.isSuccess) {
             console.warn("Correction failed, using raw text:", correctionResult.message);
             setCorrectedText(currentRawText);
-        }
+        } // Close else if
 
         if (typeof onTranscribedRef.current === 'function') {
             onTranscribedRef.current(finalText); // Call original onTranscribed
@@ -179,7 +172,7 @@ export function useVoiceRecording({
         
         if (onCorrectionCompleteRef.current && correctionResult.isSuccess) { // Call correction complete callback
             onCorrectionCompleteRef.current(currentRawText, finalText);
-        }
+        } // Close if statement
 
         if (onInteractionRef.current) {
           onInteractionRef.current();
@@ -195,7 +188,7 @@ export function useVoiceRecording({
   }, [handleTranscription, handleCorrection, isSafari, cleanupMedia]);
 
   const stopRecording = useCallback(() => {
-    if (isStoppingRef.current || !mediaRecorderRef.current) {
+    if (isStoppingRef.current || !mediaRecorderRef.current) { // Check if already stopping or no recorder
       console.log("Stop recording called but already stopping or no recorder");
       return;
     }
@@ -204,7 +197,7 @@ export function useVoiceRecording({
     
     const recorder = mediaRecorderRef.current;
 
-    if (recorder.state === 'recording') {
+    if (recorder.state === 'recording') { // Only stop if recording
       recorder.stop();
     } else {
       console.warn(`Stop called but recorder state is: ${recorder.state}. Trying to process any existing audio.`);
@@ -252,14 +245,13 @@ export function useVoiceRecording({
         recorder = new MediaRecorder(stream);
       } catch (err) {
         console.error("Error creating MediaRecorder:", err);
-        cleanupMedia();
+        cleanupMedia(); // Ensure cleanup on error
         throw new Error("Failed to initialize audio recorder.");
       }
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
-        } else {
         }
       };
 
@@ -272,14 +264,17 @@ export function useVoiceRecording({
       };
       
       recorder.onstop = () => {
-        processAudio(); 
+        console.log(`MediaRecorder stopped. State: ${recorder?.state}`); // Log recorder state
+        processAudio(); // Process audio when recorder stops
       };
       
       mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream; // Store the stream reference
       setIsRecording(true);
       recordingStartTimeRef.current = Date.now(); 
 
       recorder.start();
+      console.log(`MediaRecorder started. State: ${recorder.state}`);
 
       recordingTimeoutRef.current = setTimeout(() => {
         console.log("Maximum recording time reached, stopping.");
@@ -288,7 +283,7 @@ export function useVoiceRecording({
           if (currentRecorder && currentRecorder.state === 'recording' && !isStoppingRef.current) {
             stopRecording(); // Stop recording if timeout reached
           }
-        }
+        } // Close inner if statement
       }, 90000);
       
     } catch (err) {
@@ -304,7 +299,7 @@ export function useVoiceRecording({
   const revertToRaw = useCallback(() => {
     if (rawText !== null) {
       if (typeof onTranscribedRef.current === 'function') {
-        onTranscribedRef.current(rawText);
+        onTranscribedRef.current(rawText); 
       } else {
         console.warn("onTranscribedRef.current is not a function in revertToRaw");
       }
@@ -315,16 +310,6 @@ export function useVoiceRecording({
     // Cleanup function to stop recording and release resources
     return () => {
       console.log("Hook unmounting, ensuring cleanup.");
-    };
-  }, [cleanupMedia]);
-
-  const wrappedOnTranscribed = useCallback((text: string) => {
-    if (typeof onTranscribedRef.current === 'function') {
-      onTranscribedRef.current(text);
-    } else {
-      console.warn("onTranscribedRef.current is not a function in wrappedOnTranscribed");
-    }
-    if (onInteractionRef.current) {
       onInteractionRef.current();
     }
   }, []);
@@ -339,6 +324,5 @@ export function useVoiceRecording({
     stopRecording,
     setLanguage, // Expose the language setter
     revertToRaw,
-    wrappedOnTranscribed
   };
-}
+} // End of useVoiceRecording hook

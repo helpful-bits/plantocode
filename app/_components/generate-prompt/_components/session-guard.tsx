@@ -1,25 +1,26 @@
-"use client";
+"use client"; 
 
-import React, { useEffect } from 'react';
+import React from 'react'; // Keep React import
+import { Session } from '@/types';
 
 interface SessionGuardProps {
   activeSessionId: string | null;
-  setActiveSessionId: (id: string | null) => void; // Function to update session ID
-  getCurrentSessionState: () => any; // Function to get current state
-  onLoadSession: (session: any) => void; // Function to load session data
+  setActiveSessionId: (id: string | null) => void;
+  getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
+  onLoadSession: (session: Session) => void;
   children: React.ReactNode;
 }
 
 const SessionGuard: React.FC<SessionGuardProps> = ({
-  activeSessionId,
+  activeSessionId, // Destructure activeSessionId from props
   children,
 }) => {
-  // If no active session, render nothing (or a placeholder/prompt to create/load)
   if (!activeSessionId) {
+    // If no session is active, don't render the main form content
     return null; // Main form elements are hidden
   }
   // If a session is active, render the children (the main form)
   return <>{children}</>;
 };
-
+ 
 export default SessionGuard;
