@@ -1,10 +1,13 @@
 "use server";
-
-import { callAnthropicAPI, AnthropicResponse } from "@/lib/anthropic";
+ 
+import { callAnthropicAPI } from "@/lib/anthropic";
 import { ActionState } from "@/types";
 
 export async function correctTaskDescriptionAction(rawText: string): Promise<ActionState<string>> {
   try {
+    if (!rawText || !rawText.trim()) {
+      return { isSuccess: false, message: "No text provided for correction." };
+    }
     const payload = {
       messages: [
         {
@@ -18,7 +21,7 @@ Return only the corrected text without any additional commentary.`
       ]
     };
 
-    const result: ActionState<string> = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await callAnthropicAPI(payload); // Keep callAnthropicAPI call
 
     if (!result.isSuccess || !result.data) {
       return { isSuccess: false, message: result.message || "Failed to correct text via API" };
@@ -39,4 +42,4 @@ Return only the corrected text without any additional commentary.`
       message: "Failed to correct text",
     };
   }
-} 
+}

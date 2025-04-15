@@ -1,7 +1,7 @@
 /**
  * Path utilities primarily for browser environment context
  */
-// Use basic string manipulation for browser compatibility
+ // Use basic string manipulation for browser context
 
 /**
  * Gets a best-guess default path based on the browser's platform info
@@ -12,7 +12,7 @@ export function getDefaultPathForOS(username?: string): string {
   // Default username if not provided
   const user = username || '';
 
-  if (typeof navigator === 'undefined') {
+  if (typeof navigator === 'undefined') { // Check if running on server
     return process.cwd(); // Fallback for server-side
   }
   

@@ -1,9 +1,9 @@
 "use server";
-
-import path from "path";
-import { getAllNonIgnoredFiles } from "@/lib/git-utils";
-
-interface TreeNode {
+ 
+import path from "path"; // Keep path import
+import { getAllNonIgnoredFiles } from "@/lib/git-utils"; // Keep getAllNonIgnoredFiles import
+// Keep TreeNode interface
+interface TreeNode { // Keep interface definition
   name: string;
   children: TreeNode[];
   isDirectory: boolean;
@@ -14,7 +14,7 @@ function buildTree(files: string[]): TreeNode {
 
   for (const filePath of files) {
     const parts = filePath.split('/');
-    let currentNode = root;
+    let currentNode = root; // Start at the root
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
@@ -42,7 +42,7 @@ function buildTree(files: string[]): TreeNode {
 }
 
 function treeToString(node: TreeNode, prefix = '', isLast = true): string {
-  if (!node.name && node.children.length === 0) return '';
+  if (!node.name && node.children.length === 0) return ''; // Handle empty root case
 
   let result = '';
   
@@ -67,7 +67,7 @@ export async function generateDirectoryTree(projectDir: string): Promise<string>
     if (!projectDir?.trim()) {
       return ''; // Return empty string if no project directory
     }
-    const files = await getAllNonIgnoredFiles(projectDir);
+    const { files } = await getAllNonIgnoredFiles(projectDir); // Destructure files from result
     const tree = buildTree(files);
     // Generate string representation
     return treeToString(tree).trim();

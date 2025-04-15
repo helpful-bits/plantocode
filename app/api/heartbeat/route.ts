@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'; // Keep NextResponse import
 
 /**
  * Simple heartbeat endpoint that just returns a 200 OK response.
@@ -6,6 +6,5 @@ import { NextResponse } from 'next/server';
  * asynchronous operations to complete during beforeunload events.
  */
 export async function GET() {
-  // console.log("Heartbeat request received"); // Can be noisy
-  return NextResponse.json({ status: 'ok' });
+    return NextResponse.json({status: 'ok'}, {status: 200}); // Keep JSON response
 }

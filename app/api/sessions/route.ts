@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
-import { OutputFormat } from '@/types';
+import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
+import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { OutputFormat, Session } from '@/types';
 
-setupDatabase();
+setupDatabase(); // Ensure database is initialized 
 
 // GET /api/sessions?projectDirectory=...&outputFormat=...
 export async function GET(request: NextRequest) {
@@ -64,4 +64,4 @@ export async function DELETE(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to delete session';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-} 
+}

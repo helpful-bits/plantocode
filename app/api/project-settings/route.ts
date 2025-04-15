@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository';
+import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
 import { setupDatabase } from '@/lib/db/setup';
-import { OutputFormat } from '@/types';
+import { OutputFormat } from '@/types'; // Correct import
 
-setupDatabase();
+setupDatabase(); // Ensure DB is set up
 
 // GET /api/project-settings?projectDirectory=...&outputFormat=...
 export async function GET(request: NextRequest) {
@@ -35,18 +35,17 @@ export async function POST(request: NextRequest) {
     }
     
     // Validate sessionId type if present
-    if (sessionId !== undefined && sessionId !== null && typeof sessionId !== 'string') {
+    if (sessionId !== undefined && sessionId !== null && typeof sessionId !== 'string') { // Keep validation
        return NextResponse.json({ error: 'Invalid sessionId type' }, { status: 400 });
     }
     
-    // sessionId can be null to clear the active session
+    // Allow sessionId to be null to clear active session
     const effectiveSessionId = (sessionId === undefined || sessionId === '' || sessionId === null) ? null : sessionId;
     await sessionRepository.setActiveSession(projectDirectory, outputFormat, effectiveSessionId);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }); // Return success status
   } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error setting active session:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to set active session';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-} 
-
+}

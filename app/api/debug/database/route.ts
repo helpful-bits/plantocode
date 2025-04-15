@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
 import { resetDatabase } from '@/lib/db/setup';
 import { hashString } from '@/lib/hash';
-
-// GET /api/debug/database
+import { OutputFormat } from '@/types';
+// GET /api/debug/database?action=...
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const action = searchParams.get('action');
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
       const testValue = `test-value-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
       const testKey = 'test-key';
       const testProject = 'test-project';
-      const testFormat = 'test-format';
+      const testFormat: OutputFormat = 'diff'; // Use a valid OutputFormat
       
       // First, attempt to write a test value
       await new Promise<void>((resolve, reject) => {
@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
         testValue,
         readValue,
         message: readMatchesWrite 
-          ? "Database read/write test passed!" 
+          ? "Database read/write test passed!"
           : "Database read/write test FAILED: written value doesn't match read value"
       });
     } catch (error: unknown) { // Use unknown type for catch block variable

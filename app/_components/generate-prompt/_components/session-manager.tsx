@@ -1,10 +1,10 @@
 "use client";
-
 import { useState, useEffect, useCallback, useRef } from "react";
+import { OutputFormat } from '@/types'; // Keep OutputFormat import
 import { Session } from "@/types"; // Import Session from types/index
-import { Save, Trash2, Plus, Loader2 } from "lucide-react";
+import { Save, Trash2, Plus, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/input"; // Keep Input import
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
@@ -15,18 +15,18 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialogTrigger, // Use AlertDialogTrigger component
 } from "@/components/ui/alert-dialog";
 import { useDatabase } from "@/lib/contexts/database-context";
-import { OutputFormat } from "@/types";
 
-interface SessionManagerProps {
+export interface SessionManagerProps { // Export interface
   projectDirectory: string;
   outputFormat: OutputFormat;
   getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">; // Adjusted type
   onLoadSession: (session: Session) => void;
   activeSessionId: string | null;
   setActiveSessionIdExternally: (id: string | null) => void;
+  onSessionNameChange: (name: string) => void; // Add callback for name changes
   onSessionStatusChange?: (hasActiveSession: boolean) => void;
 }
 
@@ -37,6 +37,7 @@ const SessionManager = ({
   onLoadSession,
   activeSessionId: externalActiveSessionId,
   setActiveSessionIdExternally,
+  onSessionNameChange,
   onSessionStatusChange,
 }: SessionManagerProps) => {
   const { repository } = useDatabase();
@@ -46,10 +47,9 @@ const SessionManager = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncingState, setIsSyncingState] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sessionInitialized, setSessionInitialized] = useState<boolean>(!!externalActiveSessionId);
+  const [sessionInitialized, setSessionInitialized] = useState(false); // Start as uninitialized
   const sessionLoadedRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionNameInput, setEditSessionNameInput] = useState("");
   const [isRestoringSession, setIsRestoringSession] = useState(false);
 
@@ -57,23 +57,22 @@ const SessionManager = ({
   const loadedProjectRef = useRef<string | null>(null);
   const lastSavedStateRef = useRef<any>({});
   const pendingChangesRef = useRef<Record<string, any>>({});
-
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   // Load sessions from the database
   const loadSessions = useCallback(async () => {
     if (!projectDirectory || !outputFormat) {
-      setSessions([]);
+      setSessions([]); // Clear sessions if no project/format
       setError(null);
       return;
     }
     
     try {
-      setIsLoading(true);
       const loadedSessions = await repository.getSessions(projectDirectory, outputFormat as OutputFormat) || [];
-      console.log(`Loaded ${loadedSessions.length} sessions from database for ${projectDirectory}/${outputFormat}`);
       setSessions(loadedSessions);
       setError(null);
       
       // Check if we have at least one session available and no session is currently active
+      // If loading sessions and none are active, attempt to restore the last active one.
       if (loadedSessions.length > 0 && !activeSessionId) {
         // Try to restore active session
       }
@@ -81,12 +80,12 @@ const SessionManager = ({
       // Notify parent component about session status
       if (onSessionStatusChange) {
         onSessionStatusChange(!!activeSessionId || loadedSessions.length > 0);
-      }
+      } // Use OR condition for better state management
     } catch (err) {
       console.error("Failed to load sessions:", err);
       setError("Failed to load sessions from database.");
-      setSessions([]);
-    } finally {
+      setSessions([]); // Ensure sessions are cleared on error
+    } finally { // Ensure loading state is reset
       setIsLoading(false);
     }
   }, [projectDirectory, outputFormat, repository, activeSessionId, onSessionStatusChange]);
@@ -95,12 +94,12 @@ const SessionManager = ({
   const restoreActiveSession = useCallback(async () => {
     if (!projectDirectory || !outputFormat) return;
     
-    if (!sessionInitialized && !isRestoringSession) { // Only restore if not initialized and not already restoring
+    if (!sessionInitialized && !isRestoringSession && repository) { // Add repository check
       setIsRestoringSession(true);
       try {
         // Get active session ID from database
         const storedSessionId = await repository.getActiveSessionId(projectDirectory, outputFormat as OutputFormat);
-        
+          console.log(`[SessionManager] Restored active session ID from DB: ${storedSessionId}`);
         if (storedSessionId) {
           // Try to get the session details
           const session = await repository.getSession(storedSessionId);
@@ -110,8 +109,9 @@ const SessionManager = ({
             setActiveSessionIdInternal(session.id); // Use internal setter
             setActiveSessionIdExternally(session.id);
             onLoadSession(session);
+            onSessionNameChange(session.name); // Update parent's session name
             setSessionInitialized(true);
-            sessionLoadedRef.current = true;
+            sessionLoadedRef.current = true; // Mark as loaded
           } else {
             console.log(`Stored active session ID (${storedSessionId}) not found in database. Clearing active session.`);
             setActiveSessionIdInternal(null);
@@ -122,10 +122,10 @@ const SessionManager = ({
       } catch (err) {
         console.error("Failed to restore active session:", err);
       } finally {
-        setIsRestoringSession(false);
+        setIsRestoringSession(false); // Ensure this is always reset
       }
-    }
-  }, [projectDirectory, outputFormat, repository, setActiveSessionIdExternally, onLoadSession, sessionInitialized, isRestoringSession]);
+    } // Close initialization check
+  }, [projectDirectory, outputFormat, repository, setActiveSessionIdExternally, onLoadSession, sessionInitialized, isRestoringSession]); // Added repository dependency
 
   // Save form state to localStorage as a backup
   const saveFormStateToLocalStorage = useCallback((sessionId: string, formState: any) => {
@@ -161,7 +161,7 @@ const SessionManager = ({
     } catch (err) {
       console.error("Failed to restore form state from localStorage:", err);
     }
-    return null;
+    return null; // Return null if not found or error
   }, []);
 
   // When component mounts or project/format changes, load sessions
@@ -173,7 +173,6 @@ const SessionManager = ({
     // 1. We haven't loaded sessions for this project/format yet, or
     // 2. The project/format has changed since last load
     if (projectDirectory && outputFormat && (!loadedProjectRef.current || loadedProjectRef.current !== projectFormatKey)) {
-      console.log(`[SessionManager] Loading sessions for project/format: ${projectFormatKey}`);
       loadSessions();
 
         // Also attempt to restore the active session for this new context
@@ -185,7 +184,7 @@ const SessionManager = ({
       if (initialLoadDoneRef.current) {
         sessionLoadedRef.current = false;
       } else {
-        initialLoadDoneRef.current = true;
+        initialLoadDoneRef.current = true; // Mark initial load as done
       }
     } else if (!projectDirectory || !outputFormat) {
       setSessions([]);
@@ -204,15 +203,15 @@ const SessionManager = ({
 
   // Handle beforeunload to save pending changes
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => { // Added type
       // Handle any teardown logic here if needed
-      return null;
+      return null; // Required for some browsers
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
     
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', handleBeforeUnload); // Corrected typo
     };
   }, [projectDirectory, outputFormat, loadSessions, activeSessionId, getCurrentSessionState, onSessionStatusChange]);
 
@@ -221,9 +220,10 @@ const SessionManager = ({
     setActiveSessionIdInternal(externalActiveSessionId);
     setSessionInitialized(!!externalActiveSessionId);
     
-    // Notify parent about session status
+    // Notify parent about session status - important for UI updates
     if (onSessionStatusChange) {
       onSessionStatusChange(!!externalActiveSessionId);
+      if (!externalActiveSessionId) onSessionNameChange(""); // Clear name if session deactivated
     }
   }, [externalActiveSessionId, onSessionStatusChange]);
 
@@ -296,7 +296,7 @@ const SessionManager = ({
     setError(null);
 
     try {
-      const currentState = getCurrentSessionState();
+      const currentState = getCurrentSessionState(); // Get current form state
       // currentState.updatedAt = Date.now(); // updatedAt is set below
 
       // Validate current state
@@ -318,11 +318,13 @@ const SessionManager = ({
         ...currentState,
         id: sessionId,
         name: sessionName, // Use generated or provided name
-        updatedAt: Date.now(),
-        customFormat: '', // Initialize empty custom format
+        updatedAt: Date.now(), // Set update timestamp
+        geminiStatus: 'idle', // Ensure new sessions start idle
+        geminiStartTime: null,
+        geminiEndTime: null,
+        geminiPatchPath: null, // Initialize path to null
+        geminiStatusMessage: null, // Initialize message to null
       };
-
-      // Final validation before saving
       if (!newSession.id || !newSession.name || !newSession.projectDirectory || !newSession.outputFormat) {
         console.error("Missing required fields in new session:", {
           id: newSession.id,
@@ -333,17 +335,16 @@ const SessionManager = ({
         throw new Error("Cannot save session: Missing required fields");
       }
 
-      console.log(`Saving new session: "${sessionName}" (ID: ${sessionId})`);
-      
-      // Save to database
+      // Save to database repository
       const savedSession = await repository.saveSession(newSession);
       console.log(`Successfully saved session "${sessionName}" to database`);
 
       
       // Reload sessions to refresh the list
-      await loadSessions();
-      
+      await loadSessions(); // Refresh the list
       // Set the newly created session as active
+      setActiveSessionIdInternal(sessionId); // Set internal state
+      onSessionNameChange(sessionName); // Update parent's session name
       setActiveSessionIdExternally(sessionId);
 
       lastSavedStateRef.current = { ...currentState };
@@ -352,16 +353,16 @@ const SessionManager = ({
       // Notify parent about session status
       if (onSessionStatusChange) {
         onSessionStatusChange(true);
-      }
+      } // Update parent status
     } catch (err) {
       console.error("Failed to save session:", err);
       setError(`Failed to save the session: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
+    } finally { // Ensure isLoading is reset
       setIsLoading(false);
     }
   };
 
-  // Update session name
+  // Handle renaming a session
   const handleUpdateSessionName = async (sessionId: string) => {
     if (!projectDirectory) return;
     setIsLoading(true); // Indicate loading state
@@ -383,17 +384,20 @@ const SessionManager = ({
       // Save to database
       await repository.saveSession(updatedSession);
       
+      // Update parent's session name if it's the active session
+      if (activeSessionId === sessionId) onSessionNameChange(updatedSession.name);
+      
       // Reload sessions
       await loadSessions();
       
       setEditingSessionId(null);
       setEditSessionNameInput("");
-      setError(null);
+      setError(null); // Clear error on success
     } catch (err) {
       console.error("Failed to update session name:", err);
       setError("Failed to update the session name.");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Reset loading state
     }
   };
 
@@ -405,7 +409,7 @@ const SessionManager = ({
   };
 
   // Cancel editing session name
-  const cancelEditing = (e: React.MouseEvent | React.KeyboardEvent) => {
+  const cancelEditing = (e: React.MouseEvent | React.KeyboardEvent) => { // Handle keyboard events too
     e.stopPropagation();
     setEditingSessionId(null);
     setEditSessionNameInput("");
@@ -415,7 +419,7 @@ const SessionManager = ({
   const handleDelete = async (sessionId: string) => {
     if (!projectDirectory) return;
     setIsLoading(true); // Indicate loading state
-    try {
+    try { // Use try/catch for error handling
       // Delete from database
       await repository.deleteSession(sessionId);
       
@@ -428,16 +432,17 @@ const SessionManager = ({
       if (activeSessionId === sessionId) {
         setActiveSessionIdExternally(null);
         setSessionInitialized(false);
-        // No need to call setActiveSession here, parent component will handle it
+        // Set active session to null in the database as well
         // await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, null);
         
+        onSessionNameChange(""); // Clear name if active session deleted
         // Notify parent about session status
         if (onSessionStatusChange) {
           onSessionStatusChange(false);
         }
       }
       
-      setError(null);
+      setError(null); // Clear error on success
     } catch (err) {
       console.error("Failed to delete session:", err);
       setError("Failed to delete the session.");
@@ -447,12 +452,12 @@ const SessionManager = ({
   };
 
   // Load session handler
-  const handleLoadSession = async (session: Session) => {
-    if (editingSessionId === session.id) return;
+  const handleLoadSession = async (session: Session) => { // Added async keyword
+    if (editingSessionId === session.id) return; // Prevent load while editing
     if (isSyncingState) return; // Prevent multiple loads
     
     setIsSyncingState(true);
-    
+    console.log(`[SessionManager] handleLoadSession called for: ${session.id}`);
     try {
       // Load the full session details again to ensure freshness
       const fullSession = await repository.getSession(session.id).catch(err => {
@@ -472,26 +477,28 @@ const SessionManager = ({
           setActiveSessionIdExternally(null);
           setActiveSessionIdInternal(null);
           setSessionInitialized(false);
-        }
+        } // Close activeSessionId check
         
         setIsSyncingState(false);
         return;
-      }
+      } // Close !fullSession check
 
       onLoadSession(fullSession); // Load the fresh session data
+      onSessionNameChange(fullSession.name); // Update parent's session name
       
-      setActiveSessionIdExternally(session.id);
       setActiveSessionIdInternal(session.id); // Use internal setter
+      setActiveSessionIdExternally(session.id); // Update external state too
       setSessionInitialized(true);
       
       // Update active session in database
+      // This is important for restoring the session later
       try {
         await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, session.id);
       } catch (err) {
         console.error("Failed to set active session in database:", err);
         // Continue anyway as we've already loaded the session in memory
       }
-      
+        console.log(`[SessionManager] Active session set to: ${session.id}`);
       // Notify parent about session status
       if (onSessionStatusChange) {
         onSessionStatusChange(true);
@@ -505,17 +512,17 @@ const SessionManager = ({
   };
 
 
-  // Create a new session dialog for initial setup
+  // Render a dialog to create the first session if needed
   const renderNewSessionDialog = () => {
     // Show this only if project/format is selected, DB is loaded, no session active, and no sessions exist yet
     if (projectDirectory && outputFormat && !isLoading && !activeSessionId && sessions.length === 0 && !sessionInitialized) {
-      return (
+      return ( // Return JSX element
         <div className="border border-dashed border-primary/50 rounded-lg p-6 flex flex-col gap-4 items-center justify-center bg-primary/5 mt-4">
           <h3 className="font-semibold text-lg text-foreground">Create Your First Session</h3>
           <p className="text-sm text-muted-foreground text-center">
             Create a session to start using the form. All your inputs will be saved automatically.
           </p>
-          <div className="flex gap-2 w-full max-w-md">
+          <div className="flex gap-2 w-full max-w-md"> {/* Input and button container */}
             <Input
               type="text"
               placeholder="Session name (auto-generated if empty)..."
@@ -536,7 +543,7 @@ const SessionManager = ({
         </div>
       );
     }
-    return null;
+    return null; // Return null if conditions aren't met
   };
 
   return (
@@ -552,7 +559,7 @@ const SessionManager = ({
             placeholder="Session name (auto-generated if empty)..."
             value={sessionNameInput}
             onChange={(e) => setSessionNameInput(e.target.value)}
-            disabled={!projectDirectory || !outputFormat || isLoading} // Also disable if no format
+            disabled={!projectDirectory || !outputFormat || isLoading}
             className="h-9 flex-1 bg-background"
           />
           <Button
@@ -560,7 +567,7 @@ const SessionManager = ({
             onClick={handleSave}
             disabled={!projectDirectory || isLoading}
             size="sm"
-            className="whitespace-nowrap px-4 flex items-center h-9"
+            className="whitespace-nowrap px-4 h-9" // Removed explicit flex items-center
             variant="outline" // Changed variant
           >
             {isLoading ? (
@@ -629,8 +636,8 @@ const SessionManager = ({
                     </span>
                   )}
                   <div className="flex gap-1 items-center">
-                    {!editingSessionId && (
-                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={(e) => startEditingSession(session, e)} title="Rename Session">✎</Button>
+                    {editingSessionId !== session.id && ( // Show edit only if not currently editing this session
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={(e) => startEditingSession(session, e)} title="Rename Session">✎</Button> // Added tooltip
                     )} {/* Edit Button */}
                     <AlertDialog>
                       <AlertDialogTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={e => e.stopPropagation()} title="Delete Session"><Trash2 size={14} /></Button></AlertDialogTrigger> {/* Delete Button */}

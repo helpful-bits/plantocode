@@ -1,23 +1,21 @@
 "use client";
-
+ 
 import { Button } from "@/components/ui/button";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react"; // Keep imports
 import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 import { Mic, MicOff, Loader2 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Import Select components
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
   onInteraction?: () => void; // Optional interaction handler
-  foundFiles?: string[]; // Keep if needed by useVoiceRecording
 }
 
 export default function VoiceTranscription({
   onTranscribed,
   onInteraction,
-  foundFiles = []
 }: VoiceTranscriptionProps) {
-  const [showRevertOption, setShowRevertOption] = useState(false);
+  const [showRevertOption, setShowRevertOption] = useState(false); // State for revert button visibility
   const [languageCode, setLanguageCode] = useState('en'); // Default to English
 
 
@@ -31,23 +29,21 @@ export default function VoiceTranscription({
     isProcessing,
     error: voiceError,
     rawText,
-    startRecording,
+    startRecording, // Function to start recording
     stopRecording, // Corrected property name
     revertToRaw,
     setLanguage, // Get the setLanguage function from the hook
-    wrappedOnTranscribed
   } = useVoiceRecording({
-    onTranscribed,
+    onTranscribed, // Pass the callback prop
     // Always enable correction callback
     onCorrectionComplete: handleCorrectionComplete,
-    foundFiles,
     // Pass the interaction handler
     onInteraction,
     languageCode // Pass the current language code to the hook
   });
 
   const handleToggleRecording = async () => {
-    if (!isRecording) {
+    if (!isRecording) { // Check if not currently recording
       await startRecording();
     } else {
       stopRecording();
@@ -83,7 +79,7 @@ export default function VoiceTranscription({
             </>
           )}
         </Button>
-        <Select value={languageCode} onValueChange={setLanguageCode} disabled={isRecording || isProcessing}>
+        <Select value={languageCode} onValueChange={(value) => { setLanguageCode(value); setLanguage(value); }} disabled={isRecording || isProcessing}>
           <SelectTrigger className="w-[100px] h-9" aria-label="Select transcription language">
             <SelectValue placeholder="Language" />
           </SelectTrigger>
@@ -113,4 +109,4 @@ export default function VoiceTranscription({
       {voiceError && <div className="text-sm text-destructive mt-1">{voiceError}</div>}
     </div>
   );
-} 
+}

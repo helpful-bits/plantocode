@@ -16,13 +16,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)), -- Boolean represented as integer
   codebase_structure TEXT DEFAULT '',
   output_format TEXT NOT NULL,
-  custom_format TEXT DEFAULT '', -- Added custom_format field
+  custom_format TEXT DEFAULT '',
   -- Use INTEGER for timestamp (milliseconds since epoch)
   -- Using default strftime for creation time is problematic if row is updated
   -- Instead, rely on application logic to set timestamps
   created_at INTEGER,
   updated_at INTEGER
-);
+); -- Keep semicolon
+
+-- Add index on project_hash and output_format for faster session lookups
+-- Combined with the index below
+-- CREATE INDEX IF NOT EXISTS idx_sessions_project_hash_format ON sessions(project_hash, output_format);
 
 -- Create included_files table
 CREATE TABLE IF NOT EXISTS included_files (
@@ -64,7 +68,7 @@ CREATE TABLE IF NOT EXISTS cached_state (
 );
 
 -- Create indexes for better performance on lookups
-CREATE INDEX IF NOT EXISTS idx_sessions_project_format ON sessions(project_directory, output_format);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_hash_format ON sessions(project_hash, output_format); -- Use project_hash
 CREATE INDEX IF NOT EXISTS idx_included_files_session ON included_files(session_id);
 CREATE INDEX IF NOT EXISTS idx_excluded_files_session ON excluded_files(session_id);
 CREATE INDEX IF NOT EXISTS idx_cached_state_lookup ON cached_state(project_hash, output_format, key);

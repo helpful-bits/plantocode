@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react"; // Keep imports
 import { AlertCircle, Check, FolderOpen, Loader2, RefreshCw, Trash2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -130,7 +130,7 @@ export default function ProjectDirectorySelector() {
     });
     
     try {
-      const result = await validateDirectoryAction(directoryPath);
+      const result = await validateDirectoryAction(directoryPath, true); // Pass true to enforce Git repo check
       const isValid = result.isSuccess && result.data?.isAccessible;
 
       let message = result.message || (isValid ? "Directory is valid" : "Invalid directory");
@@ -139,6 +139,7 @@ export default function ProjectDirectorySelector() {
       if (isValid && result.data?.stats) {
         const stats = result.data.stats;
         if (!stats.isGitRepository) {
+          // Specific message if it's not a git repo
           setValidationStatus({
             isValid: false,
             message: "Not a git repository. Please select a valid git repository."
@@ -146,7 +147,7 @@ export default function ProjectDirectorySelector() {
           return false;
         }
         
-        message = "Git repository detected";
+        message = "Git repository detected"; // Confirmation message
         if (stats.fileCount) {
           message += ` with ${stats.fileCount} files and ${stats.dirCount} folders`;
         }
@@ -289,26 +290,51 @@ export default function ProjectDirectorySelector() {
     }
   };
 
-// Manually trigger validation and refresh of the current directory
-const handleRefresh = useCallback(async () => {
+  // Manually trigger validation and refresh of the current directory
+  const handleRefresh = useCallback(async () => {
     if (!projectDirectory || isValidating) return;
 
+    setIsValidating(true);
+    setValidationStatus({ isValid: false, message: "Refreshing directory..." });
     console.log(`[Refresh] Refreshing directory: ${projectDirectory}`);
-    const isValid = await validateDirectory(projectDirectory);
+    
+    try {
+        const isValid = await validateDirectory(projectDirectory);
 
-    // Re-set the project directory in context even if it's the same value.
-    // This should trigger the useEffect in GeneratePromptForm to reload files.
-    if (isValid) {
-        setProjectDirectory(projectDirectory);
-        setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
-        
-        // Clear the success message after 3 seconds
-        setTimeout(() => {
-            setValidationStatus(null);
-        }, 3000);
+        // Only proceed if validation was successful
+        if (isValid) {
+            // Re-set the project directory in context using a temporary value and then the actual value
+            // This ensures the useEffect in GeneratePromptForm is triggered to reload files
+            // even if the directory value is the same
+            const tempPath = `${projectDirectory}_temp_${Date.now()}`;
+            setProjectDirectory("");  // First clear it completely
+            
+            // Short timeout to ensure state updates propagate
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            // Then set back to the actual path to force a complete refresh
+            setProjectDirectory(projectDirectory);
+            
+            console.log(`[Refresh] Successfully refreshed directory: ${projectDirectory}`);
+            setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
+            
+            // Clear the success message after 3 seconds
+            setTimeout(() => {
+                setValidationStatus(null);
+            }, 3000);
+        } else {
+            setValidationStatus({ isValid: false, message: "Directory validation failed during refresh." });
+        }
+    } catch (error) {
+        console.error("[Refresh] Error during refresh:", error);
+        setValidationStatus({
+            isValid: false,
+            message: error instanceof Error ? error.message : "An error occurred during refresh"
+        });
+    } finally {
+        setIsValidating(false);
     }
 }, [projectDirectory, isValidating, validateDirectory, setProjectDirectory]);
-
 
     return (
     <div className="bg-card border rounded-lg p-4 shadow-sm space-y-4">
@@ -317,7 +343,7 @@ const handleRefresh = useCallback(async () => {
       </h3>
       
       <div className="relative flex items-center gap-2">
-        <div className="relative flex-1" ref={historyRef}>
+        <div className="relative flex-1" ref={historyRef}> {/* Use ref for history dropdown */}
           <Input
             ref={inputRef}
             type="text"
@@ -331,7 +357,7 @@ const handleRefresh = useCallback(async () => {
               validationStatus?.isValid === false && !isValidating ? "border-red-500 focus-visible:ring-red-500" : ""
             )}
             disabled={isValidating}
-          />
+          /> {/* Close Input tag */}
           
           {inputValue && (
             <button
@@ -404,7 +430,7 @@ const handleRefresh = useCallback(async () => {
               size="icon"
               className="shrink-0 h-10 w-10" // Match input height
               disabled={isValidating || !projectDirectory}
-              title={!projectDirectory ? "Select a directory first" : "Refresh file list for current directory"}
+              title={!projectDirectory ? "Select a valid git directory first" : "Refresh file list for current directory"} // Updated tooltip
           ><RefreshCw className="h-4 w-4" /></Button>
       </div>
       
@@ -434,8 +460,8 @@ const handleRefresh = useCallback(async () => {
             </>
           )}
         </div>
-      )}
+      )} {/* Close validation status block */}
 
-    </div>
+    </div> // End of main div
   );
 }

@@ -1,11 +1,11 @@
 "use client";
-
-import { useState, useEffect, useCallback } from "react";
+ 
+import { useState, useEffect } from "react";
 import { StatusMessages } from "./_components/status-messages";
 import { getRefactoringApplyPrompt, getDiffApplyPrompt } from "../../../prompts/apply-changes-prompts";
-import { useFormat } from "@/lib/contexts/format-context";
+import { useFormat } from "@/lib/contexts/format-context"; // Keep useFormat import
 import { Button } from "@/components/ui/button";
-import { Loader2, Clipboard } from "lucide-react"; // Add this import
+import { Loader2, Clipboard } from "lucide-react"; // Keep Clipboard import
 
 export function ApplyChangesForm() {
   const [successMessage, setSuccessMessage] = useState<string>("");
@@ -19,17 +19,17 @@ export function ApplyChangesForm() {
       timer = setTimeout(() => {
         setSuccessMessage("");
       }, 2000);
-    } // Reduced success message duration
+    }
     return () => {
       if (timer) clearTimeout(timer);
     };
   }, [successMessage]);
 
-  const handleApplyFromClipboard = useCallback(async () => {
+  const handleApplyFromClipboard = async () => {
     setErrorMessage("");
     setIsLoading(true);
 
-    let prompt: string = ''; // Declare prompt variable here
+    let prompt: string = '';
     try {
       const clipboardText = await navigator.clipboard.readText();
       if (!clipboardText.trim()) {
@@ -61,7 +61,7 @@ export function ApplyChangesForm() {
       }
       setIsLoading(false);
     }
-  }, [outputFormat, customFormat]);
+  };
 
   const isButtonDisabled = isLoading || (outputFormat === "custom" && !customFormat.trim()) || outputFormat === "path-finder";
 
@@ -78,7 +78,7 @@ export function ApplyChangesForm() {
           onClick={handleApplyFromClipboard}
           disabled={isButtonDisabled}
           className="bg-primary text-primary-foreground px-8 py-6 rounded-lg text-lg font-semibold shadow-md hover:shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50"
-          title={ // Improved tooltip messages
+          title={
             outputFormat === "path-finder" ? "Apply Changes is not available for Path Finder format" : 
             (outputFormat === "custom" && !customFormat.trim()) ? "Please define custom format instructions first" : 
             ""
@@ -99,4 +99,4 @@ export function ApplyChangesForm() {
       </div>
     </div>
   );
-} 
+}

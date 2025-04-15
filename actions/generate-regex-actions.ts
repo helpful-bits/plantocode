@@ -1,5 +1,5 @@
 "use server";
-import { callAnthropicAPI, AnthropicResponse } from "@/lib/anthropic";
+import { callAnthropicAPI } from "@/lib/anthropic";
 import { ActionState } from "@/types";
 
 function isValidRegex(pattern: string): boolean {
@@ -10,11 +10,12 @@ function isValidRegex(pattern: string): boolean {
     return false;
   }
 }
+
 export async function generateRegexPatternsAction(
   description: string,
   directoryTree?: string,
 ): Promise<ActionState<{ titleRegex?: string; contentRegex?: string }>> {
-  if (!description?.trim()) {
+  if (!description || !description.trim()) {
     return { isSuccess: false, message: "Pattern description cannot be empty." };
   }
 
@@ -30,7 +31,7 @@ ${directoryTree}
 
 Consider this structure when creating patterns to match files in the appropriate directories.
 `;
-    }
+    } // Close if statement
 
     const payload: { messages: { role: string; content: string }[], max_tokens: number } = {
       max_tokens: 1024,
@@ -52,7 +53,7 @@ Example for "Find all TypeScript files in components folder":
 Example for "Find files using 'useState' hook":
 {
   "titleRegex": "",
-  "contentRegex": "import\\s+.*?{\\s*.*?useState.*?\\s*}\\s*from\\s+['\\\"]react['\\\"];|React\\.useState"
+  "contentRegex": "import\\s+.*?{\\s*.*?useState.*?\\s*}\\s*from\\s+['\\\"]react['\\\"]|React\\.useState"
 }
 
 Example for "Find Markdown files containing 'TODO'":

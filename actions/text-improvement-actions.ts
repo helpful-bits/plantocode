@@ -1,12 +1,16 @@
 "use server";
 
 import { ActionState } from "@/types";
-import { callAnthropicAPI, AnthropicResponse } from "@/lib/anthropic";
-
+import { callAnthropicAPI } from "@/lib/anthropic";
+ 
 export async function improveSelectedTextAction(selectedText: string): Promise<ActionState<string>> {
   try {
+  if (!selectedText || !selectedText.trim()) {
+      return { isSuccess: false, message: "No text selected for improvement." };
+  }
     const payload = {
-        messages: [{
+        max_tokens: 1024, // Provide max_tokens
+        messages: [{ // Keep messages array
           role: "user",
           content: `Please improve the following text to make it clearer (and grammatically correct) while EXACTLY preserving its formatting style, including:
 - All line breaks
@@ -15,7 +19,7 @@ export async function improveSelectedTextAction(selectedText: string): Promise<A
 - All blank lines
 - All special characters and symbols
 
-Do not change the formatting structure at all. Only improve the content while keeping the exact same format.
+Do not change the formatting structure at all. Only improve the content while keeping the exact same format. 
 
 IMPORTANT: Keep the original language of the text.
 
@@ -23,7 +27,7 @@ Here is the text to improve:
 ${selectedText}
 
 Return only the improved text without any additional commentary, keeping the exact same formatting as the original.`
-        }]
+        }] // End of messages array
     };
 
     const result: ActionState<string> = await callAnthropicAPI(payload);
@@ -32,7 +36,7 @@ Return only the improved text without any additional commentary, keeping the exa
       return { isSuccess: false, message: result.message || "Failed to improve pattern description via API" };
     }
     
-    const improvedText = result.data || selectedText;
+    const improvedText = result.data || selectedText; // Keep fallback
 
     return {
       isSuccess: true,
@@ -43,13 +47,17 @@ Return only the improved text without any additional commentary, keeping the exa
     console.error("Error improving text with Anthropic:", error);
     return {
       isSuccess: false,
-      message: "Failed to improve text",
+      message: error instanceof Error ? error.message : "Failed to improve text",
     };
   }
 }
-
+ 
 export async function improvePatternDescriptionAction(selectedText: string, directoryTree?: string): Promise<ActionState<string>> {
   try {
+    if (!selectedText || !selectedText.trim()) {
+      return { isSuccess: false, message: "No pattern description provided for improvement." };
+    }
+
     let structureContext = "";
     if (directoryTree && directoryTree.trim()) {
       structureContext = `
@@ -59,7 +67,7 @@ ${directoryTree}
 \`\`\`
 `;
     }
-
+ 
     const payload = {
         messages: [{
           role: "user",
@@ -79,9 +87,9 @@ ${selectedText}
 ---
 Return ONLY the improved text without any additional commentary or formatting.`
         }]
-    };
+    }; // Close payload object
 
-    const result: ActionState<string> = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await callAnthropicAPI(payload); // Keep callAnthropicAPI call
 
     if (!result.isSuccess || !result.data) {
       return { isSuccess: false, message: result.message || "Failed to improve text via API" };
@@ -92,6 +100,9 @@ Return ONLY the improved text without any additional commentary or formatting.`
     return { isSuccess: true, message: "Pattern description improved successfully", data: improvedText };
   } catch (error) {
     console.error("Error improving pattern description with Anthropic:", error);
-    return { isSuccess: false, message: "Failed to improve pattern description" };
+    return { 
+      isSuccess: false, 
+      message: error instanceof Error ? error.message : "Failed to improve pattern description" 
+    };
   }
-} 
+}

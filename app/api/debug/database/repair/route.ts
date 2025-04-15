@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/index';
+import { db } from '@/lib/db/index'; // Keep db import
 import { hashString } from '@/lib/hash';
-import { setupDatabase } from '@/lib/db/setup';
+import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
 import { runMigrations } from '@/lib/db/migrations';
 
-setupDatabase();
+setupDatabase(); // Ensure DB setup runs
 
 
 export async function GET(request: NextRequest) {
-  try {
+  try { // Use try/catch block
     // 1. Run migrations first to make sure the schema is updated
     await runMigrations();
     
     // 2. Update all sessions with project_hash
-    const sessionResults = await new Promise<any[]>((resolve) => {
+    const sessionResults = await new Promise<any[]>((resolve) => { // Fetch existing sessions
       db.all("SELECT id, project_directory FROM sessions", (err, rows) => {
         if (err) {
           console.error("Error fetching sessions:", err);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     
     // Update all sessions with proper hash values
     const updatePromises = sessionResults.map(async (session) => {
-      if (!session.project_directory) {
+      if (!session.project_directory) { // Check if project directory exists
         console.log(`Skipping session ${session.id} with empty project_directory`);
         return;
       }
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       });
     });
     
-    await Promise.all(updatePromises);
+    await Promise.all(updatePromises); // Wait for all updates to finish
       const sessionUpdateCount = sessionResults.length;
 
     // 3. Migrate project settings to use project_hash
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
 
 // Return summary
     return NextResponse.json({
-      success: true,
+        success: true,
         sessions_updated: sessionUpdateCount,
         project_settings_migrated: migratedSettingsCount,
         message: `Updated ${sessionUpdateCount} sessions and migrated ${migratedSettingsCount} project settings`

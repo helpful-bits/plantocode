@@ -1,31 +1,33 @@
 "use client";
 
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button"; // Fixed duplicate import
+import { Button } from "@/components/ui/button";
 import { useProject } from "@/lib/contexts/project-context"; // Import useProject
-import { useState, useCallback } from "react";
+import { Loader2 } from "lucide-react"; // Import Loader2
+import { useState } from "react";
 import { generateDirectoryTree } from "@/lib/directory-tree";
-interface CodebaseStructureProps {
+interface CodebaseStructureProps { // Keep interface definition
   value: string;
   onChange: (value: string) => void; // Callback for parent state update
 }
 
 export default function CodebaseStructure({ value, onChange }: CodebaseStructureProps) {
   const { projectDirectory } = useProject();
-  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
+  const [isExpanded, setIsExpanded] = useState(false); // Default to collapsed
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null); // State for error message
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   };
 
-
+  // Callback to generate directory tree
   const handleGenerateStructure = async () => {
     if (!projectDirectory) return;
-    
+
+    setError(null);
     setIsGenerating(true);
-    try {
+    try { // Corrected: Call the utility function
       const tree = await generateDirectoryTree(projectDirectory);
       if (tree) {
         onChange(tree);
@@ -42,7 +44,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-1"> {/* Reduced bottom margin */}
         <label className="font-bold text-foreground">Codebase Structure (Optional):</label>
         <div className="flex gap-2">
           <Button
@@ -51,7 +53,12 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
             onClick={handleGenerateStructure}
             disabled={isGenerating || !projectDirectory}
           >
-            {isGenerating ? "Generating..." : "Generate from Project"}
+            {isGenerating ? (
+              <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+            ) : null} {/* Add Loader2 icon */}
+            {isGenerating ? "Generating..." : "Generate Tree"} {/* Update button text */}
+            {/* Added Loader2 icon */}
+            {/* Update button text */}
           </Button>
           <Button
             type="button"
@@ -66,17 +73,17 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
       
       {isExpanded && (
         <>
-          <div className="text-sm text-muted-foreground mb-2">
+          <div className="text-sm text-muted-foreground mb-1"> {/* Reduced bottom margin */}
             Define the current or planned directory structure using ASCII tree format.
           </div>
           <Textarea
-            id="codebaseStructure" // Added id for label association
+            id="codebaseStructure"
             value={value}
             onChange={handleChange}
-            placeholder="project/
+            placeholder={`project/
   ├── folder/        # Purpose
   │   └── file.ts    # Description
-  └── ..."
+  └── ...`}
             className="min-h-[150px] font-mono text-sm" // Increased min height and added font
           />
           {error && (
@@ -86,4 +93,4 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
       )}
     </div>
   );
-} 
+}

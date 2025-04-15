@@ -6,12 +6,13 @@ O1 Pro Flow is a comprehensive utility designed to streamline the workflow of ge
 All your inputs (project directory, file selections, task descriptions, regex patterns, etc.) are saved automatically as you work, associated with the current project directory and output format. **When a session is active, changes automatically update that session in the database.** You must create or load a session before you can interact with the main input form.
 
 ## Prerequisites
-
+ 
 - Git installed and available in PATH
 - Node.js (v18+) and pnpm
 - Next.js 14+ with React 18
 - (Required) `GROQ_API_KEY` for voice transcription service (uses Whisper via Groq for faster performance than OpenAI)
-- (Required) `ANTHROPIC_API_KEY` for text correction and regex generation via Anthropic's Claude (specifically Sonnet 3.5 model as configured)
+- (Required) `ANTHROPIC_API_KEY` for text improvement and regex generation via Anthropic's Claude (specifically Sonnet 3.7 model as configured)
+- (Required) `GEMINI_API_KEY` for generating patches or other content via Google Gemini 2.5 Pro.
 
 ## Installation & Quick Start
 
@@ -25,7 +26,7 @@ All your inputs (project directory, file selections, task descriptions, regex pa
     ```bash
     cp .env.example .env.local
     ```
-    - Edit `.env.local` to add your required `GROQ_API_KEY` and `ANTHROPIC_API_KEY`.
+    - Edit `.env.local` to add your required `GROQ_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY`.
     - **Important:** The SQLite database (`o1-pro-flow.db`) will be automatically created in the `~/.o1-pro-flow/` directory on first run.
 3. **Run Development Server**:
     ```bash
@@ -49,14 +50,16 @@ Generate comprehensive prompts for AI models tailored to your codebase and task.
 - **Session Management:**
     - Explicitly save all current inputs (project, files, task, regex, etc.) as a named session.
     - Sessions are specific to a **Project Directory** and **Output Format** combination.
+    - **Gemini processing status** (idle, running, completed, failed, canceled), along with start/end times and the path to the saved patch file, is stored per session. The server action continues running even if the browser is refreshed or closed.
+    - The UI reflects the current status by polling the database.
     - When a session is active, any changes made to the inputs automatically update that session in the database.
-    - The main input form is only accessible *after* a session has been created or loaded for the current project/format.
-
-### Voice Transcription
+    - The main input form (Task Description, File Selection, etc.) is only accessible *after* a session has been created or loaded for the current project/format.
+ 
+### Voice Transcription 
 Record audio instructions directly in the browser for the Task Description.
 - **Transcription:** Uses the Groq API (requires `GROQ_API_KEY`) for fast transcription via Whisper.
 - **Language Selection:** Specify the language for transcription.
-- **Correction:** If transcribed text is available, it is automatically sent to Anthropic Claude (Sonnet 3.5) for correction and refinement. You can revert to the raw transcription if needed.
+- **Correction:** If transcribed text is available, it is automatically sent to Anthropic Claude (Sonnet 3.7) for correction and refinement. You can revert to the raw transcription if needed.
 
 ### Text Improvement
 Select text within the Task Description area and use Anthropic Claude (if configured) to improve clarity and grammar while preserving formatting (line breaks, indentation, etc.).
@@ -67,14 +70,23 @@ Select text within the Task Description area and use Anthropic Claude (if config
 - **Path Finder:** Generates a prompt asking the AI to identify all relevant files for a given task based on the provided context.
 - **Custom:** Define your own prompt structure.
 
+### Send Prompt & Process Response (Gemini) - Background Task
+- Takes the generated prompt from Step 1.
+- Sends the prompt to the Google Gemini API (`gemini-2.5-pro-preview-03-25`) using the provided `GEMINI_API_KEY`.
+- Expects a Git patch in the response (typically for the "Code Changes (Diff)" format).
+- Automatically streams the received patch content directly to a file in the `patches/` directory in the repository root. The filename includes an ISO timestamp and the current session name (e.g., `2024-07-28T10-30-05_123Z_MySessionName.patch`). **You can monitor this file in your IDE to see changes appear in real-time.**
+- The UI displays the processing status (running, completed, failed, canceled) and elapsed time by polling the session state in the database.
+- **Background Processing:** The server action runs independently. You can refresh the page, close the tab, or even restart the browser; the processing continues on the server. Re-opening the session will show the current status.
+- **Cancellation:** Allows canceling the ongoing Gemini processing request via a button in the UI.
+
 ### Generate "Apply Changes" Prompt
 This tool focuses on *generating prompts*. The "Apply Changes" section does *not* directly modify your files. Instead, it takes the output (like a diff or refactoring plan) from your AI model (which you run separately) from your clipboard and generates a *new prompt*. You then send this new prompt to your AI model (like O1 Pro in ChatGPT) to actually perform the file modifications within its environment.
 
 
 **Important:** The tool itself does not execute code changes on your local machine. It prepares the instructions for the AI to do so.
-
+ 
 ## Project Structure
-- `app` - Next.js App Router with server actions, pages, and layout
+- `app` - Next.js App Router with server actions, API routes, pages, and layout
 - `app/api` - Next.js API routes for backend database interactions
 - `components` - UI and utility components
 - `lib` - Utility libraries (token estimation, file utilities, Git utils, hashing, etc.)
@@ -90,7 +102,8 @@ This tool focuses on *generating prompts*. The "Apply Changes" section does *not
 ## Recommended Workflow
 1. **Generate Prompt**  
    Specify your Project Directory, then either select files from the file browser or paste file paths. Provide the Task Description. Optionally use voice transcription. Click "Generate Prompt" to produce a text prompt for the O1 Pro model.
-
+2. **Send to Gemini (Optional)**
+   If you generated a prompt suitable for patch generation (like the "Code Changes (Diff)" format), click "Send to Gemini & Save Patch". The response (assumed to be a patch) will be saved to the `patches/` directory in the repository root. The process runs in the background and updates its status in the session database. You can monitor the progress and elapsed time in the UI.
 2. **Send Prompt to O1 Pro Model**  
    Copy and paste the generated prompt into ChatGPT (or another environment) where you have the O1 Pro model.
 

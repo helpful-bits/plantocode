@@ -1,11 +1,11 @@
 "use client"
-
-import * as React from "react"
-import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
-
-import { cn } from "@/lib/utils"
+ 
+import * as React from "react" // Keep React import
+import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog" // Keep AlertDialogPrimitive import
+ 
+import { cn } from "@/lib/utils" // Keep cn import
 import { buttonVariants } from "@/components/ui/button"
-
+import { Button } from "@/components/ui/button"; // Import Button component
 const AlertDialog = AlertDialogPrimitive.Root
 
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger
@@ -61,7 +61,7 @@ const AlertDialogFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)} // Corrected class name for footer
+    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
     {...props}
   />
 )
@@ -131,4 +131,3 @@ export {
   AlertDialogAction,
   AlertDialogCancel,
 }
-

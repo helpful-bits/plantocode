@@ -1,32 +1,19 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import "./globals.css";
 import { FormatProvider } from "@/lib/contexts/format-context";
 import { ProjectProvider } from "@/lib/contexts/project-context";
-import { ThemeProvider } from "@/components/theme-provider"; // Ensure ThemeProvider is imported
-import { DatabaseProvider } from "@/lib/contexts/database-context";
-// Uncommented Geist fonts
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900"
-});
-
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900"
-});
+import { ThemeProvider } from "@/components/theme-provider";
+import { DatabaseProvider } from "@/lib/contexts/database-context"; // Keep DatabaseProvider import
 
 export const metadata: Metadata = {
-  title: "O1 Pro Flow",
+  title: "O1 Pro Flow", // Keep title
   description: "Generate prompts for and apply changes from the O1 pro model in ChatGPT"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
+      <body className="antialiased bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <DatabaseProvider>
             <ProjectProvider>
@@ -38,5 +25,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </ThemeProvider>
       </body>
     </html>
-  );
-}
+  ); 
+} // Keep RootLayout component

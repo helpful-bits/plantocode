@@ -1,8 +1,10 @@
 "use server";
-
+ 
 export async function getDiffApplyPrompt(clipboardText: string): Promise<string> {
-// Ensure consistent XML format
+  // Ensure consistent XML format // Keep comment
   return `<?xml version="1.0" encoding="UTF-8"?>
+  <prompt>
+<role>
 You are an expert software engineer AI assistant. Your task is to apply code changes provided in a standard Git diff format to the given project files.
 You MUST process the entire diff and apply ALL specified changes accurately.
 You MUST NOT ask for permission before applying changes.
@@ -29,11 +31,11 @@ ${clipboardText}
 
 <focus>
 Process all changes thoroughly and implement everything specified in the diff without seeking additional permissions. Use the provided file contents as the base for applying the diff.
-</focus>`;
+</focus></prompt>`;
 }
 
-export async function getRefactoringApplyPrompt(clipboardText: string): Promise<string> {
-// Ensure consistent XML format
+export async function getRefactoringApplyPrompt(clipboardText: string): Promise<string> { 
+  // Ensure consistent XML format // Keep comment
   return `<?xml version="1.0" encoding="UTF-8"?>
 You are an expert software engineer AI assistant. Your task is to implement code modifications based on a provided refactoring plan or task breakdown.
 You MUST process the entire plan and implement ALL specified changes accurately.
@@ -61,5 +63,5 @@ ${clipboardText}
 
 <focus>
 Process all changes thoroughly and implement everything specified in the task breakdown without seeking additional permissions. Use the provided file contents as the base for implementing the changes.
-</focus>`;
-} 
+</focus></prompt>`;
+}

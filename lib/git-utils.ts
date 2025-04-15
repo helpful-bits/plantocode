@@ -2,7 +2,9 @@
 
 import { exec } from "child_process";
 import { promisify } from "util";
-
+import { promises as fs } from "fs";
+import path from "path"; // Keep path import
+// Keep imports
 const execAsync = promisify(exec);
 
 /**
@@ -12,7 +14,7 @@ const execAsync = promisify(exec);
  */
 export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: string[], isGitRepo: boolean }> {
   try {
-    // Since we know it's a git repository, we can skip the check and go straight to listing files
+    // Check if it's a git repository first
     const isGitRepo = true;
     console.log(`Listing all non-ignored files in git repository: ${dir}`);
     
@@ -23,10 +25,31 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', { cwd: dir });
     
     // Split by newline and filter out empty entries
-    const files = stdout.split('\n').filter(Boolean);
+    const gitFiles = stdout.split('\n').filter(Boolean);
     
-    console.log(`Found ${files.length} files via git ls-files (tracked and untracked, not ignored)`);
-    return { files, isGitRepo };
+    console.log(`Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`);
+    
+    // Verify each file exists on disk as an additional check
+    // This helps ensure deleted files don't appear in the list
+    const existingFiles: string[] = [];
+    for (const file of gitFiles) {
+      try {
+        const filePath = path.join(dir, file);
+        // Check if the file still exists in the filesystem
+        await fs.access(filePath);
+        // If access succeeds, the file exists
+        existingFiles.push(file);
+      } catch (error) {
+        // If access fails, the file doesn't exist (likely deleted)
+        console.log(`[Refresh] Skipping deleted file: ${file}`);
+      }
+    }
+    
+    if (existingFiles.length !== gitFiles.length) {
+      console.log(`[Refresh] Filtered out ${gitFiles.length - existingFiles.length} deleted files`);
+    }
+    
+    return { files: existingFiles, isGitRepo };
   } catch (error: any) {
     // Handle cases where git commands fail
     console.error(`Error getting files from git repository ${dir}:`, error.message || error);
@@ -39,4 +62,4 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     
     throw new Error(`Failed to list files using git: ${error.message || 'Unknown error'}`);
   }
-} 
+}

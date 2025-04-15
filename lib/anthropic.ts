@@ -1,9 +1,9 @@
 "use server";
 import { ActionState } from "@/types";
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"; // Keep API URL
 const ANTHROPIC_VERSION = "2023-06-01"; // Corrected version
-const DEFAULT_MODEL = "claude-3-7-sonnet-20250219"; // Updated Sonnet model
+const DEFAULT_MODEL = "claude-3-7-sonnet-20250219";
 
 interface AnthropicRequestPayload {
   messages: { role: string; content: string }[]; // Added role property
@@ -12,7 +12,7 @@ interface AnthropicRequestPayload {
 }
 
 export interface AnthropicResponse {
-  content: { type: string; text: string }[];
+  content: { type: string; text: string }[]; // Keep content structure
   // Add other potential response fields like usage if needed
   usage?: { input_tokens: number, output_tokens: number };
 }
@@ -21,6 +21,10 @@ export async function callAnthropicAPI(
   payload: Omit<AnthropicRequestPayload, 'model'> & { max_tokens?: number }, // Exclude model from input payload type
 ): Promise<ActionState<string>> { // Added return type annotation
   const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) {
+     return { isSuccess: false, message: "Anthropic API key is not configured." };
+  }
   
   try {
     const response = await fetch(ANTHROPIC_API_URL, {
@@ -40,7 +44,14 @@ export async function callAnthropicAPI(
     if (!response.ok) {
       const errText = await response.text();
       console.error(`Anthropic API error: ${response.status} ${errText}`, payload.messages);
-      throw new Error(`Anthropic API error (${response.status}): ${errText.slice(0, 150)}`);
+      
+      // Check for the specific overloaded error message
+      const errorJson = errText ? JSON.parse(errText) : {};
+      if (response.status === 529 || (errorJson.error?.type === "overloaded_error" && errorJson.error?.message === "Overloaded")) {
+        throw new Error("Anthropic API is currently overloaded. Please try again in a few moments.");
+      } else {
+        throw new Error(`Anthropic API error (${response.status}): ${errText.slice(0, 150)}`);
+      }
     }
 
     const data: AnthropicResponse = await response.json();

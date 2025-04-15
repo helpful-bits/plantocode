@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
-import { OutputFormat } from '@/types';
-import { hashString } from '@/lib/hash';
-setupDatabase();
+import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { OutputFormat } from '@/types'; // Keep OutputFormat import
+import { hashString } from '@/lib/hash'; // Ensure hashString is imported
+setupDatabase(); // Ensure database connection is initialized
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const value = await sessionRepository.getCachedState(projectDirectory, outputFormat as OutputFormat, key); // Removed as any
+    const value = await sessionRepository.getCachedState(projectDirectory, outputFormat as OutputFormat, key);
     return NextResponse.json({ value });
   } catch (error) {
     console.error('Error fetching cached state:', error);
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     // Ensure value is a string
     const safeValue = value === undefined || value === null ? "" : String(value);
     
-    await sessionRepository.saveCachedState(projectDirectory, outputFormat as OutputFormat, key, safeValue); // Pass validated params
+    await sessionRepository.saveCachedState(projectDirectory, outputFormat as OutputFormat, key, safeValue); // Pass validated params and safeValue
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error saving cached state:', error);

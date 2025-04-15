@@ -1,20 +1,27 @@
-import { initializeDatabase, closeDatabase } from './index';
 import { db } from './index';
-import { runMigrations } from './migrations'; // Import runMigrations from its own file
+import { runMigrations } from './migrations';
 
+let isDbInitialized = false; // Flag to prevent multiple initializations
 /**
  * Initialize the database and migrate data if necessary
  */
-export async function setupDatabase() {
-  // Initialize the database (runs migrations)
-  console.log("[Setup] Initializing database...");
-  initializeDatabase();
+export async function setupDatabase() { // Keep function signature
+  // Check if db is already initialized using the flag
+  if (isDbInitialized) {
+    // console.log("[Setup] Database already initialized."); // Reduce noise
+    return;
+  }
 
-  // Run migrations explicitly to ensure they're applied
-  console.log("[Setup] Running database migrations...");
+  if (!db) {
+    console.error("Database object is not available in setup."); 
+    return;
+  }
+  console.log("[Setup] Initializing database...");
   await runMigrations();
+  console.log("[Setup] Running migrations...");
 
   // Verify database structure after initialization
+  isDbInitialized = true; // Mark as initialized
   verifyDatabaseStructure();
 }
 
@@ -52,7 +59,7 @@ function verifyDatabaseStructure() {
  * Cleanup function to be called on application shutdown
  */
 export function cleanupDatabase() {
-  closeDatabase();
+  // closeDatabase(); // Keep commented out
 }
 
 // Function to reset the database if needed

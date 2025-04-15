@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "lib": [
-      "dom",
+      "dom", // Keep dom library
       "dom.iterable",
-      "esnext"
+      "esnext" // Keep esnext library
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -11,7 +11,7 @@
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
-    "moduleResolution": "bundler", // Recommended for Next.js 14+
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
@@ -24,9 +24,9 @@
     "paths": {
       "@/*": [
         "./*"
-      ]
-    },
-    "target": "ES2017",
+      ] // Keep paths alias
+    }, // Keep paths alias
+    "target": "ES2017", // Keep target
     "forceConsistentCasingInFileNames": true,
     "strictNullChecks": true // Added for stricter type checking
   },

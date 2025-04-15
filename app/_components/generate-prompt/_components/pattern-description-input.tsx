@@ -3,25 +3,24 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react"; // Import Loader2
 import { improvePatternDescriptionAction } from "@/actions/text-improvement-actions";
-
+// Keep props as defined
 interface PatternDescriptionInputProps {
   value: string;
   onChange?: (value: string) => void;
-  onInteraction?: () => void; // Notifies parent of user interaction - making it optional
+  onInteraction?: () => void;
   onGenerateRegex: () => void;
-  isGenerating?: boolean; // Making this optional to avoid type issues
-  generationError?: string; // Making this optional to avoid type issues
+  isGenerating?: boolean;
+  generationError?: string;
   codebaseStructure?: string;
 }
 
 export default function PatternDescriptionInput({
   value,
-  onChange,
-  onInteraction = () => {},
-  onGenerateRegex,
-  isGenerating = false,
+  onChange, // Keep onChange prop
+  onInteraction = () => {}, // Default to no-op if not provided
+  onGenerateRegex, // Keep onGenerateRegex prop
+  isGenerating = false, // Keep isGenerating prop
   generationError = '',
   codebaseStructure,
 }: PatternDescriptionInputProps) {
@@ -37,7 +36,7 @@ export default function PatternDescriptionInput({
       textareaRef.current.value = updatedText;
       // Trigger an input event to ensure React updates
       const event = new InputEvent('input', { bubbles: true, cancelable: true });
-      textareaRef.current.dispatchEvent(event);
+      textareaRef.current.dispatchEvent(event); // Use dispatchEvent
     }
     if (onChange) {
       onChange(updatedText);
@@ -60,13 +59,6 @@ export default function PatternDescriptionInput({
     textarea.focus();
     const originalText = textarea.value;
 
-    // Check if the selection range is still valid
-    if (start > originalText.length || end > originalText.length) {
-      console.warn("Selection range is out of bounds. Inserting at the end.");
-      start = originalText.length;
-      end = originalText.length;
-    }
-
     textarea.setSelectionRange(start, end);
 
     // Use document.execCommand for better undo support in browsers that support it
@@ -88,16 +80,17 @@ export default function PatternDescriptionInput({
       if (onChange) onChange(textarea.value); // Update parent state
       onInteraction();
     }
-
+    // Move cursor after inserted text
     const newPosition = start + newText.length;
     textarea.setSelectionRange(newPosition, newPosition);
     setSelectionStart(newPosition); // Update selection state
     setSelectionEnd(newPosition);
-  }, [onChange, onInteraction]);
+  }, [onChange, onInteraction, selectionStart, selectionEnd]);
 
   const handleImproveSelection = async () => {
     const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
     const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0;
+    const originalFocus = document.activeElement; // Remember focus
 
     if (currentSelectionStart === currentSelectionEnd) return;
 
@@ -110,38 +103,26 @@ export default function PatternDescriptionInput({
       if (result.isSuccess && result.data) {
         insertTextAtCursor(result.data, currentSelectionStart, currentSelectionEnd);
       }
-      // Reset selection after improving
     } catch (error) {
       console.error("Error improving pattern description:", error);
     } finally {
       setIsImproving(false);
+      // Restore focus if textarea had it
+      if (originalFocus === textareaRef.current) textareaRef.current?.focus();
     }
-  };
+  }; // Keep handleImproveSelection
 
   const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd;
 
-  return (
+  return ( // Keep existing structure
     <div className="flex flex-col gap-3 bg-card p-5 rounded-lg shadow-sm border">
         {/* Section Heading */}
         <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-lg text-card-foreground">Describe File Patterns</h3>
-
-            {/* Improve Selection Button */}
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={handleImproveSelection}
-          disabled={isImproving || !hasSelection}
-          className="h-7 text-xs px-2 ml-2 whitespace-nowrap"
-        >
-          {isImproving ? "Improving..." : "Improve Selection"}
-        </Button>
       </div>
 
       {/* Explanatory Text */}
       <p className="text-sm text-muted-foreground -mt-2">
-        Describe the types of files or content you want to find (e.g., "React components using useState", "Markdown files with TODOs"). AI will generate corresponding regex patterns below.
+        Describe the types of files or content you want to find (e.g., &quot;React components using useState&quot;, &quot;Markdown files with TODOs&quot;). AI will generate corresponding regex patterns below.
       </p>
 
       <Textarea
@@ -153,13 +134,13 @@ export default function PatternDescriptionInput({
           if (onChange) {
             onChange(newValue);
           }
-          onInteraction(); // Notify parent about interaction
+          onInteraction(); // Notify parent
         }}
         placeholder="Enter your description here..."
         className="resize-y min-h-[120px] bg-background/80" // Kept original height
       />
-      <Button // Use primary variant for generate regex
-        type="button" // Added type="button"
+      <Button
+        type="button"
         size="sm"
         onClick={onGenerateRegex}
         disabled={isGenerating || !value.trim()} // Remove hasAnthropicKey check
@@ -175,9 +156,6 @@ export default function PatternDescriptionInput({
           "Generate Regex"
         )}
       </Button>
-        
-      
-      
       {generationError && (
         <div className="text-sm text-destructive bg-destructive/10 p-2 rounded mt-1">{generationError}</div>
       )}
