@@ -57,7 +57,7 @@ const config: Config = {
   			sm: 'calc(var(--radius) - 4px)'
   		}
   	}
-  },
+  }, // End theme extend
   plugins: [require("tailwindcss-animate")]
 };
-export default config; // Keep export
+export default config;

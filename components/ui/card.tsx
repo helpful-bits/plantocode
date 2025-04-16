@@ -1,7 +1,7 @@
 "use client"
-
-import * as React from "react"
-import { cn } from "@/lib/utils"
+// Keep React import
+import * as React from "react" // Keep React import
+import { cn } from "@/lib/utils" // Keep cn import
 
 const Card = React.forwardRef<
   HTMLDivElement,
@@ -77,4 +77,4 @@ const CardFooter = React.forwardRef<
 ))
 CardFooter.displayName = "CardFooter"
 // Keep exports
-export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } 
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }

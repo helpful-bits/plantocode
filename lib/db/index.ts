@@ -2,7 +2,7 @@ import * as sqlite3 from 'sqlite3'; // Keep sqlite3 import
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { runMigrations } from './migrations'; // Keep migrations import
+import { runMigrations } from './migrations';
 const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
 const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db'); // Keep database file path
 
@@ -29,20 +29,19 @@ try {
     }
   });
 } catch (error) {
-  // Handle critical failure to create DB instance
   console.error("Error initializing database instance:", error);
   // @ts-expect-error - Assign a dummy object to avoid undefined errors later, though operations will fail
   db = { close: () => {}, run: () => {}, get: () => {}, all: () => {}, exec: () => {} };
 }
 
-export function initializeDatabase() { // Add export statement
+export function initializeDatabase() {
   runMigrations(); // Run migrations on initialization
   return db;
 }
 
 export { db, closeDatabase };
 
-function closeDatabase() { // Keep closeDatabase function
+function closeDatabase() {
   if (db) {
     db.close((err) => {
       if (err) {

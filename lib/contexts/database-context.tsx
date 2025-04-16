@@ -1,5 +1,4 @@
 "use client";
- 
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { Session } from "@/types/session-types"; // Keep Session import
 import { hashString } from '@/lib/hash'; // Import hashString
@@ -27,9 +26,9 @@ class DatabaseClient {
   private pendingRequests: Record<string, Promise<any>> = {};
   private readonly CACHE_TTL = 2000; // 2 seconds
   private readonly CACHED_STATE_TTL = 10000; // 10 seconds TTL for cached state values
-
-  // Removed outputFormat from cache keys
-  private getCacheKey(projectDirectory: string): string {
+  
+  // Get cache key for project-specific data
+  private getCacheKey(projectDirectory: string): string { // Keep function signature
     return `${projectDirectory}`;
   }
   
@@ -37,10 +36,16 @@ class DatabaseClient {
       return `session_${sessionId}`;
   }
 
-  // Session operations - Removed outputFormat parameter
+  // Get cache key for project directory and key combinations
+  private getCachedStateKey(projectDirectory: string | null | undefined, key: string): string {
+    const safeProjectDirectory = projectDirectory || 'global';
+    return `${safeProjectDirectory}|${key}`;
+  }
+
+  // Session operations
   async getSessions(projectDirectory: string): Promise<Session[]> {
-    const cacheKey = this.getCacheKey(projectDirectory); // Removed outputFormat
-    
+    const cacheKey = this.getCacheKey(projectDirectory);
+
     // Check cache first
     const cached = this.cache.sessions[cacheKey];
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -51,30 +56,44 @@ class DatabaseClient {
     // Check if there's a pending request for this
     if (this.pendingRequests[`sessions_${cacheKey}`]) {
       console.log(`[DB Client] Reusing pending request for sessions ${projectDirectory}`); // Removed outputFormat
-      return this.pendingRequests[`sessions_${cacheKey}`];
+      return this.pendingRequests[`sessions_${cacheKey}`]; // Return pending request
     }
     
     console.log(`[DB Client] Fetching sessions for ${projectDirectory}`); // Removed outputFormat
-    
-    // Create and store the promise - removed outputFormat from API call
-    const fetchPromise = new Promise<Session[]>(async (resolve, reject) => {
+
+    // Create and store the promise
+    const fetchPromise = new Promise<Session[]>(async (resolve, reject) => { // Keep async keyword
       try {
         const response = await fetch(`/api/sessions?projectDirectory=${encodeURIComponent(projectDirectory)}`);
         
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to fetch sessions');
+          let errorMessage = `Failed to fetch sessions: ${response.status} ${response.statusText}`;
+          // Only try to parse JSON if the content type is application/json
+          if (response.headers.get('content-type')?.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.message || errorMessage;
+            } catch (parseError) {
+              console.error('Error parsing JSON error response:', parseError);
+            }
+          }
+          throw new Error(errorMessage);
         }
         
-        const data = await response.json();
-        
-        // Update cache
-        this.cache.sessions[cacheKey] = {
-          data,
-          timestamp: Date.now()
-        };
-        
-        resolve(data);
+        try {
+          const data = await response.json();
+          
+          // Update cache
+          this.cache.sessions[cacheKey] = {
+            data,
+            timestamp: Date.now()
+          };
+          
+          resolve(data);
+        } catch (parseError) {
+          console.error('[DB Client] Error parsing sessions response:', parseError);
+          reject(new Error('Failed to parse sessions response'));
+        }
       } catch (error) {
         reject(error);
       } finally {
@@ -107,6 +126,20 @@ class DatabaseClient {
       try {
         const response = await fetch(`/api/session?id=${encodeURIComponent(sessionId)}`);
         
+        if (!response.ok && response.status !== 404) {
+          let errorMessage = `Failed to fetch session: ${response.status} ${response.statusText}`;
+          // Only try to parse JSON if the content type is application/json
+          if (response.headers.get('content-type')?.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.message || errorMessage;
+            } catch (parseError) {
+              console.error('Error parsing JSON error response:', parseError);
+            }
+          }
+          throw new Error(errorMessage);
+        }
+        
         if (response.status === 404) {
           this.cache.sessionDetails[sessionId] = {
             data: null,
@@ -116,20 +149,20 @@ class DatabaseClient {
           return;
         }
         
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to fetch session');
+        try {
+          const data = await response.json();
+          
+          // Update cache
+          this.cache.sessionDetails[sessionId] = {
+            data,
+            timestamp: Date.now()
+          };
+          
+          resolve(data);
+        } catch (parseError) {
+          console.error('[DB Client] Error parsing session response:', parseError);
+          reject(new Error('Failed to parse session response'));
         }
-        
-        const data = await response.json();
-        
-        // Update cache
-        this.cache.sessionDetails[sessionId] = {
-          data,
-          timestamp: Date.now()
-        };
-        
-        resolve(data);
       } catch (error) {
         reject(error);
       } finally {
@@ -160,7 +193,7 @@ class DatabaseClient {
       delete this.cache.sessionDetails[session.id];
       delete this.cache.sessions[cacheKey];
       
-      const response = await fetch('/api/sessions', {
+      const response = await fetch('/api/sessions', { // Keep fetch call
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -171,26 +204,35 @@ class DatabaseClient {
       // Handle non-ok responses
       if (!response.ok) {
         // Try to get detailed error information
-        let errorMessage = 'Failed to save session';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          console.error('[DB Client] Error parsing error response:', parseError);        } // Close catch block
+        let errorMessage = `Failed to save session: ${response.status} ${response.statusText}`;
+        
+        if (response.headers.get('content-type')?.includes('application/json')) {
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (parseError) {
+            console.error('[DB Client] Error parsing error response:', parseError);
+          }
+        }
         
         console.error(`[DB Client] HTTP error saving session: ${response.status} ${response.statusText}`, { errorMessage });
         throw new Error(errorMessage);
       }
       
-      const savedSession = await response.json();
-      
-      // Update cache with saved session
-      this.cache.sessionDetails[savedSession.id] = {
-        data: savedSession,
-        timestamp: Date.now()
-      };
-      
-      return savedSession;
+      try {
+        const savedSession = await response.json();
+        
+        // Update cache with saved session
+        this.cache.sessionDetails[savedSession.id] = {
+          data: savedSession,
+          timestamp: Date.now()
+        };
+        
+        return savedSession;
+      } catch (parseError) {
+        console.error('[DB Client] Error parsing saved session response:', parseError);
+        throw new Error('Failed to parse saved session response');
+      }
     } catch (error) {
       console.error('[DB Client] Exception saving session:', error);
       throw new Error(error instanceof Error ? error.message : 'Failed to save session');
@@ -209,8 +251,17 @@ class DatabaseClient {
     });
     
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to delete session');
+      let errorMessage = `Failed to delete session: ${response.status} ${response.statusText}`;
+      // Only try to parse JSON if the content type is application/json
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+        } catch (parseError) {
+          console.error('Error parsing JSON error response:', parseError);
+        }
+      }
+      throw new Error(errorMessage);
     }
   }
   
@@ -231,15 +282,24 @@ class DatabaseClient {
       return this.pendingRequests[`activeSessionId_${cacheKey}`];
     }
     
-    console.log(`[DB Client] Fetching active session ID for ${projectDirectory}`); // Removed outputFormat
+    console.log(`[DB Client] Fetching active session ID for ${projectDirectory}`);
     
     const fetchPromise = new Promise<string | null>(async (resolve, reject) => { // Removed outputFormat from API call
       try {
         const response = await fetch(`/api/project-settings?projectDirectory=${encodeURIComponent(projectDirectory)}`);
-        
+
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to fetch active session ID');
+          let errorMessage = `Failed to fetch active session ID: ${response.status} ${response.statusText}`;
+          // Only try to parse JSON if the content type is application/json
+          if (response.headers.get('content-type')?.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.message || errorMessage;
+            } catch (parseError) {
+              console.error('Error parsing JSON error response:', parseError);
+            }
+          }
+          throw new Error(errorMessage);
         }
         
         const data = await response.json();
@@ -263,20 +323,20 @@ class DatabaseClient {
   }
   
   async setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> { // Removed outputFormat
-    // Skip if either projectDirectory or outputFormat is missing
-    if (!projectDirectory) { // Removed outputFormat check
+    // Skip if projectDirectory is missing
+    if (!projectDirectory) {
       console.error('[DB Client] Cannot set active session: Missing projectDirectory'); // Updated error message
       return;
     }
 
     // Create a cache key
-    const cacheKey = this.getCacheKey(projectDirectory); // Removed outputFormat
-    
+    const cacheKey = this.getCacheKey(projectDirectory);
+
     // Check if we already have this exact sessionId in cache and it's still valid
     const cachedData = this.cache.activeSessionIds[cacheKey];
     if (cachedData && cachedData.data === sessionId && Date.now() - cachedData.timestamp < this.CACHE_TTL * 5) {
       // Skip API call if we're setting the same session ID that's already cached
-      console.log(`[DB Client] Skipping redundant setActiveSession for ${projectDirectory}: ${sessionId} (already set)`); // Removed outputFormat
+      console.log(`[DB Client] Skipping redundant setActiveSession for ${projectDirectory}: ${sessionId} (already set)`);
       return;
     }
     
@@ -304,14 +364,23 @@ class DatabaseClient {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ projectDirectory, sessionId }), // Removed outputFormat
-        });
+        }); // Close fetch call
         
         if (!response.ok) {
           // Invalidate cache on error
           delete this.cache.activeSessionIds[cacheKey];
           
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to set active session');
+          let errorMessage = `Failed to set active session: ${response.status} ${response.statusText}`;
+          // Only try to parse JSON if the content type is application/json
+          if (response.headers.get('content-type')?.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.message || errorMessage;
+            } catch (parseError) {
+              console.error('Error parsing JSON error response:', parseError);
+            }
+          }
+          throw new Error(errorMessage);
         }
         
         resolve();
@@ -329,23 +398,25 @@ class DatabaseClient {
     return savePromise;
   }
   
-  // Cached state operations
-  async getCachedState(projectDirectory: string, key: string): Promise<string | null> { // Removed outputFormat
+  async getCachedState(projectDirectory: string | null | undefined, key: string): Promise<string | null> {
     // Validate inputs to prevent common error cases
     if (!key) {
       console.error('getCachedState called with empty key');
       return null;
     }
     
-    // For global keys, ensure consistent values - removed outputFormat reference
+    // For global keys, ensure consistent values
     const safeProjectDirectory = projectDirectory || 'global'; // Use 'global' if projectDirectory is empty/null
+
+    // Create a cache key for this specific request
+    const cacheKey = this.getCachedStateKey(safeProjectDirectory, key);
     
-    // Create a cache key for this specific request - removed outputFormat
-    const cacheKey = `${safeProjectDirectory}|${key}`;
-    
-    // Check if we have a cached value that's still valid
+    // Check if we have a cached value that's still valid - extend TTL for project directory keys
     const cachedEntry = this.cachedStateCache[cacheKey];
-    if (cachedEntry && Date.now() - cachedEntry.timestamp < this.CACHED_STATE_TTL) {
+    // Use longer TTL (30 seconds) for project directory related keys to reduce ping-pong
+    const effectiveTTL = key === 'global-project-dir' ? 30000 : this.CACHED_STATE_TTL;
+    
+    if (cachedEntry && Date.now() - cachedEntry.timestamp < effectiveTTL) {
       // Quietly use the cached value without logging
       return cachedEntry.data;
     }
@@ -357,41 +428,82 @@ class DatabaseClient {
       return this.pendingRequests[pendingKey];
     }
 
-    // If verbose logging is needed for debugging, uncomment this:
-    // console.log(`[DB Client] Getting cached state for ${safeProjectDirectory}/${key}`);
-    
     // Create a new promise for this request
     const fetchPromise = new Promise<string | null>(async (resolve, reject) => {
       try {
-        const response = await fetch(`/api/cached-state?projectDirectory=${encodeURIComponent(safeProjectDirectory)}&key=${encodeURIComponent(key)}`); // Removed outputFormat
+        // For project directory keys, if they're in high frequency use, return cached value even if stale
+        // This prevents ping-pong by adding a cooldown period for certain key types
+        if (key === 'global-project-dir' && cachedEntry && Date.now() - cachedEntry.timestamp < 60000) {
+          resolve(cachedEntry.data);
+          return;
+        }
+        
+        const response = await fetch(`/api/cached-state?projectDirectory=${encodeURIComponent(safeProjectDirectory)}&key=${encodeURIComponent(key)}`);
         
         if (!response.ok) {
           try {
-            const error = await response.json(); // Try to parse error response
-            console.error(`Failed to fetch cached state for ${key}:`, error);
+            // Only attempt to parse JSON if content-type is application/json
+            if (response.headers.get('content-type')?.includes('application/json')) {
+              const error = await response.json(); // Try to parse error response
+              console.error(`Failed to fetch cached state for ${key}:`, error);
+            } else {
+              // For non-JSON responses, just log the status
+              console.error(`Failed to fetch cached state for ${key}: ${response.status} ${response.statusText}`);
+            }
           } catch (parseError) {
             // Handle case where response isn't valid JSON
             console.error(`Failed to fetch cached state for ${key}: ${response.status} ${response.statusText}`);
           }
+          
+          // If we have a stale cached value, return it anyway as fallback
+          if (cachedEntry) {
+            console.log(`Using stale cached value for ${key} due to fetch error`);
+            resolve(cachedEntry.data);
+            return;
+          }
+          
           resolve(null);
           return;
         }
         
-        const data = await response.json();
-        
-        // Cache the result (even if null)
-        this.cachedStateCache[cacheKey] = {
-          data: data.value,
-          timestamp: Date.now()
-        };
-        
-        resolve(data.value);
+        try {
+          const data = await response.json();
+          
+          // Cache the result (even if null)
+          this.cachedStateCache[cacheKey] = {
+            data: data.value,
+            timestamp: Date.now()
+          };
+          
+          resolve(data.value);
+        } catch (parseError) {
+          console.error(`Error parsing JSON response for cached state ${key}:`, parseError);
+          
+          // If we have a stale cached value, return it anyway as fallback
+          if (cachedEntry) {
+            console.log(`Using stale cached value for ${key} due to parse error`);
+            resolve(cachedEntry.data);
+            return;
+          }
+          
+          resolve(null);
+        }
       } catch (error) {
         console.error(`Error fetching cached state for ${key}:`, error);
+        
+        // If we have a stale cached value, return it anyway as fallback
+        if (cachedEntry) {
+          console.log(`Using stale cached value for ${key} due to fetch error`);
+          resolve(cachedEntry.data);
+          return;
+        }
+        
         resolve(null);
       } finally {
         // Clean up the pending request
-        delete this.pendingRequests[pendingKey];
+        setTimeout(() => {
+          delete this.pendingRequests[pendingKey];
+        }, 100); // Small delay to prevent immediate re-fetching
       }
     });
     
@@ -400,18 +512,18 @@ class DatabaseClient {
     return fetchPromise;
   }
   
-  async saveCachedState(projectDirectory: string, key: string, value: string): Promise<void> { // Removed outputFormat
-    // Validate inputs to prevent common error cases
+  async saveCachedState(projectDirectory: string | null | undefined, key: string, value: string): Promise<void> {
+    // Validate inputs
     if (!key) { 
       console.error('saveCachedState called with empty key');
       return; 
     }
 
-    // For global keys, ensure consistent values - removed outputFormat reference
+    // For global keys, ensure consistent values
     const safeProjectDirectory = projectDirectory || 'global'; 
-    
-    // Create a cache key for this specific value - removed outputFormat
-    const cacheKey = `${safeProjectDirectory}|${key}`;
+
+    // Create a cache key for this specific value
+    const cacheKey = this.getCachedStateKey(safeProjectDirectory, key);
     
     // Ensure value is a string
     const safeValue = value === undefined || value === null ? "" : String(value);
@@ -421,6 +533,28 @@ class DatabaseClient {
     if (cachedEntry && cachedEntry.data === safeValue) {
       // Skip the API call if the value hasn't changed
       return;
+    }
+    
+    // Add rate limiting for project directory changes to prevent ping-pong
+    if (key === 'global-project-dir' && cachedEntry) {
+      const timeSinceLastUpdate = Date.now() - cachedEntry.timestamp;
+      if (timeSinceLastUpdate < 200) { // 200ms cooldown
+        console.log(`[DB Client] Rate limiting project directory update (${timeSinceLastUpdate}ms since last update)`);
+        // Update the cache but delay the API call
+        this.cachedStateCache[cacheKey] = {
+          data: safeValue,
+          timestamp: Date.now()
+        };
+        
+        // Schedule the update after a delay
+        setTimeout(() => {
+          // Check if still the current value before sending
+          if (this.cachedStateCache[cacheKey]?.data === safeValue) {
+            this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue);
+          }
+        }, 300);
+        return;
+      }
     }
     
     // Only log for non-files keys to reduce noise
@@ -434,6 +568,12 @@ class DatabaseClient {
       timestamp: Date.now()
     };
     
+    // Send the update
+    await this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue);
+  }
+  
+  // Helper method to send cached state updates to the server
+  private async _sendCachedStateUpdate(projectDirectory: string, key: string, value: string): Promise<void> {
     try {
       const response = await fetch('/api/cached-state', {
         method: 'POST',
@@ -441,9 +581,9 @@ class DatabaseClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          projectDirectory: safeProjectDirectory,
+          projectDirectory,
           key, 
-          value: safeValue 
+          value
         }),
       });
       
@@ -462,12 +602,9 @@ class DatabaseClient {
         }
         
         console.error(`Failed to save cached state for ${key}:`, errorData);
-        return;
       }
-      
-      // Don't log success to reduce console noise
     } catch (error) {
-      console.error(`Error in saveCachedState:`, error);
+      console.error(`Error in _sendCachedStateUpdate for ${key}:`, error);
     }
   }
   
@@ -476,7 +613,7 @@ class DatabaseClient {
     delete this.cache.sessionDetails[sessionId];
     console.log(`[DB Client] Cleared cache for session ${sessionId}`);
   }
-  // Clear cache method for manual invalidation
+  // Clear entire cache
   clearCache() {
     this.cache = {
       sessions: {},

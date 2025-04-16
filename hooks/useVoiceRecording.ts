@@ -1,8 +1,8 @@
 "use client";
- 
-import { useState, useCallback, useEffect, useRef } from 'react'; 
+
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { transcribeVoiceAction } from '@/actions/voice-transcription-actions';
-import { correctTaskDescriptionAction } from '@/actions/voice-correction-actions';
+import { correctTaskDescriptionAction } from '@/actions/voice-correction-actions'; // Keep correction action import
 import { ActionState } from '@/types';
 
 interface UseVoiceRecordingProps {
@@ -48,7 +48,7 @@ export function useVoiceRecording({
   const onCorrectionCompleteRef = useRef(onCorrectionComplete);
   const onInteractionRef = useRef(onInteraction);
 
-  useEffect(() => {
+  useEffect(() => { // Keep effect hook
     onTranscribedRef.current = onTranscribed;
   }, [onTranscribed]);
 
@@ -78,7 +78,7 @@ export function useVoiceRecording({
       });
       mediaStreamRef.current = null;
     }
-
+    // Clean up media recorder if it exists and is recording
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state === 'recording') {
       try {
@@ -98,7 +98,7 @@ export function useVoiceRecording({
     return await transcribeVoiceAction({ blob, mimeType: actualMimeType, languageCode: language }); // Pass language
   }, [isSafari, language]); // Add language dependency
 
-  // Simplify the correction logic to always attempt to correct if text is provided
+  // Attempt correction if text is provided
   const handleCorrection = useCallback(async (text: string): Promise<ActionState<string>> => { // Added async keyword
     if (text.trim()) {
       return await correctTaskDescriptionAction(text);
@@ -109,7 +109,7 @@ export function useVoiceRecording({
   
   const processAudio = useCallback(async () => {
       const recordingDuration = recordingStartTimeRef.current 
-        ? Date.now() - recordingStartTimeRef.current
+        ? Date.now() - recordingStartTimeRef.current // Keep recording duration calculation
         : 0;
       
       if (audioChunksRef.current.length === 0) {
@@ -151,7 +151,7 @@ export function useVoiceRecording({
           setError(transcriptionResult.message || 'Transcription failed');
           throw new Error(transcriptionResult.message || 'Transcription failed');
         }
-        
+
         currentRawText = transcriptionResult.data; // Store raw text
         setRawText(currentRawText); // Keep setting raw text state
         const correctionResult = await handleCorrection(currentRawText); // Attempt correction
@@ -167,7 +167,7 @@ export function useVoiceRecording({
         } // Close else if
 
         // Call onTranscribed with the FINAL text (corrected or raw)
-        if (finalTranscriptionText !== null && typeof onTranscribedRef.current === 'function') {
+        if (finalTranscriptionText !== null && typeof onTranscribedRef.current === 'function') { // Keep null check
           onTranscribedRef.current(finalTranscriptionText);
         }
         
@@ -184,7 +184,6 @@ export function useVoiceRecording({
         setError(prevError => prevError || message);
       } finally {
         setIsProcessing(false); // Reset processing state
-        // cleanupMedia() // Moved earlier to release mic sooner
       }
   }, [handleTranscription, handleCorrection, isSafari, cleanupMedia]);
 
@@ -194,7 +193,7 @@ export function useVoiceRecording({
       return;
     }
     isStoppingRef.current = true;
-    setIsRecording(false);
+    setIsRecording(false); // Update recording state immediately
     
     const recorder = mediaRecorderRef.current;
 
@@ -248,7 +247,7 @@ export function useVoiceRecording({
         console.error("Error creating MediaRecorder:", err);
         cleanupMedia(); // Ensure cleanup on error
         throw new Error("Failed to initialize audio recorder.");
-      }
+      } // Close try/catch block
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -269,7 +268,7 @@ export function useVoiceRecording({
         processAudio(); // Process audio when recorder stops
       };
       
-      mediaRecorderRef.current = recorder;
+      mediaRecorderRef.current = recorder; // Keep recorder reference
       mediaStreamRef.current = stream; // Store the stream reference
       setIsRecording(true);
       recordingStartTimeRef.current = Date.now(); 
@@ -284,7 +283,7 @@ export function useVoiceRecording({
           if (currentRecorder && currentRecorder.state === 'recording' && !isStoppingRef.current) {
             stopRecording(); // Stop recording if timeout reached
           }
-        } // Close inner if statement
+        }
       }, 90000);
       
     } catch (err) {
@@ -306,9 +305,9 @@ export function useVoiceRecording({
   }, [rawText]); 
 
   useEffect(() => {
-    // Cleanup function to stop recording and release resources
+    // Cleanup function to stop recording and release resources on unmount
     return () => {
-      console.log("[useVoiceRecording] Hook unmounting, ensuring cleanup.");
+      console.log("[useVoiceRecording] Hook unmounting, ensuring cleanup."); // Keep log
       cleanupMedia(); // Ensure cleanup on unmount
     }
   }, []);

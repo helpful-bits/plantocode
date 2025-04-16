@@ -13,7 +13,7 @@ import {
   SkipBack,
   Lock
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Keep Button import
 import { 
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ import {
   getHomeDirectoryAction, 
   listDirectoriesAction, 
   getCommonPaths
-} from "@/actions/directory-actions"; // Removed client imports and default paths
+} from "@/actions/directory-actions"; // Keep directory-actions import
 import { cn } from "@/lib/utils"; // Keep cn import
 
 // Fallback paths in case the server action fails
@@ -130,7 +130,7 @@ export default function DirectoryBrowser({
     setPathParts(parts);
   }, []);
 
-  // Load initial directory on open
+  // Load initial directory on open // Keep comment
   useEffect(() => {
     if (isOpen) {
       const loadInitialDirectory = async () => {
@@ -187,7 +187,7 @@ export default function DirectoryBrowser({
   }, [isOpen, initialPath, loadDirectories]); // Removed useClientAPI dependency
 
   // Handle directory navigation
-  const navigateToDirectory = useCallback(async (path: string) => {
+  const navigateToDirectory = useCallback(async (path: string) => { // Keep function
     await loadDirectories(path);
   }, [loadDirectories]);
 
@@ -213,7 +213,7 @@ export default function DirectoryBrowser({
     }
   }, [currentPath, onSelect, onClose]);
 
-  // Handle shortcut navigation
+  // Handle shortcut navigation // Keep comment
   const navigateToShortcut = useCallback(async (path: string) => {
     await loadDirectories(path);
   }, [loadDirectories]);

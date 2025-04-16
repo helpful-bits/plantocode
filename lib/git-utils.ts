@@ -3,11 +3,10 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { promises as fs } from "fs";
-import path from "path"; // Keep path import
-// Keep imports
+import path from "path";
 const execAsync = promisify(exec);
 
-// Add file cache with TTL to prevent frequent scans
+// File cache with TTL to prevent frequent scans
 const fileCache = new Map<string, { files: string[], timestamp: number, isGitRepo: boolean }>();
 const CACHE_TTL = 30000; // 30 seconds cache lifetime
 const DEBUG_LOGS = false; // Set to true only during development/debugging
@@ -48,7 +47,7 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     
     // Verify each file exists on disk as an additional check
     // This helps ensure deleted files don't appear in the list
-    const existingFiles: string[] = [];
+    const existingFiles: string[] = []; // Keep array initialization
     for (const file of gitFiles) {
       try {
         const filePath = path.join(dir, file);
@@ -88,7 +87,7 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
   }
 }
 
-// Add a function to manually invalidate the cache when needed
+// Function to manually invalidate the cache when needed
 export async function invalidateFileCache(dir?: string): Promise<void> {
   if (dir) {
     fileCache.delete(dir);

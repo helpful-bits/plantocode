@@ -7,7 +7,7 @@ CREATE TABLE cached_state_new (
   key TEXT NOT NULL,
   value TEXT, -- Store serialized values as text
   updated_at INTEGER,
-  UNIQUE(project_hash, key)
+  UNIQUE(project_hash, key) -- Update UNIQUE constraint
 );
 
 -- Step 2: Copy data from old table to new table

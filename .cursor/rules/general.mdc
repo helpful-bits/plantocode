@@ -1,6 +1,6 @@
 # O1 Pro Flow Development Rules
 ## Language Models
-
+ 
 - **Anthropic:** Exclusively use `claude-3-7-sonnet-20250219` for all tasks requiring Anthropic models. Do not use other versions or models unless explicitly approved.
 ## Code Structure & Best Practices
 
@@ -19,7 +19,7 @@
     - API clients: `lib/anthropic.ts`
 - **API Routes:** Implement API routes in `app/api/` using Next.js App Router structure, properly handling errors and returning well-structured responses for database interactions.
 - **Database:** Database operations via `lib/db/repository.ts` with setup in `lib/db/setup.ts`.
-- **Hooks:** Custom hooks in `hooks/` directory for shared component logic.
+- **Hooks:** Custom hooks in `hooks/` directory (e.g., `useVoiceRecording.ts`).
 - **Styling:** Tailwind CSS via `globals.css` and `tailwind.config.ts`. Use `clsx` and `tailwind-merge` utilities for merging classes.
 - **Prompts:** LLM prompts defined in `prompts/` directory (e.g., `refactoring-prompt.ts`, `path-finder-prompt.ts`).
 - **Types:** Define shared types in `types/`. Component-specific types defined within component files or `types/` as appropriate.

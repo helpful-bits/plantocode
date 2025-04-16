@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/index'; // Keep db import
+import { db } from '@/lib/db/index';
 import { resetDatabase } from '@/lib/db/setup'; // Keep resetDatabase import
-import { hashString } from '@/lib/hash'; // Keep hashString import
-import { OutputFormat } from '@/types';
+import { hashString } from '@/lib/hash';
 // GET /api/debug/database?action=...
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -17,7 +16,7 @@ export async function GET(request: NextRequest) {
           else resolve(tables);
         });
       });
-      
+
       return NextResponse.json({ 
         success: true, 
         tables: tables.map(t => t.name),
@@ -25,7 +24,7 @@ export async function GET(request: NextRequest) {
       });
     } catch (error: unknown) { // Use unknown type for catch block variable
       return NextResponse.json({ 
-        success: false, 
+        success: false, // Keep success status false on error
         error: `Failed to check database: ${error}` 
       }, { status: 500 });
     }
@@ -68,7 +67,7 @@ export async function GET(request: NextRequest) {
         params.push(projectHash);
       }
       
-      query += " ORDER BY project_hash, output_format, key";
+      query += " ORDER BY project_hash, key";
       
       const entries = await new Promise<any[]>((resolve, reject) => {
         db.all(query, params, (err, rows) => {
@@ -140,16 +139,16 @@ export async function GET(request: NextRequest) {
       const testValue = `test-value-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
       const testKey = 'test-key';
       const testProject = 'test-project';
-      const testFormat: OutputFormat = 'diff'; // Use a valid OutputFormat
+      const testProjectHash = hashString(testProject); // Hash the project dir
       
       // First, attempt to write a test value
       await new Promise<void>((resolve, reject) => {
         db.run(`
           INSERT OR REPLACE INTO cached_state
-          (project_hash, output_format, key, value, updated_at)
-          VALUES (?, ?, ?, ?, ?)
-        `, [testProject, testFormat, testKey, testValue, Date.now()], (err) => {
-          if (err) reject(err);
+          (project_hash, key, value, updated_at)
+          VALUES (?, ?, ?, ?)
+        `, [testProjectHash, testKey, testValue, Date.now()], (err) => { // Use projectHash, remove outputFormat
+          if (err) reject(err); // Reject on error
           else resolve();
         });
       });
@@ -158,8 +157,8 @@ export async function GET(request: NextRequest) {
       const readValue = await new Promise<string | null>((resolve, reject) => {
         db.get(`
           SELECT value FROM cached_state
-          WHERE project_hash = ? AND output_format = ? AND key = ?
-        `, [testProject, testFormat, testKey], (err, row: any) => { // Added type annotation
+          WHERE project_hash = ? AND key = ?
+        `, [testProjectHash, testKey], (err, row: any) => {
           if (err) reject(err);
           else resolve(row ? row.value : null);
         });
@@ -172,8 +171,8 @@ export async function GET(request: NextRequest) {
       await new Promise<void>((resolve, reject) => {
         db.run(`
           DELETE FROM cached_state
-          WHERE project_hash = ? AND output_format = ? AND key = ?
-        `, [testProject, testFormat, testKey], (err) => {
+          WHERE project_hash = ? AND key = ?
+        `, [testProjectHash, testKey], (err) => {
           if (err) reject(err);
           else resolve();
         });
@@ -228,7 +227,7 @@ export async function GET(request: NextRequest) {
         db.all(`
           SELECT * FROM cached_state 
           WHERE project_hash = ?
-          ORDER BY key, output_format
+          ORDER BY key
         `, [projectHash], (err, rows) => {
           if (err) reject(err);
           else resolve(rows || []);

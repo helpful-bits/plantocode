@@ -1,8 +1,8 @@
-import { db } from '../lib/db';
-import fs from 'fs';
-import path from 'path';
+import { db } from '../lib/db'; // Keep db import
+import fs from 'fs'; // Keep fs import
 
-async function resetDatabase() {
+import path from 'path'; // Keep path import
+async function resetDatabase() { // Keep function signature
   console.log('Resetting database...');
   
   return new Promise<void>((resolve, reject) => {
@@ -132,7 +132,7 @@ async function applyMigrations() {
   }
 }
 
-async function run() {
+async function run() { // Keep function signature
   try {
     await resetDatabase();
     await applyMigrations();

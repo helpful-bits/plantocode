@@ -1,10 +1,10 @@
 "use server";
-import { ActionState } from "@/types"; // Keep ActionState import
-
+import { ActionState } from "@/types";
+// Keep constants
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"; // Keep API URL
 const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-3-7-sonnet-20250219";
-
+// Define the expected structure of the request payload
 interface AnthropicRequestPayload {
   messages: { role: string; content: string }[]; // Added role property
   max_tokens?: number;

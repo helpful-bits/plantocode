@@ -2,10 +2,10 @@
 
 import { promises as fs } from "fs";
 import path from "path";
+import { existsSync } from "fs";
 import os from "os";
 import { ActionState } from "@/types";
-import { existsSync } from "fs";
-import { normalizePath } from "@/lib/path-utils"; // Import normalizePath
+import { normalizePath } from "@/lib/path-utils";
 
 /**
  * Directory information returned by the list directories action
@@ -16,29 +16,25 @@ interface DirectoryInfo {
   isAccessible: boolean;
 }
 
-
 /**
  * Get common paths as an async function to comply with 'use server'
  */
-export async function getCommonPaths() {
-  // Determine common paths dynamically to handle different OS setups
+export async function getCommonPaths(): Promise<DirectoryInfo[]> {
   const homeDir = os.homedir();
   const documentsPath = path.join(homeDir, "Documents");
   const desktopPath = path.join(homeDir, "Desktop");
   const downloadsPath = path.join(homeDir, "Downloads");
 
   const COMMON_PATHS_DATA = [
-    { name: "Home", path: homeDir },
-    // Only add paths if they actually exist
+    { name: "Home", path: homeDir, isAccessible: existsSync(homeDir) },
     ...(existsSync(documentsPath) ? [{ name: "Documents", path: documentsPath }] : []),
     ...(existsSync(desktopPath) ? [{ name: "Desktop", path: desktopPath }] : []),
     ...(existsSync(downloadsPath) ? [{ name: "Downloads", path: downloadsPath }] : []),
-    // Add root based on OS
-    ...(os.platform() === "win32" 
+    ...(os.platform() === "win32"
       ? [{ name: "C:\\", path: "C:\\" }] // Assuming C: drive exists on Windows
-      : [{ name: "/", path: "/" }])
-  ].map(p => ({
-    ...p,
+      : [{ name: "/", path: "/" }]),
+  ].filter(p => existsSync(p.path)).map(p => ({
+    name: p.name,
     path: normalizePath(p.path) // Normalize paths for consistency
   }));
 
@@ -50,7 +46,7 @@ export async function getCommonPaths() {
  */
 export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
   try {
-    const homeDir = normalizePath(os.homedir()); // Normalize home directory path
+    const homeDir = normalizePath(os.homedir());
     return {
       isSuccess: true,
       message: "Home directory retrieved",
@@ -83,7 +79,7 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
 
   try {
     console.log(`[ListDirs] Listing directories in: ${directoryPath}`);
-    const resolvedPath = normalizePath(path.resolve(directoryPath)); // Normalize resolved path
+    const resolvedPath = normalizePath(path.resolve(directoryPath));
 
     // Check if path exists
     if (!existsSync(resolvedPath)) {
@@ -106,7 +102,7 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
 
     // Get parent directory
     const parentPath = path.dirname(resolvedPath) !== resolvedPath 
-      ? normalizePath(path.dirname(resolvedPath)) // Normalize parent path
+      ? normalizePath(path.dirname(resolvedPath))
       : null;
 
     // Read directory contents
@@ -117,7 +113,7 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
       return {
         isSuccess: false,
         message: "Directory exists but cannot be read. Please check permissions.",
-        data: { 
+        data: {
           currentPath: resolvedPath, 
           parentPath,
           directories: [] 
@@ -129,7 +125,7 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
     const directories: DirectoryInfo[] = [];
     
     for (const file of files) {
-      const fullPath = normalizePath(path.join(resolvedPath, file)); // Normalize full path
+      const fullPath = normalizePath(path.join(resolvedPath, file));
       
       try {
         const fileStats = await fs.stat(fullPath);
@@ -188,7 +184,7 @@ export async function selectDirectoryAction(directoryPath: string): Promise<Acti
 
   try {
     console.log(`[SelectDir] Selecting directory: ${directoryPath}`);
-    const resolvedPath = normalizePath(path.resolve(directoryPath)); // Normalize resolved path
+    const resolvedPath = normalizePath(path.resolve(directoryPath));
 
     // Check if path exists
     if (!existsSync(resolvedPath)) {
