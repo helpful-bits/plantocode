@@ -1,31 +1,33 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback, Suspense, useRef } from "react";
-import { readDirectoryAction, readExternalFileAction } from "@/actions/read-directory-actions";
-import { Button } from "@/components/ui/button";
+import { useRouter, useSearchParams, usePathname } from "next/navigation"; // Import Next.js navigation hooks
+import { readDirectoryAction, readExternalFileAction, invalidateDirectoryCache } from "@/actions/read-directory-actions";
+import { validateDirectoryAction } from "@/actions/validate-directory-action";
+import { findRelevantFilesAction } from "@/actions/path-finder-actions";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { estimateTokens } from "@/lib/token-estimator";
-import { getFormatInstructions } from "@/lib/format-instructions";
+import { getDiffPrompt } from "@/prompts/diff-prompt"; // Import only diff prompt
 import CodebaseStructure from "./_components/codebase-structure";
 import ProjectDirectorySelector from "./_components/project-directory-selector";
 import { useProject } from "@/lib/contexts/project-context";
-import { useFormat } from "@/lib/contexts/format-context";
 import { useDatabase } from "@/lib/contexts/database-context";
-import { normalizePath, formatPathForDisplay } from "@/lib/path-utils";
+import { normalizePath } from "@/lib/path-utils"; // Import from the correct file
 import FileBrowser from "./file-browser";
 import RegexInput from "./_components/regex-input"; // Keep RegexInput import
 import PastePaths from "./paste-paths";
 import path from "path";
 import TaskDescriptionArea, { TaskDescriptionHandle } from "./_components/task-description"; // Keep TaskDescriptionHandle import
 import VoiceTranscription from "./_components/voice-transcription";
-import { OutputFormat, Session } from "@/types";
+import { Session } from "@/types"; // Removed OutputFormat
 import { Input } from "@/components/ui/input";
 import { GeminiProcessor } from '@/app/_components/gemini-processor/gemini-processor'; // Import the new component
-import { Loader2 } from "lucide-react"; // Keep Loader2 import
-import { Info, ToggleLeft, ToggleRight, FileText, FolderClosed, AlertCircle, X } from "lucide-react"; // Added X import
+import { Loader2, Search } from "lucide-react"; // Keep Loader2 import, added Search for new button
 import { cn } from "@/lib/utils";
-import { useDebounceCallback } from 'usehooks-ts';
+import { invalidateFileCache } from '@/lib/git-utils';
+import { Button } from "@/components/ui/button";
 
+// Keys for cached state when NO session is active (these are being removed or unused)
 const TASK_DESC_KEY = "task-description";
 const SEARCH_TERM_KEY = "search-term";
 const PASTED_PATHS_KEY = "pasted-paths";
@@ -37,7 +39,6 @@ const PATTERN_DESC_KEY = "pattern-desc";
 const TITLE_REGEX_KEY = "title-regex";
 const CONTENT_REGEX_KEY = "content-regex";
 const REGEX_ACTIVE_KEY = "regex-active";
-const CUSTOM_FORMAT_KEY = "custom-format"; // Added key for custom format
 
 // Fix the lazy imports with proper dynamic import syntax
 const SessionManager = React.lazy(() => import("./_components/session-manager"));
@@ -102,7 +103,6 @@ export default function GeneratePromptForm() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [tokenCount, setTokenCount] = useState<number>(0);
   const [codebaseStructure, setCodebaseStructure] = useState("");
-  const { outputFormat, customFormat, setCustomFormat } = useFormat();
   const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
   const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
@@ -116,9 +116,14 @@ export default function GeneratePromptForm() {
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [sessionSaveError, setSessionSaveError] = useState<string | null>(null); // State for auto-save errors
-  const taskDescriptionRef = useRef<TaskDescriptionHandle>(null);
+  const taskDescriptionRef = useRef<TaskDescriptionHandle>(null); // Keep ref for task description
   const [isFormSaving, setIsFormSaving] = useState(false); // State to track if FormStateManager is saving - controlled by FormStateManager
   const [isRefreshingFiles, setIsRefreshingFiles] = useState(false); // Add state for refresh operation
+  const [isFindingFiles, setIsFindingFiles] = useState(false); // State for Path Finder action
+  // URL handling
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Ref to control initial loading and prevent loops
   const initializationRef = useRef({
@@ -146,23 +151,91 @@ export default function GeneratePromptForm() {
   // Function to estimate token count
   const updateTokenCount = useCallback(async (text: string) => {
     const count = await estimateTokens(text);
-    setTokenCount(count);
+    // Only update if count is different to avoid re-renders
+    setTokenCount(prevCount => prevCount !== count ? count : prevCount);
   }, []);
+
+  // --- URL Sync Effect ---
+  useEffect(() => {
+    const urlProjectDirRaw = searchParams.get('projectDir');
+    const urlProjectDir = urlProjectDirRaw ? normalizePath(decodeURIComponent(urlProjectDirRaw)) : null;
+    const currentProjectDir = projectDirectory || "";
+
+    // On mount, if URL has a projectDir different from current context, update context
+    if (urlProjectDir && urlProjectDir !== currentProjectDir && !initializationRef.current.projectInitialized) {
+      console.log(`[Form URL] Setting project directory from URL: ${urlProjectDir}`);
+      setProjectDirectory(urlProjectDir); // Update context with normalized path
+    }
+    initializationRef.current.projectInitialized = true; // Mark project as initialized after URL check
+  }, [searchParams, setProjectDirectory]); // Removed projectDirectory dependency to run only once
+
+  // Update URL when projectDirectory changes (and is valid)
+  useEffect(() => {
+    const currentUrlProjectDir = searchParams.get('projectDir');
+    const encodedProjectDir = projectDirectory ? encodeURIComponent(projectDirectory) : null;
+
+    // Only update URL if the project directory has changed and is not empty
+    // Use normalizePath for comparison to avoid issues with trailing slashes etc.
+    if (projectDirectory && (!currentUrlProjectDir || normalizePath(decodeURIComponent(currentUrlProjectDir)) !== normalizePath(projectDirectory))) {
+      console.log(`[Form URL] Updating URL with project directory: ${projectDirectory}`);
+      const newUrl = `${pathname}${encodedProjectDir ? `?projectDir=${encodeURIComponent(projectDirectory)}` : ''}`; // Use projectDirectory directly
+      router.replace(newUrl, { scroll: false }); // Use replace to avoid history spam
+    }
+  }, [projectDirectory, pathname, router, searchParams]);
 
   // Function to save active session ID
   const handleSetActiveSessionId = useCallback(async (sessionId: string | null) => { // Make async
     console.log(`[Form] Setting active session ID internally: ${sessionId}`);
     setActiveSessionId(sessionId);
-    setSessionInitialized(!!sessionId); // Update initialized status based on whether sessionId exists
+    setSessionInitialized(!!sessionId);
     if (!sessionId) setSessionName(""); // Clear name if session is deactivated
+    if (!sessionId) {
+      setSessionName(""); // Clear name if session is deactivated
+      setHasUnsavedChanges(false); // Reset unsaved changes flag when session is cleared
+    }
     setSessionSaveError(null); // Clear save error when session changes
-    if (projectDirectory && outputFormat && repository) await repository.setActiveSession(projectDirectory, outputFormat, sessionId); // Await and check dependencies
-  }, [projectDirectory, outputFormat, repository]);
+  }, [projectDirectory, repository]); // Removed outputFormat
 
-  // Modify handleLoadFiles to accept a refresh parameter
-  const handleLoadFiles = useCallback(async (directory: string, isRefresh = false) => {
-      if (!directory || isLoadingFiles || isRefreshingFiles) return; // Prevent concurrent loads and while refreshing
-
+  // Load files function with debounce
+  const loadFilesRef = useRef<{
+    lastDirectory: string | null;
+    lastLoadTime: number;
+    isLoading: boolean;
+  }>({
+    lastDirectory: null,
+    lastLoadTime: 0,
+    isLoading: false
+  });
+  
+  // Minimum time between automatic file loads (ms)
+  const MIN_LOAD_INTERVAL = 60000; // 1 minute
+  
+  const handleLoadFiles = useCallback(async (directory: string, isRefresh = false, forceLoad = false) => {
+    // Skip if no directory or already loading
+    if (!directory) return;
+    
+    // Guard against concurrent loads
+    if (loadFilesRef.current.isLoading && !forceLoad) {
+      console.log(`[Load Files] Skipping load for ${directory} - already loading`);
+      return;
+    }
+    
+    // Skip if we've loaded this directory recently and it's not a forced refresh
+    const now = Date.now();
+    const timeSinceLastLoad = now - loadFilesRef.current.lastLoadTime;
+    if (
+      !isRefresh && 
+      !forceLoad && 
+      loadFilesRef.current.lastDirectory === directory && 
+      timeSinceLastLoad < MIN_LOAD_INTERVAL
+    ) {
+      console.log(`[Load Files] Skipping load for ${directory} - loaded ${timeSinceLastLoad}ms ago`);
+      return;
+    }
+    
+    // Mark as loading
+    loadFilesRef.current.isLoading = true;
+    
     if (!isRefresh) {
       console.log(`[Load Files] Starting load for ${directory}`);
       setIsLoadingFiles(true);
@@ -180,10 +253,9 @@ export default function GeneratePromptForm() {
     setError("");
     
     try {
-        // For initial load, check for cached file selections *before* fetching files
-        let initialIncludedSet = new Set<string>();
-        let initialExcludedSet = new Set<string>();
-
+      // For initial load, check for cached file selections *before* fetching files
+      let initialIncludedSet = new Set<string>();
+      let initialExcludedSet = new Set<string>();
       
       if (!isRefresh) {
         // When loading for the first time (not refresh), DO NOT load cached file selections.
@@ -205,6 +277,10 @@ export default function GeneratePromptForm() {
       
       // Call server action to read files
       const result = await readDirectoryAction(directory);
+      
+      // Update load tracking after successful server call
+      loadFilesRef.current.lastDirectory = directory;
+      loadFilesRef.current.lastLoadTime = Date.now();
       
       // Handle errors
       if (!result.isSuccess) {
@@ -269,8 +345,8 @@ export default function GeneratePromptForm() {
           forceExcluded = existing.forceExcluded;
         } else {
           // Otherwise use cached selections or default
-            included = initialIncludedSet.has(path) || (!initialExcludedSet.has(path) && shouldIncludeByDefault(path));
-            forceExcluded = initialExcludedSet.has(path);
+          included = initialIncludedSet.has(path) || (!initialExcludedSet.has(path) && shouldIncludeByDefault(path));
+          forceExcluded = initialExcludedSet.has(path);
         }
 
         newFilesMap[path] = {
@@ -297,70 +373,83 @@ export default function GeneratePromptForm() {
       setIsLoadingFiles(false);
       setLoadingStatus("");
       setIsRefreshingFiles(false); // Ensure refresh state is reset
-    }
-  }, [repository, outputFormat, allFilesMap, isLoadingFiles, isRefreshingFiles]); // Added isRefreshingFiles
-
+      loadFilesRef.current.isLoading = false; // Mark as no longer loading
+    } 
+  }, []);  // Remove dependencies to prevent recreating the function
+  
+  // Use stable version for handleRefreshFiles
   const handleRefreshFiles = useCallback(async () => {
-    if (!projectDirectory || isLoadingFiles || isRefreshingFiles) return;
+    if (!projectDirectory) return;
     
     console.log(`[Refresh] Starting file refresh operation for ${projectDirectory}`);
     setIsRefreshingFiles(true);
     setLoadingStatus("Refreshing files from git repository...");
     
     try {
+      // Invalidate caches before refresh
+      invalidateDirectoryCache(projectDirectory);
+      invalidateFileCache(projectDirectory);
       repository.clearCache(); // Clear client-side cache before manual refresh
-      await handleLoadFiles(projectDirectory, true); // Pass true to indicate refresh
+      
+      // Force refresh with forceLoad=true to bypass throttling
+      await handleLoadFiles(projectDirectory, true, true);
       console.log(`[Refresh] Successfully refreshed files for ${projectDirectory}`);
     } catch (error) {
       console.error("[Refresh] Error refreshing files:", error);
       setError(`Failed to refresh files: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       // Ensure the refresh state is reset
-      // setIsLoadingFiles and setLoadingStatus are handled within handleLoadFiles
       setLoadingStatus("");
     }
-  }, [projectDirectory, isLoadingFiles, isRefreshingFiles, handleLoadFiles, repository]);
+  }, [projectDirectory, repository, handleLoadFiles]);
 
   // Load initial data when project directory or format changes
   useEffect(() => {
-    if (!projectDirectory || !outputFormat || !repository || initializationRef.current.projectInitialized) {
+    // Skip if not initialized or missing projectDirectory or repository
+    if (!projectDirectory || !repository || !initializationRef.current.projectInitialized) {
       return;
     }
     
-    if (!projectDirectory || !outputFormat || !repository) {
+    // Check URL parameter first
+    const urlProjectDir = searchParams.get('projectDir');
+    const initialDir = urlProjectDir ? decodeURIComponent(urlProjectDir) : projectDirectory;
+    
+    if (!initialDir || !repository) {
       // Clear state if no project directory or format
       setAllFilesMap({});
       setFileContentsMap({});
-      setActiveSessionId(null);
-      setSessionInitialized(false);
+      handleSetActiveSessionId(null); // Use the handler to clear session
+      setSessionInitialized(false); // No active session
       return;
     }
 
-    console.log(`[Form Init] Project/Format changed: ${projectDirectory} / ${outputFormat}. Initializing...`);
+    console.log(`[Form Init] Project selected: ${initialDir}. Initializing...`);
     
-    const initializeProjectData = async () => {
-      initializationRef.current.projectInitialized = false; // Reset flag before starting
+    const initializeProjectData = async (dirToLoad: string) => {
+      // Reset initialization before starting
+      initializationRef.current.projectInitialized = false;
       setIsRestoringSession(true); // Indicate session restore attempt
 
       try {
-        setActiveSessionId(null); // Clear current session FIRST
-        setSessionInitialized(false); // Reset initialization status
-        console.log(`[Form Init] Initializing for ${projectDirectory}/${outputFormat}`);
+        // If the project directory changed, clear the active session first
+        // Only clear if the new initialDir is different from the *previous* context projectDir
+        if (initialDir !== projectDirectory) handleSetActiveSessionId(null);
+        setSessionInitialized(false); // Reset initialization status for this load
+        console.log(`[Form Init] Initializing for ${dirToLoad}`);
 
-        const savedActiveSessionId = await repository.getActiveSessionId(projectDirectory, outputFormat);
+        const savedActiveSessionId = await repository.getActiveSessionId(dirToLoad);
         
         if (savedActiveSessionId) {
           console.log(`[Form Init] Found active session ID in DB: ${savedActiveSessionId}. SessionManager will load it.`);
-          // Don't set activeSessionId here directly. Let SessionManager handle loading.
-          // Files will be loaded by handleLoadFiles, which will be triggered by project/format change.
-          await handleLoadFiles(projectDirectory, false); // Load files first
+          // Load files first
+          await handleLoadFiles(dirToLoad, false);
           // SessionManager's useEffect will load the session data after this.
         } else {
-          console.log("[Form Init] No active session found in DB for this project/format.");
-          await handleLoadFiles(projectDirectory, false); // Explicitly false for initial load
+          console.log(`[Form Init] No active session found in DB for this project.`);
+          await handleLoadFiles(dirToLoad, false);
         }
 
-        // Mark initialization as complete *after* loading attempt
+        // Mark initialization as complete
         initializationRef.current.projectInitialized = true;
       } catch (error) {
         console.error("Error initializing project data:", error);
@@ -373,9 +462,11 @@ export default function GeneratePromptForm() {
       }
     };
     
-    // Don't run initialization if already initialized for this project/format
-    initializeProjectData();
-  }, [projectDirectory, outputFormat, repository, handleLoadFiles]); // Removed loadCachedStates dependency
+    // Only run initialization if project changed or not yet initialized for this project
+    if (projectDirectory !== loadFilesRef.current.lastDirectory) {
+      initializeProjectData(initialDir);
+    }
+  }, [projectDirectory, repository, handleLoadFiles, searchParams, handleSetActiveSessionId]);
 
   useEffect(() => {
     if (copySuccess) {
@@ -396,7 +487,7 @@ export default function GeneratePromptForm() {
     
     saveTaskDebounceTimer.current = setTimeout(async () => {
       // Immediately save the task description to the database
-      if (projectDirectory && outputFormat) {
+      if (projectDirectory) { // Removed outputFormat check
         try {
           // If a session is active, save to the session, otherwise save to cache
           if (activeSessionId) {
@@ -412,12 +503,10 @@ export default function GeneratePromptForm() {
               };
               
               // Verify required fields are present
-              if (!updatedSession.id || !updatedSession.name || !updatedSession.projectDirectory || !updatedSession.outputFormat) {
+              if (!updatedSession.id || !updatedSession.name || !updatedSession.projectDirectory) { // Removed outputFormat check
                 console.error("Missing required session fields:", {
                   id: updatedSession.id,
                   name: updatedSession.name,
-                  projectDirectory: updatedSession.projectDirectory,
-                  outputFormat: updatedSession.outputFormat
                 });
                 throw new Error("Session missing required fields");
               }
@@ -454,7 +543,7 @@ export default function GeneratePromptForm() {
         }
       }
     }, 5000); // Set timeout duration explicitly
-  }, [activeSessionId, projectDirectory, outputFormat, repository, setActiveSessionId, handleInteraction, setError]);
+  }, [activeSessionId, projectDirectory, repository, setActiveSessionId, handleInteraction, setError]); // Removed outputFormat dependency
 
   // New handler specifically for transcribed text
   const handleTranscribedText = useCallback((text: string) => {
@@ -543,6 +632,34 @@ export default function GeneratePromptForm() {
     handleInteraction(); // Mark interaction
   }, []);
 
+  // Handler for the new "Find Relevant Files" button
+  const handleFindRelevantFiles = useCallback(async () => {
+    if (!taskDescription.trim() || !codebaseStructure.trim()) {
+      setError("Please provide both a Task Description and generate the Codebase Structure before finding files.");
+      return;
+    }
+
+    setIsFindingFiles(true);
+    setError("");
+    setExternalPathWarnings([]); // Clear warnings
+
+    try {
+      const result = await findRelevantFilesAction({ taskDescription, codebaseStructure });
+      if (result.isSuccess && result.data?.relevantPaths) {
+        const pathsString = result.data.relevantPaths.join('\n');
+        setPastedPaths(pathsString); // Update the pasted paths state
+        handleInteraction(); // Mark interaction
+      } else {
+        setError(result.message || "Failed to find relevant files.");
+      }
+    } catch (err) {
+      setError(`Error finding files: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Error in handleFindRelevantFiles:", err);
+    } finally {
+      setIsFindingFiles(false);
+    }
+  }, [taskDescription, codebaseStructure, handleInteraction]);
+
   // Update allFilesMap state from child components
   const handleFilesMapChange = useCallback((newMap: FilesMap) => { // Keep useCallback
     setAllFilesMap(newMap);
@@ -586,7 +703,7 @@ export default function GeneratePromptForm() {
         return;
       }
 
-      const hasPastedPaths = pastedPaths.trim().length > 0;
+      const hasPastedPaths = pastedPaths.trim().length > 0; 
       const isAnyFileIncludedFromBrowser = Object.values(allFilesMap || {}).some((f) => f.included && !f.forceExcluded); // Corrected file check
 
       // Determine which files to use based on pasted paths or browser selection
@@ -704,10 +821,8 @@ ${content}
 </file>`)
         .join("\n\n");
 
-      let instructions = await getFormatInstructions(outputFormat, customFormat);
-
-      if (outputFormat === "refactoring") {
-        if (codebaseStructure.trim()) { // Only add structure if it exists
+      let instructions = await getDiffPrompt(); // Always use diff prompt
+      if (codebaseStructure) {
           const structureSection = `<structure>
 ${codebaseStructure}
 </structure>`;
@@ -720,7 +835,6 @@ ${codebaseStructure}
               return section > 2 ? `${section - 1}.` : `${section}.`;
             });
         }
-      }
 
       const fullPrompt = `${instructions}
 
@@ -772,7 +886,7 @@ ${taskDescription}
       .filter(f => f.forceExcluded) // Filter force excluded files
       .map(f => f.path);
     
-    // Add geminiStatus and other required fields with empty default values
+    // Remove outputFormat and customFormat
     return {
       projectDirectory,
       taskDescription,
@@ -785,8 +899,6 @@ ${taskDescription}
       codebaseStructure,
       includedFiles,
       forceExcludedFiles, // Add forceExcludedFiles
-      outputFormat, // Include outputFormat
-      customFormat: customFormat || "", // Ensure customFormat is included, default to empty string
       // Add default values for required fields in Session type
       geminiStatus: 'idle' as const, // Default Gemini fields for state object with explicit type
       geminiStartTime: null,
@@ -808,8 +920,6 @@ ${taskDescription}
     isRegexActive, 
     codebaseStructure, 
     allFilesMap, 
-    outputFormat, // Added outputFormat
-    customFormat // Add customFormat dependency
   ]);
 
 
@@ -825,7 +935,6 @@ ${taskDescription}
     setTitleRegex(session.titleRegex || "");
     setContentRegex(session.contentRegex || "");
     setCodebaseStructure(session.codebaseStructure || "");
-    setCustomFormat(session.customFormat || ""); // Load custom format
     setIsRegexActive(session.isRegexActive);
     
     // Apply file selections from the loaded session
@@ -870,8 +979,8 @@ ${taskDescription}
     setHasUnsavedChanges(false); // Mark as saved state initially
     setSessionInitialized(true);
     // Do not set initializationRef.current.sessionRestoreAttempted = true here
-    console.log(`[Form] Session ${session.id} loaded into form state.`);
-  }, [allFilesMap, setCustomFormat, setProjectDirectory]); // Added setProjectDirectory dependency
+    console.log(`[Form] Session ${session.id} loaded into form state.`); 
+  }, [allFilesMap, setProjectDirectory]); // Removed setCustomFormat dependency
 
   const formStateForManager = useMemo(() => {
         const includedFiles = Object.values(allFilesMap)
@@ -893,8 +1002,6 @@ ${taskDescription}
             codebaseStructure,
             includedFiles,
             forceExcludedFiles,
-            outputFormat,
-            customFormat: customFormat || "",
             // Add required Gemini fields with default values
             geminiStatus: 'idle' as const, // These are just placeholders for the type, actual values come from DB
             geminiStartTime: null,
@@ -903,38 +1010,39 @@ ${taskDescription}
             geminiStatusMessage: null,
             geminiTokensReceived: 0, // Add default for new fields
             geminiCharsReceived: 0,
-            geminiLastUpdate: null,
+            geminiLastUpdate: 0, // Changed from null to 0 to match expected type
         };
     }, [
         projectDirectory, taskDescription, searchTerm, pastedPaths, patternDescription,
         titleRegex, contentRegex, isRegexActive, codebaseStructure, allFilesMap,
-        outputFormat, customFormat
     ]);
 
   // Reset initialization flag when project directory changes
   useEffect(() => {
     initializationRef.current.projectInitialized = false;
   }, [projectDirectory]);
-
   const showLoadingOverlay = isLoadingFiles || isRestoringSession || isRefreshingFiles;
   return (
     <div className="flex flex-col flex-1 space-y-6"> {/* Removed padding */}
       <div className="grid grid-cols-1 gap-4">
-        {/* Project Directory Selector - Always visible */}
-        <ProjectDirectorySelector onRefresh={handleRefreshFiles} />
+        {/* Project Directory Selector - Always visible, handles its own loading/initialization */}
+        {/* Removed the isInitialized check here as the selector should handle its own lifecycle */}
+        {/* Pass the refresh handler and loading state */}
+        {/* Note: handleRefreshFiles includes clearing repository cache */}
+
+        <ProjectDirectorySelector onRefresh={handleRefreshFiles} isRefreshing={isRefreshingFiles} />
       
         {/* Session Manager - Now placed directly after Project Directory Selector */}
         <Suspense fallback={<div>Loading session manager...</div>}>
-          <SessionManager
+          <SessionManager 
             projectDirectory={projectDirectory}
             getCurrentSessionState={getCurrentSessionState}
             onLoadSession={handleLoadSession}
-            outputFormat={outputFormat}
             activeSessionId={activeSessionId}
-            onSessionNameChange={setSessionName} // Pass setter for session name
             setActiveSessionIdExternally={handleSetActiveSessionId}
             sessionInitialized={sessionInitialized} // Pass sessionInitialized status
             onSessionStatusChange={(hasSession: boolean) => setSessionInitialized(hasSession)}
+            onSessionNameChange={setSessionName}
           />
           {/* Display auto-save errors near session manager */}
           {sessionSaveError && (
@@ -968,8 +1076,7 @@ ${taskDescription}
             <FormStateManager // Wrap form elements inside FormStateManager
               sessionName={sessionName}
               activeSessionId={activeSessionId}
-              projectDirectory={projectDirectory || ""}
-              outputFormat={outputFormat}
+              projectDirectory={projectDirectory || ""} 
               formState={formStateForManager} // Pass the explicitly constructed state // Pass the explicitly constructed state
               onStateChange={setHasUnsavedChanges} // Use setHasUnsavedChanges directly
               isSaving={isFormSaving}
@@ -1020,11 +1127,25 @@ ${taskDescription}
 
               {/* Paste Paths */}
               <PastePaths
-                value={pastedPaths}
+                value={pastedPaths} 
                 onChange={handlePastedPathsChange}
                 projectDirectory={projectDirectory}
                 warnings={externalPathWarnings} // Pass warnings
-              />
+                onFindRelevantFiles={handleFindRelevantFiles} // Pass the new handler
+                isFindingFiles={isFindingFiles} // Pass loading state
+                canFindFiles={!!taskDescription.trim() && !!codebaseStructure.trim()} // Enable button conditionally
+              >
+                {/* Add the button here */}
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleFindRelevantFiles}
+                    disabled={isFindingFiles || !taskDescription.trim() || !codebaseStructure.trim()}
+                    className="mt-2"
+                    title={!taskDescription.trim() || !codebaseStructure.trim() ? "Enter task description and generate codebase structure first" : "Find relevant files based on task and structure"}
+                ><Search className="h-4 w-4 mr-2" />{isFindingFiles ? "Finding..." : "Find Relevant Files (AI)"}</Button>
+              </PastePaths>
 
               {/* File Browser */}
                 {/* Conditionally render FileBrowser based on projectDirectory and file map */}
@@ -1112,14 +1233,14 @@ ${taskDescription}
         </Suspense>
 
         {/* Message to guide user when no session is active */}
-        {!activeSessionId && projectDirectory && outputFormat && !showLoadingOverlay && (
+        {!activeSessionId && projectDirectory && !showLoadingOverlay && ( // Removed outputFormat check
           <div className="text-center text-muted-foreground italic p-4 border border-dashed rounded-md">
-            Select a project directory and output format to begin. Create a new session or load an existing one.
+            Select a project directory to begin. Create a new session or load an existing one.
           </div>
         )}
 
-        {/* Gemini Processor Section - Render it outside the SessionGuard/FormStateManager */}
-        {activeSessionId && projectDirectory && outputFormat && sessionInitialized && ( // Render Gemini controls only when session is fully active and initialized
+        {/* Gemini Processor Section - Render only when session is active */}
+        {activeSessionId && projectDirectory && sessionInitialized && ( // Render Gemini controls only when session is fully active and initialized
             <Suspense fallback={<div>Loading Gemini Processor...</div>}>
               <GeminiProcessor prompt={prompt} activeSessionId={activeSessionId} />
             </Suspense>

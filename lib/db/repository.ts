@@ -1,6 +1,6 @@
 import { db } from './index';
 import { Session } from '@/types/session-types'; // Keep Session import
-import { OutputFormat, GeminiStatus } from '@/types';
+import { GeminiStatus } from '@/types'; // Removed OutputFormat import
 import { hashString } from '@/lib/hash';
 
 /**
@@ -14,8 +14,8 @@ export class SessionRepository {
     console.log(`[Repo] saveSession called for ID: ${session.id} - Name: ${session.name}`);
     return new Promise((resolve, reject) => {
       try {
-        if (!session.projectDirectory || !session.outputFormat) {
-          return reject(new Error("Missing required session fields: projectDirectory and outputFormat"));
+        if (!session.projectDirectory) { // Removed outputFormat check
+          return reject(new Error("Missing required session fields: projectDirectory"));
         } // Close validation check
         const projectHash = hashString(session.projectDirectory);
         
@@ -40,7 +40,7 @@ export class SessionRepository {
           // Helper function to handle session save logic
           async function handleSessionSave(
             resolve: (value: Session) => void, reject: (reason: any) => void, projectHash: string, session: Session, includedFilesArray: string[], excludedFilesArray: string[], noTransaction: boolean
-          ) { // Added parameters
+          ) { // Added parameters 
             // Ensure Gemini fields have defaults if not provided
             const currentGeminiStatus = session.geminiStatus || 'idle';
             // Prepare data for insertion/replacement
@@ -57,8 +57,7 @@ export class SessionRepository {
               contentRegex: session.contentRegex || '',
               isRegexActive: session.isRegexActive,
               codebaseStructure: session.codebaseStructure || '',
-              outputFormat: session.outputFormat,
-              customFormat: session.customFormat || '',
+              // outputFormat and customFormat removed
               updatedAt: Date.now(), // Use current timestamp for update
               // Explicitly include Gemini fields, providing defaults if they are missing
               geminiStatus: currentGeminiStatus,
@@ -76,11 +75,10 @@ export class SessionRepository {
               -- Insert or update the main session data
               INSERT OR REPLACE INTO sessions
               (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
-               pattern_description, title_regex, content_regex, is_regex_active,
-               codebase_structure, output_format, custom_format, updated_at,
-               gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update)
+               pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at,
+               gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update) -- Removed output_format, custom_format
               VALUES -- Match the order of columns
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [ // Ensure values match the order of columns
               sessionValues.id,
               sessionValues.name,
@@ -93,9 +91,7 @@ export class SessionRepository {
               sessionValues.titleRegex,
               sessionValues.contentRegex,
               sessionValues.isRegexActive ? 1 : 0,
-              sessionValues.codebaseStructure,
-              sessionValues.outputFormat,
-              sessionValues.customFormat,
+              sessionValues.codebaseStructure, // Removed outputFormat, customFormat
               sessionValues.updatedAt,
               sessionValues.geminiStatus, // Ensure geminiStatus is passed
               sessionValues.geminiStartTime,
@@ -223,18 +219,18 @@ export class SessionRepository {
   /**
    * Get all sessions for a specific project directory and output format
    */
-  getSessions = async (projectDirectory: string, outputFormat: OutputFormat): Promise<Session[]> => { // Add async keyword
-    console.log(`[Repo] Getting sessions for Project: ${projectDirectory}, Format: ${outputFormat}`);
+  getSessions = async (projectDirectory: string): Promise<Session[]> => { // Removed outputFormat
+    console.log(`[Repo] Getting sessions for Project: ${projectDirectory}`); // Removed outputFormat
     
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory);
     
     return new Promise((resolve, reject) => {
       db.all(`
-        SELECT * FROM sessions
-        WHERE project_hash = ? AND output_format = ?
+        SELECT * FROM sessions -- Removed outputFormat from WHERE clause
+        WHERE project_hash = ?
         ORDER BY updated_at DESC -- Show most recent first
-      `, [projectHash, outputFormat], async (err, sessionRows: any[]) => {
+      `, [projectHash], async (err, sessionRows: any[]) => {
         if (err) {
           console.error("Error fetching sessions:", err);
           return reject(err);
@@ -300,9 +296,7 @@ export class SessionRepository {
               codebaseStructure: row.codebase_structure || '',
               includedFiles: includedFilesMap[row.id] || [],
               forceExcludedFiles: excludedFilesMap[row.id] || [],
-              outputFormat: row.output_format as OutputFormat,
-              // Ensure updatedAt is populated if needed later
-              customFormat: row.custom_format || '', // Add customFormat
+              // outputFormat and customFormat removed
               // Add Gemini fields
               geminiStatus: row.gemini_status as GeminiStatus || 'idle', // Add type assertion
               geminiStartTime: row.gemini_start_time || null,
@@ -372,9 +366,7 @@ export class SessionRepository {
             codebaseStructure: row.codebase_structure || '',
             includedFiles,
             forceExcludedFiles: excludedFiles,
-            outputFormat: row.output_format as OutputFormat,
-            // Ensure updatedAt is populated if needed later
-            customFormat: row.custom_format || '', // Add customFormat
+            // outputFormat and customFormat removed
             // Add Gemini fields
             geminiStatus: row.gemini_status || 'idle',
             geminiStartTime: row.gemini_start_time || null,
@@ -414,17 +406,16 @@ export class SessionRepository {
    */
   setActiveSession = async (
     projectDirectory: string,
-    outputFormat: OutputFormat,
     sessionId: string | null // Allow null to clear active session
-  ): Promise<void> => {
+  ): Promise<void> => { // Removed outputFormat
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory);
     
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => { // Removed outputFormat from INSERT/REPLACE
       db.run(`
-        INSERT OR REPLACE INTO project_settings (project_hash, output_format, active_session_id, updated_at)
-        VALUES (?, ?, ?, ?)
-      `, [projectHash, outputFormat, sessionId, Date.now()], (err) => {
+        INSERT OR REPLACE INTO project_settings (project_hash, active_session_id, updated_at)
+        VALUES (?, ?, ?)
+      `, [projectHash, sessionId, Date.now()], (err) => {
         if (err) {
           console.error("Error setting active session:", err);
           reject(err);
@@ -439,17 +430,16 @@ export class SessionRepository {
    * Get the active session ID for a project directory and output format
    */
   getActiveSessionId = async (
-    projectDirectory: string,
-    outputFormat: OutputFormat
-  ): Promise<string | null> => {
+    projectDirectory: string
+  ): Promise<string | null> => { // Removed outputFormat
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory);
     
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => { // Removed outputFormat from SELECT
       db.get(`
         SELECT active_session_id FROM project_settings
-        WHERE project_hash = ? AND output_format = ?
-      `, [projectHash, outputFormat], (err, row: any) => {
+        WHERE project_hash = ?
+      `, [projectHash], (err, row: any) => {
         if (err) {
           console.error("Error getting active session ID:", err);
           reject(err);
@@ -464,14 +454,12 @@ export class SessionRepository {
    * Get a cached state value by key
    */
   getCachedState = async (
-    projectDirectory: string | null | undefined, // Allow null/undefined for global
-    outputFormat: OutputFormat,
+    projectDirectory: string | null | undefined, // Allow null/undefined for global - removed outputFormat
     key: string
   ): Promise<string | null> => {
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory || 'global');
-    const safeOutputFormat = outputFormat || 'global';
-    
+
     if (!key) {
       console.error("Missing key in getCachedState");
       return null;
@@ -479,15 +467,15 @@ export class SessionRepository {
 
     // Only log for non-files keys to reduce noise
     if (!key.includes('files')) {
-      console.log(`[Repo] Getting cached state for ${projectHash}/${safeOutputFormat}/${key}`);
+      console.log(`[Repo] Getting cached state for ${projectHash}/${key}`); // Removed outputFormat
     }
 
     return new Promise((resolve, reject) => {
       db.get(`
         SELECT value FROM cached_state -- Select only value
-        WHERE project_hash = ? AND output_format = ? AND key = ?
-      `, [projectHash, safeOutputFormat, key], (err, row: any) => {
-        if (err) {
+        WHERE project_hash = ? AND key = ? -- Removed outputFormat
+      `, [projectHash, key], (err, row: any) => {
+        if (err) { 
           console.error("Error getting cached state:", err);
           reject(err);
         } else { // Check if row exists before accessing value
@@ -505,14 +493,12 @@ export class SessionRepository {
    * Save a cached state value
    */
   saveCachedState = async (
-    projectDirectory: string | null | undefined, // Allow null/undefined for global
-    outputFormat: OutputFormat,
+    projectDirectory: string | null | undefined, // Allow null/undefined for global - removed outputFormat
     key: string,
     value: string
   ): Promise<void> => {
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory || 'global'); // Use 'global' context if needed
-    const safeOutputFormat = outputFormat || 'global'; // Use 'global' context if needed
     if (!key) {
       console.error("Missing key in saveCachedState");
       return;
@@ -523,10 +509,10 @@ export class SessionRepository {
     const safeValue = value === null || value === undefined ? '' : String(value);
     
     return new Promise((resolve, reject) => {
-      db.run(`
-        INSERT OR REPLACE INTO cached_state (project_hash, output_format, key, value, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `, [projectHash, safeOutputFormat, key, safeValue, timestamp], (err) => {
+      db.run(` -- Removed output_format
+        INSERT OR REPLACE INTO cached_state (project_hash, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+      `, [projectHash, key, safeValue, timestamp], (err) => {
         if (err) {
           console.error("Error saving cached state:", err);
           reject(err);
@@ -621,7 +607,7 @@ export class SessionRepository {
           s.id, s.name, s.project_directory, s.task_description, 
           s.search_term, s.pasted_paths, s.pattern_description, 
           s.title_regex, s.content_regex, s.is_regex_active, 
-          s.codebase_structure, s.output_format, s.custom_format,
+          s.codebase_structure,
           s.updated_at, s.gemini_status, s.gemini_status_message, s.gemini_start_time,
           s.gemini_tokens_received, s.gemini_chars_received, s.gemini_last_update, 
           s.gemini_end_time, s.gemini_patch_path 
@@ -649,8 +635,6 @@ export class SessionRepository {
               contentRegex: row.content_regex || '',
               isRegexActive: !!row.is_regex_active,
               codebaseStructure: row.codebase_structure || '',
-              outputFormat: row.output_format as OutputFormat,
-              customFormat: row.custom_format || '',
               includedFiles: [],
               forceExcludedFiles: [],
               updatedAt: row.updated_at,

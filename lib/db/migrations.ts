@@ -86,8 +86,8 @@ async function applyMigrations(migrationsFolder: string, appliedMigrations: Set<
     }
 
     const filePath = path.join(migrationsFolder, file);
-    const sql = fs.readFileSync(filePath, 'utf8');
-    console.log(`[Migration] Running: ${file}`);
+    const sql = fs.readFileSync(filePath, 'utf8').trim(); // Trim SQL content
+    if (!sql) continue; // Skip empty migration files
 
     // Wrap execution in a promise
     try {

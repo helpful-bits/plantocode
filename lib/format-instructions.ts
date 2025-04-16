@@ -1,22 +1,9 @@
 "use server";
  
-import { OutputFormat } from "@/types"; // Keep OutputFormat import
+// Removed OutputFormat import and other prompt imports
 import { getDiffPrompt } from "@/prompts/diff-prompt";
-import { getRefactoringPrompt } from "@/prompts/refactoring-prompt";
-import { getPathFinderPrompt } from "@/prompts/path-finder-prompt";
 
-export async function getFormatInstructions(format: OutputFormat, customFormat: string = ""): Promise<string> {
-  if (format === "diff") {
-    return getDiffPrompt();
-  } 
-  
-  if (format === "refactoring") {
-    return getRefactoringPrompt();
-  }
-  
-  if (format === "path-finder") {
-    return getPathFinderPrompt();
-  }
-
-  return customFormat || "Please process the task described below using the provided files.";
+export async function getFormatInstructions(): Promise<string> {
+  // Always return the diff prompt as format selection is removed
+  return getDiffPrompt();
 }

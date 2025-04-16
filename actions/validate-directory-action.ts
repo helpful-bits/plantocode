@@ -5,19 +5,23 @@ import path from 'path'; // Keep path import
 import { ActionState } from '@/types';
 import { existsSync } from 'fs';
 
+/**
+ * Validates a directory path to ensure it exists, is accessible, and optionally check if it's a git repository
+ */
 export async function validateDirectoryAction(directoryPath: string, validateGitRepo: boolean = true): Promise<ActionState<{
   exists: boolean;
   isAccessible: boolean;
   stats?: any;
-}>> { // Fixed type signature
-  if (!directoryPath?.trim()) { // Handle empty input
+}>> {
+  if (!directoryPath?.trim()) {
     return {
       isSuccess: false,
       message: "Directory path cannot be empty",
       data: { exists: false, isAccessible: false }
     };
   }
-  try { // Start try block
+  
+  try {
     console.log(`[Validate] Validating directory: ${directoryPath} (Git required: ${validateGitRepo})`);
     const resolvedPath = path.resolve(directoryPath);
 
@@ -33,7 +37,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
     // Check if it's a directory
     const stats = await fs.stat(resolvedPath);
     
-    if (!stats.isDirectory()) { // Check if it's a directory
+    if (!stats.isDirectory()) {
       return {
         isSuccess: false,
         message: "Path exists but is not a directory",
@@ -47,19 +51,19 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       
       // Check for .git directory to identify a Git repository
       let isGitRepo = false;
-      try { // Use fs.access for existence check
+      try {
         await fs.access(path.join(resolvedPath, '.git'));
-        // Optional: Further check if it's a directory
-        // const gitStats = await fs.stat(path.join(resolvedPath, '.git'));
         isGitRepo = true; // Assume it's a repo if .git exists and is accessible
-      } catch (gitError) { // Catch error if .git doesn't exist or isn't accessible
-        // Not a git repository, which is fine
+      } catch (gitError) {
+        // Not a git repository, which is fine if not required
       }
 
       if (files.length === 0) {
-        return {
-          isSuccess: true,
-          message: "Directory is empty",
+        const emptyDirResult = {
+          isSuccess: validateGitRepo ? false : true, // Only success if Git is not required
+          message: validateGitRepo 
+            ? "Directory is empty. Please select a valid git repository." 
+            : "Directory is empty",
           data: {
             exists: true, 
             isAccessible: true,
@@ -71,9 +75,11 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
             }
           }
         };
+        
+        return emptyDirResult;
       }
 
-      // Count regular files
+      // Count regular files and directories
       let fileCount = 0;
       let dirCount = 0;
       
@@ -90,7 +96,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       }
       
       const directoryStats = {
-        isGitRepository: isGitRepo, // Renamed for clarity
+        isGitRepository: isGitRepo,
         lastModified: stats.mtime,
         created: stats.birthtime,
         isEmpty: false,
@@ -111,7 +117,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
         ? "Git repository detected" 
         : `Directory contains ${fileCount} files and ${dirCount} folders`;
 
-      return { // Return success
+      return {
         isSuccess: true,
         message: successMessage,
         data: {
@@ -129,7 +135,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       };
     }
   } catch (error: unknown) {
-    console.error(`Error validating directory ${directoryPath}:`, error); // Add path to log
+    console.error(`Error validating directory ${directoryPath}:`, error);
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const isNotFound = errorMessage.includes('ENOENT');

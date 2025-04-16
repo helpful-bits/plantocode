@@ -4,11 +4,11 @@ import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs';
 import path from 'path';
 import os from 'os';
 import { ActionState, Session, GeminiStatus } from '@/types'; // Import GeminiStatus
-import { sessionRepository } from '@/lib/db/repository'; // Ensure repository is imported
+import { sessionRepository } from '@/lib/db/repository';
 import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
 import { getProjectPatchesDirectory, getAppPatchesDirectory } from '@/lib/path-utils'; // Import path utils
  
-const MODEL_ID = "gemini-2.5-pro-preview-03-25";
+const MODEL_ID = "gemini-2.5-pro-preview-03-25"; // MUST STAY LIKE THIS, DO *NOT* CHANGE!
 const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
 const FALLBACK_PATCHES_DIR = getAppPatchesDirectory(); // Used as fallback if we can't write to project directory
@@ -154,7 +154,7 @@ export async function sendPromptToGeminiAction(
             contents: [
                 { role: "user", parts: [{ text: promptText }] } // Use renamed promptText
             ],
-            generationConfig: {
+            generationConfig: { 
                 responseMimeType: "text/plain", // Expecting plain text patch
             },
         };

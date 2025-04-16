@@ -23,7 +23,7 @@
 - **Styling:** Tailwind CSS via `globals.css` and `tailwind.config.ts`. Use `clsx` and `tailwind-merge` utilities for merging classes.
 - **Prompts:** LLM prompts defined in `prompts/` directory (e.g., `refactoring-prompt.ts`, `path-finder-prompt.ts`).
 - **Types:** Define shared types in `types/`. Component-specific types defined within component files or `types/` as appropriate.
-- **Code Quality:**
+- **Code Quality:** 
     - Write clean, readable, and maintainable code following SOLID principles where applicable.
     - Follow ESLint rules defined in `.eslintrc.json` and `eslint.config.mjs`.
     - Avoid code duplication; refactor common logic into hooks or utilities.
@@ -32,7 +32,7 @@
 - **Package Manager:** Use `pnpm` for dependency management. Ensure `sqlite3` is listed in `pnpm.onlyBuiltDependencies` in `package.json` for correct native addon handling.
 - **Error Handling:** For API routes and server actions, use proper error handling with descriptive error messages.
 - **Session Management:** Application state (form inputs, file selections) is managed via sessions stored in the database, specific to a project directory and output format. The UI should only allow interaction after a session is created or loaded. Changes within an active session are auto-saved.
-## Development Workflow
+## Development Workflow 
  
 - Ensure README.md is kept up-to-date with setup instructions and features.
 - Follow consistent naming conventions for files and functions throughout the codebase.
