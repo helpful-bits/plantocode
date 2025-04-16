@@ -1,11 +1,11 @@
 "use server";
- 
-import path from "path"; // Keep path import
-import { getAllNonIgnoredFiles } from "@/lib/git-utils"; // Keep getAllNonIgnoredFiles import
-// Keep TreeNode interface
+
+import path from "path";
+import { getAllNonIgnoredFiles } from "@/lib/git-utils";
+
 interface TreeNode { // Keep interface definition
-  name: string;
-  children: TreeNode[];
+  name: string; // Keep name property
+  children: TreeNode[]; // Keep children property
   isDirectory: boolean;
 }
 

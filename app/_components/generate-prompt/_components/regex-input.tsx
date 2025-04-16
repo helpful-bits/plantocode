@@ -1,7 +1,7 @@
 "use client";
 
 import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
-import { X, ToggleLeft, ToggleRight } from "lucide-react"; // Keep ToggleLeft/Right imports
+import { X, ToggleLeft, ToggleRight } from "lucide-react";
 
 interface RegexInputProps {
   titleRegex: string;
@@ -12,7 +12,7 @@ interface RegexInputProps {
   contentRegexError?: string | null;
   onInteraction?: () => void; // Optional interaction handler
   onClearPatterns?: () => void; // Optional clear handler
-  isRegexActive: boolean; // Keep isRegexActive prop
+  isRegexActive: boolean;
   onRegexActiveChange: (value: boolean) => void;
 }
 
@@ -43,7 +43,7 @@ export default function RegexInput({
             title={isRegexActive ? "Deactivate regex patterns" : "Activate regex patterns"}
           >
             {isRegexActive ? (
-              <ToggleRight className="h-5 w-5" />
+              <ToggleRight className="h-5 w-5" /> // Keep ToggleRight icon
             ) : (
               <ToggleLeft className="h-5 w-5" />
             )}
@@ -81,7 +81,7 @@ export default function RegexInput({
             placeholder="Regex for file path..."
             className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
             disabled={!isRegexActive} // Keep disabled state
-            aria-label="Title Regex"
+            aria-label="Title Regex" // Keep aria-label
           /> 
           {titleRegexError ? (
             <p className="text-xs text-destructive">{titleRegexError}</p>
@@ -99,7 +99,7 @@ export default function RegexInput({
             placeholder="Regex for file content..."
             className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
             disabled={!isRegexActive} // Keep disabled state
-            aria-label="Content Regex"
+            aria-label="Content Regex" // Keep aria-label
           />
           {contentRegexError ? ( 
             <p className="text-xs text-destructive">{contentRegexError}</p>

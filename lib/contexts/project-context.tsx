@@ -1,44 +1,53 @@
 "use client";
+
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from "react";
-import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants"; // Keep GLOBAL_PROJECT_DIR_KEY import
-import { useDatabase } from "./database-context";
- 
+import { useSearchParams } from "next/navigation";
+import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
+import { useDatabase } from "./database-context"; // Keep database-context import
+
 interface ProjectContextType {
   projectDirectory: string;
   setProjectDirectory: (dir: string) => void;
- } // Keep ProjectContextType interface
+ }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
-export function ProjectProvider({ children }: { children: ReactNode }) { // Keep ProjectProvider component
+export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projectDirectory, setProjectDirectoryState] = useState("");
   const { repository } = useDatabase();
   const { isInitialized } = useDatabase(); // Use isInitialized hook
-  const loadedRef = useRef(false); // Reference to track if we've loaded the project directory
-  
-  // Load project directory from DB on mount
+  const loadedRef = useRef(false); // Track if initial load happened
+  const searchParams = useSearchParams();
+  const isUpdatingRef = useRef(false); // Track if currently updating to prevent loops
+
+  // Load project directory from URL or DB on mount
   useEffect(() => {
     // Only load once when initialized and not already loaded
-    if (isInitialized && !loadedRef.current) {
+    if (isInitialized && !loadedRef.current && !isUpdatingRef.current) {
       const loadProjectDirectory = async () => {
-        console.log("[ProjectContext] Attempting to load global project directory from DB");
         try { // Use try/catch block
-          // Load from database
-          const savedDir = await repository.getCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY); // Using global scope
-          
-          // Make sure the saved directory isn't the key name itself and is a valid string
-          if (savedDir && 
-              typeof savedDir === 'string' && 
-              savedDir.trim() !== '' && 
-              savedDir !== GLOBAL_PROJECT_DIR_KEY) {
-            setProjectDirectoryState(savedDir);
-            console.log("[ProjectContext] Loaded global project directory:", savedDir);
-          } else {
-            console.log("[ProjectContext] No valid saved project directory found");
-            // If the saved directory is the key itself, clear it from the database
-            if (savedDir === GLOBAL_PROJECT_DIR_KEY) {
-              console.log("[ProjectContext] Clearing invalid directory that matches key name");
-              await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, "");
+          // First priority: URL parameter
+          const urlDirRaw = searchParams.get('projectDir');
+          const urlDir = urlDirRaw ? decodeURIComponent(urlDirRaw) : null;
+
+          if (urlDir) {
+            setProjectDirectoryState(urlDir);
+            console.log("[ProjectContext] Loaded project directory from URL:", urlDir);
+            loadedRef.current = true; // Mark as loaded from URL
+            return; // Don't check DB if URL provides it
+          }
+
+          // Second priority: database cache (only if URL is not available)
+          if (repository) {
+            const savedDir = await repository.getCachedState("global", GLOBAL_PROJECT_DIR_KEY);
+            
+            // Make sure the saved directory isn't the key name itself and is a valid string
+            if (savedDir && 
+                typeof savedDir === 'string' && 
+                savedDir.trim() !== '' && 
+                savedDir !== GLOBAL_PROJECT_DIR_KEY) {
+              setProjectDirectoryState(savedDir);
+              console.log("[ProjectContext] Loaded global project directory from DB:", savedDir);
             }
           }
           
@@ -54,29 +63,37 @@ export function ProjectProvider({ children }: { children: ReactNode }) { // Keep
       
       loadProjectDirectory();
     }
-  }, [repository, isInitialized]); // Dependencies
+  }, [repository, isInitialized, searchParams]); // Keep dependencies
 
   const setProjectDirectory = useCallback(async (dir: string) => {
-    const trimmedDir = dir?.trim() || ""; // Trim whitespace, default to empty string
+    if (isUpdatingRef.current) return; // Prevent recursive updates
+    
+    const trimmedDir = dir?.trim() || "";
 
     // Only update state and save if the directory actually changed
     if (trimmedDir !== projectDirectory) {
-      setProjectDirectoryState(trimmedDir); // Set state with trimmed dir
-      console.log(`[ProjectContext] Setting project directory: ${trimmedDir || '(cleared)'}`);
-    
+      isUpdatingRef.current = true; // Set flag to prevent recursive updates
+      
       try {
-      // Store in database for global access
-      if (repository) { // Always save, even if clearing (save empty string)
-        // Save to database, using 'global' context
-        await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, trimmedDir);
+        setProjectDirectoryState(trimmedDir); // Set state with trimmed dir
+        console.log(`[ProjectContext] Setting project directory: ${trimmedDir || '(cleared)'}`);
+      
+        // Store in database for global access
+        if (repository && isInitialized) { // Ensure repo is initialized before saving
+          // Save to database, using 'global' context
+          await repository.saveCachedState("global", GLOBAL_PROJECT_DIR_KEY, trimmedDir);
+        }
+      } catch (e) {
+        console.error("Failed to save project directory to global cache:", e);
+      } finally {
+        // Reset the flag after a short delay to allow other updates to complete
+        setTimeout(() => {
+          isUpdatingRef.current = false;
+        }, 50);
       }
-    } catch (e) {
-      console.error("Failed to save project directory to global cache:", e);
     }
-    // History logic is now handled within ProjectDirectorySelector
-  } // Close if condition
+  }, [repository, projectDirectory, isInitialized]); // Keep dependencies
   
-  }, [repository, projectDirectory]); // Include projectDirectory in dependency array
   return (
     <ProjectContext.Provider value={{ 
       projectDirectory, setProjectDirectory

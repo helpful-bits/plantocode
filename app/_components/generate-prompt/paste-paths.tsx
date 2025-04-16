@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState, ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import path from "path";
-
+import { Info } from "lucide-react"; // Import Info icon
 interface PastePathsProps {
   value: string;
   onChange: (value: string) => void;
@@ -28,7 +27,6 @@ export default function PastePaths({
   isFindingFiles,
   canFindFiles,
 }: PastePathsProps) {
-  // Internal state to track the count of valid paths
   const [foundCount, setFoundCount] = useState(0);
 
   useEffect(() => {
@@ -85,13 +83,13 @@ path/to/file2.ts
       />
       
       {warnings && warnings.length > 0 && (
-        <div className="text-amber-600 text-xs bg-amber-50 p-2 rounded">
+        <div className="text-amber-600 text-xs bg-amber-500/10 p-2 rounded border border-amber-500/20 flex flex-col gap-1">
           {warnings.map((warning, i) => (
             <p key={i}>⚠️ {warning}</p>
           ))}
         </div>
       )}
-      {/* Render children (the button) here */}
+      {/* Render children (e.g., the Find Files button) */}
       {children && <div className="mt-1">{children}</div>}
 
       <div className="text-xs text-muted-foreground">
@@ -99,6 +97,6 @@ path/to/file2.ts
         <p>• Lines starting with # are treated as comments</p>
         <p>• External paths will be read from the file system directly</p>
       </div>
-    </div>
-  ); // Close return statement
+    </div> // Close main div
+  );
 }

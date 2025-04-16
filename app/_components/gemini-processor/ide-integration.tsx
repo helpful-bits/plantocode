@@ -1,44 +1,80 @@
+"use client";
+
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Code } from 'lucide-react';
+import { ExternalLink, Code, Copy, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
 
 interface IdeIntegrationProps {
   filePath: string;
+  onError?: (message: string) => void; // Callback for errors
 }
 
-export function IdeIntegration({ filePath }: IdeIntegrationProps) {
+export function IdeIntegration({ filePath, onError }: IdeIntegrationProps) {
+  const [error, setError] = useState<string | null>(null); // Add error state
+
   const handleOpenInIde = async () => {
+    setError(null); // Clear previous errors
     try {
       // Call an API endpoint to open the file in the system's default IDE
       const response = await fetch('/api/open-in-ide', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath }),
+        body: JSON.stringify({ filePath }), // Pass filePath to API
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to open in IDE');
+          // Use the specific error message from API if available
+          const errorMsg = errorData.error || `Failed to open in IDE (Status: ${response.status})`;
+          setError(errorMsg); // Set error state
+          if (onError) onError(errorMsg); // Call error callback
+          throw new Error(errorMsg);
       }
+      // Success - no error to display
     } catch (err) {
-      console.error('Failed to open file in IDE:', err);
-      // Fallback - create a download link
-      const link = document.createElement('a');
-      link.href = `/api/download-patch?path=${encodeURIComponent(filePath)}`;
-      link.download = filePath.split('/').pop() || 'patch-file.patch';
-      link.click();
+      const errorMsg = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(errorMsg);
+      if (onError) onError(errorMsg); // Ensure callback is called even for fetch errors
+    }
+  };
+
+  const handleCopyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(filePath);
+      // Optionally show a success message/tooltip
+    } catch (err) {
+      console.error('Failed to copy path:', err);
+      // Optionally show an error message
     }
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="flex items-center gap-1 text-xs"
-      onClick={handleOpenInIde}
-    >
-      <Code className="h-3 w-3" />
-      <span>Open in IDE</span>
-      <ExternalLink className="h-3 w-3 ml-1" />
-    </Button>
+    <div className="flex flex-col items-center gap-2">
+      {error && (
+        <div className="text-xs text-destructive bg-destructive/10 p-1.5 rounded border border-destructive/20 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          <span>{error}</span>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-1 text-xs"
+          onClick={handleOpenInIde}
+          title="Open patch file in default editor"
+          disabled={!!error && error.includes('File not found')} // Disable if file not found
+        >
+          <Code className="h-3 w-3" />
+          <span>Open in IDE</span>
+          <ExternalLink className="h-3 w-3 ml-1" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={handleCopyPath} title="Copy patch file path" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+          <Copy className="h-3 w-3" />
+        </Button>
+      </div>
+      <Button variant="link" size="sm" className="text-xs h-auto p-0 text-muted-foreground hover:text-primary" onClick={() => window.open(`/api/download-patch?path=${encodeURIComponent(filePath)}`, '_blank')} title="Download patch file">
+        Download Patch
+      </Button>
+    </div>
   );
 }

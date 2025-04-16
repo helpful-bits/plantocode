@@ -1,9 +1,9 @@
 'use server';
 
 import fs from 'fs/promises';
-import path from 'path'; // Keep path import
+import path from 'path';
 import { ActionState } from '@/types';
-import { existsSync } from 'fs';
+import { existsSync } from 'fs'; // Keep existsSync import
 
 /**
  * Validates a directory path to ensure it exists, is accessible, and optionally check if it's a git repository
@@ -24,11 +24,11 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
   try {
     console.log(`[Validate] Validating directory: ${directoryPath} (Git required: ${validateGitRepo})`);
     const resolvedPath = path.resolve(directoryPath);
-
+ 
     // Check if path exists
     if (!existsSync(resolvedPath)) {
       return {
-        isSuccess: false,
+        isSuccess: false, // Keep false for non-existent directory
         message: "Directory does not exist",
         data: { exists: false, isAccessible: false }
       };
@@ -77,7 +77,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
         };
         
         return emptyDirResult;
-      }
+      } // End if block
 
       // Count regular files and directories
       let fileCount = 0;
@@ -94,7 +94,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
           // Skip files we can't access
         }
       }
-      
+
       const directoryStats = {
         isGitRepository: isGitRepo,
         lastModified: stats.mtime,

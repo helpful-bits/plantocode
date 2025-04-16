@@ -1,32 +1,7 @@
 /**
  * Path utilities primarily for browser environment context
  */
- // Use basic string manipulation for browser context
 import path from 'path';
-
-/**
- * Gets a best-guess default path based on the browser's platform info
- * @param username Optional username hint
- * @returns A default path appropriate for the detected OS
- */
-export function getDefaultPathForOS(username?: string): string {
-  // Default username if not provided
-  const user = username || '';
-
-  if (typeof navigator === 'undefined') { // Check if running on server
-    return process.cwd(); // Fallback for server-side
-  }
-  
-  // Check for operating system
-  if (typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('WIN')) {
-    return `C:\\Users\\${user}\\`;
-  } else if (typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC')) {
-    return `/Users/${user}/`;
-  } else {
-    // Linux or other Unix-like OS
-    return `/home/${user}/`;
-  }
-}
 
 /**
  * Formats a file path for display by making it relative to the base directory

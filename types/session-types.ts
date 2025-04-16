@@ -13,16 +13,15 @@ export type Session = {
     titleRegex: string;
     contentRegex: string;
     isRegexActive: boolean;
-    codebaseStructure: string;
-    includedFiles: string[]; // Paths relative to projectDirectory
-    forceExcludedFiles: string[]; // Paths forced excluded
     geminiStatus: GeminiStatus; // Status of Gemini processing (non-optional)
     geminiStartTime?: number | null; // Unix timestamp (ms) when processing started
     geminiEndTime?: number | null;
     geminiPatchPath?: string | null; // Path to the saved patch file
-    geminiStatusMessage?: string | null;
+    geminiStatusMessage?: string | null; // Error or success message from Gemini process
     geminiTokensReceived?: number; // Number of tokens received during streaming (optional)
-    geminiCharsReceived?: number; // Number of characters received during streaming
+    geminiCharsReceived?: number; // Number of characters received during streaming (optional)
     geminiLastUpdate?: number; // Timestamp of the last chunk update
     updatedAt?: number; // Timestamp of last update (managed by repository)
+    includedFiles: string[]; // Paths relative to projectDirectory
+    forceExcludedFiles: string[]; // Paths forced excluded
 };

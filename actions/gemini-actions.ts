@@ -1,12 +1,12 @@
 "use server";
 
-import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs'; // Import WriteStream and createWriteStream
+import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs';
 import path from 'path';
 import os from 'os';
-import { ActionState, Session, GeminiStatus } from '@/types'; // Import GeminiStatus
+import { ActionState, Session, GeminiStatus } from '@/types';
 import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
-import { getProjectPatchesDirectory, getAppPatchesDirectory } from '@/lib/path-utils'; // Import path utils
+import { setupDatabase } from '@/lib/db/setup';
+import { getProjectPatchesDirectory, getAppPatchesDirectory, normalizePath } from '@/lib/path-utils';
  
 const MODEL_ID = "gemini-2.5-pro-preview-03-25"; // MUST STAY LIKE THIS, DO *NOT* CHANGE!
 const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
@@ -20,7 +20,7 @@ interface GeminiRequestPayload {
     }[];
     generationConfig?: {
         responseMimeType?: string;
-        // Add other config options if needed (temperature, maxOutputTokens, etc.)
+        // Other config options (temperature, maxOutputTokens, etc.) could be added here
     };
 }
 
@@ -30,7 +30,7 @@ interface GeminiResponse {
             parts: { text: string }[];
             role: string;
         };
-        // Add other candidate fields if needed (finishReason, safetyRatings, etc.)
+        // Other candidate fields (finishReason, safetyRatings, etc.) could be added here
     }[];
     // Add promptFeedback if needed
 }
@@ -60,7 +60,7 @@ async function getPatchesDir(session: Session): Promise<string> {
       // Create directory if it doesn't exist
       await fs.mkdir(projectPatchesDir, { recursive: true });
       return projectPatchesDir;
-    } catch (err) {
+    } catch (err: any) {
       console.warn(`Cannot create patches directory in project: ${err.message}`);
       return FALLBACK_PATCHES_DIR;
     }
@@ -77,7 +77,7 @@ export async function sendPromptToGeminiAction(
     promptText: string, // Renamed prompt to avoid conflict with built-in prompt
     sessionId: string
 ): Promise<ActionState<{ savedFilePath: string | null }>> { // Return type updated
-    // Ensure DB is set up before processing
+
     await setupDatabase();
  
     const apiKey = process.env.GEMINI_API_KEY;
@@ -131,7 +131,7 @@ export async function sendPromptToGeminiAction(
         
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const safeSessionName = sanitizeFilename(sessionName);
-        const filename = `${timestamp}_${safeSessionName}.patch`;
+        const filename = `${timestamp}_${safeSessionName}.patch`; // Filename format
         filePath = path.join(patchesDir, filename);
 
         // Create empty file immediately and update session with path
@@ -163,7 +163,7 @@ export async function sendPromptToGeminiAction(
         const currentSessionState = await sessionRepository.getSession(sessionId);
         if (currentSessionState?.geminiStatus === 'canceled') {
             console.log(`[Gemini Action] Session ${sessionId}: Processing canceled before API call.`);
-            // Don't set endTime here, let the cancellation action handle it
+
             return { isSuccess: false, message: "Gemini processing was canceled.", data: { savedFilePath: null } }; 
         }
 
@@ -173,8 +173,8 @@ export async function sendPromptToGeminiAction(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-            // TODO: Consider AbortController if Gemini API adds support for it in SSE
-            // signal: abortController.signal
+
+            signal: AbortSignal.timeout(590000), // 590 second timeout
         });
 
         if (!response.ok) {
@@ -193,7 +193,7 @@ export async function sendPromptToGeminiAction(
         // --- Process Streaming Response ---
         const reader = response.body?.getReader();
         if (!reader) {
-            if (fileHandle) await fileHandle.close(); // Ensure fileHandle exists
+            if (fileHandle) await fileHandle.close();
             throw new Error("Failed to get response stream reader");
         }
 
@@ -216,7 +216,7 @@ export async function sendPromptToGeminiAction(
 
                 // Decode chunk and append to buffer
                 const decodedChunk = textDecoder.decode(value, { stream: true }); // Ensure stream flag is true
-                buffer += decodedChunk;
+                buffer += decodedChunk; // Accumulate chunks
 
                 // Process complete SSE events in the buffer (events are separated by double newlines)
                 let processedBuffer = '';
@@ -233,7 +233,7 @@ export async function sendPromptToGeminiAction(
                         // Close the stream and file handle immediately
                         if (writeStream) writeStream.end();
                         if (fileHandle) await fileHandle.close();
-                        // Update status immediately - Set path to null because cancellation implies incomplete file
+
                         await sessionRepository.updateSessionGeminiStatus(sessionId, 'canceled', startTime, Date.now(), null, "Processing canceled by user.");
                         throw new Error('Processing canceled by user.'); // Throw to trigger cleanup logic
                     } // Close cancellation check
@@ -253,9 +253,8 @@ export async function sendPromptToGeminiAction(
                           'running', 
                           startTime, 
                           null, 
-                          filePath, // Keep filePath even during processing
-                          // Use a clearer message during processing
-                          `Processing: Received ${totalTokens} tokens / ${totalChars} chars...`,
+                          filePath,
+                          `Processing: ${totalTokens} tokens received / ${totalChars} chars...`, // Message during processing
                           // Update stats object
                           `Processing: ${totalTokens} tokens received`,
                           { tokensReceived: totalTokens, charsReceived: totalChars }
@@ -267,8 +266,7 @@ export async function sendPromptToGeminiAction(
                 const checkSessionAfterBatch = await sessionRepository.getSession(sessionId);
                 if (!checkSessionAfterBatch || checkSessionAfterBatch.geminiStatus === 'canceled') {
                      console.log(`[Gemini Action] Session ${sessionId}: Cancellation detected after batch processing.`);
-                     // Close the stream and handle before throwing
-                     if (writeStream) writeStream.end(); // Close write stream
+                     if (writeStream) writeStream.end();
                      if (fileHandle) await fileHandle.close(); // Close file handle
                      throw new Error('Processing canceled by user.');
                 }
@@ -281,8 +279,7 @@ export async function sendPromptToGeminiAction(
             if (buffer.trim().length > 0) {
                 console.log(`[Gemini Action] Session ${sessionId}: Processing remaining buffer (${buffer.trim().length} trimmed bytes)`);
                 const { success, content } = processSseEvent(buffer, writeStream); // Capture content
-                if (success && content && content.length > 0) hasWrittenAnyContent = true; // Update flag
-                // Note: Consider a final cancellation check here as well if needed
+                if (success && content && content.length > 0) hasWrittenAnyContent = true;
             }
             // hasWrittenAnyContent already tracks this, bytesWritten is also a good check
         } catch (error) {
@@ -297,7 +294,7 @@ export async function sendPromptToGeminiAction(
             if (fileHandle) {
                 await fileHandle.close();
                 console.log(`[Gemini Action] Session ${sessionId}: File handle for ${filename} closed.`);
-            } // Close if fileHandle check
+            }
         }
 
         // Check if any actual content was written OR if the stream reported bytes written
@@ -308,7 +305,6 @@ export async function sendPromptToGeminiAction(
             console.log(`[Gemini Action] Session ${sessionId}: No usable content was written to file ${filePath}, deleting it.`);
             await fs.unlink(filePath);
             console.log(`[Gemini Action] Session ${sessionId}: Deleted empty file: ${filePath}`);
-            // filePath = ''; // Don't clear filePath here, it's used in the status update below
             // Update status to failed immediately
             const endTimeNoContent = Date.now(); // Define endTimeNoContent
             await sessionRepository.updateSessionGeminiStatus(sessionId, 'failed', startTime, endTimeNoContent, null, "Gemini response did not contain usable text content.");
@@ -321,13 +317,11 @@ export async function sendPromptToGeminiAction(
         const finalCheckSession = await sessionRepository.getSession(sessionId);
         if (finalCheckSession?.geminiStatus === 'canceled') {
              console.log(`[Gemini Action] Session ${sessionId}: Cancellation detected just before marking complete.`);
-             // File might have been partially written, handle cleanup explicitly here
-             if (filePath && existsSync(filePath)) { // Check existence before unlinking
-                 // await fs.unlink(filePath); // Let cancel action handle cleanup? Or keep file? Decided to keep partially written file on cancel for now.
-                 filePath = ''; // Clear path after deletion
-             } // Close unlink check
              return { isSuccess: false, message: "Gemini processing was canceled.", data: { savedFilePath: null } };
          }
+
+        const normalizedFilePath = normalizePath(filePath); // Normalize before saving
+
         const endTime = Date.now();
         await sessionRepository.updateSessionGeminiStatus(sessionId, 'completed', startTime, endTime, filePath, `Successfully generated and saved patch file.`);
         console.log(`[Gemini Action] Session ${sessionId}: Processing completed successfully at ${endTime}. Patch saved to ${filePath}`);
@@ -335,7 +329,7 @@ export async function sendPromptToGeminiAction(
         return {
             isSuccess: true,
             message: "Successfully generated and saved patch file",
-            data: { savedFilePath: filePath }
+            data: { savedFilePath: normalizedFilePath } // Return normalized path
         };
 
     } catch (error) {
@@ -345,7 +339,7 @@ export async function sendPromptToGeminiAction(
         const isCancellation = error instanceof Error && error.message.includes('Processing canceled');
         const errorMessage = error instanceof Error ? error.message : "Failed to process Gemini request";
         // Update session status based on error type
-        const finalStatus = isCancellation ? 'canceled' : 'failed';
+        const finalStatus: GeminiStatus = isCancellation ? 'canceled' : 'failed';
          // Get start time from session if available, otherwise use current time as fallback
         const startTimeForUpdate = session?.geminiStartTime || startTime || Date.now(); // Use fetched session start time
         // Persist the final status, times, and error message
@@ -353,7 +347,7 @@ export async function sendPromptToGeminiAction(
         let finalPath: string | null = null;
         if (!isCancellation && filePath && existsSync(filePath)) { // Keep file on failure if it exists
             finalPath = filePath; // Keep path on failure
-        }
+        } else finalPath = null; // Always clear path on cancellation
         await sessionRepository.updateSessionGeminiStatus(sessionId, finalStatus, startTimeForUpdate, endTime, finalPath, errorMessage);
         console.log(`[Gemini Action] Session ${sessionId}: Set status to ${finalStatus} at ${endTime}. Error: ${errorMessage}`);
 
@@ -361,14 +355,12 @@ export async function sendPromptToGeminiAction(
         if (isCancellation && filePath && existsSync(filePath)) {
              try {
                  // Decide whether to delete on cancel. For now, let's delete.
-                 await fs.unlink(filePath);
-                 // Set finalPath to null as the file is deleted
+                 await fs.unlink(filePath); // Remove the file on cancellation
                  console.log(`[Gemini Action] Session ${sessionId}: Successfully cleaned up canceled file: ${filePath}`);
              } catch (unlinkError) {
                  console.warn(`[Gemini Action] Failed to clean up file ${filePath}:`, unlinkError);
              }
-         } // Close filePath check
-
+         }
         return {
             isSuccess: false,
             message: errorMessage, // Use captured error message
@@ -421,7 +413,7 @@ function processSseEvent(eventData: string, writeStream: WriteStream | null): {
           textContent = strippedText; // Use stripped text from now on
           
           if (writeStream) {
-            writeStream.write(textContent);
+            writeStream.write(textContent); // Write the actual cleaned content
             success = true;
             processedContent += textContent;
           }
@@ -497,7 +489,6 @@ export async function cancelGeminiProcessingAction(
                 console.log(`[Gemini Action] Session ${sessionId}: Cleaned up file on cancel: ${patchPath}`);
             } catch (unlinkError) {
                 console.warn(`[Gemini Action] Session ${sessionId}: Failed to clean up canceled file ${patchPath}`, unlinkError);
-                // Don't fail the whole operation, just log the warning
             }
 
             return { isSuccess: true, message: "Gemini processing cancellation requested." };
@@ -507,7 +498,6 @@ export async function cancelGeminiProcessingAction(
 
         return { isSuccess: true, message: "Gemini processing cancellation requested." };
     } catch (error) {
-        // Keep existing catch block
         console.error(`[Gemini Action] Error canceling processing for session ${sessionId}:`, error);
         return { 
             isSuccess: false,
