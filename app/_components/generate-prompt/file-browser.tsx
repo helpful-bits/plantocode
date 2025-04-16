@@ -149,20 +149,37 @@ export default function FileBrowser({
       newMap[path] = {
         ...currentFile,
         forceExcluded,
-        included: forceExcluded ? false : currentFile.included, // Ensure included is false if forceExcluded is true
+        included: false, // Always set included to false when toggling forceExcluded
       };
     } // End if block
     handleFilesMapChangeInternal(newMap);
   };
 
+  // Specific handler for toggling force exclude OFF via filename click
+  // This makes the file included immediately when force exclude is removed by clicking the filename.
+  const handleToggleForceExcludeOffAndInclude = (path: string) => {
+    const newMap = { ...allFilesMap };
+    if (newMap[path]) {
+      const currentFile = newMap[path];
+      newMap[path] = {
+        ...currentFile,
+        forceExcluded: false, // Turn off force exclude
+        included: true,      // Turn on include
+      };
+    }
+    handleFilesMapChangeInternal(newMap);
+  };
   const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
     const newMap = { ...allFilesMap };
     filesToToggle.forEach(file => {
       const currentFile = newMap[file.path]; // Get current file state
       if (currentFile) {
-        currentFile.included = include ? !currentFile.forceExcluded : false; // Set included based on 'include' flag and forceExcluded status
-        if (include && currentFile.forceExcluded) { // If including, remove forceExclude flag
-          currentFile.forceExcluded = false;
+        if (include) {
+          currentFile.included = true;
+          currentFile.forceExcluded = false; // Always remove forceExcluded when including
+        } else {
+          currentFile.included = false;
+          // Don't change forceExcluded status when deselecting
         }
       } // End if block
     });
@@ -348,39 +365,44 @@ export default function FileBrowser({
 
       {/* Status bar with file counts */}
       {!isLoading && totalFilesCount > 0 && ( // Use totalFilesCount for check
-        <div className="flex items-center justify-between text-sm text-muted-foreground border-b pb-2">
-          <div>
-            <span className="font-medium">{includedCount}</span> of {totalFilesCount} files selected
-          </div>
-          
-          {displayedFiles.length !== totalFilesCount && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-sm text-muted-foreground border-b pb-2">
             <div>
-              Showing <span className="font-medium">{displayedFiles.length}</span> files
+              <span className="font-medium">{includedCount}</span> of {totalFilesCount} files selected
             </div>
-          )}
-          
-          {filteredDisplayFiles.length > 0 && (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="secondary" size="sm"
-                onClick={() => handleBulkToggle(false, filteredDisplayFiles)}
-                disabled={filteredDisplayFiles.length === 0 || includedCount === 0}
-                className="h-9" // Keep existing style
-              > {/* Close Button */}
-                Deselect Visible
-              </Button>
-              <Button
-                type="button"
-                variant="secondary" size="sm"
-                onClick={() => handleBulkToggle(true, filteredDisplayFiles)}
-                disabled={filteredDisplayFiles.length === 0 || filteredDisplayFiles.every(f => f.included || f.forceExcluded)}
-                className="h-9" // Keep existing style
-              > {/* Close Button */}
-                Include Filtered
-              </Button>
-            </div>
-          )}
+            
+            {displayedFiles.length !== totalFilesCount && (
+              <div>
+                Showing <span className="font-medium">{displayedFiles.length}</span> files
+              </div>
+            )}
+            
+            {filteredDisplayFiles.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary" size="sm"
+                  onClick={() => handleBulkToggle(false, filteredDisplayFiles)}
+                  disabled={filteredDisplayFiles.length === 0 || includedCount === 0}
+                  className="h-9" // Keep existing style
+                > {/* Close Button */}
+                  Deselect Visible
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary" size="sm"
+                  onClick={() => handleBulkToggle(true, filteredDisplayFiles)}
+                  disabled={filteredDisplayFiles.length === 0 || filteredDisplayFiles.every(f => f.included || f.forceExcluded)}
+                  className="h-9" // Keep existing style
+                > {/* Close Button */}
+                  Include Filtered
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground italic">
+            Tip: Click the second checkbox to force exclude a file (it cannot be included when force excluded)
+          </div>
         </div>
       )}
 
@@ -415,24 +437,29 @@ export default function FileBrowser({
                     type="checkbox"
                     checked={file.included}
                     onChange={() => handleToggleFile(file.path)}
-                    disabled={file.forceExcluded}
                     className="cursor-pointer flex-shrink-0 accent-primary" // Use primary accent color
+                    title="Include file in generation"
                   />
-                  <input
-                    type="checkbox"
-                    checked={file.forceExcluded}
-                    onChange={() => handleToggleForceExclude(file.path)}
-                    className={cn("cursor-pointer accent-destructive flex-shrink-0 w-3.5 h-3.5")}
+                  <div 
+                    className="flex items-center cursor-pointer" 
+                    onClick={() => handleToggleForceExclude(file.path)}
                     title="Force Exclude (cannot be included)"
-                  />
+                  >
+                    <input
+                      type="checkbox"
+                      checked={file.forceExcluded}
+                      className={cn("cursor-pointer accent-destructive flex-shrink-0 w-3.5 h-3.5")}
+                      readOnly
+                    />
+                  </div>
                   <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" /> {/* File icon */}
                   <span
                     className={cn(
                       "font-mono flex-1 truncate cursor-pointer", 
                       file.forceExcluded && "line-through text-muted-foreground/80"
                     )}
-                    onClick={() => handleToggleFile(file.path)}
-                    title={file.path}
+                    onClick={() => file.forceExcluded ? handleToggleForceExcludeOffAndInclude(file.path) : handleToggleFile(file.path)}
+                    title={`${file.path}${file.forceExcluded ? ' (force excluded)' : file.included ? ' (included)' : ' (not included)'}`}
                   >
                     {dirPath ? (
                       <> {/* Show directory path if it exists */}
