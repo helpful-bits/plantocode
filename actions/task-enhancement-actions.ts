@@ -24,33 +24,53 @@ export async function enhanceTaskDescriptionAction({
 
   try {
     // Construct the prompt for task enhancement using code analysis
-    const systemPrompt = `You are an expert software engineer and technical writer that helps clarify and enhance task descriptions based on code analysis.
-Analyze the provided Task Description and the relevant code files that have been selected.
-Enhance and improve the task description by adding specific details, clarifying ambiguities, and making it more technically precise.
-Use your insights from the code to add missing context and details that would make the task clearer.
-Format your response as a concise, well-structured paragraph or bullet points.
-Focus ONLY on enhancing the task description - do not include implementation details or solutions.
-Do not repeat information already in the original description unless you're clarifying it.
-Be specific and reference relevant parts of the code when useful.`;
+    const systemPrompt = `You are an expert software engineer tasked with providing general direction for completing a programming task based on codebase analysis.
 
-    // Prepare file content for the prompt context
+Your role:
+1. Review the codebase to understand its structure and architecture
+2. Provide general guidance on how to approach the task
+3. Highlight the key areas of the code that are most relevant
+
+The guidance should include:
+- A high-level overview of the relevant parts of the system
+- General approach suggestions for implementing the requested changes
+- Brief mentions of key files or components that will be important
+- Any important design patterns or architectural considerations
+
+IMPORTANT STYLE INSTRUCTIONS:
+- Do NOT include introductory sentences like "I've reviewed the code" or "Here's a plan"
+- Start immediately with the substantive content without any preamble
+- Do NOT repeat or rephrase the original task description
+- Do NOT include concluding statements or "good luck" messages
+- Do NOT write in first person (avoid "I", "me", "my")
+
+Keep your response concise and focused on general direction rather than detailed implementation specifics.
+Avoid providing overly technical details or exhaustive file lists.
+Aim for clarity and brevity - give just enough context to help the developer get started.`;
+
+    // Prepare file content for the prompt context, with specific highlighting of the most relevant files
     const codeContext = relevantFiles
       .map(filePath => {
         const content = fileContents[filePath];
-        return content ? `File: ${filePath}\n\`\`\`\n${content}\n\`\`\`` : null;
+        return content ? `RELEVANT FILE: ${filePath}\n\`\`\`\n${content}\n\`\`\`` : null;
       })
       .filter(Boolean)
       .join("\n\n");
-
+    
+    // Count total files and highlight how many are being processed
+    const totalFileCount = Object.keys(fileContents).length;
+    const relevantFileCount = relevantFiles.length;
+    
     const userPromptContent = `Original Task Description:
 \`\`\`
 ${originalDescription}
 \`\`\`
 
-Relevant Code Files:
+You have access to ${totalFileCount} code files in this project, with ${relevantFileCount} files highlighted as most relevant to this task:
+
 ${codeContext}
 
-Based on the original task description and the code files, provide an enhanced, more specific task description.`;
+Provide general guidance and direction for approaching this task. Focus on giving a helpful overview rather than specific implementation details.`;
 
     // Call the Gemini API
     const result = await callGeminiAPI(

@@ -42,31 +42,48 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
       isFirstLoadRef.current = true; // Reset first load flag on session change
       console.log(`[FormStateManager] Session changed to ${activeSessionId}. Resetting state.`);
     }
+    // Clear error when dependencies change but session is still active
+    if (activeSessionId && repository && isInitialized) {
+      setSaveError(null);
+    }
   }, [activeSessionId]);
 
 
-  const debouncedSave = useDebounceCallback(async (sessionId: string | null, currentState: typeof formState, currentSessionName: string) => {
-    if (!sessionId) return; // Should not happen if activeSessionId is required
-    if (isSavingRef.current) return; // Prevent concurrent saves
-
+  const debouncedSave = useCallback(async (sessionId: string, currentState: any, sessionName: string) => {
+    console.log(`[FormStateManager] Running debounced save for session ${sessionId}`);
+    if (isSavingRef.current) {
+      console.log(`[FormStateManager] Skipping save - already in progress for session ${sessionId}`);
+      return;
+    }
     isSavingRef.current = true;
     try {
       const sessionToSave = await repository.getSession(sessionId!); // Use non-null assertion as checked before
       if (sessionToSave) {
-        // Exclude Gemini fields from the current state to avoid overwriting live status
+        // Extract Gemini fields from the *current* form state to exclude them from the merge, preserving DB values
         const { geminiStatus, geminiStartTime, geminiEndTime, geminiPatchPath, geminiStatusMessage, geminiTokensReceived, geminiCharsReceived, geminiLastUpdate, ...formStateWithoutGemini } = currentState;
+
+        // Specifically extract forceExcludedFiles from the current state to ensure it's saved
+        const { forceExcludedFiles } = currentState;
+
+        // Ensure session name is not empty
+        const effectiveSessionName = sessionName && sessionName.trim()
+          ? sessionName.trim()
+          : sessionToSave.name && sessionToSave.name.trim()
+            ? sessionToSave.name.trim()
+            : `Session ${new Date().toLocaleString()}`;
         
         // Remove outputFormat and customFormat from updatedSessionData
         const updatedSessionData: Session = {
           ...sessionToSave, // Start with existing session data from DB
-          ...formStateWithoutGemini, // Overwrite with current form state (excluding gemini status fields)
+          ...formStateWithoutGemini, // Overwrite with current form state (excluding Gemini status fields)
+          forceExcludedFiles: forceExcludedFiles || [], // Explicitly include forceExcludedFiles from current state
           id: activeSessionId, // Ensure ID remains the same
-          name: sessionName, // Use current session name from props
+          name: effectiveSessionName, // Use non-empty session name
           projectDirectory: formState.projectDirectory, // Ensure these are correct
-          updatedAt: Date.now() // Update timestamp
+          updatedAt: Date.now(), // Update timestamp
         };
         
-        // Preserve the existing Gemini fields from the database
+        // Re-apply the existing Gemini fields from the database (already done by spreading sessionToSave first)
         updatedSessionData.geminiStatus = sessionToSave.geminiStatus;
         updatedSessionData.geminiStartTime = sessionToSave.geminiStartTime;
         updatedSessionData.geminiEndTime = sessionToSave.geminiEndTime; // Ensure correct field name
@@ -77,8 +94,12 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
         updatedSessionData.geminiLastUpdate = sessionToSave.geminiLastUpdate;
 
         // Prevent concurrent saves
-        if (isSavingRef.current) return;
-        
+        // Re-check isSavingRef just before the DB call, although it should be true here
+        if (!isSavingRef.current) {
+           console.warn(`[FormStateManager] isSavingRef became false unexpectedly before DB call for session ${sessionId}`);
+           isSavingRef.current = true; // Ensure it's true
+        }
+
         await repository.saveSession(updatedSessionData);
         // Update lastSavedStateRef *after* successful save
         lastSavedStateRef.current = { ...formState };
@@ -96,7 +117,7 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     } finally {
       isSavingRef.current = false; // Ensure saving flag is reset
     }
-  }, 1000); // Debounce for 1 second
+  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, formState, sessionName]);
 
   // Effect to trigger debounced save on state change
   useEffect(() => {
@@ -110,12 +131,19 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
       }
       return;
     }
-
+    console.log(`[FormStateManager] useEffect triggered for session ${activeSessionId}. Form state length: ${formStateString.length}`);
     // Compare current state with the last known saved state for this session
     const hasChanges = lastSavedStateRef.current === null || JSON.stringify(formState) !== JSON.stringify(lastSavedStateRef.current);
     if (onStateChange) onStateChange(hasChanges);
 
     if (hasChanges) {
+      // Additional check: Don't save if essential fields are missing in the current state being saved
+      if (!formState.projectDirectory?.trim()) {
+        console.warn(`[FormStateManager] Auto-save skipped for session ${activeSessionId} - projectDirectory is empty in current formState.`);
+        setSaveError("Cannot auto-save: Project directory is missing.");
+        if (onSaveError) onSaveError("Cannot auto-save: Project directory is missing.");
+        return;
+      }
       console.log(`[FormStateManager] Changes detected for session ${activeSessionId}. Scheduling auto-save.`);
       // Debounced save logic
       debouncedSave(activeSessionId, formState, sessionName);

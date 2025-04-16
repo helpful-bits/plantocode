@@ -10,7 +10,7 @@ if (!fs.existsSync(APP_DATA_DIR)) {
   fs.mkdirSync(APP_DATA_DIR, { recursive: true });
 }
 
-sqlite3.verbose(); // Enable verbose mode for debugging
+// sqlite3.verbose(); // Keep verbose mode commented out unless debugging SQL
 let db: sqlite3.Database;
 
 try {

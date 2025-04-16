@@ -7,11 +7,18 @@ import { normalizePath } from '../path-utils';
  * Session Repository - Handles all session-related database operations
  */
 export class SessionRepository {
+  // Add transaction state tracking property
+  private _transactionActive = false;
+
   /**
    * Save a session to the database (create or update)
    */
   saveSession = async (session: Session): Promise<Session> => {
     console.log(`[Repo] saveSession called for ID: ${session.id} - Name: ${session.name}`);
+    console.log(`[Repo] Current transaction state before saveSession: ${this._transactionActive}`);
+    // Create a reference to this instance to use in callbacks
+    const self = this;
+    
     return new Promise((resolve, reject) => {
       try {
         if (!session.projectDirectory) {
@@ -23,182 +30,236 @@ export class SessionRepository {
         const includedFilesArray = session.includedFiles || []; // Ensure arrays exist
         const excludedFilesArray = session.forceExcludedFiles || [];
 
-        // Begin transaction (handle potential nesting)
-        db.run('BEGIN TRANSACTION', async (err) => { // SQLite handles nested transactions gracefully, only outermost BEGIN/COMMIT work
-          if (err) return reject(err);
+        // Helper function to handle session save logic
+        const handleSessionSave = async (
+          resolve: (value: Session) => void, reject: (reason: any) => void, projectHash: string, session: Session, includedFilesArray: string[], excludedFilesArray: string[], noTransaction: boolean
+        ) => {
+          // console.log(`[Repo] handleSessionSave called for ${session.id}, noTransaction: ${noTransaction}`); // Reduce logging
+          // Ensure Gemini fields have defaults if not provided
+          const currentGeminiStatus = session.geminiStatus || 'idle';
+          // Prepare data for insertion/replacement
+          const sessionValues: Omit<Session, 'includedFiles' | 'forceExcludedFiles' | 'updatedAt'> & { projectHash: string; updatedAt: number } = {
+            id: session.id,
+            name: session.name,
+            projectDirectory: session.projectDirectory,
+            projectHash, // Store the hash as well for safer queries
+            taskDescription: session.taskDescription || '',
+            searchTerm: session.searchTerm || '',
+            pastedPaths: session.pastedPaths || '',
+            patternDescription: session.patternDescription || '',
+            titleRegex: session.titleRegex || '',
+            contentRegex: session.contentRegex || '',
+            isRegexActive: session.isRegexActive ?? true, // Default to true for backwards compatibility
+            updatedAt: Date.now(), // Use current timestamp for update
+            // Explicitly include Gemini fields, providing defaults if they are missing
+            geminiStatus: currentGeminiStatus,
+            geminiStartTime: session.geminiStartTime || null,
+            geminiEndTime: session.geminiEndTime || null,
+            geminiPatchPath: session.geminiPatchPath ? normalizePath(session.geminiPatchPath) : null, // Normalize path
+            geminiTokensReceived: session.geminiTokensReceived || 0,
+            geminiCharsReceived: session.geminiCharsReceived || 0,
+            geminiLastUpdate: session.geminiLastUpdate || null,
+            geminiStatusMessage: session.geminiStatusMessage || null,
+          };
+          // console.log(`[Repo] Preparing to INSERT/REPLACE session ${sessionValues.id} with values:`, sessionValues); // Reduce logging
 
-          // Helper function to handle session save logic
-          async function handleSessionSave( // Keep helper function
-            resolve: (value: Session) => void, reject: (reason: any) => void, projectHash: string, session: Session, includedFilesArray: string[], excludedFilesArray: string[], noTransaction: boolean
-          ) { // Added parameters 
-            // Ensure Gemini fields have defaults if not provided
-            const currentGeminiStatus = session.geminiStatus || 'idle';
-            // Prepare data for insertion/replacement
-            const sessionValues: Omit<Session, 'includedFiles' | 'forceExcludedFiles' | 'updatedAt'> & { projectHash: string; updatedAt: number } = {
-              id: session.id,
-              name: session.name,
-              projectDirectory: session.projectDirectory,
-              projectHash, // Store the hash as well for safer queries
-              taskDescription: session.taskDescription || '',
-              searchTerm: session.searchTerm || '',
-              pastedPaths: session.pastedPaths || '',
-              patternDescription: session.patternDescription || '',
-              titleRegex: session.titleRegex || '',
-              contentRegex: session.contentRegex || '',
-              isRegexActive: session.isRegexActive ?? true, // Default to true for backwards compatibility
-              updatedAt: Date.now(), // Use current timestamp for update
-              // Explicitly include Gemini fields, providing defaults if they are missing
-              geminiStatus: currentGeminiStatus,
-              geminiStartTime: session.geminiStartTime || null,
-              geminiEndTime: session.geminiEndTime || null,
-              geminiPatchPath: session.geminiPatchPath ? normalizePath(session.geminiPatchPath) : null, // Normalize path
-              geminiTokensReceived: session.geminiTokensReceived || 0,
-              geminiCharsReceived: session.geminiCharsReceived || 0,
-              geminiLastUpdate: session.geminiLastUpdate || null,
-              geminiStatusMessage: session.geminiStatusMessage || null,
-            };
-            console.log(`[Repo] Preparing to INSERT/REPLACE session ${sessionValues.id} with values:`, sessionValues);
-
-            db.run(`
-              -- Insert or update the main session data
-              INSERT OR REPLACE INTO sessions
-              (id, name, project_directory, project_hash, task_description, search_term, pasted_paths, -- Keep session fields
-               pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at,
-               gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?) -- Keep 21 placeholders, use empty string for codebase_structure
-            `, [ // Ensure values match the order of columns
-              sessionValues.id,
-              sessionValues.name,
-              sessionValues.projectDirectory, // Ensure project directory is saved
-              projectHash, // Add project_hash parameter
-              sessionValues.taskDescription,
-              sessionValues.searchTerm,
-              sessionValues.pastedPaths,
-              sessionValues.patternDescription,
-              sessionValues.titleRegex,
-              sessionValues.contentRegex,
-              sessionValues.isRegexActive ? 1 : 0, // Convert boolean to 0/1 for SQLite
-              // Empty string for codebaseStructure
-              sessionValues.updatedAt,
-              sessionValues.geminiStatus, // Ensure geminiStatus is passed
-              sessionValues.geminiStartTime,
-              sessionValues.geminiEndTime,
-              sessionValues.geminiPatchPath,
-              sessionValues.geminiStatusMessage, // Add status message
-              sessionValues.geminiTokensReceived,
-              sessionValues.geminiCharsReceived,
-              sessionValues.geminiLastUpdate,
-            ], async function(saveErr) {
-              if (saveErr) {
-                console.error("Error saving session:", saveErr);
-                // Only rollback if we're in a transaction
-                if (!noTransaction) { // Use noTransaction flag
-                  db.run('ROLLBACK', () => reject(saveErr));
-                } else {
+          db.run(`
+            -- Insert or update the main session data
+            INSERT OR REPLACE INTO sessions
+            (id, name, project_directory, project_hash, task_description, search_term, pasted_paths, -- Keep session fields
+             pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at,
+             gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?) -- Keep 21 placeholders, use empty string for codebase_structure
+          `, [ // Ensure values match the order of columns
+            sessionValues.id,
+            sessionValues.name,
+            sessionValues.projectDirectory, // Ensure project directory is saved
+            projectHash, // Add project_hash parameter
+            sessionValues.taskDescription,
+            sessionValues.searchTerm,
+            sessionValues.pastedPaths,
+            sessionValues.patternDescription,
+            sessionValues.titleRegex,
+            sessionValues.contentRegex,
+            sessionValues.isRegexActive ? 1 : 0, // Convert boolean to 0/1 for SQLite
+            // Empty string for codebaseStructure
+            sessionValues.updatedAt,
+            sessionValues.geminiStatus, // Ensure geminiStatus is passed
+            sessionValues.geminiStartTime,
+            sessionValues.geminiEndTime,
+            sessionValues.geminiPatchPath,
+            sessionValues.geminiStatusMessage, // Add status message
+            sessionValues.geminiTokensReceived,
+            sessionValues.geminiCharsReceived,
+            sessionValues.geminiLastUpdate,
+          ], async function(saveErr) {
+            if (saveErr) {
+              console.error("Error saving session:", saveErr);
+              // Only rollback if we're in a transaction
+              if (!noTransaction) { // Use noTransaction flag
+                console.log(`[Repo] Error saving session data, executing ROLLBACK for session ${session.id}`);
+                db.run('ROLLBACK', () => {
+                  // Use captured reference instead of this
+                  self._transactionActive = false; // Reset transaction flag
+                  console.log(`[Repo] ROLLBACK completed after save error, transaction flag reset to: ${self._transactionActive}`);
                   reject(saveErr);
+                });
+              } else {
+                console.log(`[Repo] Error saving session data in nested transaction for ${session.id}, no ROLLBACK needed`);
+                reject(saveErr);
+              }
+              return;
+            }
+
+            try {
+              // Delete existing included files for this session
+              await new Promise<void>((resolveDelete, rejectDelete) => {
+                db.run(`DELETE FROM included_files WHERE session_id = ?`, [session.id], (deleteErr) => {
+                  if (deleteErr) { console.error("Error deleting included files:", deleteErr); rejectDelete(deleteErr); }
+                  else resolveDelete();
+                });
+              });
+              // console.log(`[Repo] Deleted existing included_files for session ${session.id}`); // Reduce logging
+
+              // Insert new included files - safely handle each file path
+              if (includedFilesArray.length > 0) {
+                const includedStmt = db.prepare(`INSERT INTO included_files (session_id, file_path) VALUES (?, ?)`);
+                for (const filePath of includedFilesArray) {
+                  try {
+                    await new Promise<void>((resolveInsert, rejectInsert) => {
+                      includedStmt.run(session.id, filePath, (insertErr) => {
+                        if (insertErr) { 
+                          console.error("Error inserting included file:", insertErr, { filePath });
+                          // Skip this file instead of failing the entire transaction
+                          resolveInsert(); 
+                        }
+                        else resolveInsert();
+                      });
+                    });
+                  } catch (innerErr) {
+                    console.error("Error processing included file:", innerErr, { filePath });
+                    // Continue with next file
+                  }
                 }
-                return;
+                includedStmt.finalize();
+                // console.log(`[Repo] Inserted ${includedFilesArray.length} included_files for session ${session.id}`); // Reduce logging
               }
 
-              try {
-                // Delete existing included files for this session
-                await new Promise<void>((resolveDelete, rejectDelete) => {
-                  db.run(`DELETE FROM included_files WHERE session_id = ?`, [session.id], (deleteErr) => {
-                    if (deleteErr) { console.error("Error deleting included files:", deleteErr); rejectDelete(deleteErr); }
-                    else resolveDelete();
-                  });
+              // Delete existing excluded files for this session
+              await new Promise<void>((resolveDelete, rejectDelete) => {
+                db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [session.id], (deleteErr) => {
+                  if (deleteErr) { console.error("Error deleting excluded files:", deleteErr); rejectDelete(deleteErr); }
+                  else resolveDelete();
                 });
-                console.log(`[Repo] Deleted existing included_files for session ${session.id}`);
+              });
+               // console.log(`[Repo] Deleted existing excluded_files for session ${session.id}`); // Reduce logging
 
-                // Insert new included files - safely handle each file path
-                if (includedFilesArray.length > 0) {
-                  const includedStmt = db.prepare(`INSERT INTO included_files (session_id, file_path) VALUES (?, ?)`);
-                  for (const filePath of includedFilesArray) {
-                    try {
-                      await new Promise<void>((resolveInsert, rejectInsert) => {
-                        includedStmt.run(session.id, filePath, (insertErr) => {
-                          if (insertErr) { 
-                            console.error("Error inserting included file:", insertErr, { filePath });
-                            // Skip this file instead of failing the entire transaction
-                            resolveInsert(); 
-                          }
-                          else resolveInsert();
-                        });
+              // Insert new excluded files - safely handle each file path
+              if (excludedFilesArray.length > 0) {
+                const excludedStmt = db.prepare(`INSERT INTO excluded_files (session_id, file_path) VALUES (?, ?)`);
+                for (const filePath of excludedFilesArray) {
+                  try {
+                    await new Promise<void>((resolveInsert, rejectInsert) => {
+                      excludedStmt.run(session.id, filePath, (insertErr) => {
+                        if (insertErr) { 
+                          console.error("Error inserting excluded file:", insertErr, { filePath });
+                          // Skip this file instead of failing the entire transaction
+                          resolveInsert(); 
+                        }
+                        else resolveInsert();
                       });
-                    } catch (innerErr) {
-                      console.error("Error processing included file:", innerErr, { filePath });
-                      // Continue with next file
-                    }
+                    });
+                  } catch (innerErr) {
+                    console.error("Error processing excluded file:", innerErr, { filePath });
+                    // Continue with next file
                   }
-                  includedStmt.finalize();
-                  console.log(`[Repo] Inserted ${includedFilesArray.length} included_files for session ${session.id}`);
                 }
+                excludedStmt.finalize();
+                // console.log(`[Repo] Inserted ${excludedFilesArray.length} excluded_files for session ${session.id}`); // Reduce logging
+              }
 
-                // Delete existing excluded files for this session
-                await new Promise<void>((resolveDelete, rejectDelete) => {
-                  db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [session.id], (deleteErr) => {
-                    if (deleteErr) { console.error("Error deleting excluded files:", deleteErr); rejectDelete(deleteErr); }
-                    else resolveDelete();
-                  });
+              // Only commit if we started a transaction
+              if (!noTransaction) { // Use noTransaction flag
+                // Log transaction state before commit
+                // console.log(`[Repo] Transaction is active: ${self._transactionActive}, attempting to commit for session ${session.id}`); // Reduce logging
+
+                // Commit the transaction
+                db.run('COMMIT', (commitErr) => {
+                  // Use captured reference instead of this
+                  self._transactionActive = false; // Reset transaction flag
+                  console.log(`[Repo] COMMIT completed for session ${session.id}, transaction flag reset to: ${self._transactionActive}`);
+                  
+                  if (commitErr) {
+                    console.error("Commit error:", commitErr);
+                    db.run('ROLLBACK', () => {
+                      console.log(`[Repo] ROLLBACK completed due to COMMIT error for session ${session.id}`);
+                      reject(commitErr);
+                    });
+                  } else {
+                    console.log(`[Repo] Successfully committed save for session ${session.id}`);
+                    resolve(session);
+                  }
                 });
-                 console.log(`[Repo] Deleted existing excluded_files for session ${session.id}`);
-
-                // Insert new excluded files - safely handle each file path
-                if (excludedFilesArray.length > 0) {
-                  const excludedStmt = db.prepare(`INSERT INTO excluded_files (session_id, file_path) VALUES (?, ?)`);
-                  for (const filePath of excludedFilesArray) {
-                    try {
-                      await new Promise<void>((resolveInsert, rejectInsert) => {
-                        excludedStmt.run(session.id, filePath, (insertErr) => {
-                          if (insertErr) { 
-                            console.error("Error inserting excluded file:", insertErr, { filePath });
-                            // Skip this file instead of failing the entire transaction
-                            resolveInsert(); 
-                          }
-                          else resolveInsert();
-                        });
-                      });
-                    } catch (innerErr) {
-                      console.error("Error processing excluded file:", innerErr, { filePath });
-                      // Continue with next file
-                    }
-                  }
-                  excludedStmt.finalize();
-                  console.log(`[Repo] Inserted ${excludedFilesArray.length} excluded_files for session ${session.id}`);
-                }
-
-                // Only commit if we started a transaction
-                if (!noTransaction) { // Use noTransaction flag
-                  // Commit the transaction
-                  db.run('COMMIT', (commitErr) => {
-                    if (commitErr) {
-                      console.error("Commit error:", commitErr);
-                      db.run('ROLLBACK', () => reject(commitErr));
-                    } else {
-                      console.log(`[Repo] Successfully committed save for session ${session.id}`);
-                      resolve(session);
-                    }
-                  });
-                } else {
-                  // If we're not in a transaction (due to nesting), just resolve
-                  resolve(session);
-                }
-              } catch (fileError) {
-                console.error("Error processing files:", fileError);
-                // Only rollback if we started a transaction
-                if (!noTransaction) { // Use noTransaction flag
-                  db.run('ROLLBACK', () => reject(fileError));
-                  console.log(`[Repo] Rolled back transaction for session ${session.id} due to file error`);
-                } else {
+              } else {
+                // If we're not in a transaction (due to nesting), just resolve
+                console.log(`[Repo] No transaction to commit (nested transaction) for session ${session.id}`);
+                resolve(session);
+              }
+            } catch (fileError) {
+              console.error("Error processing files:", fileError);
+              // Only rollback if we started a transaction
+              if (!noTransaction) { // Use noTransaction flag
+                console.log(`[Repo] Error occurred, executing ROLLBACK for session ${session.id}`);
+                db.run('ROLLBACK', () => {
+                  // Use captured reference instead of this
+                  self._transactionActive = false; // Reset transaction flag
+                  console.log(`[Repo] ROLLBACK completed, transaction flag reset to: ${self._transactionActive}`);
                   reject(fileError);
-                }
+                });
+                console.log(`[Repo] Rolled back transaction for session ${session.id} due to file error`);
+              } else {
+                console.log(`[Repo] Error in nested transaction for session ${session.id}, no ROLLBACK needed`);
+                reject(fileError);
               }
-            });
-          } // End of handleSessionSave helper
-        });
+            }
+          });
+        }; // End of handleSessionSave helper
+
+        // Check if transaction is already active
+        if (self._transactionActive) {
+          // Skip starting a new transaction if one is already active
+          console.log(`[Repo] Transaction already active, skipping BEGIN for session ${session.id}`);
+          handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, true);
+        } else {
+          // Start a new transaction if none is active
+          self._transactionActive = true;
+          console.log(`[Repo] Starting new transaction for session ${session.id}, flag set to: ${self._transactionActive}`);
+          
+          db.run('BEGIN TRANSACTION', (err) => {
+            if (err) {
+              self._transactionActive = false; // Reset flag on error
+              console.error(`[Repo] Failed to begin transaction: ${err.message}`);
+              return reject(err);
+            }
+            
+            // Call the helper function with the transaction already started
+            handleSessionSave(resolve, reject, projectHash, session, includedFilesArray, excludedFilesArray, false);
+          });
+        }
       } catch (error) {
         console.error("Outer catch error in saveSession:", error);
-        reject(error);
+        // Add rollback if transaction might be started
+        if (self._transactionActive) {
+          console.log(`[Repo] Outer catch error, executing ROLLBACK for session ${session.id}`);
+          db.run('ROLLBACK', () => {
+            self._transactionActive = false; // Reset transaction flag
+            console.log(`[Repo] ROLLBACK completed from outer catch, transaction flag reset to: ${self._transactionActive}`);
+            reject(error);
+          });
+        } else {
+          console.log(`[Repo] Outer catch error, no active transaction for session ${session.id}`);
+          reject(error);
+        }
       }
     });
   };

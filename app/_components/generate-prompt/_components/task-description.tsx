@@ -8,6 +8,7 @@ import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
 export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;
+  appendText: (text: string) => void;
 }
 
 // Define props for the component
@@ -34,7 +35,12 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
       const currentSelectionStart = textareaRef.current?.selectionStart ?? value.length;
       const currentSelectionEnd = textareaRef.current?.selectionEnd ?? value.length;
       insertTextAtCursor(text, currentSelectionStart, currentSelectionEnd);
-    } // Close insertTextAtCursorPosition method
+    },
+    appendText: (text: string) => {
+      // Append text at the end with 2 new lines in between
+      const separator = value.trim().length > 0 ? "\n\n" : "";
+      insertTextAtCursor(separator + text, value.length, value.length);
+    }
   }));
 
   // Capture and store the selection positions whenever the user selects text

@@ -2,6 +2,7 @@
 
 import { ActionState } from '@/types';
 import { generateDirectoryTree } from '@/lib/directory-tree';
+import { callGeminiAPI } from '@/lib/gemini-api';
 
 interface PathFinderRequestPayload {
   taskDescription: string;
@@ -10,7 +11,7 @@ interface PathFinderRequestPayload {
 export async function findRelevantFilesAction(
   projectDirectory: string,
   taskDescription: string
-): Promise<ActionState<{ relevantPaths: string[] }>> {
+): Promise<ActionState<{ relevantPaths: string[], enhancedTaskDescription: string }>> {
   // Validate inputs
   if (!taskDescription || !taskDescription.trim()) {
     return { isSuccess: false, message: "Task description cannot be empty." };
@@ -33,49 +34,91 @@ export async function findRelevantFilesAction(
       return { isSuccess: false, message: "GEMINI_API_KEY environment variable is not set." };
     }
 
-    // Prepare the prompt for finding relevant files
-    const prompt = `You're a code path finder assistant. Based on this task description and directory structure, list the MOST relevant files that would need to be examined or modified.
+    // Prepare the XML-formatted prompt for both finding relevant files and enhancing the task description
+    const prompt = `<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+  <role>
+    You are an expert software engineer analyzing a codebase to provide guidance on a programming task.
+  </role>
 
-Task Description:
-${taskDescription}
+  <task_description>
+    ${taskDescription}
+  </task_description>
 
-Project Structure:
-${codebaseStructure}
+  <project_structure>
+    ${codebaseStructure}
+  </project_structure>
 
-Provide ONLY a list of file paths, with each path on a new line. No explanations, bullets, or other formatting. Only include files that actually exist based on the project structure provided. 
-Include no more than 10 of the most relevant files, prioritizing the ones that would need to be modified for the task.
-Do not include node_modules, .git, or other common ignored directories.`;
+  <requirements>
+    1. Find the most relevant files for implementing this task.
+    2. Provide general guidance on how to approach the task.
+  </requirements>
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          { role: 'user', parts: [{ text: prompt }] }
-        ]
-      })
-    });
+  <output_format>
+    <relevant_files>
+      List only the file paths, one per line.
+      No explanations, bullets, or other formatting.
+      Only include files that actually exist based on the project structure provided.
+      Include ALL relevant files that would need to be examined or modified for the task.
+      Also include:
+      - Parent components or files that these components extend or inherit from
+      - Related dependency files that might be needed to understand the overall context
+      - Configuration files that might affect the components
+      - Test files for the components if they exist
+      - Any documentation files (.md, .txt, etc.) that explain related functionality
+      - Context files needed to understand the overall architecture
+      Do not include node_modules, .git, or other common ignored directories.
+    </relevant_files>
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return { isSuccess: false, message: `API request failed: ${response.status} ${errorText}` };
+    <guidance>
+      Generate a single concise paragraph summarizing:
+      - The key components and architectural patterns involved in this task
+      - How these components interact with each other
+      - The approach that would be most appropriate for implementing the task
+      
+      Do NOT write detailed explanations of what each file does.
+      Do NOT include introductory sentences like "Based on the codebase analysis" or "Here's a plan".
+      Do NOT repeat or rephrase the original task description.
+      Do NOT include concluding statements or "good luck" messages.
+      Do NOT write in first person (avoid "I", "me", "my").
+      Focus on giving clear, concise guidance that adds context to the task without overwhelming detail.
+    </guidance>
+  </output_format>
+</prompt>`;
+
+    // Call the Gemini API
+    const result = await callGeminiAPI(
+      "", // No system prompt needed as we're using XML format
+      prompt,
+      "gemini-2.0-flash",
+      { maxOutputTokens: 16384 }
+    );
+
+    if (!result.isSuccess || !result.data) {
+      return { isSuccess: false, message: result.message || "API request failed" };
     }
 
-    const responseData = await response.json();
+    const responseText = result.data;
     
-    if (!responseData.candidates || !responseData.candidates[0]?.content?.parts[0]?.text) {
-      return { isSuccess: false, message: "Invalid response format from API." };
+    // Extract relevant files from the response
+    const relevantFilesMatch = responseText.match(/<relevant_files>([\s\S]*?)<\/relevant_files>/);
+    const guidanceMatch = responseText.match(/<guidance>([\s\S]*?)<\/guidance>/);
+    
+    if (!relevantFilesMatch) {
+      return { isSuccess: false, message: "Could not extract relevant files from API response." };
     }
 
-    const resultText = responseData.candidates[0].content.parts[0].text;
-    
-    // Split the result text into individual paths and clean up
-    const relevantPaths = resultText
+    // Process the relevant files section
+    const relevantFilesText = relevantFilesMatch[1].trim();
+    const relevantPaths = relevantFilesText
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0 && !line.startsWith('#') && !line.startsWith('-'))
-      .map(line => line.replace(/^[*-]\s+/, '')) // Remove bullet points if any
-      .map(line => line.split(/\s+#/)[0].trim()); // Remove any comments
+      .map((line: string) => line.trim())
+      .filter((line: string) => line.length > 0 && !line.startsWith('#') && !line.startsWith('-'))
+      .map((line: string) => line.replace(/^[*-]\s+/, '')) // Remove bullet points if any
+      .map((line: string) => line.split(/\s+#/)[0].trim()); // Remove any comments
+    
+    // Extract guidance/enhanced task description
+    const enhancedTaskDescription = guidanceMatch ? guidanceMatch[1].trim() : "";
     
     if (relevantPaths.length === 0) {
       return { isSuccess: false, message: "No relevant paths were identified." };
@@ -83,8 +126,11 @@ Do not include node_modules, .git, or other common ignored directories.`;
     
     return {
       isSuccess: true,
-      message: `Found ${relevantPaths.length} relevant file paths.`,
-      data: { relevantPaths }
+      message: `Found ${relevantPaths.length} relevant file paths with task guidance.`,
+      data: { 
+        relevantPaths,
+        enhancedTaskDescription
+      }
     };
   } catch (error) {
     console.error('Error in findRelevantFilesAction:', error);

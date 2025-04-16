@@ -3,6 +3,7 @@ import { sessionRepository } from '@/lib/db/repository'; // Keep sessionReposito
 import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
 import { Session } from '@/types'; // Keep Session import
 // GET /api/session?id=...
+// Fetches a single session by its ID
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('id');
   
