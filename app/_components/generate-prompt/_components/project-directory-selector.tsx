@@ -1,70 +1,120 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react"; // Keep imports
-import { AlertCircle, Check, FolderOpen, Loader2, RefreshCw, Trash2, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { AlertCircle, Check, FolderOpen, Loader2, RefreshCw, ServerCrash, Trash2, X, XCircle } from "lucide-react";
+import { Input } from "@/components/ui/input"; // Keep Input import
 import { Button } from "@/components/ui/button";
 import { validateDirectoryAction } from "@/actions/validate-directory-action";
 import { getDefaultPathForOS, normalizePath, getDirectoryName } from "@/lib/path-utils";
 import { useDatabase } from "@/lib/contexts/database-context";
 import { useProject } from "@/lib/contexts/project-context";
-import { PROJECT_DIR_HISTORY_CACHE_KEY, MAX_PROJECT_DIR_HISTORY } from "@/lib/constants";
+import { PROJECT_DIR_HISTORY_CACHE_KEY, MAX_PROJECT_DIR_HISTORY, GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import DirectoryBrowser from "./directory-browser";
+
+
+enum ValidationType {
+  Success = 'success',
+  Error = 'error',
+  Info = 'info',
+  Loading = 'loading',
+}
 
 export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { onRefresh?: () => Promise<void>, isRefreshing?: boolean }) {
   const { projectDirectory, setProjectDirectory } = useProject();
   const { repository } = useDatabase();
   const [history, setHistory] = useState<string[]>([]);
-  const [inputValue, setInputValue] = useState(projectDirectory || "");
+  const [inputValue, setInputValue] = useState(projectDirectory && projectDirectory !== GLOBAL_PROJECT_DIR_KEY ? projectDirectory : "");
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
-  const [validationStatus, setValidationStatus] = useState<{ isValid: boolean; message: string } | null>(null);
+  const [validationStatus, setValidationStatus] = useState<{ type: ValidationType; message: string } | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // New state for directory browser modal
+  const [isDirectoryBrowserOpen, setIsDirectoryBrowserOpen] = useState(false);
 
   // Load history from database on mount or when repository is ready
   useLayoutEffect(() => {
     const loadHistory = async () => {
       if (!repository) return;
       try {
-        const historyStr = await repository.getCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY);
+        // Using the correct format with projectDirectory="global", key=PROJECT_DIR_HISTORY_CACHE_KEY
+        const historyStr = await repository.getCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY);
 
-        if (historyStr) {
+        // Initialize empty history array
+        let parsedHistory: string[] = [];
+        
+        if (historyStr) { // Ensure historyStr exists
           try {
-            const parsedHistory = JSON.parse(historyStr);
-            if (Array.isArray(parsedHistory) && parsedHistory.every(item => typeof item === 'string')) {
-              setHistory(parsedHistory);
+            // First check if it's a direct string - this is the invalid format we're fixing
+            if (typeof historyStr === 'string') {
+              // Handle the invalid format "global-project-dir" by converting it to an array
+              if (historyStr === "global-project-dir" || !historyStr.trim().startsWith('[')) {
+                console.warn("Converting invalid history format to array:", historyStr);
+                // If it's a valid path, use it as the first entry, otherwise use empty array
+                parsedHistory = historyStr === "global-project-dir" ? [] : [historyStr];
+                // Save the corrected format back to the cache
+                await repository.saveCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY, JSON.stringify(parsedHistory));
+              } else {
+                // Try to parse it as JSON
+                parsedHistory = JSON.parse(historyStr);
+                // Ensure it's an array
+                if (!Array.isArray(parsedHistory)) {
+                  console.warn("History is not an array, converting:", historyStr);
+                  parsedHistory = [];
+                  await repository.saveCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+                }
+              }
             } else {
-              setHistory([]);
-              await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+              // If it's not a string at all, initialize with empty array
+              console.warn("History is not a string:", historyStr);
+              parsedHistory = [];
+              await repository.saveCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
             }
+            
+            // Validate each item in the array is a string
+            if (!parsedHistory.every(item => typeof item === 'string')) {
+              console.warn("Some history items are not strings, filtering");
+              parsedHistory = parsedHistory.filter(item => typeof item === 'string');
+              await repository.saveCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY, JSON.stringify(parsedHistory));
+            }
+            
+            // Set the history
+            setHistory(parsedHistory);
           } catch (parseError) {
             console.error("Failed to parse history data:", parseError);
             setHistory([]);
-            await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+            // Reset the history in the database
+            await repository.saveCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
           }
+        } else {
+          // No history found, initialize with empty array
+          setHistory([]);
         }
       } catch (e) {
         console.error("Failed to load project directory history:", e);
         setHistory([]);
         
         try {
-          await repository.saveCachedState("global", "global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
+          await repository.saveCachedState("global", PROJECT_DIR_HISTORY_CACHE_KEY, "[]");
         } catch (err) {
           console.error("Failed to initialize history data:", err);
         }
       }
     };
-    
     loadHistory();
   }, [repository]);
 
   // Update input value when projectDirectory changes
   useEffect(() => {
-    if (projectDirectory && projectDirectory !== inputValue) {
-      setInputValue(projectDirectory);
+    // Only update input if projectDirectory changes *externally* (e.g., from URL or context load)
+    // and is different from the current input value, OR if projectDirectory is cleared
+    const contextDir = projectDirectory && projectDirectory !== GLOBAL_PROJECT_DIR_KEY ? projectDirectory : "";
+    if (contextDir !== inputValue) {
+      console.log("[Selector] Syncing input value from external projectDirectory change:", projectDirectory);
+      setInputValue(contextDir);
     }
-  }, [projectDirectory]);
+  }, [projectDirectory, inputValue]);
 
   // Add click outside listener to close history dropdown
   useEffect(() => {
@@ -81,18 +131,17 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
 
   // Add a directory to history
   const addToHistory = useCallback((dir: string) => {
-    if (!dir?.trim()) return;
+    const normalizedDir = normalizePath(dir?.trim() || "");
+    if (!normalizedDir) return;
 
     setHistory((prevHistory) => {
-      const newHistory = [dir, ...prevHistory.filter((item) => item !== dir)];
+      const newHistory = [normalizedDir, ...prevHistory.filter((item) => normalizePath(item) !== normalizedDir)];
       const limitedHistory = newHistory.slice(0, MAX_PROJECT_DIR_HISTORY);
       
       (async () => {
-        if (!repository) return;
         try {
           await repository.saveCachedState(
-            "global",
-            "global",
+            "global", 
             PROJECT_DIR_HISTORY_CACHE_KEY,
             JSON.stringify(limitedHistory)
           );
@@ -111,137 +160,120 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
     setValidationStatus(null);
   };
 
-  // Validate the directory path
+  // Validate the directory path using only server actions
   const validateDirectory = useCallback(async (directoryPath: string): Promise<boolean> => {
     setValidationStatus(null);
-    if (!directoryPath?.trim()) {
+    const trimmedPath = directoryPath?.trim();
+    if (!trimmedPath) {
       setValidationStatus({
-        isValid: false,
+        type: ValidationType.Error,
         message: "Please enter a directory path"
       });
       return false;
     }
     
     setIsValidating(true);
-    setValidationStatus({
-      isValid: false,
-      message: "Checking directory..."
-    });
-    
+    setValidationStatus({ type: ValidationType.Loading, message: "Checking directory..." });
     try {
-      const result = await validateDirectoryAction(directoryPath, true); // Pass true to enforce Git repo check
+      const result = await validateDirectoryAction(trimmedPath, true); // Always use server action
       const isValid = result.isSuccess && result.data?.isAccessible;
-
       let message = result.message || (isValid ? "Directory is valid" : "Invalid directory");
-      
-      // Check specifically for git repository
-      if (isValid && result.data?.stats) {
+      let validationType = isValid ? ValidationType.Success : ValidationType.Error;
+
+      if (result.isSuccess && result.data?.stats) {
         const stats = result.data.stats;
         if (!stats.isGitRepository) {
-          // Specific message if it's not a git repo
-          setValidationStatus({
-            isValid: false,
-            message: "Not a git repository. Please select a valid git repository."
-          });
+          validationType = ValidationType.Error;
+          message = "Not a Git repository. Please select a valid Git repository.";
+        } else if (stats.fileCount !== undefined) { // Use fileCount to confirm git check ran
+          message = "Git repository detected";
+        } else {
+          // Could be an empty repo, which is fine
+          message = "Git repository detected (potentially empty)";
+        }
+      } else if (!result.isSuccess) {
+        setValidationStatus({
+          type: ValidationType.Error,
+          message: result.message || "Directory validation failed"
+        });
+        return false;
+      }
+      
+      if (isValid && result.data?.stats) {
+        const stats = result.data.stats;
+        if (stats.isEmpty) {
+          validationType = ValidationType.Error;
+          message = "Directory is an empty Git repository.";
+          return false;
+        } else if (!stats.isGitRepository) {
+          validationType = ValidationType.Error;
+          message = "Not a Git repository. Please select a valid Git repository.";
           return false;
         }
         
-        message = "Git repository detected"; // Confirmation message
         if (stats.fileCount) {
-          message += ` with ${stats.fileCount} files and ${stats.dirCount} folders`;
+          message = "Git repository detected";
         }
       }
       
+      const finalValidationPassed = validationType === ValidationType.Success;
       setValidationStatus({
-        isValid: !!isValid,
+        type: validationType,
         message
       });
 
-      return isValid;
+      return finalValidationPassed;
     } catch (error) {
       console.error("Error validating directory:", error);
       setValidationStatus({
-        isValid: false,
+        type: ValidationType.Error,
         message: error instanceof Error ? error.message : "Failed to validate directory"
       });
-      return false;
+      return false; // Explicitly return false on error
     } finally {
       setIsValidating(false);
     }
-  }, []);
+  }, []); // No dependencies
 
   // Handle selection from datalist or pressing Enter
   const handleSelectOrEnter = useCallback(async (selectedValue: string) => {
     if (isValidating) return;
 
-    const trimmedValue = selectedValue.trim();
-    setInputValue(trimmedValue);
-    
-    const isValid = await validateDirectory(trimmedValue);
+    const normalizedValue = normalizePath(selectedValue?.trim() || "");
+    if (!normalizedValue) {
+      setProjectDirectory(""); // Clear project directory if input is empty
+      setValidationStatus(null);
+      return;
+    }
 
-    if (isValid) {
-      setProjectDirectory(trimmedValue);
-      addToHistory(trimmedValue);
+    setInputValue(normalizedValue); // Set input value to normalized path
+    
+    const validationPassed = await validateDirectory(normalizedValue);
+    if (validationPassed) {
+      setProjectDirectory(normalizedValue);
+      addToHistory(normalizedValue);
       setShowHistoryDropdown(false);
     }
-  }, [setProjectDirectory, addToHistory, validateDirectory, isValidating]);
+  }, [isValidating, validateDirectory, setProjectDirectory, addToHistory]);
 
   // Handle keydown events (Enter, Escape)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleSelectOrEnter(inputValue);
-    } else if (e.key === 'Escape') {
-      setShowHistoryDropdown(false);
     }
   };
 
-  // Handle browse button click with modern File System Access API
+  // NEW: Handle browse button with backend directory browser
   const handleBrowseClick = useCallback(() => {
-    if ('showDirectoryPicker' in window) {
-      (async () => {
-        try {
-          const dirHandle = await window.showDirectoryPicker();
-          
-          // Use the DirectoryHandle to get relevant information
-          if (dirHandle) {
-            // We can't get the full path from the File System Access API for security reasons
-            // Instead, we use the directory name and user's OS to make a best guess
-            // This is an approximation that works better than previous approach
-            const userName = (navigator as any)?.userAgent || '';
-            const basePath = getDefaultPathForOS(userName);
-            
-            // Construct an approximate path based on OS and directory name
-            let dirPath = '';
-            
-            if (navigator.platform.toUpperCase().includes('WIN')) {
-              dirPath = `${basePath}${dirHandle.name}`;
-            } else {
-              dirPath = `${basePath}${dirHandle.name}`;
-            }
-            
-            setInputValue(dirPath);
-            handleSelectOrEnter(dirPath);
-          }
-        } catch (err) {
-          console.error("Error selecting directory:", err);
-          if (err instanceof Error && err.name !== 'AbortError') {
-            setValidationStatus({
-              isValid: false,
-              message: `Failed to select directory: ${err.message}`
-            });
-          }
-        }
-      })();
-    } else {
-      // Fallback for browsers without File System Access API
-      const defaultPath = getDefaultPathForOS();
-      const userPath = prompt("Enter directory path:", defaultPath || "");
-      
-      if (userPath) {
-        setInputValue(userPath);
-        handleSelectOrEnter(userPath);
-      }
-    }
+    // Open the directory browser modal
+    setIsDirectoryBrowserOpen(true);
+  }, []);
+
+  // NEW: Handle directory selection from the browser
+  const handleDirectorySelect = useCallback((selectedPath: string) => {
+    const normalizedPath = normalizePath(selectedPath); // Normalize the path from browser
+    setInputValue(normalizedPath); // Update input with normalized path
+    handleSelectOrEnter(normalizedPath); // Validate and set normalized path
   }, [handleSelectOrEnter]);
 
   // Remove a directory from history
@@ -255,7 +287,6 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
         if (!repository) return;
         try {
           await repository.saveCachedState(
-            "global",
             "global",
             PROJECT_DIR_HISTORY_CACHE_KEY,
             JSON.stringify(newHistory)
@@ -278,7 +309,6 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
         try {
           await repository.saveCachedState(
             "global",
-            "global",
             PROJECT_DIR_HISTORY_CACHE_KEY,
             "[]"
           );
@@ -294,8 +324,7 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
   const handleRefresh = useCallback(async () => {
     if (!projectDirectory || isValidating) return;
 
-    setIsValidating(true);
-    setValidationStatus({ isValid: false, message: "Refreshing directory..." });
+    setValidationStatus({ type: ValidationType.Loading, message: "Refreshing directory..." });
 
     console.log(`[Refresh] Refreshing directory: ${projectDirectory}`);
     
@@ -305,47 +334,41 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
       // Only proceed if validation was successful
       if (isValid) {
         if (onRefresh) {
-          await onRefresh(); // This should handle its own validation/status updates
+          await onRefresh(); // Let parent handle the refresh logic
           console.log(`[Refresh] Successfully refreshed directory: ${projectDirectory}`);
-          setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
-          setTimeout(() => setValidationStatus(null), 3000); // Clear message
+          // Parent should ideally handle the success message, but we can provide a fallback
+          setValidationStatus({ type: ValidationType.Success, message: "Directory refreshed successfully." });
         } else {
           console.warn("[Refresh] No onRefresh callback provided to ProjectDirectorySelector.");
-          // Short timeout to ensure state updates propagate
-          await new Promise(resolve => setTimeout(resolve, 50));
-          
-          // Then set back to the actual path to force a complete refresh
+          // Force a context update to trigger potential downstream effects
           setProjectDirectory(projectDirectory);
-          
-          console.log(`[Refresh] Successfully refreshed directory: ${projectDirectory}`);
-          setValidationStatus({ isValid: true, message: "Directory refreshed successfully." });
-          
-          // Clear the success message after 3 seconds
-          setTimeout(() => {
-            setValidationStatus(null);
-          }, 3000);
+          setValidationStatus({ type: ValidationType.Success, message: "Directory refreshed (no action)." });
         }
+        // Clear the success message after a few seconds
+        setTimeout(() => {
+          setValidationStatus(prev => {
+            // Only clear if it's still the success message
+            return prev?.type === ValidationType.Success ? null : prev;
+          });
+        }, 3000);
       } else {
-        setValidationStatus({ isValid: false, message: "Directory validation failed during refresh." });
+        setValidationStatus({ type: ValidationType.Error, message: "Directory validation failed during refresh." });
       }
     } catch (error) {
       console.error("[Refresh] Error during refresh:", error);
       setValidationStatus({
-        isValid: false,
+        type: ValidationType.Error,
         message: error instanceof Error ? error.message : "An error occurred during refresh"
       });
-    } finally {
-      setIsValidating(false);
-    }
-  }, [projectDirectory, isValidating, validateDirectory, onRefresh]);
+    } // Removed finally block as validateDirectory handles setIsValidating
+  }, [projectDirectory, isValidating, validateDirectory, onRefresh, setProjectDirectory]);
   // --- End Simplified Refresh Handling ---
 
-    return (
+  return (
     <div className="bg-card border rounded-lg p-4 shadow-sm space-y-4">
       <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
         <FolderOpen className="h-4 w-4" /> Project Directory
       </h3>
-      
       <div className="relative flex items-center gap-2">
         <div className="relative flex-1" ref={historyRef}> {/* Use ref for history dropdown */}
           <Input
@@ -357,8 +380,8 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
             onFocus={() => history.length > 0 && setShowHistoryDropdown(true)}
             placeholder="Enter directory path or click Browse"
             className={cn("w-full pr-10", 
-              validationStatus?.isValid ? "border-green-500 focus-visible:ring-green-500" : "",
-              validationStatus?.isValid === false && !isValidating ? "border-red-500 focus-visible:ring-red-500" : ""
+              validationStatus?.type === ValidationType.Success ? "border-green-500 focus-visible:ring-green-500" : "",
+              validationStatus?.type === ValidationType.Error ? "border-red-500 focus-visible:ring-red-500" : ""
             )}
             disabled={isValidating}
           /> {/* Close Input tag */}
@@ -369,12 +392,13 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
               onClick={() => {
                 setInputValue("");
                 setValidationStatus(null);
+                setProjectDirectory(""); // Clear project directory when input is cleared
                 inputRef.current?.focus();
               }}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               title="Clear input"
             >
-              <X className="h-4 w-4" />
+              <XCircle className="h-4 w-4" />
             </button>
           )}
           
@@ -389,7 +413,7 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
                       className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer text-sm"
                       onClick={() => handleSelectOrEnter(dir)}
                     >
-                      <span className="truncate flex-1">{dir}</span>
+                      <span className="truncate flex-1" title={dir}>{dir}</span>
                       <button
                         type="button"
                         onClick={(e) => removeFromHistory(dir, e)}
@@ -427,15 +451,23 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
         >
           Browse
         </Button>
+
+        {/* Add a refresh button next to browse if onRefresh is provided */}
+        {!!onRefresh && (
           <Button
-              type="button"
-              onClick={handleRefresh}
-              variant="outline"
-              size="icon"
-              className="shrink-0 h-10 w-10" // Match input height
-              disabled={isValidating || !projectDirectory}
-              title={!projectDirectory ? "Select a valid git directory first" : "Refresh file list for current directory"} // Updated tooltip
-      ><RefreshCw className={cn("h-4 w-4", isValidating && "animate-spin")} /></Button>
+            type="button"
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={isValidating || isRefreshing || !projectDirectory} // Disable if no project directory
+            title="Refresh directory contents"
+          >
+            {isRefreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+        )}
       </div>
       
       {/* Validation status */}
@@ -443,29 +475,38 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
         <div className={cn(
           "text-sm flex items-center gap-2 p-2 rounded border",
           isValidating ? "text-muted-foreground border-muted-foreground/30 bg-muted/20" : 
-            validationStatus?.isValid 
-              ? "text-green-500 border-green-500/30 bg-green-500/10" 
-              : "text-red-500 border-red-500/30 bg-red-500/10"
+            validationStatus?.type === ValidationType.Success ? "text-green-600 border-green-500/30 bg-green-500/10" :
+            validationStatus?.type === ValidationType.Error ? "text-red-600 border-red-500/30 bg-red-500/10" :
+            validationStatus?.type === ValidationType.Info ? "text-blue-600 border-blue-500/30 bg-blue-500/10" :
+            validationStatus?.type === ValidationType.Loading ? "text-muted-foreground border-muted-foreground/30 bg-muted/20" :
+            "hidden" // Hide if null
         )}>
-          {isValidating ? (
+          {validationStatus?.type === ValidationType.Loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Validating directory...</span>
+              <span>{validationStatus.message}</span>
             </>
-          ) : validationStatus?.isValid ? (
+          ) : validationStatus?.type === ValidationType.Success ? (
             <>
               <Check className="h-4 w-4" />
               <span>{validationStatus.message}</span>
             </>
-          ) : (
+          ) : validationStatus?.type === ValidationType.Error ? (
             <>
               <AlertCircle className="h-4 w-4" />
-              <span>{validationStatus?.message}</span>
+              <span>{validationStatus.message}</span>
             </>
-          )}
+          ) : null}
         </div>
-      )} {/* Close validation status block */}
+      )}
 
-    </div> // End of main div
+      {/* NEW: Directory Browser Modal */}
+      <DirectoryBrowser
+        isOpen={isDirectoryBrowserOpen}
+        onClose={() => setIsDirectoryBrowserOpen(false)}
+        onSelect={handleDirectorySelect}
+        initialPath={inputValue || undefined} // Pass current input value as initial path
+      />
+    </div>
   );
 }

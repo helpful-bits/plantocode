@@ -12,7 +12,7 @@ const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) { // Keep ProjectProvider component
   const [projectDirectory, setProjectDirectoryState] = useState("");
-  const { repository } = useDatabase(); // Use the repository from context
+  const { repository } = useDatabase();
   const { isInitialized } = useDatabase(); // Use isInitialized hook
   const loadedRef = useRef(false); // Reference to track if we've loaded the project directory
   
@@ -26,11 +26,21 @@ export function ProjectProvider({ children }: { children: ReactNode }) { // Keep
           // Load from database
           const savedDir = await repository.getCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY); // Using global scope
           
-          if (savedDir) {
+          // Make sure the saved directory isn't the key name itself and is a valid string
+          if (savedDir && 
+              typeof savedDir === 'string' && 
+              savedDir.trim() !== '' && 
+              savedDir !== GLOBAL_PROJECT_DIR_KEY) {
             setProjectDirectoryState(savedDir);
+            console.log("[ProjectContext] Loaded global project directory:", savedDir);
+          } else {
+            console.log("[ProjectContext] No valid saved project directory found");
+            // If the saved directory is the key itself, clear it from the database
+            if (savedDir === GLOBAL_PROJECT_DIR_KEY) {
+              console.log("[ProjectContext] Clearing invalid directory that matches key name");
+              await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, "");
+            }
           }
-          // Log loaded directory
-          console.log("[ProjectContext] Loaded global project directory:", savedDir || "(none)"); // Added log
           
           // Mark as loaded
           loadedRef.current = true;
@@ -47,13 +57,16 @@ export function ProjectProvider({ children }: { children: ReactNode }) { // Keep
   }, [repository, isInitialized]); // Dependencies
 
   const setProjectDirectory = useCallback(async (dir: string) => {
-    const trimmedDir = dir.trim(); // Trim whitespace
-    setProjectDirectoryState(trimmedDir); // Set state with trimmed dir
-    console.log(`[ProjectContext] Setting project directory: ${trimmedDir || '(cleared)'}`);
+    const trimmedDir = dir?.trim() || ""; // Trim whitespace, default to empty string
+
+    // Only update state and save if the directory actually changed
+    if (trimmedDir !== projectDirectory) {
+      setProjectDirectoryState(trimmedDir); // Set state with trimmed dir
+      console.log(`[ProjectContext] Setting project directory: ${trimmedDir || '(cleared)'}`);
     
-    try {
+      try {
       // Store in database for global access
-      if (trimmedDir && repository) { // Check repository is available
+      if (repository) { // Always save, even if clearing (save empty string)
         // Save to database, using 'global' context
         await repository.saveCachedState("global", "global", GLOBAL_PROJECT_DIR_KEY, trimmedDir);
       }
@@ -61,8 +74,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) { // Keep
       console.error("Failed to save project directory to global cache:", e);
     }
     // History logic is now handled within ProjectDirectorySelector
-  }, [repository]);
+  } // Close if condition
   
+  }, [repository, projectDirectory]); // Include projectDirectory in dependency array
   return (
     <ProjectContext.Provider value={{ 
       projectDirectory, setProjectDirectory

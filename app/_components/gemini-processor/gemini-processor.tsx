@@ -210,7 +210,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
 
     // Disable send if already running, component is loading, missing prompt, or no active session
     // Also disable if completed, failed, or canceled (must create new session or retry logic needed)
-    const isSendDisabled = isLoading || isProcessing || isCompleted || isFailed || isCanceled || !prompt || !activeSessionId;
+    const isSendDisabled = false; // Always enable the button
     // Disable cancel if not running OR if the component is currently performing an action (like trying to cancel)
     const isCancelDisabled = isLoading || !isProcessing;
     const savedFilePath = sessionData?.geminiPatchPath || null; // Get path from sessionData
@@ -222,14 +222,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
                 onClick={handleSendToGemini} 
                 disabled={isSendDisabled} 
                 className="px-6 py-3 text-base"
-                title={
-                    !prompt ? "Generate a prompt first" : 
-                    !activeSessionId ? "Load or create a session first" : 
-                    isProcessing ? "Processing is already in progress" :
-                    (isCompleted || isFailed || isCanceled) ? `Processing ${geminiStatus}. Start a new session to run again.` :
-                    isLoading ? "Action in progress..." :
-                    ""
-                }
+                title="Send to Gemini & Save Patch"
             >
                 {isLoading && !isProcessing ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />}
                 {isLoading && !isProcessing ? "Starting..." : (isProcessing ? "Processing..." : "Send to Gemini & Save Patch")}

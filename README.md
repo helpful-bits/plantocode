@@ -4,7 +4,7 @@ O1 Pro Flow is a comprehensive utility designed to streamline the workflow of ge
 
 **Key Update:** The application now uses a persistent SQLite database to store your sessions and settings, ensuring data is saved reliably across browser sessions and even after restarts.
 All your inputs (project directory, file selections, task descriptions, regex patterns, etc.) are saved automatically as you work, associated with the current project directory and output format. **When a session is active, changes automatically update that session in the database.** You must create or load a session before you can interact with the main input form.
-
+ 
 ## Prerequisites
  
 - Git installed and available in PATH
@@ -14,7 +14,7 @@ All your inputs (project directory, file selections, task descriptions, regex pa
 - (Required) `ANTHROPIC_API_KEY` for text improvement and regex generation via Anthropic's Claude (specifically Sonnet 3.7 model as configured)
 - (Required) `GEMINI_API_KEY` for generating patches or other content via Google Gemini 2.5 Pro.
 
-## Installation & Quick Start
+## Installation & Quick Start 
 
 1. **Install Dependencies**:
     ```bash
@@ -36,7 +36,7 @@ All your inputs (project directory, file selections, task descriptions, regex pa
    - Navigate to [http://localhost:3000](http://localhost:3000) and explore the interface.
    - The app automatically saves your working state for each project/format combination and restores it on reload.
    - Multiple tabs/sessions for the same project are supported without interference.
-
+ 
 ## Core Features
 ### Prompt Generation
 Generate comprehensive prompts for AI models tailored to your codebase and task.
@@ -44,17 +44,17 @@ Generate comprehensive prompts for AI models tailored to your codebase and task.
 - **File Selection:**
     - **File Browser:** Browse your Git repository, search, and select files to include in the prompt context. Filter files using JavaScript regex for paths and content.
     - **Paste Paths:** Directly paste file paths (relative to the project or absolute external paths) to include specific files.
+    - **AI Path Finder:** Click a button near the "Paste Paths" area. Gemini Flash analyzes the codebase structure and task description to automatically suggest relevant files, populating the "Paste Paths" area. Handles large codebases by requesting intelligent splitting if necessary.
     - **Regex Generation:** Describe file patterns (e.g., "React components using useState") and use Anthropic Claude (if API key is provided) to generate corresponding title (path) and content regex patterns for filtering.
 - **Codebase Structure:** Optionally provide or generate (using `tree` command logic) an ASCII representation of your codebase structure for better AI understanding, especially useful for refactoring tasks.
 - **Task Description:** Detail the changes you want the AI to perform.
 - **Session Management:**
     - Explicitly save all current inputs (project, files, task, regex, etc.) as a named session.
-    - Sessions are specific to a **Project Directory** and **Output Format** combination.
+    - Sessions are specific to a **Project Directory**.
     - **Gemini processing status** (idle, running, completed, failed, canceled), along with start/end times and the path to the saved patch file, is stored per session. The server action continues running even if the browser is refreshed or closed.
     - The UI reflects the current status by polling the database.
     - When a session is active, any changes made to the inputs automatically update that session in the database.
     - The main input form (Task Description, File Selection, etc.) is only accessible *after* a session has been created or loaded for the current project/format.
- 
 ### Voice Transcription 
 Record audio instructions directly in the browser for the Task Description.
 - **Transcription:** Uses the Groq API (requires `GROQ_API_KEY`) for fast transcription via Whisper.
@@ -63,12 +63,6 @@ Record audio instructions directly in the browser for the Task Description.
 
 ### Text Improvement
 Select text within the Task Description area and use Anthropic Claude (if configured) to improve clarity and grammar while preserving formatting (line breaks, indentation, etc.).
-
-### Output Formats
-- **Code Changes (Diff):** Generates a prompt specifically designed to produce a Git patch file.
-- **Refactoring Plan:** Generates a prompt asking the AI to break down a refactoring task into structured steps, outputting markdown files for each step.
-- **Path Finder:** Generates a prompt asking the AI to identify all relevant files for a given task based on the provided context.
-- **Custom:** Define your own prompt structure.
 
 ### Process Prompt with Gemini (Background Task)
 - Takes the generated prompt from Step 1.
@@ -90,23 +84,23 @@ The tool itself does not directly execute code changes on your local machine. It
 - `app/api` - Next.js API routes for backend database interactions
 - `components` - UI and utility components
 - `app/_components` - Feature-specific components grouped by functionality (e.g., `generate-prompt`, `gemini-processor`)
-- `lib` - Utility libraries (token estimation, file utilities, Git utils, hashing, etc.)
+- `lib` - Utility libraries (token estimation, file utilities, Git utils, hashing, etc.) 
 - `lib/db` - Database setup, schema, repository pattern, and migrations
 - `patches` - Application-level directory where generated patch files are saved as a fallback
-- `lib/contexts` - React context providers (Project, Format, Database for managing global state)
+- `lib/contexts` - React context providers (Project, Database for managing global state)
 - `actions` - Server actions (reading directories, voice transcription, text correction, regex generation)
 - `prompts` - Functions to generate prompts for specific LLM tasks
 - `public` - Static assets
 - `migrations` - SQL files for database schema evolution
 - `hooks` - Custom React hooks for shared logic
 - `types` - Type definitions
-
 ## Recommended Workflow
-1. **Select Project & Format:** Choose your project directory and the desired output format (e.g., Diff, Refactoring Plan).
-2. **Manage Session:** Create a new session or load an existing one for the selected project/format. Your work (task description, file selections, etc.) is auto-saved to the active session.
+1. **Select Project:** Choose your project directory.
+2. **Manage Session:** Create a new session or load an existing one for the selected project. Your work (task description, file selections, etc.) is auto-saved to the active session.
 3. **Define Task & Context:**
    - Write or record the task description.
-   - Select relevant files using the file browser, path pasting, or regex generation.
+   - **Find Files:** Use the "Find Relevant Files" button (near Paste Paths) to let AI populate relevant file paths based on your task description.
+   - **Adjust Files:** Manually adjust the pasted paths, use the file browser for selection, or use regex for filtering.
    - Optionally provide codebase structure information.
 4. **Generate Prompt:** Click "Generate Prompt" to create the input for the AI model based on your selections and task.
 5. **Process with Gemini (Optional):** If using the "Code Changes (Diff)" format (or similar), click "Send to Gemini & Save Patch". The tool will send the prompt to Gemini, stream the response (expected to be a patch) to a file in the `patches/` directory within your selected project directory, and display the progress.
@@ -114,7 +108,7 @@ The tool itself does not directly execute code changes on your local machine. It
 7. **Alternative (Manual Copy/Paste):** Copy the generated prompt from step 4 and paste it into your preferred AI model interface (like ChatGPT with O1 Pro). Obtain the response (e.g., diff) and apply it manually.
 ## Contributing
 Contributions are welcome. To contribute:
-1. Fork the repo and clone your fork.
+1. Fork the repo and clone your fork. 
 2. Create a new branch.
 3. Make your changes, then test thoroughly.
 4. Submit a pull request explaining your modifications.

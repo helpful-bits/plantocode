@@ -24,15 +24,12 @@ export async function getDiffPrompt(): Promise<string> {
       <requirement>For updated files, include context lines and use '-' for deletions and '+' for additions within hunks (@@ ... @@).</requirement>
       <requirement>Ensure correct paths are used in all headers ('a/' prefix for old, 'b/' prefix for new).</requirement>
       <requirement>Group all changes into one single patch output.</requirement>
-    </git_patch_requirements>
-
-    <patch_compatibility>
       <requirement>Include AT LEAST 2 context lines before/after changes, with function boundaries and complete signatures.</requirement>
       <requirement>Include ALL imports when changing code near imports section.</requirement>
       <requirement>Create precise hunk headers with exact line numbers and counts.</requirement>
       <requirement>Use smaller, focused hunks instead of large ones for reliable application.</requirement>
       <requirement>Ensure exact context matching - whitespace, indentation, and line endings must match precisely.</requirement>
-    </patch_compatibility>
+    </git_patch_requirements>
 
     <template>
       <example_output>
@@ -62,14 +59,12 @@ index abc1234..def5678 100644
       <rule>Follow project coding conventions within the changed code.</rule>
       <rule>Ensure generated code is correct, functional, and handles imports/dependencies.</rule>
       <rule>Maintain existing comments unless directly related to the change.</rule>
-      <rule>Do not add explanatory comments about the changes within the code itself (e.g., '// Gemini: Added this line').</rule>
+      <rule>Write self-explanatory code without unnecessary comments. If the code's purpose is clear from its structure, avoid adding explanatory comments.</rule>
     </code_quality>
     
     <patch_integrity>
       <rule>The generated patch must be complete and apply cleanly in all environments.</rule>
       <rule>Include all necessary file changes (creations and updates) in the single patch.</rule>
-      <rule>Provide AT LEAST 2 context lines for each hunk, including surrounding function boundaries for maximum compatibility.</rule>
-      <rule>Ensure exact context matching, preserving whitespace, indentation, and line endings.</rule>
       <rule>Never include XML tags or markup inside the diff content.</rule>
     </patch_integrity>
 
@@ -78,7 +73,6 @@ index abc1234..def5678 100644
       <rule>Do not include any other text before or after the patch.</rule>
       <rule>All patches must include the proper 'index' lines according to Git standards.</rule>
       <rule>Ensure the diff is generated based *only* on the provided file contents and the task description.</rule>
-      <rule>Never include XML content inside the Git diff itself.</rule>
     </output_structure>
   </rules>
 </prompt>`;

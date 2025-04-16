@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, useTransition } from "react"; // Added useTransition
-import { OutputFormat, Session } from '@/types'; // Combined imports
+import { Session } from '@/types'; // Removed OutputFormat import
 import { Save, Trash2, Plus, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +17,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useDatabase } from "@/lib/contexts/database-context";
 
-export interface SessionManagerProps { // Export interface
+export interface SessionManagerProps {
   projectDirectory: string;
-  outputFormat: OutputFormat;
   getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">; // Adjusted type
   onLoadSession: (session: Session) => void;
   activeSessionId: string | null;
@@ -32,7 +31,6 @@ export interface SessionManagerProps { // Export interface
 const SessionManager = ({
   projectDirectory,
   getCurrentSessionState,
-  outputFormat,
   onLoadSession,
   activeSessionId: externalActiveSessionId,
   setActiveSessionIdExternally,
@@ -60,25 +58,25 @@ const SessionManager = ({
 
   // Load sessions from the database
   const loadSessions = useCallback(async () => {
-    if (!projectDirectory || !outputFormat) {
+    if (!projectDirectory) { // Removed outputFormat check
       setSessions([]);
       setError(null);
       return;
     } // Close validation check
 
-    const projectFormatKey = `${projectDirectory}-${outputFormat}`;
-    console.log(`[SessionManager] Loading sessions for: ${projectFormatKey}`);
+    const projectKey = projectDirectory; // Use only projectDirectory
+    console.log(`[SessionManager] Loading sessions for: ${projectKey}`);
     setIsLoading(true);
 
     try { // Keep try/catch block
-      const loadedSessions = await repository.getSessions(projectDirectory, outputFormat);
+      const loadedSessions = await repository.getSessions(projectDirectory);
       startTransition(() => {
         setSessions(loadedSessions);
         setError(null);
         if (onSessionStatusChange) {
           onSessionStatusChange(!!activeSessionId || loadedSessions.length > 0);
         }
-        lastLoadedProjectKey.current = projectFormatKey; // Mark as loaded
+        lastLoadedProjectKey.current = projectKey; // Mark as loaded using projectKey
       });
     }
      catch (err) { // Keep catch block
@@ -88,22 +86,22 @@ const SessionManager = ({
     } finally { // Ensure loading state is reset
       setIsLoading(false);
     }
-  }, [projectDirectory, outputFormat, repository, activeSessionId, onSessionStatusChange]); // Keep projectDirectory, outputFormat, repository dependencies
+  }, [projectDirectory, repository, activeSessionId, onSessionStatusChange]); // Removed outputFormat dependency
 
   // When component mounts or project/format changes, load sessions
   useEffect(() => {
-    const projectFormatKey = projectDirectory && outputFormat ? `${projectDirectory}-${outputFormat}` : null; // Use projectFormatKey to track loading
+    const projectKey = projectDirectory; // Use projectDirectory as the key
 
-    if (projectFormatKey && projectFormatKey !== lastLoadedProjectKey.current) {
-      console.log(`[SessionManager] Project/Format changed to ${projectFormatKey}. Reloading sessions.`);
+    if (projectKey && projectKey !== lastLoadedProjectKey.current) {
+      console.log(`[SessionManager] Project changed to ${projectKey}. Reloading sessions.`);
       loadSessions(); // Load sessions for the new project/format
-    } else if (!projectFormatKey) {
-      console.log("[SessionManager] Project or Format not set. Clearing sessions.");
+    } else if (!projectKey) {
+      console.log("[SessionManager] Project not set. Clearing sessions.");
       startTransition(() => {
-        setSessions([]);
+        setSessions([]); // Clear sessions if no project
       });
       lastLoadedProjectKey.current = null;
-    } else if (!projectDirectory || !outputFormat) {
+    } else if (!projectDirectory) {
       setSessions([]);
       sessionLoadedRef.current = false;
       
@@ -115,7 +113,7 @@ const SessionManager = ({
       // Clear the loaded project reference
       loadedProjectRef.current = null;
     }
-  }, [projectDirectory, outputFormat, loadSessions]); // Keep dependencies
+  }, [projectDirectory, loadSessions]); // Removed outputFormat dependency
 
   // Sync activeSessionId whenever external prop changes
   useEffect(() => {
@@ -185,11 +183,6 @@ const SessionManager = ({
       return;
     }
 
-    if (!outputFormat) {
-      setError("Cannot save session without an output format.");
-      return;
-    }
-
     let sessionName = sessionNameInput.trim();
     setIsLoading(true);
     setSessionNameInput("");
@@ -199,11 +192,10 @@ const SessionManager = ({
       const currentState = getCurrentSessionState(); // Get current form state
       // currentState.updatedAt = Date.now(); // updatedAt is set below
 
-      // Validate current state
-      if (!currentState.projectDirectory || !currentState.outputFormat) {
+      // Validate current state - removed outputFormat check
+      if (!currentState.projectDirectory) {
         console.error("Missing required session fields in current state:", {
           hasProjectDir: !!currentState.projectDirectory,
-          hasOutputFormat: !!currentState.outputFormat,
         });
         throw new Error("Session state missing required fields");
       }
@@ -224,13 +216,12 @@ const SessionManager = ({
         geminiEndTime: null,
         geminiPatchPath: null, // Initialize path to null
         geminiStatusMessage: null, // Initialize message to null
+        // outputFormat field is removed
       };
-      if (!newSession.id || !newSession.name || !newSession.projectDirectory || !newSession.outputFormat) {
+      if (!newSession.id || !newSession.name || !newSession.projectDirectory) { // Removed outputFormat check
         console.error("Missing required fields in new session:", {
           id: newSession.id,
           name: newSession.name,
-          projectDirectory: newSession.projectDirectory,
-          outputFormat: newSession.outputFormat
         });
         throw new Error("Cannot save session: Missing required fields");
       }
@@ -332,8 +323,7 @@ const SessionManager = ({
       // If the deleted session was active, clear the active session
       if (activeSessionId === sessionId) {
         setActiveSessionIdExternally(null);
-        // Set active session to null in the database as well
-        // await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, null);
+        await repository.setActiveSession(projectDirectory, null); // Remove outputFormat
         
         onSessionNameChange(""); // Clear name if active session deleted
         // Notify parent about session status
@@ -389,7 +379,7 @@ const SessionManager = ({
       // Update active session in database
       // This is important for restoring the session later
       try {
-        await repository.setActiveSession(projectDirectory, outputFormat as OutputFormat, session.id);
+        await repository.setActiveSession(projectDirectory, session.id); // Removed outputFormat
       } catch (err) {
         console.error("Failed to set active session in database:", err);
         // Continue anyway as we've already loaded the session in memory
@@ -405,45 +395,11 @@ const SessionManager = ({
     }
   };
 
-  // Render a dialog to create the first session if needed
-  /* const renderNewSessionDialog = () => {
-    // Show this only if project/format is selected, DB is loaded, no session active, and no sessions exist yet
-    if (projectDirectory && outputFormat && !isLoading && !activeSessionId && sessions.length === 0 && !sessionInitialized) {
-      return ( // Return JSX element
-        <div className="border border-dashed border-primary/50 rounded-lg p-6 flex flex-col gap-4 items-center justify-center bg-primary/5 mt-4">
-          <h3 className="font-semibold text-lg text-foreground">Start New Session</h3>
-          <p className="text-sm text-muted-foreground text-center">
-            Create a session to start using the form. All your inputs will be saved automatically.
-          </p>
-          <div className="flex gap-2 w-full max-w-md">
-            <Input
-              type="text"
-              placeholder="Session name (auto-generated if empty)..."
-              value={sessionNameInput}
-              onChange={(e) => setSessionNameInput(e.target.value)}
-              className="h-9 flex-1"
-            />
-            <Button
-              aria-label="Create new session"
-              type="button"
-              onClick={handleSave}
-              size="sm"
-              className="whitespace-nowrap px-4 h-9"
-            >
-              <Plus className="h-4 w-4 mr-2" /> Create Session
-            </Button>
-          </div>
-        </div>
-      );
-    }
-    return null; // Return null if conditions aren't met
-  }; */
-
   return (
     <>
       <div className="border rounded-lg p-4 flex flex-col gap-3 bg-card shadow-sm">
         <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
-          <Save className="h-4 w-4" /> Saved Sessions ({outputFormat})
+          <Save className="h-4 w-4" /> Saved Sessions
         </h3>
         {error && <p className="text-sm text-destructive bg-destructive/10 p-2 rounded">{error}</p>}
         <div className="flex gap-2 items-center"> {/* Align items center */}
@@ -452,13 +408,13 @@ const SessionManager = ({
             placeholder="Session name (auto-generated if empty)..."
             value={sessionNameInput}
             onChange={(e) => setSessionNameInput(e.target.value)}
-            disabled={!projectDirectory || !outputFormat || isLoading}
+            disabled={!projectDirectory || isLoading} // Removed outputFormat check
             className="h-9 flex-1 bg-background"
           />
           <Button
             type="button"
             onClick={handleSave}
-            disabled={!projectDirectory || isLoading}
+            disabled={!projectDirectory || isLoading} // Keep check
             size="sm"
             className="whitespace-nowrap px-4 h-9" // Removed explicit flex items-center
             variant="outline" // Changed variant
@@ -533,7 +489,7 @@ const SessionManager = ({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-2">{!projectDirectory || !outputFormat ? "Select project and format first" : "No sessions saved yet"}</p>
+              <p className="text-sm text-muted-foreground text-center py-2">{!projectDirectory ? "Select project first" : "No sessions saved yet"}</p> // Simplified message
             )}
           </div>
         </div>

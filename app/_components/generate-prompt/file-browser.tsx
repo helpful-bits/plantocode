@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProject } from "@/lib/contexts/project-context";
 import { useDatabase } from "@/lib/contexts/database-context";
-import { useFormat } from "@/lib/contexts/format-context";
 import { formatPathForDisplay } from "@/lib/path-utils";
 import { FileInfo } from "@/types";
 
@@ -65,7 +64,6 @@ export default function FileBrowser({
 
   const { projectDirectory } = useProject();
   const { repository } = useDatabase();
-  const { outputFormat } = useFormat();
   const [showOnlySelected, setShowOnlySelected] = useState<boolean>(false);
   const [showPathInfo, setShowPathInfo] = useState(false);
   const [isPreferenceLoading, setIsPreferenceLoading] = useState(true);
@@ -90,11 +88,10 @@ export default function FileBrowser({
   useEffect(() => {
     setIsPreferenceLoading(true); // Set loading state for preference
     const loadPreference = async () => {
-      if (repository && projectDirectory && outputFormat) { // Check all dependencies
+      if (repository && projectDirectory) { // Removed outputFormat check
         try {
           const savedPreference = await repository.getCachedState(
             projectDirectory, // Use projectDirectory for cache key
-            outputFormat,
             SHOW_ONLY_SELECTED_KEY
           );
           setShowOnlySelected(savedPreference === "true");
@@ -108,14 +105,13 @@ export default function FileBrowser({
       }
     };
 
-    loadPreference();
-  }, [projectDirectory, repository, outputFormat]);
+    loadPreference(); 
+  }, [projectDirectory, repository]); // Removed outputFormat dependency
 
   const toggleShowOnlySelected = async () => { // Make async to save preference
     const newValue = !showOnlySelected;
     setShowOnlySelected(newValue);
-
-    if (projectDirectory && repository) { // Check dependencies before saving
+    if (projectDirectory && repository) { // Check dependencies before saving 
       try {
         await repository.saveCachedState(
           projectDirectory,

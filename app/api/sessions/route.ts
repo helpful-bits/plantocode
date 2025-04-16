@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
 import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
-import { OutputFormat, Session } from '@/types';
+import { Session } from '@/types'; // Removed OutputFormat
 
 setupDatabase(); // Ensure database is initialized 
 
 // GET /api/sessions?projectDirectory=...&outputFormat=...
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const projectDirectory = searchParams.get('projectDirectory');
-  const outputFormat = searchParams.get('outputFormat') as OutputFormat;
+  const projectDirectory = searchParams.get('projectDirectory'); 
   
-  if (!projectDirectory || !outputFormat) {
-    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+  if (!projectDirectory) { // Removed outputFormat check
+    return NextResponse.json({ error: 'Missing required parameter: projectDirectory' }, { status: 400 }); // Updated error message
   }
   
   try {
-    const sessions = await sessionRepository.getSessions(projectDirectory, outputFormat);
+    const sessions = await sessionRepository.getSessions(projectDirectory);
     return NextResponse.json(sessions);
   } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error fetching sessions:', error);
@@ -29,9 +28,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const sessionData = await request.json();
-    
-    // Basic validation (can be expanded)
-    if (!sessionData.id || !sessionData.name || !sessionData.projectDirectory || !sessionData.outputFormat) {
+     
+    // Basic validation - removed outputFormat check
+    if (!sessionData.id || !sessionData.name || !sessionData.projectDirectory) {
        return NextResponse.json({ error: 'Missing required session fields' }, { status: 400 });
     }
     

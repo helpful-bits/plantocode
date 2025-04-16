@@ -10,11 +10,9 @@ export interface FormStateManagerProps {
   sessionName: string;
   projectDirectory: string;
   isSaving: boolean; // Track saving state from parent
-  outputFormat: string;
   formState: Omit<Session, 'id' | 'name' | 'updatedAt'>; // The current state of the form (excluding generated/metadata fields)
   onStateChange?: (hasChanges: boolean) => void; // Notify parent about change status
   onSaveError?: (error: string | null) => void; // Callback for save errors
-  isSaving: boolean; // Add isSaving prop
   children: React.ReactNode;
 }
 
@@ -22,7 +20,6 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
   sessionName,
   activeSessionId,
   projectDirectory,
-  outputFormat,
   formState,
   isSaving, // Receive isSaving state from parent
   onStateChange,
@@ -63,7 +60,6 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
           id: activeSessionId, // Ensure ID remains the same
           name: sessionName, // Use current session name from props
           projectDirectory: formState.projectDirectory, // Ensure these are correct
-          outputFormat: formState.outputFormat,       // Ensure these are correct
           updatedAt: Date.now() // Update timestamp
         };
         
