@@ -5,7 +5,6 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { readDirectoryAction, readExternalFileAction, invalidateDirectoryCache } from "@/actions/read-directory-actions"; // Keep read-directory-actions import
 import { findRelevantFilesAction } from "@/actions/path-finder-actions"; // Import the new action
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
-import { enhanceTaskDescriptionAction } from "@/actions/task-enhancement-actions"; // Import task enhancement action
 import { estimateTokens } from "@/lib/token-estimator"; // Keep token-estimator import
 import { getDiffPrompt } from "@/prompts/diff-prompt"; // Import only diff prompt
 import ProjectDirectorySelector from "./_components/project-directory-selector"; // Keep ProjectDirectorySelector import
@@ -337,6 +336,7 @@ export default function GeneratePromptForm() {
       setExternalPathWarnings(pathWarnings);
       // Update state with new data
       setFileContentsMap(result.data); // Keep using result.data directly
+      // Directly update the file map state to trigger FormStateManager
       setAllFilesMap(newFilesMap);
       
       console.log(`[${isRefresh ? 'Refresh' : 'Load'}] Processed ${Object.keys(newFilesMap).length} files from git repository.`);
@@ -347,6 +347,7 @@ export default function GeneratePromptForm() {
       setIsLoadingFiles(false);
       setLoadingStatus("");
       setIsRefreshingFiles(false); // Ensure refresh state is reset
+      handleInteraction(); // Trigger save check after files are loaded/refreshed
       loadFilesRef.current.isLoading = false; // Mark as no longer loading
     } 
   }, []);  // Remove dependencies to prevent recreating the function
@@ -367,6 +368,7 @@ export default function GeneratePromptForm() {
       
       // Force refresh with forceLoad=true to bypass throttling
       await handleLoadFiles(projectDirectory, true, true);
+      handleInteraction(); // Trigger save check after refresh completes
       console.log(`[Refresh] Successfully refreshed files for ${projectDirectory}`);
     } catch (error) {
       console.error("[Refresh] Error refreshing files:", error);
@@ -420,6 +422,7 @@ export default function GeneratePromptForm() {
           // SessionManager's useEffect will load the session data after this.
         } else {
           console.log(`[Form Init] No active session found in DB for this project.`);
+          // Load files even if no session exists, user might want to create one
           await handleLoadFiles(dirToLoad, false);
         }
 
@@ -436,9 +439,10 @@ export default function GeneratePromptForm() {
       }
     };
     
-    // Only run initialization if project changed or not yet initialized for this project
-    if (projectDirectory !== loadFilesRef.current.lastDirectory) {
+    // Only run initialization if project changed or not yet initialized for this project, and not currently loading files
+    if (projectDirectory && projectDirectory !== loadFilesRef.current.lastDirectory && !isLoadingFiles) {
       initializeProjectData(initialDir);
+      handleInteraction(); // Indicate interaction after initialization attempt
     }
   }, [projectDirectory, repository, handleLoadFiles, searchParams, handleSetActiveSessionId]);
 
@@ -570,36 +574,71 @@ export default function GeneratePromptForm() {
 
     setIsFindingFiles(true);
     setError("");
-    setLoadingStatus("Finding relevant files...");
+    setLoadingStatus("Loading ALL project files...");
     setExternalPathWarnings([]);
 
     try {
+      // First, load ALL project files
+      const allFilesResult = await readDirectoryAction(projectDirectory);
+      if (!allFilesResult.isSuccess || !allFilesResult.data) {
+        setError(`Failed to read project files: ${allFilesResult.message || "Unknown error"}`);
+        return;
+      }
+      
+      const allProjectFiles = allFilesResult.data;
+      const projectFilePaths = Object.keys(allProjectFiles);
+      console.log(`Loaded ${projectFilePaths.length} files from project`);
+      
+      // Then find relevant files
+      setLoadingStatus("Analyzing codebase and finding relevant files...");
       const result = await findRelevantFilesAction(
         projectDirectory, 
-        taskDescription,
-        undefined // No codebase structure needed
+        taskDescription
       );
 
       if (result.isSuccess && result.data?.relevantPaths) {
-        setPastedPaths(result.data.relevantPaths.join('\n'));
+        const relevantPaths = result.data.relevantPaths;
+        setPastedPaths(relevantPaths.join('\n'));
+        
+        // Use the enhanced task description from the combined API call
+        if (result.data.enhancedTaskDescription) {
+          const enhancedText = result.data.enhancedTaskDescription;
+          
+          // Use the ref to append the enhanced text
+          if (taskDescriptionRef.current) {
+            // Create enhanced text with header
+            const enhancedTextWithHeader = "Additional Context Based on Codebase Analysis:\n\n" + enhancedText;
+            taskDescriptionRef.current.appendText(enhancedTextWithHeader);
+          } else {
+            // Fallback if ref not available: append to the existing task description
+            setTaskDescription(prevTask => {
+              const separator = "\n\n";
+              return prevTask + separator + "Additional Context Based on Codebase Analysis:\n\n" + enhancedText;
+            });
+          }
+          
+          console.log("Successfully enhanced task description based on code analysis");
+        }
+        
         handleInteraction(); // Mark interaction
       } else {
         setError(`Failed to find relevant files: ${result.message}`);
       }
     } catch (error) {
-      console.error("Error finding relevant files:", error);
-      setError(`Error finding relevant files: ${error instanceof Error ? error.message : String(error)}`);
+      console.error("Error processing code analysis:", error);
+      setError(`Error in code analysis: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsFindingFiles(false);
       setLoadingStatus("");
     }
-  }, [taskDescription, projectDirectory, handleInteraction]);
+  }, [taskDescription, projectDirectory, handleInteraction, taskDescriptionRef]);
 
   // Update allFilesMap state from child components
   const handleFilesMapChange = useCallback((newMap: FilesMap) => {
     setAllFilesMap(newMap);
+    console.log('[Form] handleFilesMapChange called, triggering interaction.'); // Add log
     handleInteraction(); // Mark interaction
-  }, []);
+  }, [handleInteraction]); // Add handleInteraction to dependency array
 
   const handleGenerate = async () => {
     /**
@@ -857,11 +896,13 @@ ${taskDescription}
     setPastedPaths(session.pastedPaths || "");
     setPatternDescription(session.patternDescription || "");
     setTitleRegex(session.titleRegex || "");
+    setIsRegexActive(session.isRegexActive ?? true); // Load isRegexActive state, default to true
     setContentRegex(session.contentRegex || "");
     // Removed outputFormat and customFormat
     
     // Apply file selections from the loaded session
     // Handle included/excluded files if they exist
+    let mapChanged = false; // Track if the file map actually changed
     if (session.includedFiles && session.includedFiles.length > 0) {
       // We need to merge with current allFilesMap
       const updatedFilesMap = { ...allFilesMap };
@@ -869,6 +910,7 @@ ${taskDescription}
       // Reset inclusion/exclusion based on loaded session
       Object.keys(updatedFilesMap).forEach(key => {
         updatedFilesMap[key] = { 
+          // Directly modify the object, assuming allFilesMap contains FileInfo objects
           ...updatedFilesMap[key], 
           included: false,
           forceExcluded: false
@@ -880,6 +922,7 @@ ${taskDescription}
         if (updatedFilesMap[filePath]) {
           updatedFilesMap[filePath].included = true;
           updatedFilesMap[filePath].forceExcluded = false; // Ensure forceExcluded is false if included
+          mapChanged = true;
         }
       });
       
@@ -889,6 +932,7 @@ ${taskDescription}
           if (updatedFilesMap[filePath]) {
             updatedFilesMap[filePath].forceExcluded = true;
             updatedFilesMap[filePath].included = false; // Ensure included is false if forceExcluded
+            mapChanged = true;
           }
         });
       }
@@ -901,9 +945,12 @@ ${taskDescription}
     setActiveSessionId(session.id);
     setHasUnsavedChanges(false); // Mark as saved state initially
     setSessionInitialized(true);
+    if (mapChanged) {
+      handleInteraction(); // Trigger save check if file map was modified by loading session
+    }
     // Do not set initializationRef.current.sessionRestoreAttempted = true here // Keep comment
     console.log(`[Form] Session ${session.id} loaded into form state. Active session ID set.`); 
-  }, [allFilesMap, setProjectDirectory]);
+  }, [allFilesMap, setProjectDirectory, handleInteraction]); // Added handleInteraction dependency
 
   // Helper function to construct form state for the FormStateManager
   // This helps ensure we always use the latest state without dependency issues
@@ -1063,8 +1110,8 @@ ${taskDescription}
                     className="mt-2"
                     title={!taskDescription.trim() ? "Enter a task description first" : 
                            !projectDirectory ? "Select a project directory first" :
-                           "Find relevant files and enhance your task description based on code analysis"}
-                ><Wand2 className="h-4 w-4 mr-2" />{isFindingFiles ? "Processing..." : "Analyze Code & Enhance Task (AI)"}</Button>
+                           "Analyze codebase structure to find relevant files and enhance your task description with helpful context"}
+                ><Wand2 className="h-4 w-4 mr-2" />{isFindingFiles ? "Analyzing Codebase..." : "Analyze Codebase & Find Relevant Files"}</Button>
               </PastePaths>
 
               {/* File Browser */}

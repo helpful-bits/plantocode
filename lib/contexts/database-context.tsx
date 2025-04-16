@@ -177,13 +177,10 @@ class DatabaseClient {
   async saveSession(session: Session): Promise<Session> {
     console.log(`[DB Client] Saving session ${session.id} (${session.name})`);
     
-    // Validate session object before sending to API
-    if (!session.id || !session.projectDirectory || !session.name) {
-      console.error('[DB Client] Validation error - Missing required session fields:', {
-        hasId: !!session.id,
-        hasProjectDir: !!session.projectDirectory,
-        hasName: !!session.name,
-      });
+    // Validate session object before sending to API - ensure required fields are not empty/whitespace
+    if (!session.id || !session.projectDirectory?.trim() || !session.name?.trim()) { // Add trim checks
+      console.error(`[DB Client] Validation error - Missing required fields: id='${session.id}', projectDirectory='${session.projectDirectory}', name='${session.name}'`);
+      console.error('Session object causing validation error:', JSON.stringify(session, null, 2)); // Log the problematic session object
       throw new Error('Failed to save session: Missing required fields');
     }
     
@@ -396,6 +393,7 @@ class DatabaseClient {
     // Store the promise
     this.pendingRequests[pendingKey] = savePromise;
     return savePromise;
+    
   }
   
   async getCachedState(projectDirectory: string | null | undefined, key: string): Promise<string | null> {
