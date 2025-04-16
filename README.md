@@ -81,18 +81,18 @@ Select text within the Task Description area and use Anthropic Claude (if config
 - **Background Processing:** The server action runs independently. You can refresh the page, close the tab, or even restart the browser; the processing continues on the server. Re-opening the session will show the current status.
 - **Cancellation:** Allows canceling the ongoing Gemini processing request via a button in the UI.
 
-### Generate "Apply Changes" Prompt
-This tool focuses on *generating prompts*. The "Apply Changes" section does *not* directly modify your files. Instead, it takes the output (like a diff or refactoring plan) from your AI model (which you run separately) from your clipboard and generates a *new prompt*. You then send this new prompt to your AI model (like O1 Pro in ChatGPT) to actually perform the file modifications within its environment.
+## Important Note
 
-
-**Important:** The tool itself does not execute code changes on your local machine. It prepares the instructions for the AI to do so.
+The tool itself does not directly execute code changes on your local machine. It generates prompts and, via the Gemini integration, produces patch files. Applying these patches is a separate step you perform using standard Git tools or IDE features.
  
 ## Project Structure
 - `app` - Next.js App Router with server actions, API routes, pages, and layout
 - `app/api` - Next.js API routes for backend database interactions
 - `components` - UI and utility components
+- `app/_components` - Feature-specific components grouped by functionality (e.g., `generate-prompt`, `gemini-processor`)
 - `lib` - Utility libraries (token estimation, file utilities, Git utils, hashing, etc.)
 - `lib/db` - Database setup, schema, repository pattern, and migrations
+- `patches` - Application-level directory where generated patch files are saved as a fallback
 - `lib/contexts` - React context providers (Project, Format, Database for managing global state)
 - `actions` - Server actions (reading directories, voice transcription, text correction, regex generation)
 - `prompts` - Functions to generate prompts for specific LLM tasks
@@ -102,19 +102,18 @@ This tool focuses on *generating prompts*. The "Apply Changes" section does *not
 - `types` - Type definitions
 
 ## Recommended Workflow
-1. **Generate Prompt**  
-   Specify your Project Directory, then either select files from the file browser or paste file paths. Provide the Task Description. Optionally use voice transcription. Click "Generate Prompt" to produce a text prompt for the O1 Pro model.
-2. **Send to Gemini (Optional)**
-   If you generated a prompt suitable for patch generation (like the "Code Changes (Diff)" format), click "Send to Gemini & Save Patch". The response (assumed to be a patch) will be saved to the `patches/` directory in the repository root. The process runs in the background and updates its status in the session database. You can monitor the progress and elapsed time in the UI.
-2. **Send Prompt to O1 Pro Model**  
-   Alternatively, copy and paste the generated prompt into ChatGPT (or another environment) where you have the O1 Pro model.
-3. **Apply Changes**
-   If you used Gemini, the patch file is saved locally. Use the "Open in IDE" button or standard Git tools (`git apply patch-file.patch`) to apply the changes. If you used another AI model, paste the diff or refactoring plan returned by the AI into the "Apply Changes" section of the tool. Click the button to generate a *new prompt*. Copy this new prompt and send it back to your AI model (e.g., O1 Pro) to execute the changes.
-4. **Save/Load Sessions:** Use the "Saved Sessions" section to save your current setup or load a previous one. Your work is auto-saved to the active session.
-
+1. **Select Project & Format:** Choose your project directory and the desired output format (e.g., Diff, Refactoring Plan).
+2. **Manage Session:** Create a new session or load an existing one for the selected project/format. Your work (task description, file selections, etc.) is auto-saved to the active session.
+3. **Define Task & Context:**
+   - Write or record the task description.
+   - Select relevant files using the file browser, path pasting, or regex generation.
+   - Optionally provide codebase structure information.
+4. **Generate Prompt:** Click "Generate Prompt" to create the input for the AI model based on your selections and task.
+5. **Process with Gemini (Optional):** If using the "Code Changes (Diff)" format (or similar), click "Send to Gemini & Save Patch". The tool will send the prompt to Gemini, stream the response (expected to be a patch) to a file in the `patches/` directory within your selected project directory, and display the progress.
+6. **Apply Patch:** Once Gemini processing is complete, use the "Open in IDE" button or standard tools (`git apply your-patch-file.patch`) to apply the generated changes to your local codebase.
+7. **Alternative (Manual Copy/Paste):** Copy the generated prompt from step 4 and paste it into your preferred AI model interface (like ChatGPT with O1 Pro). Obtain the response (e.g., diff) and apply it manually.
 ## Contributing
 Contributions are welcome. To contribute:
-
 1. Fork the repo and clone your fork.
 2. Create a new branch.
 3. Make your changes, then test thoroughly.

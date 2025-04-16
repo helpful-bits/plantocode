@@ -209,13 +209,14 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
     const isCanceled = geminiStatus === 'canceled';
 
     // Disable send if already running, component is loading, missing prompt, or no active session
-    const isSendDisabled = isLoading || isProcessing || !prompt || !activeSessionId;
+    // Also disable if completed, failed, or canceled (must create new session or retry logic needed)
+    const isSendDisabled = isLoading || isProcessing || isCompleted || isFailed || isCanceled || !prompt || !activeSessionId;
     // Disable cancel if not running OR if the component is currently performing an action (like trying to cancel)
-    const isCancelDisabled = isLoading || !isProcessing; 
+    const isCancelDisabled = isLoading || !isProcessing;
     const savedFilePath = sessionData?.geminiPatchPath || null; // Get path from sessionData
 
     return (
-        <div className="flex flex-col items-center gap-4 p-4 border rounded-lg bg-card shadow-sm">
+        <div className="flex flex-col items-center gap-4 p-4 border rounded-lg bg-card shadow-sm w-full">
             {/* Send Button */}
             <Button
                 onClick={handleSendToGemini} 
@@ -225,6 +226,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
                     !prompt ? "Generate a prompt first" : 
                     !activeSessionId ? "Load or create a session first" : 
                     isProcessing ? "Processing is already in progress" :
+                    (isCompleted || isFailed || isCanceled) ? `Processing ${geminiStatus}. Start a new session to run again.` :
                     isLoading ? "Action in progress..." :
                     ""
                 }
@@ -285,7 +287,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
                     </p>
                 )}
             </div>
-            
+
             {/* Stream stats display */}
             {(isProcessing || isCompleted) && streamStats.tokensReceived > 0 && ( // Show stats even after completion
                 <div className="text-xs text-muted-foreground flex gap-3 justify-center">
@@ -293,7 +295,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
                     <span>Characters: {streamStats.charsReceived}</span>
                 </div>
             )}
-            
+
             {/* File path display with IDE integration */}
             {savedFilePath && (
                 <div className="w-full flex flex-col items-center gap-2">
@@ -303,9 +305,9 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
                     <IdeIntegration filePath={savedFilePath} />
                 </div>
             )}
-            
+
             {/* Live Patch Content Viewer */}
-            {(isProcessing || isCompleted) && savedFilePath && (
+            {(isProcessing || isCompleted || isFailed || isCanceled) && activeSessionId && ( // Render viewer even if failed/canceled to show potential final state or error
                 <PatchStreamViewer 
                     patchFilePath={savedFilePath}
                     isStreaming={isProcessing}

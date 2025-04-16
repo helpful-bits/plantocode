@@ -172,7 +172,7 @@ export function useVoiceRecording({
         }
         
         if (onCorrectionCompleteRef.current && correctionResult.isSuccess) { // Call correction complete callback
-            onCorrectionCompleteRef.current(currentRawText, finalText);
+            onCorrectionCompleteRef.current(currentRawText, finalTranscriptionText);
         } // Close if statement
 
         if (onInteractionRef.current) {
