@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runMigrations } from '@/lib/db/migrations'; // Keep runMigrations import
-import { setupDatabase } from '@/lib/db/setup';
-import { db } from '@/lib/db';
+import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { db } from '@/lib/db'; // Keep db import
 /**
  * API endpoint to force migrations to run
  * GET /api/migration
@@ -9,14 +9,14 @@ import { db } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     console.log('Forcing database migrations to run...');
-    
+
     // First ensure database is set up
     await setupDatabase();
-    
+
     // Then explicitly run migrations
     await runMigrations(); // Await migrations to ensure they complete
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({ // Keep success response
       success: true, 
       message: 'Database migrations initiated. Check logs for results.' 
     });

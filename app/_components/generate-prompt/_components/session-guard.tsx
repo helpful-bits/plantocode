@@ -1,7 +1,7 @@
 "use client"; 
 
-import React, { useEffect } from 'react'; // Keep React import
-import { Session } from '@/types';
+import React, { useEffect } from 'react';
+import { Session } from '@/types'; // Keep Session import
 
 interface SessionGuardProps {
   activeSessionId: string | null;
@@ -13,15 +13,23 @@ interface SessionGuardProps {
 }
 
 const SessionGuard: React.FC<SessionGuardProps> = ({
-  activeSessionId, // Destructure activeSessionId from props
+  activeSessionId,
+  sessionInitialized,
   children,
-}) => {
-  if (!activeSessionId) {
-    // If no session is active, don't render the main form content
+}) => { // Keep SessionGuard component
+  useEffect(() => {
+    console.log(`[SessionGuard] Rendering with activeSessionId=${activeSessionId}, sessionInitialized=${sessionInitialized}`);
+  }, [activeSessionId, sessionInitialized]);
+  
+  // Modified conditional to consider both activeSessionId and sessionInitialized
+  if (!activeSessionId && !sessionInitialized) {
+    // If no session is active and not initialized, don't render the main form content
+    console.log('[SessionGuard] Not rendering children - no active session and not initialized');
     return null; // Main form elements are hidden
   }
-  // If a session is active, render the children (the main form)
+  // If a session is active or initialized, render the children (the main form)
+  console.log('[SessionGuard] Rendering children - session is active or initialized');
   return <>{children}</>;
-};
+}; // Keep component definition
  
 export default SessionGuard;

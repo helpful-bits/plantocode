@@ -1,7 +1,7 @@
 "use server";
- 
-export async function getDiffApplyPrompt(clipboardText: string): Promise<string> {
-  // Ensure consistent XML format // Keep comment
+
+export async function getDiffApplyPrompt(clipboardText: string): Promise<string> { // Keep function signature
+
   return `<?xml version="1.0" encoding="UTF-8"?>
   <prompt>
 <role>

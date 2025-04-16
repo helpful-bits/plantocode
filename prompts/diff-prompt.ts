@@ -1,6 +1,6 @@
 "use server";
 
-export async function getDiffPrompt(): Promise<string> {
+export async function getDiffPrompt(): Promise<string> { // Keep function signature
   return `<?xml version="1.0" encoding="UTF-8"?> // Keep XML declaration
 <prompt>
   <role>

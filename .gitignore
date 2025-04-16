@@ -46,8 +46,9 @@ next-env.d.ts
 
 # Cursor
 out/
-/pnpm-lock.yaml
+# pnpm-lock.yaml # Keep this commented out for now
 /work.patch
 /actions/*.swp
 /.vscode/settings.json
 /patches/
+/pnpm-lock.yaml

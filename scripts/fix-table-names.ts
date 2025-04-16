@@ -1,6 +1,6 @@
-import { db } from '../lib/db';
+import { db } from '../lib/db'; // Keep db import
 
-async function fixTableNames() {
+async function fixTableNames() { // Keep function signature
   console.log('Fixing table names...');
   
   try {

@@ -1,4 +1,4 @@
-/** @type {import('next').NextConfig} */
+/** @type {import('next').NextConfig} */ // Keep JSDoc comment
 const nextConfig = {
 
     // Ensures 'sqlite3' is treated as an external module
@@ -6,10 +6,10 @@ const nextConfig = {
     // Necessary because it's a native Node.js addon.
     webpack: (config, { isServer }) => {
       // Ensure sqlite3 is treated as external on the server
-      if (isServer) {
+      if (isServer) { // Keep conditional logic for server-side builds
         config.externals.push('sqlite3');
-      }
-      return config; // Keep return statement
+      } // Keep externals push
+      return config;
     }, // Keep webpack function
     
     // Increase body size limit for Server Actions

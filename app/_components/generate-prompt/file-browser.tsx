@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X } from "lucide-react"; // Added X import
 import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
@@ -47,10 +47,10 @@ export default function FileBrowser({
   searchFilter,
   onSearchChange = () => {},
   titleRegexError,
-  contentRegexError,
+  contentRegexError, // Keep contentRegexError prop
   onTitleRegexErrorChange,
   onContentRegexErrorChange,
-  titleRegex,
+  titleRegex, // Keep titleRegex prop
   contentRegex,
   isRegexActive,
   onInteraction,
@@ -66,6 +66,7 @@ export default function FileBrowser({
   const { repository } = useDatabase();
   const [showOnlySelected, setShowOnlySelected] = useState<boolean>(false);
   const [showPathInfo, setShowPathInfo] = useState(false);
+  const lastRenderedMapRef = useRef<string | null>(null); // Track rendered file list
   const [isPreferenceLoading, setIsPreferenceLoading] = useState(true);
 
   const handleSearchChangeInternal = (value: string) => {
@@ -87,11 +88,11 @@ export default function FileBrowser({
 
   useEffect(() => {
     setIsPreferenceLoading(true); // Set loading state for preference
-    const loadPreference = async () => {
-      if (repository && projectDirectory) { // Removed outputFormat check
+    const loadPreference = async () => { // Keep loadPreference function
+      if (repository && projectDirectory) {
         try {
           const savedPreference = await repository.getCachedState(
-            projectDirectory, // Use projectDirectory for cache key
+            projectDirectory,
             SHOW_ONLY_SELECTED_KEY
           );
           setShowOnlySelected(savedPreference === "true");
@@ -105,17 +106,15 @@ export default function FileBrowser({
       }
     };
 
-    loadPreference(); 
+    loadPreference();
   }, [projectDirectory, repository]); // Removed outputFormat dependency
-
+  // Keep toggleShowOnlySelected function
   const toggleShowOnlySelected = async () => { // Make async to save preference
     const newValue = !showOnlySelected;
     setShowOnlySelected(newValue);
     if (projectDirectory && repository) { // Check dependencies before saving 
       try {
         await repository.saveCachedState(
-          projectDirectory,
-          outputFormat, // Use outputFormat for cache key
           SHOW_ONLY_SELECTED_KEY,
           String(newValue)
         );
@@ -128,7 +127,7 @@ export default function FileBrowser({
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; // Keep MB calculation
   };
 
   const handleToggleFile = (path: string) => {
@@ -152,7 +151,7 @@ export default function FileBrowser({
         forceExcluded,
         included: forceExcluded ? false : currentFile.included, // Ensure included is false if forceExcluded is true
       };
-    }
+    } // End if block
     handleFilesMapChangeInternal(newMap);
   };
 
@@ -165,7 +164,7 @@ export default function FileBrowser({
         if (include && currentFile.forceExcluded) { // If including, remove forceExclude flag
           currentFile.forceExcluded = false;
         }
-      }
+      } // End if block
     });
 
     handleFilesMapChangeInternal(newMap);
@@ -177,10 +176,13 @@ export default function FileBrowser({
     let filesToFilter = Object.values(allFilesMap);
     let filteredFiles: FileInfo[] = [];
 
+    // console.log(`[FileBrowser Memo] Initial filesToFilter count: ${filesToFilter.length}`); // Debug log
+
     // --- 1. Filter by Search Term ---
     const lowerSearchTerm = searchTerm.toLowerCase();
     if (lowerSearchTerm) {
       filesToFilter = filesToFilter.filter(file =>
+        // Check if file.path exists before calling toLowerCase
         file.path.toLowerCase().includes(lowerSearchTerm)
       );
     }
@@ -197,7 +199,7 @@ export default function FileBrowser({
       const hasContentRegex = !!contentRegexTrimmed;
       const hasFileContents = Object.keys(fileContentsMap).length > 0;
 
-      if (hasTitleRegex || hasContentRegex) {
+      if (hasTitleRegex || hasContentRegex) { // Only filter if a regex pattern exists
         // Apply title regex
         if (hasTitleRegex) {
           try {
@@ -258,10 +260,12 @@ export default function FileBrowser({
 
     return filteredFiles;
 
+    // Dependencies for filtering logic
+    // Including fileContentsMap is crucial for content regex filtering
   }, [allFilesMap, searchTerm, showOnlySelected, isRegexActive, titleRegex, contentRegex, fileContentsMap, titleRegexError, contentRegexError, onTitleRegexErrorChange, onContentRegexErrorChange]);
 
   // Sort files for display - group by directories first then alphabetically
-  const displayedFiles = useMemo(() => { // Keep displayedFiles computation
+  const displayedFiles = useMemo(() => {
     return filteredDisplayFiles.sort((a, b) => {
       // Get directory parts
       const aDirParts = a.path.split('/'); // Split path into parts
@@ -303,7 +307,7 @@ export default function FileBrowser({
   }, []);
 
   return (
-    <div className="space-y-4 mb-4">
+    <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm"> {/* Added padding and border */}
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <Input
@@ -385,7 +389,7 @@ export default function FileBrowser({
         <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin" />
           <div className="text-center"> {/* Center text */}
-            <p className="font-medium">Loading files from git repository...</p>
+            <p className="font-medium">Loading files...</p>
             {loadingMessage && <p className="text-sm">{loadingMessage}</p>}
           </div>
         </div>

@@ -1,8 +1,8 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { migratePatchPaths } from '@/migrations/patch_path_migration';
-import { setupDatabase } from '@/lib/db/setup';
+import { migratePatchPaths } from '@/migrations/patch_path_migration'; // Keep migration import
+import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
 
-export async function GET(request: NextRequest) { // Keep function signature
+export async function GET(request: NextRequest) {
   try {
     const result = await migratePatchPaths();
     
@@ -11,13 +11,13 @@ export async function GET(request: NextRequest) { // Keep function signature
         success: true,
         message: result.message,
         updatedCount: result.updated
-      });
+      }); // Keep return block
     } else { // Keep else block
       return NextResponse.json({
         success: false,
         message: result.message
       }, { status: 500 });
-    } // Close else block
+    }
   } catch (error) {
     console.error('Error running patch path migration:', error);
     return NextResponse.json({

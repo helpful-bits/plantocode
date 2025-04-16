@@ -1,11 +1,12 @@
 import { db } from './index'; // Keep db import
-import { runMigrations } from './migrations'; // Keep runMigrations import
+import { runMigrations } from './migrations';
 
 let isDbInitialized = false; // Flag to prevent multiple initializations
+
 /**
  * Initialize the database and migrate data if necessary
  */
-export async function setupDatabase() { // Keep function signature
+export async function setupDatabase() {
   // Check if db is already initialized using the flag
   if (isDbInitialized) {
     // console.log("[Setup] Database already initialized."); // Reduce noise
@@ -16,13 +17,12 @@ export async function setupDatabase() { // Keep function signature
     console.error("Database object is not available in setup."); 
     return;
   }
-  console.log("[Setup] Initializing database...");
+
   await runMigrations(); // Await migrations
-  console.log("[Setup] Running migrations...");
 
   // Verify database structure after initialization
   isDbInitialized = true; // Mark as initialized
-  verifyDatabaseStructure();
+  verifyDatabaseStructure(); // Keep verification step
 }
 
 function verifyDatabaseStructure() {
@@ -49,7 +49,7 @@ function verifyDatabaseStructure() {
       console.warn(`Missing tables detected: ${missingTables.join(', ')}`);
       console.warn("Attempting to re-run migrations...");
       runMigrations(); // Attempt to run migrations again if tables are missing
-    } else { // Only log success if no errors
+    } else {
       console.log("Database structure verification complete. All tables exist.");
     }
   });
@@ -59,7 +59,7 @@ function verifyDatabaseStructure() {
  * Cleanup function to be called on application shutdown
  */
 export function cleanupDatabase() {
-  // closeDatabase(); // Keep commented out
+  // closeDatabase(); // Closing logic might interfere with Next.js hot-reloading
 }
 
 // Function to reset the database if needed

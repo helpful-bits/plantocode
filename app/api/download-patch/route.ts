@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { existsSync } from 'fs';
-import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils';
+import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
       // Return as downloadable file
       return new NextResponse(content, {
-        headers: {
+        headers: { // Keep headers
           'Content-Type': 'text/plain',
           'Content-Disposition': `attachment; filename="${filename}"`,
         },

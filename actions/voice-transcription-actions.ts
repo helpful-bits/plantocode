@@ -1,6 +1,6 @@
 "use server";
- 
-import { ActionState } from "@/types";
+
+import { ActionState } from "@/types"; // Keep ActionState import
 
 export async function transcribeVoiceAction(request: {
   blob: Blob;
@@ -11,14 +11,14 @@ export async function transcribeVoiceAction(request: {
     if (!request.blob || request.blob.size === 0) {
       console.error("Empty audio blob received");
       return {
-        isSuccess: false, // Keep false
+        isSuccess: false,
         message: "Empty audio recording received. Please try again with a valid recording.",
       };
     }
     
     const form = new FormData();
 
-    const normalizedMimeType = request.mimeType.split(';')[0].toLowerCase(); // Get base MIME type first
+    const normalizedMimeType = request.mimeType.split(';')[0].toLowerCase();
     
     const extensionMap: Record<string, string> = { // Define extension map
       "audio/flac": "flac",
@@ -93,7 +93,7 @@ export async function transcribeVoiceAction(request: {
       message: "Voice transcribed successfully",
       data: data.text,
     };
-  } catch (error: unknown) { // Use unknown type for catch block variable
+  } catch (error: unknown) {
     console.error("Error transcribing voice:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     

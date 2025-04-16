@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import "./globals.css";
-import { ProjectProvider } from "@/lib/contexts/project-context";
-import { ThemeProvider } from "@/components/theme-provider";
-import { DatabaseProvider } from "@/lib/contexts/database-context";
+import "./globals.css"; // Keep globals.css import
+import { ProjectProvider } from "@/lib/contexts/project-context"; // Keep ProjectProvider import
+import { ThemeProvider } from "@/components/theme-provider"; // Keep ThemeProvider import
+import { DatabaseProvider } from "@/lib/contexts/database-context"; // Keep DatabaseProvider import
 
 export const metadata: Metadata = {
   title: "O1 Pro Flow", // Keep title
@@ -23,4 +23,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </body>
     </html>
   ); 
-} // Keep RootLayout component
+}

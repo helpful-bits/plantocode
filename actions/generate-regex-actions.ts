@@ -21,7 +21,6 @@ export async function generateRegexPatternsAction(
 
   try {
     let structureContext = "";
-    // Add context from the project structure if available
     if (directoryTree && directoryTree.trim()) {
       structureContext = `
 To help with generating more accurate regex patterns, here is the current project directory structure:
@@ -37,7 +36,7 @@ Consider this structure when creating patterns to match files in the appropriate
       max_tokens: 1024,
       messages: [{
           role: "user",
-          content: `Based on the following description of file patterns, generate appropriate JavaScript-compatible regular expressions for matching file paths (filenames/titles) and file content.${structureContext}
+          content: `Based on the following description of file patterns, generate appropriate JavaScript-compatible regular expressions for matching file paths (titles) and file content.${structureContext}
 
 Description: "${description}"
 
@@ -63,7 +62,7 @@ Example for "Find Markdown files containing 'TODO'":
 }
 
 Now, generate the JSON for the provided description.`,
-        },
+        }, // Close user message
       ],
     };
     console.log("Sending payload to Anthropic for regex generation...");
@@ -113,7 +112,6 @@ Now, generate the JSON for the provided description.`,
       return { isSuccess: false, message: parseErrorMsg };
     }
   } catch (error) {
-    console.error("Error generating regex patterns:", error);
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Failed to generate regex patterns",

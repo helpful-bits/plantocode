@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { existsSync } from 'fs';
-import { normalizePath } from '@/lib/path-utils'; // Import normalizePath
+import { normalizePath } from '@/lib/path-utils'; // Keep normalizePath import
 
 /**
  * API endpoint for directory browsing
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     // Get home directory
     if (action === 'getHomeDirectory') {
       try {
-        const homeDir = normalizePath(os.homedir()); // Normalize home dir
+        const homeDir = normalizePath(os.homedir());
         return NextResponse.json({ 
           isSuccess: true, 
           message: "Home directory retrieved",
@@ -121,8 +121,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Get parent directory
-        const parentPath = path.dirname(resolvedPath) !== resolvedPath 
-          ? normalizePath(path.dirname(resolvedPath)) // Normalize parent path
+        const parentPath = path.dirname(resolvedPath) !== resolvedPath
+          ? normalizePath(path.dirname(resolvedPath))
           : null;
 
         // Read directory contents

@@ -7,7 +7,7 @@ import { db } from './index'; // Keep db import
  */
 export async function runMigrations(): Promise<void> { // Make function async
   if (!db || typeof db.run !== 'function') {
-    console.error("Database not initialized. Skipping migrations.");
+    // console.error("Database not initialized. Skipping migrations."); // Reduce noise
     return;
   }
   // Path to the migrations folder
@@ -81,7 +81,7 @@ async function applyMigrations(migrationsFolder: string, appliedMigrations: Set<
 
   for (const file of files) {
     if (appliedMigrations.has(file)) {
-      console.log(`[Migration] Skipping already applied: ${file}`); // Restored log message with file name
+      // console.log(`[Migration] Skipping already applied: ${file}`); // Reduce noise
       continue; // Changed from 'return' to 'continue' to process all migration files
     }
 

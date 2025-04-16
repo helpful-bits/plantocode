@@ -1,9 +1,9 @@
 "use client";
- 
+
 import { useState, useEffect } from "react";
-import { StatusMessages } from "./_components/status-messages"; // Keep StatusMessages import
+import { StatusMessages } from "./_components/status-messages";
 import { getDiffApplyPrompt } from "../../../prompts/apply-changes-prompts";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button"; // Keep Button import
 import { Loader2, Clipboard } from "lucide-react"; // Keep Clipboard import
 
 export function ApplyChangesForm() {
@@ -53,10 +53,10 @@ export function ApplyChangesForm() {
     }
   };
 
-  const isButtonDisabled = isLoading; // Simplified logic
+  const isButtonDisabled = isLoading;
 
   return (
-    <div className="max-w-[1400px] w-full mx-auto p-4 flex flex-col gap-4">
+    <div className="max-w-[1400px] w-full mx-auto p-4 flex flex-col gap-4"> {/* Keep container div */}
       <StatusMessages 
         errorMessage={errorMessage}
         successMessage={successMessage}

@@ -1,7 +1,7 @@
 "use client";
- 
-import React, { Suspense } from "react"; // Keep Suspense import
-import GeneratePromptForm from "./generate-prompt-form";
+
+import React, { Suspense } from "react";
+import GeneratePromptForm from "./generate-prompt-form"; // Keep GeneratePromptForm import
 import { useDatabase } from "@/lib/contexts/database-context";
 import { Loader2 } from "lucide-react";
 
@@ -29,7 +29,7 @@ export default function GeneratePromptRoot() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     }>
-      <FormWithProviders />
+      <FormWithProviders /> {/* Keep FormWithProviders */}
     </Suspense>
   );
 } 

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promises as fs } from 'fs';
-import path from 'path';
+import path from 'path'; // Keep path import
 import os from 'os';
 import { existsSync } from 'fs';
-import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils';
+import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,9 +14,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File path is required and must be a string' }, { status: 400 });
     }
 
-    // Resolve the path to prevent path traversal issues
+    // Resolve the path to handle potential relative paths
     const resolvedFilePath = path.resolve(filePath);
-
     // Security check: verify file exists
     try {
       if (!existsSync(resolvedFilePath)) {
@@ -45,7 +44,7 @@ export async function POST(request: NextRequest) {
 
 function openFileWithIDE(resolvedFilePath: string) {
   // Determine platform-specific command
-  // Ensure filePath is quoted to handle spaces or special characters
+  // Ensure filePath is quoted to handle spaces
   const quotedPath = `"${resolvedFilePath}"`;
   let command;
   
@@ -58,15 +57,15 @@ function openFileWithIDE(resolvedFilePath: string) {
       command = `start "" ${quotedPath}`;
       break;
     default: // Linux and others
-      command = `xdg-open ${quotedPath}`;
+      command = `xdg-open ${quotedPath}`; // Keep default case
       break;
   }
 
   // Execute the command
   exec(command, (error) => {
-    if (error) {
+    if (error) { // Check for error
       console.error(`Error opening file: ${error.message}`);
-      return NextResponse.json({ error: `Failed to open file: ${error.message}` }, { status: 500 });
+      // Cannot return NextResponse from callback, logging is sufficient
     }
   });
 

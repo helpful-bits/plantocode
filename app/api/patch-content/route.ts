@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { existsSync } from 'fs';
-import { sessionRepository } from '@/lib/db/repository';
+import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
 import { setupDatabase } from '@/lib/db/setup';
-import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils';
+import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
 
 export async function GET(request: NextRequest) {
   // Ensure database is initialized
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       if (existsSync(fallbackPath)) {
         // Found in fallback location
         resolvedFilePath = fallbackPath;
-      } else {
+      } else { // Keep else block for fallback location
         // Create patches directory if it doesn't exist
         const patchesDir = getAppPatchesDirectory();
         if (!existsSync(patchesDir)) {

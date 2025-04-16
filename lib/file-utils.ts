@@ -9,7 +9,7 @@ export async function isBinaryFile(buffer: Buffer): Promise<boolean> {
   const hasNullByte = buffer.includes(0);
   if (hasNullByte) return true;
 
-  // Check ratio of non-printable characters (excluding tab, LF, CR) // Keep comment
+  // Check ratio of non-printable characters (excluding tab, LF, CR)
   const nonPrintable = buffer.filter(byte => (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) || byte >= 127);
   const ratio = nonPrintable.length / buffer.length;
 
@@ -17,7 +17,7 @@ export async function isBinaryFile(buffer: Buffer): Promise<boolean> {
   return ratio > 0.1;
 }
 
-export const BINARY_EXTENSIONS = new Set([
+export const BINARY_EXTENSIONS = new Set([ // Keep BINARY_EXTENSIONS
   '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.webp', // Images
   '.mp3', '.mp4', '.wav', '.ogg', '.mov', '.avi', // Audio/Video
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', // Documents

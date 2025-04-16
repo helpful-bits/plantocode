@@ -6,8 +6,10 @@ import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
 
-// Control logging verbosity
 const DEBUG_LOGS = false;
+
+// Define directoryCache for caching directory contents
+const directoryCache = new Map<string, { [key: string]: string }>();
 
 export async function readExternalFileAction(filePath: string): Promise<ActionState<{ [key: string]: string | Buffer }>> {
   try {
@@ -20,32 +22,26 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
     const fullPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
 
     // Use try-catch within the loop for individual file errors
-    try {
-      if (DEBUG_LOGS) console.log(`[Read External] Reading: ${fullPath}`);
-      const ext = path.extname(fullPath).toLowerCase();
-      if (BINARY_EXTENSIONS.has(ext)) {
-        if (DEBUG_LOGS) console.log(`[Read External] Skipping binary extension: ${ext}`);
-        return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
-      }
-
-      const buffer = await fs.readFile(fullPath);
-      if (await isBinaryFile(buffer)) {
-        console.warn(`Skipping detected binary file: ${filePath}`);
-        return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
-      } 
-      
-      const fileInfo: { [key: string]: string } = {}; // Keep fileInfo structure
-      fileInfo[filePath] = buffer.toString('utf-8'); // Read as UTF-8
-
-      return {
-        isSuccess: true,
-        data: fileInfo
-      };
-    } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.warn(`[Read External] Failed to read file ${filePath}: ${errMsg}`); // Keep warning
-      return { isSuccess: false, message: `Failed to read file ${filePath}: ${errMsg}` };
+    if (DEBUG_LOGS) console.log(`[Read External] Reading: ${fullPath}`);
+    const ext = path.extname(fullPath).toLowerCase();
+    if (BINARY_EXTENSIONS.has(ext)) {
+      if (DEBUG_LOGS) console.log(`[Read External] Skipping binary extension: ${ext}`);
+      return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
     }
+
+    const buffer = await fs.readFile(fullPath);
+    if (await isBinaryFile(buffer)) {
+      console.warn(`Skipping detected binary file: ${filePath}`);
+      return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
+    }
+    
+    const fileInfo: { [key: string]: string } = {};
+    fileInfo[filePath] = buffer.toString('utf-8'); // Read as UTF-8
+
+    return {
+      isSuccess: true,
+      data: fileInfo
+    };
   } catch (error: unknown) { // Use unknown type for catch block variable
     return {
       isSuccess: false,
@@ -53,10 +49,6 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
     };
   }
 }
-
-// Cache for read directory operations
-const directoryCache = new Map<string, { data: { [key: string]: string }, timestamp: number }>();
-const DIR_CACHE_TTL = 30000; // 30 seconds
 
 export async function readDirectoryAction(projectDirectory: string): Promise<ActionState<{ [key: string]: string }>> {
   try {
@@ -68,16 +60,13 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       };
     }
 
-    // Check cache first
-    const cachedResult = directoryCache.get(finalDirectory);
-    const now = Date.now();
-    
-    if (cachedResult && (now - cachedResult.timestamp < DIR_CACHE_TTL)) {
-      if (DEBUG_LOGS) console.log(`[Read Directory] Using cached file contents for ${finalDirectory}`);
+    // Check if we have a cached result for this directory
+    if (directoryCache.has(finalDirectory)) {
+      if (DEBUG_LOGS) console.log(`Using cached result for ${finalDirectory}`);
       return {
         isSuccess: true,
-        message: `Using cached directory contents for ${finalDirectory}.`,
-        data: {...cachedResult.data} // Return a copy to avoid mutations
+        message: "Using cached directory content",
+        data: directoryCache.get(finalDirectory)!
       };
     }
 
@@ -122,7 +111,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
     const fileContents: { [key: string]: string } = {};
     
     // Process files in batches to avoid memory issues with large repositories
-    const BATCH_SIZE = 200; // Keep batch size
+    const BATCH_SIZE = 200;
     let processedCount = 0; // Keep count
     let binaryCount = 0;
     let errorCount = 0;
@@ -190,11 +179,8 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       };
     }
     
-    // Store in cache
-    directoryCache.set(finalDirectory, {
-      data: {...fileContents},
-      timestamp: now
-    });
+    // Store the result in cache
+    directoryCache.set(finalDirectory, fileContents);
     
     return {
       isSuccess: true,
@@ -218,10 +204,10 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
 
 // Helper function to read directory recursively
 async function readDirectoryRecursive(directoryPath: string, basePath: string = ''): Promise<string[]> {
-  try {
+  try { // Keep try/catch block
     const entries = await fs.readdir(directoryPath, { withFileTypes: true });
     const files: string[] = [];
-    
+
     for (const entry of entries) {
       // Skip hidden files and directories except .git (handled separately)
       if (entry.name.startsWith('.') && entry.name !== '.git') {
@@ -231,7 +217,7 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
       const entryPath = path.join(directoryPath, entry.name);
       const relativePath = basePath ? path.join(basePath, entry.name) : entry.name;
       
-      if (entry.isDirectory()) {
+      if (entry.isDirectory()) { // Keep directory check
         // Skip node_modules and common build directories
         if (
           entry.name === 'node_modules' || 
@@ -241,7 +227,7 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
         ) {
           continue;
         }
-        
+
         try {
           const subFiles = await readDirectoryRecursive(entryPath, relativePath);
           files.push(...subFiles);
@@ -252,7 +238,7 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
         files.push(relativePath);
       }
     }
-    
+
     return files;
   } catch (error) {
     console.error(`Error reading directory ${directoryPath}:`, error);

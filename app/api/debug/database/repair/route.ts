@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
-import { hashString } from '@/lib/hash'; // Keep hashString import
+import { hashString } from '@/lib/hash';
 import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
-import { runMigrations } from '@/lib/db/migrations';
+import { runMigrations } from '@/lib/db/migrations'; // Keep runMigrations import
 
 setupDatabase(); // Ensure DB setup runs
 
@@ -56,15 +56,6 @@ export async function GET(request: NextRequest) {
     // 3. Migrate project settings to use project_hash
     const projectSettingsResults = await new Promise<any[]>((resolve) => {
       db.all("SELECT * FROM project_settings_old", (err, rows) => {
-        if (err) {
-          // Table might not exist
-          console.log("No old project settings table, skipping migration");
-          resolve([]);
-          return;
-        }
-        resolve(rows || []);
-      });
-    });
     
     // Insert any old settings into the new table with hashed project directories
     let migratedSettingsCount = 0;
@@ -80,8 +71,8 @@ export async function GET(request: NextRequest) {
         const projectHash = hashString(setting.project_directory);
         return new Promise<void>((resolve) => {
           db.run(
-            "INSERT OR REPLACE INTO project_settings (project_hash, output_format, active_session_id, updated_at) VALUES (?, ?, ?, ?)",
-            [projectHash, setting.output_format, setting.active_session_id, setting.updated_at || Date.now()],
+            "INSERT OR REPLACE INTO project_settings (project_hash, active_session_id, updated_at) VALUES (?, ?, ?)",
+            [projectHash, setting.active_session_id, setting.updated_at || Date.now()], // Removed output_format
             (err) => {
               if (err) {
                 console.error("Error migrating project setting:", err);

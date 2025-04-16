@@ -1,8 +1,8 @@
-import { db } from '../lib/db';
-import fs from 'fs';
-import path from 'path';
+import { db } from '../lib/db'; // Keep db import
+import fs from 'fs'; // Keep fs import
 
-async function runCachedStateMigration() {
+import path from 'path'; // Keep path import
+async function runCachedStateMigration() { // Keep function signature
   console.log('Running migration to remove output_format from cached_state table...');
   
   const migrationFile = path.join(process.cwd(), 'migrations', '0005_remove_output_format_from_cached_state.sql');

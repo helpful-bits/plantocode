@@ -1,15 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button } from '@/components/ui/button'; // Keep Button import
-import { PatchStreamViewer } from './patch-stream-viewer'; // Import PatchStreamViewer
+import { Button } from '@/components/ui/button';
 import { Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react'; // Keep imports, add RefreshCw
-import { sendPromptToGeminiAction, cancelGeminiProcessingAction } from '@/actions/gemini-actions';
-import { useDatabase } from '@/lib/contexts/database-context';
+import { sendPromptToGeminiAction, cancelGeminiProcessingAction } from '@/actions/gemini-actions'; // Keep gemini-actions import
+import { resetSessionStateAction, clearSessionPatchPathAction } from '@/actions/session-actions'; // Import session-actions
+import { useDatabase } from '@/lib/contexts/database-context'; // Keep database-context import
 import { Session } from '@/types';
 import { IdeIntegration } from './ide-integration';
-
-// Keep GeminiProcessorProps interface
 interface GeminiProcessorProps {
     prompt: string; 
     activeSessionId: string | null;
@@ -20,10 +18,9 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
     const [errorMessage, setErrorMessage] = useState<string>("");
     const [sessionData, setSessionData] = useState<Session | null>(null);
     const [statusDisplay, setStatusDisplay] = useState<string>(""); // State for status/timer display
-    const [sessionName, setSessionName] = useState<string>("");
-    const [streamStats, setStreamStats] = useState({ tokensReceived: 0, charsReceived: 0 });
+    const [sessionName, setSessionName] = useState<string>(""); // Keep sessionName state
+    const [streamStats, setStreamStats] = useState({ tokensReceived: 0, charsReceived: 0 }); // Keep streamStats state
     const { repository, isInitialized } = useDatabase(); // Keep repository and isInitialized
-    // Add a ref to track component mounted state
     const isMountedRef = useRef(true);
 
     // --- Status/Timer Logic ---
@@ -49,8 +46,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
             setStatusDisplay(""); // Idle or unknown state
         }
     }, []);
-
-    // --- Session Data Fetching --- // Keep Session Data Fetching comment
+    // --- Session Data Fetching ---
     // Fetches the latest session data from the database
     const fetchSessionData = useCallback(async () => {
         if (activeSessionId && repository && isInitialized) {
@@ -126,7 +122,7 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
         };
     }, [activeSessionId, repository, isInitialized, fetchSessionData]); // Keep dependencies
 
-    useEffect(() => {
+    useEffect(() => { // Keep timer update effect
         let intervalId: NodeJS.Timeout | null = null;
         if (sessionData?.geminiStatus === 'running') {
             intervalId = setInterval(() => {
@@ -138,35 +134,73 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
         };
     }, [sessionData, updateStatusDisplay]);
     
-    // --- Action Handlers --- // Keep Action Handlers comment
+    // Function to reset the current session state when retrying
+    const resetSessionState = useCallback(async () => {
+        if (!activeSessionId) return;
+        try {
+            console.log(`[Gemini UI] Resetting session state for ${activeSessionId}`);
+            // Use the server action to reset the session state
+            const result = await resetSessionStateAction(activeSessionId);
+            if (!result.isSuccess) {
+                console.error(`[Gemini UI] Failed to reset session state: ${result.message}`);
+            }
+            await fetchSessionData(); // Refresh the UI
+        } catch (error) {
+            console.error('[Gemini UI] Error resetting session state:', error);
+        }
+    }, [activeSessionId, fetchSessionData]);
+
+    // --- Action Handlers ---
     const handleSendToGemini = useCallback(async () => {
         if (!prompt || !activeSessionId || !repository) { // Add repository check
             setErrorMessage("Cannot send: Missing prompt or active session.");
+            console.error("[Gemini UI] Cannot send: Missing prompt, active session, or repository.");
             return;
         }
 
+        // Check if we're already loading
+        if (isLoading) {
+            console.log("[Gemini UI] Send request ignored - already loading");
+            return;
+        }
+
+        // Check if the session is in canceled state and auto-reset it
+        if (sessionData?.geminiStatus === 'canceled' || sessionData?.geminiStatus === 'failed') {
+            console.log(`[Gemini UI] Auto-resetting session from ${sessionData.geminiStatus} state before processing`);
+            await resetSessionState();
+        }
+
+        console.log(`[Gemini UI] Starting new request for session ${activeSessionId} with status ${sessionData?.geminiStatus}`);
+        
         if (isMountedRef.current) setIsLoading(true); // Set loading indicator only if mounted
         setErrorMessage(""); // Clear previous errors
         setStatusDisplay(""); // Reset status display
         
         try {
             // Call the action. It will update the DB status to 'running'.
+            console.log(`[Gemini UI] Sending prompt to Gemini for session ${activeSessionId}`);
             const result = await sendPromptToGeminiAction(prompt, activeSessionId);
+            console.log(`[Gemini UI] Send action completed with result:`, result);
+            
             // Immediately fetch the updated session data to reflect the *initial* state change ('running')
             await fetchSessionData();
+            
             // The action now runs in the background. Polling will update the final state.
             if (!result.isSuccess) {
+                console.error(`[Gemini UI] Failed to start Gemini processing: ${result.message}`);
                 setErrorMessage(result.message || "Failed to start Gemini processing.");
                 await fetchSessionData(); // Fetch data again immediately on failure to start
             }
          } catch (error) {
+            console.error("[Gemini UI] Error during send:", error);
             setErrorMessage(error instanceof Error ? error.message : "An unexpected error occurred.");
             // Refetch session data even on unexpected error to show 'failed' status
             await fetchSessionData(); // Ensure UI reflects the final state
         } finally { // Reset component loading state (for the button action)
+            console.log("[Gemini UI] Finished send request processing");
             setIsLoading(false); // Reset component loading state (for the button action)
         }
-    }, [prompt, activeSessionId, repository, fetchSessionData]);
+    }, [prompt, activeSessionId, repository, fetchSessionData, sessionData?.geminiStatus, isLoading, resetSessionState]);
 
     const handleCancelProcessing = useCallback(async () => {
         if (!activeSessionId || !repository || sessionData?.geminiStatus !== 'running') { // Check status directly
@@ -199,8 +233,21 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
         }
     }, [activeSessionId, repository, sessionData?.geminiStatus, fetchSessionData]);
 
+    // Handler for when IDE integration fails to open the file
+    const handleIdeIntegrationError = useCallback(async (errorMsg: string) => {
+        if (errorMsg.includes('File not found')) {
+            setErrorMessage("Patch file not found. It may have been deleted.");
+            if (activeSessionId) {
+                // Call action to clear the path from the database
+                await clearSessionPatchPathAction(activeSessionId);
+                await fetchSessionData(); // Refresh UI to remove file path display
+            }
+        } else {
+            setErrorMessage(`Error opening file: ${errorMsg}`);
+        }
+    }, [activeSessionId, fetchSessionData]);
 
-    // --- UI State Determination --- // Keep UI State Determination comment
+    // --- UI State Determination ---
     // Determine button states based on session data
     const geminiStatus = sessionData?.geminiStatus ?? 'idle';
     const isProcessing = geminiStatus === 'running';
@@ -208,85 +255,126 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
     const isFailed = geminiStatus === 'failed';
     const isCanceled = geminiStatus === 'canceled';
 
-    // Disable send if already running, component is loading, missing prompt, or no active session
-    // Also disable if completed, failed, or canceled (must create new session or retry logic needed)
-    const isSendDisabled = false; // Always enable the button
+    // Allow restart of processing even if previously canceled/failed
+    const isSendDisabled = isLoading || isProcessing; // Only disable when actively processing or loading
+    
     // Disable cancel if not running OR if the component is currently performing an action (like trying to cancel)
     const isCancelDisabled = isLoading || !isProcessing;
     const savedFilePath = sessionData?.geminiPatchPath || null; // Get path from sessionData
 
     return (
         <div className="flex flex-col items-center gap-4 p-4 border rounded-lg bg-card shadow-sm w-full">
-            {/* Send Button */}
+            {/* Send Button - Updated with static text */}
             <Button
                 onClick={handleSendToGemini} 
-                disabled={isSendDisabled} 
+                disabled={isSendDisabled || !prompt?.trim()} // Also disable if prompt is empty
                 className="px-6 py-3 text-base"
-                title="Send to Gemini & Save Patch"
+                title={!prompt?.trim() ? "Generate a prompt first" : isSendDisabled ? "Processing..." : "Send to Gemini"}
             >
                 {isLoading && !isProcessing ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />}
-                {isLoading && !isProcessing ? "Starting..." : (isProcessing ? "Processing..." : "Send to Gemini & Save Patch")}
+                Send to Gemini
             </Button>
 
-            {/* Status Display Section */}
-            <div className="text-sm text-center min-h-[40px] w-full flex flex-col items-center justify-center px-2"> {/* Changed layout to column */}
-                {(isProcessing || isCompleted || isFailed || isCanceled) && ( // Show status section if not idle
-                    <div className="flex items-center justify-center gap-2">
-                        {/* Icon based on status */}
-                        {isProcessing && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
-                        {isCompleted && <CheckCircle className="h-4 w-4 text-green-600" />}
-                        {isFailed && <AlertCircle className="h-4 w-4 text-red-600" />}
-                        {isCanceled && <XOctagon className="h-4 w-4 text-orange-600" />}
-
-                        {/* Status Text */}
-                        <span className={`${isFailed ? 'text-red-600' : isCanceled ? 'text-orange-600' : isCompleted ? 'text-green-600' : 'text-blue-600'} break-words max-w-full`}>
-                            {isProcessing ? `Processing... (${statusDisplay})` : sessionData?.geminiStatusMessage || geminiStatus}
-                        </span>
-
-                        {/* Cancel Button (only when running) */}
-                        {isProcessing && <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm" 
-                            onClick={handleCancelProcessing}
-                            disabled={isLoading || isCancelDisabled} // Also disable if component is loading (e.g., during cancel action)
-                            className="ml-2 h-7 px-2 text-xs"
-                            title={isCancelDisabled ? "Cancellation in progress or not currently running" : "Cancel Gemini processing"}
-                        >
-                            <XOctagon className="h-3 w-3 mr-1" />
-                                Cancel
-                        </Button>}
-
-                        {/* Refresh Button (always show if not idle, disable while loading) */}
-                        {(isProcessing || isCompleted || isFailed || isCanceled) && (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                onClick={fetchSessionData}
-                                disabled={isLoading}
-                                className="ml-2 h-7 w-7"
-                                title="Refresh Status"
-                            >
-                                <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-                            </Button>
-                        )}
+            {/* Processing Request List */}
+            {(isProcessing || isCompleted || isFailed || isCanceled) && ( 
+                <div className="w-full border rounded-md overflow-hidden">
+                    <div className="bg-muted px-3 py-2 font-medium text-sm border-b">
+                        Processing Requests
                     </div>
-                )}
-                {/* Show general component-level errors when not processing */}
-                {errorMessage && !isProcessing && geminiStatus !== 'failed' && geminiStatus !== 'canceled' && (
-                    <p className="text-red-600 flex items-center justify-center gap-1 break-words max-w-full">
-                        <AlertCircle className="h-4 w-4 flex-shrink-0 mr-1" /> {errorMessage}
-                    </p>
-                )}
-            </div>
+                    <div className="p-3">
+                        <div className="flex items-start gap-3">
+                            {/* Status Icon */}
+                            <div className="mt-1">
+                                {isProcessing && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
+                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-600" />}
+                                {isFailed && <AlertCircle className="h-4 w-4 text-red-600" />}
+                                {isCanceled && <XOctagon className="h-4 w-4 text-orange-600" />}
+                            </div>
+                            
+                            {/* Request Details */}
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                    <span className={`font-medium ${isFailed ? 'text-red-600' : isCanceled ? 'text-orange-600' : isCompleted ? 'text-green-600' : 'text-blue-600'}`}>
+                                        {isProcessing ? 'Processing' : isCompleted ? 'Completed' : isFailed ? 'Failed' : 'Canceled'}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">{statusDisplay}</span>
+                                </div>
+                                
+                                {/* Session Details */}
+                                {sessionName && (
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        Session: {sessionName}
+                                    </p>
+                                )}
+                                
+                                {/* Error Message */}
+                                {errorMessage && (geminiStatus === 'failed' || geminiStatus === 'canceled') && (
+                                    <p className="text-sm text-red-600 mt-1">{errorMessage}</p>
+                                )}
+                                
+                                {/* Stream Stats */}
+                                {(isProcessing || isCompleted) && streamStats.tokensReceived > 0 && (
+                                    <div className="text-xs text-muted-foreground mt-2 flex gap-3">
+                                        <span>Tokens: {streamStats.tokensReceived}</span>
+                                        <span>Characters: {streamStats.charsReceived}</span>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Action Buttons */}
+                            <div className="flex gap-2">
+                                {/* Cancel Button (only when running) */}
+                                {isProcessing && (
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="sm" 
+                                        onClick={handleCancelProcessing}
+                                        disabled={isLoading || isCancelDisabled}
+                                        title={isCancelDisabled ? "Cancellation in progress" : "Cancel processing"}
+                                    >
+                                        <XOctagon className="h-3 w-3 mr-1" />
+                                        Cancel
+                                    </Button>
+                                )}
 
-            {/* Stream stats display */}
-            {(isProcessing || isCompleted) && streamStats.tokensReceived > 0 && ( // Show stats even after completion
-                <div className="text-xs text-muted-foreground flex gap-3 justify-center">
-                    <span>Tokens: {streamStats.tokensReceived}</span>
-                    <span>Characters: {streamStats.charsReceived}</span>
+                                {/* Reset Button (for failed/canceled states) */}
+                                {(isFailed || isCanceled) && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={resetSessionState}
+                                        disabled={isLoading}
+                                        title="Reset Session State"
+                                    >
+                                        <RefreshCw className="h-3 w-3 mr-1" />
+                                        Reset
+                                    </Button>
+                                )}
+
+                                {/* Refresh Button */}
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={fetchSessionData}
+                                    disabled={isLoading}
+                                    title="Refresh Status"
+                                >
+                                    <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+            )}
+
+            {/* Show general component-level errors when not processing */}
+            {errorMessage && !isProcessing && geminiStatus !== 'failed' && geminiStatus !== 'canceled' && (
+                <p className="text-red-600 flex items-center justify-center gap-1 break-words max-w-full">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mr-1" /> {errorMessage}
+                </p>
             )}
 
             {/* File path display with IDE integration */}
@@ -295,17 +383,8 @@ export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProp
                     <p className="text-sm text-center">
                         Patch file: <span className="font-mono text-xs bg-muted p-1 rounded break-all inline-block max-w-full">{savedFilePath}</span>
                     </p>
-                    <IdeIntegration filePath={savedFilePath} />
+                    <IdeIntegration filePath={savedFilePath} onError={handleIdeIntegrationError} />
                 </div>
-            )}
-
-            {/* Live Patch Content Viewer */}
-            {(isProcessing || isCompleted || isFailed || isCanceled) && activeSessionId && ( // Render viewer even if failed/canceled to show potential final state or error
-                <PatchStreamViewer 
-                    patchFilePath={savedFilePath}
-                    isStreaming={isProcessing}
-                    sessionId={activeSessionId}
-                />
             )}
         </div>
     );

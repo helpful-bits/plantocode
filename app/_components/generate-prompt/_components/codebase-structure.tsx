@@ -2,8 +2,8 @@
 
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { useProject } from "@/lib/contexts/project-context"; // Import useProject
-import { Loader2 } from "lucide-react"; // Keep Loader2 import
+import { useProject } from "@/lib/contexts/project-context";
+import { Loader2, FolderTree } from "lucide-react"; // Replace TreeStructure with FolderTree icon
 import { useState } from "react";
 import { generateDirectoryTree } from "@/lib/directory-tree";
 interface CodebaseStructureProps { // Keep interface definition
@@ -20,7 +20,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   };
-
+  
   // Callback to generate directory tree
   const handleGenerateStructure = async () => {
     if (!projectDirectory) return;
@@ -45,7 +45,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between mb-1"> {/* Reduced bottom margin */}
-        <label className="font-bold text-foreground">Codebase Structure (Optional):</label>
+        <label className="font-bold text-foreground">Codebase Structure</label>
         <div className="flex gap-2">
           <Button
             type="button"
@@ -53,12 +53,10 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
             onClick={handleGenerateStructure}
             disabled={isGenerating || !projectDirectory}
           >
-            {isGenerating ? (
-              <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> // Keep Loader2 icon
-            ) : null} {/* Add Loader2 icon */}
-            {isGenerating ? "Generating..." : "Generate Tree"} {/* Keep button text */}
-            {/* Added Loader2 icon */}
-            {/* Update button text */}
+            {isGenerating
+              ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              : <FolderTree className="h-4 w-4 mr-2" /> } {/* Use FolderTree instead of TreeStructure */}
+            Generate
           </Button>
           <Button
             type="button"

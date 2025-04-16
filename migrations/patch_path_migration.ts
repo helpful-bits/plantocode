@@ -1,7 +1,7 @@
 "use server";
 
-import path from 'path'; // Keep path import
-import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
+import path from 'path';
+import { sessionRepository } from '@/lib/db/repository';
 import { setupDatabase } from '@/lib/db/setup';
 import { Session } from '@/types'; // Keep Session import
 
@@ -18,7 +18,7 @@ export async function migratePatchPaths(): Promise<{
     // Ensure database is initialized
     await setupDatabase(); // Await setup
     
-    // Get all sessions
+    // Get all sessions // Keep comment
     const allSessions = await sessionRepository.getAllSessions();
     
     // Counter for updated sessions
@@ -41,7 +41,7 @@ export async function migratePatchPaths(): Promise<{
           session.geminiEndTime,
           newPath,
           session.geminiStatusMessage // Preserve existing status message
-        );
+        ); // End updateSessionGeminiStatus call
         
         updatedCount++;
       }

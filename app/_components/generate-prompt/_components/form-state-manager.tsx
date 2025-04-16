@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react'; // Added useCallback
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { Session } from '@/types';
 import { useDatabase } from '@/lib/contexts/database-context';
 import { useDebounceCallback } from 'usehooks-ts'; // Import debounce hook
 
 export interface FormStateManagerProps {
   activeSessionId: string | null;
-  sessionName: string;
+  sessionName?: string; // Make sessionName optional
   projectDirectory: string;
-  isSaving: boolean; // Track saving state from parent
+  isSaving: boolean;
   formState: Omit<Session, 'id' | 'name' | 'updatedAt'>; // The current state of the form (excluding generated/metadata fields)
   onStateChange?: (hasChanges: boolean) => void; // Notify parent about change status
   onSaveError?: (error: string | null) => void; // Callback for save errors
@@ -17,7 +17,7 @@ export interface FormStateManagerProps {
 }
 
 const FormStateManager: React.FC<FormStateManagerProps> = ({ 
-  sessionName,
+  sessionName = "", // Provide default value
   activeSessionId,
   projectDirectory,
   formState,
@@ -46,14 +46,17 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
 
 
   const debouncedSave = useDebounceCallback(async (sessionId: string | null, currentState: typeof formState, currentSessionName: string) => {
-    isSavingRef.current = true; // Set saving flag
+    if (!sessionId) return; // Should not happen if activeSessionId is required
+    if (isSavingRef.current) return; // Prevent concurrent saves
+
+    isSavingRef.current = true;
     try {
       const sessionToSave = await repository.getSession(sessionId!); // Use non-null assertion as checked before
       if (sessionToSave) {
+        // Exclude Gemini fields from the current state to avoid overwriting live status
         const { geminiStatus, geminiStartTime, geminiEndTime, geminiPatchPath, geminiStatusMessage, geminiTokensReceived, geminiCharsReceived, geminiLastUpdate, ...formStateWithoutGemini } = currentState;
         
-        if (!sessionId) return;
-
+        // Remove outputFormat and customFormat from updatedSessionData
         const updatedSessionData: Session = {
           ...sessionToSave, // Start with existing session data from DB
           ...formStateWithoutGemini, // Overwrite with current form state (excluding gemini status fields)
@@ -63,13 +66,13 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
           updatedAt: Date.now() // Update timestamp
         };
         
-        // Add back the Gemini fields from the fetched sessionToSave to preserve them
+        // Preserve the existing Gemini fields from the database
         updatedSessionData.geminiStatus = sessionToSave.geminiStatus;
         updatedSessionData.geminiStartTime = sessionToSave.geminiStartTime;
         updatedSessionData.geminiEndTime = sessionToSave.geminiEndTime; // Ensure correct field name
         updatedSessionData.geminiPatchPath = sessionToSave.geminiPatchPath;
-        updatedSessionData.geminiTokensReceived = sessionToSave.geminiTokensReceived;
-        updatedSessionData.geminiCharsReceived = sessionToSave.geminiCharsReceived;
+        updatedSessionData.geminiTokensReceived = sessionToSave.geminiTokensReceived ?? 0; // Default to 0 if null
+        updatedSessionData.geminiCharsReceived = sessionToSave.geminiCharsReceived ?? 0; // Default to 0 if null
         updatedSessionData.geminiStatusMessage = sessionToSave.geminiStatusMessage;
         updatedSessionData.geminiLastUpdate = sessionToSave.geminiLastUpdate;
 

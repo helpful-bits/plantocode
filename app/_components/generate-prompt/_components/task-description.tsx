@@ -7,7 +7,7 @@ import { Sparkles, Loader2 } from "lucide-react"; // Keep Sparkles/Loader2 impor
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
 export interface TaskDescriptionHandle {
-  insertTextAtCursorPosition: (text: string) => void; // Define handle interface
+  insertTextAtCursorPosition: (text: string) => void;
 }
 
 // Define props for the component
@@ -22,7 +22,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
   onChange,
   onInteraction,
 }: TaskDescriptionProps, ref) { // Keep ref parameter
-  // State related to "Improve Selection" (kept but maybe disabled if API key isn't present)
+  // State related to "Improve Selection"
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
   const [isImproving, setIsImproving] = useState(false);
@@ -44,7 +44,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
   };
 
   // Insert or replace text at the stored cursor or selection range
-  const insertTextAtCursor = useCallback((newText: string, start: number, end: number) => { // Remove default values
+  const insertTextAtCursor = useCallback((newText: string, start: number, end: number) => {
     if (!textareaRef.current) return;
     const textarea = textareaRef.current;
     textarea.focus();
@@ -80,7 +80,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     setSelectionEnd(newPosition);
   }, [onChange, onInteraction, selectionStart, selectionEnd]);
   // Modify the handler function to not check for canImproveText
-  const handleImproveSelection = async () => { // Keep async keyword
+  const handleImproveSelection = async () => {
     const originalFocus = document.activeElement; // Remember focus
     const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
     const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0;
@@ -118,7 +118,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
         <Button
           type="button"
           variant="secondary" size="sm"
-          onClick={handleImproveSelection}
+          onClick={handleImproveSelection} // Keep onClick handler
           disabled={isImproving || !hasSelection}
           className="h-7 text-xs px-2"
         >

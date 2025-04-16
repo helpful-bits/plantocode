@@ -1,8 +1,8 @@
 "use client";
- 
+
 import { Button } from "@/components/ui/button";
-import { useState, useCallback } from "react"; // Keep imports
-import { useVoiceRecording } from "@/hooks/useVoiceRecording";
+import { useState, useCallback } from "react";
+import { useVoiceRecording } from "@/hooks/useVoiceRecording"; // Keep useVoiceRecording import
 import { Mic, MicOff, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -15,8 +15,8 @@ export default function VoiceTranscription({
   onTranscribed,
   onInteraction,
 }: VoiceTranscriptionProps) {
-  const [showRevertOption, setShowRevertOption] = useState(false); // State for revert button visibility
-  const [languageCode, setLanguageCode] = useState('en'); // Default to English
+  const [showRevertOption, setShowRevertOption] = useState(false);
+  const [languageCode, setLanguageCode] = useState('en');
 
 
   const handleCorrectionComplete = useCallback((raw: string, corrected: string) => {
@@ -27,11 +27,11 @@ export default function VoiceTranscription({
   const {
     isRecording,
     isProcessing,
-    error: voiceError,
+    error: voiceError, // Get error state
     rawText,
     startRecording, // Function to start recording
-    stopRecording, // Corrected property name
-    revertToRaw,
+    stopRecording, // Function to stop recording
+    revertToRaw, // Function to revert to raw transcription
     setLanguage, // Get the setLanguage function from the hook
   } = useVoiceRecording({
     onTranscribed, // Pass the callback prop
@@ -52,7 +52,7 @@ export default function VoiceTranscription({
 
   return (
     <div className="flex flex-col gap-2 border rounded-lg p-4 bg-card shadow-sm">
-      <label className="font-semibold text-card-foreground">Record Task Description</label>
+      <label className="font-semibold text-card-foreground">Record Task Description:</label>
       <div className="flex gap-2 items-center">
         <Button
           type="button" // Add type="button"
@@ -61,7 +61,7 @@ export default function VoiceTranscription({
           variant={isRecording ? "destructive" : "secondary"}
           size="sm"
           className="min-w-[120px] flex justify-center items-center gap-2"
-        >
+        > {/* Keep button structure */}
           {isProcessing ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -93,7 +93,7 @@ export default function VoiceTranscription({
 
         {showRevertOption && rawText && (
           <Button // Add type="button"
-            type="button"
+            type="button" // Keep button type
             onClick={() => {
               revertToRaw();
               onInteraction(); // Reverting also counts as interaction

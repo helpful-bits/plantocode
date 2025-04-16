@@ -1,6 +1,6 @@
-import { db } from '../lib/db';
+import { db } from '../lib/db'; // Keep db import
 
-async function getDBInfo() {
+async function getDBInfo() { // Keep function signature
   console.log('Checking SQLite database...');
   
   // First, get database file location

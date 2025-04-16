@@ -2,27 +2,26 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
-import { Button } from "@/components/ui/button";
-import { improvePatternDescriptionAction } from "@/actions/text-improvement-actions";
+import { Button } from "@/components/ui/button"; // Keep Button import
+import { improvePatternDescriptionAction } from "@/actions/text-improvement-actions"; // Keep text-improvement-actions import
 import { Loader2 } from "lucide-react"; // Import Loader2
 
 interface PatternDescriptionInputProps {
-  value: string; onChange: (value: string) => void; // Keep onChange prop
-  onInteraction?: () => void;
+  value: string;
+  onChange: (value: string) => void;
   onGenerateRegex: () => void;
-  isGenerating?: boolean;
-  generationError?: string;
-  codebaseStructure?: string;
+  isGenerating: boolean;
+  generationError: string;
+  onInteraction: () => void;
 }
 
 export default function PatternDescriptionInput({
   value,
   onChange,
-  onInteraction = () => {}, // Default to no-op if not provided
-  onGenerateRegex, // Keep onGenerateRegex prop
-  isGenerating = false, // Keep isGenerating prop
+  onGenerateRegex,
+  isGenerating = false,
   generationError = '',
-  codebaseStructure,
+  onInteraction = () => {},
 }: PatternDescriptionInputProps) {
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
@@ -53,7 +52,7 @@ export default function PatternDescriptionInput({
     setSelectionEnd(e.currentTarget.selectionEnd);
   };
 
-  const insertTextAtCursor = useCallback((newText: string, start: number, end: number) => {
+  const insertTextAtCursor = useCallback((newText: string, start: number, end: number) => { // Keep function
     if (!textareaRef.current) return;
     const textarea = textareaRef.current;
     textarea.focus();
@@ -99,7 +98,7 @@ export default function PatternDescriptionInput({
 
     setIsImproving(true);
     try {
-      const result = await improvePatternDescriptionAction(selectedText, codebaseStructure);
+      const result = await improvePatternDescriptionAction(selectedText);
       if (result.isSuccess && result.data) {
         insertTextAtCursor(result.data, currentSelectionStart, currentSelectionEnd);
       }
