@@ -10,6 +10,13 @@ const nextConfig = {
         config.externals.push('sqlite3');
       }
       return config; // Keep return statement
-    } // Keep webpack function
+    }, // Keep webpack function
+    
+    // Increase body size limit for Server Actions
+    experimental: {
+      serverActions: {
+        bodySizeLimit: '4mb'
+      }
+    }
 };
 export default nextConfig;

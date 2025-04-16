@@ -6,11 +6,12 @@ import os from 'os';
 import { ActionState, Session, GeminiStatus } from '@/types'; // Import GeminiStatus
 import { sessionRepository } from '@/lib/db/repository'; // Ensure repository is imported
 import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { getProjectPatchesDirectory, getAppPatchesDirectory } from '@/lib/path-utils'; // Import path utils
  
 const MODEL_ID = "gemini-2.5-pro-preview-03-25";
 const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
-const PATCHES_DIR = path.join(process.cwd(), 'patches'); // Save patches in repository root
+const FALLBACK_PATCHES_DIR = getAppPatchesDirectory(); // Used as fallback if we can't write to project directory
 
 interface GeminiRequestPayload {
     contents: {
@@ -38,6 +39,35 @@ interface GeminiResponse {
 function sanitizeFilename(name: string): string {
     if (!name) return 'untitled_session'; // Handle empty session names
     return name.replace(/[^a-z0-9_\-\.]/gi, '_').substring(0, 60); // Keep it reasonably short
+}
+
+/**
+ * Determines the appropriate patches directory based on the session
+ * @param session The current session
+ * @returns The path to use for storing patches
+ */
+async function getPatchesDir(session: Session): Promise<string> {
+  if (!session || !session.projectDirectory) {
+    return FALLBACK_PATCHES_DIR;
+  }
+
+  try {
+    // Try to use a 'patches' directory within the project directory
+    const projectPatchesDir = getProjectPatchesDirectory(session.projectDirectory);
+    
+    // Check if we can write to the project directory
+    try {
+      // Create directory if it doesn't exist
+      await fs.mkdir(projectPatchesDir, { recursive: true });
+      return projectPatchesDir;
+    } catch (err) {
+      console.warn(`Cannot create patches directory in project: ${err.message}`);
+      return FALLBACK_PATCHES_DIR;
+    }
+  } catch (error) {
+    console.warn(`Error determining patches directory: ${error.message}`);
+    return FALLBACK_PATCHES_DIR;
+  }
 }
 
 // Action to send prompt to Gemini and process streaming response
@@ -95,11 +125,14 @@ export async function sendPromptToGeminiAction(
         console.log(`[Gemini Action] Session ${sessionId}: Status set to running at ${startTime}.`);
 
         // --- Prepare Patch Output File EARLIER ---
-        await fs.mkdir(PATCHES_DIR, { recursive: true });
+        // Get the appropriate patches directory for this session
+        const patchesDir = await getPatchesDir(session);
+        await fs.mkdir(patchesDir, { recursive: true });
+        
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const safeSessionName = sanitizeFilename(sessionName);
         const filename = `${timestamp}_${safeSessionName}.patch`;
-        filePath = path.join(PATCHES_DIR, filename);
+        filePath = path.join(patchesDir, filename);
 
         // Create empty file immediately and update session with path
         fileHandle = await fs.open(filePath, 'w'); // Open file for writing
@@ -330,7 +363,6 @@ export async function sendPromptToGeminiAction(
                  // Decide whether to delete on cancel. For now, let's delete.
                  await fs.unlink(filePath);
                  // Set finalPath to null as the file is deleted
-                 finalPath = null;
                  console.log(`[Gemini Action] Session ${sessionId}: Successfully cleaned up canceled file: ${filePath}`);
              } catch (unlinkError) {
                  console.warn(`[Gemini Action] Failed to clean up file ${filePath}:`, unlinkError);
@@ -340,7 +372,7 @@ export async function sendPromptToGeminiAction(
         return {
             isSuccess: false,
             message: errorMessage, // Use captured error message
-            data: { savedFilePath: finalPath } // Reflect actual file path state
+            data: { savedFilePath: null } // Always null path on cancellation
         };
     }
 } // End of sendPromptToGeminiAction
@@ -434,24 +466,22 @@ function stripMarkdownCodeFences(content: string): string {
 export async function cancelGeminiProcessingAction(
     sessionId: string
 ): Promise<ActionState<null>> { // Return type indicates no specific data
-    if (!sessionId) {
-        return { isSuccess: false, message: "Session ID is required for cancellation." };
-    }
+    await setupDatabase();
 
     try {
-        console.log(`[Gemini Action] Session ${sessionId}: Attempting to cancel processing...`);
-        // Fetch session to get startTime and check current status
+        // Get the session first
         const session = await sessionRepository.getSession(sessionId);
         if (!session) {
             return { isSuccess: false, message: `Session ${sessionId} not found.` };
         }
 
-        // Only allow cancellation if running
+        // Only attempt to cancel if status is 'running'
         if (session.geminiStatus !== 'running') {
-            return { isSuccess: false, message: `Cannot cancel a session that is already ${session.geminiStatus}.` };
+            console.log(`[Gemini Action] Session ${sessionId}: Cannot cancel - status is not 'running'. Current status: ${session.geminiStatus}`);
+            return { isSuccess: false, message: `Cannot cancel Gemini processing. Current status: ${session.geminiStatus}` };
         }
 
-        // Check if the file path exists before potentially unlinking
+        // Check if there's a patch file to clean up based on the stored patch path
         const patchPath = session.geminiPatchPath;
         const fileExists = patchPath && existsSync(patchPath);
 

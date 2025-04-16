@@ -2,6 +2,7 @@
  * Path utilities primarily for browser environment context
  */
  // Use basic string manipulation for browser context
+import path from 'path';
 
 /**
  * Gets a best-guess default path based on the browser's platform info
@@ -98,4 +99,49 @@ export function getDirectoryName(filePath: string): string {
     }
     
     return cleanedPath.substring(0, lastSeparatorIndex);
+}
+
+/**
+ * Returns the path to the patches directory in the project directory
+ * @param projectDirectory Path to the project directory
+ * @returns Path to the patches directory within the project
+ */
+export function getProjectPatchesDirectory(projectDirectory: string): string {
+  if (!projectDirectory) {
+    throw new Error('Project directory is required');
+  }
+  return path.join(projectDirectory, 'patches');
+}
+
+/**
+ * Returns the path to the fallback patches directory in the application directory
+ * @returns Path to the application's patches directory
+ */
+export function getAppPatchesDirectory(): string {
+  return path.join(process.cwd(), 'patches');
+}
+
+/**
+ * Resolves a patch filename to a full path in either project directory or app directory
+ * @param filename The patch filename
+ * @param projectDirectory Optional project directory
+ * @returns The full path to the patch file
+ */
+export function resolvePatchPath(filename: string, projectDirectory?: string): string {
+  if (projectDirectory) {
+    const projectPath = path.join(projectDirectory, 'patches', filename);
+    // Note: This doesn't check existence, just creates the path
+    return projectPath;
+  }
+  
+  return path.join(process.cwd(), 'patches', filename);
+}
+
+/**
+ * Extracts just the filename from a full patch path
+ * @param patchPath Full path to a patch file
+ * @returns Just the filename
+ */
+export function getPatchFilename(patchPath: string): string {
+  return path.basename(patchPath);
 }

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { existsSync } from 'fs';
 import { sessionRepository } from '@/lib/db/repository';
 import { setupDatabase } from '@/lib/db/setup';
+import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils';
 
 export async function GET(request: NextRequest) {
   // Ensure database is initialized
@@ -28,36 +30,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    // Security check: Ensure the requested path is within the allowed 'patches' directory
-    const patchesDir = path.resolve(process.cwd(), 'patches');
-    const resolvedFilePath = path.resolve(filePath); // Resolve user-provided path
+    // Try to find the file at its primary location
+    let resolvedFilePath = filePath;
+    let content;
 
-    if (!resolvedFilePath.startsWith(patchesDir)) {
-      console.warn(`Attempted access outside patches dir: ${filePath} (resolved: ${resolvedFilePath})`);
-      return NextResponse.json({ error: 'Unauthorized file path' }, { status: 403 });
-    }
-
-    // Security check: ensure the requested path matches the session's recorded path OR session is in progress
-    // This prevents accessing arbitrary patch files even within the patches dir if session is completed.
-    if (session.geminiPatchPath !== resolvedFilePath && session.geminiStatus === 'completed') {
-      console.warn(`Unauthorized access attempt: Session ${sessionId} tried to access ${resolvedFilePath} but expected ${session.geminiPatchPath}`);
-      return NextResponse.json({ error: 'Unauthorized access to patch file' }, { status: 403 });
-    }
-
-    // Try to read the file
-    try {
-      const content = await fs.readFile(resolvedFilePath, 'utf8');
-      return NextResponse.json({ content });
-    } catch (readError) {
-      // Handle file not found specifically for streaming UX
-      if ((readError as NodeJS.ErrnoException).code === 'ENOENT') {
-        // Return empty content if file not found (expected during initial streaming)
-        return NextResponse.json({ content: '' }, { status: 200 });
+    if (existsSync(resolvedFilePath)) {
+      // File exists at the provided path
+      content = await fs.readFile(resolvedFilePath, 'utf8');
+    } else {
+      // Try fallback location - the app's patches directory
+      const filename = getPatchFilename(filePath);
+      const fallbackPath = path.join(getAppPatchesDirectory(), filename);
+      
+      if (existsSync(fallbackPath)) {
+        // Found in fallback location
+        resolvedFilePath = fallbackPath;
+      } else {
+        // Create patches directory if it doesn't exist
+        const patchesDir = getAppPatchesDirectory();
+        if (!existsSync(patchesDir)) {
+          await fs.mkdir(patchesDir, { recursive: true });
+        }
+        
+        // Return detailed error for debugging
+        return NextResponse.json({
+          error: `Patch file not found. Searched locations: ${resolvedFilePath}, ${fallbackPath}`,
+          attempted_paths: [resolvedFilePath, fallbackPath]
+        }, { status: 404 });
       }
-      throw readError; // Re-throw other read errors
     }
+
+    // Read content from the finally resolved path
+    content = await fs.readFile(resolvedFilePath, 'utf8');
+    
+    // Return the content
+    return new NextResponse(content, {
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    });
   } catch (error) {
-    console.error('Error fetching patch content:', error);
-    return NextResponse.json({ error: 'Failed to fetch patch content' }, { status: 500 });
+    console.error('Error retrieving patch content:', error);
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Failed to retrieve patch content' 
+    }, { status: 500 });
   }
 }

@@ -918,7 +918,7 @@ ${taskDescription}
 
   const showLoadingOverlay = isLoadingFiles || isRestoringSession || isRefreshingFiles;
   return (
-    <div className="flex flex-col flex-1 p-2 md:p-4 space-y-6">
+    <div className="flex flex-col flex-1 space-y-6"> {/* Removed padding */}
       <div className="grid grid-cols-1 gap-4">
         {/* Project Directory Selector - Always visible */}
         <ProjectDirectorySelector onRefresh={handleRefreshFiles} />
@@ -1092,7 +1092,7 @@ ${taskDescription}
                 <div className="bg-muted p-4 rounded-md mt-6 relative">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-semibold">Generated Prompt</h3>
-                    <Button
+                    {prompt && <Button
                       type="button"
                       onClick={handleCopy}
                       variant={copySuccess ? "outline" : "secondary"}
@@ -1100,7 +1100,7 @@ ${taskDescription}
                       className="text-xs"
                     >
                       {copySuccess ? "Copied!" : "Copy to Clipboard"}
-                    </Button>
+                    </Button>}
                   </div>
                   <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-sm max-h-[650px]">
                     {prompt}
