@@ -7,16 +7,33 @@ import path from "path"; // Keep path import
 // Keep imports
 const execAsync = promisify(exec);
 
+// Add file cache with TTL to prevent frequent scans
+const fileCache = new Map<string, { files: string[], timestamp: number, isGitRepo: boolean }>();
+const CACHE_TTL = 30000; // 30 seconds cache lifetime
+const DEBUG_LOGS = false; // Set to true only during development/debugging
+
 /**
  * Gets all non-ignored files in a Git repository
  * @param dir The directory to search in
  * @returns Object containing array of file paths and whether it's a git repo
  */
 export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: string[], isGitRepo: boolean }> {
+  // Check cache first
+  const cacheKey = dir;
+  const cachedResult = fileCache.get(cacheKey);
+  const now = Date.now();
+  
+  // Return from cache if valid
+  if (cachedResult && (now - cachedResult.timestamp < CACHE_TTL)) {
+    if (DEBUG_LOGS) console.log(`[Git Utils] Using cached file list for ${dir} (${cachedResult.files.length} files)`);
+    return { files: [...cachedResult.files], isGitRepo: cachedResult.isGitRepo };
+  }
+  
+  // If cache expired or not found, proceed with file scan
   try {
     // Assume it's a git repository; the command will fail if not
     const isGitRepo = true;
-    console.log(`Listing all non-ignored files in git repository: ${dir}`);
+    if (DEBUG_LOGS) console.log(`Listing all non-ignored files in git repository: ${dir}`);
     
     // Use git ls-files to get all tracked AND untracked files that aren't ignored by .gitignore
     // --cached: include tracked files
@@ -27,7 +44,7 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     // Split by newline and filter out empty entries
     const gitFiles = stdout.split('\n').filter(Boolean);
     
-    console.log(`Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`);
+    if (DEBUG_LOGS) console.log(`Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`);
     
     // Verify each file exists on disk as an additional check
     // This helps ensure deleted files don't appear in the list
@@ -41,13 +58,20 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
         existingFiles.push(file);
       } catch (error) {
         // If access fails, the file doesn't exist (likely deleted or permission issue)
-        console.log(`[Refresh] Skipping deleted file: ${file}`);
+        if (DEBUG_LOGS) console.log(`[Refresh] Skipping deleted file: ${file}`);
       }
     }
     
-    if (existingFiles.length !== gitFiles.length) {
+    if (DEBUG_LOGS && existingFiles.length !== gitFiles.length) {
       console.log(`[Refresh] Filtered out ${gitFiles.length - existingFiles.length} deleted files`);
     }
+    
+    // Store result in cache
+    fileCache.set(cacheKey, {
+      files: existingFiles,
+      timestamp: now,
+      isGitRepo
+    });
     
     return { files: existingFiles, isGitRepo };
   } catch (error: any) {
@@ -61,5 +85,14 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     }
     
     throw new Error(`Failed to list files using git: ${error.message || 'Unknown error'}`);
+  }
+}
+
+// Add a function to manually invalidate the cache when needed
+export async function invalidateFileCache(dir?: string): Promise<void> {
+  if (dir) {
+    fileCache.delete(dir);
+  } else {
+    fileCache.clear();
   }
 }

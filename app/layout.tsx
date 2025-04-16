@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { FormatProvider } from "@/lib/contexts/format-context";
 import { ProjectProvider } from "@/lib/contexts/project-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DatabaseProvider } from "@/lib/contexts/database-context";
@@ -17,9 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <DatabaseProvider>
             <ProjectProvider>
-              <FormatProvider>
-                {children}
-              </FormatProvider>
+              {children}
             </ProjectProvider>
           </DatabaseProvider>
         </ThemeProvider>

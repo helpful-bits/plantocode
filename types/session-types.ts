@@ -1,5 +1,3 @@
-import { OutputFormat } from "."; // Keep OutputFormat import
-
 // Define the possible statuses for Gemini processing
 export type GeminiStatus = 'idle' | 'running' | 'completed' | 'failed' | 'canceled'; // Keep GeminiStatus type
 
@@ -18,8 +16,6 @@ export type Session = {
     codebaseStructure: string;
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths forced excluded
-    outputFormat: OutputFormat;
-    customFormat: string;
     geminiStatus: GeminiStatus; // Status of Gemini processing (non-optional)
     geminiStartTime?: number | null; // Unix timestamp (ms) when processing started
     geminiEndTime?: number | null;

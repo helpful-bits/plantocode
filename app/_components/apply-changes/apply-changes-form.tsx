@@ -2,16 +2,14 @@
  
 import { useState, useEffect } from "react";
 import { StatusMessages } from "./_components/status-messages"; // Keep StatusMessages import
-import { getRefactoringApplyPrompt, getDiffApplyPrompt } from "../../../prompts/apply-changes-prompts";
-import { useFormat } from "@/lib/contexts/format-context"; // Keep useFormat import
-import { Button } from "@/components/ui/button"; // Keep Button import
+import { getDiffApplyPrompt } from "../../../prompts/apply-changes-prompts";
+import { Button } from "@/components/ui/button";
 import { Loader2, Clipboard } from "lucide-react"; // Keep Clipboard import
 
 export function ApplyChangesForm() {
   const [successMessage, setSuccessMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const { outputFormat, customFormat } = useFormat();
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -38,15 +36,7 @@ export function ApplyChangesForm() {
         return;
       }
 
-      if (outputFormat === "refactoring") {
-        prompt = await getRefactoringApplyPrompt(clipboardText);
-      } else if (outputFormat === "diff") {
-        prompt = await getDiffApplyPrompt(clipboardText);
-      } else if (outputFormat === "path-finder") {
-        setErrorMessage("Apply Changes is not applicable for Path Finder format.");
-        setIsLoading(false);
-        return; // Keep return
-      }
+      prompt = await getDiffApplyPrompt(clipboardText);
       // Custom format implementation would go here
 
       await navigator.clipboard.writeText(prompt);
@@ -63,7 +53,7 @@ export function ApplyChangesForm() {
     }
   };
 
-  const isButtonDisabled = isLoading || (outputFormat === "custom" && !customFormat.trim()) || outputFormat === "path-finder";
+  const isButtonDisabled = isLoading; // Simplified logic
 
   return (
     <div className="max-w-[1400px] w-full mx-auto p-4 flex flex-col gap-4">
@@ -77,12 +67,7 @@ export function ApplyChangesForm() {
           type="button"
           onClick={handleApplyFromClipboard}
           disabled={isButtonDisabled}
-          className="bg-primary text-primary-foreground px-8 py-6 rounded-lg text-lg font-semibold shadow-md hover:shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50"
-          title={
-            outputFormat === "path-finder" ? "Apply Changes is not available for Path Finder format" : 
-            (outputFormat === "custom" && !customFormat.trim()) ? "Please define custom format instructions first" : 
-            ""
-          }
+          className="bg-primary text-primary-foreground px-8 py-6 rounded-lg text-lg font-semibold shadow-md hover:shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50" // Keep existing class
         >
           {isLoading ? (
             <div className="flex items-center gap-2">

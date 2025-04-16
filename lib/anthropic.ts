@@ -2,7 +2,7 @@
 import { ActionState } from "@/types"; // Keep ActionState import
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"; // Keep API URL
-const ANTHROPIC_VERSION = "2023-06-01"; // Corrected version
+const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-3-7-sonnet-20250219";
 
 interface AnthropicRequestPayload {

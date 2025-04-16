@@ -6,6 +6,9 @@ import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
 
+// Control logging verbosity
+const DEBUG_LOGS = false;
+
 export async function readExternalFileAction(filePath: string): Promise<ActionState<{ [key: string]: string | Buffer }>> {
   try {
     if (!filePath) {
@@ -18,10 +21,10 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
 
     // Use try-catch within the loop for individual file errors
     try {
-      console.log(`[Read External] Reading: ${fullPath}`);
+      if (DEBUG_LOGS) console.log(`[Read External] Reading: ${fullPath}`);
       const ext = path.extname(fullPath).toLowerCase();
       if (BINARY_EXTENSIONS.has(ext)) {
-        console.log(`[Read External] Skipping binary extension: ${ext}`);
+        if (DEBUG_LOGS) console.log(`[Read External] Skipping binary extension: ${ext}`);
         return { isSuccess: false, message: `Skipping binary file: ${filePath}` };
       }
 
@@ -51,6 +54,10 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
   }
 }
 
+// Cache for read directory operations
+const directoryCache = new Map<string, { data: { [key: string]: string }, timestamp: number }>();
+const DIR_CACHE_TTL = 30000; // 30 seconds
+
 export async function readDirectoryAction(projectDirectory: string): Promise<ActionState<{ [key: string]: string }>> {
   try {
     const finalDirectory = projectDirectory?.trim();
@@ -58,6 +65,19 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       return {
         isSuccess: false,
         message: "No project directory provided"
+      };
+    }
+
+    // Check cache first
+    const cachedResult = directoryCache.get(finalDirectory);
+    const now = Date.now();
+    
+    if (cachedResult && (now - cachedResult.timestamp < DIR_CACHE_TTL)) {
+      if (DEBUG_LOGS) console.log(`[Read Directory] Using cached file contents for ${finalDirectory}`);
+      return {
+        isSuccess: true,
+        message: `Using cached directory contents for ${finalDirectory}.`,
+        data: {...cachedResult.data} // Return a copy to avoid mutations
       };
     }
 
@@ -71,7 +91,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       };
     }
 
-    console.log(`Reading git repository files from ${finalDirectory}`);
+    if (DEBUG_LOGS) console.log(`Reading git repository files from ${finalDirectory}`);
     
     // Get all files not in gitignore using git ls-files
     let files: string[] = [];
@@ -81,7 +101,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       const result = await getAllNonIgnoredFiles(finalDirectory);
       files = result.files;
       isGitRepo = result.isGitRepo;
-      console.log(`Found ${files.length} non-ignored files via git in ${finalDirectory} (Is Git Repo: ${isGitRepo})`);
+      if (DEBUG_LOGS) console.log(`Found ${files.length} non-ignored files via git in ${finalDirectory} (Is Git Repo: ${isGitRepo})`);
       
       if (files.length === 0) {
         return {
@@ -108,7 +128,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
     let errorCount = 0;
     let deletedCount = 0;
 
-    console.log(`[Refresh] Processing ${files.length} files in batches of ${BATCH_SIZE}`);
+    if (DEBUG_LOGS) console.log(`[Refresh] Processing ${files.length} files in batches of ${BATCH_SIZE}`);
 
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
       const batch = files.slice(i, i + BATCH_SIZE);
@@ -128,7 +148,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
           try {
             await fs.access(fullPath);
           } catch (error) {
-            console.warn(`[Refresh] File not found (likely deleted): ${fullPath}`);
+            if (DEBUG_LOGS) console.warn(`[Refresh] File not found (likely deleted): ${fullPath}`);
             deletedCount++;
             continue;
           }
@@ -148,7 +168,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
           errorCount++;
           const err = error as NodeJS.ErrnoException;
           if (err.code === 'ENOENT') {
-            console.warn(`[Refresh] File not found (definitely deleted or renamed): ${file}`);
+            if (DEBUG_LOGS) console.warn(`[Refresh] File not found (definitely deleted or renamed): ${file}`);
             deletedCount++;
           } else if (err.code === 'EACCES') {
             console.warn(`Permission denied when trying to read: ${file}`);
@@ -160,7 +180,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
     } // End of batch processing loop
     
     const fileCount = Object.keys(fileContents).length;
-    console.log(`[Refresh] Processed ${fileCount} files. Binary: ${binaryCount}, Errors: ${errorCount}, Deleted: ${deletedCount}`);
+    if (DEBUG_LOGS) console.log(`[Refresh] Processed ${fileCount} files. Binary: ${binaryCount}, Errors: ${errorCount}, Deleted: ${deletedCount}`);
     
     if (fileCount === 0) {
       return {
@@ -169,6 +189,12 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
         data: {}
       };
     }
+    
+    // Store in cache
+    directoryCache.set(finalDirectory, {
+      data: {...fileContents},
+      timestamp: now
+    });
     
     return {
       isSuccess: true,
@@ -231,5 +257,14 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
   } catch (error) {
     console.error(`Error reading directory ${directoryPath}:`, error);
     return [];
+  }
+}
+
+// Function to invalidate the directory cache
+export async function invalidateDirectoryCache(directory?: string): Promise<void> {
+  if (directory) {
+    directoryCache.delete(directory.trim());
+  } else {
+    directoryCache.clear();
   }
 }

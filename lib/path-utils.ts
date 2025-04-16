@@ -45,8 +45,8 @@ export function formatPathForDisplay(filePath: string, baseDir?: string): string
  * @param filePath The file path to normalize
  * @param baseDir Optional base directory to make paths relative to (if applicable)
  * @returns A normalized path for consistent comparison
- */
-export function normalizePath(filePath: string, baseDir?: string, addTrailingSlash = false): string {
+ */ 
+export function normalizePath(filePath: string, baseDir?: string | null, addTrailingSlash = false): string {
   if (!filePath) return filePath;
   
   let normalizedPath = filePath;
@@ -64,7 +64,7 @@ export function normalizePath(filePath: string, baseDir?: string, addTrailingSla
     }
 
     // If the filePath starts with the baseDir, make it relative
-    if (normalizedPath.startsWith(normBaseDir)) {
+    if (normBaseDir !== '/' && normalizedPath.startsWith(normBaseDir)) { // Avoid stripping root paths accidentally
       normalizedPath = normalizedPath.substring(normBaseDir.length);
     }
   }

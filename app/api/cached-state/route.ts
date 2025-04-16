@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
 import { setupDatabase } from '@/lib/db/setup';
-import { OutputFormat } from '@/types'; // Keep OutputFormat import
 import { hashString } from '@/lib/hash'; // Ensure hashString is imported
 setupDatabase(); // Ensure database connection is initialized
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const projectDirectory = searchParams.get('projectDirectory');
-  const outputFormat = searchParams.get('outputFormat');
+  // const outputFormat = searchParams.get('outputFormat'); // Removed outputFormat
   const key = searchParams.get('key');
 
-  if (!projectDirectory || !outputFormat || !key) {
-    return NextResponse.json({ error: 'Missing required parameters: projectDirectory, outputFormat, key' }, { status: 400 });
+  if (!projectDirectory || !key) {
+    return NextResponse.json({ error: 'Missing required parameters: projectDirectory, key' }, { status: 400 });
   }
 
   try {
-    const value = await sessionRepository.getCachedState(projectDirectory, outputFormat as OutputFormat, key);
+    const value = await sessionRepository.getCachedState(projectDirectory, key); // Removed outputFormat
     return NextResponse.json({ value });
   } catch (error) {
     console.error('Error fetching cached state:', error);
@@ -45,20 +44,20 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const { projectDirectory, outputFormat, key, value } = requestData;
+    const { projectDirectory, key, value } = requestData; // Removed outputFormat
 
     // Allow 'global' project directory for general settings
-    if ((!projectDirectory && projectDirectory !== 'global') || !outputFormat || key === undefined) {
+    if ((!projectDirectory && projectDirectory !== 'global') || key === undefined) { // Removed outputFormat check
       return NextResponse.json(
-        { error: 'Missing required parameters: projectDirectory, outputFormat, key' },
+        { error: 'Missing required parameters: projectDirectory, key' }, // Updated error message
         { status: 400 }
       );
     }
 
     // Ensure value is a string
-    const safeValue = value === undefined || value === null ? "" : String(value);
+    const safeValue = value === undefined || value === null ? "" : String(value); 
     
-    await sessionRepository.saveCachedState(projectDirectory, outputFormat as OutputFormat, key, safeValue); // Pass validated params and safeValue
+    await sessionRepository.saveCachedState(projectDirectory, key, safeValue); // Removed outputFormat parameter
     return NextResponse.json({ success: true }); // Return success status
   } catch (error) {
     console.error('Error saving cached state:', error);
