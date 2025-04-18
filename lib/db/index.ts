@@ -3,6 +3,9 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { runMigrations } from './migrations';
+import connectionPool from './connection-pool';
+import { sessionRepository, createSessionRepository } from './repository-factory';
+import { setupDatabase, resetDatabase, getDatabaseInfo } from './setup';
 const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
 const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db'); // Keep database file path
 
@@ -52,3 +55,14 @@ function closeDatabase() {
     });
   }
 }
+
+// Export all database-related functionality
+export {
+  connectionPool,
+  sessionRepository,
+  createSessionRepository,
+  setupDatabase,
+  runMigrations,
+  resetDatabase,
+  getDatabaseInfo
+};

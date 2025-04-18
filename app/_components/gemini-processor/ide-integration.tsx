@@ -72,9 +72,6 @@ export function IdeIntegration({ filePath, onError }: IdeIntegrationProps) {
           <Copy className="h-3 w-3" />
         </Button>
       </div>
-      <Button variant="link" size="sm" className="text-xs h-auto p-0 text-muted-foreground hover:text-primary" onClick={() => window.open(`/api/download-patch?path=${encodeURIComponent(filePath)}`, '_blank')} title="Download patch file">
-        Download Patch
-      </Button>
     </div>
   );
 }

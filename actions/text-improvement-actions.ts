@@ -1,50 +1,21 @@
 "use server";
 
 import { ActionState } from "@/types";
-import { callAnthropicAPI } from "@/lib/anthropic";
+import claudeClient from "@/lib/api/claude-client";
  
-export async function improveSelectedTextAction(selectedText: string): Promise<ActionState<string>> { // Keep function signature
+export async function improveSelectedTextAction(selectedText: string): Promise<ActionState<string>> {
   try {
-  if (!selectedText || !selectedText.trim()) {
-      return { isSuccess: false, message: "No text selected for improvement." }; // Keep message
-  }
-    const payload = {
-        max_tokens: 1024, // Provide max_tokens
-        messages: [{ // Keep messages array
-          role: "user",
-          content: `Please improve the following text to make it clearer (and grammatically correct) while EXACTLY preserving its formatting style, including:
-- All line breaks
-- All indentation
-- All bullet points and numbering
-- All blank lines
-- All special characters and symbols
-
-Do not change the formatting structure at all. Only improve the content while keeping the exact same format. 
-
-IMPORTANT: Keep the original language of the text.
-
-Here is the text to improve:
-${selectedText}
-
-Return only the improved text without any additional commentary, keeping the exact same formatting as the original.`
-        }] // End of messages array
-    };
-    // Keep call to Anthropic API
-    const result: ActionState<string> = await callAnthropicAPI(payload);
-
-    if (!result.isSuccess || !result.data) {
-      return { isSuccess: false, message: result.message || "Failed to improve text via API" };
+    if (!selectedText || !selectedText.trim()) {
+      return { isSuccess: false, message: "No text selected for improvement." };
     }
     
-    const improvedText = result.data || selectedText; // Keep fallback
-
-    return {
-      isSuccess: true,
-      message: "Text improved successfully",
-      data: improvedText,
-    };
+    // Use the new Claude client to improve the text
+    return claudeClient.improveText(selectedText, {
+      preserveFormatting: true,
+      max_tokens: 1024
+    });
   } catch (error) {
-    console.error("Error improving text with Anthropic:", error);
+    console.error("Error improving text with Claude:", error);
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Failed to improve text",
@@ -79,7 +50,10 @@ Return ONLY the improved text without any additional commentary or formatting.`
         }]
     }; // Close payload object
 
-    const result: ActionState<string> = await callAnthropicAPI(payload); // Keep callAnthropicAPI call
+    const result: ActionState<string> = await claudeClient.improveText(selectedText, {
+      preserveFormatting: true,
+      max_tokens: 1024
+    }); // Keep callClaudeAPI call
 
     if (!result.isSuccess || !result.data) {
       return { isSuccess: false, message: result.message || "Failed to improve text via API" };
@@ -89,7 +63,7 @@ Return ONLY the improved text without any additional commentary or formatting.`
     // Keep success return
     return { isSuccess: true, message: "Pattern description improved successfully", data: improvedText };
   } catch (error) {
-    console.error("Error improving pattern description with Anthropic:", error);
+    console.error("Error improving pattern description with Claude:", error);
     return { 
       isSuccess: false, // Keep returning false on error
       message: error instanceof Error ? error.message : "Failed to improve pattern description" 

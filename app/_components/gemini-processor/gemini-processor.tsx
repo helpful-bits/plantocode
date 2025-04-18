@@ -2,388 +2,552 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react'; // Keep imports, add RefreshCw
-import { sendPromptToGeminiAction, cancelGeminiProcessingAction } from '@/actions/gemini-actions'; // Keep gemini-actions import
-import { resetSessionStateAction, clearSessionPatchPathAction } from '@/actions/session-actions'; // Import session-actions
-import { useDatabase } from '@/lib/contexts/database-context'; // Keep database-context import
-import { Session } from '@/types';
+import { Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw, Clock, ExternalLink } from 'lucide-react';
+import { sendPromptToGeminiAction, cancelGeminiRequestAction, cancelGeminiProcessingAction } from '@/actions/gemini-actions';
+import { resetSessionStateAction, clearSessionPatchPathAction } from '@/actions/session-actions';
+import { useDatabase } from '@/lib/contexts/database-context';
+import { GeminiRequest, Session } from '@/types';
 import { IdeIntegration } from './ide-integration';
+
 interface GeminiProcessorProps {
     prompt: string; 
     activeSessionId: string | null;
 }
 
 export function GeminiProcessor({ prompt, activeSessionId }: GeminiProcessorProps) {
-    const [isLoading, setIsLoading] = useState(false); // Tracks if the *component* is performing an action (send/cancel)
+    // Track loading state for operations like cancellation, but not for send operations
+    const [isLoading, setIsLoading] = useState(false);
+    // Add state for tracking last request time to prevent rapid-fire requests
+    const [lastRequestTime, setLastRequestTime] = useState<number>(0);
+    // Define a cooldown period (2 seconds) to prevent sending requests too quickly
+    const COOLDOWN_PERIOD_MS = 2000;
+    // Track pending server requests separately
+    const [pendingRequests, setPendingRequests] = useState<(GeminiRequest & {isPending?: boolean})[]>([]);
     const [errorMessage, setErrorMessage] = useState<string>("");
     const [sessionData, setSessionData] = useState<Session | null>(null);
-    const [statusDisplay, setStatusDisplay] = useState<string>(""); // State for status/timer display
-    const [sessionName, setSessionName] = useState<string>(""); // Keep sessionName state
-    const [streamStats, setStreamStats] = useState({ tokensReceived: 0, charsReceived: 0 }); // Keep streamStats state
-    const { repository, isInitialized } = useDatabase(); // Keep repository and isInitialized
+    const { repository, isInitialized } = useDatabase();
     const isMountedRef = useRef(true);
+    
+    // Timer state for each request to calculate duration
+    const [requestTimers, setRequestTimers] = useState<Record<string, string>>({});
 
-    // --- Status/Timer Logic ---
-    const updateStatusDisplay = useCallback((session: Session | null) => {
-        if (!session) {
-            setStatusDisplay("");
-            return;
-        }
-
-        const { geminiStatus, geminiStartTime, geminiEndTime } = session;
-
-        if (geminiStatus === 'running' && geminiStartTime) {
-             const diffSeconds = Math.max(0, Math.floor((Date.now() - geminiStartTime) / 1000));
-             const minutes = Math.floor(diffSeconds / 60);
-             const seconds = diffSeconds % 60;
-             setStatusDisplay(`Running (${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s)`);
-        } else if (geminiStatus === 'completed' || geminiStatus === 'failed' || geminiStatus === 'canceled') {
-             const diffSeconds = geminiStartTime && geminiEndTime ? Math.max(0, Math.floor((geminiEndTime - geminiStartTime) / 1000)) : 0;
-             const minutes = Math.floor(diffSeconds / 60);
-             const seconds = diffSeconds % 60;
-             setStatusDisplay(`Finished in ${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`);
-        } else {
-            setStatusDisplay(""); // Idle or unknown state
-        }
+    // --- Request Timer Logic ---
+    const updateRequestTimers = useCallback((requests: GeminiRequest[] | undefined) => {
+        if (!requests) return;
+        
+        const newTimers: Record<string, string> = {};
+        
+        requests.forEach(request => {
+            // Calculate time display based on status
+            if (request.status === 'running' && request.startTime) {
+                // Running timer for active requests
+                const diffSeconds = Math.max(0, Math.floor((Date.now() - request.startTime) / 1000));
+                const minutes = Math.floor(diffSeconds / 60);
+                const seconds = diffSeconds % 60;
+                newTimers[request.id] = `Running (${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s)`;
+            } else if ((request.status === 'completed' || request.status === 'failed' || request.status === 'canceled') && 
+                       request.startTime && request.endTime) {
+                // Static time for completed requests
+                const diffSeconds = Math.max(0, Math.floor((request.endTime - request.startTime) / 1000));
+                const minutes = Math.floor(diffSeconds / 60);
+                const seconds = diffSeconds % 60;
+                newTimers[request.id] = `Finished in ${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`;
+            }
+        });
+        
+        setRequestTimers(newTimers);
     }, []);
+
     // --- Session Data Fetching ---
-    // Fetches the latest session data from the database
     const fetchSessionData = useCallback(async () => {
         if (activeSessionId && repository && isInitialized) {
             try {
-                if (!isMountedRef.current) return; // Check mount status early
-                console.log(`[Gemini UI] Fetching session data for ${activeSessionId}...`);
+                if (!isMountedRef.current) return;
+                console.log(`[Gemini UI] Fetching session data with requests for ${activeSessionId}...`);
+                
                 // Clear relevant cache before fetching to get latest status
                 repository.clearCacheForSession(activeSessionId);
-                const session = await repository.getSession(activeSessionId);
-                if (!isMountedRef.current) return; // Check if component is still mounted
+                
+                // Get the session with all requests
+                const session = await repository.getSessionWithRequests(activeSessionId);
+                if (!isMountedRef.current) return;
 
-                setSessionData(session); // Update local state with fetched data
-
-                if (session) { // Check if session data was successfully fetched
-                    setSessionName(session.name); // Update session name display if needed
-                    updateStatusDisplay(session); // Update status display
-                    // Set error message based on status and message from session
-                    if (session.geminiStatus !== 'failed' && session.geminiStatus !== 'canceled' && session.geminiStatus !== 'idle') {
-                        setErrorMessage("");
-                    } else if (session.geminiStatus === 'failed' || session.geminiStatus === 'canceled') {
-                        // Show session's status message, or a default based on status
-                        setErrorMessage(
-                            session.geminiStatusMessage ||
-                            (session.geminiStatus === 'failed' ? "Processing failed." : "Processing canceled.")
-                        );
-                    }
+                setSessionData(session);
+                
+                if (session) {
+                    // Update timers for all requests
+                    updateRequestTimers(session.geminiRequests);
                     
-                    // Update stream stats if available
-                    if (session.geminiTokensReceived || session.geminiCharsReceived) {
-                        setStreamStats({
-                            tokensReceived: session.geminiTokensReceived || 0,
-                            charsReceived: session.geminiCharsReceived || 0
-                        });
+                    // Clear general error if not in a failed state
+                    if (session.geminiStatus !== 'failed' && session.geminiStatus !== 'canceled') {
+                        setErrorMessage("");
                     }
                 } else {
-                    // Handle case where session is not found (maybe deleted)
-                    setSessionName("");
                     setErrorMessage("Active session not found.");
                 }
-                console.log(`[Gemini UI] Fetch complete for ${activeSessionId}. Status: ${session?.geminiStatus}`);
             } catch (error) {
-                setSessionName("");
                 setErrorMessage("Failed to load session details.");
                 console.error("[Gemini UI] Error fetching session details:", error);
-                setStatusDisplay(""); // Clear status display on error
-            } finally {
-                if (isMountedRef.current) setIsLoading(false); // Reset loading state if still mounted
             }
         } else {
-            // No active session, repository, or not initialized: clear state
             setSessionData(null);
-            setSessionName("");
-            setErrorMessage(""); // Clear errors when no session active or not initialized
-            setStatusDisplay("");
-            setStreamStats({ tokensReceived: 0, charsReceived: 0 });
+            setErrorMessage("");
+            setRequestTimers({});
         }
-    }, [activeSessionId, repository, isInitialized, updateStatusDisplay]);
+    }, [activeSessionId, repository, isInitialized, updateRequestTimers]);
 
-    // Fetch session data initially and whenever the active session ID or repository changes
+    // Initial data fetch
     useEffect(() => {
-        // Set mounted ref to true on mount
         isMountedRef.current = true;
         
-        // Fetch data only if dependencies are ready
         if (activeSessionId && repository && isInitialized) {
             fetchSessionData();
         }
 
-        // Cleanup on unmount or dependency change
         return () => {
-            // Mark component as unmounted
             isMountedRef.current = false;
         };
-    }, [activeSessionId, repository, isInitialized, fetchSessionData]); // Keep dependencies
+    }, [activeSessionId, repository, isInitialized, fetchSessionData]);
 
-    useEffect(() => { // Keep timer update effect
+    // Timer update effect
+    useEffect(() => {
         let intervalId: NodeJS.Timeout | null = null;
-        if (sessionData?.geminiStatus === 'running') {
+        
+        // Check if there are any running requests
+        const hasRunningRequests = sessionData?.geminiRequests?.some(req => req.status === 'running');
+        
+        if (hasRunningRequests) {
             intervalId = setInterval(() => {
-                if (isMountedRef.current) updateStatusDisplay(sessionData);
-            }, 1000); // Update timer every second
+                if (isMountedRef.current) {
+                    // Update timers for all requests
+                    updateRequestTimers(sessionData?.geminiRequests);
+                }
+            }, 1000); // Update timers every second
         }
+        
         return () => {
             if (intervalId) clearInterval(intervalId);
         };
-    }, [sessionData, updateStatusDisplay]);
+    }, [sessionData?.geminiRequests, updateRequestTimers]);
     
-    // Function to reset the current session state when retrying
+    // Cooldown timer update effect
+    const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+    
+    useEffect(() => {
+        // Only run timer if we're in cooldown period
+        const initialRemaining = lastRequestTime ? 
+            Math.max(0, Math.ceil((COOLDOWN_PERIOD_MS - (Date.now() - lastRequestTime)) / 1000)) : 0;
+        
+        if (initialRemaining <= 0) {
+            setCooldownRemaining(0);
+            return;
+        }
+        
+        setCooldownRemaining(initialRemaining);
+        
+        // Set up interval to update cooldown timer
+        const cooldownIntervalId = setInterval(() => {
+            if (isMountedRef.current) {
+                const newRemaining = Math.max(0, Math.ceil((COOLDOWN_PERIOD_MS - (Date.now() - lastRequestTime)) / 1000));
+                setCooldownRemaining(newRemaining);
+                
+                // Clear interval when cooldown is complete
+                if (newRemaining <= 0) {
+                    clearInterval(cooldownIntervalId);
+                }
+            }
+        }, 200); // Update more frequently for smoother countdown
+        
+        return () => {
+            clearInterval(cooldownIntervalId);
+        };
+    }, [lastRequestTime, COOLDOWN_PERIOD_MS]);
+
+    // Function to reset the session state
     const resetSessionState = useCallback(async () => {
         if (!activeSessionId) return;
         try {
             console.log(`[Gemini UI] Resetting session state for ${activeSessionId}`);
-            // Use the server action to reset the session state
+            setIsLoading(true);
             const result = await resetSessionStateAction(activeSessionId);
             if (!result.isSuccess) {
                 console.error(`[Gemini UI] Failed to reset session state: ${result.message}`);
+                setErrorMessage(result.message || "Failed to reset session state.");
             }
-            await fetchSessionData(); // Refresh the UI
+            await fetchSessionData();
         } catch (error) {
             console.error('[Gemini UI] Error resetting session state:', error);
+            setErrorMessage("Failed to reset session state.");
+        } finally {
+            setIsLoading(false);
         }
     }, [activeSessionId, fetchSessionData]);
 
-    // --- Action Handlers ---
+    // Handler for sending to Gemini
     const handleSendToGemini = useCallback(async () => {
-        if (!prompt || !activeSessionId || !repository) { // Add repository check
+        if (!prompt || !activeSessionId || !repository) {
             setErrorMessage("Cannot send: Missing prompt or active session.");
             console.error("[Gemini UI] Cannot send: Missing prompt, active session, or repository.");
             return;
         }
 
-        // Check if we're already loading
-        if (isLoading) {
-            console.log("[Gemini UI] Send request ignored - already loading");
+        // Check if we're within the cooldown period
+        if (cooldownRemaining > 0) {
+            console.log(`[Gemini UI] Request ignored - within cooldown period (${cooldownRemaining}s remaining)`);
+            setErrorMessage(`Please wait ${cooldownRemaining} second${cooldownRemaining !== 1 ? 's' : ''} before sending another request.`);
             return;
         }
-
-        // Check if the session is in canceled state and auto-reset it
-        if (sessionData?.geminiStatus === 'canceled' || sessionData?.geminiStatus === 'failed') {
-            console.log(`[Gemini UI] Auto-resetting session from ${sessionData.geminiStatus} state before processing`);
-            await resetSessionState();
-        }
-
-        console.log(`[Gemini UI] Starting new request for session ${activeSessionId} with status ${sessionData?.geminiStatus}`);
         
-        if (isMountedRef.current) setIsLoading(true); // Set loading indicator only if mounted
-        setErrorMessage(""); // Clear previous errors
-        setStatusDisplay(""); // Reset status display
+        // Note: We're allowing multiple concurrent requests to be sent.
+        // The only restriction is the cooldown period between requests from the same user.
+        // This allows the system to process multiple requests simultaneously.
+
+        console.log(`[Gemini UI] Starting new request for session ${activeSessionId}`);
+        
+        // Record this request attempt time
+        setLastRequestTime(Date.now());
+        
+        // Create a temporary request to show immediately in the UI
+        const tempRequestId = `pending-${Date.now()}`;
+        const pendingRequest: GeminiRequest & {isPending?: boolean} = {
+            id: tempRequestId,
+            sessionId: activeSessionId,
+            prompt: prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''), // Truncate for display
+            status: 'running',
+            createdAt: Date.now(),
+            startTime: Date.now(),
+            isPending: true,
+            tokensReceived: 0,
+            charsReceived: 0
+        } as any; // Type cast to satisfy the GeminiRequest interface
+        
+        // Add to pending requests state to display immediately
+        setPendingRequests(prev => [pendingRequest, ...prev]);
+        
+        // Clear error message
+        setErrorMessage("");
         
         try {
-            // Call the action. It will update the DB status to 'running'.
             console.log(`[Gemini UI] Sending prompt to Gemini for session ${activeSessionId}`);
+            
+            // Send the actual request to the server
             const result = await sendPromptToGeminiAction(prompt, activeSessionId);
             console.log(`[Gemini UI] Send action completed with result:`, result);
             
-            // Immediately fetch the updated session data to reflect the *initial* state change ('running')
+            // Remove the pending request since we'll get the real one from the server
+            setPendingRequests(prev => prev.filter(r => r.id !== tempRequestId));
+            
+            // Fetch the updated session data to show the real request
             await fetchSessionData();
             
-            // The action now runs in the background. Polling will update the final state.
             if (!result.isSuccess) {
                 console.error(`[Gemini UI] Failed to start Gemini processing: ${result.message}`);
-                setErrorMessage(result.message || "Failed to start Gemini processing.");
-                await fetchSessionData(); // Fetch data again immediately on failure to start
+                
+                // Special handling for API key missing
+                if (result.message?.includes("GEMINI_API_KEY is not configured")) {
+                    setErrorMessage("API key missing: Please configure the GEMINI_API_KEY environment variable.");
+                } else if (result.message?.includes("Gemini processing was canceled")) {
+                    // Enhanced error message for cancellation
+                    setErrorMessage("Request was canceled: Another request may already be in progress. Please try again in a few seconds.");
+                } else if (result.message?.includes("API rate limit")) {
+                    // Special message for API rate limits
+                    setErrorMessage("API rate limit reached: Too many requests in a short time. Please wait a moment before sending more.");
+                } else if (result.message?.includes("queued")) {
+                    // Message for queued requests
+                    setErrorMessage("Your request has been queued and will be processed as soon as possible.");
+                } else {
+                    setErrorMessage(result.message || "Failed to start Gemini processing.");
+                }
             }
-         } catch (error) {
+        } catch (error) {
             console.error("[Gemini UI] Error during send:", error);
             setErrorMessage(error instanceof Error ? error.message : "An unexpected error occurred.");
-            // Refetch session data even on unexpected error to show 'failed' status
-            await fetchSessionData(); // Ensure UI reflects the final state
-        } finally { // Reset component loading state (for the button action)
-            console.log("[Gemini UI] Finished send request processing");
-            setIsLoading(false); // Reset component loading state (for the button action)
+            
+            // Remove the pending request on error
+            setPendingRequests(prev => prev.filter(r => r.id !== tempRequestId));
+            
+            // Fetch session data to ensure UI is up-to-date
+            await fetchSessionData();
         }
-    }, [prompt, activeSessionId, repository, fetchSessionData, sessionData?.geminiStatus, isLoading, resetSessionState]);
+        
+        console.log("[Gemini UI] Finished send request processing");
+    }, [prompt, activeSessionId, repository, fetchSessionData, sessionData, cooldownRemaining]);
 
-    const handleCancelProcessing = useCallback(async () => {
-        if (!activeSessionId || !repository || sessionData?.geminiStatus !== 'running') { // Check status directly
-            console.log(`[Gemini UI] Cancellation prevented: Session ${activeSessionId}, Status ${sessionData?.geminiStatus}`);
+    // Handler for canceling a specific request
+    const handleCancelRequest = useCallback(async (requestId: string) => {
+        if (!requestId || !repository) {
             return;
         }
 
-        if (isMountedRef.current) setIsLoading(true);
-        setErrorMessage(""); // Clear previous errors
+        setIsLoading(true);
         
         try {
-            // Call the cancellation action
-            const result = await cancelGeminiProcessingAction(activeSessionId);
-
+            console.log(`[Gemini UI] Canceling request ${requestId}`);
+            const result = await cancelGeminiRequestAction(requestId);
+            
             if (result.isSuccess) {
-                // Successfully requested cancellation. Fetch data to show the 'canceled' state.
-                console.log(`[Gemini UI] Cancellation request successful for ${activeSessionId}.`);
-                await fetchSessionData();
+                console.log(`[Gemini UI] Cancellation request successful for ${requestId}`);
             } else {
-                // Failed to request cancellation (e.g., DB error, or already stopped)
-                setErrorMessage(result.message || "Failed to request cancellation.");
-                await fetchSessionData(); // Refetch anyway to show the current (likely still 'running') status
+                console.error(`[Gemini UI] Failed to cancel request: ${result.message}`);
             }
+            
+            await fetchSessionData();
         } catch (error) {
-            setErrorMessage(error instanceof Error ? error.message : "An error occurred during cancellation.");
-            // Refetch session data on unexpected error to ensure status is correct
-            await fetchSessionData(); // Ensure status is correct
-        } finally { // Ensure isLoading is reset
-            if (isMountedRef.current) setIsLoading(false); // Reset component loading indicator
+            console.error("[Gemini UI] Error during cancel:", error);
+            await fetchSessionData();
+        } finally {
+            setIsLoading(false);
         }
-    }, [activeSessionId, repository, sessionData?.geminiStatus, fetchSessionData]);
+    }, [repository, fetchSessionData]);
 
-    // Handler for when IDE integration fails to open the file
-    const handleIdeIntegrationError = useCallback(async (errorMsg: string) => {
-        if (errorMsg.includes('File not found')) {
-            setErrorMessage("Patch file not found. It may have been deleted.");
-            if (activeSessionId) {
-                // Call action to clear the path from the database
-                await clearSessionPatchPathAction(activeSessionId);
-                await fetchSessionData(); // Refresh UI to remove file path display
+    // Handler for canceling all running requests for the session
+    const handleCancelAllRequests = useCallback(async () => {
+        if (!sessionData?.id || !repository) {
+            return;
+        }
+
+        setIsLoading(true);
+        
+        try {
+            console.log(`[Gemini UI] Canceling all running requests for session ${sessionData.id}`);
+            const result = await cancelGeminiProcessingAction(sessionData.id);
+            
+            if (result.isSuccess) {
+                console.log(`[Gemini UI] Cancellation request successful for all running requests`);
+            } else {
+                console.error(`[Gemini UI] Failed to cancel all requests: ${result.message}`);
+                setErrorMessage(result.message || "Failed to cancel processing");
             }
+            
+            await fetchSessionData();
+        } catch (error) {
+            console.error("[Gemini UI] Error during cancel all:", error);
+            setErrorMessage(error instanceof Error ? error.message : "An error occurred during cancellation");
+            await fetchSessionData();
+        } finally {
+            setIsLoading(false);
+        }
+    }, [repository, sessionData?.id, fetchSessionData]);
+
+    // Handler for IDE integration error
+    const handleIdeIntegrationError = useCallback(async (errorMsg: string, patchPath: string | null) => {
+        if (errorMsg.includes('File not found') && patchPath) {
+            setErrorMessage(`Patch file not found: ${patchPath}`);
+            await fetchSessionData();
         } else {
             setErrorMessage(`Error opening file: ${errorMsg}`);
         }
-    }, [activeSessionId, fetchSessionData]);
+    }, [fetchSessionData]);
 
-    // --- UI State Determination ---
-    // Determine button states based on session data
-    const geminiStatus = sessionData?.geminiStatus ?? 'idle';
-    const isProcessing = geminiStatus === 'running';
-    const isCompleted = geminiStatus === 'completed';
-    const isFailed = geminiStatus === 'failed';
-    const isCanceled = geminiStatus === 'canceled';
+    // Determine the send button state - only disable if there's no prompt
+    const isSendDisabled = !prompt?.trim();
 
-    // Allow restart of processing even if previously canceled/failed
-    const isSendDisabled = isLoading || isProcessing; // Only disable when actively processing or loading
+    // Get all requests with the newest first, including pending ones
+    const requests = sessionData?.geminiRequests || [];
+    const allRequests = [...pendingRequests, ...requests];
+    const sortedRequests = [...allRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     
-    // Disable cancel if not running OR if the component is currently performing an action (like trying to cancel)
-    const isCancelDisabled = isLoading || !isProcessing;
-    const savedFilePath = sessionData?.geminiPatchPath || null; // Get path from sessionData
+    // Check if there's at least one running request
+    const hasRunningRequests = sortedRequests.some(req => req.status === 'running');
+    
+    // Count running and queued requests
+    const runningRequestsCount = sortedRequests.filter(req => req.status === 'running').length;
+    const queuedRequestsCount = sortedRequests.filter(req => req.status === 'running' && (!req.tokensReceived || req.tokensReceived === 0)).length;
+    const processingRequestsCount = runningRequestsCount - queuedRequestsCount;
 
     return (
         <div className="flex flex-col items-center gap-4 p-4 border rounded-lg bg-card shadow-sm w-full">
-            {/* Send Button - Updated with static text */}
-            <Button
-                onClick={handleSendToGemini} 
-                disabled={isSendDisabled || !prompt?.trim()} // Also disable if prompt is empty
-                className="px-6 py-3 text-base"
-                title={!prompt?.trim() ? "Generate a prompt first" : isSendDisabled ? "Processing..." : "Send to Gemini"}
-            >
-                {isLoading && !isProcessing ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Save className="mr-2 h-5 w-5" />}
-                Send to Gemini
-            </Button>
+            {/* Send Button with cooldown indicator */}
+            <div className="flex flex-col items-center">
+                <Button
+                    onClick={handleSendToGemini} 
+                    disabled={!prompt?.trim()}
+                    className="px-6 py-3 text-base"
+                    title={!prompt?.trim() ? "Generate a prompt first" : "Send to Gemini"}
+                >
+                    <Save className="mr-2 h-5 w-5" />
+                    Send to Gemini
+                </Button>
+                
+                {/* Cooldown indicator */}
+                {cooldownRemaining > 0 && prompt?.trim() && (
+                    <p className="text-xs text-amber-600 mt-1">
+                        Please wait {cooldownRemaining}s before sending another request
+                    </p>
+                )}
+                
+                {/* Info about multiple requests */}
+                {!cooldownRemaining && sortedRequests.filter(req => req.status === 'running').length > 0 && (
+                    <p className="text-xs text-blue-600 mt-1">
+                        {sortedRequests.filter(req => req.status === 'running').length > 1 
+                            ? `Multiple requests are running - they will be processed in parallel`
+                            : `You can send multiple requests simultaneously - they will be queued if needed`}
+                    </p>
+                )}
+            </div>
 
-            {/* Processing Request List */}
-            {(isProcessing || isCompleted || isFailed || isCanceled) && ( 
+            {/* Processing Request List - Show if we have pending or regular requests */}
+            {sortedRequests.length > 0 && (
                 <div className="w-full border rounded-md overflow-hidden">
-                    <div className="bg-muted px-3 py-2 font-medium text-sm border-b">
-                        Processing Requests
+                    <div className="bg-muted px-3 py-2 font-medium text-sm border-b flex justify-between items-center">
+                        <span>
+                            Processing Requests ({sortedRequests.length})
+                            {hasRunningRequests && (
+                                <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                                    {processingRequestsCount > 0 && (
+                                        <span className="mr-1">{processingRequestsCount} Active</span>
+                                    )}
+                                    {queuedRequestsCount > 0 && (
+                                        <span className="text-amber-700">{queuedRequestsCount} Queued</span>
+                                    )}
+                                </span>
+                            )}
+                        </span>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={fetchSessionData}
+                            disabled={isLoading}
+                            title="Refresh Status"
+                            className="h-7 w-7 p-0"
+                        >
+                            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                        </Button>
                     </div>
-                    <div className="p-3">
-                        <div className="flex items-start gap-3">
-                            {/* Status Icon */}
-                            <div className="mt-1">
-                                {isProcessing && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
-                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-600" />}
-                                {isFailed && <AlertCircle className="h-4 w-4 text-red-600" />}
-                                {isCanceled && <XOctagon className="h-4 w-4 text-orange-600" />}
-                            </div>
+                    <div className="max-h-96 overflow-y-auto">
+                        {sortedRequests.map((request) => {
+                            const isProcessing = request.status === 'running';
+                            const isCompleted = request.status === 'completed';
+                            const isFailed = request.status === 'failed';
+                            const isCanceled = request.status === 'canceled';
+                            const isPending = 'isPending' in request && request.isPending === true;
                             
-                            {/* Request Details */}
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between">
-                                    <span className={`font-medium ${isFailed ? 'text-red-600' : isCanceled ? 'text-orange-600' : isCompleted ? 'text-green-600' : 'text-blue-600'}`}>
-                                        {isProcessing ? 'Processing' : isCompleted ? 'Completed' : isFailed ? 'Failed' : 'Canceled'}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">{statusDisplay}</span>
-                                </div>
-                                
-                                {/* Session Details */}
-                                {sessionName && (
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                        Session: {sessionName}
-                                    </p>
-                                )}
-                                
-                                {/* Error Message */}
-                                {errorMessage && (geminiStatus === 'failed' || geminiStatus === 'canceled') && (
-                                    <p className="text-sm text-red-600 mt-1">{errorMessage}</p>
-                                )}
-                                
-                                {/* Stream Stats */}
-                                {(isProcessing || isCompleted) && streamStats.tokensReceived > 0 && (
-                                    <div className="text-xs text-muted-foreground mt-2 flex gap-3">
-                                        <span>Tokens: {streamStats.tokensReceived}</span>
-                                        <span>Characters: {streamStats.charsReceived}</span>
+                            return (
+                                <div key={request.id} className="p-3 border-b last:border-b-0 relative">
+                                    {/* Pending indicator badge */}
+                                    {isPending && (
+                                        <div className="absolute top-2 right-2">
+                                            <span className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded-sm">
+                                                Starting...
+                                            </span>
+                                        </div>
+                                    )}
+                                    
+                                    <div className="flex items-start gap-3">
+                                        {/* Status Icon */}
+                                        <div className="mt-1">
+                                            {(isProcessing || isPending) && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
+                                            {isCompleted && <CheckCircle className="h-4 w-4 text-green-600" />}
+                                            {isFailed && <AlertCircle className="h-4 w-4 text-red-600" />}
+                                            {isCanceled && <XOctagon className="h-4 w-4 text-orange-600" />}
+                                        </div>
+                                        
+                                        {/* Request Details */}
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className={`font-medium ${
+                                                    isFailed ? 'text-red-600' : 
+                                                    isCanceled ? 'text-orange-600' : 
+                                                    isCompleted ? 'text-green-600' : 
+                                                    'text-blue-600'
+                                                }`}>
+                                                    {isPending ? 'Initializing' :
+                                                     isProcessing && !request.tokensReceived ? 'Queued' : 
+                                                     isProcessing ? 'Processing' : 
+                                                     isCompleted ? 'Completed' : 
+                                                     isFailed ? 'Failed' : 
+                                                     'Canceled'}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    {isPending ? 'Just started' : requestTimers[request.id] || 'Just started'}
+                                                </span>
+                                            </div>
+                                            
+                                            {/* Request ID */}
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                ID: {isPending ? 'Pending...' : request.id.substring(0, 8)}...
+                                            </p>
+                                            
+                                            {/* Error Message */}
+                                            {request.statusMessage && (isFailed || isCanceled) && (
+                                                <p className="text-sm text-red-600 mt-1">{request.statusMessage}</p>
+                                            )}
+                                            
+                                            {/* Stream Stats */}
+                                            {(isProcessing || isCompleted) && (request.tokensReceived > 0 || request.charsReceived > 0) && (
+                                                <div className="text-xs text-muted-foreground mt-2 flex gap-3">
+                                                    <span>Tokens: {request.tokensReceived}</span>
+                                                    <span>Characters: {request.charsReceived}</span>
+                                                </div>
+                                            )}
+                                            
+                                            {/* File Path with IDE Integration */}
+                                            {request.patchPath && (
+                                                <div className="mt-2 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono bg-muted p-1 rounded truncate max-w-[300px]">
+                                                            {request.patchPath}
+                                                        </span>
+                                                        <IdeIntegration 
+                                                            filePath={request.patchPath} 
+                                                            onError={(msg) => handleIdeIntegrationError(msg, request.patchPath)} 
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-2">
+                                            {/* Cancel Button (only when running and not pending) */}
+                                            {isProcessing && !isPending && (
+                                                <Button
+                                                    type="button"
+                                                    variant="destructive"
+                                                    size="sm" 
+                                                    onClick={() => handleCancelRequest(request.id)}
+                                                    disabled={isLoading}
+                                                    title="Cancel processing"
+                                                >
+                                                    <XOctagon className="h-3 w-3 mr-1" />
+                                                    Cancel
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                            
-                            {/* Action Buttons */}
-                            <div className="flex gap-2">
-                                {/* Cancel Button (only when running) */}
-                                {isProcessing && (
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="sm" 
-                                        onClick={handleCancelProcessing}
-                                        disabled={isLoading || isCancelDisabled}
-                                        title={isCancelDisabled ? "Cancellation in progress" : "Cancel processing"}
-                                    >
-                                        <XOctagon className="h-3 w-3 mr-1" />
-                                        Cancel
-                                    </Button>
-                                )}
-
-                                {/* Reset Button (for failed/canceled states) */}
-                                {(isFailed || isCanceled) && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={resetSessionState}
-                                        disabled={isLoading}
-                                        title="Reset Session State"
-                                    >
-                                        <RefreshCw className="h-3 w-3 mr-1" />
-                                        Reset
-                                    </Button>
-                                )}
-
-                                {/* Refresh Button */}
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={fetchSessionData}
-                                    disabled={isLoading}
-                                    title="Refresh Status"
-                                >
-                                    <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-                                </Button>
-                            </div>
-                        </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
-            {/* Show general component-level errors when not processing */}
-            {errorMessage && !isProcessing && geminiStatus !== 'failed' && geminiStatus !== 'canceled' && (
-                <p className="text-red-600 flex items-center justify-center gap-1 break-words max-w-full">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0 mr-1" /> {errorMessage}
-                </p>
+            {/* General actions */}
+            {hasRunningRequests && (
+                <div className="w-full flex justify-end mt-2">
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleCancelAllRequests}
+                        disabled={isLoading}
+                        title="Cancel all running requests"
+                        className={sortedRequests.filter(req => req.status === 'running').length > 1 ? "animate-pulse" : ""}
+                    >
+                        <XOctagon className="h-4 w-4 mr-1" />
+                        Cancel All{runningRequestsCount > 1 ? 
+                            ` (${processingRequestsCount > 0 ? `${processingRequestsCount} Active` : ''}${processingRequestsCount > 0 && queuedRequestsCount > 0 ? ', ' : ''}${queuedRequestsCount > 0 ? `${queuedRequestsCount} Queued` : ''})` : 
+                            ""}
+                    </Button>
+                </div>
             )}
 
-            {/* File path display with IDE integration */}
-            {savedFilePath && (
-                <div className="w-full flex flex-col items-center gap-2">
-                    <p className="text-sm text-center">
-                        Patch file: <span className="font-mono text-xs bg-muted p-1 rounded break-all inline-block max-w-full">{savedFilePath}</span>
-                    </p>
-                    <IdeIntegration filePath={savedFilePath} onError={handleIdeIntegrationError} />
+            {/* Show general component-level errors */}
+            {errorMessage && (
+                <div className="w-full rounded-md border border-red-200 bg-red-50 p-3 text-red-600 flex items-center justify-center gap-1 break-words max-w-full">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mr-1" /> {errorMessage}
                 </div>
             )}
         </div>
