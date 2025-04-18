@@ -1,6 +1,22 @@
 // Define the possible statuses for Gemini processing
 export type GeminiStatus = 'idle' | 'running' | 'completed' | 'failed' | 'canceled'; // Keep GeminiStatus type
 
+// Type for individual Gemini request
+export type GeminiRequest = {
+    id: string;
+    sessionId: string;
+    prompt: string;
+    status: GeminiStatus;
+    startTime: number | null;
+    endTime: number | null;
+    patchPath: string | null;
+    statusMessage: string | null;
+    tokensReceived: number;
+    charsReceived: number;
+    lastUpdate: number | null;
+    createdAt: number;
+};
+
 // Session structure including Gemini processing state and file selections
 export type Session = {
     id: string;
@@ -24,4 +40,5 @@ export type Session = {
     updatedAt?: number; // Timestamp of last update (managed by repository)
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths forced excluded
+    geminiRequests?: GeminiRequest[]; // Optional array of Gemini requests
 };

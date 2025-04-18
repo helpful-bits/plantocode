@@ -6,8 +6,9 @@ import { ActionState } from '@/types';
 import { getAllNonIgnoredFiles } from '@/lib/git-utils';
 import { normalizePath } from '@/lib/path-utils';
 import { callGeminiAPI } from '@/lib/gemini-api';
+import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 
-const PATH_CORRECTION_MODEL = 'gemini-2.0-flash'; // Use a fast model
+const PATH_CORRECTION_MODEL = GEMINI_FLASH_MODEL; // Use a fast model
 
 interface PathCorrectionResult {
     correctedPaths: string[];
@@ -88,6 +89,7 @@ Output ONLY a JSON object mapping each invalid path to its most likely correctio
   "non/existent/file.md": null
 }`;
 
+        console.log(`[PathCorrection] Using Gemini model: ${PATH_CORRECTION_MODEL} for path correction`);
         const aiResult = await callGeminiAPI(systemPrompt, userPrompt, PATH_CORRECTION_MODEL);
 
         if (!aiResult.isSuccess || !aiResult.data) {
@@ -96,9 +98,37 @@ Output ONLY a JSON object mapping each invalid path to its most likely correctio
 
         let correctionsMade: Record<string, string | null> = {};
         try {
-            correctionsMade = JSON.parse(aiResult.data);
+            // Handle case where the AI returns JSON wrapped in Markdown code blocks
+            let jsonData = aiResult.data;
+            
+            // Check if response is wrapped in markdown code blocks
+            const markdownJsonRegex = /```(?:json)?\s*([\s\S]*?)```/;
+            const match = markdownJsonRegex.exec(jsonData);
+            
+            if (match && match[1]) {
+                // Extract the JSON content from the markdown code block
+                jsonData = match[1].trim();
+                console.log("Extracted JSON from markdown code block");
+            } else {
+                // Fallback: try to find a JSON object directly in the response
+                const jsonObjectRegex = /(\{[\s\S]*?\})/;
+                const objectMatch = jsonObjectRegex.exec(jsonData);
+                if (objectMatch && objectMatch[1]) {
+                    jsonData = objectMatch[1].trim();
+                    console.log("Extracted JSON object directly from response");
+                }
+            }
+            
+            // Ensure we have a valid JSON object that starts with {
+            if (!jsonData.trim().startsWith('{')) {
+                console.error("Invalid JSON format - doesn't start with {:", jsonData);
+                return { isSuccess: false, message: "AI returned data in an invalid format (not a JSON object)." };
+            }
+            
+            correctionsMade = JSON.parse(jsonData);
         } catch (e) {
-            console.error("Failed to parse AI correction response:", e, aiResult.data);
+            console.error("Failed to parse AI correction response:", e);
+            console.error("Raw response data:", aiResult.data);
             return { isSuccess: false, message: "AI returned invalid correction format." };
         }
 

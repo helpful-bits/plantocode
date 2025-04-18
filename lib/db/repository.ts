@@ -459,6 +459,7 @@ export class SessionRepository {
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory);
     
+    console.log(`[Repo] Setting active session for project hash '${projectHash}' (dir: ${projectDirectory}) to: ${sessionId === null ? 'null' : sessionId}`);
     return new Promise((resolve, reject) => {
       db.run(`
         INSERT OR REPLACE INTO project_settings (project_hash, active_session_id, updated_at)
@@ -482,6 +483,7 @@ export class SessionRepository {
   ): Promise<string | null> => { // Removed outputFormat
     // Generate project hash for safer SQL queries
     const projectHash = hashString(projectDirectory);
+    console.log(`[Repo] Getting active session ID for project hash '${projectHash}' (dir: ${projectDirectory})`);
     
     return new Promise((resolve, reject) => { // Removed outputFormat from SELECT
       db.get(`
@@ -492,7 +494,8 @@ export class SessionRepository {
           console.error("Error getting active session ID:", err);
           reject(err);
         } else {
-          resolve(row?.active_session_id || null);
+          const activeId = row?.active_session_id || null;
+          resolve(activeId);
         }
       });
     });
@@ -765,6 +768,263 @@ export class SessionRepository {
     
     // Save the session to the database
     return this.saveSession(session);
+  };
+
+  /**
+   * Create a new Gemini request for a session
+   */
+  createGeminiRequest = async (
+    sessionId: string,
+    prompt: string
+  ): Promise<GeminiRequest> => {
+    console.log(`[Repo] Creating Gemini request for session: ${sessionId}`);
+    
+    // Generate a random ID for the request
+    const id = crypto.randomUUID();
+    const timestamp = Date.now();
+    
+    // Create the default request object
+    const request: GeminiRequest = {
+      id,
+      sessionId,
+      prompt,
+      status: 'idle',
+      startTime: null,
+      endTime: null,
+      patchPath: null,
+      statusMessage: null,
+      tokensReceived: 0,
+      charsReceived: 0,
+      lastUpdate: null,
+      createdAt: timestamp
+    };
+    
+    return new Promise((resolve, reject) => {
+      db.run(`
+        INSERT INTO gemini_requests 
+        (id, session_id, prompt, status, start_time, end_time, patch_path, 
+         status_message, tokens_received, chars_received, last_update, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        request.id,
+        request.sessionId,
+        request.prompt,
+        request.status,
+        request.startTime,
+        request.endTime,
+        request.patchPath,
+        request.statusMessage,
+        request.tokensReceived,
+        request.charsReceived,
+        request.lastUpdate,
+        request.createdAt
+      ], (err) => {
+        if (err) {
+          console.error("Error creating Gemini request:", err);
+          reject(err);
+        } else {
+          resolve(request);
+        }
+      });
+    });
+  };
+
+  /**
+   * Get a Gemini request by ID
+   */
+  getGeminiRequest = async (requestId: string): Promise<GeminiRequest | null> => {
+    console.log(`[Repo] Getting Gemini request: ${requestId}`);
+    
+    return new Promise((resolve, reject) => {
+      db.get(`
+        SELECT * FROM gemini_requests WHERE id = ?
+      `, [requestId], (err, row: any) => {
+        if (err) {
+          console.error("Error fetching Gemini request:", err);
+          reject(err);
+        } else if (!row) {
+          resolve(null);
+        } else {
+          const request: GeminiRequest = {
+            id: row.id,
+            sessionId: row.session_id,
+            prompt: row.prompt,
+            status: row.status as GeminiStatus,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            patchPath: row.patch_path,
+            statusMessage: row.status_message,
+            tokensReceived: row.tokens_received || 0,
+            charsReceived: row.chars_received || 0,
+            lastUpdate: row.last_update,
+            createdAt: row.created_at
+          };
+          resolve(request);
+        }
+      });
+    });
+  };
+
+  /**
+   * Get all Gemini requests for a session
+   */
+  getGeminiRequests = async (sessionId: string): Promise<GeminiRequest[]> => {
+    console.log(`[Repo] Getting Gemini requests for session: ${sessionId}`);
+    
+    return new Promise((resolve, reject) => {
+      db.all(`
+        SELECT * FROM gemini_requests 
+        WHERE session_id = ? 
+        ORDER BY created_at DESC
+      `, [sessionId], (err, rows: any[]) => {
+        if (err) {
+          console.error("Error fetching Gemini requests:", err);
+          reject(err);
+        } else {
+          const requests: GeminiRequest[] = rows.map(row => ({
+            id: row.id,
+            sessionId: row.session_id,
+            prompt: row.prompt,
+            status: row.status as GeminiStatus,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            patchPath: row.patch_path,
+            statusMessage: row.status_message,
+            tokensReceived: row.tokens_received || 0,
+            charsReceived: row.chars_received || 0,
+            lastUpdate: row.last_update,
+            createdAt: row.created_at
+          }));
+          resolve(requests);
+        }
+      });
+    });
+  };
+
+  /**
+   * Update the status of a Gemini request
+   */
+  updateGeminiRequestStatus = async (
+    requestId: string,
+    status: GeminiStatus,
+    startTime?: number | null,
+    endTime?: number | null,
+    patchPath?: string | null,
+    statusMessage?: string | null,
+    streamStats?: {
+      tokensReceived?: number;
+      charsReceived?: number;
+    }
+  ): Promise<void> => {
+    console.log(`[Repo] Updating Gemini request ${requestId} to ${status}, patchPath: ${patchPath}, msg: ${statusMessage}`);
+    
+    return new Promise((resolve, reject) => {
+      // Construct the SET clause dynamically based on provided values
+      const setClauses: string[] = ['status = ?'];
+      const values: any[] = [status];
+
+      if (startTime !== undefined) {
+        setClauses.push('start_time = ?');
+        values.push(startTime);
+      }
+      if (endTime !== undefined) {
+        setClauses.push('end_time = ?');
+        values.push(endTime);
+      }
+      if (patchPath !== undefined) {
+        setClauses.push('patch_path = ?');
+        values.push(patchPath);
+      }
+      if (statusMessage !== undefined) {
+        setClauses.push('status_message = ?');
+        values.push(statusMessage);
+      }
+      
+      // Add streaming stats if provided
+      if (streamStats?.tokensReceived !== undefined) {
+        setClauses.push('tokens_received = ?');
+        values.push(streamStats.tokensReceived);
+      }
+      if (streamStats?.charsReceived !== undefined) {
+        setClauses.push('chars_received = ?');
+        values.push(streamStats.charsReceived);
+      }
+      
+      // Add last update timestamp if any streaming stats were provided
+      if (streamStats?.tokensReceived !== undefined || streamStats?.charsReceived !== undefined) {
+        setClauses.push('last_update = ?');
+        values.push(Date.now());
+      }
+
+      values.push(requestId); // Add requestId for the WHERE clause
+
+      const sql = `UPDATE gemini_requests SET ${setClauses.join(', ')} WHERE id = ?`;
+
+      db.run(sql, values, (err) => {
+        if (err) { 
+          console.error("Error updating Gemini request status:", err); 
+          reject(err); 
+        } else {
+          resolve();
+        }
+      });
+    });
+  };
+
+  /**
+   * Retrieve a session with all of its Gemini requests
+   */
+  getSessionWithRequests = async (sessionId: string): Promise<Session | null> => {
+    console.log(`[Repo] Getting session with requests: ${sessionId}`);
+    
+    try {
+      // First, get the session
+      const session = await this.getSession(sessionId);
+      if (!session) {
+        return null;
+      }
+      
+      // Then, get the Gemini requests for the session
+      const requests = await this.getGeminiRequests(sessionId);
+      
+      // Set the most recent/active request as the geminiStatus for the session
+      if (requests.length > 0) {
+        // Get any running request (prioritize running over completed/failed)
+        const runningRequest = requests.find(r => r.status === 'running');
+        if (runningRequest) {
+          session.geminiStatus = 'running';
+          session.geminiStartTime = runningRequest.startTime;
+          session.geminiEndTime = null;
+          session.geminiPatchPath = runningRequest.patchPath;
+          session.geminiStatusMessage = runningRequest.statusMessage;
+          session.geminiTokensReceived = runningRequest.tokensReceived;
+          session.geminiCharsReceived = runningRequest.charsReceived;
+          session.geminiLastUpdate = runningRequest.lastUpdate;
+        } else {
+          // No running request, use the most recent (first in the list since ordered by DESC)
+          const mostRecent = requests[0];
+          if (mostRecent.status !== session.geminiStatus) {
+            // Only update if different to avoid unnecessary updates
+            session.geminiStatus = mostRecent.status;
+            session.geminiStartTime = mostRecent.startTime;
+            session.geminiEndTime = mostRecent.endTime;
+            session.geminiPatchPath = mostRecent.patchPath;
+            session.geminiStatusMessage = mostRecent.statusMessage;
+            session.geminiTokensReceived = mostRecent.tokensReceived;
+            session.geminiCharsReceived = mostRecent.charsReceived;
+            session.geminiLastUpdate = mostRecent.lastUpdate;
+          }
+        }
+      }
+      
+      // Add the requests to the session
+      session.geminiRequests = requests;
+      
+      return session;
+    } catch (error) {
+      console.error("Error getting session with requests:", error);
+      throw error;
+    }
   };
 }
 

@@ -174,6 +174,58 @@ class DatabaseClient {
     return fetchPromise;
   }
   
+  async getSessionWithRequests(sessionId: string): Promise<Session | null> {
+    // Check cache first (we'll use the same cache key as getSession but with _with_requests suffix)
+    const cacheKey = `session_with_requests_${sessionId}`;
+    
+    // Check for pending request
+    if (this.pendingRequests[cacheKey]) {
+      console.log(`[DB Client] Reusing pending request for session with requests ${sessionId}`);
+      return this.pendingRequests[cacheKey];
+    }
+    
+    console.log(`[DB Client] Fetching session with requests ${sessionId}`);
+    
+    const fetchPromise = new Promise<Session | null>(async (resolve, reject) => {
+      try {
+        const response = await fetch(`/api/session?id=${encodeURIComponent(sessionId)}&includeRequests=true`);
+        
+        if (!response.ok && response.status !== 404) {
+          let errorMessage = `Failed to fetch session: ${response.status} ${response.statusText}`;
+          if (response.headers.get('content-type')?.includes('application/json')) {
+            try {
+              const error = await response.json();
+              errorMessage = error.message || errorMessage;
+            } catch (parseError) {
+              console.error('Error parsing JSON error response:', parseError);
+            }
+          }
+          throw new Error(errorMessage);
+        }
+        
+        if (response.status === 404) {
+          resolve(null);
+          return;
+        }
+        
+        try {
+          const data = await response.json();
+          resolve(data);
+        } catch (parseError) {
+          console.error('[DB Client] Error parsing session response:', parseError);
+          reject(new Error('Failed to parse session response'));
+        }
+      } catch (error) {
+        reject(error);
+      } finally {
+        delete this.pendingRequests[cacheKey];
+      }
+    });
+    
+    this.pendingRequests[cacheKey] = fetchPromise;
+    return fetchPromise;
+  }
+  
   async saveSession(session: Session): Promise<Session> {
     console.log(`[DB Client] Saving session ${session.id} (${session.name})`);
     
