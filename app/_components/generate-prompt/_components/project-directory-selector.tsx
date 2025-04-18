@@ -154,7 +154,7 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
     try {
       const result = await validateDirectoryAction(path);
       
-      if (result.valid) {
+      if (result.isSuccess) {
         setValidationStatus({
           type: ValidationType.Success,
           message: "Directory is valid"
@@ -194,16 +194,15 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
     // Validate directory
     const isValid = await validateDirectory(normalizedInput);
     if (isValid) {
-      // Add to history and update project directory
+      // Add to history
       addToHistory(normalizedInput);
       
-      // Update project directory via initialization context
-      setInitProjectDir(normalizedInput, 'picker');
+      // Force a URL update by directly navigating to the URL with the new project
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("projectDir", encodeURIComponent(normalizedInput));
       
-      // Update project context for backward compatibility
-      setProjectContextDir(normalizedInput);
-      
-      setShowHistoryDropdown(false);
+      // Use window.location to force a complete reload with the new project
+      window.location.href = currentUrl.toString();
     }
   };
 
@@ -217,13 +216,22 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
   // Handle selecting from history
   const handleSelectHistory = (dir: string) => {
     setInputValue(dir);
+    setShowHistoryDropdown(false);
+    
+    // Immediately validate and set project
     validateDirectory(dir).then(isValid => {
       if (isValid) {
-        setInitProjectDir(dir, 'picker');
-        setProjectContextDir(dir);
+        // Add to history first (to ensure it's at the top)
+        addToHistory(dir);
+        
+        // Force a URL update by directly navigating to the URL with the new project
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set("projectDir", encodeURIComponent(dir));
+        
+        // Use window.location to force a complete reload with the new project
+        window.location.href = currentUrl.toString();
       }
     });
-    setShowHistoryDropdown(false);
   };
 
   // Handle deleting from history
@@ -279,8 +287,13 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
     validateDirectory(selectedPath).then(isValid => {
       if (isValid) {
         addToHistory(selectedPath);
-        setInitProjectDir(selectedPath, 'picker');
-        setProjectContextDir(selectedPath);
+        
+        // Force a URL update by directly navigating to the URL with the new project
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set("projectDir", encodeURIComponent(selectedPath));
+        
+        // Use window.location to force a complete reload with the new project
+        window.location.href = currentUrl.toString();
       }
     });
   };

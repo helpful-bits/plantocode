@@ -128,7 +128,7 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
   }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, formState, sessionName]);
 
   // Debounce the save function
-  const debouncedSaveFn = useDebounceCallback(debouncedSave, 1500); // Debounce for 1.5 seconds
+  const debouncedSaveFn = useDebounceCallback(debouncedSave, 500); // Reduced from 1500ms to 500ms for faster saves during HMR
 
   // Effect to trigger debounced save on state change
   useEffect(() => {

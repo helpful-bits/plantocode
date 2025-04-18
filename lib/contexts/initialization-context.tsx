@@ -112,13 +112,19 @@ export function InitializationProvider({ children }: { children: ReactNode }) {
         // Reset URL lock after a delay to ensure the replace completes
         setTimeout(() => {
           locks.current.urlUpdate = false;
-        }, 100);
+        }, 200);
       }
       
       // Persist to database
       if (repository) {
         try {
+          // Wait for the database operation to complete
           await repository.saveCachedState("global", GLOBAL_PROJECT_DIR_KEY, normalizedDir);
+          
+          // Clear active session when switching projects
+          if (source === 'picker') {
+            setActiveSessionIdState(null);
+          }
         } catch (err) {
           console.error("[Init] Failed to save project directory to DB:", err);
           // Non-fatal error, continue

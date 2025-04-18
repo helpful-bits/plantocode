@@ -40,11 +40,11 @@ export async function findRelevantPathsAction(
     
     // Get all non-ignored files in the project
     const allFiles = await getAllNonIgnoredFiles(projectDirectory);
-    if (!allFiles || allFiles.length === 0) {
+    if (!allFiles || allFiles.files.length === 0) {
       return { isSuccess: false, message: "No files found in project directory" };
     }
     
-    console.log(`[PathFinder] Found ${allFiles.length} files in project`);
+    console.log(`[PathFinder] Found ${allFiles.files.length} files in project`);
     
     // Generate directory tree for context
     const dirTree = await generateDirectoryTree(projectDirectory);
@@ -63,10 +63,21 @@ ${dirTree}
 Task Description:
 ${taskDescription}
 
+CRITICAL INSTRUCTIONS:
+1. ONLY list file paths that actually exist in this project
+2. Do not hallucinate or make up file paths
+3. Return ONLY file paths and no other commentary
+4. List one file path per line
+5. Focus on the most relevant files for the task described above
+6. Do not include node_modules, build directories, or binary files unless directly relevant
+7. Unless the task specifically mentions tests, favor implementation files over test files
+
 Please list the most relevant file paths for this task, one per line:`;
     
     // Estimate tokens to ensure we're within limits
-    const estimatedTokens = estimateTokens(prompt) + estimateTokens(systemPrompt);
+    const promptTokens = await estimateTokens(prompt);
+    const systemPromptTokens = await estimateTokens(systemPrompt);
+    const estimatedTokens = promptTokens + systemPromptTokens;
     if (estimatedTokens > MAX_INPUT_TOKENS - TOKEN_BUFFER) {
       return { 
         isSuccess: false, 
@@ -302,6 +313,8 @@ Given a codebase and task description, your goal is to:
 2. Provide helpful context that would assist the developer in completing this task
 3. Clearly markup your file references with <file></file> tags
 
+IMPORTANT: ONLY list file paths that were explicitly provided to you in the input. DO NOT hallucinate or make up file paths. If you're unsure if a file exists, do not include it.
+
 Follow this format in your response:
 <relevant_files>
 file_path_1
@@ -312,7 +325,7 @@ file_path_2
 <guidance>
 Your helpful context and explanation of how these files relate to the task.
 Focus on architectural insights, patterns, and non-obvious relationships.
-Only reference files you've seen. Do not hallucinate file paths.
+Only reference files you've seen in the input. Do not hallucinate file paths.
 </guidance>
 
 Be thorough but concise. Focus on providing insights a developer might miss from a quick scan of the codebase.`;
@@ -323,19 +336,38 @@ Be thorough but concise. Focus on providing insights a developer might miss from
       batchIndex++;
       console.log(`Processing batch ${batchIndex}/${batches.length} with ${batch.files.length} files and ${batch.tokenCount} tokens`);
       
-      let fullPrompt = `Task Description: ${taskDescription}\n\nFiles to analyze:\n`;
+      let fullPrompt = `Task Description: ${taskDescription}\n\n`;
       
+      // Add clear instructions directly in the user prompt
+      fullPrompt += `CRITICAL INSTRUCTIONS:
+1. ONLY include file paths from the list below - do not reference any files not shown here
+2. Do not hallucinate or make up file paths
+3. Analyze the provided files to determine which are most relevant to the task
+4. Format your response exactly as requested below
+
+Files to analyze:\n`;
+      
+      // Create a list of file paths for reference
+      fullPrompt += "\nAvailable files:\n";
+      const availableFiles = batch.files.map(file => file.path);
+      for (const filePath of availableFiles) {
+        fullPrompt += `- ${filePath}\n`;
+      }
+      
+      // Now include full file contents
+      fullPrompt += "\nFile contents:\n";
       for (const file of batch.files) {
         fullPrompt += `\nFile: ${file.path}\n${'='.repeat(file.path.length + 6)}\n${file.content}\n\n`;
       }
       
-      fullPrompt += "\nBased on the task and code provided, identify the most relevant files and provide guidance.";
+      fullPrompt += "\nRESPONSE FORMAT: List only the most relevant files for this task using the following format:\n";
+      fullPrompt += "<relevant_files>\n[file paths here, one per line, ONLY from the list of files provided above]\n</relevant_files>\n\n";
+      fullPrompt += "<guidance>\n[Your analysis explaining why these files are relevant to the task]\n</guidance>";
       
       try {
         // Call Gemini API with CODE_ANALYSIS request type
         const result = await geminiClient.sendRequest(fullPrompt, {
           model: GEMINI_FLASH_MODEL,
-          systemPrompt: systemPrompt,
           temperature: 0.7, // Lower temperature for more deterministic results
           maxOutputTokens: 8000,
           requestType: RequestType.CODE_ANALYSIS // Specify request type
@@ -343,7 +375,7 @@ Be thorough but concise. Focus on providing insights a developer might miss from
         
         if (result.isSuccess && result.data) {
           // Process the response to extract relevant paths
-          processRelevantFilesContent(result.data, allRelevantPaths, batchIndex);
+          processRelevantFilesContent(result.data, allRelevantPaths, batchIndex, batch.files);
           
           // Try to extract guidance content
           const guidance = extractGuidanceContent(result.data);
@@ -415,8 +447,16 @@ Be thorough but concise. Focus on providing insights a developer might miss from
 function processRelevantFilesContent(
   content: string, 
   allRelevantPaths: Set<string>, 
-  batchIndex: number
+  batchIndex: number,
+  batchFiles?: Array<{ path: string, content: string }>
 ): void {
+  // Create a set of valid paths from this batch if provided
+  const validPaths = new Set<string>();
+  if (batchFiles && batchFiles.length > 0) {
+    batchFiles.forEach(file => validPaths.add(file.path));
+    console.log(`Batch ${batchIndex} has ${validPaths.size} valid files for validation`);
+  }
+
   // Check if the response contains XML-formatted file paths
   if (content.includes('<file path=')) {
     console.log('Detected XML-formatted file paths in response');
@@ -427,9 +467,14 @@ function processRelevantFilesContent(
     
     console.log(`Extracted ${xmlPaths.length} paths from XML format`);
     
-    // Add these paths to our overall set
+    // Add these paths to our overall set if they're valid
     xmlPaths.forEach(path => {
-      if (path) allRelevantPaths.add(path);
+      // Only add if we don't have a validation set or the path is in the validation set
+      if (path && (!validPaths.size || validPaths.has(path))) {
+        allRelevantPaths.add(path);
+      } else if (path) {
+        console.log(`Skipping hallucinated path: ${path}`);
+      }
     });
   } else {
     // Original processing for plain text paths (one per line)
@@ -492,10 +537,17 @@ function processRelevantFilesContent(
       console.log('No markdown files found in this batch response');
     }
     
-    // Add these paths to our overall set
+    // Add these paths to our overall set if they're valid
     batchRelevantPaths
       .filter(p => p && p.length > 0 && !p.startsWith('#'))
-      .forEach(path => allRelevantPaths.add(path));
+      .forEach(path => {
+        // Only add if we don't have a validation set or the path is in the validation set
+        if (!validPaths.size || validPaths.has(path)) {
+          allRelevantPaths.add(path);
+        } else {
+          console.log(`Skipping hallucinated path: ${path}`);
+        }
+      });
   }
 }
 

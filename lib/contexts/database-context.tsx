@@ -577,25 +577,70 @@ class DatabaseClient {
       return;
     }
     
-    // Add rate limiting for project directory changes to prevent ping-pong
-    if (key === 'global-project-dir' && cachedEntry) {
-      const timeSinceLastUpdate = Date.now() - cachedEntry.timestamp;
-      if (timeSinceLastUpdate < 200) { // 200ms cooldown
-        console.log(`[DB Client] Rate limiting project directory update (${timeSinceLastUpdate}ms since last update)`);
-        // Update the cache but delay the API call
-        this.cachedStateCache[cacheKey] = {
-          data: safeValue,
-          timestamp: Date.now()
-        };
+    // List of critical form input keys that need special treatment to prevent loss during HMR
+    const criticalFormKeys = [
+      'task-description', 
+      'search-term', 
+      'pasted-paths', 
+      'pattern-description', 
+      'title-regex', 
+      'content-regex', 
+      'is-regex-active'
+    ];
+    
+    // Special handling for form inputs to prevent loss during hot reloading
+    if (criticalFormKeys.includes(key)) {
+      console.log(`[DB Client] Saving critical form input '${key}' with priority (length: ${safeValue.length})`);
+      
+      // Immediately update the cache for this input
+      this.cachedStateCache[cacheKey] = {
+        data: safeValue,
+        timestamp: Date.now()
+      };
+      
+      // Send the update without any debouncing for critical form inputs
+      try {
+        await this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue, true);
+        return; // Return early after special handling
+      } catch (error) {
+        console.error(`[DB Client] Error in priority '${key}' save:`, error);
+        // Fall through to normal handling as backup
+      }
+    }
+    
+    // Special handling for project directory changes
+    if (key === 'global-project-dir') {
+      // Clear cache for the previous project directory
+      if (cachedEntry && cachedEntry.data !== safeValue) {
+        console.log(`[DB Client] Project directory changed from ${cachedEntry.data} to ${safeValue}, clearing relevant caches`);
         
-        // Schedule the update after a delay
-        setTimeout(() => {
-          // Check if still the current value before sending
-          if (this.cachedStateCache[cacheKey]?.data === safeValue) {
-            this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue);
-          }
-        }, 300);
-        return;
+        const oldProjectDir = cachedEntry.data;
+        if (oldProjectDir) {
+          // Clear all caches related to the old project
+          this.clearCacheForProject(oldProjectDir);
+        }
+      }
+      
+      // Add rate limiting for project directory changes to prevent ping-pong
+      if (cachedEntry) {
+        const timeSinceLastUpdate = Date.now() - cachedEntry.timestamp;
+        if (timeSinceLastUpdate < 200) { // 200ms cooldown
+          console.log(`[DB Client] Rate limiting project directory update (${timeSinceLastUpdate}ms since last update)`);
+          // Update the cache but delay the API call
+          this.cachedStateCache[cacheKey] = {
+            data: safeValue,
+            timestamp: Date.now()
+          };
+          
+          // Schedule the update after a delay
+          setTimeout(() => {
+            // Check if still the current value before sending
+            if (this.cachedStateCache[cacheKey]?.data === safeValue) {
+              this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue);
+            }
+          }, 300);
+          return;
+        }
       }
     }
     
@@ -615,8 +660,61 @@ class DatabaseClient {
   }
   
   // Helper method to send cached state updates to the server
-  private async _sendCachedStateUpdate(projectDirectory: string, key: string, value: string): Promise<void> {
+  private async _sendCachedStateUpdate(
+    projectDirectory: string, 
+    key: string, 
+    value: string,
+    isPriority: boolean = false
+  ): Promise<void> {
     try {
+      // For priority updates (like task description), use a more robust fetch with retry
+      if (isPriority) {
+        let retries = 0;
+        const maxRetries = 3;
+        
+        while (retries < maxRetries) {
+          try {
+            const response = await fetch('/api/cached-state', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                projectDirectory,
+                key, 
+                value
+              }),
+            });
+            
+            if (response.ok) {
+              console.log(`[DB Client] Priority save success for ${key} (attempt ${retries + 1})`);
+              return; // Success, exit the function
+            }
+            
+            // If we get here, the response was not ok
+            retries++;
+            
+            if (retries < maxRetries) {
+              // Wait before retry (exponential backoff)
+              await new Promise(resolve => setTimeout(resolve, 200 * Math.pow(2, retries)));
+            }
+          } catch (fetchError) {
+            console.error(`[DB Client] Error in priority fetch attempt ${retries + 1}:`, fetchError);
+            retries++;
+            
+            if (retries < maxRetries) {
+              // Wait before retry
+              await new Promise(resolve => setTimeout(resolve, 200 * Math.pow(2, retries)));
+            }
+          }
+        }
+        
+        // If we get here, all retries failed
+        console.error(`[DB Client] All ${maxRetries} priority save attempts failed for ${key}`);
+        return;
+      }
+      
+      // Regular (non-priority) updates use the existing mechanism
       const response = await fetch('/api/cached-state', {
         method: 'POST',
         headers: {
@@ -755,12 +853,128 @@ const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined
 // Create a singleton instance of the client
 const databaseClient = new DatabaseClient();
 
+// Store a reference to the cached state that persists across hot module reloads
+// This is a critical addition to prevent data loss during development HMR
+if (typeof window !== 'undefined') {
+  // Check if we already have cached state stored in window object
+  if (!(window as any).__PERSISTED_CACHED_STATE) {
+    // Initialize the persisted cache
+    (window as any).__PERSISTED_CACHED_STATE = {
+      cachedStateCache: {},
+      lastSyncTime: Date.now()
+    };
+    console.log('[DB Context] Initialized persisted cached state');
+  }
+  
+  // Function to sync our cache with the persisted one
+  const syncCachedState = () => {
+    try {
+      // Merge the current cache with the persisted one
+      const persistedCache = (window as any).__PERSISTED_CACHED_STATE;
+      
+      // Update the database client's cache from the persisted store
+      if (persistedCache && persistedCache.cachedStateCache) {
+        Object.entries(persistedCache.cachedStateCache).forEach(([key, value]) => {
+          if (!databaseClient.cachedStateCache[key] || 
+              databaseClient.cachedStateCache[key].timestamp < (value as any).timestamp) {
+            databaseClient.cachedStateCache[key] = value as any;
+          }
+        });
+      }
+      
+      // Also update the persisted cache with any new entries from our client
+      (window as any).__PERSISTED_CACHED_STATE.cachedStateCache = {
+        ...(window as any).__PERSISTED_CACHED_STATE.cachedStateCache,
+        ...databaseClient.cachedStateCache
+      };
+      
+      (window as any).__PERSISTED_CACHED_STATE.lastSyncTime = Date.now();
+      console.log('[DB Context] Synced cached state with persisted store');
+    } catch (error) {
+      console.error('[DB Context] Error syncing cached state:', error);
+    }
+  };
+  
+  // Sync immediately when module loads
+  syncCachedState();
+  
+  // Also expose the database client to window for debugging and recovery
+  (window as any).__DATABASE_CLIENT = databaseClient;
+  
+  // Listen for beforeunload to ensure cache is persisted
+  window.addEventListener('beforeunload', () => {
+    (window as any).__PERSISTED_CACHED_STATE.cachedStateCache = {
+      ...(window as any).__PERSISTED_CACHED_STATE.cachedStateCache,
+      ...databaseClient.cachedStateCache
+    };
+    console.log('[DB Context] Persisted cached state before unload');
+  });
+  
+  // Override the clear cache method to preserve critical data
+  const originalClearCache = databaseClient.clearCache;
+  databaseClient.clearCache = function() {
+    // Call original method
+    originalClearCache.call(this);
+    
+    // Then restore the critical form data from persisted cache
+    try {
+      const persistedCache = (window as any).__PERSISTED_CACHED_STATE;
+      if (persistedCache && persistedCache.cachedStateCache) {
+        const criticalKeys = [
+          'task-description', 
+          'search-term', 
+          'pasted-paths', 
+          'pattern-description', 
+          'title-regex', 
+          'content-regex', 
+          'is-regex-active'
+        ];
+        
+        // Filter for keys that contain critical form data 
+        Object.entries(persistedCache.cachedStateCache).forEach(([key, value]) => {
+          const keyParts = key.split('|');
+          if (keyParts.length === 2) {
+            const dataKey = keyParts[1];
+            if (criticalKeys.includes(dataKey)) {
+              this.cachedStateCache[key] = value as any;
+              console.log(`[DB Context] Restored critical data: ${key}`);
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.error('[DB Context] Error restoring critical data after cache clear:', error);
+    }
+  };
+}
+
 // Provider component
 export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
+  
   useEffect(() => {
     // Perform any initialization logic here if needed
     setIsInitialized(true);
+    
+    // If we're in the browser, set up a periodic sync for the cache
+    if (typeof window !== 'undefined') {
+      const syncInterval = setInterval(() => {
+        try {
+          // Update the persisted cache with the current client cache
+          (window as any).__PERSISTED_CACHED_STATE.cachedStateCache = {
+            ...(window as any).__PERSISTED_CACHED_STATE.cachedStateCache,
+            ...databaseClient.cachedStateCache
+          };
+          (window as any).__PERSISTED_CACHED_STATE.lastSyncTime = Date.now();
+        } catch (error) {
+          console.error('[DB Context] Error during periodic cache sync:', error);
+        }
+      }, 5000); // Sync every 5 seconds
+      
+      return () => {
+        clearInterval(syncInterval);
+      };
+    }
   }, []);
   
   return (

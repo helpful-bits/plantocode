@@ -3,7 +3,7 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import { useDebounceValue } from 'usehooks-ts';
 import {Button} from '@/components/ui/button';
-import {Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw, Clock, ExternalLink} from 'lucide-react';
+import {Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw, Clock, ExternalLink, ChevronDown, ChevronUp} from 'lucide-react';
 import {
     sendPromptToGeminiAction,
     cancelGeminiRequestAction,
@@ -442,6 +442,145 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
         resetProcessorState
     }), [resetProcessorState]);
 
+    // Add a state variable for collapsed requests
+    const [isRequestsCollapsed, setIsRequestsCollapsed] = useState(false);
+
+    // Add this function before the return statement
+    const renderRequestItem = (request, index) => {
+        const isProcessing = request.status === 'running';
+        const isCompleted = request.status === 'completed';
+        const isFailed = request.status === 'failed';
+        const isCanceled = request.status === 'canceled';
+        const isPending = 'isPending' in request && request.isPending === true;
+        const isPreparing = request.status === 'preparing';
+
+        return (
+            <div key={request.id} 
+                className={`p-3 border-b last:border-b-0 relative ${
+                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                } hover:bg-blue-50 transition-colors duration-150`}>
+                {/* Pending indicator badge */}
+                {isPending && (
+                    <div className="absolute top-2 right-2">
+                        <span
+                            className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded-sm flex items-center">
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Starting...
+                        </span>
+                    </div>
+                )}
+
+                <div className="flex items-start gap-3">
+                    {/* Status Icon with appropriate visual feedback */}
+                    <div className={`mt-1 flex-shrink-0 p-1 rounded-full ${
+                        isProcessing || isPending ? 'bg-blue-100' :
+                        isCompleted ? 'bg-green-100' :
+                        isFailed ? 'bg-red-100' :
+                        'bg-orange-100'
+                    }`}>
+                        {(isProcessing || isPending) &&
+                            <Loader2 className="h-4 w-4 animate-spin text-blue-600"/>}
+                        {isCompleted && <CheckCircle className="h-4 w-4 text-green-600"/>}
+                        {isFailed && <AlertCircle className="h-4 w-4 text-red-600"/>}
+                        {isCanceled && <XOctagon className="h-4 w-4 text-orange-600"/>}
+                    </div>
+
+                    {/* Request Details */}
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                            <span className={`font-medium text-sm ${
+                                isFailed ? 'text-red-600' :
+                                    isCanceled ? 'text-orange-600' :
+                                        isCompleted ? 'text-green-600' :
+                                            (isProcessing || isPreparing || isPending) ? 'text-blue-600' :
+                                                'text-muted-foreground'
+                            }`}>
+                                {isPending || isPreparing ? 'Preparing' :
+                                    isProcessing ? 'Processing' :
+                                        isCompleted ? 'Completed' :
+                                            isFailed ? 'Failed' :
+                                                'Canceled'}
+                            </span>
+                            <span
+                                className="text-xs text-muted-foreground flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full">
+                                <Clock className="h-3 w-3 flex-shrink-0"/>
+                                {isPending ? 'Just started' : requestTimers[request.id] || 'Just started'}
+                            </span>
+                        </div>
+
+                        {/* Request ID (shortened) */}
+                        <p className="text-xs text-muted-foreground mt-1">
+                            ID: {isPending ? 'Pending...' : request.id.substring(0, 8)}...
+                        </p>
+
+                        {/* Error Message */}
+                        {request.statusMessage && (isFailed || isCanceled || (isCompleted && !request.patchPath)) && (
+                            <p className="text-sm text-red-600 mt-1">{request.statusMessage}</p>
+                        )}
+
+                        {/* Stream Stats */}
+                        {(isProcessing || isCompleted) && (request.tokensReceived > 0 || request.charsReceived > 0) && (
+                            <div className="text-xs text-muted-foreground mt-2 flex gap-3">
+                                <span>Tokens: {request.tokensReceived}</span>
+                                <span>Characters: {request.charsReceived}</span>
+                            </div>
+                        )}
+
+                        {/* File Path with IDE Integration (only if path exists) */}
+                        {request.patchPath && (
+                            <div className="mt-2 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <span
+                                        className="font-mono bg-muted p-1 rounded truncate max-w-[300px]">
+                                        {request.patchPath}
+                                    </span>
+                                    <IdeIntegration
+                                        filePath={request.patchPath}
+                                        onError={(msg) => handleIdeIntegrationError(msg, request.patchPath)}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                        {/* Cancel Button (only when running or preparing) */}
+                        {isProcessing && !isPending && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCancelRequest(request.id)}
+                                disabled={isLoading}
+                                title="Cancel processing"
+                                className="bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                                <XOctagon className="h-3 w-3 mr-1"/>
+                                Cancel
+                            </Button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Add this before the closing div of the request item */}
+                {isProcessing && request.tokensReceived > 0 && (
+                    <div className="mt-2 w-full">
+                        <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-blue-500 rounded-full animate-pulse"
+                                style={{ 
+                                    width: `${Math.min(100, request.tokensReceived / 10)}%`,
+                                    transition: 'width 0.5s ease-in-out' 
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <GeminiProcessorContext.Provider value={contextValue}>
             <div className="flex flex-col items-center gap-4 p-4 border rounded-lg bg-card shadow-sm w-full">
@@ -476,145 +615,102 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
 
                 {/* Processing Request List - Show if we have pending or regular requests */}
                 {sortedRequests.length > 0 && (
-                    <div className="w-full border rounded-md overflow-hidden">
+                    <div className="w-full border rounded-md overflow-hidden shadow-sm">
                         <div
                             className="bg-muted px-3 py-2 font-medium text-sm border-b flex justify-between items-center">
-                            <span>
-                                Processing Requests ({sortedRequests.length})
+                            <span className="flex items-center">
+                                <span className="font-semibold">Processing Requests</span>
+                                <span className="ml-2 text-sm text-muted-foreground">({sortedRequests.length})</span>
                                 {hasRunningRequests && (
-                                    <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                                    <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full flex items-center gap-1">
                                         {processingRequestsCount > 0 && (
-                                            <span className="mr-1">{processingRequestsCount} Active</span>
+                                            <span className="flex items-center">
+                                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                                {processingRequestsCount} Active
+                                            </span>
                                         )}
                                         {queuedRequestsCount > 0 && (
-                                            <span className="text-amber-700">{queuedRequestsCount} Queued</span>
+                                            <span className="ml-1 flex items-center text-amber-700">
+                                                <Clock className="h-3 w-3 mr-1" />
+                                                {queuedRequestsCount} Queued
+                                            </span>
                                         )}
                                     </span>
                                 )}
                             </span>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={fetchSessionData}
-                                disabled={isLoading}
-                                title="Refresh Status"
-                                className="h-7 w-7 p-0"
-                            >
-                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        // Toggle collapsed state
+                                        setIsRequestsCollapsed(!isRequestsCollapsed)
+                                    }}
+                                    title={isRequestsCollapsed ? "Expand" : "Collapse"}
+                                    className="h-7 w-7 p-0"
+                                >
+                                    {isRequestsCollapsed ? 
+                                        <ChevronDown className="h-4 w-4" /> : 
+                                        <ChevronUp className="h-4 w-4" />
+                                    }
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={fetchSessionData}
+                                    disabled={isLoading}
+                                    title="Refresh Status"
+                                    className="h-7 w-7 p-0"
+                                >
+                                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>
+                                </Button>
+                            </div>
                         </div>
-                        <div className="max-h-64 overflow-y-auto"> {/* Reduced max height */}
-                            {sortedRequests.map((request) => {
-                                const isProcessing = request.status === 'running';
-                                const isCompleted = request.status === 'completed';
-                                const isFailed = request.status === 'failed';
-                                const isCanceled = request.status === 'canceled';
-                                const isPending = 'isPending' in request && request.isPending === true;
-                                const isPreparing = request.status === 'preparing';
-
-                                return (
-                                    <div key={request.id} className="p-3 border-b last:border-b-0 relative">
-                                        {/* Pending indicator badge */}
-                                        {isPending && (
-                                            <div className="absolute top-2 right-2">
-                                                <span
-                                                    className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded-sm">
-                                                    Starting...
-                                                </span>
-                                            </div>
-                                        )}
-
-                                        <div className="flex items-start gap-3">
-                                            {/* Status Icon */}
-                                            <div className="mt-1 flex-shrink-0">
-                                                {(isProcessing || isPending) &&
-                                                    <Loader2 className="h-4 w-4 animate-spin text-blue-600"/>}
-                                                {isCompleted && <CheckCircle className="h-4 w-4 text-green-600"/>}
-                                                {isFailed && <AlertCircle className="h-4 w-4 text-red-600"/>}
-                                                {isCanceled && <XOctagon className="h-4 w-4 text-orange-600"/>}
-                                            </div>
-
-                                            {/* Request Details */}
-                                            <div className="flex-1">
-                                                <div className="flex items-center justify-between">
-                                                    <span className={`font-medium text-sm ${
-                                                        isFailed ? 'text-red-600' :
-                                                            isCanceled ? 'text-orange-600' :
-                                                                isCompleted ? 'text-green-600' :
-                                                                    (isProcessing || isPreparing || isPending) ? 'text-blue-600' :
-                                                                        'text-muted-foreground'
-                                                    }`}>
-                                                        {isPending || isPreparing ? 'Preparing' :
-                                                            isProcessing ? 'Processing' :
-                                                                isCompleted ? 'Completed' :
-                                                                    isFailed ? 'Failed' :
-                                                                        'Canceled'}
-                                                    </span>
-                                                    <span
-                                                        className="text-xs text-muted-foreground flex items-center gap-1">
-                                                        <Clock className="h-3 w-3 flex-shrink-0"/>
-                                                        {isPending ? 'Just started' : requestTimers[request.id] || 'Just started'}
-                                                    </span>
+                        {!isRequestsCollapsed && (
+                            <div className="max-h-64 overflow-y-auto">
+                                {/* Add this grouping logic */}
+                                {(() => {
+                                    // Group requests by status
+                                    const runningRequests = sortedRequests.filter(r => r.status === 'running' || r.status === 'preparing' || ('isPending' in r && r.isPending));
+                                    const completedRequests = sortedRequests.filter(r => r.status === 'completed');
+                                    const failedOrCanceledRequests = sortedRequests.filter(r => r.status === 'failed' || r.status === 'canceled');
+                                    
+                                    // Render groups only if they have items
+                                    return (
+                                        <>
+                                            {runningRequests.length > 0 && (
+                                                <div>
+                                                    <div className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium border-b">
+                                                        Active ({runningRequests.length})
+                                                    </div>
+                                                    {runningRequests.map((request, index) => renderRequestItem(request, index))}
                                                 </div>
-
-                                                {/* Request ID (shortened) */}
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    ID: {isPending ? 'Pending...' : request.id.substring(0, 8)}...
-                                                </p>
-
-                                                {/* Error Message */}
-                                                {request.statusMessage && (isFailed || isCanceled || (isCompleted && !request.patchPath)) && (
-                                                    <p className="text-sm text-red-600 mt-1">{request.statusMessage}</p>
-                                                )}
-
-                                                {/* Stream Stats */}
-                                                {(isProcessing || isCompleted) && (request.tokensReceived > 0 || request.charsReceived > 0) && (
-                                                    <div className="text-xs text-muted-foreground mt-2 flex gap-3">
-                                                        <span>Tokens: {request.tokensReceived}</span>
-                                                        <span>Characters: {request.charsReceived}</span>
+                                            )}
+                                            
+                                            {completedRequests.length > 0 && (
+                                                <div>
+                                                    <div className="px-3 py-1 bg-green-50 text-green-700 text-xs font-medium border-b">
+                                                        Completed ({completedRequests.length})
                                                     </div>
-                                                )}
-
-                                                {/* File Path with IDE Integration (only if path exists) */}
-                                                {request.patchPath && (
-                                                    <div className="mt-2 text-xs">
-                                                        <div className="flex items-center gap-2">
-                                                            <span
-                                                                className="font-mono bg-muted p-1 rounded truncate max-w-[300px]">
-                                                                {request.patchPath}
-                                                            </span>
-                                                            <IdeIntegration
-                                                                filePath={request.patchPath}
-                                                                onError={(msg) => handleIdeIntegrationError(msg, request.patchPath)}
-                                                            />
-                                                        </div>
+                                                    {completedRequests.map((request, index) => renderRequestItem(request, index))}
+                                                </div>
+                                            )}
+                                            
+                                            {failedOrCanceledRequests.length > 0 && (
+                                                <div>
+                                                    <div className="px-3 py-1 bg-red-50 text-red-700 text-xs font-medium border-b">
+                                                        Failed/Canceled ({failedOrCanceledRequests.length})
                                                     </div>
-                                                )}
-                                            </div>
-
-                                            {/* Action Buttons */}
-                                            <div className="flex gap-2">
-                                                {/* Cancel Button (only when running or preparing) */}
-                                                {isProcessing && !isPending && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        onClick={() => handleCancelRequest(request.id)}
-                                                        disabled={isLoading}
-                                                        title="Cancel processing"
-                                                    >
-                                                        <XOctagon className="h-3 w-3 mr-1"/>
-                                                        Cancel
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                                    {failedOrCanceledRequests.map((request, index) => renderRequestItem(request, index))}
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -623,12 +719,14 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
                     <div className="w-full flex justify-end mt-2">
                         <Button
                             type="button"
-                            variant="destructive"
+                            variant="outline"
                             size="sm"
                             onClick={handleCancelAllRequests}
                             disabled={isLoading}
                             title="Cancel all running requests"
-                            className={sortedRequests.filter(req => req.status === 'running').length > 1 ? "animate-pulse" : ""}
+                            className={`bg-white border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 ${
+                                sortedRequests.filter(req => req.status === 'running').length > 1 ? "animate-pulse" : ""
+                            }`}
                         >
                             <XOctagon className="h-4 w-4 mr-1"/>
                             Cancel All{runningRequestsCount > 1 ?

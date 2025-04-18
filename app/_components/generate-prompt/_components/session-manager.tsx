@@ -157,9 +157,21 @@ const SessionManager = ({
   useEffect(() => {
     if (projectDirectory && repository && !pendingProjectSwitchRef.current) {
       console.log(`[SessionManager] Project directory changed to: ${projectDirectory}, loading sessions`);
+      
+      // Reset active session ID to ensure clean state when switching projects
+      if (loadedProjectRef.current && loadedProjectRef.current !== normalizePath(projectDirectory)) {
+        console.log(`[SessionManager] Detected project switch from ${loadedProjectRef.current} to ${projectDirectory}`);
+        setActiveSessionIdInternal(null);
+        setActiveSessionIdExternally(null);
+        
+        // Clear any pending changes
+        pendingChangesRef.current = {};
+        sessionLoadedRef.current = false;
+      }
+      
       loadSessions();
     }
-  }, [projectDirectory, repository, loadSessions]);
+  }, [projectDirectory, repository, loadSessions, setActiveSessionIdExternally]);
 
   // Save session to database
   const handleSave = async () => {
