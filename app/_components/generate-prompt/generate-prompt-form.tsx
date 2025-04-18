@@ -29,6 +29,18 @@ import { generateDirectoryTree } from "@/lib/directory-tree"; // Import director
 import { Tabs, TabsList, TabsContent } from "@/components/ui/tabs";
 import { useGeminiProcessor } from '../gemini-processor/gemini-processor-context'; // Fix the import path
 
+// Constants for form state handling
+const FORM_ID = "generate-prompt-form";
+const AUTO_SAVE_INTERVAL = 3000; // 3 seconds
+const LOCAL_STORAGE_KEY = "o1pro.generate-prompt.form-state";
+const MIN_LOAD_INTERVAL = 60000; // 1 minute minimum time between automatic file loads
+const DEFAULT_INCLUDED_FILE_EXTENSIONS = ["js", "jsx", "ts", "tsx", "py", "rs", "go", "java", "c", "cpp", "h", "hpp", "cs", "php", "rb", "html", "css", "scss", "md", "json", "yml", "yaml", "txt"];
+const EXCLUDE_FILE_NAMES = [".git", "node_modules", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".next", "dist", "build", "out", "coverage", ".DS_Store"];
+const DEFAULT_EXCLUDE_PATTERNS = ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**", "**/.next/**"];
+
+// Define the OutputFormat type 
+type OutputFormat = "markdown" | "xml" | "plain";
+
 const TaskDescriptionArea = React.lazy(() => import("./_components/task-description").then(module => ({ default: module.default }))); // Lazy load TaskDescriptionArea
 // Fix the lazy imports with proper dynamic import syntax
 const SessionManager = React.lazy(() => import("./_components/session-manager"));
@@ -74,7 +86,11 @@ const shouldIncludeByDefault = (filePath: string): boolean => {
 
 export default function GeneratePromptForm() {
   const { projectDirectory, setProjectDirectory } = useProject();
-  const repository = useDatabase().repository;
+  const { repository } = useDatabase();
+  const { activeSessionId: savedSessionId, setActiveSessionId: setSavedSessionId } = useProject();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const { resetProcessorState } = useGeminiProcessor(); // Get the reset function from context
   const [taskDescription, setTaskDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -112,10 +128,6 @@ export default function GeneratePromptForm() {
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
   const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(false);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("markdown");
-  // URL handling
-  const router = useRouter(); // Keep useRouter
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   // Ref to control initial loading and prevent loops
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -403,7 +415,7 @@ export default function GeneratePromptForm() {
     });
   }, [setAllFilesMap, trackSelectionChanges]);
   
-  // Load files function with debounce
+  // Update the handleLoadFiles function to remove hot reload detection and auto-retry
   const handleLoadFiles = useCallback(async (directory: string, isRefresh = false, forceLoad = false) => {
     // Skip if no directory or already loading
     if (!directory) return;
@@ -419,6 +431,7 @@ export default function GeneratePromptForm() {
     const timeSinceLastLoad = now - loadFilesRef.current.lastLoadTime;
     if (
       !isRefresh && 
+      !forceLoad &&
       loadFilesRef.current.lastDirectory === directory &&
       timeSinceLastLoad < MIN_LOAD_INTERVAL
     ) {
@@ -464,15 +477,18 @@ export default function GeneratePromptForm() {
       setLoadingStatus(isRefresh ? "Refreshing git repository files..." : "Reading all non-ignored files via git...");
       
       // Call server action to read files
-      const result = await readDirectoryAction(directory);
+      let result = null;
+      
+      // Attempt to read the directory
+      result = await readDirectoryAction(directory);
       
       // Update load tracking after successful server call
       loadFilesRef.current.lastDirectory = directory;
       loadFilesRef.current.lastLoadTime = Date.now();
       
       // Handle errors
-      if (!result.isSuccess) {
-        setError(result.message || `Failed to read git repository at ${directory}`);
+      if (!result?.isSuccess) {
+        setError(result?.message || `Failed to read git repository at ${directory}`);
         setIsLoadingFiles(false);
         setLoadingStatus("");
         return;
@@ -501,7 +517,7 @@ export default function GeneratePromptForm() {
       const pathDebugData: { original: string, normalized: string }[] = [];
       const pathWarnings: string[] = [];
       
-      // Process each file
+      // Process each file - temporarily set defaults for all files
       for (const path of paths) {
         const content = fileContents[path];
         const size = content.length;
@@ -522,25 +538,19 @@ export default function GeneratePromptForm() {
           console.error(`Error normalizing path ${path}:`, e);
         }
         
-        // When refreshing, try to preserve selections from existing map
-        let included = false; // Default to not included
-        let forceExcluded = false; // Default to not excluded
-
-        if (isRefresh) {
-          if (existingSelections?.has(path)) {
-            // If refreshing and the file existed before, preserve its previous state
-            const existing = existingSelections.get(path)!;
-            included = existing.included;
-            forceExcluded = existing.forceExcluded;
-          } else {
-            // For new files discovered during refresh, use default selection logic
-            included = shouldIncludeByDefault(path);
-            forceExcluded = false;
-          }
-        } else {
+        // For now, just set default values for all files
+        // If refreshing, we'll apply saved selections in a separate step after files are loaded
+        let included = false;
+        let forceExcluded = false;
+        
+        if (!isRefresh) {
           // For initial load (not refreshing), use default selection logic
           included = initialIncludedSet.has(path) || (!initialExcludedSet.has(path) && shouldIncludeByDefault(path));
           forceExcluded = initialExcludedSet.has(path);
+        } else {
+          // When refreshing, use default selection logic for now
+          included = shouldIncludeByDefault(path);
+          forceExcluded = false;
         }
 
         newFilesMap[path] = {
@@ -554,10 +564,36 @@ export default function GeneratePromptForm() {
       // Set debugging data if needed
       setPathDebugInfo(pathDebugData);
       setExternalPathWarnings(pathWarnings);
+      
       // Update state with new data
-      setFileContentsMap(result.data); // Keep using result.data directly
-      // Directly update the file map state to trigger FormStateManager
+      setFileContentsMap(result.data);
+      
+      // Apply the file map update first
       setAllFilesMapWithTracking(newFilesMap);
+      
+      // If refreshing, restore previous selections after a short delay 
+      // to ensure all file paths are properly initialized
+      if (isRefresh && existingSelections && existingSelections.size > 0) {
+        console.log(`[Refresh] Waiting to restore ${existingSelections.size} saved selections...`);
+        
+        // Use setTimeout to wait for the next render cycle
+        setTimeout(() => {
+          const updatedMap = { ...newFilesMap };
+          let restoredCount = 0;
+          
+          // Apply saved selections to the new file map
+          existingSelections.forEach((value, savedPath) => {
+            if (updatedMap[savedPath]) {
+              updatedMap[savedPath].included = value.included;
+              updatedMap[savedPath].forceExcluded = value.forceExcluded;
+              restoredCount++;
+            }
+          });
+          
+          console.log(`[Refresh] Restored ${restoredCount} of ${existingSelections.size} saved selections`);
+          setAllFilesMapWithTracking(updatedMap);
+        }, 100); // Short delay to ensure file paths are fully processed
+      }
       
       console.log(`[${isRefresh ? 'Refresh' : 'Load'}] Processed ${Object.keys(newFilesMap).length} files from git repository.`);
     } catch (error) {
@@ -568,8 +604,8 @@ export default function GeneratePromptForm() {
       handleInteraction(); // Trigger save check after files are loaded/refreshed
       loadFilesRef.current.isLoading = false; // Mark as no longer loading
     } 
-  }, [allFilesMap, handleInteraction, normalizeFilePath, setAllFilesMapWithTracking]);
-  
+  }, [allFilesMap, handleInteraction, normalizeFilePath, readDirectoryAction, setAllFilesMap, setAllFilesMapWithTracking, setError, setExternalPathWarnings, setFileContentsMap, setIsLoadingFiles, setLoadingStatus, setPathDebugInfo, shouldIncludeByDefault]);
+
   // Use stable version for handleRefreshFiles
   const handleRefreshFiles = useCallback(async () => {
     if (!projectDirectory) return;
@@ -692,15 +728,67 @@ export default function GeneratePromptForm() {
     }
   }, [copySuccess]);
 
+  // Add a new function to manage localStorage backups
+  const getLocalStorageKeyForProject = (key: string) => {
+    // Create a safe, project-specific localStorage key
+    const safeProjDir = projectDirectory ? 
+      encodeURIComponent(projectDirectory.replace(/[\/\\?%*:|"<>]/g, '_')).substring(0, 50) : 
+      'default';
+    return `form-backup-${safeProjDir}-${key}`;
+  };
+
+  // Add a save-to-localStorage function after the handleInteraction function
+  const saveToLocalStorage = useCallback((key: string, value: string) => {
+    if (!projectDirectory) return;
+    
+    try {
+      const storageKey = getLocalStorageKeyForProject(key);
+      localStorage.setItem(storageKey, value);
+    } catch (error) {
+      console.error(`[LocalStorage] Error saving ${key} to localStorage:`, error);
+    }
+  }, [projectDirectory]);
+
+  // Add a function to restore from localStorage
+  const restoreFromLocalStorage = useCallback((key: string, setter: (value: string) => void, currentValue: string) => {
+    if (!projectDirectory) return false;
+    
+    try {
+      const storageKey = getLocalStorageKeyForProject(key);
+      const savedValue = localStorage.getItem(storageKey);
+      
+      if (savedValue && (!currentValue || currentValue !== savedValue)) {
+        console.log(`[LocalStorage] Restoring ${key} from localStorage`);
+        setter(savedValue);
+        return true;
+      }
+    } catch (error) {
+      console.error(`[LocalStorage] Error restoring ${key} from localStorage:`, error);
+    }
+    
+    return false;
+  }, [projectDirectory]);
+
+  // Add localStorage backup to all form field change handlers
   const handleTaskChange = useCallback(async (value: string) => {
     // Always update local state immediately
     setTaskDescription(value);
+    // Save to localStorage
+    saveToLocalStorage('task-description', value);
     // Do not clear active session ID automatically on input change
     handleInteraction(); // Mark interaction
     
     try {
-      // Code to save task description would go here
-      // This part seems to be missing in the original code
+      // Immediately save task description to ensure it persists through hot reloads
+      if (projectDirectory && repository && activeSessionId) {
+        // First, get the current task-description from db as a backup
+        const backupDescription = await repository.getCachedState(projectDirectory, 'task-description');
+        
+        // Save the new task description (no debouncing for this critical value)
+        await repository.saveCachedState(projectDirectory, 'task-description', value);
+        
+        console.log('Task description saved directly to prevent loss during HMR');
+      }
     } catch (error) {
       // Detailed error logging
       console.error("Error saving task description:", error);
@@ -719,7 +807,7 @@ export default function GeneratePromptForm() {
         });
       }, 5000); // Clear error after 5 seconds
     }
-  }, [activeSessionId, projectDirectory, repository, handleInteraction]); // Keep handleInteraction dependency
+  }, [activeSessionId, projectDirectory, repository, handleInteraction, saveToLocalStorage]);
 
   // New handler specifically for transcribed text
   const handleTranscribedText = useCallback((text: string) => {
@@ -730,14 +818,17 @@ export default function GeneratePromptForm() {
       // Fallback: Append to the end if ref not available
       const newText = taskDescription + (taskDescription ? ' ' : '') + text;
       setTaskDescription(newText);
+      // Also save to localStorage
+      saveToLocalStorage('task-description', newText);
       handleInteraction();
     }
-  }, [taskDescription, handleInteraction]);
+  }, [taskDescription, handleInteraction, saveToLocalStorage]);
 
-  const handleSearchChange = useCallback((value: string) => { // Keep useCallback
+  const handleSearchChange = useCallback((value: string) => {
     setSearchTerm(value);
+    saveToLocalStorage('search-term', value);
     handleInteraction();
-  }, [handleInteraction]); // Add handleInteraction dependency
+  }, [handleInteraction, saveToLocalStorage]); // Add saveToLocalStorage dependency
 
   // Function to clean XML tags from pasted paths
   const cleanXmlTags = useCallback((input: string): string => {
@@ -751,254 +842,56 @@ export default function GeneratePromptForm() {
     // Clean any XML tags that might be present
     const cleanedValue = cleanXmlTags(value);
     setPastedPaths(cleanedValue);
+    saveToLocalStorage('pasted-paths', cleanedValue);
     handleInteraction(); // Mark interaction
-  }, [cleanXmlTags, handleInteraction]);
+  }, [cleanXmlTags, handleInteraction, saveToLocalStorage]); // Add saveToLocalStorage dependency
 
-  const handlePatternDescriptionChange = useCallback((value: string) => { // Keep useCallback
+  // Handle path preview after being loaded from external source
+  const handlePathsPreview = useCallback((paths: string[]) => {
+    if (!paths || paths.length === 0) return;
+    
+    // Join paths into a single string with newlines
+    const pathsText = paths.join('\n');
+    
+    // Update pastedPaths state
+    setPastedPaths(pathsText);
+    saveToLocalStorage('pasted-paths', pathsText);
+    handleInteraction();
+  }, [handleInteraction, saveToLocalStorage]);
+
+  const handlePatternDescriptionChange = useCallback((value: string) => {
     setPatternDescription(value);
+    saveToLocalStorage('pattern-description', value);
     handleInteraction();
-  }, [handleInteraction]); // Add handleInteraction dependency
+  }, [handleInteraction, saveToLocalStorage]); // Add saveToLocalStorage dependency
 
-  const handleTitleRegexChange = useCallback((value: string) => { // Keep useCallback
+  const handleTitleRegexChange = useCallback((value: string) => {
     setTitleRegex(value);
+    saveToLocalStorage('title-regex', value);
     handleInteraction();
-  }, [handleInteraction]); // Add handleInteraction dependency
+  }, [handleInteraction, saveToLocalStorage]); // Add saveToLocalStorage dependency
 
-  const handleContentRegexChange = useCallback((value: string) => { // Keep useCallback
+  const handleContentRegexChange = useCallback((value: string) => {
     setContentRegex(value);
+    saveToLocalStorage('content-regex', value);
     handleInteraction();
-  }, [handleInteraction]); // Add handleInteraction dependency
+  }, [handleInteraction, saveToLocalStorage]); // Add saveToLocalStorage dependency
 
   const handleClearPatterns = useCallback(() => {
     setTitleRegex("");
     setContentRegex("");
+    saveToLocalStorage('title-regex', "");
+    saveToLocalStorage('content-regex', "");
     setContentRegexError(null);
     handleInteraction();
-  }, []);
+  }, [handleInteraction, saveToLocalStorage]);
 
   const handleToggleRegexActive = useCallback(() => {
     const newValue = !isRegexActive;
     setIsRegexActive(newValue);
+    saveToLocalStorage('is-regex-active', String(newValue));
     handleInteraction();
-  }, [isRegexActive, handleInteraction]); // Added handleInteraction dependency
-
-  const handleGenerateRegex = useCallback(async () => {
-    if (!patternDescription.trim()) { // Ensure description is not empty
-      setRegexGenerationError("Please enter a pattern description first.");
-      return; // Exit if description is empty
-    }
-
-    setIsGeneratingRegex(true);
-    setRegexGenerationError(""); // Clear previous errors
-    try {
-      console.log("Generating regex patterns for:", patternDescription);
-      const result = await generateRegexPatternsAction(patternDescription, undefined);
-      console.log("Regex generation result:", result);
-      
-      if (result.isSuccess && result.data) {
-        const newTitleRegex = result.data.titleRegex || "";
-        setTitleRegexError(null); // Clear title error on success
-        const newContentRegex = result.data.contentRegex || "";
-        setTitleRegex(newTitleRegex);
-        setContentRegex(newContentRegex);
-        setRegexGenerationError("");
-        handleInteraction(); // Mark interaction
-      } else {
-        setRegexGenerationError(result.message || "Failed to generate regex patterns.");
-      }
-    } catch (error) {
-      console.error("Error in handleGenerateRegex:", error);
-      setRegexGenerationError(error instanceof Error ? error.message : "Unexpected error generating regex patterns");
-    } finally {
-      setIsGeneratingRegex(false);
-    }
-  }, [patternDescription, handleInteraction]); // Added handleInteraction
-
-  // Handler for the new "Find Relevant Files" button
-  const handleFindRelevantFiles = useCallback(async () => {
-    if (!projectDirectory || !taskDescription) {
-      setError("Project directory and task description are required.");
-      return;
-    }
-
-    setError(""); // Clear error message
-    setIsFindingFiles(true);
-    setLoadingStatus("Preparing to analyze codebase...");
-
-    try {
-      // Reset Gemini processor state before starting code analysis
-      // This ensures no conflict with ongoing Gemini requests
-      await resetProcessorState();
-      
-      // Analyze entire codebase first to look for relevant files
-      console.log("Starting code analysis for task description:", taskDescription.substring(0, 50) + "...");
-      
-      // Set loading status
-      setLoadingStatus("Reading project files...");
-
-      // Ensure caches are cleared before loading fresh data
-      console.log(`[Refresh] Invalidating client and server caches for ${projectDirectory}`);
-      repository.clearCacheForProject(projectDirectory); // Clear client-side cache
-      await invalidateDirectoryCache(projectDirectory); // Clear server-side directory cache
-      await invalidateFileCache(projectDirectory);      // Clear server-side git file cache
-
-      // First, load ALL project files
-      const allFilesResult = await readDirectoryAction(projectDirectory);
-      if (!allFilesResult.isSuccess || !allFilesResult.data) {
-        setError(`Failed to read project files: ${allFilesResult.message || "Unknown error"}`);
-        return;
-      }
-      
-      const allProjectFiles = allFilesResult.data;
-      const projectFilePaths = Object.keys(allProjectFiles);
-      
-      // If searchSelectedFilesOnly is true, filter to only use selected files
-      let filesToAnalyze = projectFilePaths;
-      if (searchSelectedFilesOnly) {
-        // Filter to only include files that are selected in the file browser
-        const selectedFiles = Object.entries(allFilesMap)
-          .filter(([_, fileInfo]) => fileInfo.included && !fileInfo.forceExcluded)
-          .map(([path, _]) => path);
-        
-        if (selectedFiles.length === 0) {
-          setError("No files are selected. Please select files first or disable 'Search in selected files only'.");
-          setIsFindingFiles(false);
-          return;
-        }
-        
-        filesToAnalyze = selectedFiles;
-        setLoadingStatus(`Analyzing ${selectedFiles.length} selected files...`);
-        console.log(`Using ${selectedFiles.length} selected files for analysis`);
-      } else {
-        console.log(`Loaded ${projectFilePaths.length} files from project`);
-        setLoadingStatus("Analyzing ALL project files...");
-      }
-      
-      // Then find relevant files
-      const result = await findRelevantFilesAction(
-        projectDirectory, 
-        taskDescription,
-        searchSelectedFilesOnly ? filesToAnalyze : undefined
-      );
-
-      if (result.isSuccess && result.data?.relevantPaths) {
-        const relevantPaths = result.data.relevantPaths;
-        
-        // Process paths to ensure they don't contain XML tags
-        const cleanPaths = relevantPaths.map(path => {
-          // Remove any XML tags that might be present
-          return path.replace(/<file>|<\/file>/g, '').trim();
-        });
-        
-        // Auto-correct paths immediately after receiving them from Gemini
-        setLoadingStatus("Auto-correcting file paths...");
-        console.log("[PathFinder] Auto-correcting file paths");
-        
-        try {
-          // Join paths with newlines to prepare them for correction
-          const pathsString = cleanPaths.join('\n');
-          
-          // Call the path correction action
-          const correctionResult = await correctPathsAction(projectDirectory, pathsString);
-          
-          if (correctionResult.isSuccess && correctionResult.data) {
-            // Use the corrected paths
-            const correctedPaths = correctionResult.data.correctedPaths;
-            console.log(`[PathFinder] Auto-corrected paths: ${correctionResult.message}`);
-            
-            // Update the UI with corrected paths
-            setPastedPaths(correctedPaths.join('\n'));
-          } else {
-            // If correction fails, still use the clean paths
-            console.warn(`[PathFinder] Auto-correction failed: ${correctionResult.message || "Unknown error"}`);
-            setPastedPaths(cleanPaths.join('\n'));
-          }
-        } catch (correctionError) {
-          console.error("[PathFinder] Error during auto-correction:", correctionError);
-          // Fall back to uncorrected paths
-          setPastedPaths(cleanPaths.join('\n'));
-        }
-        
-        // Use the enhanced task description from the combined API call
-        if (result.data.enhancedTaskDescription) {
-          const enhancedText = result.data.enhancedTaskDescription;
-          
-          // Use the ref to append the enhanced text
-          if (taskDescriptionRef.current) {
-            // Create enhanced text with header
-            const enhancedTextWithHeader = "Additional Context Based on Codebase Analysis:\n\n" + enhancedText;
-            taskDescriptionRef.current.appendText(enhancedTextWithHeader);
-          } else {
-            // Fallback if ref not available: append to the existing task description
-            setTaskDescription(prevTask => {
-              const separator = "\n\n";
-              return prevTask + separator + "Additional Context Based on Codebase Analysis:\n\n" + enhancedText;
-            });
-          }
-          
-          console.log("Successfully enhanced task description based on code analysis");
-        }
-        
-        handleInteraction(); // Mark interaction
-      } else {
-        // If task description was not enhanced, still provide feedback
-        if (result.data && !result.data.enhancedTaskDescription) {
-          console.log("Relevant files found, but no task enhancement provided by AI.");
-        }
-
-        setError(`Failed to find relevant files: ${result.message}`);
-      }
-    } catch (error) {
-      console.error("Error processing code analysis:", error);
-      setError(`Error in code analysis: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsFindingFiles(false);
-      setLoadingStatus("");
-    }
-  }, [
-    taskDescription,
-    projectDirectory, 
-    handleInteraction, 
-    taskDescriptionRef, 
-    searchSelectedFilesOnly, 
-    allFilesMap, 
-    resetProcessorState // Add resetProcessorState to dependencies
-  ]);
-
-  // New handler to add a file path to the pastedPaths textarea
-  const handleAddPathToPastedPaths = useCallback((path: string) => {
-    // Split the current paths by newline, filter out empty lines and comments
-    const currentPaths = pastedPaths
-      .split("\n")
-      .map(p => p.trim())
-      .filter(p => !!p && !p.startsWith("#"));
-    
-    // Check if the path already exists in the textarea
-    if (!currentPaths.includes(path)) {
-      // Always add a newline before the new path if there's existing content
-      const newPastedPaths = pastedPaths.trim() 
-        ? pastedPaths.trim() + "\n" + path  // Add to existing content
-        : path;                             // Set as first path
-      
-      // Update the state
-      setPastedPaths(newPastedPaths);
-      handleInteraction();
-    }
-  }, [pastedPaths, handleInteraction]);
-
-  // Handle paths preview (placeholder function to avoid error)
-  const handlePathsPreview = useCallback(() => {
-    // This function is required by the PastePaths component
-    // but we're not using its preview functionality
-    console.log("Path preview requested");
-  }, []);
-
-  // Update allFilesMap state from child components
-  const handleFilesMapChange = useCallback((newMap: FilesMap) => {
-    setAllFilesMap(newMap);
-    console.log('[Form] handleFilesMapChange called, triggering interaction.'); // Add log
-    handleInteraction(); // Mark interaction
-  }, [handleInteraction]); // Add handleInteraction to dependency array
+  }, [isRegexActive, handleInteraction, saveToLocalStorage]); // Added handleInteraction dependency
 
   const handleGenerate = async () => {
     /**
@@ -1349,6 +1242,108 @@ ${taskDescription}
     allFilesMap, 
   ]);
 
+  const handleGenerateRegex = useCallback(async () => {
+    if (!patternDescription.trim()) {
+      setRegexGenerationError("Please enter a pattern description first");
+      return;
+    }
+
+    setIsGeneratingRegex(true);
+    setRegexGenerationError("");
+
+    try {
+      // Get a simple directory tree to provide context for the AI
+      let directoryTree = "";
+      if (projectDirectory) {
+        const filesArray = Object.keys(allFilesMap).slice(0, 100); // Limit to avoid token overuse
+        directoryTree = filesArray.join("\n");
+      }
+
+      // Call the regex generation action
+      const result = await generateRegexPatternsAction(patternDescription, directoryTree);
+      
+      if (result.isSuccess && result.data) {
+        // Update regex patterns if generated successfully
+        if (result.data.titleRegex !== undefined) {
+          setTitleRegex(result.data.titleRegex);
+          saveToLocalStorage('title-regex', result.data.titleRegex);
+        }
+        if (result.data.contentRegex !== undefined) {
+          setContentRegex(result.data.contentRegex);
+          saveToLocalStorage('content-regex', result.data.contentRegex);
+        }
+      } else {
+        setRegexGenerationError(result.message || "Failed to generate regex patterns");
+      }
+    } catch (error) {
+      console.error("Error generating regex:", error);
+      setRegexGenerationError(error instanceof Error ? error.message : "Unknown error occurred");
+    } finally {
+      setIsGeneratingRegex(false);
+      handleInteraction();
+    }
+  }, [patternDescription, projectDirectory, allFilesMap, saveToLocalStorage, handleInteraction]);
+
+  // Handle changes to the file map (selection status)
+  const handleFilesMapChange = useCallback((updatedFilesMap: FilesMap) => {
+    setAllFilesMapWithTracking(updatedFilesMap);
+    handleInteraction();
+  }, [setAllFilesMapWithTracking, handleInteraction]);
+
+  // Handle adding a path to the pasted paths
+  const handleAddPathToPastedPaths = useCallback((path: string) => {
+    if (!path) return;
+    
+    // Add path to existing pasted paths
+    const updatedPaths = pastedPaths ? 
+      `${pastedPaths}\n${path}` : 
+      path;
+    
+    setPastedPaths(updatedPaths);
+    saveToLocalStorage('pasted-paths', updatedPaths);
+    handleInteraction();
+  }, [pastedPaths, handleInteraction, saveToLocalStorage]);
+
+  // Handle finding relevant files based on task description
+  const handleFindRelevantFiles = useCallback(async () => {
+    if (!taskDescription.trim() || !projectDirectory) {
+      return;
+    }
+
+    setIsFindingFiles(true);
+    setError("");
+
+    try {
+      const result = await findRelevantFilesAction(projectDirectory, taskDescription);
+      
+      if (result.isSuccess && result.data) {
+        // Update pastedPaths with the suggested relevant files
+        const relevantPaths = result.data.relevantPaths;
+        if (relevantPaths.length > 0) {
+          const pathsText = relevantPaths.join('\n');
+          setPastedPaths(pathsText);
+          saveToLocalStorage('pasted-paths', pathsText);
+        }
+        
+        // If there's enhanced task description, append it to the existing task description
+        if (result.data.enhancedTaskDescription) {
+          const updatedTaskDescription = `${taskDescription}\n\n${result.data.enhancedTaskDescription}`;
+          setTaskDescription(updatedTaskDescription);
+          saveToLocalStorage('task-description', updatedTaskDescription);
+        }
+        
+        handleInteraction();
+      } else {
+        setError(result.message || "Failed to find relevant files");
+      }
+    } catch (error) {
+      console.error("Error finding relevant files:", error);
+      setError(error instanceof Error ? error.message : "Unknown error occurred");
+    } finally {
+      setIsFindingFiles(false);
+    }
+  }, [taskDescription, projectDirectory, handleInteraction, saveToLocalStorage]);
+
   return (
     <div className="flex flex-col flex-1 space-y-6"> {/* Removed padding */}
       <div className="grid grid-cols-1 gap-4">
@@ -1455,20 +1450,14 @@ ${taskDescription}
               <PastePaths
                 onChange={handlePastedPathsChange}
                 value={pastedPaths}
-                title="Select Files"
-                subTitle="Paste file paths, one per line. Or use file browser below."
-                error={error}
-                onClear={() => setPastedPaths("")}
-                onPathsLoaded={handlePathsPreview}
-                placeholderContent={`# One file path per line
-# Comments starting with # are ignored
-
-# Paths should be relative to the selected project directory
-# For example:
-src/app/page.tsx
-src/components/ui/button.tsx
-lib/utils.ts
-`}
+                projectDirectory={projectDirectory}
+                onInteraction={handleInteraction}
+                onParsePaths={handlePathsPreview}
+                warnings={externalPathWarnings}
+                canCorrectPaths={!!projectDirectory}
+                isFindingFiles={isFindingFiles}
+                canFindFiles={!!taskDescription.trim() && !!projectDirectory}
+                onFindRelevantFiles={handleFindRelevantFiles}
               >
                 <div className="flex items-center gap-2 mt-2">
                   <Button
