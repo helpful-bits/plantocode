@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
-import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { sessionRepository, getSessionWithRequests, setupDatabase } from '@/lib/db'; // Import getSessionWithRequests
 import { Session } from '@/types'; // Keep Session import
 // GET /api/session?id=...
 // Fetches a single session by its ID
@@ -18,7 +17,7 @@ export async function GET(request: NextRequest) {
     let session: Session | null;
     
     if (includeRequests) {
-      session = await sessionRepository.getSessionWithRequests(sessionId);
+      session = await getSessionWithRequests(sessionId);
     } else {
       session = await sessionRepository.getSession(sessionId);
     }

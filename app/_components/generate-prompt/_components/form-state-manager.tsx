@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
-import { Session } from '@/types';
+import { Session } from '@/types'; // Keep Session import
 import { useDatabase } from '@/lib/contexts/database-context';
-import { useDebounceCallback } from 'usehooks-ts'; // Import debounce hook
+import { useDebounceCallback } from 'usehooks-ts';
 
 export interface FormStateManagerProps {
   activeSessionId: string | null;
+  sessionLoaded: boolean; // Add prop to know if session finished loading
   sessionName?: string; // Make sessionName optional
   projectDirectory: string;
   isSaving: boolean;
@@ -18,6 +19,7 @@ export interface FormStateManagerProps {
 
 const FormStateManager: React.FC<FormStateManagerProps> = ({ 
   sessionName = "", // Provide default value
+  sessionLoaded,
   activeSessionId,
   projectDirectory,
   formState,
@@ -27,24 +29,26 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
   children,
 }) => {
   const { repository, isInitialized } = useDatabase(); // Get repository and initialization status
-  const lastSavedStateRef = useRef<Omit<Session, 'id' | 'name' | 'updatedAt'> | null>(null);
+  const lastSavedStateRef = useRef<Omit<Session, 'id' | 'name' | 'updatedAt' | 'updatedAt'> | null>(null); // Adjust type
   const [saveError, setSaveError] = useState<string | null>(null);
   const isSavingRef = useRef(false); // Internal saving flag to prevent race conditions
-  const isFirstLoadRef = useRef(true); // Track initial load
+  const initialLoadDoneRef = useRef<Record<string, boolean>>({}); // Track initial load per session
+  const isFirstLoadRef = useRef<boolean>(true); // Add ref for tracking first load
 
   // Memoize the form state string representation for dependency array
   const formStateString = useMemo(() => JSON.stringify(formState), [formState]);
 
+  // Reset state when session changes
   useEffect(() => {
     if (activeSessionId) {
       setSaveError(null); // Clear error when session changes
       lastSavedStateRef.current = null; // Reset last saved state on session change
       isFirstLoadRef.current = true; // Reset first load flag on session change
       console.log(`[FormStateManager] Session changed to ${activeSessionId}. Resetting state.`);
-    }
-    // Clear error when dependencies change but session is still active
-    if (activeSessionId && repository && isInitialized) {
+    } else {
+      // No active session, clear error and state
       setSaveError(null);
+      lastSavedStateRef.current = null;
     }
   }, [activeSessionId]);
 
@@ -57,42 +61,44 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     }
     isSavingRef.current = true;
     try {
-      const sessionToSave = await repository.getSession(sessionId!); // Use non-null assertion as checked before
+      console.log(`[FormStateManager] Fetching current state of session ${sessionId} from DB before save...`);
+      const sessionToSave = await repository.getSession(sessionId);
       if (sessionToSave) {
-        // Extract Gemini fields from the *current* form state to exclude them from the merge, preserving DB values
-        const { geminiStatus, geminiStartTime, geminiEndTime, geminiPatchPath, geminiStatusMessage, geminiTokensReceived, geminiCharsReceived, geminiLastUpdate, ...formStateWithoutGemini } = currentState;
-
-        // Specifically extract forceExcludedFiles from the current state to ensure it's saved
-        const { forceExcludedFiles } = currentState;
+        console.log(`[FormStateManager] Current DB state for ${sessionId}:`, sessionToSave);
+        const { geminiRequests, ...formFields } = currentState; // Exclude geminiRequests from direct save
 
         // Ensure session name is not empty
+        // Use the provided sessionName prop if available, otherwise fallback to DB or generate
         const effectiveSessionName = sessionName && sessionName.trim()
           ? sessionName.trim()
           : sessionToSave.name && sessionToSave.name.trim()
-            ? sessionToSave.name.trim()
+            ? sessionToSave.name.trim() // Fallback to current DB name
             : `Session ${new Date().toLocaleString()}`;
-        
-        // Remove outputFormat and customFormat from updatedSessionData
-        const updatedSessionData: Session = {
-          ...sessionToSave, // Start with existing session data from DB
-          ...formStateWithoutGemini, // Overwrite with current form state (excluding Gemini status fields)
-          forceExcludedFiles: forceExcludedFiles || [], // Explicitly include forceExcludedFiles from current state
-          id: activeSessionId, // Ensure ID remains the same
-          name: effectiveSessionName, // Use non-empty session name
+
+        // Create the update payload - start with existing DB data, merge *only* form fields
+        // Crucially, DO NOT merge Gemini status fields from formState, they are managed by background processes
+        const updatePayload: Session = {
+          ...sessionToSave,          // Start with existing session data from DB
+          ...formFields,             // Apply the current form fields (task desc, files, etc.)
+          id: sessionId!,             // Ensure ID remains the same
+          name: effectiveSessionName, // Use the determined session name
           projectDirectory: formState.projectDirectory, // Ensure these are correct
           updatedAt: Date.now(), // Update timestamp
         };
-        
-        // Re-apply the existing Gemini fields from the database (already done by spreading sessionToSave first)
-        updatedSessionData.geminiStatus = sessionToSave.geminiStatus;
-        updatedSessionData.geminiStartTime = sessionToSave.geminiStartTime;
-        updatedSessionData.geminiEndTime = sessionToSave.geminiEndTime; // Ensure correct field name
-        updatedSessionData.geminiPatchPath = sessionToSave.geminiPatchPath;
-        updatedSessionData.geminiTokensReceived = sessionToSave.geminiTokensReceived ?? 0; // Default to 0 if null
-        updatedSessionData.geminiCharsReceived = sessionToSave.geminiCharsReceived ?? 0; // Default to 0 if null
-        updatedSessionData.geminiStatusMessage = sessionToSave.geminiStatusMessage;
-        updatedSessionData.geminiLastUpdate = sessionToSave.geminiLastUpdate;
 
+        // NOTE: Gemini fields (status, start/end time, patch path, message, stats)
+        // are NOT merged here. They are updated separately by the Gemini actions
+        // to avoid overwriting background process state. We explicitly take Gemini fields
+        // ONLY from sessionToSave (the current DB state).
+        updatePayload.geminiStatus = sessionToSave.geminiStatus;
+        updatePayload.geminiStartTime = sessionToSave.geminiStartTime;
+        updatePayload.geminiEndTime = sessionToSave.geminiEndTime;
+        updatePayload.geminiPatchPath = sessionToSave.geminiPatchPath;
+        updatePayload.geminiStatusMessage = sessionToSave.geminiStatusMessage;
+        updatePayload.geminiTokensReceived = sessionToSave.geminiTokensReceived;
+        updatePayload.geminiCharsReceived = sessionToSave.geminiCharsReceived;
+        updatePayload.geminiLastUpdate = sessionToSave.geminiLastUpdate;
+        updatePayload.geminiRequests = sessionToSave.geminiRequests; // Preserve requests
         // Prevent concurrent saves
         // Re-check isSavingRef just before the DB call, although it should be true here
         if (!isSavingRef.current) {
@@ -100,9 +106,11 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
            isSavingRef.current = true; // Ensure it's true
         }
 
-        await repository.saveSession(updatedSessionData);
+        console.log(`[FormStateManager] Saving updated payload for session ${sessionId}...`, updatePayload);
+        await repository.saveSession(updatePayload);
         // Update lastSavedStateRef *after* successful save
-        lastSavedStateRef.current = { ...formState };
+        // Save only the formState part, not the full payload
+        lastSavedStateRef.current = { ...currentState }; // Use currentState which excludes geminiRequests
         if (onStateChange) onStateChange(false); // Reset change status after save
         console.log(`[FormStateManager] Auto-save successful for session ${activeSessionId}. State updated.`);
         setSaveError(null); // Clear error on success
@@ -119,25 +127,36 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     }
   }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, formState, sessionName]);
 
+  // Debounce the save function
+  const debouncedSaveFn = useDebounceCallback(debouncedSave, 1500); // Debounce for 1.5 seconds
+
   // Effect to trigger debounced save on state change
   useEffect(() => {
-    // Don't save on initial load, while saving, or if dependencies aren't ready
-    if (isFirstLoadRef.current || isSavingRef.current || !activeSessionId || !repository || !isInitialized) {
-      // On the very first load for a session, set the last saved state to the current state
-      if (isFirstLoadRef.current && activeSessionId) {
+    // Conditions to prevent saving:
+    // - No active session ID
+    // - Dependencies not ready (DB)
+    // - Session data hasn't finished loading yet (new sessionLoaded prop)
+    // - Already saving
+    if (!activeSessionId || !repository || !isInitialized || !sessionLoaded || isSavingRef.current) {
+      return;
+    }
+
+    // Check if this is the initial load for this specific session ID
+    if (!initialLoadDoneRef.current[activeSessionId]) {
+      // On the first load *after* sessionLoaded becomes true, set the initial saved state
+      if (sessionLoaded) {
         lastSavedStateRef.current = { ...formState };
-        isFirstLoadRef.current = false;
-        console.log(`[FormStateManager] Initial state set for session ${activeSessionId}.`);
+        initialLoadDoneRef.current[activeSessionId] = true;
+        console.log(`[FormStateManager] Initial state captured for session ${activeSessionId}.`);
       }
       return;
     }
-    console.log(`[FormStateManager] useEffect triggered for session ${activeSessionId}. Form state length: ${formStateString.length}`);
-    // Compare current state with the last known saved state for this session
+
+    // Compare current form state with the last known saved state for this session
     const hasChanges = lastSavedStateRef.current === null || JSON.stringify(formState) !== JSON.stringify(lastSavedStateRef.current);
     if (onStateChange) onStateChange(hasChanges);
 
     if (hasChanges) {
-      // Additional check: Don't save if essential fields are missing in the current state being saved
       if (!formState.projectDirectory?.trim()) {
         console.warn(`[FormStateManager] Auto-save skipped for session ${activeSessionId} - projectDirectory is empty in current formState.`);
         setSaveError("Cannot auto-save: Project directory is missing.");
@@ -145,12 +164,12 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
         return;
       }
       console.log(`[FormStateManager] Changes detected for session ${activeSessionId}. Scheduling auto-save.`);
-      // Debounced save logic
-      debouncedSave(activeSessionId, formState, sessionName);
+      // Use the debounced function
+      debouncedSaveFn(activeSessionId, formState, sessionName);
     }
-  }, [activeSessionId, formStateString, repository, isInitialized, onStateChange, onSaveError, formState, sessionName, debouncedSave]);
+    // Added sessionLoaded and debouncedSaveFn to dependencies
+  }, [activeSessionId, sessionLoaded, formStateString, repository, isInitialized, onStateChange, onSaveError, formState, sessionName, debouncedSaveFn]);
 
   return <>{children}</>; // Render children regardless of state
 };
-
 export default FormStateManager;

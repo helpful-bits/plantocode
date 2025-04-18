@@ -1,5 +1,5 @@
 "use client";
-
+import { normalizePath } from '@/lib/path-utils';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Code, Copy, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
@@ -14,18 +14,26 @@ export function IdeIntegration({ filePath, onError }: IdeIntegrationProps) {
 
   const handleOpenInIde = async () => {
     setError(null); // Clear previous errors
+
+    if (!filePath) { // Guard against empty file path
+        setError("File path is missing");
+        if (onError) onError("File path is missing");
+        return;
+    }
+
     try {
       // Call an API endpoint to open the file in the system's default IDE
       const response = await fetch('/api/open-in-ide', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath }), // Pass filePath to API
+        // Pass the raw path, let the server resolve and normalize it for security
+        body: JSON.stringify({ filePath: filePath }),
       });
 
       if (!response.ok) {
           // Use the specific error message from API if available
-          const errorMsg = errorData.error || `Failed to open in IDE (Status: ${response.status})`;
-          setError(errorMsg); // Set error state
+          const errorData = await response.json(); // Await JSON response
+          const errorMsg = errorData.error || `Failed to open in IDE (Status: ${response.status})`;          setError(errorMsg); // Set error state
           if (onError) onError(errorMsg); // Call error callback
           throw new Error(errorMsg);
       }
@@ -61,7 +69,7 @@ export function IdeIntegration({ filePath, onError }: IdeIntegrationProps) {
           size="sm"
           className="flex items-center gap-1 text-xs"
           onClick={handleOpenInIde}
-          title="Open patch file in default editor"
+          title={`Open patch file in default editor: ${filePath}`} // Show full path in title
           disabled={!!error && error.includes('File not found')} // Disable if file not found
         >
           <Code className="h-3 w-3" />

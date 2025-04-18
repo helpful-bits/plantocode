@@ -1,36 +1,39 @@
 "use client";
-import { Loader2 } from 'lucide-react'; // Keep Loader2 import
+import { Loader2 } from 'lucide-react';
 import { Suspense } from "react";
-import { ApplyChangesForm } from "./_components/apply-changes/apply-changes-form"; // Removed as ApplyChanges is no longer used
-import { useDatabase } from "@/lib/contexts/database-context"; // Keep useDatabase import
+import { useInitialization } from "@/lib/contexts/initialization-context";
+import { InitializationStatus } from "./_components/initialization-status";
 import GeneratePromptRoot from "./_components/generate-prompt/generate-prompt-root";
 
 export default function Home() {
-  const { isInitialized } = useDatabase();
+  const { stage, isLoading } = useInitialization();
   
-  if (!isInitialized) {
-    return (
-      <main className="container mx-auto py-8 flex flex-col min-h-screen">
-        <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1> {/* Keep title */}
+  return (
+    <main className="container mx-auto py-8 flex flex-col min-h-screen">
+      <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>
+      
+      {/* Show initialization status if not ready */}
+      <InitializationStatus />
+      
+      {/* Only show the main content if ready or in session loading stage */}
+      {(stage === 'ready' || stage === 'session_loading') ? (
+        <div className="max-w-[1400px] w-full mx-auto space-y-12"> 
+          <Suspense fallback={
+            <div className="text-center text-foreground p-8">
+              <Loader2 className="h-8 w-8 animate-spin inline-block"/>
+            </div>
+          }>
+            <GeneratePromptRoot />
+          </Suspense>
+        </div>
+      ) : (
+        /* Show loading spinner for earlier initialization stages */
         <div className="flex-grow flex justify-center items-center">
           <div className="flex justify-center items-center h-[50vh] flex-col gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="container mx-auto py-8 flex flex-col min-h-screen">
-      <h1 className="text-3xl font-bold mb-6 text-center text-foreground">O1 Pro Flow</h1>
-
-      <div className="max-w-[1400px] w-full mx-auto space-y-12"> 
-        {/* Main Form Area - No explicit sections */}
-        <Suspense fallback={<div className="text-center text-foreground p-8"><Loader2 className="h-8 w-8 animate-spin inline-block"/></div>}> {/* Keep Suspense */}
-          <GeneratePromptRoot />
-        </Suspense>
-      </div>
+      )}
     </main>
   );
 }

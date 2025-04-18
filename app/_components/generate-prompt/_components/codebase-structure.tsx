@@ -75,7 +75,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
             Define the current or planned directory structure using ASCII tree format.
           </div>
           <Textarea
-            id="codebaseStructure"
+            id="codebaseStructure" // Keep id attribute
             value={value}
             onChange={handleChange}
             placeholder={`project/

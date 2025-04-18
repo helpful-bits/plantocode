@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
-import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { getActiveSessionId, setActiveSession } from '@/lib/db'; // Import specific methods
+import { setupDatabase } from '@/lib/db'; // Import setupDatabase from index file
  
-setupDatabase(); // Ensure DB is set up
+await setupDatabase(); // Ensure DB is set up - await the setup
 
 // GET /api/project-settings?projectDirectory=...&outputFormat=...
 export async function GET(request: NextRequest) { // Keep function signature
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) { // Keep function signature
   
   try {
     console.log(`[API GET /project-settings] Fetching active session for: ${projectDirectory}`);
-    const activeSessionId = await sessionRepository.getActiveSessionId(projectDirectory);
+    const activeSessionId = await getActiveSessionId(projectDirectory);
     return NextResponse.json({ activeSessionId });
   } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error fetching active session ID:', error);
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // Allow sessionId to be null to clear active session
     const effectiveSessionId = (sessionId === undefined || sessionId === '') ? null : sessionId; // Allow null explicitly
     console.log(`[API POST /project-settings] Setting active session for project '${projectDirectory}' to: ${effectiveSessionId === null ? 'null' : effectiveSessionId}`);
-    await sessionRepository.setActiveSession(projectDirectory, effectiveSessionId); // Removed outputFormat
+    await setActiveSession(projectDirectory, effectiveSessionId); // Use direct function
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error('Error setting active session:', error);

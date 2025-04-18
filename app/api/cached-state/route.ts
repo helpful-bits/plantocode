@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
-import { hashString } from '@/lib/hash';
+import { getCachedState, saveCachedState } from '@/lib/db';
+import { setupDatabase } from '@/lib/db';
 
 setupDatabase(); // Ensure database connection is initialized
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const projectDirectory = searchParams.get('projectDirectory');
-  const key = searchParams.get('key');
+  const key = searchParams.get('key'); // Keep key parameter
 
   if ((!projectDirectory && projectDirectory !== 'global') || !key) {
     return NextResponse.json({ error: 'Missing required parameters: projectDirectory (or global), key' }, { status: 400 });
   }
 
   try {
-    const value = await sessionRepository.getCachedState(projectDirectory, key);
+    const value = await getCachedState(projectDirectory, key); // Use the direct function
     return NextResponse.json({ value });
   } catch (error) {
     console.error('Error fetching cached state:', error);
@@ -57,7 +56,7 @@ export async function POST(request: NextRequest) {
     // Ensure value is a string
     const safeValue = value === undefined || value === null ? "" : String(value); 
     
-    await sessionRepository.saveCachedState(projectDirectory, key, safeValue);
+    await saveCachedState(projectDirectory, key, safeValue); // Use the direct function
     return NextResponse.json({ success: true }); // Return success status
   } catch (error) {
     console.error('Error saving cached state:', error);

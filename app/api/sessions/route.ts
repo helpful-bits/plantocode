@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
-import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
+import { sessionRepository, getSessions, deleteSession, setupDatabase } from '@/lib/db'; // Import deleteSession
 import { Session } from '@/types'; // Keep Session import
 
 setupDatabase(); // Ensure database is initialized 
@@ -15,7 +14,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const sessions = await sessionRepository.getSessions(projectDirectory);
+    const sessions = await getSessions(projectDirectory);
     return NextResponse.json(sessions);
   } catch (error: unknown) {
     console.error('Error fetching sessions:', error);
@@ -56,7 +55,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    await sessionRepository.deleteSession(sessionId); // Keep deleteSession call
+    await deleteSession(sessionId); // Use the deleteSession function
     return NextResponse.json({ success: true }); // Keep success response
   } catch (error: unknown) { // Use unknown type for catch block variable
     console.error('Error deleting session:', error);
