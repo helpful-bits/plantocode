@@ -6,7 +6,7 @@ setupDatabase(); // Ensure DB is set up
 
 // GET /api/project-settings?projectDirectory=...&outputFormat=...
 export async function GET(request: NextRequest) { // Keep function signature
-  const searchParams = request.nextUrl.searchParams; // Extract searchParams from request
+  const searchParams = request.nextUrl.searchParams;
   const projectDirectory = searchParams.get('projectDirectory'); 
 
   if (!projectDirectory) {
@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) { // Keep function signature
   }
   
   try {
+    console.log(`[API GET /project-settings] Fetching active session for: ${projectDirectory}`);
     const activeSessionId = await sessionRepository.getActiveSessionId(projectDirectory);
     return NextResponse.json({ activeSessionId });
   } catch (error: unknown) { // Use unknown type for catch block variable
@@ -38,7 +39,8 @@ export async function POST(request: NextRequest) {
     }
      
     // Allow sessionId to be null to clear active session
-    const effectiveSessionId = (sessionId === undefined || sessionId === '' || sessionId === null) ? null : sessionId;
+    const effectiveSessionId = (sessionId === undefined || sessionId === '') ? null : sessionId; // Allow null explicitly
+    console.log(`[API POST /project-settings] Setting active session for project '${projectDirectory}' to: ${effectiveSessionId === null ? 'null' : effectiveSessionId}`);
     await sessionRepository.setActiveSession(projectDirectory, effectiveSessionId); // Removed outputFormat
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

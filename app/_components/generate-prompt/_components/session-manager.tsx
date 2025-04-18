@@ -90,22 +90,41 @@ const SessionManager = ({
   // When component mounts or project changes, load sessions
   useEffect(() => {
     const projectKey = projectDirectory; // Use projectDirectory as the key
+    const previousProjectKey = loadedProjectRef.current;
 
-    if (projectKey && projectKey !== loadedProjectRef.current) {
-      console.log(`[SessionManager] Project changed to ${projectKey}. Reloading sessions.`);
-      loadSessions(); // Load sessions for the new project/format
+    if (projectKey && projectKey !== previousProjectKey) {
+      console.log(`[SessionManager] Project changed from '${previousProjectKey || 'none'}' to '${projectKey}'.`);
+      
+      // Function to save the active session ID for the *previous* project before switching
+      const saveSessionForPreviousProject = async () => {
+        if (previousProjectKey && activeSessionId && repository) {
+          try {
+            console.log(`[SessionManager] Saving active session '${activeSessionId}' for *previous* project '${previousProjectKey}' before switching.`);
+            await repository.setActiveSession(previousProjectKey, activeSessionId);
+          } catch (error) {
+            console.error(`[SessionManager] Failed to save active session for previous project ${previousProjectKey}:`, error);
+            // Don't block the switch, just log the error
+          }
+        }
+      };
+      
+      // Execute the save for the previous project, then load sessions for the new project
+      saveSessionForPreviousProject().then(() => {
+        console.log(`[SessionManager] Now loading sessions for the new project: ${projectKey}`);
+        loadSessions(); // Load sessions for the new project
+      });
     } else if (!projectDirectory) {
+      // Project directory cleared
       setSessions([]);
       sessionLoadedRef.current = false;
       // Notify parent that we don't have an active session
       if (onSessionStatusChange) {
         onSessionStatusChange(false);
       }
-      
       // Clear the loaded project reference
       loadedProjectRef.current = null;
     }
-  }, [projectDirectory, loadSessions]);
+  }, [projectDirectory, loadSessions, repository, activeSessionId]);
 
   // Sync activeSessionId whenever external prop changes
   useEffect(() => {
@@ -371,10 +390,13 @@ const SessionManager = ({
       setActiveSessionIdInternal(fullSession.id); // Use internal setter
       setActiveSessionIdExternally(fullSession.id); // Update external state too
       
-      // Update active session in database
+      // Update active session in database for the CURRENT project directory only
       // This is important for restoring the session later
       try {
-        await repository.setActiveSession(projectDirectory, fullSession.id);
+        if (projectDirectory) {
+          console.log(`[SessionManager] Persisting active session ${fullSession.id} for current project ${projectDirectory}`);
+          await repository.setActiveSession(projectDirectory, fullSession.id);
+        }
       } catch (err) {
         console.error("Failed to set active session in database:", err);
         // Continue anyway as we've already loaded the session in memory

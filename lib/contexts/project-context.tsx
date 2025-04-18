@@ -46,7 +46,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 typeof savedDir === 'string' && 
                 savedDir.trim() !== '' && 
                 savedDir !== GLOBAL_PROJECT_DIR_KEY) {
-              setProjectDirectoryState(savedDir);
+              setProjectDirectoryState(savedDir); // Set state without triggering save
               console.log("[ProjectContext] Loaded global project directory from DB:", savedDir);
             }
           }

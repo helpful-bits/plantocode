@@ -6,6 +6,7 @@ import { Session } from '@/types'; // Keep Session import
 // Fetches a single session by its ID
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('id');
+  const includeRequests = request.nextUrl.searchParams.get('includeRequests') === 'true';
   
   if (!sessionId) {
     return NextResponse.json({ error: 'Session ID is required' }, { status: 400 });
@@ -14,7 +15,13 @@ export async function GET(request: NextRequest) {
   await setupDatabase();
 
   try {
-    const session = await sessionRepository.getSession(sessionId); // Keep getSession call
+    let session: Session | null;
+    
+    if (includeRequests) {
+      session = await sessionRepository.getSessionWithRequests(sessionId);
+    } else {
+      session = await sessionRepository.getSession(sessionId);
+    }
 
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });

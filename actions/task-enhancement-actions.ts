@@ -2,8 +2,9 @@
 
 import { ActionState } from "@/types";
 import { callGeminiAPI } from '@/lib/gemini-api';
+import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 
-const TASK_ENHANCER_MODEL_ID = 'gemini-2.0-flash';
+const TASK_ENHANCER_MODEL_ID = GEMINI_FLASH_MODEL;
 
 export async function enhanceTaskDescriptionAction({
   originalDescription, // Keep originalDescription parameter

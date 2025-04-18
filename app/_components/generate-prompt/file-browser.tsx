@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X } from "lucide-react"; // Added X import
+import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy } from "lucide-react"; // Added X and Copy imports
 import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ interface FileBrowserProps {
   debugMode?: boolean;
   isLoading?: boolean; // Add loading state
   loadingMessage?: string; // Add loading message prop
+  onAddPath?: (path: string) => void; // New prop for adding path to textarea
   // Legacy prop names
   files?: FilesMap; // Keep for backward compatibility
   onFilesChange?: (newMap: FilesMap) => void; // Keep for backward compatibility
@@ -56,6 +57,7 @@ export default function FileBrowser({
   onInteraction,
   isLoading,
   loadingMessage = "", // Add default empty string for loadingMessage
+  onAddPath, // Add new prop
 }: FileBrowserProps) { // Keep FileBrowserProps type
   // Normalize props to use both naming conventions
   const allFilesMap = propsAllFilesMap || propsFiles || {};
@@ -68,6 +70,7 @@ export default function FileBrowser({
   const [showPathInfo, setShowPathInfo] = useState(false);
   const lastRenderedMapRef = useRef<string | null>(null); // Track rendered file list
   const [isPreferenceLoading, setIsPreferenceLoading] = useState(true);
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
   const handleSearchChangeInternal = (value: string) => {
     onSearchChange(value);
@@ -115,6 +118,7 @@ export default function FileBrowser({
     if (projectDirectory && repository) { // Check dependencies before saving 
       try {
         await repository.saveCachedState(
+          projectDirectory,
           SHOW_ONLY_SELECTED_KEY,
           String(newValue)
         );
@@ -133,10 +137,20 @@ export default function FileBrowser({
   const handleToggleFile = (path: string) => {
     const newMap = { ...allFilesMap };
     if (newMap[path]) { // Check if file exists in map
-      newMap[path] = { ...newMap[path], included: !newMap[path].included };
-      if (newMap[path].included) {
-        newMap[path].forceExcluded = false; // Unset force exclude if included
-      }
+      const currentFile = newMap[path]; // Get current state
+      const newIncluded = !currentFile.included; // Toggle the included state
+      
+      newMap[path] = { 
+        ...currentFile, 
+        included: newIncluded,
+        // If we're including the file, also make sure it's not force excluded
+        forceExcluded: newIncluded ? false : currentFile.forceExcluded 
+      };
+      
+      // Log state changes for debugging
+      console.log(`[FileBrowser] Toggled file ${path}: included=${newIncluded}, forceExcluded=${newMap[path].forceExcluded}`);
+    } else {
+      console.warn(`[FileBrowser] Attempted to toggle nonexistent file: ${path}`);
     }
     handleFilesMapChangeInternal(newMap);
   };
@@ -145,13 +159,20 @@ export default function FileBrowser({
     const newMap = { ...allFilesMap };
     if (newMap[path]) { // Check if file exists in map
       const currentFile = newMap[path];
-      const forceExcluded = !currentFile.forceExcluded;
+      const newForceExcluded = !currentFile.forceExcluded; // Toggle force excluded
+      
       newMap[path] = {
         ...currentFile,
-        forceExcluded,
-        included: false, // Always set included to false when toggling forceExcluded
+        forceExcluded: newForceExcluded,
+        // Force excluded files cannot be included
+        included: newForceExcluded ? false : currentFile.included,
       };
-    } // End if block
+      
+      // Log state changes for debugging
+      console.log(`[FileBrowser] Toggled force exclude for ${path}: forceExcluded=${newForceExcluded}, included=${newMap[path].included}`);
+    } else {
+      console.warn(`[FileBrowser] Attempted to toggle force exclude on nonexistent file: ${path}`);
+    }
     handleFilesMapChangeInternal(newMap);
   };
 
@@ -161,30 +182,59 @@ export default function FileBrowser({
     const newMap = { ...allFilesMap };
     if (newMap[path]) {
       const currentFile = newMap[path];
+      
+      // Update the file state
       newMap[path] = {
         ...currentFile,
         forceExcluded: false, // Turn off force exclude
         included: true,      // Turn on include
       };
+      
+      // Log state changes for debugging
+      console.log(`[FileBrowser] Un-force-excluded and included file ${path}`);
+    } else {
+      console.warn(`[FileBrowser] Attempted to un-force-exclude nonexistent file: ${path}`);
     }
     handleFilesMapChangeInternal(newMap);
   };
   const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
+    // Create a new map to avoid direct state mutation
     const newMap = { ...allFilesMap };
+    let changedCount = 0;
+    
+    // Only process files that exist in the map
     filesToToggle.forEach(file => {
-      const currentFile = newMap[file.path]; // Get current file state
+      const path = file.path;
+      const currentFile = newMap[path]; 
+      
       if (currentFile) {
+        const oldIncluded = currentFile.included;
+        const oldForceExcluded = currentFile.forceExcluded;
+        
+        // Update the file state based on the include parameter
         if (include) {
+          // Including files - also remove force exclude
           currentFile.included = true;
-          currentFile.forceExcluded = false; // Always remove forceExcluded when including
+          currentFile.forceExcluded = false;
         } else {
+          // Just exclude the file without changing force excluded status
           currentFile.included = false;
-          // Don't change forceExcluded status when deselecting
         }
-      } // End if block
+        
+        // Check if the state actually changed
+        if (oldIncluded !== currentFile.included || oldForceExcluded !== currentFile.forceExcluded) {
+          changedCount++;
+        }
+      }
     });
-
-    handleFilesMapChangeInternal(newMap);
+    
+    // Only update if changes were made
+    if (changedCount > 0) {
+      console.log(`[FileBrowser] Bulk ${include ? 'included' : 'excluded'} ${changedCount} files`);
+      handleFilesMapChangeInternal(newMap);
+    } else {
+      console.log(`[FileBrowser] Bulk toggle had no effect - no files changed state`);
+    }
   }, [allFilesMap, handleFilesMapChangeInternal]);
 
   // Filter files based on search and showOnlySelected
@@ -323,6 +373,23 @@ export default function FileBrowser({
     return formatPathForDisplay(filePath); // Use utility function
   }, []);
 
+  // Replace handleCopyPath with handleAddPath
+  const handleAddPath = useCallback(async (path: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent click handlers
+    
+    // Call the callback if provided
+    if (onAddPath) {
+      onAddPath(path);
+      
+      // Set visual feedback
+      setCopiedPath(path);
+      // Reset the copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedPath(null);
+      }, 2000);
+    }
+  }, [onAddPath]);
+
   return (
     <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm"> {/* Added padding and border */}
       <div className="flex items-center gap-2">
@@ -423,23 +490,34 @@ export default function FileBrowser({
             const fileName = pathParts.pop() || '';
             const dirPath = pathParts.join('/');
             
+            // Create a stable unique key for this file
+            const fileKey = `file-${file.path}-${file.included ? 1 : 0}-${file.forceExcluded ? 1 : 0}`;
+            
             return (
               <div
-                key={file.path}
+                key={fileKey}
                 className={cn(
                   "flex items-center justify-between gap-2 text-sm py-1.5 hover:bg-accent/50 rounded px-2",
                   file.included && !file.forceExcluded ? "bg-primary/5" : "", // Use primary color hint for included
                   file.forceExcluded ? "opacity-60" : ""
                 )} // Keep styling
+                // Add file info as data attributes for debugging
+                data-path={file.path}
+                data-included={String(!!file.included)}
+                data-excluded={String(!!file.forceExcluded)}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <input
-                    type="checkbox"
-                    checked={file.included}
-                    onChange={() => handleToggleFile(file.path)}
-                    className="cursor-pointer flex-shrink-0 accent-primary" // Use primary accent color
-                    title="Include file in generation"
-                  />
+                  {/* Use non-controlled checkbox pattern with proper checked attribute */}
+                  <div className="flex items-center cursor-pointer" onClick={() => handleToggleFile(file.path)}>
+                    <input
+                      type="checkbox"
+                      checked={!!file.included}
+                      readOnly
+                      className="cursor-pointer flex-shrink-0 accent-primary" 
+                      title="Include file in generation"
+                      aria-label={`Include ${file.path}`}
+                    />
+                  </div>
                   <div 
                     className="flex items-center cursor-pointer" 
                     onClick={() => handleToggleForceExclude(file.path)}
@@ -447,9 +525,10 @@ export default function FileBrowser({
                   >
                     <input
                       type="checkbox"
-                      checked={file.forceExcluded}
+                      checked={!!file.forceExcluded}
                       className={cn("cursor-pointer accent-destructive flex-shrink-0 w-3.5 h-3.5")}
                       readOnly
+                      aria-label={`Force exclude ${file.path}`}
                     />
                   </div>
                   <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" /> {/* File icon */}
@@ -469,7 +548,20 @@ export default function FileBrowser({
                     ) : fileName} {/* Otherwise show just the filename */}
                   </span>
                 </div>
-                <span className="text-muted-foreground text-xs">{formatFileSize(file.size)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-xs">{formatFileSize(file.size)}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleAddPath(file.path, e)}
+                    className={cn(
+                      "h-6 w-6 rounded-sm flex items-center justify-center hover:bg-accent/70 transition-colors",
+                      copiedPath === file.path ? "text-primary" : "text-muted-foreground"
+                    )}
+                    title="Add file path to selection"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             );
           })}

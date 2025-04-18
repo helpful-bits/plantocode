@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback, Suspense, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { readDirectoryAction, readExternalFileAction, invalidateDirectoryCache } from "@/actions/read-directory-actions"; // Keep read-directory-actions import
-import { findRelevantFilesAction } from "@/actions/path-finder-actions"; // Import the new action
+import { findRelevantFilesAction } from "@/actions/path-finder-actions"; // Import the enhanced action
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { estimateTokens } from "@/lib/token-estimator"; // Keep token-estimator import
 import { getDiffPrompt } from "@/prompts/diff-prompt"; // Import only diff prompt
@@ -20,11 +20,12 @@ import VoiceTranscription from "./_components/voice-transcription"; // Keep Voic
 import { Session } from "@/types";
 import { Input } from "@/components/ui/input";
 import { GeminiProcessor } from '@/app/_components/gemini-processor/gemini-processor'; // Import the new component
-import { Loader2, Search, Wand2 } from "lucide-react"; // Add Wand2 for AI button
+import { Loader2, Search, Wand2, ToggleLeft, ToggleRight } from "lucide-react"; // Add necessary icons
 import { cn } from "@/lib/utils";
 import { invalidateFileCache } from '@/lib/git-utils';
 import { Button } from "@/components/ui/button";
 import { generateDirectoryTree } from "@/lib/directory-tree"; // Import directory tree generator
+import { Tabs, TabsList, TabsContent } from "@/components/ui/tabs";
 
 // Fix the lazy imports with proper dynamic import syntax
 const SessionManager = React.lazy(() => import("./_components/session-manager"));
@@ -104,16 +105,23 @@ export default function GeneratePromptForm() {
   const [isFormSaving, setIsFormSaving] = useState(false); // State to track if FormStateManager is saving
   const [isRefreshingFiles, setIsRefreshingFiles] = useState(false); // Add state for refresh operation
   const [isFindingFiles, setIsFindingFiles] = useState(false); // State for Path Finder action
+  const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
+  const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(false);
+  const [contextType, setContextType] = useState<string>("files"); // 'files' or 'vector'
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("markdown");
   // URL handling
   const router = useRouter(); // Keep useRouter
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   // Ref to control initial loading and prevent loops
-  const initializationRef = useRef({
-    initialized: false,
-    projectInitialized: false
-  }); // Track initialization status
+  const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initializationRef = useRef<{ projectInitialized: boolean; }>({ projectInitialized: false });
+
+  // Preference keys for saving user preferences
+  const CONTEXT_TYPE_KEY = "generate-prompt-context-type";
+  const OUTPUT_FORMAT_KEY = "generate-prompt-output-format";
+  const SEARCH_SELECTED_FILES_ONLY_KEY = "search-selected-files-only";
 
   const { includedPaths, excludedPaths } = useMemo(() => {
     const included = Object.values(allFilesMap)
@@ -176,9 +184,20 @@ export default function GeneratePromptForm() {
       setHasUnsavedChanges(false); // Reset unsaved changes flag when session is cleared
     }
     setSessionSaveError(null); // Clear save error when session changes
-  }, []); // No dependencies needed here, it's just setting state
+    
+    // Also save to database for the current project directory
+    if (projectDirectory && repository) {
+      try {
+        console.log(`[Form] Persisting active session ID for project ${projectDirectory}: ${sessionId}`);
+        await repository.setActiveSession(projectDirectory, sessionId);
+      } catch (error) {
+        console.error('Failed to persist active session ID to database:', error);
+        // Don't interrupt the user flow, but log the error
+      }
+    }
+  }, [projectDirectory, repository]); // Add projectDirectory and repository as dependencies
 
-  // Load files function with debounce
+  // Load files function with debounce reference
   const loadFilesRef = useRef<{
     lastDirectory: string | null;
     lastLoadTime: number;
@@ -188,10 +207,89 @@ export default function GeneratePromptForm() {
     lastLoadTime: 0,
     isLoading: false
   });
-  
+
   // Minimum time between automatic file loads (ms)
   const MIN_LOAD_INTERVAL = 60000; // 1 minute
   
+  // Helper function to normalize file paths consistently
+  const normalizeFilePath = useCallback((filePath: string): string => {
+    try {
+      // Use the shared normalization utility and handle any errors
+      const normalized = normalizePath(filePath);
+      return normalized;
+    } catch (error) {
+      console.warn(`Failed to normalize path: ${filePath}`, error);
+      // Return the original path if normalization fails
+      return filePath;
+    }
+  }, []);
+  
+  // Selection state tracking for diagnostic purposes
+  const trackSelectionChanges = useCallback((
+    operation: string,
+    oldState: FilesMap | null,
+    newState: FilesMap
+  ) => {
+    // Skip if no previous state
+    if (!oldState) return;
+    
+    // Count changes
+    let addedFiles = 0;
+    let removedFiles = 0;
+    let includedChanges = 0;
+    let excludedChanges = 0;
+    
+    // Check for files that exist in new but not in old
+    Object.keys(newState).forEach(path => {
+      if (!oldState[path]) {
+        addedFiles++;
+      }
+    });
+    
+    // Check for files that exist in old but not in new
+    Object.keys(oldState).forEach(path => {
+      if (!newState[path]) {
+        removedFiles++;
+      }
+    });
+    
+    // Check for selection changes on files that exist in both
+    Object.keys(newState).forEach(path => {
+      if (oldState[path]) {
+        const oldIncluded = !!oldState[path].included;
+        const newIncluded = !!newState[path].included;
+        const oldExcluded = !!oldState[path].forceExcluded;
+        const newExcluded = !!newState[path].forceExcluded;
+        
+        if (oldIncluded !== newIncluded) {
+          includedChanges++;
+        }
+        
+        if (oldExcluded !== newExcluded) {
+          excludedChanges++;
+        }
+      }
+    });
+    
+    // Only log if there are actual changes
+    if (addedFiles > 0 || removedFiles > 0 || includedChanges > 0 || excludedChanges > 0) {
+      console.log(`[Track] ${operation}: Files +${addedFiles}/-${removedFiles}, Included changes: ${includedChanges}, Excluded changes: ${excludedChanges}`);
+    }
+  }, []);
+  
+  // Modify setAllFilesMap to track changes - define BEFORE handleLoadFiles
+  const setAllFilesMapWithTracking = useCallback((update: FilesMap | ((prevState: FilesMap) => FilesMap)) => {
+    setAllFilesMap(prev => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      
+      // Track changes between prev and next
+      trackSelectionChanges('setAllFilesMap', prev, next);
+      
+      return next;
+    });
+  }, [setAllFilesMap, trackSelectionChanges]);
+  
+  // Load files function with debounce
   const handleLoadFiles = useCallback(async (directory: string, isRefresh = false, forceLoad = false) => {
     // Skip if no directory or already loading
     if (!directory) return;
@@ -215,6 +313,15 @@ export default function GeneratePromptForm() {
       return;
     }
     
+    // Save existing selections BEFORE marking as loading or modifying state
+    // This ensures we capture the current state before any changes
+    const existingSelections = isRefresh ? new Map(
+      Object.entries(allFilesMap).map(([path, info]) => [path, {
+        included: info.included,
+        forceExcluded: info.forceExcluded
+      }])
+    ) : null;
+    
     // Mark as loading
     loadFilesRef.current.isLoading = true;
     
@@ -227,6 +334,7 @@ export default function GeneratePromptForm() {
       setError(""); // Clear errors on new load
     } else {
       console.log(`[Refresh Files] Refreshing files from ${directory}`);
+      console.log(`[Refresh Files] Preserving selections for ${existingSelections ? existingSelections.size : 0} files`);
       setIsLoadingFiles(true);
       setLoadingStatus("Refreshing files from git repository...");
     }
@@ -238,13 +346,6 @@ export default function GeneratePromptForm() {
       // For initial load, check for cached file selections *before* fetching files
       let initialIncludedSet = new Set<string>();
       let initialExcludedSet = new Set<string>();      
-      // Save existing selections ONLY if refreshing
-      const existingSelections = isRefresh ? new Map(
-        Object.entries(allFilesMap).map(([path, info]) => [path, {
-          included: info.included,
-          forceExcluded: info.forceExcluded
-        }])
-      ) : null;
 
       // Update status before reading files
       setLoadingStatus(isRefresh ? "Refreshing git repository files..." : "Reading all non-ignored files via git...");
@@ -294,7 +395,7 @@ export default function GeneratePromptForm() {
         
         try {
           // Check for path normalization issues (could happen with Windows paths)
-          const normalizedPath = normalizePath(path);
+          const normalizedPath = normalizeFilePath(path);
           if (normalizedPath !== path) {
             pathDebugData.push({ original: path, normalized: normalizedPath });
           }
@@ -312,13 +413,19 @@ export default function GeneratePromptForm() {
         let included = false; // Default to not included
         let forceExcluded = false; // Default to not excluded
 
-        if (isRefresh && existingSelections?.has(path)) {
-          const existing = existingSelections.get(path)!;
-          included = existing.included;
-          // Only preserve forceExcluded if it was explicitly set
-          forceExcluded = existing.forceExcluded;
+        if (isRefresh) {
+          if (existingSelections?.has(path)) {
+            // If refreshing and the file existed before, preserve its previous state
+            const existing = existingSelections.get(path)!;
+            included = existing.included;
+            forceExcluded = existing.forceExcluded;
+          } else {
+            // For new files discovered during refresh, use default selection logic
+            included = shouldIncludeByDefault(path);
+            forceExcluded = false;
+          }
         } else {
-          // Otherwise use cached selections or default
+          // For initial load (not refreshing), use default selection logic
           included = initialIncludedSet.has(path) || (!initialExcludedSet.has(path) && shouldIncludeByDefault(path));
           forceExcluded = initialExcludedSet.has(path);
         }
@@ -337,7 +444,7 @@ export default function GeneratePromptForm() {
       // Update state with new data
       setFileContentsMap(result.data); // Keep using result.data directly
       // Directly update the file map state to trigger FormStateManager
-      setAllFilesMap(newFilesMap);
+      setAllFilesMapWithTracking(newFilesMap);
       
       console.log(`[${isRefresh ? 'Refresh' : 'Load'}] Processed ${Object.keys(newFilesMap).length} files from git repository.`);
     } catch (error) {
@@ -345,12 +452,10 @@ export default function GeneratePromptForm() {
       setError(`Failed to ${isRefresh ? 'refresh' : 'load'} files: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoadingFiles(false);
-      setLoadingStatus("");
-      setIsRefreshingFiles(false); // Ensure refresh state is reset
       handleInteraction(); // Trigger save check after files are loaded/refreshed
       loadFilesRef.current.isLoading = false; // Mark as no longer loading
     } 
-  }, []);  // Remove dependencies to prevent recreating the function
+  }, [allFilesMap, handleInteraction, normalizeFilePath, setAllFilesMapWithTracking]);
   
   // Use stable version for handleRefreshFiles
   const handleRefreshFiles = useCallback(async () => {
@@ -375,7 +480,8 @@ export default function GeneratePromptForm() {
       setError(`Failed to refresh files: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       // Ensure the refresh state is reset
-      setLoadingStatus("");
+      setIsRefreshingFiles(false); // Ensure refresh state is reset here
+      setLoadingStatus(""); // Clear status after potentially setting error
     }
   }, [projectDirectory, repository, handleLoadFiles]);
 
@@ -403,27 +509,57 @@ export default function GeneratePromptForm() {
     
     const initializeProjectData = async (dirToLoad: string) => {
       // Reset initialization before starting
-      initializationRef.current.projectInitialized = false;
+      // initializationRef.current.projectInitialized = false; // Keep this commented out or manage carefully
       setIsRestoringSession(true); // Indicate session restore attempt
 
       try {
-        // If the project directory changed, clear the active session first
-        // Only clear if the new initialDir is different from the *previous* context projectDir
-        if (initialDir !== projectDirectory) handleSetActiveSessionId(null);
+        // No longer clearing the active session when project directory changes
+        // Set session as not initialized until we confirm the active session for the new project
         setSessionInitialized(false); // Reset initialization status for this load
-        console.log(`[Form Init] Initializing for ${dirToLoad}`);
+        console.log(`[Form Init] Starting initialization for project: ${dirToLoad}`);
 
+        // STEP 1: Load files first
+        console.log(`[Form Init] Loading files for project '${dirToLoad}'...`);
+        await handleLoadFiles(dirToLoad, false);
+        console.log(`[Form Init] Files loaded for project '${dirToLoad}'.`);
+
+        // STEP 2: Fetch the active session ID for the NEW project
+        console.log(`[Form Init] Fetching active session ID for NEW project '${dirToLoad}' from DB...`);
         const savedActiveSessionId = await repository.getActiveSessionId(dirToLoad);
-        
+        console.log(`[Form Init] Found active session ID in DB for NEW project '${dirToLoad}': ${savedActiveSessionId || 'none'}`);
+
+        // STEP 3: Set the active session ID state (this updates the prop for SessionManager)
+        console.log(`[Form Init] Setting active session ID state to: ${savedActiveSessionId || 'null'}`);
+        handleSetActiveSessionId(savedActiveSessionId); // Set internal state FIRST
+
+
+        // STEP 3: Set the active session ID (or null) for this project in the form state
+        // This will trigger SessionManager to update its highlighted item if necessary
+        console.log(`[Form Init] Setting active session ID in form state to: ${savedActiveSessionId || 'null'}`);
+        handleSetActiveSessionId(savedActiveSessionId); // Set internal state and persist if needed
+
         if (savedActiveSessionId) {
-          console.log(`[Form Init] Found active session ID in DB: ${savedActiveSessionId}. SessionManager will load it.`);
-          // Load files first
-          await handleLoadFiles(dirToLoad, false);
-          // SessionManager's useEffect will load the session data after this.
+          console.log(`[Form Init] Active session ID ${savedActiveSessionId} found for new project. Attempting to load session data...`);
+          const sessionToLoad = await repository.getSession(savedActiveSessionId);
+          if (sessionToLoad) {
+              console.log(`[Form Init] Calling handleLoadSession for ${savedActiveSessionId}`);
+              handleLoadSession(sessionToLoad); // Load the session data into the form state
+          } else {
+              console.warn(`[Form Init] Active session ${savedActiveSessionId} not found in DB. Clearing active session.`);
+              handleSetActiveSessionId(null); // Clear if session doesn't exist
+          }
         } else {
-          console.log(`[Form Init] No active session found in DB for this project.`);
-          // Load files even if no session exists, user might want to create one
-          await handleLoadFiles(dirToLoad, false);
+             // If no active session for the new project, clear form fields
+             setTaskDescription("");
+             setSearchTerm("");
+             setPastedPaths("");
+             setPatternDescription("");
+             setTitleRegex("");
+             setContentRegex("");
+             setPrompt("");
+             setTokenCount(0);
+          // Note: The actual loading of session *data* is handled by SessionManager via onLoadSession triggered by handleLoadSession
+             console.log("[Form Init] No active session for new project, form fields reset.");
         }
 
         // Mark initialization as complete
@@ -431,8 +567,8 @@ export default function GeneratePromptForm() {
       } catch (error) {
         console.error("Error initializing project data:", error);
         setError(`Failed to initialize project: ${error instanceof Error ? error.message : String(error)}`);
-        // Reset initialization flag on error to allow retry
-        initializationRef.current.projectInitialized = false;
+        // Do not reset projectInitialized here, let it stay true to prevent loops, but sessionInitialized might be false
+        // initializationRef.current.projectInitialized = false;
         setSessionInitialized(false);
       } finally {
         setIsRestoringSession(false); // Finished attempt
@@ -440,11 +576,14 @@ export default function GeneratePromptForm() {
     };
     
     // Only run initialization if project changed or not yet initialized for this project, and not currently loading files
-    if (projectDirectory && projectDirectory !== loadFilesRef.current.lastDirectory && !isLoadingFiles) {
+    // Check against normalized paths if possible, or ensure consistent handling
+    const currentLoadedDir = loadFilesRef.current.lastDirectory;
+    // Ensure we only run if the directory *actually* changed and we are not already loading
+    if (projectDirectory && normalizePath(projectDirectory) !== normalizePath(currentLoadedDir || "") && !isLoadingFiles && !isRestoringSession) {
       initializeProjectData(initialDir);
-      handleInteraction(); // Indicate interaction after initialization attempt
+      // handleInteraction(); // Avoid marking interaction during initial load/project switch
     }
-  }, [projectDirectory, repository, handleLoadFiles, searchParams, handleSetActiveSessionId]);
+  }, [projectDirectory, repository, handleLoadFiles, searchParams, handleSetActiveSessionId, handleInteraction]);
 
   useEffect(() => {
     if (copySuccess) {
@@ -500,10 +639,20 @@ export default function GeneratePromptForm() {
     handleInteraction();
   }, [handleInteraction]); // Add handleInteraction dependency
 
-  const handlePastedPathsChange = useCallback((value: string) => { // Keep useCallback
-    setPastedPaths(value);
-    handleInteraction();
-  }, [handleInteraction]); // Add handleInteraction dependency
+  // Function to clean XML tags from pasted paths
+  const cleanXmlTags = useCallback((input: string): string => {
+    return input.split('\n')
+      .map(line => line.replace(/<file>|<\/file>/g, '').trim())
+      .join('\n');
+  }, []);
+
+  // Handler for updating pastedPaths
+  const handlePastedPathsChange = useCallback((value: string) => {
+    // Clean any XML tags that might be present
+    const cleanedValue = cleanXmlTags(value);
+    setPastedPaths(cleanedValue);
+    handleInteraction(); // Mark interaction
+  }, [cleanXmlTags, handleInteraction]);
 
   const handlePatternDescriptionChange = useCallback((value: string) => { // Keep useCallback
     setPatternDescription(value);
@@ -574,7 +723,7 @@ export default function GeneratePromptForm() {
 
     setIsFindingFiles(true);
     setError("");
-    setLoadingStatus("Loading ALL project files...");
+    setLoadingStatus("Loading project files...");
     setExternalPathWarnings([]);
 
     try {
@@ -587,18 +736,46 @@ export default function GeneratePromptForm() {
       
       const allProjectFiles = allFilesResult.data;
       const projectFilePaths = Object.keys(allProjectFiles);
-      console.log(`Loaded ${projectFilePaths.length} files from project`);
+      
+      // If searchSelectedFilesOnly is true, filter to only use selected files
+      let filesToAnalyze = projectFilePaths;
+      if (searchSelectedFilesOnly) {
+        // Filter to only include files that are selected in the file browser
+        const selectedFiles = Object.entries(allFilesMap)
+          .filter(([_, fileInfo]) => fileInfo.included && !fileInfo.forceExcluded)
+          .map(([path, _]) => path);
+        
+        if (selectedFiles.length === 0) {
+          setError("No files are selected. Please select files first or disable 'Search in selected files only'.");
+          setIsFindingFiles(false);
+          return;
+        }
+        
+        filesToAnalyze = selectedFiles;
+        setLoadingStatus(`Analyzing ${selectedFiles.length} selected files...`);
+        console.log(`Using ${selectedFiles.length} selected files for analysis`);
+      } else {
+        console.log(`Loaded ${projectFilePaths.length} files from project`);
+        setLoadingStatus("Analyzing ALL project files...");
+      }
       
       // Then find relevant files
-      setLoadingStatus("Analyzing codebase and finding relevant files...");
       const result = await findRelevantFilesAction(
         projectDirectory, 
-        taskDescription
+        taskDescription,
+        searchSelectedFilesOnly ? filesToAnalyze : undefined
       );
 
       if (result.isSuccess && result.data?.relevantPaths) {
         const relevantPaths = result.data.relevantPaths;
-        setPastedPaths(relevantPaths.join('\n'));
+        
+        // Process paths to ensure they don't contain XML tags
+        const cleanPaths = relevantPaths.map(path => {
+          // Remove any XML tags that might be present
+          return path.replace(/<file>|<\/file>/g, '').trim();
+        });
+        
+        setPastedPaths(cleanPaths.join('\n'));
         
         // Use the enhanced task description from the combined API call
         if (result.data.enhancedTaskDescription) {
@@ -631,7 +808,35 @@ export default function GeneratePromptForm() {
       setIsFindingFiles(false);
       setLoadingStatus("");
     }
-  }, [taskDescription, projectDirectory, handleInteraction, taskDescriptionRef]);
+  }, [taskDescription, projectDirectory, handleInteraction, taskDescriptionRef, searchSelectedFilesOnly, allFilesMap]);
+
+  // New handler to add a file path to the pastedPaths textarea
+  const handleAddPathToPastedPaths = useCallback((path: string) => {
+    // Split the current paths by newline, filter out empty lines and comments
+    const currentPaths = pastedPaths
+      .split("\n")
+      .map(p => p.trim())
+      .filter(p => !!p && !p.startsWith("#"));
+    
+    // Check if the path already exists in the textarea
+    if (!currentPaths.includes(path)) {
+      // Determine how to add the new path based on current content
+      const newPastedPaths = pastedPaths.trim() 
+        ? pastedPaths.trim() + "\n" + path  // Add to existing content
+        : path;                             // Set as first path
+      
+      // Update the state
+      setPastedPaths(newPastedPaths);
+      handleInteraction();
+    }
+  }, [pastedPaths, handleInteraction]);
+
+  // Handle paths preview (placeholder function to avoid error)
+  const handlePathsPreview = useCallback(() => {
+    // This function is required by the PastePaths component
+    // but we're not using its preview functionality
+    console.log("Path preview requested");
+  }, []);
 
   // Update allFilesMap state from child components
   const handleFilesMapChange = useCallback((newMap: FilesMap) => {
@@ -798,14 +1003,8 @@ ${content}
         .join("\n\n");
 
       let instructions = await getDiffPrompt(); // Always use diff prompt
-      // No codebase structure, always use empty structure
-      instructions = instructions
-        .replace("{{STRUCTURE_SECTION}", "")
-        .replace(/(\d+)\./g, (match, num) => {
-          const section = parseInt(num);
-          return section > 2 ? `${section - 1}.` : `${section}.`;
-        }); // End replace call
-
+      // No longer need the replace operations as the prompt structure has been updated
+      
       const fullPrompt = `${instructions}
 
 <project_files>
@@ -989,7 +1188,72 @@ ${taskDescription}
   useEffect(() => {
     initializationRef.current.projectInitialized = false;
   }, [projectDirectory]);
+
+  // Load context type preference
+  useEffect(() => {
+    const loadPreferences = async () => {
+      if (repository && projectDirectory) {
+        try {
+          // Load context type preference
+          const savedContextType = await repository.getCachedState(
+            projectDirectory,
+            CONTEXT_TYPE_KEY
+          );
+          if (savedContextType === "files" || savedContextType === "vector") {
+            setContextType(savedContextType);
+          }
+          
+          // Load output format preference
+          const savedOutputFormat = await repository.getCachedState(
+            projectDirectory,
+            OUTPUT_FORMAT_KEY
+          );
+          if (savedOutputFormat) {
+            setOutputFormat(savedOutputFormat as OutputFormat);
+          }
+          
+          // Load search selected files only preference
+          const savedSearchSelectedFilesOnly = await repository.getCachedState(
+            projectDirectory,
+            SEARCH_SELECTED_FILES_ONLY_KEY
+          );
+          setSearchSelectedFilesOnly(savedSearchSelectedFilesOnly === "true");
+        } catch (e) {
+          console.error("Failed to load preferences:", e);
+        }
+      }
+    };
+    
+    loadPreferences();
+  }, [projectDirectory, repository]);
+
   const showLoadingOverlay = isLoadingFiles || isRestoringSession || isRefreshingFiles;
+
+  // Toggle search selected files only
+  const toggleSearchSelectedFilesOnly = async () => {
+    const newValue = !searchSelectedFilesOnly;
+    setSearchSelectedFilesOnly(newValue);
+    
+    if (projectDirectory && repository) {
+      try {
+        await repository.saveCachedState(
+          projectDirectory,
+          SEARCH_SELECTED_FILES_ONLY_KEY,
+          String(newValue)
+        );
+      } catch (error) {
+        console.error("Failed to save 'searchSelectedFilesOnly' preference:", error);
+      }
+    }
+    
+    handleInteraction();
+  };
+
+  // Toggle output format
+  const toggleOutputFormat = async () => {
+    // ... existing code ...
+  };
+
   return (
     <div className="flex flex-col flex-1 space-y-6"> {/* Removed padding */}
       <div className="grid grid-cols-1 gap-4">
@@ -1092,26 +1356,53 @@ ${taskDescription}
 
               {/* Paste Paths */}
               <PastePaths
-                value={pastedPaths} 
                 onChange={handlePastedPathsChange}
-                projectDirectory={projectDirectory}
-                warnings={externalPathWarnings} // Pass warnings
-                onFindRelevantFiles={handleFindRelevantFiles} // Pass the new handler
-                isFindingFiles={isFindingFiles} // Pass loading state
-                canFindFiles={!!taskDescription.trim() && !!projectDirectory} // Only check task description and project directory
+                value={pastedPaths}
+                title="Select Files"
+                subTitle="Paste file paths, one per line. Or use file browser below."
+                error={error}
+                onClear={() => setPastedPaths("")}
+                onPathsLoaded={handlePathsPreview}
+                placeholderContent={`# One file path per line
+# Comments starting with # are ignored
+
+# Paths should be relative to the selected project directory
+# For example:
+src/app/page.tsx
+src/components/ui/button.tsx
+lib/utils.ts
+`}
               >
-                {/* Add the button here */}
-                <Button
+                <div className="flex items-center gap-2 mt-2">
+                  <Button
                     type="button"
-                    variant="secondary" // Change variant for more prominence
+                    variant="secondary"
                     size="sm"
                     onClick={handleFindRelevantFiles}
                     disabled={isFindingFiles || !taskDescription.trim() || !projectDirectory}
-                    className="mt-2"
                     title={!taskDescription.trim() ? "Enter a task description first" : 
                            !projectDirectory ? "Select a project directory first" :
                            "Analyze codebase structure to find relevant files and enhance your task description with helpful context"}
-                ><Wand2 className="h-4 w-4 mr-2" />{isFindingFiles ? "Analyzing Codebase..." : "Analyze Codebase & Find Relevant Files"}</Button>
+                  >
+                    <Wand2 className="h-4 w-4 mr-2" />
+                    {isFindingFiles ? "Analyzing Codebase..." : "Analyze Codebase & Find Relevant Files"}
+                  </Button>
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleSearchSelectedFilesOnly}
+                    className={cn(
+                      "flex gap-1.5 items-center whitespace-nowrap",
+                      searchSelectedFilesOnly && "bg-accent"
+                    )}
+                    title={searchSelectedFilesOnly ? "Search in all files" : "Search only in selected files"}
+                  >
+                    {searchSelectedFilesOnly ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+                    {searchSelectedFilesOnly ? "Selected Files Only" : "All Files"}
+                  </Button>
+                </div>
               </PastePaths>
 
               {/* File Browser */}
@@ -1132,6 +1423,7 @@ ${taskDescription}
                 onInteraction={handleInteraction}
                 isLoading={isLoadingFiles}
                 loadingMessage={loadingStatus} // Pass status as message
+                onAddPath={handleAddPathToPastedPaths} // Add the new prop
               /> {/* Close FileBrowser */}
 
               {/* Generate Button */}

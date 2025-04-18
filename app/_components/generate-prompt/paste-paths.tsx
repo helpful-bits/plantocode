@@ -104,7 +104,9 @@ export default function PastePaths({
         className="border rounded bg-background text-foreground p-2 h-32 font-mono text-sm"
         value={value}
         onChange={(e) => {
-          onChange(e.target.value);
+          // Clean XML tags if present when the user pastes or types
+          const cleanedValue = e.target.value.replace(/<file>|<\/file>/g, '');
+          onChange(cleanedValue);
           onInteraction(); // Call interaction handler on change
         }}
         placeholder={`# Project paths

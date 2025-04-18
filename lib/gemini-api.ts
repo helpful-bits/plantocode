@@ -1,10 +1,12 @@
 "use server";
 
 import { ActionState } from "@/types";
+import { GEMINI_FLASH_MODEL, GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 
 // Maximum context token limit - don't export from a 'use server' file
 const MAX_TOKENS = 1000000; // Gemini models support up to 1M tokens
 const MAX_OUTPUT_TOKENS = 60000; // Default maximum output tokens
+const GEMINI_PRO_MAX_OUTPUT_TOKENS = 65536; // Maximum output tokens for Gemini 2.5 Pro
 
 // Define options for the API call
 interface GeminiAPIOptions {
@@ -20,7 +22,7 @@ interface GeminiAPIOptions {
 export async function callGeminiAPI(
   systemPrompt: string,
   userPromptContent: string,
-  modelId = 'gemini-2.0-flash',
+  modelId = GEMINI_FLASH_MODEL,
   options: GeminiAPIOptions = {}
 ): Promise<ActionState<string>> {
   try {
@@ -46,10 +48,13 @@ export async function callGeminiAPI(
     // Define API endpoint based on model
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
-    // Set default options
+    // Set default options with model-specific max output tokens
+    const defaultMaxOutputTokens = modelId === GEMINI_PRO_PREVIEW_MODEL ? 
+      GEMINI_PRO_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
+    
     const {
-      maxOutputTokens = MAX_OUTPUT_TOKENS,
-      temperature = 0.7,
+      maxOutputTokens = defaultMaxOutputTokens,
+      temperature = 0.8,
       topP = 0.95,
       topK = 40,
     } = options;
@@ -78,6 +83,8 @@ export async function callGeminiAPI(
     };
 
     console.log(`[Gemini API] Calling ${modelId} with ${JSON.stringify(payload.generationConfig)}`);
+    console.log(`[Gemini API] IMPORTANT - Using Gemini model: ${modelId}`);
+    console.log(`[Gemini API] Full API URL: ${apiUrl}`);
 
     // Make API request
     const response = await fetch(apiUrl, {
