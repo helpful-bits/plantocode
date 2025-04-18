@@ -2,10 +2,19 @@ import * as sqlite3 from 'sqlite3'; // Keep sqlite3 import
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { runMigrations } from './migrations';
+import { setupDatabase, resetDatabase, getDatabaseInfo, runMigrations } from './setup'; // Import from setup
 import connectionPool from './connection-pool';
 import { sessionRepository, createSessionRepository } from './repository-factory';
-import { setupDatabase, resetDatabase, getDatabaseInfo } from './setup';
+import { 
+  getActiveSessionId, 
+  setActiveSession, 
+  getCachedState, 
+  saveCachedState,
+  getSessions,
+  deleteSession,
+  getSessionWithRequests
+} from './database-client';
+
 const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
 const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db'); // Keep database file path
 
@@ -37,20 +46,17 @@ try {
   db = { close: () => {}, run: () => {}, get: () => {}, all: () => {}, exec: () => {} };
 }
 
-export function initializeDatabase() {
-  runMigrations(); // Run migrations on initialization
-  return db;
-}
-
 export { db, closeDatabase };
 
 function closeDatabase() {
   if (db) {
-    db.close((err) => {
-      if (err) {
-        console.error("Error closing database:", err.message);
-      } else {
-        console.log("Database connection closed");
+    db.close((err) => { // Ensure db is not undefined before closing
+      if (db) {
+        if (err) {
+          console.error("Error closing database:", err.message);
+        } else {
+          console.log("Database connection closed");
+        }
       }
     });
   }
@@ -64,5 +70,13 @@ export {
   setupDatabase,
   runMigrations,
   resetDatabase,
-  getDatabaseInfo
+  getDatabaseInfo,
+  // Export the additional database client methods
+  getActiveSessionId,
+  setActiveSession, 
+  getCachedState,
+  saveCachedState,
+  getSessions,
+  deleteSession,
+  getSessionWithRequests
 };

@@ -194,7 +194,7 @@ class RequestQueue {
   
   // Process the next item in the queue that can be processed
   private async processNext() {
-    if (this.queue.length === 0) return;
+    if (this.queue.length === 0) return; // No items to process
     
     // Group requests by provider
     const byProvider: Record<string, QueuedRequest<any>[]> = {};
@@ -213,7 +213,7 @@ class RequestQueue {
         const index = this.queue.findIndex(r => r.id === request.id);
         
         if (index >= 0) {
-          // Remove from queue and add to active
+          // Remove from queue *immediately* and add to active
           this.queue.splice(index, 1);
           this.active.set(request.id, request);
           

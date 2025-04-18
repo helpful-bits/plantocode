@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "migrate": "tsx scripts/run-migrations.ts",
     "migrate-cached-state": "tsx scripts/run-cached-state-migration.ts",
     "reset-db": "tsx scripts/reset-database.ts",
     "check-db": "tsx scripts/check-db.ts",
+    "migrate-patch-paths": "tsx scripts/run-patch-path-migration.ts",
     "fix-tables": "tsx scripts/fix-table-names.ts"
   },
   "dependencies": {

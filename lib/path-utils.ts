@@ -28,6 +28,7 @@ export function normalizePath(filePath: string, baseDir?: string | null, addTrai
   
   // Convert backslashes to forward slashes
   normalizedPath = normalizedPath.replace(/\\/g, '/');
+  normalizedPath = normalizedPath.replace(/\/\/+/g, '/'); // Replace multiple slashes with single
 
   // If baseDir is provided, try to make the path relative
   if (baseDir) {
@@ -44,7 +45,7 @@ export function normalizePath(filePath: string, baseDir?: string | null, addTrai
     }
   }
   
-  // Add trailing separator if requested
+  // Add trailing separator if requested and not already present
   if (addTrailingSlash && !normalizedPath.endsWith('/')) {
     normalizedPath += '/';
   }

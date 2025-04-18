@@ -3,12 +3,13 @@
 import { promises as fs, existsSync } from 'fs';
 import path from 'path';
 import { ActionState } from '@/types';
-import { getAllNonIgnoredFiles } from '@/lib/git-utils';
+import { getAllNonIgnoredFiles, invalidateFileCache } from '@/lib/git-utils';
 import { normalizePath } from '@/lib/path-utils';
-import { callGeminiAPI } from '@/lib/gemini-api';
+import geminiClient from '@/lib/api/gemini-client';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 
-const PATH_CORRECTION_MODEL = GEMINI_FLASH_MODEL; // Use a fast model
+// Use the flash model directly from constants
+const PATH_CORRECTION_MODEL = GEMINI_FLASH_MODEL;
 
 interface PathCorrectionResult {
     correctedPaths: string[];
@@ -28,6 +29,9 @@ export async function correctPathsAction(
     }
 
     try {
+        // Invalidate file cache before reading to ensure we get the latest list
+        await invalidateFileCache(projectDirectory);
+
         // 1. Get all valid files in the project
         const { files: validProjectFiles } = await getAllNonIgnoredFiles(projectDirectory);
         const validProjectFileSet = new Set(validProjectFiles.map(p => normalizePath(p, projectDirectory)));
@@ -90,7 +94,10 @@ Output ONLY a JSON object mapping each invalid path to its most likely correctio
 }`;
 
         console.log(`[PathCorrection] Using Gemini model: ${PATH_CORRECTION_MODEL} for path correction`);
-        const aiResult = await callGeminiAPI(systemPrompt, userPrompt, PATH_CORRECTION_MODEL);
+        const aiResult = await geminiClient.sendRequest(userPrompt, {
+          model: PATH_CORRECTION_MODEL,
+          systemPrompt,
+        });
 
         if (!aiResult.isSuccess || !aiResult.data) {
             return { isSuccess: false, message: `AI correction failed: ${aiResult.message || 'No response'}` };

@@ -28,7 +28,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
     // Check if path exists
     if (!existsSync(resolvedPath)) {
       return {
-        isSuccess: false, // Keep false for non-existent directory
+        isSuccess: false,
         message: "Directory does not exist",
         data: { exists: false, isAccessible: false }
       };

@@ -1,10 +1,10 @@
 "use server";
 
 import { ActionState } from "@/types";
-import { callGeminiAPI } from '@/lib/gemini-api';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import geminiClient from '@/lib/api/gemini-client';
+import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants'; // Use Pro model for better analysis
 
-const TASK_ENHANCER_MODEL_ID = GEMINI_FLASH_MODEL;
+const TASK_ENHANCER_MODEL_ID = GEMINI_PRO_PREVIEW_MODEL; // Use Pro model
 
 export async function enhanceTaskDescriptionAction({
   originalDescription, // Keep originalDescription parameter
@@ -74,8 +74,8 @@ ${codeContext}
 Provide general guidance and direction for approaching this task. Focus on giving a helpful overview rather than specific implementation details.`;
 
     // Call the Gemini API
-    const result = await callGeminiAPI(
-      systemPrompt,
+    const result = await geminiClient.sendRequest(
+      // No system prompt needed for this model/task
       userPromptContent,
       TASK_ENHANCER_MODEL_ID,
       { maxOutputTokens: 1024 }

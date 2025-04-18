@@ -17,10 +17,10 @@ export default function VoiceTranscription({
 }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
   const [languageCode, setLanguageCode] = useState('en');
-
-
   const handleCorrectionComplete = useCallback((raw: string, corrected: string) => {
+    // Only show revert if correction actually changed the text
     if (raw !== corrected) {
+      console.log('Correction changed text, showing revert option.');
       setShowRevertOption(true);
     }
   }, []);

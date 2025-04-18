@@ -54,19 +54,15 @@ Return ONLY the improved text without any additional commentary or formatting.`
       preserveFormatting: true,
       max_tokens: 1024
     }); // Keep callClaudeAPI call
-
     if (!result.isSuccess || !result.data) {
-      return { isSuccess: false, message: result.message || "Failed to improve text via API" };
+        return { isSuccess: false, message: result.message || "Failed to improve text via API" };
     }
-
-    const improvedText = result.data || selectedText;
-    // Keep success return
-    return { isSuccess: true, message: "Pattern description improved successfully", data: improvedText };
+    return result;
   } catch (error) {
     console.error("Error improving pattern description with Claude:", error);
-    return { 
-      isSuccess: false, // Keep returning false on error
-      message: error instanceof Error ? error.message : "Failed to improve pattern description" 
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Failed to improve pattern description",
     };
   }
 }

@@ -1,7 +1,7 @@
 "use server";
 
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
+import { sessionRepository } from '@/lib/db';
+import { setupDatabase } from '@/lib/db'; // Use index export
 import { ActionState } from '@/types';
 
 /**
@@ -21,19 +21,20 @@ export async function clearSessionPatchPathAction(sessionId: string): Promise<Ac
             return { isSuccess: false, message: `Session ${sessionId} not found.` };
         }
 
-        // Use the full update method to preserve all other fields
+        // Find the *latest* request associated with the session that has a patch path
+        const requests = await sessionRepository.getGeminiRequests(sessionId);
+        const latestRequestWithPatch = requests.find(r => r.patchPath);
+
+        if (!latestRequestWithPatch) {
+            return { isSuccess: true, message: "No requests with patch paths found to clear." };
+        }
+
         await sessionRepository.updateSessionGeminiStatus(
             sessionId,
             session.geminiStatus || 'idle', // Use existing status or default
             session.geminiStartTime,
             session.geminiEndTime,
-            null, // Explicitly set patch path to null
-            session.geminiStatusMessage,
-            // Preserve existing stream stats if they exist
-            {
-                tokensReceived: session.geminiTokensReceived,
-                charsReceived: session.geminiCharsReceived,
-            }
+            null // Set patch path to null for the session (summary)
         );
         return { isSuccess: true, message: "Session patch path cleared." };
     } catch (error) {
@@ -58,13 +59,16 @@ export async function resetSessionStateAction(sessionId: string): Promise<Action
             return { isSuccess: false, message: `Session ${sessionId} not found.` };
         }
 
-        // Reset the session to idle state
+        // Cancel any running Gemini requests associated with the session
+        await sessionRepository.cancelAllSessionRequests(sessionId);
+
+        // Reset the session's *summary* status to idle
         await sessionRepository.updateSessionGeminiStatus(
-            sessionId, 
+            sessionId,
             'idle', // Reset to idle
-            null,   // Clear start time
-            null,   // Clear end time
-            null,   // Clear patch path
+            null, // Clear fields managed by requests
+            null,
+            null,
             null,   // Clear message
         );
         

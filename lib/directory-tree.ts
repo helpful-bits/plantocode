@@ -67,6 +67,11 @@ export async function generateDirectoryTree(projectDir: string): Promise<string>
     if (!projectDir?.trim()) {
       return ''; // Return empty string if no project directory
     }
+    // Ensure we have read access to the directory before proceeding
+    // Note: This relies on server-side execution where fs access is possible
+    // This might need adjustment if called client-side without server actions.
+    // await fs.access(projectDir, fs.constants.R_OK); // Assuming fs is available server-side
+
     const { files } = await getAllNonIgnoredFiles(projectDir); // Destructure files from result
     const tree = buildTree(files);
     // Generate string representation

@@ -1,5 +1,5 @@
 // Define the possible statuses for Gemini processing
-export type GeminiStatus = 'idle' | 'running' | 'completed' | 'failed' | 'canceled'; // Keep GeminiStatus type
+export type GeminiStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'canceled'; // Added 'preparing' state
 
 // Type for individual Gemini request
 export type GeminiRequest = {
@@ -29,7 +29,7 @@ export type Session = {
     titleRegex: string;
     contentRegex: string;
     isRegexActive: boolean;
-    geminiStatus: GeminiStatus; // Status of Gemini processing (non-optional)
+    geminiStatus?: GeminiStatus; // Status of Gemini processing - Made optional as it might not exist on old sessions initially
     geminiStartTime?: number | null; // Unix timestamp (ms) when processing started
     geminiEndTime?: number | null;
     geminiPatchPath?: string | null; // Path to the saved patch file

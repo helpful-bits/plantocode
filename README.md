@@ -11,13 +11,13 @@ All your inputs (project directory, file selections, task descriptions, regex pa
 - Node.js (v18+) and pnpm
 - Next.js 14+ with React 18
 - (Required) `GROQ_API_KEY` for voice transcription service (uses Whisper via Groq for faster performance than OpenAI)
-- (Required) `ANTHROPIC_API_KEY` for text improvement and regex generation via Anthropic's Claude (specifically Sonnet 3.7 model as configured)
+- (Required) `ANTHROPIC_API_KEY` for text improvement and regex generation via Anthropic's Claude (specifically `claude-3-7-sonnet-20250219` model as configured)
 - (Required) `GEMINI_API_KEY` for generating patches or other content via Google Gemini (currently `gemini-2.5-pro-preview-03-25`).
 
 ## Installation & Quick Start 
 
 1. **Install Dependencies**:
-    ```bash
+    ```bash # Make sure you are in the root directory of the cloned repository
     cd o1-pro-flow
     pnpm install
     ```
@@ -47,7 +47,7 @@ Generate comprehensive prompts for AI models tailored to your codebase and task.
     - **AI Path Finder:** Click a button near the "Paste Paths" area. Gemini Flash analyzes the codebase structure and task description to automatically suggest relevant files, populating the "Paste Paths" area. Handles large codebases by requesting intelligent splitting if necessary.
     - **Regex Generation:** Describe file patterns (e.g., "React components using useState") and use Anthropic Claude (if API key is provided) to generate corresponding title (path) and content regex patterns for filtering.
 - **Codebase Structure:** Optionally provide or generate (using `tree` command logic) an ASCII representation of your codebase structure for better AI understanding, especially useful for refactoring tasks.
-- **Task Description:** Detail the changes you want the AI to perform.
+- **Task Description:** Detail the changes you want the AI to perform. Use the integrated voice transcription and correction features if needed.
 - **Session Management:**
     - Explicitly save all current inputs (project, files, task, regex, etc.) as a named session.
     - Sessions are specific to a **Project Directory**.
@@ -84,7 +84,7 @@ The tool itself does not directly execute code changes on your local machine. It
 - `components` - UI and utility components
 - `app/_components` - Feature-specific components grouped by functionality (e.g., `generate-prompt`, `gemini-processor`)
 - `lib` - Utility libraries (token estimation, file utilities, Git utils, hashing, path utils, etc.)
-- `lib/db` - Database setup, schema, repository pattern, and migrations (uses SQLite)
+- `lib/db` - Database setup, schema, repository pattern, connection pool and migrations (uses SQLite)
 - `patches` - Application-level directory where generated patch files are saved as a fallback
 - `lib/contexts` - React context providers (Project, Database for managing global state)
 - `actions` - Server actions (reading directories, voice transcription, text correction, regex generation)

@@ -170,10 +170,10 @@ Return only the improved text without any additional commentary.`
       }],
       max_tokens: options?.max_tokens ?? 2048
     };
-    
     return this.sendRequest(payload);
   }
-  
+
+
   /**
    * Method to correct task descriptions
    */

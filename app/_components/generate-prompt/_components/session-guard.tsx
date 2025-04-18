@@ -22,14 +22,14 @@ const SessionGuard: React.FC<SessionGuardProps> = ({
   }, [activeSessionId, sessionInitialized]);
   
   // Modified conditional to consider both activeSessionId and sessionInitialized
-  if (!activeSessionId && !sessionInitialized) {
-    // If no session is active and not initialized, don't render the main form content
-    console.log('[SessionGuard] Not rendering children - no active session and not initialized');
+  // Render children ONLY if a session is active AND initialized
+  if (activeSessionId && sessionInitialized) {
+    console.log('[SessionGuard] Rendering children - session is active AND initialized');
+    return <>{children}</>;
+  } else {
+    console.log(`[SessionGuard] Not rendering children - activeSessionId=${activeSessionId}, sessionInitialized=${sessionInitialized}`);
     return null; // Main form elements are hidden
   }
-  // If a session is active or initialized, render the children (the main form)
-  console.log('[SessionGuard] Rendering children - session is active or initialized');
-  return <>{children}</>;
 }; // Keep component definition
  
 export default SessionGuard;

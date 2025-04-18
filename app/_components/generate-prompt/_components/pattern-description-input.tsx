@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
 import { Button } from "@/components/ui/button"; // Keep Button import
-import { improvePatternDescriptionAction } from "@/actions/text-improvement-actions"; // Keep text-improvement-actions import
+import claudeClient from "@/lib/api/claude-client"; // Use claude client directly
 import { Loader2 } from "lucide-react"; // Import Loader2
 
 interface PatternDescriptionInputProps {
@@ -98,7 +98,7 @@ export default function PatternDescriptionInput({
 
     setIsImproving(true);
     try {
-      const result = await improvePatternDescriptionAction(selectedText);
+      const result = await claudeClient.improveText(selectedText); // Use client method
       if (result.isSuccess && result.data) {
         insertTextAtCursor(result.data, currentSelectionStart, currentSelectionEnd);
       }

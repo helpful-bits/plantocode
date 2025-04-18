@@ -1,8 +1,8 @@
 "use server";
 
 import path from 'path';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
+import { sessionRepository } from '@/lib/db';
+import { setupDatabase } from '@/lib/db';
 import { Session } from '@/types'; // Keep Session import
 
 /**

@@ -3,16 +3,17 @@
 import { ActionState } from '@/types';
 import { generateDirectoryTree } from '@/lib/directory-tree';
 import { promises as fs } from 'fs';
-import path from 'path';
+import path from 'path'; // Keep path import
 import { getAllNonIgnoredFiles } from '@/lib/git-utils';
 import { isBinaryFile, BINARY_EXTENSIONS } from '@/lib/file-utils';
 import { estimateTokens } from '@/lib/token-estimator';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 import geminiClient from '@/lib/api/gemini-client';
+import { RequestType } from '@/lib/api/streaming-request-pool';
 
 // Flash 2.0 model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
-const MAX_OUTPUT_TOKENS = 16384;
+const FLASH_MAX_OUTPUT_TOKENS = 16384;
 const TOKEN_BUFFER = 20000; // Buffer for XML tags and other overhead
 
 interface PathFinderRequestPayload {
@@ -77,7 +78,7 @@ Please list the most relevant file paths for this task, one per line:`;
     const result = await geminiClient.sendRequest(prompt, {
       model: GEMINI_FLASH_MODEL,
       systemPrompt,
-      maxOutputTokens: MAX_OUTPUT_TOKENS
+      maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS
     });
     
     if (!result.isSuccess || !result.data) {
@@ -185,6 +186,11 @@ export async function findRelevantFilesAction(
     let totalSkippedLargeFiles = 0;
     let totalErrorFiles = 0;
     
+    if (!fileInfos) { // Initialize fileInfos if it's null or undefined
+      // fileInfos = []; // Uncomment if initialization is needed
+      // console.log("Initialized fileInfos array."); // Debugging log
+    }
+    
     // Calculate token count for task description
     const taskDescriptionTokens = await estimateTokens(taskDescription);
     console.log(`Task description token count: ${taskDescriptionTokens}`);
@@ -248,368 +254,136 @@ export async function findRelevantFilesAction(
     fileInfos.sort((a, b) => a.tokens - b.tokens);
     
     // Create batches of files that fit within token limits
-    const fileBatches: { path: string, content: string }[][] = [];
-    let currentBatch: { path: string, content: string }[] = [];
-    let currentBatchTokens = taskDescriptionTokens + TOKEN_BUFFER;
+    const batches: Array<{ files: Array<{ path: string, content: string }>, tokenCount: number }> = [];
+    let currentBatch: { files: Array<{ path: string, content: string }>, tokenCount: number } = { files: [], tokenCount: 0 };
+    
+    // Starting token overhead: system prompt + task description + extra formatting overhead
+    const SYSTEM_PROMPT_TOKENS = 600; // Approximate tokens for system prompt
+    let currentBatchTokens = SYSTEM_PROMPT_TOKENS + taskDescriptionTokens;
+    const MAX_BATCH_TOKENS = MAX_INPUT_TOKENS - 10000; // Allow buffer for JSON overhead
     
     for (const fileInfo of fileInfos) {
-      // If adding this file would exceed the limit, start a new batch
-      if (currentBatchTokens + fileInfo.tokens > MAX_INPUT_TOKENS) {
-        if (currentBatch.length > 0) {
-          console.log(`Completing batch with ${currentBatch.length} files, ${currentBatchTokens} tokens`);
-          fileBatches.push(currentBatch);
-          currentBatch = [];
-          currentBatchTokens = taskDescriptionTokens + TOKEN_BUFFER;
-        }
-        
-        // If a single file is too large for the limit, split it (future enhancement)
-        // For now, we'll add it to its own batch and it might get truncated
-        if (fileInfo.tokens > MAX_INPUT_TOKENS - taskDescriptionTokens - TOKEN_BUFFER) {
-          console.log(`Warning: File ${fileInfo.path} has ${fileInfo.tokens} tokens which may be too large even alone.`);
-          fileBatches.push([{ path: fileInfo.path, content: fileInfo.content }]);
-          continue;
+      // If this file would push the batch over limit, finalize the current batch and start a new one
+      if (currentBatchTokens + fileInfo.tokens > MAX_BATCH_TOKENS) {
+        if (currentBatch.files.length > 0) {
+          batches.push(currentBatch);
+          
+          // Start a new batch with the task description as overhead
+          currentBatchTokens = SYSTEM_PROMPT_TOKENS + taskDescriptionTokens;
+          currentBatch = { files: [], tokenCount: currentBatchTokens };
         }
       }
       
       // Add file to current batch
-      currentBatch.push({ path: fileInfo.path, content: fileInfo.content });
-      currentBatchTokens += fileInfo.tokens;
-    }
-    
-    // Add the last batch if it has any files
-    if (currentBatch.length > 0) {
-      console.log(`Adding final batch with ${currentBatch.length} files, ${currentBatchTokens} tokens`);
-      fileBatches.push(currentBatch);
-    }
-    
-    console.log(`Split files into ${fileBatches.length} batches to fit token limits`);
-    
-    let allRelevantPaths: Set<string> = new Set();
-    let combinedGuidance = "";
-    
-    // Process each batch with the AI model
-    for (let batchIndex = 0; batchIndex < fileBatches.length; batchIndex++) {
-      const batch = fileBatches[batchIndex];
-      console.log(`Processing batch ${batchIndex + 1}/${fileBatches.length} with ${batch.length} files`);
-      
-      // Build a map of file contents for this batch
-      const batchFileContents: Record<string, string> = {};
-      batch.forEach(file => {
-        batchFileContents[file.path] = file.content;
+      currentBatch.files.push({
+        path: fileInfo.path,
+        content: fileInfo.content
       });
       
-      // Create batch-specific prompt
-      const batchPrompt = `<?xml version="1.0" encoding="UTF-8"?>
-<prompt>
-  <role>
-    You are an expert software engineer analyzing a codebase to provide guidance on a programming task.
-    ${fileBatches.length > 1 ? `This is batch ${batchIndex + 1} of ${fileBatches.length} in the analysis.` : ''}
+      currentBatchTokens += fileInfo.tokens;
+      currentBatch.tokenCount = currentBatchTokens;
+    }
     
-    IMPORTANT: You MUST respond using the XML format specified in <output_format>. 
-    Your response MUST contain both <relevant_files> and <guidance> tags.
-  </role>
+    // Add the last batch if it has files
+    if (currentBatch.files.length > 0) {
+      batches.push(currentBatch);
+    }
+    
+    console.log(`Split into ${batches.length} batches for analysis`);
+    
+    // Process each batch in parallel with API calls to identify relevant files
+    const allRelevantPaths = new Set<string>();
+    let enhancedTaskDescription = '';
+    
+    // System prompt template for relevance analysis
+    const systemPrompt = `You are a skilled software engineering assistant that helps identify relevant code snippets and provide helpful context.
+Given a codebase and task description, your goal is to:
+1. Identify which files are relevant to the task
+2. Provide helpful context that would assist the developer in completing this task
+3. Clearly markup your file references with <file></file> tags
 
-  <task_description>
-    ${taskDescription}
-  </task_description>
+Follow this format in your response:
+<relevant_files>
+file_path_1
+file_path_2
+...
+</relevant_files>
 
-  <relevant_file_contents>
-    ${Object.entries(batchFileContents).map(([filePath, content]) => 
-      `<file path="${filePath}">
-${content}
-</file>`).join('\n\n')}
-  </relevant_file_contents>
+<guidance>
+Your helpful context and explanation of how these files relate to the task.
+Focus on architectural insights, patterns, and non-obvious relationships.
+Only reference files you've seen. Do not hallucinate file paths.
+</guidance>
 
-  <requirements>
-    1. Find the most relevant files for implementing this task.
-    2. Provide general guidance on how to approach the task.
-    ${fileBatches.length > 1 ? '3. Focus only on the files provided in this batch, but consider their role in the overall system.' : ''}
-  </requirements>
+Be thorough but concise. Focus on providing insights a developer might miss from a quick scan of the codebase.`;
 
-  <output_format>
-    <relevant_files>
-      List only the file paths, one per line, in plain text format.   
+    // Process each batch and collect results
+    let batchIndex = 0;
+    for (const batch of batches) {
+      batchIndex++;
+      console.log(`Processing batch ${batchIndex}/${batches.length} with ${batch.files.length} files and ${batch.tokenCount} tokens`);
       
-      No explanations, bullets, or other formatting.
-      Only include files that actually exist based on the file paths provided in the relevant_file_contents.
-      IMPORTANT: Perform thorough analysis of the complete data flow related to the task.
-      Include ALL relevant files that would need to be examined or modified for the task.
-      Be comprehensive and include:
-      - ALL files involved in the data flow, from start to finish
-      - ALL components in the data pipeline
-      - ALL parent components or files that these components extend or inherit from
-      - ALL direct and indirect dependencies that might affect the implementation
-      - Configuration files that might affect the components
-      - Test files for the components if they exist
-      - ALWAYS include ALL relevant documentation files (.md, .mdc)
-      - Context files needed to understand the overall architecture
-                  
-      Example:
-      actions/path-finder-actions.ts
-      lib/gemini-api.ts
-      docs/architecture.md
-      docs/api-usage.md
-      README.md
-      .cursor/rules/GENERAL.mdc
+      let fullPrompt = `Task Description: ${taskDescription}\n\nFiles to analyze:\n`;
       
-    </relevant_files>
-
-    <guidance>
-      Generate a single concise paragraph that makes the user's task description more concrete by:
-      - Clarifying the specific goal of the task in plain, direct language
-      - Defining clear, measurable criteria for what success looks like
-      - Identifying non-negotiable requirements and strict boundaries
-      - Establishing what is in-scope and out-of-scope for this solution
-      - Setting priority levels for different aspects of the task
+      for (const file of batch.files) {
+        fullPrompt += `\nFile: ${file.path}\n${'='.repeat(file.path.length + 6)}\n${file.content}\n\n`;
+      }
       
-      Focus only on making the task itself more concrete and well-defined from a business/user perspective, avoiding any technical implementation details. Write as if you are Dave Ramsey giving clear, detailed instructions to your team - straightforward, decisive, and leaving no room for ambiguity about what needs to be accomplished.
-    </guidance>
-  </output_format>
-</prompt>`;
-
-      console.log(`Batch ${batchIndex + 1} prompt size: ${batchPrompt.length} characters`);
-      console.log(`Sending request to Gemini API for batch ${batchIndex + 1}...`);
-
-      // First attempt: call the Gemini API for this batch
-      let batchResult = await geminiClient.sendRequest(
-        batchPrompt,
-        { 
+      fullPrompt += "\nBased on the task and code provided, identify the most relevant files and provide guidance.";
+      
+      try {
+        // Call Gemini API with CODE_ANALYSIS request type
+        const result = await geminiClient.sendRequest(fullPrompt, {
           model: GEMINI_FLASH_MODEL,
-          maxOutputTokens: MAX_OUTPUT_TOKENS 
-        }
-      );
-
-      // If first attempt fails to provide XML response, try with explicit system prompt
-      if (batchResult.isSuccess && batchResult.data && 
-          (!batchResult.data.includes('<relevant_files>') || !batchResult.data.includes('<guidance>'))) {
+          systemPrompt: systemPrompt,
+          temperature: 0.7, // Lower temperature for more deterministic results
+          maxOutputTokens: 8000,
+          requestType: RequestType.CODE_ANALYSIS // Specify request type
+        });
         
-        console.log(`First attempt for batch ${batchIndex + 1} did not return proper XML format. Trying with explicit system prompt...`);
-        
-        // Second attempt with explicit system prompt
-        batchResult = await geminiClient.sendRequest(
-          batchPrompt,
-          {
-            model: GEMINI_FLASH_MODEL,
-            systemPrompt: "You MUST respond with XML format that includes <relevant_files> and <guidance> tags. Follow the output format exactly. CRITICALLY IMPORTANT: Include ALL relevant Markdown (.md and .mdc) documentation files in your <relevant_files> list, as these provide essential context.",
-            maxOutputTokens: MAX_OUTPUT_TOKENS
-          }
-        );
-      }
-
-      if (!batchResult.isSuccess || !batchResult.data) {
-        console.error(`Error processing batch ${batchIndex + 1}:`, batchResult.message);
-        continue; // Try the next batch instead of failing completely
-      }
-
-      const batchResponseText = batchResult.data;
-      console.log(`Received response for batch ${batchIndex + 1}, length: ${batchResponseText.length} characters`);
-      console.log(`Response preview: ${batchResponseText.substring(0, 200)}...`);
-      
-      // If we still got a git diff or invalid format, try to handle it gracefully
-      if (batchResponseText.includes('```') && batchResponseText.includes('---') && 
-          batchResponseText.includes('+++') && !batchResponseText.includes('<relevant_files>')) {
-        
-        console.warn(`Received git diff format instead of XML for batch ${batchIndex + 1}. Attempting to extract file paths from diff...`);
-        
-        // Extract file paths from the git diff format
-        const diffFilePaths = batchResponseText
-          .match(/^(\+\+\+|\-\-\-)\s+(a|b)\/([^\n]+)/gm)
-          ?.map(line => line.replace(/^(\+\+\+|\-\-\-)\s+(a|b)\//, ''))
-          ?.filter((value, index, self) => self.indexOf(value) === index) || [];
-        
-        console.log(`Extracted ${diffFilePaths.length} paths from diff format`);
-        
-        // Add these paths to our overall set if we found any
-        if (diffFilePaths.length > 0) {
-          diffFilePaths.forEach(path => {
-            if (path && typeof path === 'string') {
-              allRelevantPaths.add(path);
-            }
-          });
-        }
-        
-        // Check for <file> format in response
-        const filePathsFromTags = extractFilePathsFromTags(batchResponseText);
-        if (filePathsFromTags.length > 0) {
-          console.log(`Extracted ${filePathsFromTags.length} paths from <file> tags`);
-          filePathsFromTags.forEach(path => {
-            if (path) allRelevantPaths.add(path);
-          });
+        if (result.isSuccess && result.data) {
+          // Process the response to extract relevant paths
+          processRelevantFilesContent(result.data, allRelevantPaths, batchIndex);
           
-          // If we found paths in the <file> format, we can continue with the regular flow
-          if (filePathsFromTags.length > 0) {
-            console.log(`Successfully extracted paths from <file> tags`);
-          }
-        }
-        
-        // Try a direct approach to get guidance
-        const directGuidancePrompt = `
-Based on the code I've provided, please give me a single concise paragraph that summarizes:
-1. The complete data flow related to the task "${taskDescription}"
-2. The key components and architectural patterns involved
-3. How components interact with each other
-4. The best approach for implementation
-5. Any critical dependencies to consider
-
-IMPORTANT: DO NOT reference any specific code elements, functions, variables, classes, or line numbers.
-Focus only on architectural concepts, patterns, and general approaches.
-Provide guidance at a conceptual level without mentioning implementation details.
-
-IMPORTANT: When identifying relevant files, ALWAYS include ALL Markdown (.md and .mdc) documentation files, as these provide essential context even if they're not directly modified.
-
-DO NOT write explanations of what each file does. DO NOT use phrases like "Based on the codebase" or "Here's a plan".
-DO NOT repeat the task description. Focus on clear, direct technical guidance without overwhelming detail.`;
-
-        console.log(`Attempting direct guidance prompt to get task guidance...`);
-        
-        const guidanceResult = await geminiClient.sendRequest(
-          directGuidancePrompt,
-          { 
-            model: GEMINI_FLASH_MODEL,
-            maxOutputTokens: 1024 
-          }
-        );
-        
-        if (guidanceResult.isSuccess && guidanceResult.data) {
-          const directGuidance = guidanceResult.data.trim();
-          console.log(`Received direct guidance: ${directGuidance.substring(0, 100)}...`);
-          
-          if (combinedGuidance) {
-            combinedGuidance += "\n\n" + directGuidance;
-          } else {
-            combinedGuidance = directGuidance;
-          }
-        }
-        
-        continue; // Skip the regular XML parsing for this batch
-      }
-      
-      // Extract relevant files from the batch response
-      const batchRelevantFilesMatch = batchResponseText.match(/<relevant_files>\s*([\s\S]*?)\s*<\/relevant_files>/i);
-      const batchGuidanceMatch = batchResponseText.match(/<guidance>\s*([\s\S]*?)\s*<\/guidance>/i);
-      
-      // Add more robust parsing approach if standard regex fails
-      if (!batchRelevantFilesMatch) {
-        console.warn(`Could not find relevant_files section in batch ${batchIndex + 1} response using standard regex`);
-        console.log("Response preview:", batchResponseText.substring(0, 300));
-        
-        // Try alternative regex patterns with different whitespace handling
-        const altRelevantFilesMatch = batchResponseText.match(/<\s*relevant_files\s*>([\s\S]*?)<\s*\/\s*relevant_files\s*>/i) ||
-                                     batchResponseText.match(/<relevant_files>([\s\S]*?)<\/relevant_files>/i);
-        
-        if (altRelevantFilesMatch) {
-          console.log(`Found relevant_files using alternative regex pattern`);
-          processRelevantFilesContent(altRelevantFilesMatch[1].trim(), allRelevantPaths, batchIndex);
-        } else {
-          // If still no match, try to extract any file paths mentioned in the response
-          console.log(`Attempting to extract any potential file paths from response...`);
-          const potentialPaths = extractPotentialFilePaths(batchResponseText);
-          if (potentialPaths.length > 0) {
-            console.log(`Extracted ${potentialPaths.length} potential file paths from response content`);
-            potentialPaths.forEach(path => {
-              if (path) allRelevantPaths.add(path);
-            });
-          } else {
-            console.warn(`Could not extract any file paths from batch ${batchIndex + 1} response`);
-          }
-        }
-      } else {
-        const batchRelevantFilesText = batchRelevantFilesMatch[1].trim();
-        console.log(`Found relevant files section with ${batchRelevantFilesText.length} characters`);
-        console.log(`Relevant files section preview: ${batchRelevantFilesText.substring(0, 200)}...`);
-        
-        processRelevantFilesContent(batchRelevantFilesText, allRelevantPaths, batchIndex);
-      }
-      
-      // Process guidance with similar robust approach
-      if (!batchGuidanceMatch) {
-        console.warn(`Could not find guidance section in batch ${batchIndex + 1} response using standard regex`);
-        
-        // Try alternative regex for guidance
-        const altGuidanceMatch = batchResponseText.match(/<\s*guidance\s*>([\s\S]*?)<\s*\/\s*guidance\s*>/i) ||
-                                batchResponseText.match(/<guidance>([\s\S]*?)<\/guidance>/i);
-        
-        if (altGuidanceMatch) {
-          console.log(`Found guidance using alternative regex pattern`);
-          const altGuidance = altGuidanceMatch[1].trim();
-          
-          if (combinedGuidance) {
-            combinedGuidance += "\n\n" + altGuidance;
-          } else {
-            combinedGuidance = altGuidance;
-          }
-        } else {
-          // If no guidance section found, try to extract general content as guidance
-          const extractedGuidance = extractGuidanceContent(batchResponseText);
-          if (extractedGuidance) {
-            console.log(`Extracted potential guidance content from response`);
-            if (combinedGuidance) {
-              combinedGuidance += "\n\n" + extractedGuidance;
+          // Try to extract guidance content
+          const guidance = extractGuidanceContent(result.data);
+          if (guidance) {
+            // Add batch number if we have multiple batches
+            if (batches.length > 1) {
+              enhancedTaskDescription += `\n\n== Analysis Batch ${batchIndex} ==\n${guidance}`;
             } else {
-              combinedGuidance = extractedGuidance;
+              enhancedTaskDescription += guidance;
+            }
+          } else {
+            console.log(`No guidance content found in batch ${batchIndex} response`);
+            
+            // Try to extract as much useful content as possible
+            const lines = result.data.split('\n').filter(line => 
+              !line.includes('<relevant_files>') && 
+              !line.includes('</relevant_files>') && 
+              line.trim().length > 0 &&
+              !line.match(/^file_path_\d+$/) // Filter out placeholder lines
+            );
+            
+            if (lines.length > 0) {
+              if (batches.length > 1) {
+                enhancedTaskDescription += `\n\n== Analysis Batch ${batchIndex} ==\n${lines.join('\n')}`;
+              } else {
+                enhancedTaskDescription += lines.join('\n');
+              }
             }
           }
-        }
-      } else {
-        const batchGuidance = batchGuidanceMatch[1].trim();
-        console.log(`Found guidance section with ${batchGuidance.length} characters`);
-        console.log(`Guidance preview: ${batchGuidance.substring(0, 100)}...`);
-        
-        if (combinedGuidance) {
-          combinedGuidance += "\n\n" + batchGuidance;
         } else {
-          combinedGuidance = batchGuidance;
+          console.error(`Error processing batch ${batchIndex}:`, result.message);
         }
+      } catch (error) {
+        console.error(`Error calling Gemini API for batch ${batchIndex}:`, error);
       }
     }
     
     // Convert set to array for the final result
     const relevantPaths = Array.from(allRelevantPaths);
     console.log(`Total unique relevant paths identified: ${relevantPaths.length}`);
-    
-    // If we have multiple batches, we need to synthesize the final guidance
-    let enhancedTaskDescription = combinedGuidance;
-    
-    if (fileBatches.length > 1 && combinedGuidance) {
-      console.log("Multiple batches processed, synthesizing final guidance...");
-      // Synthesize a unified guidance from the combined batch guidances
-      const synthesisPrompt = `
-You are analyzing multiple batches of files from a codebase to provide comprehensive guidance on a task. 
-Below are insights from analyzing different parts of the codebase:
-
-${combinedGuidance}
-
-Synthesize these insights into a single concise paragraph that covers:
-- The complete data flow for the task
-- All key components and architectural patterns involved
-- How components interact through the entire pipeline
-- The most appropriate implementation approach
-- Critical dependencies to consider
-
-IMPORTANT: DO NOT reference any specific code elements, functions, variables, classes, or line numbers.
-Focus only on architectural concepts, patterns, and general approaches.
-Provide guidance at a conceptual level without mentioning implementation details.
-
-Do NOT use introductory or concluding phrases. Focus on clear technical guidance without overwhelming detail.
-`;
-
-      console.log(`Synthesis prompt length: ${synthesisPrompt.length} characters`);
-      
-      const synthesisResult = await geminiClient.sendRequest(
-        synthesisPrompt,
-        {
-          model: GEMINI_FLASH_MODEL,
-          maxOutputTokens: MAX_OUTPUT_TOKENS
-        }
-      );
-      
-      if (synthesisResult.isSuccess && synthesisResult.data) {
-        enhancedTaskDescription = synthesisResult.data.trim();
-        console.log(`Final synthesized guidance: ${enhancedTaskDescription.substring(0, 200)}...`);
-      } else {
-        console.warn("Failed to synthesize final guidance:", synthesisResult.message);
-      }
-    }
     
     if (relevantPaths.length === 0) {
       return { isSuccess: false, message: "No relevant paths were identified." };
@@ -618,7 +392,7 @@ Do NOT use introductory or concluding phrases. Focus on clear technical guidance
     console.log(`Finished processing with ${relevantPaths.length} relevant files and ${enhancedTaskDescription.length} characters of guidance`);
     
     // Clean all relevant paths to ensure no XML tags remain
-    const cleanRelevantPaths = relevantPaths.map(path => path.replace(/<file>|<\/file>/g, '').trim());
+    const cleanRelevantPaths = relevantPaths.map(p => p.replace(/<file>|<\/file>/g, '').trim()); // Rename variable for clarity
     
     return {
       isSuccess: true,

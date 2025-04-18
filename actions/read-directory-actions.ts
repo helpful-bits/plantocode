@@ -1,18 +1,19 @@
 "use server";
 
 import { promises as fs } from "fs";
-import path from "path";
+import path from "path"; // Keep path import
 import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
 
-const DEBUG_LOGS = false;
+const DEBUG_LOGS = process.env.NODE_ENV === 'development'; // Enable logs in development
 
 // Define directoryCache for caching directory contents
 const directoryCache = new Map<string, { [key: string]: string }>();
+const CACHE_TTL = 60000; // Cache TTL in milliseconds (e.g., 60 seconds)
 
 export async function readExternalFileAction(filePath: string): Promise<ActionState<{ [key: string]: string | Buffer }>> {
-  try {
+    try {
     if (!filePath) {
       return {
         isSuccess: false,
@@ -60,7 +61,12 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       };
     }
 
-    // Check if we have a cached result for this directory
+    // Invalidate cache entry if it exists before proceeding
+    if (directoryCache.has(finalDirectory)) {
+      console.log(`[ReadDir] Invalidating cache for ${finalDirectory} before reading.`);
+      directoryCache.delete(finalDirectory);
+    }
+
     if (directoryCache.has(finalDirectory)) {
       if (DEBUG_LOGS) console.log(`Using cached result for ${finalDirectory}`);
       return {
@@ -249,8 +255,10 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
 // Function to invalidate the directory cache
 export async function invalidateDirectoryCache(directory?: string): Promise<void> {
   if (directory) {
-    directoryCache.delete(directory.trim());
-  } else {
+    const trimmedDir = directory.trim();
+    console.log(`[ReadDir Cache] Invalidating cache for directory: ${trimmedDir}`);
+    directoryCache.delete(trimmedDir);
+  } else { // Keep else block
     directoryCache.clear();
   }
 }

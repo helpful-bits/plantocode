@@ -27,7 +27,7 @@ export async function getCommonPaths(): Promise<DirectoryInfo[]> {
 
   const COMMON_PATHS_DATA = [
     { name: "Home", path: homeDir, isAccessible: existsSync(homeDir) },
-    ...(existsSync(documentsPath) ? [{ name: "Documents", path: documentsPath }] : []),
+    ...(existsSync(documentsPath) ? [{ name: "Documents", path: documentsPath, isAccessible: true }] : []),
     ...(existsSync(desktopPath) ? [{ name: "Desktop", path: desktopPath }] : []),
     ...(existsSync(downloadsPath) ? [{ name: "Downloads", path: downloadsPath }] : []),
     ...(os.platform() === "win32"
@@ -35,7 +35,8 @@ export async function getCommonPaths(): Promise<DirectoryInfo[]> {
       : [{ name: "/", path: "/" }]),
   ].filter(p => existsSync(p.path)).map(p => ({
     name: p.name,
-    path: normalizePath(p.path) // Normalize paths for consistency
+    path: normalizePath(p.path), // Normalize paths for consistency
+    isAccessible: p.isAccessible ?? existsSync(p.path) // Ensure isAccessible is set
   }));
 
   return COMMON_PATHS_DATA;

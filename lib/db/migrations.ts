@@ -75,7 +75,7 @@ export async function runMigrations(): Promise<void> { // Make function async
 async function applyMigrations(migrationsFolder: string, appliedMigrations: Set<string> = new Set()): Promise<void> { // Make async
   const files = fs.readdirSync(migrationsFolder)
     .filter(file => file.endsWith('.sql'))
-    .sort(); // Sort to run migrations in order
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })); // Natural sort order
 
   console.log(`[Migration] Found ${files.length} SQL files. Already applied: ${appliedMigrations.size}`);
 

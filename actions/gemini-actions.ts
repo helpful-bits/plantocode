@@ -1,18 +1,16 @@
 "use server";
 
-import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs';
-import path from 'path';
-import os from 'os';
-import { ActionState, Session, GeminiStatus, GeminiRequest } from '@/types';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
-import { getProjectPatchesDirectory, getAppPatchesDirectory, normalizePath } from '@/lib/path-utils';
-import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
+import { ActionState, GeminiRequest } from '@/types';
+import { sessionRepository } from '@/lib/db';
+import { setupDatabase } from '@/lib/db'; // Use index export
+import { getProjectPatchesDirectory, getAppPatchesDirectory, normalizePath, getPatchFilename } from '@/lib/path-utils';
 import geminiClient from '@/lib/api/gemini-client';
+import { WriteStream } from 'fs';
+import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 
-const MODEL_ID = GEMINI_PRO_PREVIEW_MODEL; // MUST STAY LIKE THIS, DO *NOT* CHANGE!
 const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_MODEL}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
+
 const FALLBACK_PATCHES_DIR = getAppPatchesDirectory(); // Used as fallback if we can't write to project directory
 const MAX_OUTPUT_TOKENS = 65536; // Maximum output tokens for Gemini 2.5 Pro
 
@@ -41,7 +39,7 @@ interface GeminiResponse {
     // Add promptFeedback if needed
 }
 
-// --- Helper Functions ---
+
 function sanitizeFilename(name: string): string {
     if (!name) return 'untitled_session'; // Handle empty session names
     return name.replace(/[^a-z0-9_\-\.]/gi, '_').substring(0, 60); // Keep it reasonably short
@@ -54,7 +52,13 @@ function sanitizeFilename(name: string): string {
  */
 async function getPatchesDir(session: Session): Promise<string> {
   if (!session || !session.projectDirectory) {
+    console.log(`[getPatchesDir] No project directory in session, using fallback: ${FALLBACK_PATCHES_DIR}`);
     return FALLBACK_PATCHES_DIR;
+  }
+
+  // Ensure fallback directory exists
+  if (!existsSync(FALLBACK_PATCHES_DIR)) {
+      await fs.mkdir(FALLBACK_PATCHES_DIR, { recursive: true });
   }
 
   try {
@@ -169,77 +173,18 @@ export async function cancelGeminiProcessingAction(
   return geminiClient.cancelAllSessionRequests(sessionId);
 }
 
-// Helper function to update session status based on request statuses
-async function updateSessionStatusFromRequests(sessionId: string): Promise<void> {
-    try {
-        // Get all requests for the session
-        const requests = await sessionRepository.getGeminiRequests(sessionId);
-        
-        if (requests.length === 0) {
-            // No requests, set session to idle
-            await sessionRepository.updateSessionGeminiStatus(
-                sessionId,
-                'idle',
-                null,
-                null,
-                null,
-                null
-            );
-            return;
-        }
-        
-        // Check if any request is running
-        const runningRequest = requests.find(r => r.status === 'running');
-        if (runningRequest) {
-            // If any request is running, update session status to running
-            await sessionRepository.updateSessionGeminiStatus(
-                sessionId,
-                'running',
-                runningRequest.startTime,
-                null,
-                runningRequest.patchPath,
-                runningRequest.statusMessage,
-                {
-                    tokensReceived: runningRequest.tokensReceived,
-                    charsReceived: runningRequest.charsReceived
-                }
-            );
-            return;
-        }
-        
-        // No running requests, use the most recent request's status
-        const mostRecent = requests[0]; // Already sorted by created_at DESC
-        await sessionRepository.updateSessionGeminiStatus(
-            sessionId,
-            mostRecent.status,
-            mostRecent.startTime,
-            mostRecent.endTime,
-            mostRecent.patchPath,
-            mostRecent.statusMessage,
-            {
-                tokensReceived: mostRecent.tokensReceived,
-                charsReceived: mostRecent.charsReceived
-            }
-        );
-    } catch (error) {
-        console.error(`[Gemini Action] Error updating session status from requests:`, error);
-    }
-}
-
 /**
- * Helper function to process a single SSE event chunk - SYNCHRONOUS.
- * Parses the event data, extracts text, cleans it, and writes to the stream.
- * @param eventData Raw data string from an SSE event (may contain multiple lines).
- * @param writeStream The stream to write cleaned content to, or null if none.
- * @returns Object indicating if usable content was processed and the processed content string.
+ * Process SSE event data from Gemini API
+ * @param eventData Raw SSE event data
+ * @param writeStream Optional write stream to save content
+ * @returns Object with processing results
  */
-function processSseEvent(eventData: string, writeStream: WriteStream | null): { 
-  success: boolean; 
-  content: string | null;
-  tokenCount: number;
-  charCount: number;
-} {
-  if (!eventData || !eventData.trim()) return { success: false, content: null, tokenCount: 0, charCount: 0 };
+export async function processGeminiEventData(
+  eventData: string,
+  writeStream?: WriteStream
+): Promise<{ success: boolean; content: string | null; tokenCount: number; charCount: number }> {
+  // Allow empty data chunks to pass through but return immediately
+  if (!eventData) return { success: false, content: null, tokenCount: 0, charCount: 0 };
 
   const lines = eventData.split('\n');
   let processedContent = '';
@@ -282,32 +227,4 @@ function processSseEvent(eventData: string, writeStream: WriteStream | null): {
   }
 
   return { success, content: processedContent, tokenCount, charCount };
-}
-        
-/**
- * Helper function to strip common markdown code fences from the beginning and end of a string.
- * Handles variations like ```diff, ```patch, ```, etc.
- * @param content The string content potentially containing code fences.
- * @returns The content with leading/trailing fences removed.
- */
-function stripMarkdownCodeFences(content: string): string {
-    // Match potential fences at the beginning or end, considering optional language identifiers and surrounding whitespace/newlines.
-    // Regex handles ```, ```diff, ```patch, etc., at start and end.
-    // Group 1 captures the actual content *between* the fences if both are present.
-    // Group 2 captures content if only a start fence is present (multiline match needed).
-    // Group 3 captures content if only an end fence is present (multiline match needed).
-    // Use [\s\S]*? for non-greedy matching of content. Added optional \r? for CR characters.
-    const fenceRegex = /^\s*```(?:diff|patch|text|plain|[\w-]+)?\s*?\r?\n([\s\S]*?)\r?\n?\s*```\s*$|^\s*```(?:diff|patch|text|plain|[\w-]+)?\s*?\r?\n([\s\S]+)|([\s\S]+?)\r?\n?\s*```\s*$/;
-
-    const match = content.match(fenceRegex);
-
-    if (match) {
-        // Return the captured content group (prioritizing the middle content if both fences exist)
-        // Trim the result to remove potential leading/trailing whitespace/newlines inside the fences
-        // that weren't part of the fence itself.
-        return (match[1] ?? match[2] ?? match[3] ?? '').trim();
-    }
- 
-    // If no fences are matched, return the original content
-    return content;
-}
+} 

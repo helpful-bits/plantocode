@@ -2,15 +2,17 @@ import { ActionState } from "@/types";
 import requestQueue from "./request-queue";
 import fsManager from "../file/fs-manager";
 import { GEMINI_FLASH_MODEL, GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
-import { sessionRepository } from '@/lib/db/repository';
-import { setupDatabase } from '@/lib/db/setup';
+import { sessionRepository } from '@/lib/db';
+import { setupDatabase } from '@/lib/db'; // Use index export
 import { WriteStream } from "fs";
-import streamingRequestPool from "./streaming-request-pool";
+import { stripMarkdownCodeFences } from '@/lib/utils';
+import streamingRequestPool, { RequestType } from "./streaming-request-pool";
 
 // Constants
 const GENERATE_CONTENT_API = "generateContent";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
+// Default max tokens - adjust based on the model being used
 // Maximum tokens for different models
 const MAX_OUTPUT_TOKENS = 60000; // Default for Flash model
 const GEMINI_PRO_MAX_OUTPUT_TOKENS = 65536; // For Pro Preview model
@@ -26,6 +28,7 @@ export interface GeminiRequestOptions {
   requestId?: string;
   sessionId?: string;
   systemPrompt?: string;
+  requestType?: RequestType;
 }
 
 export interface GeminiRequestPayload {
@@ -84,6 +87,7 @@ class GeminiClient {
     }
     
     // Determine model and base options
+    // Default to Flash if model isn't specified, as it's cheaper/faster for simple tasks
     const modelId = options.model || GEMINI_FLASH_MODEL;
     const defaultMaxOutputTokens = modelId === GEMINI_PRO_PREVIEW_MODEL ? 
       GEMINI_PRO_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
@@ -218,248 +222,292 @@ class GeminiClient {
     sessionId: string,
     options: GeminiRequestOptions = {}
   ): Promise<ActionState<{ requestId: string, savedFilePath: string | null }>> {
-    // Wrap the actual request function in a closure to use with the pool
-    const executeStreamingRequest = async () => {
-      await setupDatabase();
-      
-      // Get API key from environment
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
-        return { isSuccess: false, message: "Gemini API key is not configured." };
-      }
-      
-      // Initialize variables for file handling
-      let outputPath: string | null = null;
-      let releaseStream: (() => Promise<void>) | null = null;
-      let writeStream: WriteStream | null = null;
-      let totalTokens = 0;
-      let totalChars = 0;
-      let request: any; // Will store the request object
-      
-      try {
-        // Fetch Session
-        const session = await sessionRepository.getSession(sessionId);
-        if (!session) {
-          throw new Error(`Session ${sessionId} not found.`);
+    // Get the request type or default to GEMINI_CHAT
+    const requestType = options.requestType || RequestType.GEMINI_CHAT;
+    
+    // If this is a code analysis request, cancel any pending chat requests for this session
+    // This prevents conflicts between the two types of requests
+    if (requestType === RequestType.CODE_ANALYSIS) {
+      // Cancel any pending chat requests for this session
+      streamingRequestPool.cancelQueuedRequestsByType(RequestType.GEMINI_CHAT, sessionId);
+    }
+    
+    // Set appropriate priority based on request type
+    const priority = requestType === RequestType.CODE_ANALYSIS ? 10 : 5;
+    
+    // Use the streaming request pool to execute the request with the appropriate type
+    return streamingRequestPool.execute(
+      async () => { 
+        // The actual function remains the same, wrapped by the executor
+        await setupDatabase();
+        
+        let request: GeminiRequest | null = null; // Will store the request object
+        // Get API key from environment
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (!apiKey) {
+          return { isSuccess: false, message: "GEMINI_API_KEY is not configured." };
         }
-        
-        // Create a new Gemini request
-        request = await sessionRepository.createGeminiRequest(sessionId, promptText);
-        console.log(`[Gemini Client] Created new request ${request.id} for session ${sessionId}`);
-        
-        // Count active requests to adjust priority
-        const activeRequests = await sessionRepository.getGeminiRequests(sessionId);
-        const runningRequestsCount = activeRequests.filter(req => req.status === 'running').length;
-        
-        // Determine priority based on number of running requests
-        const priority = Math.max(1, 10 - runningRequestsCount); // Decrease priority as requests increase
-        
-        // Update Request Status to Running
-        const startTime = Date.now();
-        await sessionRepository.updateGeminiRequestStatus(
-          request.id,
-          'running',
-          startTime
-        );
-        
-        // Note: We're no longer updating the overall session status to avoid race conditions
-        // Instead, the UI will display the individual request statuses
-        
-        // Create output file
-        outputPath = await fsManager.createUniqueFilePath(
-          request.id,
-          session.name || 'unnamed_session',
-          session.projectDirectory,
-          'patch'
-        );
-        
-        // Create write stream with proper locking
-        const streamResult = await fsManager.createWriteStream(outputPath);
-        writeStream = streamResult.stream;
-        releaseStream = streamResult.releaseStream;
-        
-        // Update request with path
-        await sessionRepository.updateGeminiRequestStatus(
-          request.id,
-          'running',
-          startTime, 
-          null, 
-          outputPath, 
-          'Processing started, awaiting content...',
-          { tokensReceived: 0, charsReceived: 0 }
-        );
-        
-        // Determine model and configure options
-        const modelId = options.model || GEMINI_PRO_PREVIEW_MODEL;
-        const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?alt=sse&key=${apiKey}`;
-        
-        // Prepare payload
-        const payload: GeminiRequestPayload = {
-          contents: [
-            { role: "user", parts: [{ text: promptText }] }
-          ],
-          generationConfig: { 
-            responseMimeType: "text/plain",
-            maxOutputTokens: options.maxOutputTokens || GEMINI_PRO_MAX_OUTPUT_TOKENS,
-            temperature: options.temperature,
-            topP: options.topP,
-            topK: options.topK
-          },
-        };
-        
-        // Add system instruction if provided
-        if (options.systemPrompt) {
-          payload.systemInstruction = {
-            parts: [
-              { text: options.systemPrompt }
-            ]
-          };
-        }
-        
-        // Check for cancellation before API call
-        const currentRequest = await sessionRepository.getGeminiRequest(request.id);
-        if (!currentRequest || currentRequest.status === 'canceled') {
-          console.log(`[Gemini Client] Request ${request.id}: Processing canceled before API call.`);
-          
-          // Clean up file resources
-          if (releaseStream) {
-            await releaseStream();
-            releaseStream = null;
-            writeStream = null;
-          }
-          
-          return { 
-            isSuccess: false, 
-            message: "Gemini processing was canceled.", 
-            data: { requestId: request.id, savedFilePath: null } 
-          }; 
-        }
-        
-        // Make the API request
-        console.log(`[Gemini Client] Sending streaming request to ${modelId} API`);
-        
-        // Add a timeout for the fetch to prevent hanging
-        const timeoutMs = 590000; // 590 seconds (almost 10 minutes)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        let outputPath: string | null = null;
+        let releaseStream: (() => Promise<void>) | null = null;
+        let writeStream: WriteStream | null = null;
+        let totalTokens = 0;
+        let totalChars = 0;
         
         try {
-          const response = await fetch(apiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-          });
-          
-          // Clear the timeout since request completed
-          clearTimeout(timeoutId);
-          
-          // Handle response errors
-          if (!response.ok) {
-            const errText = await response.text();
-            console.error(`[Gemini Client] Request ${request.id}: API error ${response.status}: ${errText}`);
-            throw new Error(`Gemini API error (${response.status}): ${errText.slice(0, 250)}`);
+          // Fetch Session
+          const session = await sessionRepository.getSession(sessionId);
+          if (!session) {
+            throw new Error(`Session ${sessionId} not found.`);
           }
           
-          // Check for cancellation after API call but before streaming
-          const postFetchRequest = await sessionRepository.getGeminiRequest(request.id);
-          if (!postFetchRequest || postFetchRequest.status === 'canceled') {
-            console.log(`[Gemini Client] Request ${request.id}: Processing canceled after API call, before streaming.`);
-            
-            // Clean up file resources
-            if (releaseStream) {
-              await releaseStream();
-              releaseStream = null;
-              writeStream = null;
-            }
-            
-            return { 
-              isSuccess: false, 
-              message: "Gemini processing was canceled.", 
-              data: { requestId: request.id, savedFilePath: null } 
+          // Create a new Gemini request
+          request = await sessionRepository.createGeminiRequest(sessionId, promptText); // Assign created request
+          console.log(`[Gemini Client] Created new request ${request.id} for session ${sessionId} with type ${requestType}`);
+          
+          // Update request status to running
+          await sessionRepository.updateGeminiRequestStatus(request.id, 'running', Date.now());
+          
+          // Set session status to running
+          if (requestType === RequestType.GEMINI_CHAT) {
+            // Only update session status for chat requests, not for code analysis
+            await sessionRepository.updateSessionGeminiStatus(sessionId, 'running', Date.now());
+          }
+          
+          // Count active requests to adjust priority
+          const activeRequests = await sessionRepository.getGeminiRequests(sessionId); // Fetch active requests
+          const runningRequestsCount = activeRequests.filter(req => req.status === 'running').length;
+          
+          // Determine priority based on number of running requests
+          const priority = Math.max(1, 10 - runningRequestsCount); // Decrease priority as requests increase
+          
+          // Update Request Status to Running
+          const startTime = Date.now();
+          await sessionRepository.updateGeminiRequestStatus(
+            request.id,
+            'running',
+            startTime
+          );
+          
+          outputPath = await fsManager.createUniqueFilePath(
+            request.id,
+            session.name || 'unnamed_session',
+            session.projectDirectory,
+            'patch'
+          );
+          
+          const streamResult = await fsManager.createWriteStream(outputPath);
+          writeStream = streamResult.stream;
+          releaseStream = streamResult.releaseStream;
+          
+          // Update request with path
+          // Update request with path
+          await sessionRepository.updateGeminiRequestStatus(
+            request.id,
+            'running',
+            startTime, 
+            null, 
+            outputPath, 
+            'Processing started, awaiting content...',
+            { tokensReceived: 0, charsReceived: 0 }
+          );
+          console.log(`[Gemini Client] Determined output path: ${outputPath}`);
+          // Determine model to use for streaming - default to Pro for complex tasks like patch generation
+          const modelId = options.model || GEMINI_PRO_PREVIEW_MODEL;
+          const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?alt=sse&key=${apiKey}`;
+
+          // Set max output tokens based on the chosen model
+          const defaultMaxOutputTokens = modelId === GEMINI_PRO_PREVIEW_MODEL ? GEMINI_PRO_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
+          const maxOutputTokens = options.maxOutputTokens || defaultMaxOutputTokens;
+          const temperature = options.temperature || 0.7;
+          const topP = options.topP || 0.95;
+          const topK = options.topK || 40;
+
+          // Prepare payload
+          const payload: GeminiRequestPayload = {
+            contents: [
+              { role: "user", parts: [{ text: promptText }] }
+            ],
+            generationConfig: { 
+              responseMimeType: "text/plain",
+              maxOutputTokens: maxOutputTokens, // Use calculated max tokens
+              temperature: temperature, // Use calculated temperature
+              topP: topP, // Use calculated topP
+              topK: topK // Use calculated topK
+            },
+          };
+          
+          // Add system instruction if provided
+          if (options.systemPrompt) {
+            payload.systemInstruction = {
+              parts: [
+                { text: options.systemPrompt }
+              ]
             };
           }
           
-          // Process streaming response
-          const reader = response.body?.getReader();
-          if (!reader) {
-            throw new Error("Failed to get response stream reader");
+          // Check for cancellation just before the API call
+          const currentRequest = await sessionRepository.getGeminiRequest(request.id);
+          if (!currentRequest || currentRequest.status === 'canceled') {
+             console.log(`[Gemini Client] Request ${request.id}: Processing canceled before API call.`);
+             if (releaseStream) await releaseStream(); // Ensure releaseStream is called
+             releaseStream = null;
+             writeStream = null;
+             return { 
+              isSuccess: false, 
+              message: "Gemini processing was canceled.", 
+              data: { requestId: request.id, savedFilePath: null } 
+            }; 
           }
           
-          // Call the onStart callback if provided
-          if (options.streamingUpdates?.onStart) {
-            options.streamingUpdates.onStart();
-          }
+          // Make the API request
+          console.log(`[Gemini Client] Sending streaming request to ${modelId} API`);
           
-          // Process the stream
-          let buffer = '';
-          let hasWrittenAnyContent = false;
+          // Add a timeout for the fetch request to prevent hanging indefinitely
+          const timeoutMs = 590000; // ~9.8 minutes
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
           
-          // Process the stream in chunks
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              console.log(`[Gemini Client] Request ${request.id}: Stream completed.`);
-              break;
+          try {
+            const response = await fetch(apiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId); // Clear timeout if request succeeds
+            
+            clearTimeout(timeoutId);
+            
+            // Handle response errors
+            if (!response.ok) {
+              const errText = await response.text();
+              console.error(`[Gemini Client] Request ${request.id}: API error ${response.status}: ${errText}`);
+              throw new Error(`Gemini API error (${response.status}): ${errText.slice(0, 250)}`);
             }
             
-            // Decode chunk and append to buffer
-            const decodedChunk = new TextDecoder().decode(value, { stream: true });
-            buffer += decodedChunk;
+            // Check for cancellation after API call but before streaming
+             const postFetchRequest = await sessionRepository.getGeminiRequest(request.id);
+            if (!postFetchRequest || postFetchRequest.status === 'canceled') {
+              console.log(`[Gemini Client] Request ${request.id}: Processing canceled after API call, before streaming.`);
+              if (releaseStream) await releaseStream(); // Ensure releaseStream is called
+              releaseStream = null;
+              writeStream = null;
+              
+              return { 
+                isSuccess: false, 
+                message: "Gemini processing was canceled.", 
+                data: { requestId: request.id, savedFilePath: null } 
+              };
+            }
             
-            // Process complete SSE events in the buffer
-            const events = buffer.split('\n\n');
+            // Process streaming response
+            const reader = response.body?.getReader();
+             if (!reader) {
+              throw new Error("Failed to get response stream reader");
+            }
             
-            // Process all complete events except possibly the last partial one
-            const completeEvents = events.slice(0, -1);
+            // Call the onStart callback if provided
+             if (options.streamingUpdates?.onStart) {
+              options.streamingUpdates.onStart();
+            }
+             
+            // Process the stream
+            let buffer = '';
+            let hasWrittenAnyContent = false;
             
-            for (const eventData of completeEvents) {
-              // Check for cancellation during streaming
-              const checkRequest = await sessionRepository.getGeminiRequest(request.id);
-              if (!checkRequest || checkRequest.status === 'canceled') {
-                console.log(`[Gemini Client] Request ${request.id}: Cancellation detected during stream processing.`);
-                
-                if (releaseStream) {
-                  await releaseStream();
-                  releaseStream = null;
-                  writeStream = null;
-                }
-                
-                await sessionRepository.updateGeminiRequestStatus(
-                  request.id, 
-                  'canceled', 
-                  startTime, 
-                  Date.now(), 
-                  null, 
-                  "Processing canceled by user."
-                );
-                
-                // Update session status
-                await sessionRepository.updateSessionGeminiStatus(
-                  sessionId,
-                  'canceled',
-                  startTime,
-                  Date.now()
-                );
-                
-                if (options.streamingUpdates?.onError) {
-                  options.streamingUpdates.onError(new Error('Processing canceled by user.'));
-                }
-                
-                return {
-                  isSuccess: false,
-                  message: "Processing canceled by user.",
-                  data: { requestId: request.id, savedFilePath: null }
-                };
+            // Process the stream in chunks
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                console.log(`[Gemini Client] Request ${request.id}: Stream completed.`);
+                break;
               }
               
-              // Process the event
-              const result = this.processSseEvent(eventData, writeStream);
+              // Decode chunk and append to buffer
+              const decodedChunk = new TextDecoder().decode(value, { stream: true });
+              buffer += decodedChunk;
+              
+              // Process complete SSE events in the buffer
+               const events = buffer.split('\n\n');
+              
+              // Process all complete events except possibly the last partial one
+               const completeEvents = events.slice(0, -1);
+              
+              for (const eventData of completeEvents) {
+                // Check for cancellation during streaming
+                const checkRequest = await sessionRepository.getGeminiRequest(request.id);
+                if (!checkRequest || checkRequest.status === 'canceled') {
+                  console.log(`[Gemini Client] Request ${request.id}: Cancellation detected during stream processing.`);
+                  
+                  if (releaseStream) await releaseStream(); // Ensure releaseStream is called
+                  releaseStream = null;
+                  
+                  await sessionRepository.updateGeminiRequestStatus(
+                    request.id, 
+                    'canceled', 
+                    startTime, 
+                    Date.now(), 
+                    null, 
+                    "Processing canceled by user."
+                  );
+                  
+                  // Removed direct session status update here
+                  if (options.streamingUpdates?.onError) {
+                    options.streamingUpdates.onError(new Error('Processing canceled by user.'));
+                  }
+                  
+                  return {
+                    isSuccess: false,
+                    message: "Processing canceled by user.",
+                     data: { requestId: request.id, savedFilePath: null }
+                   };
+                }
+                
+                // Process the event
+                const result = this.processSseEvent(eventData, writeStream);
+                if (result.success && result.content && result.content.length > 0) {
+                  hasWrittenAnyContent = true;
+                }
+                
+                // Update totals
+                totalTokens += result.tokenCount;
+                totalChars += result.charCount;
+                
+                // Call update callback if provided
+                if (result.content && options.streamingUpdates?.onUpdate) {
+                  options.streamingUpdates.onUpdate(
+                    result.content,
+                    { tokens: totalTokens, chars: totalChars }
+                  );
+                }
+                
+                // Update request stats
+                if (result.tokenCount > 0 || result.charCount > 0) {
+                  await sessionRepository.updateGeminiRequestStatus(
+                    request.id, 
+                    'running', 
+                    startTime, 
+                    null, 
+                    outputPath,
+                    null, // Don't change status message
+                    { 
+                      tokensReceived: totalTokens, 
+                      charsReceived: totalChars 
+                    }
+                  );
+                }
+              }
+              
+              // Update buffer with the potentially incomplete last event
+              buffer = events[events.length - 1];
+            }
+            
+            // Process any remaining data in the buffer
+            if (buffer.trim().length > 0) {
+              const result = this.processSseEvent(buffer, writeStream);
               if (result.success && result.content && result.content.length > 0) {
                 hasWrittenAnyContent = true;
               }
-              
-              // Update totals
               totalTokens += result.tokenCount;
               totalChars += result.charCount;
               
@@ -470,178 +518,126 @@ class GeminiClient {
                   { tokens: totalTokens, chars: totalChars }
                 );
               }
-              
-              // Update request stats
-              if (result.tokenCount > 0 || result.charCount > 0) {
-                await sessionRepository.updateGeminiRequestStatus(
-                  request.id, 
-                  'running', 
-                  startTime, 
-                  null, 
-                  outputPath,
-                  null, // Don't change status message
-                  { 
-                    tokensReceived: totalTokens, 
-                    charsReceived: totalChars 
-                  }
-                );
-              }
             }
             
-            // Update buffer with the potentially incomplete last event
-            buffer = events[events.length - 1];
-          }
-          
-          // Process any remaining data in the buffer
-          if (buffer.trim().length > 0) {
-            const result = this.processSseEvent(buffer, writeStream);
-            if (result.success && result.content && result.content.length > 0) {
-              hasWrittenAnyContent = true;
-            }
-            totalTokens += result.tokenCount;
-            totalChars += result.charCount;
+            // Release file stream
+            if (releaseStream) await releaseStream(); // Ensure releaseStream is called
+            releaseStream = null;
             
-            // Call update callback if provided
-            if (result.content && options.streamingUpdates?.onUpdate) {
-              options.streamingUpdates.onUpdate(
-                result.content,
+            // Call the onComplete callback if provided
+            if (options.streamingUpdates?.onComplete) {
+              options.streamingUpdates.onComplete(
+                hasWrittenAnyContent ? "Content generated successfully" : "No content was generated",
                 { tokens: totalTokens, chars: totalChars }
               );
             }
-          }
-          
-          // Release file stream
-          if (releaseStream) {
-            await releaseStream();
-            releaseStream = null;
-            writeStream = null;
-          }
-          
-          // Call the onComplete callback if provided
-          if (options.streamingUpdates?.onComplete) {
-            options.streamingUpdates.onComplete(
-              hasWrittenAnyContent ? "Content generated successfully" : "No content was generated",
-              { tokens: totalTokens, chars: totalChars }
-            );
-          }
-          
-          // Check if any content was written
-          if (!hasWrittenAnyContent) {
-            console.log(`[Gemini Client] Request ${request.id}: No content was generated.`);
             
-            // Update the request as completed but with a warning
+            // Check if any content was written
+            if (!hasWrittenAnyContent) {
+              console.log(`[Gemini Client] Request ${request.id}: No content was generated.`);
+              
+              // Update the request as completed but with a warning
+              await sessionRepository.updateGeminiRequestStatus(
+                request.id,
+                'completed',
+                startTime,
+                Date.now(),
+                outputPath,
+                'No content was generated from this prompt.',
+                { tokensReceived: totalTokens, charsReceived: totalChars }
+              );
+              
+              return {
+                isSuccess: true,
+                message: "Request completed but no content was generated.",
+                data: { requestId: request.id, savedFilePath: outputPath }
+              };
+            }
+            
+            // Update the request as completed successfully
             await sessionRepository.updateGeminiRequestStatus(
               request.id,
               'completed',
               startTime,
               Date.now(),
               outputPath,
-              'No content was generated from this prompt.',
+              'Gemini processing completed successfully.',
               { tokensReceived: totalTokens, charsReceived: totalChars }
             );
             
+            // Removed direct session status update here
+            
             return {
               isSuccess: true,
-              message: "Request completed but no content was generated.",
+              message: "Gemini processing completed successfully.",
               data: { requestId: request.id, savedFilePath: outputPath }
             };
+          } catch (fetchError) {
+            clearTimeout(timeoutId);
+            console.error(`[Gemini Client] Fetch error for request ${request?.id}:`, fetchError);
+            throw fetchError; // Rethrow to be caught by outer try/catch
+          }
+        } catch (error) {
+          // Ensure resources are cleaned up on error
+          if (releaseStream) {
+            try {
+              await releaseStream();
+            } catch (closeError) {
+              console.warn(`[Gemini Client] Request ${request.id}: Error closing file stream during error handling:`, closeError);
+            }
+            releaseStream = null; // Nullify after closing
           }
           
-          // Update the request as completed successfully
-          await sessionRepository.updateGeminiRequestStatus(
-            request.id,
-            'completed',
-            startTime,
-            Date.now(),
-            outputPath,
-            'Gemini processing completed successfully.',
-            { tokensReceived: totalTokens, charsReceived: totalChars }
-          );
+          // Format error message
+          let errorMessage = "An unexpected error occurred during Gemini processing.";
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          } else if (typeof error === 'string') {
+            errorMessage = error;
+          } else if (error && typeof error === 'object' && 'message' in error) {
+            errorMessage = String(error.message);
+          }
           
-          // Update session status
-          await sessionRepository.updateSessionGeminiStatus(
-            sessionId,
-            'completed',
-            startTime,
-            Date.now(),
-            outputPath
-          );
+          // Call error callback if provided
+          if (options.streamingUpdates?.onError) {
+            options.streamingUpdates.onError(
+              error instanceof Error ? error : new Error(errorMessage)
+            );
+          }
+          
+          // Update request status if request was created
+          if (request) {
+            try {
+              await sessionRepository.updateGeminiRequestStatus(
+                request.id,
+                'failed',
+                request.startTime,
+                Date.now(),
+                null, // Clear path on failure
+                errorMessage
+              );
+            } catch (updateError) {
+              console.error(`[Gemini Client] Error updating request status after failure:`, updateError);
+            }
+          }
           
           return {
-            isSuccess: true,
-            message: "Gemini processing completed successfully.",
-            data: { requestId: request.id, savedFilePath: outputPath }
+            isSuccess: false,
+            message: errorMessage,
+            data: { requestId: request?.id ?? '', savedFilePath: null }
           };
-        } catch (fetchError) {
-          clearTimeout(timeoutId);
-          throw fetchError; // Rethrow to be caught by outer try/catch
         }
-      } catch (error) {
-        // Clean up resources
-        if (releaseStream) {
-          try {
-            await releaseStream();
-          } catch (closeError) {
-            console.warn("Error closing file stream:", closeError);
-          }
-        }
-        
-        // Format error message
-        let errorMessage = "An unexpected error occurred during Gemini processing.";
-        if (error instanceof Error) {
-          errorMessage = error.message;
-        } else if (typeof error === 'string') {
-          errorMessage = error;
-        } else if (error && typeof error === 'object' && 'message' in error) {
-          errorMessage = String(error.message);
-        }
-        
-        // Call error callback if provided
-        if (options.streamingUpdates?.onError) {
-          options.streamingUpdates.onError(
-            error instanceof Error ? error : new Error(errorMessage)
-          );
-        }
-        
-        // Update request status if request was created
-        if (request) {
-          try {
-            await sessionRepository.updateGeminiRequestStatus(
-              request.id,
-              'failed',
-              request.startTime,
-              Date.now(),
-              null, // Clear path on failure
-              errorMessage
-            );
-          } catch (updateError) {
-            console.error(`[Gemini Client] Error updating request status after failure:`, updateError);
-          }
-        }
-        
-        return {
-          isSuccess: false,
-          message: errorMessage,
-          data: { requestId: request?.id ?? '', savedFilePath: null }
-        };
-      }
-    };
-    
-    // Determine priority based on model type
-    const modelId = options.model || GEMINI_PRO_PREVIEW_MODEL;
-    const priority = modelId === GEMINI_PRO_PREVIEW_MODEL ? 10 : 5;
-    
-    // Execute the request through the pool
-    console.log(`[Gemini Client] Adding streaming request to pool for session ${sessionId} with priority ${priority}`);
-    
-    // Use the streaming request pool
-    return streamingRequestPool.execute(executeStreamingRequest, sessionId, priority);
+      },
+      sessionId,
+      priority,
+      requestType
+    );
   }
   
   /**
    * Processes a Server-Sent Events (SSE) event from the Gemini API
    */
-  private processSseEvent(eventData: string, writeStream: WriteStream | null): SSEEventResult {
+  private processSseEvent(eventData: string, writeStream: WriteStream | null): SSEEventResult { // Keep function signature
     if (!eventData.trim()) {
       return { success: false, content: null, tokenCount: 0, charCount: 0 };
     }
@@ -679,15 +675,20 @@ class GeminiClient {
               data.candidates[0].content.parts[0] && 
               typeof data.candidates[0].content.parts[0].text === 'string') {
             
-            const text = data.candidates[0].content.parts[0].text;
+            const rawText = data.candidates[0].content.parts[0].text;
             
-            if (text) {
+            // Strip markdown fences before processing/writing
+            const text = stripMarkdownCodeFences(rawText);
+            
+            // Only process/write if there's content after stripping
+            if (text && text.length > 0) {
               combinedContent += text;
               
               // Write to stream if available
               if (writeStream) {
                 writeStream.write(text);
               }
+              
               
               // Estimate tokens - very rough approximation
               // Better token counting would use a proper tokenizer
@@ -742,16 +743,7 @@ class GeminiClient {
         "Processing canceled by user."
       );
       
-      // Update the session status
-      await sessionRepository.updateSessionGeminiStatus(
-        request.sessionId,
-        'canceled',
-        request.startTime,
-        endTime,
-        null,
-        "Processing canceled by user."
-      );
-      
+      // Removed direct session status update here
       return { isSuccess: true, message: "Gemini processing cancellation requested." };
     } catch (error) {
       console.error(`[Gemini Client] Error canceling processing for request ${requestId}:`, error);

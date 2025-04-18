@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process'; // Use execFile for security
 import { promises as fs } from 'fs';
 import path from 'path'; // Keep path import
 import os from 'os';
@@ -42,32 +42,41 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function openFileWithIDE(resolvedFilePath: string) {
-  // Determine platform-specific command
-  // Ensure filePath is quoted to handle spaces
-  const quotedPath = `"${resolvedFilePath}"`;
-  let command;
+function openFileWithIDE(resolvedFilePath: string): NextResponse {
+  let command: string;
+  let args: string[] = [];
   
   switch (os.platform()) {
     case 'darwin': // macOS
-      command = `idea ${quotedPath}`;
+      // Use 'open' which should handle opening the file with the default app or IDE
+      command = 'idea' // '/usr/bin/open';
+      args = [resolvedFilePath];
       break;
     case 'win32': // Windows
-      // 'start ""' is used to handle paths with spaces correctly
-      command = `start "" ${quotedPath}`;
+      // Use 'start' which is a built-in command
+      command = 'cmd.exe';
+      // Use /c to run the command and exit, start "" handles paths with spaces
+      args = ['/c', 'start', '""', resolvedFilePath];
       break;
     default: // Linux and others
-      command = `xdg-open ${quotedPath}`; // Keep default case
+      command = 'xdg-open';
+      args = [resolvedFilePath];
       break;
   }
 
+  console.log(`[OpenInIDE] Executing: ${command} ${args.join(' ')}`);
+
   // Execute the command
-  exec(command, (error) => {
+  // Use execFile for better security - avoids shell interpretation of the file path
+  execFile(command, args, (error, stdout, stderr) => {
     if (error) { // Check for error
+      // Log the error but don't block the response, as the command might still partially succeed
+      // or the error might be non-critical (e.g., editor already open)
       console.error(`Error opening file: ${error.message}`);
       // Cannot return NextResponse from callback, logging is sufficient
     }
   });
 
+  // Assume success and return immediately - the OS handles opening the file
   return NextResponse.json({ success: true, message: 'File opened in default editor' });
 }

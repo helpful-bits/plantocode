@@ -89,7 +89,7 @@ export function createSessionRepository() {
           for (const filePath of includedFilesArray) {
             await new Promise<void>((resolve) => {
               includedStmt.run(session.id, filePath, (err) => {
-                if (err) {
+                if (err) { // Log error but don't reject transaction immediately
                   console.error("Error inserting included file:", err, { filePath });
                 }
                 resolve();
@@ -100,7 +100,7 @@ export function createSessionRepository() {
           await new Promise<void>((resolve, reject) => {
             includedStmt.finalize((err) => {
               if (err) {
-                console.error("Error finalizing included files statement:", err);
+                console.error("Error finalizing included files statement:", err); // Log error
                 return reject(err);
               }
               resolve();
@@ -126,7 +126,7 @@ export function createSessionRepository() {
           for (const filePath of excludedFilesArray) {
             await new Promise<void>((resolve) => {
               excludedStmt.run(session.id, filePath, (err) => {
-                if (err) {
+                if (err) { // Log error but don't reject transaction immediately
                   console.error("Error inserting excluded file:", err, { filePath });
                 }
                 resolve();
@@ -137,7 +137,7 @@ export function createSessionRepository() {
           await new Promise<void>((resolve, reject) => {
             excludedStmt.finalize((err) => {
               if (err) {
-                console.error("Error finalizing excluded files statement:", err);
+                console.error("Error finalizing excluded files statement:", err); // Log error
                 return reject(err);
               }
               resolve();
@@ -232,11 +232,7 @@ export function createSessionRepository() {
       }, true); // Use read-only connection
     },
     
-    /**
-     * Create a new Gemini request for a session
-     */
-    createGeminiRequest: async (
-      sessionId: string,
+    createGeminiRequest: async (sessionId: string,
       prompt: string
     ): Promise<GeminiRequest> => {
       console.log(`[Repo] Creating Gemini request for session: ${sessionId}`);
@@ -369,7 +365,7 @@ export function createSessionRepository() {
       }, true); // Use read-only connection
     },
     
-    /**
+    /** // Keep comment
      * Update the status of a Gemini request
      */
     updateGeminiRequestStatus: async (
@@ -410,7 +406,7 @@ export function createSessionRepository() {
         values.push(statusMessage);
       }
       
-      // Add streaming stats if provided
+      // Add streaming stats if provided and are valid numbers
       if (streamStats?.tokensReceived !== undefined) {
         setClauses.push('tokens_received = ?');
         values.push(streamStats.tokensReceived);
@@ -421,7 +417,7 @@ export function createSessionRepository() {
         values.push(streamStats.charsReceived);
       }
       
-      // Add last update timestamp if any streaming stats were provided
+      // Update last update timestamp if status is 'running' or stats were provided
       if (streamStats?.tokensReceived !== undefined || streamStats?.charsReceived !== undefined) {
         setClauses.push('last_update = ?');
         values.push(Date.now());
@@ -441,6 +437,24 @@ export function createSessionRepository() {
             } else {
               resolve();
             }
+          });
+        }); 
+      });
+    },
+    
+    /**
+     * Cancel all running Gemini requests for a session
+     */
+    cancelAllSessionRequests: async (sessionId: string): Promise<void> => {
+      console.log(`[Repo] Canceling all running requests for session: ${sessionId}`);
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`
+            UPDATE gemini_requests SET status = 'canceled', end_time = ?, status_message = 'Canceled by user.'
+            WHERE session_id = ? AND status = 'running'
+          `, [Date.now(), sessionId], (err) => {
+            if (err) reject(err);
+            else resolve();
           });
         });
       });

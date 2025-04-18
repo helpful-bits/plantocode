@@ -1,6 +1,5 @@
 "use client";
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
-import { Session } from "@/types/session-types"; // Keep Session import
 import { hashString } from '@/lib/hash'; // Import hashString
 // Cache interface
 interface CacheEntry<T> {
@@ -12,14 +11,17 @@ interface DatabaseClientCache { // Renamed interface for clarity
   sessions: Record<string, CacheEntry<Session[]>>;
   activeSessionIds: Record<string, CacheEntry<string | null>>;
   sessionDetails: Record<string, CacheEntry<Session | null>>;
+  sessionWithRequests: Record<string, CacheEntry<Session | null>>; // Cache for getSessionWithRequests
 }
+
 
 // Define API client for database operations
 class DatabaseClient {
   private cache: DatabaseClientCache = { // Use renamed interface
     sessions: {},
     activeSessionIds: {},
-    sessionDetails: {}
+    sessionDetails: {},
+    sessionWithRequests: {}, // Initialize new cache
   };
   
   private cachedStateCache: Record<string, CacheEntry<string | null>> = {}; // Add cache for cached state
@@ -55,45 +57,45 @@ class DatabaseClient {
     
     // Check if there's a pending request for this
     if (this.pendingRequests[`sessions_${cacheKey}`]) {
-      console.log(`[DB Client] Reusing pending request for sessions ${projectDirectory}`); // Removed outputFormat
-      return this.pendingRequests[`sessions_${cacheKey}`]; // Return pending request
+      console.log(`[DB Client] Reusing pending request for sessions ${projectDirectory}`);
+      return this.pendingRequests[`sessions_${cacheKey}`];
     }
     
-    console.log(`[DB Client] Fetching sessions for ${projectDirectory}`); // Removed outputFormat
+    console.log(`[DB Client] Fetching sessions for ${projectDirectory}`);
 
-    // Create and store the promise
-    const fetchPromise = new Promise<Session[]>(async (resolve, reject) => { // Keep async keyword
+    // Create the fetch operation with retry
+    const fetchPromise = new Promise<Session[]>(async (resolve, reject) => {
       try {
-        const response = await fetch(`/api/sessions?projectDirectory=${encodeURIComponent(projectDirectory)}`);
-        
-        if (!response.ok) {
-          let errorMessage = `Failed to fetch sessions: ${response.status} ${response.statusText}`;
-          // Only try to parse JSON if the content type is application/json
-          if (response.headers.get('content-type')?.includes('application/json')) {
-            try {
-              const error = await response.json();
-              errorMessage = error.message || errorMessage;
-            } catch (parseError) {
-              console.error('Error parsing JSON error response:', parseError);
+        const result = await this.withRetry(
+          async () => {
+            const response = await fetch(`/api/sessions?projectDirectory=${encodeURIComponent(projectDirectory)}`);
+            
+            if (!response.ok) {
+              let errorMessage = `Failed to fetch sessions: ${response.status} ${response.statusText}`;
+              // Only try to parse JSON if the content type is application/json
+              if (response.headers.get('content-type')?.includes('application/json')) {
+                try {
+                  const error = await response.json();
+                  errorMessage = error.message || errorMessage;
+                } catch (parseError) {
+                  console.error('Error parsing JSON error response:', parseError);
+                }
+              }
+              throw new Error(errorMessage);
             }
-          }
-          throw new Error(errorMessage);
-        }
+            
+            return await response.json();
+          },
+          `getSessions for ${projectDirectory}`
+        );
         
-        try {
-          const data = await response.json();
-          
-          // Update cache
-          this.cache.sessions[cacheKey] = {
-            data,
-            timestamp: Date.now()
-          };
-          
-          resolve(data);
-        } catch (parseError) {
-          console.error('[DB Client] Error parsing sessions response:', parseError);
-          reject(new Error('Failed to parse sessions response'));
-        }
+        // Update cache
+        this.cache.sessions[cacheKey] = {
+          data: result,
+          timestamp: Date.now()
+        };
+        
+        resolve(result);
       } catch (error) {
         reject(error);
       } finally {
@@ -154,7 +156,7 @@ class DatabaseClient {
           
           // Update cache
           this.cache.sessionDetails[sessionId] = {
-            data,
+            data: data as Session,
             timestamp: Date.now()
           };
           
@@ -175,10 +177,14 @@ class DatabaseClient {
   }
   
   async getSessionWithRequests(sessionId: string): Promise<Session | null> {
-    // Check cache first (we'll use the same cache key as getSession but with _with_requests suffix)
     const cacheKey = `session_with_requests_${sessionId}`;
     
-    // Check for pending request
+    // Check cache first
+    const cached = this.cache.sessionWithRequests[cacheKey];
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      console.log(`[DB Client] Using cached session with requests for ${sessionId}`);
+      return cached.data;
+    }
     if (this.pendingRequests[cacheKey]) {
       console.log(`[DB Client] Reusing pending request for session with requests ${sessionId}`);
       return this.pendingRequests[cacheKey];
@@ -210,6 +216,12 @@ class DatabaseClient {
         
         try {
           const data = await response.json();
+          // Update cache - cast data to Session
+          this.cache.sessionWithRequests[cacheKey] = {
+            data,
+            timestamp: Date.now()
+          };
+          
           resolve(data);
         } catch (parseError) {
           console.error('[DB Client] Error parsing session response:', parseError);
@@ -226,7 +238,7 @@ class DatabaseClient {
     return fetchPromise;
   }
   
-  async saveSession(session: Session): Promise<Session> {
+  async saveSession(session: Session): Promise<Session> { // Keep function signature
     console.log(`[DB Client] Saving session ${session.id} (${session.name})`);
     
     // Validate session object before sending to API - ensure required fields are not empty/whitespace
@@ -237,11 +249,7 @@ class DatabaseClient {
     }
     
     try {
-      // Invalidate any cached data for this session and project
-      const cacheKey = this.getCacheKey(session.projectDirectory);
-      delete this.cache.sessionDetails[session.id];
-      delete this.cache.sessions[cacheKey];
-      
+      // Make the API call to save the session
       const response = await fetch('/api/sessions', { // Keep fetch call
         method: 'POST',
         headers: {
@@ -271,8 +279,10 @@ class DatabaseClient {
       try {
         const savedSession = await response.json();
         
-        // Update cache with saved session
-        this.cache.sessionDetails[savedSession.id] = {
+        // Invalidate relevant caches *after* successful save
+        this.clearCacheForSession(savedSession.id); // Clears details and sessionWithRequests
+        this.clearCacheForProjectSessions(savedSession.projectDirectory); // Clears list
+        this.cache.sessionDetails[savedSession.id] = { // Optionally update single session cache
           data: savedSession,
           timestamp: Date.now()
         };
@@ -291,9 +301,8 @@ class DatabaseClient {
   async deleteSession(sessionId: string): Promise<void> {
     console.log(`[DB Client] Deleting session ${sessionId}`);
     
-    // Invalidate caches related to sessions
-    delete this.cache.sessionDetails[sessionId];
-    this.cache.sessions = {}; // Clear all sessions cache as the list has changed
+    // Invalidate cache *before* API call for optimistic UI update
+    this.clearCacheForSession(sessionId); // Clears details and sessionWithRequests
     
     const response = await fetch(`/api/sessions?id=${encodeURIComponent(sessionId)}`, {
       method: 'DELETE',
@@ -311,141 +320,124 @@ class DatabaseClient {
         }
       }
       throw new Error(errorMessage);
+    } else {
+      // On success, ensure project session lists are invalidated if the deleted session was part of them
+      // This requires knowing the project directory, which we don't have here easily.
+      // Rely on the next getSessions call for the affected project to re-fetch.
+      console.log(`[DB Client] Session ${sessionId} deleted successfully. Project session list cache will update on next fetch.`);
     }
   }
   
   // Project settings operations
-  async getActiveSessionId(projectDirectory: string): Promise<string | null> { // Removed outputFormat
-    const cacheKey = this.getCacheKey(projectDirectory); // Removed outputFormat
+  async getActiveSessionId(projectDirectory: string): Promise<string | null> {
+    const cacheKey = this.getCacheKey(projectDirectory);
     
     // Check cache first
-    const cached = this.cache.activeSessionIds[cacheKey]; // Keep cache check
+    const cached = this.cache.activeSessionIds[cacheKey];
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
       console.log(`[DB Client] Using cached active session ID for ${projectDirectory}`);
       return cached.data;
     }
     
     // Check for pending request
-    if (this.pendingRequests[`activeSessionId_${cacheKey}`]) {
-      console.log(`[DB Client] Reusing pending request for active session ID ${projectDirectory}`); // Removed outputFormat
-      return this.pendingRequests[`activeSessionId_${cacheKey}`];
+    if (this.pendingRequests[`activeSession_${cacheKey}`]) {
+      console.log(`[DB Client] Reusing pending request for active session ID for ${projectDirectory}`);
+      return this.pendingRequests[`activeSession_${cacheKey}`];
     }
     
     console.log(`[DB Client] Fetching active session ID for ${projectDirectory}`);
     
-    const fetchPromise = new Promise<string | null>(async (resolve, reject) => { // Removed outputFormat from API call
+    const fetchPromise = new Promise<string | null>(async (resolve, reject) => {
       try {
-        const response = await fetch(`/api/project-settings?projectDirectory=${encodeURIComponent(projectDirectory)}`);
-
-        if (!response.ok) {
-          let errorMessage = `Failed to fetch active session ID: ${response.status} ${response.statusText}`;
-          // Only try to parse JSON if the content type is application/json
-          if (response.headers.get('content-type')?.includes('application/json')) {
-            try {
-              const error = await response.json();
-              errorMessage = error.message || errorMessage;
-            } catch (parseError) {
-              console.error('Error parsing JSON error response:', parseError);
+        const result = await this.withRetry(
+          async () => {
+            const response = await fetch(`/api/active-session?projectDirectory=${encodeURIComponent(projectDirectory)}`);
+            
+            if (!response.ok) {
+              let errorMessage = `Failed to fetch active session ID: ${response.status} ${response.statusText}`;
+              if (response.headers.get('content-type')?.includes('application/json')) {
+                try {
+                  const error = await response.json();
+                  errorMessage = error.message || errorMessage;
+                } catch (parseError) {
+                  console.error('Error parsing JSON error response:', parseError);
+                }
+              }
+              throw new Error(errorMessage);
             }
-          }
-          throw new Error(errorMessage);
-        }
-        
-        const data = await response.json();
+            
+            const data = await response.json();
+            return data.sessionId; // Extract the sessionId from the response
+          },
+          `getActiveSessionId for ${projectDirectory}`
+        );
         
         // Update cache
         this.cache.activeSessionIds[cacheKey] = {
-          data: data.activeSessionId,
+          data: result,
           timestamp: Date.now()
         };
         
-        resolve(data.activeSessionId);
+        resolve(result);
       } catch (error) {
         reject(error);
       } finally {
-        delete this.pendingRequests[`activeSessionId_${cacheKey}`];
+        delete this.pendingRequests[`activeSession_${cacheKey}`];
       }
     });
     
-    this.pendingRequests[`activeSessionId_${cacheKey}`] = fetchPromise;
+    this.pendingRequests[`activeSession_${cacheKey}`] = fetchPromise;
     return fetchPromise;
   }
   
-  async setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> { // Removed outputFormat
-    // Skip if projectDirectory is missing
-    if (!projectDirectory) {
-      console.error('[DB Client] Cannot set active session: Missing projectDirectory'); // Updated error message
-      return;
-    }
-
-    // Create a cache key
+  async setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> {
     const cacheKey = this.getCacheKey(projectDirectory);
-
-    // Check if we already have this exact sessionId in cache and it's still valid
-    const cachedData = this.cache.activeSessionIds[cacheKey];
-    if (cachedData && cachedData.data === sessionId && Date.now() - cachedData.timestamp < this.CACHE_TTL * 5) {
-      // Skip API call if we're setting the same session ID that's already cached
-      console.log(`[DB Client] Skipping redundant setActiveSession for ${projectDirectory}: ${sessionId} (already set)`);
-      return;
-    }
     
-    // Check if there's a pending request with the same details
-    const pendingKey = `setActiveSession_${cacheKey}_${sessionId || 'null'}`;
-    if (this.pendingRequests[pendingKey]) { 
-      console.log(`[DB Client] Reusing pending setActiveSession request for ${projectDirectory}`);
-      return this.pendingRequests[pendingKey];
-    }
-
-    console.log(`[DB Client] Setting active session for ${projectDirectory} to ${sessionId}`);
-    
-    // Immediately update the cache to prevent subsequent redundant calls
+    // Update cache immediately for faster UI updates
     this.cache.activeSessionIds[cacheKey] = {
       data: sessionId,
       timestamp: Date.now()
     };
-
-    // Create a promise for the API call
-    const savePromise = new Promise<void>(async (resolve, reject) => {
-      try {
-        const response = await fetch('/api/project-settings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ projectDirectory, sessionId }), // Removed outputFormat
-        }); // Close fetch call
-        
-        if (!response.ok) {
-          // Invalidate cache on error
-          delete this.cache.activeSessionIds[cacheKey];
+    
+    console.log(`[DB Client] Setting active session for ${projectDirectory} to ${sessionId || 'null'}`);
+    
+    try {
+      await this.withRetry(
+        async () => {
+          const response = await fetch('/api/active-session', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              projectDirectory,
+              sessionId
+            }),
+          });
           
-          let errorMessage = `Failed to set active session: ${response.status} ${response.statusText}`;
-          // Only try to parse JSON if the content type is application/json
-          if (response.headers.get('content-type')?.includes('application/json')) {
-            try {
-              const error = await response.json();
-              errorMessage = error.message || errorMessage;
-            } catch (parseError) {
-              console.error('Error parsing JSON error response:', parseError);
+          if (!response.ok) {
+            let errorMessage = `Failed to set active session: ${response.status} ${response.statusText}`;
+            if (response.headers.get('content-type')?.includes('application/json')) {
+              try {
+                const error = await response.json();
+                errorMessage = error.message || errorMessage;
+              } catch (parseError) {
+                console.error('Error parsing JSON error response:', parseError);
+              }
             }
+            throw new Error(errorMessage);
           }
-          throw new Error(errorMessage);
-        }
-        
-        resolve();
-      } catch (error) {
-        console.error('[DB Client] Error in setActiveSession:', error);
-        reject(error);
-      } finally {
-        // Clean up the pending request
-        delete this.pendingRequests[pendingKey];
-      }
-    });
-    
-    // Store the promise
-    this.pendingRequests[pendingKey] = savePromise;
-    return savePromise;
-    
+          
+          return await response.json();
+        },
+        `setActiveSession for ${projectDirectory}`
+      );
+    } catch (error) {
+      // Revert cache on error
+      console.error(`[DB Client] Failed to set active session for ${projectDirectory}:`, error);
+      delete this.cache.activeSessionIds[cacheKey];
+      throw error;
+    }
   }
   
   async getCachedState(projectDirectory: string | null | undefined, key: string): Promise<string | null> {
@@ -661,18 +653,93 @@ class DatabaseClient {
   // Clear cache entry for a specific session
   clearCacheForSession(sessionId: string) {
     delete this.cache.sessionDetails[sessionId];
+    delete this.cache.sessionWithRequests[`session_with_requests_${sessionId}`]; // Clear session with requests cache too
     console.log(`[DB Client] Cleared cache for session ${sessionId}`);
+  }
+
+  // Clear cache entry for a specific project's sessions list
+  clearCacheForProjectSessions(projectDirectory: string) {
+    const cacheKey = this.getCacheKey(projectDirectory);
+    delete this.cache.sessions[cacheKey];
+    console.log(`[DB Client] Cleared sessions list cache for project ${projectDirectory}`);
+  }
+
+  // Clear cache for session details specifically
+  clearCacheForSessionDetails(sessionId: string) {
+    this.clearCacheForSession(sessionId); // Use the combined function
   }
   // Clear entire cache
   clearCache() {
     this.cache = {
-      sessions: {},
+      sessions: {}, // Clear sessions list cache
+      // Keep other cache properties
+      sessionWithRequests: {},
       activeSessionIds: {},
       sessionDetails: {}
     };
     this.cachedStateCache = {};
     this.pendingRequests = {};
     console.log('[DB Client] Cache cleared');
+  }
+
+  // Clear cache for a specific project directory
+  clearCacheForProject(projectDirectory: string) {
+    const cacheKey = this.getCacheKey(projectDirectory);
+    delete this.cache.sessions[cacheKey];
+    delete this.cache.activeSessionIds[cacheKey];
+    
+    // Also clear individual session caches that might belong to this project
+    // This is less efficient but necessary without knowing which sessions belong here
+    // A better approach might involve tagging cache entries by project
+    
+    // Note: sessionDetails cache uses session ID as key, so it's not directly
+    // tied to project directory here. Use clearCacheForSession for specific sessions.
+    
+    console.log(`[DB Client] Cleared sessions and active session ID cache for project ${projectDirectory}`);
+  }
+
+  // Add clearCacheForSessionWithRequests
+  clearCacheForSessionWithRequests(sessionId: string) {
+    delete this.cache.sessionWithRequests[`session_with_requests_${sessionId}`];
+    console.log(`[DB Client] Cleared cache for session with requests ${sessionId}`);
+  }
+
+  // Add the following utility function for retrying operations
+  private async withRetry<T>(operation: () => Promise<T>, 
+                           operationName: string, 
+                           maxRetries: number = 3, 
+                           retryDelay: number = 500): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        // Only log and retry for network/temporary errors, not for validation or not found
+        if (error instanceof Error && 
+            (error.message.includes('network') || 
+             error.message.includes('timeout') || 
+             error.message.includes('failed to fetch'))) {
+          console.warn(`[DB Client] ${operationName} failed (attempt ${attempt}/${maxRetries}):`, error);
+          
+          if (attempt < maxRetries) {
+            // Wait with exponential backoff before retrying
+            const delay = retryDelay * Math.pow(2, attempt - 1);
+            console.log(`[DB Client] Retrying ${operationName} in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        } else {
+          // For other types of errors, don't retry
+          break;
+        }
+      }
+    }
+    
+    // If we got here, all retries failed
+    console.error(`[DB Client] ${operationName} failed after ${maxRetries} attempts:`, lastError);
+    throw lastError;
   }
 }
 

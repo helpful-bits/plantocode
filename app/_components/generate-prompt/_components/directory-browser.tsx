@@ -13,7 +13,7 @@ import {
   SkipBack,
   Lock
 } from "lucide-react";
-import { Button } from "@/components/ui/button"; // Keep Button import
+import { Button } from "@/components/ui/button";
 import { 
   Dialog,
   DialogContent,
@@ -27,8 +27,8 @@ import {
   getHomeDirectoryAction, 
   listDirectoriesAction, 
   getCommonPaths
-} from "@/actions/directory-actions"; // Keep directory-actions import
-import { cn } from "@/lib/utils"; // Keep cn import
+} from "@/actions/directory-actions";
+import { cn } from "@/lib/utils";
 
 // Fallback paths in case the server action fails
 const DEFAULT_COMMON_PATHS: Array<{ name: string, path: string }> = [
@@ -39,21 +39,19 @@ const DEFAULT_COMMON_PATHS: Array<{ name: string, path: string }> = [
 ];
 
 interface DirectoryBrowserProps {
-  isOpen: boolean;
   onClose: () => void;
   onSelect: (directoryPath: string) => void;
   initialPath?: string;
 }
-
+type DirectoryInfo = { name: string; path: string; isAccessible: boolean };
 export default function DirectoryBrowser({ 
-  isOpen, 
   onClose, 
   onSelect,
   initialPath
 }: DirectoryBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>("");
   const [parentPath, setParentPath] = useState<string | null>(null);
-  const [directories, setDirectories] = useState<{ name: string; path: string; isAccessible: boolean }[]>([]);
+  const [directories, setDirectories] = useState<DirectoryInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pathParts, setPathParts] = useState<{ name: string; path: string }[]>([]);
@@ -66,14 +64,16 @@ export default function DirectoryBrowser({
 
     try {
       const result = await listDirectoriesAction(path);
+      console.log(`[DirBrowser] List action result for '${path}':`, result);
+
       if (!result.isSuccess) {
         // Check if it's a permission error
-        if (result.message?.includes("permission denied")) {
+        if (result.message?.includes("permission denied") || result.message?.includes("cannot be read")) {
           setError(result.message);
           // Still update current path if possible, but show empty directories
           if (result.data?.currentPath) {
             setCurrentPath(result.data.currentPath);
-            setParentPath(result.data.parentPath);
+            setParentPath(result.data.parentPath ?? null);
             setDirectories([]); // Show no directories on permission error
             updatePathParts(result.data.currentPath); // Update breadcrumbs
           }
@@ -83,16 +83,18 @@ export default function DirectoryBrowser({
         }
       } else {
         setCurrentPath(result.data.currentPath);
-        setParentPath(result.data.parentPath);
+        setParentPath(result.data.parentPath ?? null);
         setDirectories(result.data.directories);
         updatePathParts(result.data.currentPath);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred while loading directories");
+      console.error(`[DirBrowser] Error loading directories for '${path}':`, err);
     } finally {
       setIsLoading(false);
+      console.log(`[DirBrowser] Finished loading for '${path}', isLoading: false`);
     }
-  }, []); // Removed useClientAPI dependency
+  }, []);
 
   const updatePathParts = useCallback((fullPath: string) => {
     if (!fullPath) {
@@ -130,64 +132,31 @@ export default function DirectoryBrowser({
     setPathParts(parts);
   }, []);
 
-  // Load initial directory on open // Keep comment
+  // Load initial directory on mount
   useEffect(() => {
-    if (isOpen) {
-      const loadInitialDirectory = async () => {
-        if (initialPath) {
-          await loadDirectories(initialPath);
-        } else {
-          try {
-            const result = await getHomeDirectoryAction();
-            
-            if (result.isSuccess && result.data) {
-              await loadDirectories(result.data);
-            } else {
-              // Fallback to first common path
-              try {
-                // Ensure common paths are loaded before trying to use them
-                const loadedCommonPaths = commonPaths.length > 0 ? commonPaths : await getCommonPaths();
-                setCommonPaths(loadedCommonPaths); // Store loaded paths
-                if (commonPaths && commonPaths.length > 0) {
-                  await loadDirectories(commonPaths[0].path);
-                } else {
-                  // Ultimate fallback if commonPaths is empty or undefined
-                  await loadDirectories('/');
-                }
-              } catch (commonPathError) {
-                console.error("Common path fallback failed:", commonPathError);
-                // Try root as last resort
-                await loadDirectories('/');
-              }
-            }
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to load home directory");
-            setIsLoading(false);
-            
-            // Try common paths as last resort
-            // Ensure common paths are loaded before trying to use them
-            try {
-              const loadedCommonPaths = commonPaths.length > 0 ? commonPaths : await getCommonPaths();
-              if (commonPaths && commonPaths.length > 0) {
-                await loadDirectories(commonPaths[0].path);
-              } else {
-                // Ultimate fallback
-                await loadDirectories('/');
-              }
-            } catch (fallbackErr) {
-              console.error("Fallback path also failed:", fallbackErr);
-              setError("Could not load any directory. Please enter a path manually.");
-            }
+    const loadInitialDirectory = async () => {
+      if (initialPath) {
+        await loadDirectories(initialPath);
+      } else {
+        try {
+          const result = await getHomeDirectoryAction();
+          if (result.isSuccess && result.data) {
+            await loadDirectories(result.data);
+          } else {
+            await loadDirectories('/');
           }
+        } catch (err) {
+          console.error("Error getting home directory:", err);
+          await loadDirectories('/');
         }
-      };
+      }
+    };
 
-      loadInitialDirectory();
-    } // Close if(isOpen)
-  }, [isOpen, initialPath, loadDirectories]); // Removed useClientAPI dependency
+    loadInitialDirectory();
+  }, [initialPath, loadDirectories]);
 
   // Handle directory navigation
-  const navigateToDirectory = useCallback(async (path: string) => { // Keep function
+  const navigateToDirectory = useCallback(async (path: string) => {
     await loadDirectories(path);
   }, [loadDirectories]);
 
@@ -213,11 +182,6 @@ export default function DirectoryBrowser({
     }
   }, [currentPath, onSelect, onClose]);
 
-  // Handle shortcut navigation // Keep comment
-  const navigateToShortcut = useCallback(async (path: string) => {
-    await loadDirectories(path);
-  }, [loadDirectories]);
-
   // Load common paths
   useEffect(() => {
     const loadCommonPaths = async () => {
@@ -226,11 +190,11 @@ export default function DirectoryBrowser({
         if (serverPaths && serverPaths.length > 0) {
           setCommonPaths(serverPaths);
         } else {
-          setCommonPaths(DEFAULT_COMMON_PATHS); // Fallback to default if server action fails
+          setCommonPaths(DEFAULT_COMMON_PATHS);
         }
       } catch (error) {
         console.error("Error loading common paths:", error);
-        setCommonPaths(DEFAULT_COMMON_PATHS); // Fallback to default on error
+        setCommonPaths(DEFAULT_COMMON_PATHS);
       }
     };
     
@@ -238,7 +202,7 @@ export default function DirectoryBrowser({
   }, []);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -255,7 +219,7 @@ export default function DirectoryBrowser({
                   key={item.path}
                   variant="outline"
                   size="sm"
-                  onClick={() => navigateToShortcut(item.path)}
+                  onClick={() => navigateToDirectory(item.path)}
                   className="flex items-center gap-1.5"
                 >
                   {item.name.toLowerCase() === "home" ? (
@@ -267,11 +231,10 @@ export default function DirectoryBrowser({
                 </Button>
               ))
             ) : (
-              // Fallback when commonPaths is not available
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigateToShortcut("/")}
+                onClick={() => navigateToDirectory("/")}
                 className="flex items-center gap-1.5"
               >
                 <Home className="h-3.5 w-3.5" />
@@ -281,7 +244,7 @@ export default function DirectoryBrowser({
           </div>
 
           {/* Current path breadcrumbs */}
-          <div className="flex items-center gap-1 flex-wrap bg-muted/50 p-2 rounded-md text-sm">
+          <div className="flex items-center gap-1 flex-wrap bg-muted/50 p-2 rounded-md text-sm overflow-x-auto min-w-0">
             {pathParts.map((part, index) => (
               <React.Fragment key={index}>
                 {index > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -291,7 +254,7 @@ export default function DirectoryBrowser({
                   className="h-6 px-1.5 py-0.5 text-left"
                   onClick={() => navigateToDirectory(part.path)}
                 >
-                  {part.name}
+                  {part.name === "/" ? "Root" : part.name}
                 </Button>
               </React.Fragment>
             ))}
@@ -303,7 +266,7 @@ export default function DirectoryBrowser({
               <div className="absolute inset-0 flex items-center justify-center bg-background/80">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : error ? (
+            ) : error && !directories.length ? (
               <div className="absolute inset-0 flex items-center justify-center bg-background/80">
                 <div className="flex flex-col items-center gap-2 px-4 text-center">
                   <AlertCircle className="h-6 w-6 text-destructive" />
@@ -318,27 +281,30 @@ export default function DirectoryBrowser({
                 {parentPath && (
                   <button
                     onClick={navigateToParent}
-                    className="w-full flex items-center gap-2 p-2 hover:bg-muted rounded-md text-sm font-medium"
+                    className="w-full flex items-center gap-2 p-2 hover:bg-accent rounded-md text-sm font-medium"
                   >
-                    <SkipBack className="h-4 w-4" />
+                    <SkipBack className="h-4 w-4 text-muted-foreground" />
                     Go Up
                   </button>
                 )}
 
                 {/* Directory list */}
-                {directories.length === 0 ? (
+                {directories.length === 0 && !error ? (
                   <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                     <FolderOpen className="h-8 w-8 mb-2" />
-                    <p>No directories found in this location</p>
+                    <p>No subdirectories found</p>
+                    {error && <p className="text-sm text-destructive mt-2">{error}</p>}
                   </div>
                 ) : (
                   directories.map((dir) => (
                     <button
                       key={dir.path}
-                      onClick={() => dir.isAccessible && navigateToDirectory(dir.path)}
+                      onClick={() => dir.isAccessible && setCurrentPath(dir.path)}
+                      onDoubleClick={() => dir.isAccessible && navigateToDirectory(dir.path)}
                       className={cn(
-                        "w-full flex items-center gap-2 p-2 hover:bg-muted rounded-md text-sm",
-                        !dir.isAccessible && "opacity-50 cursor-not-allowed"
+                        "w-full flex items-center gap-2 p-2 hover:bg-accent rounded-md text-sm",
+                        !dir.isAccessible && "opacity-50 cursor-not-allowed",
+                        currentPath === dir.path && "bg-accent"
                       )}
                       disabled={!dir.isAccessible}
                     >
@@ -347,7 +313,7 @@ export default function DirectoryBrowser({
                       ) : (
                         <Lock className="h-4 w-4 text-muted-foreground" />
                       )}
-                      <span className="truncate">{dir.name}</span>
+                      <span className="truncate text-left">{dir.name}</span>
                     </button>
                   ))
                 )}

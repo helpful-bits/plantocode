@@ -74,9 +74,9 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     
     return { files: existingFiles, isGitRepo };
   } catch (error: any) {
-    // Handle cases where git commands fail
+    // Handle cases where git commands fail - do not throw error, fallback to fs based listing
     console.error(`Error getting files from git repository ${dir}:`, error.message || error);
-    
+/*    
     if (error.stderr && error.stderr.toLowerCase().includes('not a git repository')) {
       throw new Error(`Directory is not a git repository: ${dir}. Please select a valid git repository.`);
     } else if (error.code === 'ENOENT' || error.message?.includes('command not found')) {
@@ -84,7 +84,21 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
     }
     
     throw new Error(`Failed to list files using git: ${error.message || 'Unknown error'}`);
+*/
+    // Fallback to reading directory contents recursively if git fails
+    console.log(`[Git Utils] Git failed, falling back to recursive directory read for ${dir}`);
+    try {
+        const files = await readDirectoryRecursive(dir);
+        // Cache the result even if it's from the fallback
+        fileCache.set(cacheKey, { files, timestamp: now, isGitRepo: false });
+        return { files, isGitRepo: false };
+    } catch (fsError: any) {
+        console.error(`Error reading directory recursively ${dir}:`, fsError.message || fsError);
+        // Throw a specific error if the fallback also fails
+        throw new Error(`Failed to list files using both git and filesystem: ${fsError.message || 'Unknown error'}`);
+    }
   }
+
 }
 
 // Function to manually invalidate the cache when needed
