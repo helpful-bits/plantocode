@@ -20,8 +20,8 @@ export async function getDiffPrompt(): Promise<string> {
       <requirement>Use standard Git diff headers (diff --git a/... b/..., index ..., --- a/..., +++ b/...).</requirement>
       <requirement>Include file mode information where applicable (e.g., 'new file mode 100644' for regular files, 'new file mode 100755' for executable files, 'deleted file mode 100644' for deleted files).</requirement>
       <requirement>For new files, use '--- /dev/null' and include the full file content prefixed with '+'. Include appropriate index line (e.g., index 0000000..abcdef0 100644).</requirement>
-      <requirement>For deleted files, use '+++ /dev/null' and show the removed content with '-' prefix.</requirement>
-      <requirement>For file renames, use 'similarity index X%' followed by 'rename from x' and 'rename to y' markers and include only the changes in content, if any.</requirement>
+      <requirement>For deleted files, use the minimal form with just headers ('diff --git', 'deleted file mode', 'index', '--- a/path', '+++ /dev/null') without including the entire file content.</requirement>
+      <requirement>For file renames with no content changes, use only 'similarity index 100%' followed by 'rename from x' and 'rename to y' markers without showing file content. For renames with content changes, include only the modified portions with sufficient context.</requirement>
       <requirement>For updated files, include 3-5 context lines before and after changes to provide sufficient context. When changes span across functions, include full function signatures and boundaries.</requirement>
       <requirement>Group all changes into one single patch output, maintaining consistent paths across all changes.</requirement>
       <requirement>Create precise hunk headers with exact line numbers and counts in the format '@@ -oldStart,oldCount +newStart,newCount @@ [optional context]'.</requirement>
@@ -91,19 +91,19 @@ deleted file mode 100644
 index abcdef0..0000000
 --- a/path/to/deleted/file.ts
 +++ /dev/null
-@@ -1,8 +0,0 @@
--import { Something } from './somewhere';
--
--export function oldFunction() {
--  const value = 10;
--  
--  return value * 2;
--}
--
 \`\`\`
       </example_file_deletion>
 
-      <example_file_rename>
+      <example_file_rename_without_changes>
+\`\`\`diff
+diff --git a/path/old/name.ts b/path/new/location.ts
+similarity index 100%
+rename from path/old/name.ts
+rename to path/new/location.ts
+\`\`\`
+      </example_file_rename_without_changes>
+
+      <example_file_rename_with_changes>
 \`\`\`diff
 diff --git a/path/old/name.ts b/path/new/location.ts
 similarity index 85%
@@ -121,7 +121,7 @@ index abcdef0..abcdef0 100644
  }
  
 \`\`\`
-      </example_file_rename>
+      </example_file_rename_with_changes>
     </template>
   </output_format>
 
@@ -140,6 +140,7 @@ index abcdef0..abcdef0 100644
       <rule>Include all necessary file changes (creations, modifications, deletions, renames) in a single patch.</rule>
       <rule>Never include XML tags or markup inside the diff content.</rule>
       <rule>For large changes, break them into logical, focused hunks with proper context boundaries.</rule>
+      <rule>Optimize patch size by using minimal representations for deletions and renames without content changes.</rule>
       <rule>Ensure proper encoding handling - maintain UTF-8 encoding and don't introduce encoding issues.</rule>
     </patch_integrity>
 
@@ -153,6 +154,7 @@ index abcdef0..abcdef0 100644
     <edge_cases>
       <rule>For large files, focus patches only on the changed regions with sufficient context.</rule>
       <rule>For changes that depend on each other, ensure the patch presents them in a logical order.</rule>
+      <rule>For binary files, use the minimal header approach without content inclusion.</rule>
     </edge_cases>
   </rules>
 </prompt>`;

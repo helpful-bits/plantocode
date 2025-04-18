@@ -1,5 +1,5 @@
 "use server";
-import { callAnthropicAPI } from "@/lib/anthropic";
+import claudeClient from "@/lib/api/claude-client";
 import { ActionState } from "@/types";
 
 function isValidRegex(pattern: string): boolean {
@@ -67,7 +67,7 @@ Now, generate the JSON for the provided description.`,
     };
     console.log("Sending payload to Anthropic for regex generation...");
 
-    const result: ActionState<string> = await callAnthropicAPI(payload);
+    const result: ActionState<string> = await claudeClient.sendRequest(payload);
 
     if (!result.isSuccess || !result.data) {
       console.error("Anthropic API call failed:", result.message);

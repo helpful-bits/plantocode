@@ -1,9 +1,9 @@
 -- Create the gemini_requests table to track individual Gemini processing requests
 CREATE TABLE gemini_requests (
   id TEXT PRIMARY KEY,
-  session_id TEXT NOT NULL,
+  session_id TEXT NOT NULL, -- Keep session_id
   prompt TEXT NOT NULL,
-  status TEXT DEFAULT 'idle' NOT NULL, -- idle, running, completed, failed, canceled
+  status TEXT DEFAULT 'idle' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing')), -- Added 'preparing' state
   start_time INTEGER,
   end_time INTEGER,
   patch_path TEXT,

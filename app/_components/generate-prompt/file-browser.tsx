@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy } from "lucide-react"; // Added X and Copy imports
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from "react";
+import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy } from "lucide-react"; // Kept imports
 import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -197,7 +197,14 @@ export default function FileBrowser({
     }
     handleFilesMapChangeInternal(newMap);
   };
-  const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
+
+    // Handler for clearing the search term
+    const handleClearSearch = () => {
+        handleSearchChangeInternal(""); // Call the internal handler with empty string
+        // No need to call onInteraction here, as handleSearchChangeInternal already does
+    };
+
+    const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
     // Create a new map to avoid direct state mutation
     const newMap = { ...allFilesMap };
     let changedCount = 0;
@@ -385,15 +392,17 @@ export default function FileBrowser({
       setCopiedPath(path);
       // Reset the copied state after 2 seconds
       setTimeout(() => {
-        setCopiedPath(null);
+        // Only reset if the current copied path is still the one we set
+        setCopiedPath(currentPath => currentPath === path ? null : currentPath);
       }, 2000);
     }
   }, [onAddPath]);
 
   return (
+    // Use key to force re-render when projectDirectory changes, ensuring cache state is reset
     <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm"> {/* Added padding and border */}
       <div className="flex items-center gap-2">
-        <div className="flex-1">
+        <div className="relative flex-1"> {/* Added relative positioning */}
           <Input
             type="search" // Use search type for better semantics and potential browser clear button
             placeholder="Search files..."
@@ -401,20 +410,20 @@ export default function FileBrowser({
             onChange={(e) => handleSearchChangeInternal(e.target.value)}
             className="w-full" // Ensure input takes full width
           />
+          {searchTerm && ( // Show clear button only if search term exists
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => handleSearchChangeInternal("")}
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground" // Position clear button inside input
+              title="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
-        {searchTerm && ( // Show clear button only if search term exists
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => handleSearchChangeInternal("")}
-            className="h-9 w-9 text-muted-foreground hover:text-foreground"
-            title="Clear search"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-          <Button
+        <Button
           type="button"
           variant="outline"
           size="sm"
@@ -550,8 +559,8 @@ export default function FileBrowser({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground text-xs">{formatFileSize(file.size)}</span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost" size="icon"
                     onClick={(e) => handleAddPath(file.path, e)}
                     className={cn(
                       "h-6 w-6 rounded-sm flex items-center justify-center hover:bg-accent/70 transition-colors",
@@ -560,7 +569,7 @@ export default function FileBrowser({
                     title="Add file path to selection"
                   >
                     <Copy className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

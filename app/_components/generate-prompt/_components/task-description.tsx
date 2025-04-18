@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2 } from "lucide-react"; // Keep Sparkles/Loader2 import
+import { Sparkles, Loader2 } from "lucide-react";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 
 export interface TaskDescriptionHandle {

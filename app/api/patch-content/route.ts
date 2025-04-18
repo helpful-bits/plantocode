@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { existsSync } from 'fs';
-import { sessionRepository } from '@/lib/db/repository'; // Keep sessionRepository import
-import { setupDatabase } from '@/lib/db/setup';
+import { sessionRepository } from '@/lib/db'; // Keep sessionRepository import
+import { setupDatabase } from '@/lib/db';
 import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
 
 export async function GET(request: NextRequest) {

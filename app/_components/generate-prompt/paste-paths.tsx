@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState, ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Info, CheckSquare, Sparkles, Loader2 } from "lucide-react"; // Import more icons
+import { Info, CheckSquare, Sparkles, Loader2, X } from "lucide-react"; // Import more icons
 import { correctPathsAction } from "@/actions/path-correction-actions"; // Import the new action
+import { Button } from "@/components/ui/button"; // Import Button
 interface PastePathsProps {
   value: string;
   onChange: (value: string) => void;
@@ -81,7 +82,7 @@ export default function PastePaths({
 
   // Clear errors/success messages when the input value changes
   useEffect(() => {
-    setCorrectionError(null);
+    setCorrectionError(null); // Clear error on input change
   }, [value]);
 
   return (
@@ -104,8 +105,9 @@ export default function PastePaths({
         className="border rounded bg-background text-foreground p-2 h-32 font-mono text-sm"
         value={value}
         onChange={(e) => {
-          // Clean XML tags if present when the user pastes or types
-          const cleanedValue = e.target.value.replace(/<file>|<\/file>/g, '');
+          // Clean potential XML tags when the user pastes or types
+          // Also removes leading/trailing whitespace per line
+          const cleanedValue = e.target.value.split('\n').map(line => line.replace(/<file>|<\/file>/g, '').trim()).join('\n');
           onChange(cleanedValue);
           onInteraction(); // Call interaction handler on change
         }}
@@ -134,7 +136,7 @@ path/to/file2.ts
 
       {/* Path Correction Button */}
       <div className="flex flex-col items-start gap-1">
-          <button
+          <Button
               type="button"
               onClick={handleCorrectPaths}
               disabled={isCorrectingPaths || !value.trim() || !projectDirectory || !canCorrectPaths}
@@ -150,7 +152,7 @@ path/to/file2.ts
                       <Sparkles className="h-3.5 w-3.5" /> Correct Paths (AI)
                   </>
               )}
-          </button>
+          </Button>
           {correctionError && <p className="text-xs text-destructive mt-1">{correctionError}</p>}
           {correctionSuccess && <p className="text-xs text-green-600 mt-1">{correctionSuccess}</p>}
       </div>
