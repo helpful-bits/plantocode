@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
@@ -28,6 +28,50 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
   const [isImproving, setIsImproving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Use window object to get the current URL to create project-specific localStorage keys
+  const getProjectPathSegment = () => {
+    // Safe access to window object with fallback for SSR
+    if (typeof window !== 'undefined') {
+      const projectParam = new URLSearchParams(window.location.search).get('project');
+      if (projectParam) {
+        // Create a safe key fragment from the project path
+        return encodeURIComponent(projectParam.replace(/[\/\\?%*:|"<>]/g, '_')).substring(0, 50);
+      }
+    }
+    return 'default';
+  };
+  
+  // Create a project-specific local storage key to prevent conflicts between projects
+  const localStorageKey = `task-description-backup-${getProjectPathSegment()}`;
+  
+  // Initialize from local storage on mount
+  useEffect(() => {
+    try {
+      // Only restore from backup if current value is empty
+      if (!value || value.trim() === '') {
+        const backup = localStorage.getItem(localStorageKey);
+        if (backup && backup.length > 0) {
+          console.log('[TaskDescription] Restoring from local storage backup:', localStorageKey);
+          onChange(backup);
+          onInteraction();
+        }
+      }
+    } catch (error) {
+      console.error('[TaskDescription] Error accessing localStorage:', error);
+    }
+  }, []);
+  
+  // Update local storage when value changes
+  useEffect(() => {
+    try {
+      if (value && value.trim() !== '') {
+        localStorage.setItem(localStorageKey, value);
+      }
+    } catch (error) {
+      console.error('[TaskDescription] Error saving to localStorage:', error);
+    }
+  }, [value, localStorageKey]);
 
   // Expose the insertTextAtCursor method via ref
   useImperativeHandle(ref, () => ({
@@ -117,6 +161,20 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
 
   const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd; // Keep this check
 
+  // Update handler to ensure local storage backup
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    try {
+      // Save to local storage immediately
+      localStorage.setItem(localStorageKey, e.target.value);
+    } catch (error) {
+      console.error('[TaskDescription] Error saving to localStorage:', error);
+    }
+    
+    // Call original onChange handler
+    onChange(e.target.value);
+    onInteraction();
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
@@ -139,10 +197,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
         id="taskDescArea" // Ensure ID matches htmlFor
         className="border rounded bg-background/80 text-foreground p-2 min-h-[150px] w-full resize-y" // Allow vertical resize
         value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          onInteraction(); // Notify parent of interaction
-        }}
+        onChange={handleChange} // Use the new handler that includes localStorage backup
         onSelect={handleSelect}
         placeholder="Describe what changes you want to make..."
       />

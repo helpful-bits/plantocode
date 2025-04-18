@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from "react";
-import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy } from "lucide-react"; // Kept imports
+import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy, RefreshCw } from "lucide-react"; // Kept imports
 import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,10 @@ import { useProject } from "@/lib/contexts/project-context";
 import { useDatabase } from "@/lib/contexts/database-context";
 import { formatPathForDisplay } from "@/lib/path-utils";
 import { FileInfo } from "@/types";
+
+// Constants for auto-retry logic
+const AUTO_RETRY_DELAY = 2000; // 2 seconds delay for auto-retry
+const MAX_AUTO_RETRIES = 3; // Maximum number of automatic retries
 
 type FilesMap = { [path: string]: FileInfo };
 
@@ -71,23 +75,13 @@ export default function FileBrowser({
   const lastRenderedMapRef = useRef<string | null>(null); // Track rendered file list
   const [isPreferenceLoading, setIsPreferenceLoading] = useState(true);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
-
-  const handleSearchChangeInternal = (value: string) => {
-    onSearchChange(value);
-    if (onInteraction) onInteraction(); // Call interaction handler
-  };
-
-  const handleFilesMapChangeInternal = (newMap: FilesMap) => {
-    if (onFilesMapChange) {
-      onFilesMapChange(newMap);
-    }
-    if (onFilesChange) {
-      onFilesChange(newMap);
-    }
+  
+  // Remove auto-retry state and logic but keep manual refresh
+  const handleManualRefresh = useCallback(() => {
     if (onInteraction) {
-      onInteraction();
+      onInteraction(); // Trigger the parent's refresh logic
     }
-  };
+  }, [onInteraction]);
 
   useEffect(() => {
     setIsPreferenceLoading(true); // Set loading state for preference
@@ -202,6 +196,18 @@ export default function FileBrowser({
     const handleClearSearch = () => {
         handleSearchChangeInternal(""); // Call the internal handler with empty string
         // No need to call onInteraction here, as handleSearchChangeInternal already does
+    };
+
+    const handleFilesMapChangeInternal = (newMap: FilesMap) => {
+      if (onFilesMapChange) {
+        onFilesMapChange(newMap);
+      }
+      if (onFilesChange) {
+        onFilesChange(newMap);
+      }
+      if (onInteraction) {
+        onInteraction();
+      }
     };
 
     const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
@@ -398,6 +404,11 @@ export default function FileBrowser({
     }
   }, [onAddPath]);
 
+  const handleSearchChangeInternal = (value: string) => {
+    onSearchChange(value);
+    if (onInteraction) onInteraction(); // Call interaction handler
+  };
+
   return (
     // Use key to force re-render when projectDirectory changes, ensuring cache state is reset
     <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm"> {/* Added padding and border */}
@@ -436,6 +447,19 @@ export default function FileBrowser({
         >
           {showOnlySelected ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
           {showOnlySelected ? "Selected" : "All Files"}
+        </Button>
+        
+        {/* Keep manual refresh button */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleManualRefresh}
+          disabled={isLoading}
+          title="Manually refresh file list"
+          className="flex gap-1.5 items-center"
+        >
+          <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
 
@@ -585,13 +609,25 @@ export default function FileBrowser({
           <FolderClosed className="h-8 w-8" />
           <p>Please select a project directory first</p>
         </div>
-      ) : totalFilesCount === 0 ? ( // Use totalFilesCount for check
-        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-destructive/80">
-          <AlertCircle className="h-8 w-8" />
+      ) : totalFilesCount === 0 ? ( 
+        // Modified UI for when no files are found - simplified without auto-retry references
+        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3">
+          <AlertCircle className="h-8 w-8 text-amber-500" />
           <div className="text-center">
-            <p className="font-medium">No files found in the selected directory</p>
-            <p className="text-sm mt-1">Try selecting a different directory or check permissions</p>
-            <p className="text-xs mt-2 opacity-70">Debug info: Project directory = {projectDirectory || "none"}</p>
+            <p className="font-medium text-amber-500">No files loaded in the selected directory</p>
+            <p className="text-sm mt-1">This might happen during hot module reloading</p>
+            <p className="text-xs mt-2 text-muted-foreground">Project directory: {projectDirectory || "none"}</p>
+            
+            <Button 
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleManualRefresh}
+              className="mt-3"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Files
+            </Button>
           </div>
         </div>
       ) : ( // Fallback case
