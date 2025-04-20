@@ -75,10 +75,12 @@ Provide general guidance and direction for approaching this task. Focus on givin
 
     // Call the Gemini API
     const result = await geminiClient.sendRequest(
-      // No system prompt needed for this model/task
       userPromptContent,
-      TASK_ENHANCER_MODEL_ID,
-      { maxOutputTokens: 1024 }
+      {
+        model: GEMINI_PRO_PREVIEW_MODEL,
+        systemPrompt: systemPrompt,
+        maxOutputTokens: 4096
+      }
     );
 
     if (!result.isSuccess || !result.data) {
