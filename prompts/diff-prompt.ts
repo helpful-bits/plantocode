@@ -32,7 +32,7 @@ export async function getDiffPrompt(): Promise<string> {
          │    ├─ path        (required attribute, string) — relative POSIX path from project root
          │    ├─ action      (required attribute, enum: modify | create | delete)
          │    └─ operation   (0..N, required unless action="delete") — Represents a single search/replace operation
-         │         ├─ search   (required element, string) — text to search for, preferably exact snippets
+         │         ├─ search   (required element, string) — text to search for, preferably short, unique snippets
          │         └─ replace  (required element, string) — exact replacement text
          └─ meta        (0..1, element, string) — optional free-form metadata for tracing (omit unless necessary)
       </data_model>
@@ -88,9 +88,10 @@ export async function getDiffPrompt(): Promise<string> {
       </encoding_rules>
 
       <operation_guidelines>
-        - **modify:** Include one or more <operation> elements. Each <search> should contain the exact text snippet to be replaced by the corresponding <replace> content. Include enough context (a few lines before and after) to uniquely identify the code location.
+        - **modify:** Include one or more <operation> elements. Each <search> should contain a short, unique text snippet to be replaced by the corresponding <replace> content. Break large changes into multiple smaller operations.
         - **create:** Include exactly one <operation> element. The <search> element should contain an empty CDATA section (<![CDATA[]]>). The <replace> element must contain the *full* content of the new file within a CDATA section.
         - **delete:** Do *not* include any <operation> elements. The presence of the <file> element with action="delete" is sufficient.
+        - **move/rename:** Represented as a combination of delete (old path) and create (new path) operations.
       </operation_guidelines>
 
       <example>
@@ -121,37 +122,32 @@ export async function getDiffPrompt(): Promise<string> {
 
       <search_examples>
         <good_example>
-          <!-- Example 1: Exact function text with context -->
-          <search><![CDATA[function calculateTotal(items) {
-  return items.reduce((sum, item) => {
-    return sum + item.price;
-  }, 0);
-}]]></search>
+          <!-- Example 1: Short, unique identifier with minimal context -->
+          <search><![CDATA[unique_identifier = "specific_value"]]></search>
           
-          <!-- Example 2: Exact function signature with specific context -->
-          <search><![CDATA[function processUser(user, options) {
-  // Process the user
-  const id = user.id;]]></search>
+          <!-- Example 2: Distinct section header with minimal context -->
+          <search><![CDATA[## Section Title
+First line of content]]></search>
           
-          <!-- Example 3: Specific code block with context -->
-          <search><![CDATA[// Calculate discount
-const discount = price * 0.1;
-const total = price - discount;]]></search>
+          <!-- Example 3: Unique pattern with minimal context -->
+          <search><![CDATA[specific_tag: important_value
+related_setting: secondary_value]]></search>
         </good_example>
         
         <bad_example>
-          <!-- Regex pattern instead of exact text -->
-          <search><![CDATA[function\\s+calculateTotal\\s*\\(\\s*items\\s*\\)\\s*\\{\\s*return\\s+items\\.reduce]]></search>
+          <!-- Too large, includes multiple blocks -->
+          <search><![CDATA[first_setting = value1
+second_setting = value2
+third_setting = value3
+fourth_setting = value4
+fifth_setting = value5
+sixth_setting = value6]]></search>
           
-          <!-- Too short, not enough context -->
-          <search><![CDATA[const discount]]></search>
+          <!-- Looks like a regex pattern instead of exact text -->
+          <search><![CDATA[config_value\\s*=\\s*[0-9]+]]></search>
           
-          <!-- Missing indentation compared to actual file -->
-          <search><![CDATA[function calculateTotal(items) {
-return items.reduce((sum, item) => {
-return sum + item.price;
-}, 0);
-}]]></search>
+          <!-- Too generic, could match in multiple places -->
+          <search><![CDATA[value = 5]]></search>
         </bad_example>
       </search_examples>
     </xml_specification>
@@ -159,17 +155,17 @@ return sum + item.price;
 
   <rules>
     <code_within_xml>
-      <rule>Follow project coding conventions (spacing, indentation, naming) within the code inside <replace> CDATA sections.</rule>
-      <rule>Ensure generated code snippets are correct, functional, and include necessary imports/dependencies if the change involves them.</rule>
-      <rule>Maintain existing code comments in the <replace> block unless the task is specifically to remove or update them.</rule>
-      <rule>Match the style (quotes, semicolons) of surrounding code when adding new code.</rule>
+      <rule>Follow the original formatting style (spacing, indentation, structure) within the code inside <replace> CDATA sections.</rule>
+      <rule>Ensure generated content snippets are correct, functional, and include necessary surrounding context if the change involves them.</rule>
+      <rule>Maintain existing comments in the <replace> block unless the task is specifically to remove or update them.</rule>
+      <rule>Match the style (quotes, delimiters) of surrounding content when adding new material.</rule>
     </code_within_xml>
     
     <xml_integrity>
       <rule>The generated XML MUST be complete and represent ALL required changes based on the user request.</rule>
       <rule>Include all necessary file changes (creations, modifications, deletions) as separate <file> elements.</rule>
       <rule>The <search> content must be the exact text to find, with correct indentation and formatting.</rule>
-      <rule>The <replace> content must be the complete, correct code snippet or file content, properly escaped within CDATA.</rule>
+      <rule>The <replace> content must be the complete, correct snippet or file content, properly escaped within CDATA.</rule>
       <rule>Represent a file rename as a delete of the old path and a create of the new path with the final content.</rule>
       <rule>Ensure proper encoding handling - maintain UTF-8 encoding and don't introduce encoding issues.</rule>
       <rule>Strictly adhere to the XML structure: Use <operation> for modify/create, omit it for delete. Ensure required attributes (path, action, version) are present.</rule>
@@ -182,36 +178,39 @@ return sum + item.price;
     </output_structure>
 
     <token_efficiency>
-      <rule>Make each <search> element contain the minimum text necessary to uniquely identify the target code, plus 1-2 lines of context.</rule>
-      <rule>For <replace> elements, include only the necessary code changes and avoid repeating large unchanged code blocks.</rule>
-      <rule>Break complex changes into multiple focused operations targeting minimal code segments instead of replacing large blocks.</rule>
-      <rule>When possible, use multiple small, specific operations rather than one large operation that includes unchanged code.</rule>
-      <rule>For large files with small changes, target only the specific functions, methods, or blocks that need modification.</rule>
+      <rule>Make each <search> element contain the minimum text necessary to uniquely identify the target content, ideally 10-20 lines maximum.</rule>
+      <rule>For <replace> elements, include only the necessary changes and avoid repeating large unchanged blocks.</rule>
+      <rule>Break complex changes into multiple focused operations targeting minimal segments instead of replacing large blocks.</rule>
+      <rule>When possible, use multiple small, specific operations rather than one large operation that includes unchanged content.</rule>
+      <rule>For large files with small changes, target only the specific sections that need modification.</rule>
       <rule>AVOID REGULAR EXPRESSIONS in the <search> element - use exact text matching instead.</rule>
-      <rule>When creating multi-line search patterns, include enough unique context to prevent accidental matches elsewhere in the codebase.</rule>
-      <rule>Prioritize efficiency by targeting only the specific text area between the tokens of interest rather than capturing large blocks.</rule>
+      <rule>When creating multi-line search patterns, include enough unique context to prevent accidental matches elsewhere in the file.</rule>
+      <rule>Prioritize efficiency by targeting only the specific text area between the elements of interest rather than capturing large blocks.</rule>
+      <rule>CRITICAL: Avoid search patterns longer than 20-30 lines as they are more likely to fail due to minor differences.</rule>
     </token_efficiency>
 
     <pattern_precision>
-      <rule>Accuracy is the top priority—100% precision in targeting the correct code block is essential.</rule>
+      <rule>Accuracy is the top priority—100% precision in targeting the correct content is essential.</rule>
       <rule>Copy the exact text from the source file into the <search> element, including whitespace and indentation.</rule>
-      <rule>For multi-line blocks, include enough context before and after the changed lines to ensure unique identification.</rule>
+      <rule>For function or block changes, target just the definitive unique signature and first few lines rather than entire blocks.</rule>
       <rule>When uncertainty exists about uniqueness, expand the selection to include additional surrounding context rather than risk incorrect replacements.</rule>
-      <rule>Look for distinctive patterns such as unique variable names, function signatures, or comment blocks to serve as context.</rule>
-      <rule>Test for uniqueness—ensure your search text could not possibly match any other section of the codebase.</rule>
-      <rule>For complex or repetitive codebases, combine multiple signals to ensure uniqueness (e.g., nearby comments, function signatures, and variable names).</rule>
+      <rule>Look for distinctive patterns such as unique identifiers, section headers, or comment markers to serve as context.</rule>
+      <rule>Test for uniqueness—ensure your search text could not possibly match any other section of the file.</rule>
+      <rule>For complex or repetitive content, combine multiple signals to ensure uniqueness (e.g., nearby markers, unique labels, and distinctive formatting).</rule>
       <rule>IMPORTANT: Keep search patterns simple! Use exact text matching rather than complex regex patterns.</rule>
+      <rule>CRITICAL: Prefer multiple smaller search/replace operations instead of one large operation covering an entire block or section.</rule>
     </pattern_precision>
     
     <pattern_construction>
-      <rule>For TypeScript/JavaScript files, include function signatures, class definitions, or unique variable declarations with surrounding context.</rule>
-      <rule>For HTML/JSX/TSX files, include component structure, props, or unique className values with surrounding context.</rule>
-      <rule>For CSS files, include specific selector patterns with their property blocks.</rule>
+      <rule>Include unique identifiers, definitions, or declarations with minimal surrounding context.</rule>
+      <rule>For markup files, include unique element structures, attributes, or distinctive content with surrounding context.</rule>
+      <rule>For style files, include specific selectors with minimal property blocks.</rule>
       <rule>PRESERVE ALL WHITESPACE and indentation in both search and replace elements exactly as it appears in the source/target.</rule>
-      <rule>When targeting functions, include the function signature and several lines of the body.</rule>
-      <rule>When targeting imports or exports, include the exact lines with surrounding context.</rule>
-      <rule>For database schema files, include table declarations or column definitions with surrounding context.</rule>
+      <rule>When targeting block structures, prefer to include just the signature/header and 3-5 lines rather than the entire block.</rule>
+      <rule>When targeting imports or includes, use the exact lines with surrounding context.</rule>
+      <rule>For data files, include unique field declarations or section headers with surrounding context.</rule>
       <rule>Match the minimum amount of text needed to uniquely identify the target location, plus 1-2 lines of context.</rule>
+      <rule>Prefer search patterns no longer than 20 lines maximum to minimize the risk of whitespace or line ending mismatches.</rule>
     </pattern_construction>
   </rules>
 </prompt>`;

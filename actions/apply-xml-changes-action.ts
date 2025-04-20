@@ -3,7 +3,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { parseXmlChanges, applyXmlChanges, XmlChangeSet } from '@/lib/xml-utils';
-import { previewXmlChanges, generateXmlPreviewReport, saveXmlPreviewReport } from '@/lib/xml-preview';
+import { previewXmlChanges, generateXmlPreviewReport } from '@/lib/xml-preview';
 import { ActionState } from '@/types';
 import { normalizePath } from '@/lib/path-utils';
 
@@ -46,6 +46,19 @@ function validateXmlChanges(xmlChangeSet: XmlChangeSet): { isValid: boolean; war
       // Check pattern length - too short patterns are likely to match incorrectly
       if (operation.search && operation.search.length < 10 && file.action === 'modify') {
         warnings.push(`Warning: Search pattern for ${file.path} is very short (${operation.search.length} chars) and may match unintended locations.`);
+      }
+      
+      // Check for very large patterns
+      if (operation.search && operation.search.length > 1000) {
+        console.warn(`[XML Apply] Large search pattern detected (${operation.search.length} chars) for ${file.path} - this increases risk of mismatch`);
+        warnings.push(`Warning: Very large search pattern (${operation.search.length} characters) in ${file.path} may cause matching issues. Consider breaking into smaller patterns.`);
+      }
+      
+      // Check for patterns with many lines
+      if (operation.search && operation.search.split('\n').length > 30) {
+        const lineCount = operation.search.split('\n').length;
+        console.warn(`[XML Apply] Multi-line search pattern with ${lineCount} lines detected for ${file.path} - this increases risk of mismatch`);
+        warnings.push(`Warning: Pattern with ${lineCount} lines in ${file.path} exceeds recommended maximum (20-30 lines). Consider using smaller patterns.`);
       }
     }
   }
@@ -158,18 +171,73 @@ export async function applyXmlChangesFromFileAction(
         };
       }
       
-      // Apply the changes
-      const result = await applyXmlChanges(xmlChangeSet, projectDirectory, { 
-        dryRun: options.dryRun === true 
-      });
+      // Process each file in the changeset
+      const allChanges: string[] = [];
+      const allIssues: string[] = [];
+      
+      for (const file of xmlChangeSet.files) {
+        const filePath = path.join(projectDirectory, file.path);
+        
+        try {
+          // Create or modify file
+          if (file.action === 'create' || file.action === 'modify') {
+            // Read existing content for modify operations
+            let fileContent = '';
+            if (file.action === 'modify') {
+              try {
+                fileContent = await fs.readFile(filePath, 'utf-8');
+              } catch (error) {
+                allIssues.push(`Cannot read file for modification: ${file.path} - ${error instanceof Error ? error.message : 'Unknown error'}`);
+                continue;
+              }
+            }
+            
+            // Apply operations
+            if (file.operations && file.operations.length > 0) {
+              const result = applyXmlChanges(fileContent, file.operations, file.path);
+              
+              // Only write if not in dry run mode
+              if (!options.dryRun) {
+                try {
+                  // Create directory if it doesn't exist
+                  const dirPath = path.dirname(filePath);
+                  await fs.mkdir(dirPath, { recursive: true });
+                  
+                  // Write file
+                  await fs.writeFile(filePath, result.content, 'utf-8');
+                } catch (writeError) {
+                  allIssues.push(`Failed to write to ${file.path}: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`);
+                }
+              }
+              
+              // Add results
+              allChanges.push(...result.changes.map(change => `${file.path}: ${change}`));
+            }
+          }
+          // Delete file
+          else if (file.action === 'delete' && !options.dryRun) {
+            try {
+              await fs.access(filePath);
+              await fs.unlink(filePath);
+              allChanges.push(`Deleted file: ${file.path}`);
+            } catch (error) {
+              allIssues.push(`Failed to delete ${file.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }
+        } catch (fileError) {
+          allIssues.push(`Error processing ${file.path}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`);
+        }
+      }
       
       // Return results
       return {
-        isSuccess: result.success,
-        message: result.message,
+        isSuccess: allIssues.length === 0,
+        message: allIssues.length === 0 
+          ? `Applied ${allChanges.length} changes successfully${options.dryRun ? ' (dry run)' : ''}`
+          : `Completed with ${allIssues.length} issues`,
         data: {
-          changes: result.changes,
-          issues: result.issues,
+          changes: allChanges,
+          issues: allIssues,
           previewReport,
         }
       };

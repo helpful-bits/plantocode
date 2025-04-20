@@ -592,456 +592,279 @@ function extractCDATAOrText(node: Element): string {
 }
 
 /**
- * Alternative processing for patterns that cannot be safely converted to regex
- * @param content File content to modify
- * @param searchText Text to search for
- * @param replaceText Text to replace with
+ * Apply XML change operations to file content
+ * This is the core function that processes each operation in an XML change
  */
-function safePlainTextReplace(content: string, searchText: string, replaceText: string): string {
-  // Simple string replacement without regex
-  if (!searchText || content.indexOf(searchText) === -1) {
-    // No matches - try normalizing line endings in case that's the issue
-    const normalizedSearch = searchText.replace(/\r\n/g, '\n');
-    const normalizedContent = content.replace(/\r\n/g, '\n');
+export function applyXmlChanges(
+  fileContent: string,
+  operations: XmlOperation[],
+  filePath: string
+): { content: string; changes: string[] } {
+  let updatedContent = fileContent;
+  const changes: string[] = [];
+  const originalLength = fileContent.length;
+  
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
     
-    if (normalizedContent.indexOf(normalizedSearch) === -1) {
-      return content; // Still no match
+    // Skip empty operations
+    if (!op.search && !op.replace) {
+      changes.push(`Warning: Operation #${i + 1} has empty search and replace patterns. Skipping.`);
+      continue;
     }
     
-    // We found a match with normalized line endings
-    return normalizedContent.split(normalizedSearch).join(replaceText);
-  }
-  
-  // For larger strings, we'll use a more efficient approach than split/join
-  // which can lead to memory issues with very large files
-  if (content.length > 1000000) { // 1MB threshold
-    console.log('[XML Apply] Using efficient chunked replacement for large file');
-    let result = '';
-    let lastIndex = 0;
-    let currentIndex = content.indexOf(searchText);
+    console.log(`[XML Apply] Processing operation #${i + 1} for ${filePath}`);
     
-    while (currentIndex !== -1) {
-      // Add the content up to the match
-      result += content.substring(lastIndex, currentIndex);
-      // Add the replacement
-      result += replaceText;
-      // Move past this match
-      lastIndex = currentIndex + searchText.length;
-      // Find the next match
-      currentIndex = content.indexOf(searchText, lastIndex);
+    // Get the original length before making any changes for this operation
+    const beforeOpLength = updatedContent.length;
+    
+    try {
+      // For empty search (create operations), simply use the replace content
+      if (!op.search || op.search.trim() === '') {
+        if (i === 0) { // Only do this for the first operation in create mode
+          updatedContent = op.replace;
+          changes.push(`Created file with ${op.replace.length} characters`);
+        } else {
+          changes.push(`Warning: Empty search pattern for operation #${i + 1}. Multiple empty search patterns not supported for file creation.`);
+        }
+        continue;
+      }
+      
+      // Attempt to match using different strategies
+      let matchFound = false;
+      let originalMatches = 0;
+      
+      // Strategy 1: Exact text matching
+      if (updatedContent.includes(op.search)) {
+        originalMatches = countOccurrences(updatedContent, op.search);
+        console.log(`[XML Apply] Found ${originalMatches} exact matches for operation #${i + 1} in ${filePath}`);
+        updatedContent = safePlainTextReplace(updatedContent, op.search, op.replace);
+        changes.push(`Applied search/replace operation #${i + 1} (exact match - ${originalMatches} occurrences)`);
+        matchFound = true;
+      } 
+      // Strategy 2: Normalize line endings
+      else {
+        const normalizedSearch = op.search.replace(/\r\n/g, '\n');
+        const normalizedContent = updatedContent.replace(/\r\n/g, '\n');
+        
+        if (normalizedContent.includes(normalizedSearch)) {
+          originalMatches = countOccurrences(normalizedContent, normalizedSearch);
+          console.log(`[XML Apply] Found ${originalMatches} normalized line ending matches for operation #${i + 1} in ${filePath}`);
+          
+          // Need to replace in the normalized content then convert back
+          const normalizedReplacement = op.replace.replace(/\r\n/g, '\n');
+          const normalizedResult = safePlainTextReplace(normalizedContent, normalizedSearch, normalizedReplacement);
+          
+          // Use the normalized result
+          updatedContent = normalizedResult;
+          changes.push(`Applied search/replace operation #${i + 1} (normalized line endings - ${originalMatches} occurrences)`);
+          matchFound = true;
+        }
+        // Strategy 3: Try with whitespace normalization for very specific cases
+        else if (op.search.length < 1000 && op.search.trim().length > 20) {
+          // Only try whitespace normalization for reasonably sized search patterns
+          const result = tryWhitespaceNormalizedReplace(updatedContent, op.search, op.replace);
+          if (result.replaced) {
+            updatedContent = result.content;
+            changes.push(`Applied search/replace operation #${i + 1} (whitespace normalized - ${result.matches} occurrences)`);
+            matchFound = true;
+          }
+        }
+      }
+      
+      // Fallback strategy: Try as regex if it looks like a regex pattern
+      if (!matchFound && looksLikeRegexPattern(op.search)) {
+        try {
+          const { pattern, flags } = parseRegexPattern(op.search);
+          const regex = new RegExp(pattern, flags + 'g');
+          
+          // Test if regex matches
+          const matches = updatedContent.match(regex);
+          if (matches && matches.length > 0) {
+            console.log(`[XML Apply] Found ${matches.length} regex matches for operation #${i + 1} in ${filePath}`);
+            updatedContent = updatedContent.replace(regex, op.replace);
+            changes.push(`Applied search/replace operation #${i + 1} (regex mode - ${matches.length} occurrences)`);
+            matchFound = true;
+          }
+        } catch (regexError) {
+          console.error(`[XML Apply] Regex error for operation #${i + 1} in ${filePath}:`, regexError);
+          changes.push(`Warning: Operation #${i + 1} pattern looks like regex but failed: ${regexError instanceof Error ? regexError.message : 'Unknown regex error'}`);
+        }
+      }
+      
+      // If all strategies failed, fallback to plain text replacement as last resort
+      if (!matchFound) {
+        console.warn(`[XML Apply] No matches found for operation #${i + 1} in ${filePath}. Pattern length: ${op.search.length} chars.`);
+        
+        // Log diagnostics to help troubleshoot matching issues
+        const searchSample = op.search.length > 200 
+          ? op.search.substring(0, 100) + '...' + op.search.substring(op.search.length - 100) 
+          : op.search;
+        console.log(`[XML Apply] Search pattern sample: ${searchSample.replace(/\r?\n/g, '\\n')}`);
+        
+        // Try plain text replacement anyway as a fallback
+        const beforeFallback = updatedContent;
+        updatedContent = safePlainTextReplace(updatedContent, op.search, op.replace);
+        
+        // Check if anything changed
+        if (beforeFallback !== updatedContent) {
+          changes.push(`Applied search/replace operation #${i + 1} (fallback mode - check results carefully)`);
+        } else {
+          changes.push(`Warning: Could not apply operation #${i + 1} - pattern not found in ${filePath}`);
+          
+          // Additional diagnostics
+          if (op.search.length > 1000) {
+            changes.push(`Warning: Search pattern for operation #${i + 1} is very long (${op.search.length} chars) which increases the risk of mismatch.`);
+          }
+        }
+      }
+      
+      // Check if this operation actually changed anything
+      if (beforeOpLength === updatedContent.length && matchFound) {
+        changes.push(`Note: Operation #${i + 1} was applied but did not change the content length.`);
+      }
+    } catch (error) {
+      console.error(`[XML Apply] Error applying operation #${i + 1} to ${filePath}:`, error);
+      changes.push(`Error in operation #${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    // Add the remaining content
-    result += content.substring(lastIndex);
-    return result;
   }
   
-  // For smaller files, split/join is fine
-  return content.split(searchText).join(replaceText);
+  // Add summary of changes
+  const totalCharsChanged = updatedContent.length - originalLength;
+  changes.push(`Total change: ${Math.abs(totalCharsChanged)} characters ${totalCharsChanged >= 0 ? 'added' : 'removed'}`);
+  
+  return { content: updatedContent, changes };
 }
 
 /**
- * Modified XML processing approach that prioritizes exact text matching
- * This replaces the regex-first approach with a text-first approach
- * 
- * @param content File content to modify
- * @param searchText Original search text from XML
- * @param replaceText Replacement text
- * @param filePath Path for logging purposes
+ * Replace text safely, handling multi-line text and multiple occurrences
  */
-function processXmlChange(
-  content: string, 
-  searchText: string, 
-  replaceText: string, 
-  filePath: string
-): { newContent: string; matched: boolean; method: string } {
-  // Step 1: Try direct text replacement first (most reliable)
-  if (content.includes(searchText)) {
-    console.log(`[XML Apply] Using exact text match replacement for ${filePath}`);
-    return {
-      newContent: safePlainTextReplace(content, searchText, replaceText),
-      matched: true,
-      method: 'exact-text'
-    };
-  }
+export function safePlainTextReplace(
+  content: string,
+  search: string,
+  replace: string
+): string {
+  if (!search) return content;
   
-  // Step 2: Try with normalized line endings
-  const normalizedSearch = searchText.replace(/\r\n/g, '\n');
-  const normalizedContent = content.replace(/\r\n/g, '\n');
-  
-  if (normalizedContent.includes(normalizedSearch)) {
-    console.log(`[XML Apply] Using normalized line endings text match for ${filePath}`);
-    return {
-      newContent: normalizedContent.replace(normalizedSearch, replaceText),
-      matched: true, 
-      method: 'normalized-text'
-    };
-  }
-  
-  // Step 3: Try with whitespace normalization (helps with indentation differences)
-  const normalizedWhitespaceSearch = normalizedSearch.replace(/\s+/g, ' ').trim();
-  const contentLines = normalizedContent.split('\n');
-  
-  for (let i = 0; i < contentLines.length; i++) {
-    const line = contentLines[i];
-    const normalizedLine = line.replace(/\s+/g, ' ').trim();
-    
-    if (normalizedLine === normalizedWhitespaceSearch || 
-        normalizedWhitespaceSearch.includes(normalizedLine)) {
-      // Found a likely match with normalized whitespace
-      const contextLines = contentLines.slice(Math.max(0, i - 5), Math.min(contentLines.length, i + 5)).join('\n');
-      console.log(`[XML Apply] Found potential whitespace-normalized match at line ${i+1} in ${filePath}`);
-      
-      // Try to extract the actual context with proper whitespace
-      const startIndex = normalizedContent.indexOf(contextLines);
-      if (startIndex >= 0) {
-        const contextWithProperWhitespace = normalizedContent.substring(startIndex, startIndex + contextLines.length);
-        const newContextWithReplacement = contextWithProperWhitespace.replace(line, replaceText);
-        
-        return {
-          newContent: normalizedContent.replace(contextWithProperWhitespace, newContextWithReplacement),
-          matched: true,
-          method: 'whitespace-normalized'
-        };
-      }
-    }
-  }
-  
-  // Step 4: Only as a last resort, try regex
   try {
-    // First check if it looks like a regex pattern
-    const isLikelyRegex = /[.*+?^${}()|[\]\\]/.test(searchText) && 
-                         !searchText.includes('function') && 
-                         !searchText.includes('import ') && 
-                         !searchText.includes('export ');
-    
-    if (isLikelyRegex) {
-      // Fix and compile the regex
-      const { fixed, modifications } = fixRegexPattern(searchText);
-      if (modifications.length > 0) {
-        console.log(`[XML Apply] Fixed regex pattern for ${filePath}:`);
-        modifications.forEach(mod => console.log(`  - ${mod}`));
-      }
-      
-      // Try the regex
-      const regex = new RegExp(fixed, 'gms');
-      const matches = content.match(regex);
-      
-      if (matches && matches.length > 0) {
-        console.log(`[XML Apply] Using regex replacement for ${filePath} (${matches.length} matches)`);
-        return {
-          newContent: content.replace(regex, replaceText),
-          matched: true,
-          method: 'regex'
-        };
-      }
-    }
+    // Handle multi-line strings correctly by avoiding regex issues
+    return content.split(search).join(replace);
   } catch (error) {
-    console.warn(`[XML Apply] Regex approach failed for ${filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('[XML Utils] Error in safePlainTextReplace:', error);
+    // Fallback to single replacement if join fails
+    return content.replace(search, replace);
+  }
+}
+
+/**
+ * Count occurrences of a substring in a string
+ */
+function countOccurrences(str: string, substr: string): number {
+  if (!substr) return 0;
+  
+  let count = 0;
+  let pos = str.indexOf(substr);
+  
+  while (pos !== -1) {
+    count++;
+    pos = str.indexOf(substr, pos + 1);
   }
   
-  // No matches found with any method
+  return count;
+}
+
+/**
+ * Check if a pattern looks like it was intended as a regex
+ */
+function looksLikeRegexPattern(pattern: string): boolean {
+  // Check for common regex special characters and surrounding patterns
+  return /^\/.*\/[gimsuy]*$/.test(pattern) || // Looks like /pattern/flags
+         /\\d|\\w|\\s|\[\^?.*?\]|\(\?:|\(\?!|\(\?=|\\b|^\^|\$$/.test(pattern); // Contains regex special sequences
+}
+
+/**
+ * Try to parse a string that might be a regex with flags
+ */
+function parseRegexPattern(pattern: string): { pattern: string, flags: string } {
+  // Check if the pattern is wrapped in forward slashes with possible flags
+  const regexMatch = /^\/(.*)\/([gimsuy]*)$/.exec(pattern);
+  
+  if (regexMatch) {
+    return {
+      pattern: regexMatch[1],
+      flags: regexMatch[2] || 'ms' // Default to multiline and dotall
+    };
+  }
+  
+  // If not wrapped, assume it's a pattern that needs escaping
   return {
-    newContent: content,
-    matched: false,
-    method: 'none'
+    pattern: escapeRegExp(pattern),
+    flags: 'ms' // Default to multiline and dotall
   };
 }
 
 /**
- * Apply XML changes to project files with transaction support
+ * Escape special regex characters in a string
  */
-export async function applyXmlChanges(
-  xmlChangeSet: XmlChangeSet, 
-  projectDirectory: string,
-  options = { dryRun: false }
-): Promise<{ success: boolean; message: string; changes: string[]; issues: string[] }> {
-  const changes: string[] = [];
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const backups: BackupFile[] = [];
-  let rollbackNeeded = false;
-  
-  // Add any validation errors from the XML parsing stage
-  if (xmlChangeSet.validationErrors && xmlChangeSet.validationErrors.length > 0) {
-    xmlChangeSet.validationErrors.forEach(err => warnings.push(`XML Validation: ${err}`));
-  }
-  
-  try {
-    // First pass - check that files exist/don't exist as appropriate and validate operations
-    for (const fileChange of xmlChangeSet.files) {
-      const filePath = path.join(projectDirectory, fileChange.path);
-      const normalizedPath = normalizePath(filePath);
-      
-      let fileExists = false;
-      let fileContent: string | null = null;
-      
-      try {
-        // Check if file exists
-        await fs.access(filePath);
-        fileExists = true;
-        
-        // Read file content for validation
-        fileContent = await fs.readFile(filePath, 'utf-8');
-      } catch (error) {
-        fileExists = false;
-      }
-      
-      // Validate based on action type
-      if (fileChange.action === 'delete' && !fileExists) {
-        warnings.push(`Warning: Cannot delete ${fileChange.path} - file does not exist`);
-        continue;
-      }
-      
-      if (fileChange.action === 'create' && fileExists) {
-        warnings.push(`Warning: Cannot create ${fileChange.path} - file already exists`);
-        continue;
-      }
-      
-      if (fileChange.action === 'modify' && !fileExists) {
-        errors.push(`Error: Cannot modify ${fileChange.path} - file does not exist`);
-        continue;
-      }
-      
-      // For modify operations, validate regexes
-      if (fileChange.action === 'modify' && fileContent !== null) {
-        // Backup file content before modification
-        backups.push({ path: filePath, content: fileContent! });
-        
-        // Validate operations
-        if (!fileChange.operations || fileChange.operations.length === 0) {
-          errors.push(`Error: Invalid modify operation for ${fileChange.path} - no operations specified`);
-          continue;
-        }
-        
-        // Pre-validate all regex patterns against the actual file content
-        let hasValidOperation = false;
-        for (const operation of fileChange.operations) {
-          try {
-            // First, try to fix the pattern
-            const { fixed, modifications } = fixRegexPattern(operation.search);
-            if (modifications.length > 0) {
-              console.warn(`[Regex Fixer] Applied ${modifications.length} fixes to regex in ${fileChange.path}`);
-              modifications.forEach(mod => console.warn(`  - ${mod}`));
-              operation.search = fixed;
-            }
-            
-            // Then validate the pattern
-            const result = validateRegexPattern(operation.search, fileChange.path, fileContent);
-            operation.search = result.fixedPattern; // Use the fixed pattern
-            hasValidOperation = true;
-          } catch (error) {
-            errors.push(`Error in regex for ${fileChange.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          }
-        }
-        
-        if (!hasValidOperation && fileChange.operations.length > 0) {
-          errors.push(`Error: No valid operations for ${fileChange.path}`);
-        }
-      }
-    }
-    
-    // Exit early for dry run or if there are critical errors
-    if (options.dryRun || errors.length > 0) {
-      let errorDetails = '';
-      if (errors.length > 0) {
-        errorDetails = `\n- ${errors.join('\n- ')}`;
-      }
-      
-      return {
-        success: errors.length === 0,
-        message: options.dryRun ? 'Dry run completed' : `Validation failed: ${errorDetails}`,
-        changes,
-        issues: [...errors, ...warnings]
-      };
-    }
-    
-    // Second pass - apply changes
-    for (const fileChange of xmlChangeSet.files) {
-      const filePath = path.join(projectDirectory, fileChange.path);
-      const normalizedPath = normalizePath(filePath);
-      
-      try {
-        if (fileChange.action === 'delete') {
-          // Skip if file doesn't exist (already warned)
-          if (warnings.some(warning => warning.includes(`Cannot delete ${fileChange.path}`))) {
-            continue;
-          }
-          
-          // Delete file
-          try {
-            await fs.unlink(filePath);
-            changes.push(`Deleted file: ${fileChange.path}`);
-          } catch (error) {
-            rollbackNeeded = true;
-            errors.push(`Error deleting ${fileChange.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          }
-        } else if (fileChange.action === 'create') {
-          // Skip if file already exists (already warned)
-          if (warnings.some(warning => warning.includes(`Cannot create ${fileChange.path}`))) {
-            continue;
-          }
-          
-          // Create file
-          if (!fileChange.operations || fileChange.operations.length !== 1) {
-            rollbackNeeded = true;
-            errors.push(`Invalid create operation for ${fileChange.path}: exactly one operation required`);
-            continue;
-          }
-          
-          const content = fileChange.operations[0].replace;
-          try {
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(filePath, content);
-            changes.push(`Created file: ${fileChange.path}`);
-          } catch (error) {
-            rollbackNeeded = true;
-            errors.push(`Error creating ${fileChange.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          }
-        } else if (fileChange.action === 'modify') {
-          // Skip if we already detected an error
-          if (errors.some(err => err.includes(`Cannot modify ${fileChange.path}`) || 
-                                  err.includes(`No valid operations for ${fileChange.path}`))) {
-            continue;
-          }
-          
-          // Read file content again (it might have changed)
-          let content: string;
-          try {
-            content = await fs.readFile(filePath, 'utf-8');
-          } catch (error) {
-            rollbackNeeded = true;
-            errors.push(`Error reading ${fileChange.path} for modification: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            continue;
-          }
-          
-          let operationsApplied = 0;
-          let operationsFailed = 0;
-          let contentModified = false;
-          
-          // Apply operations sequentially
-          for (const operation of fileChange.operations!) {
-            try {
-              // Use our robust text-first operation processor
-              const result = processXmlChange(
-                content,
-                operation.search,
-                operation.replace,
-                fileChange.path
-              );
-              
-              // Check if the operation was successful
-              if (result.matched) {
-                content = result.newContent;
-                operationsApplied++;
-                contentModified = true;
-                console.log(`[XML Apply] Successfully applied change to ${fileChange.path} using ${result.method} matching`);
-              } else {
-                // No match found with any method
-                operationsFailed++;
-                const errorDetails = `No matches found for pattern using any method (exact text, normalized text, whitespace-normalized, regex)`;
-                warnings.push(`Warning: Search pattern didn't match any content in ${fileChange.path}: ${errorDetails}`);
-                console.warn(`[XML Apply] Failed to find match in ${fileChange.path} for pattern: ${operation.search.substring(0, 50)}${operation.search.length > 50 ? '...' : ''}`);
-              }
-            } catch (error) {
-              operationsFailed++;
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              warnings.push(`Warning: Failed to apply operation in ${fileChange.path}: ${errorMessage}`);
-              console.error(`[XML Apply] Error processing operation in ${fileChange.path}:`, error);
-            }
-          }
-          
-          // Write the modified content back to the file
-          if (contentModified) {
-            try {
-              await fs.writeFile(filePath, content);
-              changes.push(`Modified file: ${fileChange.path} (${operationsApplied} operations applied, ${operationsFailed} failed)`);
-            } catch (error) {
-              rollbackNeeded = true;
-              errors.push(`Error writing modified content to ${fileChange.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
-          } else {
-            warnings.push(`No changes were made to ${fileChange.path}`);
-          }
-        }
-      } catch (error) {
-        rollbackNeeded = true;
-        errors.push(`Error processing ${fileChange.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-    
-    // If errors occurred during the second pass, rollback all changes
-    if (rollbackNeeded && backups.length > 0) {
-      await rollbackChanges(backups);
-      errors.push('Changes were rolled back due to errors');
-    }
-    
-    return {
-      success: !rollbackNeeded && errors.length === 0,
-      message: rollbackNeeded 
-        ? 'Failed to apply all changes, rolled back to previous state' 
-        : errors.length > 0 
-          ? 'Some errors occurred while applying changes' 
-          : 'All changes applied successfully',
-      changes,
-      issues: [...errors, ...warnings]
-    };
-  } catch (error) {
-    // Handle any unexpected errors
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
-    // Attempt to rollback changes
-    if (backups.length > 0) {
-      try {
-        await rollbackChanges(backups);
-        return {
-          success: false,
-          message: `An error occurred: ${errorMessage} (changes were rolled back)`,
-          changes: [],
-          issues: [`Fatal error: ${errorMessage}`]
-        };
-      } catch (rollbackError) {
-        return {
-          success: false,
-          message: `An error occurred: ${errorMessage} (failed to roll back changes: ${rollbackError instanceof Error ? rollbackError.message : 'Unknown error'})`,
-          changes: [],
-          issues: [`Fatal error: ${errorMessage}`, `Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : 'Unknown error'}`]
-        };
-      }
-    } else {
-      return {
-        success: false,
-        message: `An error occurred: ${errorMessage}`,
-        changes: [],
-        issues: [`Fatal error: ${errorMessage}`]
-      };
-    }
-  }
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
- * Roll back changes using backups
+ * Try to replace with whitespace normalization
+ * This is for cases where indentation might be different
  */
-async function rollbackChanges(backups: BackupFile[]): Promise<void> {
-  for (const backup of backups) {
-    try {
-      if (backup.content === null) {
-        // File was created, delete it
-        try {
-          await fs.access(backup.path);
-          await fs.unlink(backup.path);
-          console.log(`[Rollback] Deleted created file: ${backup.path}`);
-        } catch (error) {
-          // File doesn't exist, nothing to do
-        }
-      } else {
-        // File was modified or deleted, restore it
-        await fs.mkdir(path.dirname(backup.path), { recursive: true });
-        await fs.writeFile(backup.path, backup.content);
-        console.log(`[Rollback] Restored file: ${backup.path}`);
+function tryWhitespaceNormalizedReplace(content: string, search: string, replace: string): { 
+  content: string; 
+  replaced: boolean;
+  matches: number;
+} {
+  try {
+    // Normalize search and content for comparison
+    const normalizedSearch = search.replace(/\s+/g, ' ').trim();
+    
+    // Split into lines to check each potential match location
+    let contentLines = content.split('\n');
+    let matchLocations: { start: number, end: number }[] = [];
+    
+    // Look for potential matches using line-by-line comparison
+    for (let i = 0; i < contentLines.length; i++) {
+      // Try to match a block starting at this line
+      const potentialMatchLines = contentLines.slice(i, i + search.split('\n').length);
+      const potentialMatch = potentialMatchLines.join('\n');
+      
+      if (potentialMatch.replace(/\s+/g, ' ').trim() === normalizedSearch) {
+        matchLocations.push({ start: i, end: i + potentialMatchLines.length - 1 });
       }
-    } catch (error) {
-      console.error(`[Rollback] Failed to restore ${backup.path}:`, error);
     }
+    
+    // If we found matches, apply the replacements from bottom to top
+    // (to avoid changing line numbers for subsequent replacements)
+    if (matchLocations.length > 0) {
+      console.log(`[XML Apply] Found ${matchLocations.length} whitespace-normalized matches`);
+      
+      // Sort in reverse order by start line
+      matchLocations.sort((a, b) => b.start - a.start);
+      
+      // Replace each match
+      for (const loc of matchLocations) {
+        const beforeLines = contentLines.slice(0, loc.start);
+        const afterLines = contentLines.slice(loc.end + 1);
+        const replacementLines = replace.split('\n');
+        
+        contentLines = [...beforeLines, ...replacementLines, ...afterLines];
+      }
+      
+      return {
+        content: contentLines.join('\n'),
+        replaced: true,
+        matches: matchLocations.length
+      };
+    }
+    
+    return { content, replaced: false, matches: 0 };
+  } catch (error) {
+    console.error('[XML Apply] Error in whitespace normalized replace:', error);
+    return { content, replaced: false, matches: 0 };
   }
 } 
