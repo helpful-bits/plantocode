@@ -6,10 +6,11 @@ import { useState } from 'react';
 
 interface IdeIntegrationProps {
   filePath: string;
+  tooltip?: string;
   onError?: (message: string) => void; // Callback for errors
 }
 
-export function IdeIntegration({ filePath, onError }: IdeIntegrationProps) {
+export function IdeIntegration({ filePath, tooltip = "Open in editor", onError }: IdeIntegrationProps) {
   const [error, setError] = useState<string | null>(null); // Add error state
 
   const handleOpenInIde = async () => {
@@ -69,14 +70,20 @@ export function IdeIntegration({ filePath, onError }: IdeIntegrationProps) {
           size="sm"
           className="flex items-center gap-1 text-xs"
           onClick={handleOpenInIde}
-          title={`Open patch file in default editor: ${filePath}`} // Show full path in title
+          title={`${tooltip}: ${filePath}`} // Show full path in title
           disabled={!!error && error.includes('File not found')} // Disable if file not found
         >
           <Code className="h-3 w-3" />
           <span>Open in IDE</span>
           <ExternalLink className="h-3 w-3 ml-1" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleCopyPath} title="Copy patch file path" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={handleCopyPath} 
+          title="Copy file path" 
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+        >
           <Copy className="h-3 w-3" />
         </Button>
       </div>

@@ -7,11 +7,11 @@ import path from 'path'; // Keep path import
 import { getAllNonIgnoredFiles } from '@/lib/git-utils';
 import { isBinaryFile, BINARY_EXTENSIONS } from '@/lib/file-utils';
 import { estimateTokens } from '@/lib/token-estimator';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { GEMINI_FLASH_MODEL, GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 import geminiClient from '@/lib/api/gemini-client';
 import { RequestType } from '@/lib/api/streaming-request-pool';
 
-// Flash 2.0 model limits
+// Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
 const FLASH_MAX_OUTPUT_TOKENS = 16384;
 const TOKEN_BUFFER = 20000; // Buffer for XML tags and other overhead
@@ -89,7 +89,9 @@ Please list the most relevant file paths for this task, one per line:`;
     const result = await geminiClient.sendRequest(prompt, {
       model: GEMINI_FLASH_MODEL,
       systemPrompt,
-      maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS
+      temperature: 0.6, // Lower temperature for more deterministic results
+      maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS,
+      requestType: RequestType.CODE_ANALYSIS
     });
     
     if (!result.isSuccess || !result.data) {
@@ -155,13 +157,69 @@ Please list the most relevant file paths for this task, one per line:`;
  * Enhanced version of findRelevantPathsAction that also provides task context
  * @param projectDirectory The root directory of the project
  * @param taskDescription The user's task description
- * @param selectedFilesToAnalyze Optional array of file paths to limit analysis to
+ * @param specificFilePaths Optional array of file paths to limit analysis to
  */
 export async function findRelevantFilesAction(
   projectDirectory: string,
   taskDescription: string,
   specificFilePaths?: string[]
 ): Promise<ActionState<{ relevantPaths: string[], enhancedTaskDescription: string }>> {
+  try {
+    // First step: Find relevant paths
+    const pathFinderResult = await findAndValidateRelevantPaths(
+      projectDirectory,
+      taskDescription,
+      specificFilePaths
+    );
+
+    if (!pathFinderResult.isSuccess || !pathFinderResult.data) {
+      return { 
+        isSuccess: false, 
+        message: pathFinderResult.message || "Failed to find relevant paths" 
+      };
+    }
+
+    // Second step: Generate guidance using the validated paths
+    const guidanceResult = await generateGuidanceForPaths(
+      projectDirectory,
+      taskDescription,
+      pathFinderResult.data.paths
+    );
+
+    if (!guidanceResult.isSuccess || !guidanceResult.data) {
+      return {
+        isSuccess: true, // Still consider it a success even if guidance fails
+        message: `Found ${pathFinderResult.data.paths.length} relevant paths, but ${guidanceResult.message}`,
+        data: {
+          relevantPaths: pathFinderResult.data.paths,
+          enhancedTaskDescription: ""
+        }
+      };
+    }
+
+    return {
+      isSuccess: true,
+      message: `Found ${pathFinderResult.data.paths.length} relevant file paths with task guidance.`,
+      data: {
+        relevantPaths: pathFinderResult.data.paths,
+        enhancedTaskDescription: guidanceResult.data.guidance
+      }
+    };
+  } catch (error) {
+    console.error('Error in findRelevantFilesAction:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { isSuccess: false, message: `Error finding relevant files: ${errorMessage}` };
+  }
+}
+
+/**
+ * Step 1: Find and validate the most relevant paths for a given task
+ */
+async function findAndValidateRelevantPaths(
+  projectDirectory: string,
+  taskDescription: string,
+  specificFilePaths?: string[]
+): Promise<ActionState<{ paths: string[] }>> {
   // Validate inputs
   if (!taskDescription || !taskDescription.trim()) {
     return { isSuccess: false, message: "Task description cannot be empty." };
@@ -189,7 +247,129 @@ export async function findRelevantFilesAction(
       return { isSuccess: false, message: "No files to analyze." };
     }
     
-    // Read file contents, skipping binary files
+    // Generate directory tree for context
+    const dirTree = await generateDirectoryTree(projectDirectory);
+    
+    // Create a system prompt that instructs the model to find paths
+    const systemPrompt = `You are a code path finder that helps identify the most relevant files for a given programming task.
+Given a project structure and a task description, analyze which files would be most important to understand or modify for the task.
+Return ONLY file paths and no other commentary, with one file path per line.
+Ignore node_modules, build directories, and binary files unless they are directly relevant to the task.
+Unless the task specifically mentions tests, favor implementation files over test files.`;
+    
+    // Create a prompt with project structure and task description
+    const prompt = `Project Structure:
+${dirTree}
+
+Task Description:
+${taskDescription}
+
+CRITICAL INSTRUCTIONS:
+1. ONLY list file paths that actually exist in this project
+2. Do not hallucinate or make up file paths
+3. Return ONLY file paths and no other commentary
+4. List one file path per line
+5. Focus on the most relevant files for the task described above
+6. Do not include node_modules, build directories, or binary files unless directly relevant
+7. Unless the task specifically mentions tests, favor implementation files over test files
+
+Please list the most relevant file paths for this task, one per line:`;
+    
+    // Estimate tokens to ensure we're within limits
+    const promptTokens = await estimateTokens(prompt);
+    const systemPromptTokens = await estimateTokens(systemPrompt);
+    const estimatedTokens = promptTokens + systemPromptTokens;
+    if (estimatedTokens > MAX_INPUT_TOKENS - TOKEN_BUFFER) {
+      return { 
+        isSuccess: false, 
+        message: `The project is too large to analyze at once (${estimatedTokens} estimated tokens). Please try a more specific task description or focus on a subdirectory.` 
+      };
+    }
+    
+    // Call Gemini Flash through our client
+    const result = await geminiClient.sendRequest(prompt, {
+      model: GEMINI_FLASH_MODEL,
+      systemPrompt,
+      temperature: 0.6, // Lower temperature for more deterministic results
+      maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS,
+      requestType: RequestType.CODE_ANALYSIS
+    });
+    
+    if (!result.isSuccess || !result.data) {
+      return { isSuccess: false, message: result.message || "Failed to find paths" };
+    }
+    
+    // Process the response to get clean paths
+    const paths = result.data
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .filter(line => !line.includes('node_modules/'))
+      .map(line => {
+        // Clean up paths - remove numbers or bullets at the start
+        return line.replace(/^[\d\.\s-]+/, '').trim();
+      });
+    
+    // Validate the paths exist in the project
+    const validatedPaths = [];
+    for (const filePath of paths) {
+      try {
+        const fullPath = path.join(projectDirectory, filePath);
+        const stats = await fs.stat(fullPath);
+        if (stats.isFile()) {
+          // Skip binary files
+          const ext = path.extname(filePath).toLowerCase();
+          if (BINARY_EXTENSIONS.has(ext)) continue;
+          
+          try {
+            const content = await fs.readFile(fullPath);
+            const isBinary = await isBinaryFile(content);
+            if (!isBinary) {
+              validatedPaths.push(filePath);
+            }
+          } catch (error) {
+            // Skip files we can't read
+            console.warn(`[PathFinder] Could not read file: ${filePath}`, error);
+          }
+        }
+      } catch (error) {
+        // Skip files that don't exist
+        console.warn(`[PathFinder] File doesn't exist: ${filePath}`);
+      }
+    }
+    
+    console.log(`[PathFinder] Found ${validatedPaths.length} relevant files`);
+    
+    return {
+      isSuccess: true,
+      message: `Found ${validatedPaths.length} relevant paths`,
+      data: { paths: validatedPaths }
+    };
+  } catch (error) {
+    console.error('[PathFinder] Error finding relevant paths:', error);
+    return { 
+      isSuccess: false, 
+      message: error instanceof Error ? error.message : "Failed to find relevant paths" 
+    };
+  }
+}
+
+/**
+ * Step 2: Generate guidance for specific paths that were found in step 1
+ */
+async function generateGuidanceForPaths(
+  projectDirectory: string,
+  taskDescription: string,
+  relevantPaths: string[]
+): Promise<ActionState<{ guidance: string }>> {
+  if (!relevantPaths || relevantPaths.length === 0) {
+    return { isSuccess: false, message: "No relevant paths provided for guidance generation." };
+  }
+
+  try {
+    console.log(`Generating guidance for ${relevantPaths.length} relevant paths`);
+
+    // Read content of all relevant files
     const fileInfos: { path: string, content: string, tokens: number }[] = [];
     const MAX_FILE_SIZE = 100 * 1024; // 100KB max per file to prevent token overflow
     let totalFiles = 0;
@@ -197,27 +377,17 @@ export async function findRelevantFilesAction(
     let totalSkippedLargeFiles = 0;
     let totalErrorFiles = 0;
     
-    if (!fileInfos) { // Initialize fileInfos if it's null or undefined
-      // fileInfos = []; // Uncomment if initialization is needed
-      // console.log("Initialized fileInfos array."); // Debugging log
-    }
-    
     // Calculate token count for task description
     const taskDescriptionTokens = await estimateTokens(taskDescription);
     console.log(`Task description token count: ${taskDescriptionTokens}`);
     
     // Process all files and gather token counts
-    for (const filePath of allFilePaths) {
+    for (const filePath of relevantPaths) {
       // Skip binary files by extension
       const ext = path.extname(filePath).toLowerCase();
       if (BINARY_EXTENSIONS.has(ext)) {
         totalSkippedBinaryFiles++;
         continue;
-      }
-      
-      // Log any markdown files found
-      if (ext === '.md' || ext === '.mdc') {
-        console.log(`Found markdown file: ${filePath}`);
       }
       
       try {
@@ -300,50 +470,65 @@ export async function findRelevantFilesAction(
       batches.push(currentBatch);
     }
     
-    console.log(`Split into ${batches.length} batches for analysis`);
-    
-    // Process each batch in parallel with API calls to identify relevant files
-    const allRelevantPaths = new Set<string>();
-    let enhancedTaskDescription = '';
-    
-    // System prompt template for relevance analysis
-    const systemPrompt = `You are a skilled software engineering assistant that helps identify relevant code snippets and provide helpful context.
-Given a codebase and task description, your goal is to:
-1. Identify which files are relevant to the task
-2. Provide helpful context that would assist the developer in completing this task
-3. Clearly markup your file references with <file></file> tags
+    console.log(`Split into ${batches.length} batches for guidance generation`);
 
-IMPORTANT: ONLY list file paths that were explicitly provided to you in the input. DO NOT hallucinate or make up file paths. If you're unsure if a file exists, do not include it.
+    // System prompt template for guidance analysis
+    const systemPrompt = `You are a senior principal architect and expert software engineer tasked with providing exceptional, production-quality implementation guidance.
+Given code files and a task description, you must provide concrete, executable instructions that enable a developer to implement the solution with minimal uncertainty.
 
-Follow this format in your response:
-<relevant_files>
-file_path_1
-file_path_2
-...
-</relevant_files>
+Your guidance MUST include:
+1. CONCRETE technical specifications with explicit API signatures, type definitions, and return values
+2. EXECUTABLE step-by-step implementation instructions with specific file paths and line numbers where possible
+3. ACTUAL CODE SNIPPETS showing critical implementation details (not pseudocode)
+4. EXACT imports and dependencies needed with version numbers
+5. CRITICAL edge cases with explicit handling code
+6. SPECIFIC performance considerations with measurable targets
 
+Follow this structured format in your response:
 <guidance>
-Your helpful context and explanation of how these files relate to the task.
-Focus on architectural insights, patterns, and non-obvious relationships.
-Only reference files you've seen in the input. Do not hallucinate file paths.
+## Task Analysis
+[PRECISE understanding of the task requirements and identified technical challenges]
+
+## Core Implementation Plan
+[NUMBERED step-by-step plan with EXPLICIT file locations, code snippets, and imports]
+
+## Technical Specifications
+[CONCRETE API specs, type definitions, data models, validation rules, and expected behavior]
+
+## Code Samples
+[ACTUAL functioning code snippets that demonstrate key implementation points, with comments explaining the important logic]
+
+## Integration Points
+[SPECIFIC files and functions that need to be modified to integrate this solution, with exact import statements]
+
+## Error Handling & Edge Cases
+[COMPLETE error handling code and edge case solutions with explicit catch blocks]
+
+## Testing Strategy
+[EXACT test scenarios with expected inputs and outputs, including both happy and error paths]
+
+## Context-Specific Considerations
+[SPECIFIC architectural patterns used in THIS codebase, and how the solution aligns with the existing patterns]
+
+Only reference files you've been provided in the input. Do not hallucinate file paths.
 </guidance>
 
-Be thorough but concise. Focus on providing insights a developer might miss from a quick scan of the codebase.`;
+Your guidance should be extremely precise, leaving no room for ambiguity. Focus on production-ready implementation details that will ensure successful execution on the first attempt, with proper error handling, performance considerations, and architecture alignment. Analyze existing patterns in the codebase and ensure your solution is compatible with them. Provide specific code examples for all complex or critical sections, and make sure your solution can be directly implemented without requiring additional clarification.`;
 
     // Process each batch and collect results
+    let enhancedTaskDescription = '';
     let batchIndex = 0;
     for (const batch of batches) {
       batchIndex++;
-      console.log(`Processing batch ${batchIndex}/${batches.length} with ${batch.files.length} files and ${batch.tokenCount} tokens`);
+      console.log(`Processing guidance batch ${batchIndex}/${batches.length} with ${batch.files.length} files and ${batch.tokenCount} tokens`);
       
       let fullPrompt = `Task Description: ${taskDescription}\n\n`;
       
       // Add clear instructions directly in the user prompt
       fullPrompt += `CRITICAL INSTRUCTIONS:
 1. ONLY include file paths from the list below - do not reference any files not shown here
-2. Do not hallucinate or make up file paths
-3. Analyze the provided files to determine which are most relevant to the task
-4. Format your response exactly as requested below
+2. Analyze the provided files to generate guidance for completing the task
+3. Format your response as requested below
 
 Files to analyze:\n`;
       
@@ -360,23 +545,19 @@ Files to analyze:\n`;
         fullPrompt += `\nFile: ${file.path}\n${'='.repeat(file.path.length + 6)}\n${file.content}\n\n`;
       }
       
-      fullPrompt += "\nRESPONSE FORMAT: List only the most relevant files for this task using the following format:\n";
-      fullPrompt += "<relevant_files>\n[file paths here, one per line, ONLY from the list of files provided above]\n</relevant_files>\n\n";
-      fullPrompt += "<guidance>\n[Your analysis explaining why these files are relevant to the task]\n</guidance>";
+      fullPrompt += "\nRESPONSE FORMAT: Provide guidance for this task using the following format:\n";
+      fullPrompt += "<guidance>\n[Your analysis explaining how these files relate to the task and providing insights for implementation]\n</guidance>";
       
       try {
         // Call Gemini API with CODE_ANALYSIS request type
         const result = await geminiClient.sendRequest(fullPrompt, {
-          model: GEMINI_FLASH_MODEL,
-          temperature: 0.7, // Lower temperature for more deterministic results
+          model: GEMINI_PRO_PREVIEW_MODEL,
+          temperature: 0.9, // Higher temperature for more creative responses
           maxOutputTokens: 8000,
-          requestType: RequestType.CODE_ANALYSIS // Specify request type
+          requestType: RequestType.CODE_ANALYSIS
         });
         
         if (result.isSuccess && result.data) {
-          // Process the response to extract relevant paths
-          processRelevantFilesContent(result.data, allRelevantPaths, batchIndex, batch.files);
-          
           // Try to extract guidance content
           const guidance = extractGuidanceContent(result.data);
           if (guidance) {
@@ -406,148 +587,28 @@ Files to analyze:\n`;
             }
           }
         } else {
-          console.error(`Error processing batch ${batchIndex}:`, result.message);
+          console.error(`Error processing guidance batch ${batchIndex}:`, result.message);
         }
       } catch (error) {
-        console.error(`Error calling Gemini API for batch ${batchIndex}:`, error);
+        console.error(`Error calling Gemini API for guidance batch ${batchIndex}:`, error);
       }
     }
     
-    // Convert set to array for the final result
-    const relevantPaths = Array.from(allRelevantPaths);
-    console.log(`Total unique relevant paths identified: ${relevantPaths.length}`);
-    
-    if (relevantPaths.length === 0) {
-      return { isSuccess: false, message: "No relevant paths were identified." };
+    if (enhancedTaskDescription.length === 0) {
+      return { isSuccess: false, message: "No guidance could be generated." };
     }
     
-    console.log(`Finished processing with ${relevantPaths.length} relevant files and ${enhancedTaskDescription.length} characters of guidance`);
-    
-    // Clean all relevant paths to ensure no XML tags remain
-    const cleanRelevantPaths = relevantPaths.map(p => p.replace(/<file>|<\/file>/g, '').trim()); // Rename variable for clarity
+    console.log(`Generated ${enhancedTaskDescription.length} characters of guidance`);
     
     return {
       isSuccess: true,
-      message: `Found ${cleanRelevantPaths.length} relevant file paths with task guidance.`,
-      data: { 
-        relevantPaths: cleanRelevantPaths,
-        enhancedTaskDescription
-      }
+      message: `Generated guidance successfully`,
+      data: { guidance: enhancedTaskDescription }
     };
   } catch (error) {
-    console.error('Error in findRelevantFilesAction:', error);
+    console.error('Error in generateGuidanceForPaths:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return { isSuccess: false, message: `Error finding relevant files: ${errorMessage}` };
-  }
-}
-
-/**
- * Process the content of the relevant_files section
- */
-function processRelevantFilesContent(
-  content: string, 
-  allRelevantPaths: Set<string>, 
-  batchIndex: number,
-  batchFiles?: Array<{ path: string, content: string }>
-): void {
-  // Create a set of valid paths from this batch if provided
-  const validPaths = new Set<string>();
-  if (batchFiles && batchFiles.length > 0) {
-    batchFiles.forEach(file => validPaths.add(file.path));
-    console.log(`Batch ${batchIndex} has ${validPaths.size} valid files for validation`);
-  }
-
-  // Check if the response contains XML-formatted file paths
-  if (content.includes('<file path=')) {
-    console.log('Detected XML-formatted file paths in response');
-    
-    // Extract paths from XML format (<file path="actions/gemini-actions.ts"/>)
-    const xmlPathMatches = [...content.matchAll(/<file\s+path=["']([^"']+)["']\s*\/?>/g)];
-    const xmlPaths = xmlPathMatches.map(match => match[1].trim());
-    
-    console.log(`Extracted ${xmlPaths.length} paths from XML format`);
-    
-    // Add these paths to our overall set if they're valid
-    xmlPaths.forEach(path => {
-      // Only add if we don't have a validation set or the path is in the validation set
-      if (path && (!validPaths.size || validPaths.has(path))) {
-        allRelevantPaths.add(path);
-      } else if (path) {
-        console.log(`Skipping hallucinated path: ${path}`);
-      }
-    });
-  } else {
-    // Original processing for plain text paths (one per line)
-    let batchRelevantPaths = content
-      .split('\n')
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.length > 0)
-      .map((line: string) => line.replace(/^[*-]\s+/, '')) // Remove bullet points if any
-      .map((line: string) => line.split(/\s+#/)[0].trim()); // Remove any comments
-    
-    // Also check for and remove <file> tags if present in individual lines
-    batchRelevantPaths = batchRelevantPaths.map((line: string) => {
-      if (line.startsWith('<file>') && line.endsWith('</file>')) {
-        return line.replace(/<file>|<\/file>/g, '').trim();
-      }
-      return line;
-    });
-    
-    console.log(`Extracted ${batchRelevantPaths.length} relevant paths from batch ${batchIndex + 1}`);
-
-    // Look for documentation files section
-    const docSectionIdx = content.indexOf('# Documentation Files:');
-    if (docSectionIdx !== -1) {
-      console.log('Found Documentation Files section in response');
-      // Extract documentation files section
-      const docSection = content.substring(docSectionIdx).split('\n').slice(1);
-      const docFiles = docSection
-        .map(line => line.trim())
-        .filter(line => line.length > 0 && !line.startsWith('#'))
-        .map(line => {
-          // Also check for and remove <file> tags in documentation files
-          if (line.startsWith('<file>') && line.endsWith('</file>')) {
-            return line.replace(/<file>|<\/file>/g, '').trim();
-          }
-          return line;
-        });
-      
-      console.log(`Found ${docFiles.length} documentation files: ${docFiles.join(', ')}`);
-      // Add documentation files to the relevant paths
-      docFiles.forEach(path => {
-        if (path && path.length > 0) allRelevantPaths.add(path);
-      });
-    }
-
-    // Also check for <file> tags in the whole content
-    const fileTagMatches = extractFilePathsFromTags(content);
-    if (fileTagMatches.length > 0) {
-      console.log(`Found ${fileTagMatches.length} paths in <file> tags`);
-      fileTagMatches.forEach(path => {
-        if (path) allRelevantPaths.add(path);
-      });
-    }
-
-    // Log any markdown files that were found in the response
-    const markdownFiles = batchRelevantPaths.filter(p => 
-      p && !p.startsWith('#') && (p.endsWith('.md') || p.endsWith('.mdc')));
-    if (markdownFiles.length > 0) {
-      console.log(`Found ${markdownFiles.length} markdown files in response: ${markdownFiles.join(', ')}`);
-    } else {
-      console.log('No markdown files found in this batch response');
-    }
-    
-    // Add these paths to our overall set if they're valid
-    batchRelevantPaths
-      .filter(p => p && p.length > 0 && !p.startsWith('#'))
-      .forEach(path => {
-        // Only add if we don't have a validation set or the path is in the validation set
-        if (!validPaths.size || validPaths.has(path)) {
-          allRelevantPaths.add(path);
-        } else {
-          console.log(`Skipping hallucinated path: ${path}`);
-        }
-      });
+    return { isSuccess: false, message: `Error generating guidance: ${errorMessage}` };
   }
 }
 

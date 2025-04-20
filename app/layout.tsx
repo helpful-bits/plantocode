@@ -4,6 +4,7 @@ import { ProjectProvider } from "@/lib/contexts/project-context"; // Keep Projec
 import { ThemeProvider } from "@/components/theme-provider"; // Keep ThemeProvider import
 import { DatabaseProvider } from "@/lib/contexts/database-context"; // Keep DatabaseProvider import
 import { InitializationProvider } from "@/lib/contexts/initialization-context"; // Add InitializationProvider import
+import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
   title: "O1 Pro Flow", // Keep title
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </InitializationProvider>
           </DatabaseProvider>
         </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   ); 

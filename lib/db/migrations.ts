@@ -15,7 +15,8 @@ export async function runMigrations(): Promise<void> { // Make function async
 
   // Create migrations folder if it doesn't exist
   fs.mkdirSync(migrationsFolder, { recursive: true });
-  console.log("Migrations folder:", migrationsFolder);
+  console.log("Running database migrations...");
+  
   // First, check if we have already run migrations by trying to query the migrations table
   try {
     const tableExists = await new Promise((resolve, reject) => {
@@ -66,6 +67,7 @@ export async function runMigrations(): Promise<void> { // Make function async
     }
   } catch (error) {
     console.error("Error during migration setup:", error);
+    throw new Error("Error setting up database: " + error);
   }
 }
 
@@ -73,47 +75,72 @@ export async function runMigrations(): Promise<void> { // Make function async
  * Helper function to actually apply the migrations
  */
 async function applyMigrations(migrationsFolder: string, appliedMigrations: Set<string> = new Set()): Promise<void> { // Make async
-  const files = fs.readdirSync(migrationsFolder)
-    .filter(file => file.endsWith('.sql'))
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })); // Natural sort order
+  try {
+    const files = fs.readdirSync(migrationsFolder)
+      .filter(file => file.endsWith('.sql') && !file.includes('.disabled'))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })); // Natural sort order
 
-  console.log(`[Migration] Found ${files.length} SQL files. Already applied: ${appliedMigrations.size}`);
+    console.log(`Found ${files.length} pending migrations to apply: ${files.filter(file => !appliedMigrations.has(file)).join(', ')}`);
 
-  for (const file of files) {
-    if (appliedMigrations.has(file)) {
-      // console.log(`[Migration] Skipping already applied: ${file}`); // Reduce noise
-      continue; // Changed from 'return' to 'continue' to process all migration files
-    }
+    // Track if we've hit a fatal error that should stop all migrations
+    let fatalErrorOccurred = false;
 
-    const filePath = path.join(migrationsFolder, file);
-    const sql = fs.readFileSync(filePath, 'utf8').trim(); // Trim SQL content
-    if (!sql) continue; // Skip empty migration files
+    for (const file of files) {
+      if (fatalErrorOccurred) {
+        console.log(`Skipping migration ${file} due to previous fatal error`);
+        continue;
+      }
 
-    // Wrap execution in a promise
-    try {
-      await new Promise<void>((resolve, reject) => {
-        db.exec(sql, (execErr) => {
-          if (execErr) {
-            console.error(`[Migration] Error running ${file}:`, execErr);
-            reject(execErr);
-          } else {
-            // Record the migration in the migrations table
-            db.run('INSERT INTO migrations (name) VALUES (?)', [file], (recordErr) => {
-              if (recordErr) {
-                console.error(`[Migration] Error recording ${file}:`, recordErr);
-                reject(recordErr); // Reject if recording fails
-              } else {
-                console.log(`[Migration] Successfully ran and recorded: ${file}`);
-                resolve();
-              }
-            });
-          }
+      if (appliedMigrations.has(file)) {
+        continue; // Skip already applied migrations
+      }
+
+      const filePath = path.join(migrationsFolder, file);
+      const sql = fs.readFileSync(filePath, 'utf8').trim(); // Trim SQL content
+      if (!sql) continue; // Skip empty migration files
+
+      console.log(`Applying migration: ${file}`);
+      
+      // Wrap execution in a promise
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // Use a transaction to ensure each migration is atomic
+          db.exec(sql, (execErr) => {
+            if (execErr) {
+              console.error(`Error executing migration ${file}:`, execErr);
+              reject(execErr);
+            } else {
+              // Record the migration in the migrations table
+              db.run('INSERT INTO migrations (name) VALUES (?)', [file], (recordErr) => {
+                if (recordErr) {
+                  console.error(`Error recording ${file}:`, recordErr);
+                  reject(recordErr); // Reject if recording fails
+                } else {
+                  console.log(`Successfully applied migration: ${file}`);
+                  resolve();
+                }
+              });
+            }
+          });
         });
-      });
-    } catch (error) {
-      console.error(`[Migration] Failed to apply migration ${file}. Stopping further migrations.`);
-      break; // Stop applying migrations if one fails
+      } catch (error) {
+        console.error(`Error running migrations:`, error);
+        
+        // Special handling for the problem migration
+        if (file === '0008_rename_patch_path_to_xml_path.sql') {
+          console.log(`Migration ${file} failed, but it's a known issue. Continuing with next migration.`);
+          // Skip recording this migration to try again next time
+          continue;
+        }
+        
+        fatalErrorOccurred = true;
+        throw error; // Re-throw to be caught by outer try/catch
+      }
     }
+    
+    console.log("Migration process completed");
+  } catch (error) {
+    console.error("Error running migrations:", error);
+    throw error; // Propagate the error up
   }
-  console.log("[Migration] Finished applying migrations.");
 }

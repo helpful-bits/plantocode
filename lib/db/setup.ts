@@ -26,7 +26,7 @@ export async function setupDatabase(): Promise<void> {
 }
 
 /**
- * Run database migrations // Keep comment
+ * Run database migrations
  */
 export async function runMigrations(): Promise<void> {
   console.log('Running database migrations...');
@@ -86,7 +86,7 @@ export async function runMigrations(): Promise<void> {
     
     // Get all migration files
     const migrationFiles = fs.readdirSync(migrationsDir)
-      .filter(file => file.endsWith('.sql'))
+      .filter(file => file.endsWith('.sql') && !file.endsWith('.disabled'))
       .sort(); // Sort to ensure proper order
     
     // Get pending migrations
@@ -105,23 +105,27 @@ export async function runMigrations(): Promise<void> {
       
       // Read migration SQL
       const migrationPath = path.join(migrationsDir, migrationFile);
-      const migrationSql = fs.readFileSync(migrationPath, 'utf8');
+      let migrationSql = fs.readFileSync(migrationPath, 'utf8');
+
+      // Check if the migration contains its own transaction statements
+      const containsBeginTransaction = /BEGIN\s+TRANSACTION/i.test(migrationSql);
+      const containsCommit = /COMMIT/i.test(migrationSql);
       
-      // Run migration within a transaction
+      // Run migration with or without transaction wrapper based on content
       await new Promise<void>((resolve, reject) => {
-        // Start a transaction for the migration
-        db.run('BEGIN TRANSACTION', (beginErr) => {
-          if (beginErr) {
-            console.error(`Error starting transaction for migration ${migrationFile}:`, beginErr);
-            return reject(beginErr);
-          }
-          
+        // Only start a transaction if the migration doesn't have one
+        const startTransaction = !containsBeginTransaction;
+        
+        const runMigration = () => {
           // Execute the migration SQL
           db.exec(migrationSql, (execErr) => {
             if (execErr) {
-              // Roll back on error
               console.error(`Error executing migration ${migrationFile}:`, execErr);
-              db.run('ROLLBACK', () => reject(execErr));
+              if (startTransaction) {
+                db.run('ROLLBACK', () => reject(execErr));
+              } else {
+                reject(execErr);
+              }
             } else {
               // Record the migration in the migrations table
               db.run(
@@ -130,24 +134,47 @@ export async function runMigrations(): Promise<void> {
                 (insertErr) => {
                   if (insertErr) {
                     console.error(`Error recording migration ${migrationFile}:`, insertErr);
-                    db.run('ROLLBACK', () => reject(insertErr));
+                    if (startTransaction) {
+                      db.run('ROLLBACK', () => reject(insertErr));
+                    } else {
+                      reject(insertErr);
+                    }
                   } else {
-                    // Commit the transaction
-                    db.run('COMMIT', (commitErr) => {
-                      if (commitErr) {
-                        console.error(`Error committing migration ${migrationFile}:`, commitErr);
-                        reject(commitErr);
-                      } else {
-                        console.log(`Successfully applied migration: ${migrationFile}`);
-                        resolve();
-                      }
-                    });
+                    // Commit the transaction if we started one
+                    if (startTransaction) {
+                      db.run('COMMIT', (commitErr) => {
+                        if (commitErr) {
+                          console.error(`Error committing migration ${migrationFile}:`, commitErr);
+                          reject(commitErr);
+                        } else {
+                          console.log(`Successfully applied migration: ${migrationFile}`);
+                          resolve();
+                        }
+                      });
+                    } else {
+                      console.log(`Successfully applied migration: ${migrationFile}`);
+                      resolve();
+                    }
                   }
                 }
               );
             }
           });
-        });
+        };
+        
+        if (startTransaction) {
+          // Start a transaction for the migration
+          db.run('BEGIN TRANSACTION', (beginErr) => {
+            if (beginErr) {
+              console.error(`Error starting transaction for migration ${migrationFile}:`, beginErr);
+              return reject(beginErr);
+            }
+            runMigration();
+          });
+        } else {
+          // Migration has its own transaction, run it directly
+          runMigration();
+        }
       });
     }
     

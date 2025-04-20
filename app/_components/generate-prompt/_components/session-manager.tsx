@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef, useTransition } from "react";
-import { Session } from '@/types';
+import { Session } from '@/types/session-types';
 import { Save, Trash2, Plus, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,25 @@ export interface SessionManagerProps {
   sessionInitialized: boolean;
   onSessionStatusChange?: (hasActiveSession: boolean) => void;
   onActiveSessionIdChange: (sessionId: string | null) => void;
+}
+
+// Helper function to generate UUID since crypto.randomUUID() is not available in all environments
+function generateUUID() {
+  // Use crypto.getRandomValues which is more widely supported
+  if (typeof window !== 'undefined' && window.crypto) {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = window.crypto.getRandomValues(new Uint8Array(1))[0] % 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  } else {
+    // Fallback for environments without crypto
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
 }
 
 const SessionManager = ({
@@ -189,15 +208,19 @@ const SessionManager = ({
       // Get current state
       const sessionState = getCurrentSessionState();
       
-      const newSession: Omit<Session, "id"> = {
+      // Generate a UUID for the new session
+      const sessionId = generateUUID();
+      
+      const newSession: Session = {
         ...sessionState,
+        id: sessionId,
         name: sessionName,
         projectDirectory,
         updatedAt: Date.now()
       };
       
       console.log(`[SessionManager] Saving session to database with projectDirectory: ${projectDirectory}`);
-      const savedSession = await repository.saveSession(newSession as Session);
+      const savedSession = await repository.saveSession(newSession);
       
       console.log(`[SessionManager] Session saved successfully: ${savedSession.id}`);
       
