@@ -43,6 +43,19 @@ function validateSearchPatterns(xmlChangeSet: XmlChangeSet): { isValid: boolean;
       if (operation.search && operation.search.length < 10 && file.action === 'modify') {
         warnings.push(`Warning: Search pattern for ${file.path} is very short (${operation.search.length} chars) and may match unintended locations.`);
       }
+      
+      // Check for large patterns that might cause matching issues
+      if (operation.search && operation.search.length > 1000) {
+        warnings.push(`Warning: Search pattern for ${file.path} is very large (${operation.search.length} chars) which increases risk of mismatch.`);
+      }
+      
+      // Check for too many lines in search pattern
+      if (operation.search) {
+        const lineCount = operation.search.split('\n').length;
+        if (lineCount > 30) {
+          warnings.push(`Warning: Search pattern for ${file.path} has ${lineCount} lines which exceeds the recommended maximum (20-30). Consider breaking into smaller patterns.`);
+        }
+      }
     }
   }
   
