@@ -1,7 +1,7 @@
 "use client";
 import { normalizePath } from '@/lib/path-utils';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Code, Copy, AlertTriangle } from 'lucide-react';
+import { ExternalLink, Code, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 
 interface IdeIntegrationProps {
@@ -46,16 +46,6 @@ export function IdeIntegration({ filePath, tooltip = "Open in editor", onError }
     }
   };
 
-  const handleCopyPath = async () => {
-    try {
-      await navigator.clipboard.writeText(filePath);
-      // Optionally show a success message/tooltip
-    } catch (err) {
-      console.error('Failed to copy path:', err);
-      // Optionally show an error message
-    }
-  };
-
   return (
     <div className="flex flex-col items-center gap-2">
       {error && (
@@ -64,29 +54,18 @@ export function IdeIntegration({ filePath, tooltip = "Open in editor", onError }
           <span>{error}</span>
         </div>
       )}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-1 text-xs"
-          onClick={handleOpenInIde}
-          title={`${tooltip}: ${filePath}`} // Show full path in title
-          disabled={!!error && error.includes('File not found')} // Disable if file not found
-        >
-          <Code className="h-3 w-3" />
-          <span>Open in IDE</span>
-          <ExternalLink className="h-3 w-3 ml-1" />
-        </Button>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={handleCopyPath} 
-          title="Copy file path" 
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-        >
-          <Copy className="h-3 w-3" />
-        </Button>
-      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="flex items-center gap-1 text-xs"
+        onClick={handleOpenInIde}
+        title={`${tooltip}: ${filePath}`} // Show full path in title
+        disabled={!!error && error.includes('File not found')} // Disable if file not found
+      >
+        <Code className="h-3 w-3" />
+        <span>Open in IDE</span>
+        <ExternalLink className="h-3 w-3 ml-1" />
+      </Button>
     </div>
   );
 }

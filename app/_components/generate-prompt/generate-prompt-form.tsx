@@ -21,7 +21,7 @@ import VoiceTranscription from "./_components/voice-transcription"; // Keep Voic
 import { Session } from "@/types";
 import { Input } from "@/components/ui/input";
 import { GeminiProcessor } from '@/app/_components/gemini-processor/gemini-processor'; // Import the new component
-import { Loader2, Search, Wand2, ToggleLeft, ToggleRight } from "lucide-react"; // Add necessary icons
+import { Loader2, Search, Wand2, ToggleLeft, ToggleRight, Sparkles } from "lucide-react"; // Add necessary icons
 import { cn } from "@/lib/utils";
 import { invalidateFileCache } from '@/lib/git-utils';
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import { Tabs, TabsList, TabsContent } from "@/components/ui/tabs";
 import { useGeminiProcessor } from '../gemini-processor/gemini-processor-context'; // Fix the import path
 import { Slider } from "@/components/ui/slider";
 import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
+import { enhanceTaskDescriptionAction } from "@/actions/task-enhancement-actions";
 
 // Constants for form state handling
 const FORM_ID = "generate-prompt-form";
@@ -1332,13 +1333,6 @@ ${taskDescription}
           saveToLocalStorage('pasted-paths', pathsText);
         }
         
-        // If there's enhanced task description, append it to the existing task description
-        if (result.data.enhancedTaskDescription) {
-          const updatedTaskDescription = `${taskDescription}\n\n${result.data.enhancedTaskDescription}`;
-          setTaskDescription(updatedTaskDescription);
-          saveToLocalStorage('task-description', updatedTaskDescription);
-        }
-        
         handleInteraction();
       } else {
         setError(result.message || "Failed to find relevant files");
@@ -1350,6 +1344,89 @@ ${taskDescription}
       setIsFindingFiles(false);
     }
   }, [taskDescription, projectDirectory, handleInteraction, saveToLocalStorage]);
+
+  // Handle generating architectural guidance based on selected files
+  const handleGenerateArchitecturalGuidance = useCallback(async () => {
+    if (!taskDescription.trim() || !pastedPaths.trim()) {
+      return;
+    }
+
+    setIsFindingFiles(true); // Reuse the same loading state
+    setError("");
+
+    try {
+      // Parse the selected file paths
+      const selectedPaths = pastedPaths
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'));
+      
+      if (selectedPaths.length === 0) {
+        setError("No valid paths found. Please select files first.");
+        return;
+      }
+
+      // Helper function to get file content either from memory or disk
+      const getFileContent = async (projectDir: string, filePath: string): Promise<string | null> => {
+        // First check if we have the file content in memory
+        if (fileContentsMap[filePath]) {
+          return fileContentsMap[filePath];
+        }
+        
+        try {
+          // Try to read from file system
+          const result = await readExternalFileAction(filePath);
+          if (result.isSuccess && result.data) {
+            const content = result.data[filePath];
+            return typeof content === 'string' ? content : null;
+          }
+        } catch (error) {
+          console.warn(`Failed to read file: ${filePath}`, error);
+        }
+        
+        return null;
+      };
+
+      // Get content of selected files
+      const fileContentsMap: Record<string, string> = {};
+      for (const path of selectedPaths) {
+        if (fileContentsMap[path]) continue; // Skip if already processed
+        
+        try {
+          // Read file content from allFilesMap or external file
+          const content = await getFileContent(projectDirectory, path);
+          if (content) {
+            fileContentsMap[path] = content;
+          }
+        } catch (error) {
+          console.warn(`Could not read file: ${path}`, error);
+        }
+      }
+
+      // Generate enhanced task description based on selected files
+      const enhancementResult = await enhanceTaskDescriptionAction({
+        originalDescription: taskDescription,
+        relevantFiles: selectedPaths,
+        fileContents: fileContentsMap
+      });
+
+      if (enhancementResult.isSuccess && enhancementResult.data) {
+        // Update task description with the enhanced guidance
+        const enhancedTaskDescription = `${taskDescription}\n\n${enhancementResult.data}`;
+        setTaskDescription(enhancedTaskDescription);
+        saveToLocalStorage('task-description', enhancedTaskDescription);
+        
+        handleInteraction();
+      } else {
+        setError(enhancementResult.message || "Failed to generate architectural guidance");
+      }
+    } catch (error) {
+      console.error("Error generating architectural guidance:", error);
+      setError(error instanceof Error ? error.message : "Unknown error occurred");
+    } finally {
+      setIsFindingFiles(false);
+    }
+  }, [taskDescription, pastedPaths, projectDirectory, handleInteraction, saveToLocalStorage]);
 
   return (
     <div className="flex flex-col flex-1 space-y-6"> {/* Removed padding */}
@@ -1419,7 +1496,51 @@ ${taskDescription}
                   onChange={handleTaskChange}
                   onInteraction={handleInteraction}
                 />
-                <div className="flex justify-end">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleFindRelevantFiles}
+                      disabled={isFindingFiles || !taskDescription.trim() || !projectDirectory}
+                      title={!taskDescription.trim() ? "Enter a task description first" : 
+                             !projectDirectory ? "Select a project directory first" :
+                             "Find relevant files in the codebase based on task description"}
+                    >
+                      <Wand2 className="h-4 w-4 mr-2" />
+                      {isFindingFiles && !pastedPaths ? "Finding Files..." : "Find Relevant Files"}
+                    </Button>
+                    
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleGenerateArchitecturalGuidance}
+                      disabled={isFindingFiles || !taskDescription.trim() || !pastedPaths.trim()}
+                      title={!taskDescription.trim() ? "Enter a task description first" : 
+                             !pastedPaths.trim() ? "Add file paths first" :
+                             "Analyze selected files to generate architectural guidance"}
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      {isFindingFiles && pastedPaths ? "Generating Guidance..." : "Get Architectural Guidance"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={toggleSearchSelectedFilesOnly}
+                      className={cn(
+                        "flex gap-1.5 items-center whitespace-nowrap",
+                        searchSelectedFilesOnly && "bg-accent"
+                      )}
+                      title={searchSelectedFilesOnly ? "Search in all files" : "Search only in selected files"}
+                    >
+                      {searchSelectedFilesOnly ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+                      {searchSelectedFilesOnly ? "Selected Files Only" : "All Files"}
+                    </Button>
+                  </div>
                   <VoiceTranscription
                     onTranscribed={handleTranscribedText}
                     onInteraction={handleInteraction}
@@ -1465,37 +1586,8 @@ ${taskDescription}
                 isFindingFiles={isFindingFiles}
                 canFindFiles={!!taskDescription.trim() && !!projectDirectory}
                 onFindRelevantFiles={handleFindRelevantFiles}
+                onGenerateGuidance={handleGenerateArchitecturalGuidance}
               >
-                <div className="flex items-center gap-2 mt-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleFindRelevantFiles}
-                    disabled={isFindingFiles || !taskDescription.trim() || !projectDirectory}
-                    title={!taskDescription.trim() ? "Enter a task description first" : 
-                           !projectDirectory ? "Select a project directory first" :
-                           "Analyze codebase structure to find relevant files and enhance your task description with helpful context"}
-                  >
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    {isFindingFiles ? "Analyzing Codebase..." : "Analyze Codebase & Find Relevant Files"}
-                  </Button>
-                  
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleSearchSelectedFilesOnly}
-                    className={cn(
-                      "flex gap-1.5 items-center whitespace-nowrap",
-                      searchSelectedFilesOnly && "bg-accent"
-                    )}
-                    title={searchSelectedFilesOnly ? "Search in all files" : "Search only in selected files"}
-                  >
-                    {searchSelectedFilesOnly ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-                    {searchSelectedFilesOnly ? "Selected Files Only" : "All Files"}
-                  </Button>
-                </div>
               </PastePaths>
 
               {/* File Browser */}

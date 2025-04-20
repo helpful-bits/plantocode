@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Home, FileCode, Eye, Hammer } from 'lucide-react';
+import { Home } from 'lucide-react';
 
 export function Navigation() {
   const pathname = usePathname();
@@ -14,16 +14,6 @@ export function Navigation() {
       name: 'Home',
       href: '/',
       icon: <Home className="h-4 w-4 mr-2" />
-    },
-    {
-      name: 'XML Preview',
-      href: '/xml-preview',
-      icon: <Eye className="h-4 w-4 mr-2" />
-    },
-    {
-      name: 'XML Validator',
-      href: '/xml-validator',
-      icon: <Hammer className="h-4 w-4 mr-2" />
     }
   ];
   
