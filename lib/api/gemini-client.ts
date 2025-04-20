@@ -262,17 +262,9 @@ class GeminiClient {
           );
           console.log(`[Gemini Client] XML changes will be saved to: ${outputPath}`);
           
-          // Extract temperature from prompt settings if present
+          // Use temperature from options or default
           let temperature = options.temperature || 0.7;
-          const temperatureMatch = promptText.match(/<settings>[\s\S]*?<temperature>([\d\.]+)<\/temperature>[\s\S]*?<\/settings>/);
-          if (temperatureMatch && temperatureMatch[1]) {
-            const parsedTemp = parseFloat(temperatureMatch[1]);
-            if (!isNaN(parsedTemp) && parsedTemp >= 0 && parsedTemp <= 1) {
-              temperature = parsedTemp;
-              console.log(`[Gemini Client] Using temperature ${temperature} from prompt settings`);
-            }
-          }
-
+          
           const modelId = options.model || GEMINI_FLASH_MODEL;
           const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?alt=sse&key=${apiKey}`;
 

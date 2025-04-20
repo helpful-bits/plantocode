@@ -25,13 +25,14 @@ interface GeminiProcessorProps {
     prompt: string;
     activeSessionId: string | null;
     model: string;
+    temperature?: number;
 }
 
 interface ExtendedGeminiRequest extends GeminiRequest {
     isPending?: boolean;
 }
 
-export function GeminiProcessor({prompt, activeSessionId, model}: GeminiProcessorProps) {
+export function GeminiProcessor({prompt, activeSessionId, model, temperature = 0.7}: GeminiProcessorProps) {
     // Track loading state for operations like cancellation, but not for send operations
     const [isLoading, setIsLoading] = useState(false);
     // Add state for tracking last request time to prevent rapid-fire requests
@@ -309,7 +310,8 @@ export function GeminiProcessor({prompt, activeSessionId, model}: GeminiProcesso
 
             // Create options with the provided model
             const options = {
-                model: model // Always use the provided model
+                model: model,
+                temperature: temperature,
                 // Don't include client-side callbacks for server actions
             };
 
@@ -359,7 +361,7 @@ export function GeminiProcessor({prompt, activeSessionId, model}: GeminiProcesso
             // Force a refresh of session data to ensure UI is in correct state
             await fetchSessionData();
         }
-    }, [activeSessionId, cooldownRemaining, fetchSessionData, prompt, repository, sessionData?.geminiStatus, model]);
+    }, [activeSessionId, cooldownRemaining, fetchSessionData, prompt, repository, sessionData?.geminiStatus, model, temperature]);
 
     // Handler for canceling a specific request, using useCallback
     const handleCancelRequest = useCallback(async (requestId: string) => {

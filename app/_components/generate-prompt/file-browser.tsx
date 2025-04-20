@@ -53,8 +53,8 @@ export default function FileBrowser({
   onSearchChange = () => {},
   titleRegexError,
   contentRegexError, // Keep contentRegexError prop
-  onTitleRegexErrorChange,
-  onContentRegexErrorChange,
+  onTitleRegexErrorChange = () => {}, // Add default no-op function
+  onContentRegexErrorChange = () => {}, // Add default no-op function
   titleRegex, // Keep titleRegex prop
   contentRegex,
   isRegexActive,
