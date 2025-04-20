@@ -186,7 +186,7 @@ function resetDatabase() {
         startApp();
       })
       .catch((error) => {
-        console.error(`Database migration failed: ${error.message || error}`);
+        console.error(`Database migration failed: ${error instanceof Error ? error.message : error}`);
         console.log('Auto mode: Starting application despite migration error...');
         startApp();
       });
