@@ -581,12 +581,12 @@ export function XmlChangesPanel() {
             <AlertDialogTitle>Are you sure you want to delete this file?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The file will be permanently deleted from the system.
-              {fileToDelete && (
-                <div className="mt-2 p-2 bg-muted rounded-md font-mono text-xs break-all">
-                  {fileToDelete.path}
-                </div>
-              )}
             </AlertDialogDescription>
+            {fileToDelete && (
+              <div className="mt-2 p-2 bg-muted rounded-md font-mono text-xs break-all">
+                {fileToDelete.path}
+              </div>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
