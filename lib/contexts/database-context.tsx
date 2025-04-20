@@ -280,13 +280,24 @@ class DatabaseClient {
         const savedSession = await response.json();
         
         // Invalidate relevant caches *after* successful save
-        this.clearCacheForSession(savedSession.id); // Clears details and sessionWithRequests
-        this.clearCacheForProjectSessions(savedSession.projectDirectory); // Clears list
-        this.cache.sessionDetails[savedSession.id] = { // Optionally update single session cache
+        this.clearCacheForSession(savedSession.id); // Clears details and sessionWithRequests cache
+        this.clearCacheForProjectSessions(savedSession.projectDirectory); // Clears project sessions list cache
+        
+        // Update the specific session details cache immediately with the saved data
+        this.cache.sessionDetails[savedSession.id] = {
           data: savedSession,
           timestamp: Date.now()
         };
         
+        // Update the session with requests cache too
+        const sessionWithRequestsCacheKey = `session_with_requests_${savedSession.id}`;
+        if (this.cache.sessionWithRequests[sessionWithRequestsCacheKey]) {
+             this.cache.sessionWithRequests[sessionWithRequestsCacheKey] = {
+                 data: savedSession, // Assuming savedSession contains requests if fetched before save
+                 timestamp: Date.now()
+             };
+        }
+
         return savedSession;
       } catch (parseError) {
         console.error('[DB Client] Error parsing saved session response:', parseError);
@@ -655,8 +666,15 @@ class DatabaseClient {
       timestamp: Date.now()
     };
     
-    // Send the update
-    await this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue);
+    // Send the update, handle potential errors
+    try {
+        await this._sendCachedStateUpdate(safeProjectDirectory, key, safeValue);
+    } catch (error) {
+        console.error(`[DB Client] Failed to send cached state update for key '${key}'. Cache might be reverted by error handling in _sendCachedStateUpdate.`, error);
+        // Optionally revert optimistic cache update here if needed, though _sendCachedStateUpdate might handle some cases
+        // delete this.cachedStateCache[cacheKey]; // Example: Revert cache on failure
+        throw error; // Re-throw so caller knows about the failure
+    }
   }
   
   // Helper method to send cached state updates to the server
@@ -766,18 +784,53 @@ class DatabaseClient {
   clearCacheForSessionDetails(sessionId: string) {
     this.clearCacheForSession(sessionId); // Use the combined function
   }
-  // Clear entire cache
+  // Clear entire cache, preserving critical HMR data
   clearCache() {
+    const persistedCacheBeforeClear = (window as any).__PERSISTED_CACHED_STATE?.cachedStateCache || {};
+    
     this.cache = {
-      sessions: {}, // Clear sessions list cache
-      // Keep other cache properties
-      sessionWithRequests: {},
+      sessions: {},
       activeSessionIds: {},
-      sessionDetails: {}
+      sessionDetails: {},
+      sessionWithRequests: {},
     };
-    this.cachedStateCache = {};
+    this.cachedStateCache = {}; // Clear main state cache
     this.pendingRequests = {};
-    console.log('[DB Client] Cache cleared');
+    console.log('[DB Client] Cache cleared, attempting to restore critical HMR data...');
+
+    // Restore critical form data from persisted cache immediately after clearing
+    try {
+      if ((window as any).__PERSISTED_CACHED_STATE && persistedCacheBeforeClear) {
+        const criticalKeys = [
+          'task-description', 
+          'search-term', 
+          'pasted-paths', 
+          'pattern-description', 
+          'title-regex', 
+          'content-regex', 
+          'is-regex-active',
+          'global-project-dir' // Also critical for context
+          // Add any other keys deemed critical for HMR persistence
+        ];
+        
+        let restoredCount = 0;
+        Object.entries(persistedCacheBeforeClear).forEach(([key, value]) => {
+          const keyParts = key.split('|');
+          if (keyParts.length >= 2) { // Allow for keys like global|key or project|key
+            const dataKey = keyParts.slice(1).join('|'); // Handle keys with '|' potentially
+            if (criticalKeys.includes(dataKey)) {
+              this.cachedStateCache[key] = value as any; // Restore to the now-empty cache
+              restoredCount++;
+            }
+          }
+        });
+        console.log(`[DB Client] Restored ${restoredCount} critical HMR data entries after clear.`);
+      } else {
+         console.log('[DB Client] No persisted HMR state found to restore.');
+      }
+    } catch (error) {
+      console.error('[DB Client] Error restoring critical HMR data after cache clear:', error);
+    }
   }
 
   // Clear cache for a specific project directory

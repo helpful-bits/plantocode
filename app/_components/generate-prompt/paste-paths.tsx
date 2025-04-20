@@ -12,7 +12,8 @@ interface PastePathsProps {
   onParsePaths?: (paths: string[]) => void; // Callback after parsing paths
   warnings?: string[];
   children?: ReactNode; // Allow passing children, e.g., the Find Files button
-  onFindRelevantFiles?: () => Promise<void>; // Add prop for finding relevant files
+  onFindRelevantFiles?: () => Promise<void>; // For finding relevant files
+  onGenerateGuidance?: () => Promise<void>; // Add new prop for generating guidance
   // New props for correction button
   canCorrectPaths?: boolean;
   isFindingFiles?: boolean; // Add prop for loading state
@@ -28,6 +29,7 @@ export default function PastePaths({
   warnings = [],
   children, // Receive children
   onFindRelevantFiles,
+  onGenerateGuidance,
   canCorrectPaths,
   isFindingFiles,
   canFindFiles,
