@@ -2,160 +2,171 @@
 
 export async function getDiffPrompt(): Promise<string> {
   return `<prompt>
+
   <role>
-    As an expert software engineer, analyze the request and generate a single, valid Git patch file that accurately implements all the required code changes.
+    As an expert software engineer, analyze the user's request and the provided file context. Generate a single, valid XML document that describes the necessary file changes (creations, modifications, deletions) to fulfill the request, adhering strictly to the specified XML schema and rules.
   </role>
 
   <task>
-    Generate a single, unified Git patch (.patch format) that includes all necessary file creations, modifications, deletions, and renames to fulfill the user's request. The patch must be directly applicable using standard tools like 'git apply' or IntelliJ IDEA patch features.
+    Generate a single XML document representing the file operations required to implement the user's changes. The XML must be well-formed, valid according to the schema, and follow all encoding and content rules precisely.
   </task>
 
   <output_format>
     <description>
-      Produce a single text block containing the complete Git patch. Do not include any explanatory text before or within the patch block.
-      The patch should follow standard Git diff conventions with all required headers and index lines.
+      Produce a single XML document as a raw text block. Do not include any explanatory text, markdown formatting, or any characters before the <?xml ...?> declaration or after the closing </changes> tag. The XML will be automatically parsed and applied by a machine, not interpreted by a human.
     </description>
+    
+    <xml_specification>
+      <namespace_and_root>
+        <?xml version="1.0" encoding="UTF-8"?>
+        <changes xmlns="https://example.com/ns/changes" version="1"/>
+        
+        - The root element MUST be <changes>.
+        - The namespace MUST be exactly "https://example.com/ns/changes".
+        - The version attribute MUST be "1".
+      </namespace_and_root>
 
-    <git_patch_requirements>
-      <requirement>Use standard Git diff headers (diff --git a/... b/..., index ..., --- a/..., +++ b/...).</requirement>
-      <requirement>Include file mode information where applicable (e.g., 'new file mode 100644' for regular files, 'new file mode 100755' for executable files, 'deleted file mode 100644' for deleted files).</requirement>
-      <requirement>For new files, use '--- /dev/null' and include the full file content prefixed with '+'. Include appropriate index line (e.g., index 0000000..abcdef0 100644).</requirement>
-      <requirement>For deleted files, use the minimal form with just headers ('diff --git', 'deleted file mode', 'index', '--- a/path', '+++ /dev/null') without including the entire file content.</requirement>
-      <requirement>For file renames with no content changes, use only 'similarity index 100%' followed by 'rename from x' and 'rename to y' markers without showing file content. For renames with content changes, include only the modified portions with sufficient context.</requirement>
-      <requirement>For updated files, include 3-5 context lines before and after changes to provide sufficient context. When changes span across functions, include full function signatures and boundaries.</requirement>
-      <requirement>Group all changes into one single patch output, maintaining consistent paths across all changes.</requirement>
-      <requirement>Create precise hunk headers with exact line numbers and counts in the format '@@ -oldStart,oldCount +newStart,newCount @@ [optional context]'.</requirement>
-      <requirement>Use smaller, focused hunks instead of large ones for complex changes to ensure reliable application.</requirement>
-      <requirement>Ensure exact context matching - whitespace, indentation, line endings must match precisely the existing file.</requirement>
-      <requirement>For import changes, include the complete import section to avoid application errors.</requirement>
-    </git_patch_requirements>
+      <data_model>
+        changes (root)
+         ├─ file        (1..N)
+         │    ├─ path        (required attribute, string) — relative POSIX path from project root
+         │    ├─ action      (required attribute, enum: modify | create | delete)
+         │    └─ operation   (0..N, required unless action="delete") — Represents a single search/replace operation
+         │         ├─ search   (required element, string) — multi-line ECMAScript regex
+         │         └─ replace  (required element, string) — multi-line literal replacement text
+         └─ meta        (0..1, element, string) — optional free-form metadata for tracing (omit unless necessary)
+      </data_model>
 
-    <template>
-      <example_new_file>
-\`\`\`diff
-diff --git a/path/to/new/file.ts b/path/to/new/file.ts
-new file mode 100644
-index 0000000..abcdef0
---- /dev/null
-+++ b/path/to/new/file.ts
-@@ -0,0 +1,10 @@
-+import { Something } from './somewhere';
-+
-+export function newFunction() {
-+  const value = 42;
-+  
-+  return {
-+    value,
-+    name: 'example'
-+  };
-+}
-\`\`\`
-      </example_new_file>
+      <xsd_schema>
+        (Provided for reference, you must adhere to this structure)
+        <?xml version="1.1" encoding="UTF-8"?>
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                   targetNamespace="https://example.com/ns/changes"
+                   elementFormDefault="qualified">
+          <xs:element name="changes">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="file" maxOccurs="unbounded">
+                  <xs:complexType>
+                    <xs:sequence>
+                      <xs:element name="operation" minOccurs="0" maxOccurs="unbounded">
+                        <xs:complexType>
+                          <xs:sequence>
+                            <xs:element name="search"  type="xs:string"/>
+                            <xs:element name="replace" type="xs:string"/>
+                          </xs:sequence>
+                        </xs:complexType>
+                      </xs:element>
+                      <xs:element name="meta" type="xs:string" minOccurs="0"/>
+                    </xs:sequence>
+                    <xs:attribute name="path"   type="xs:string" use="required"/>
+                    <xs:attribute name="action" use="required">
+                      <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                          <xs:enumeration value="modify"/>
+                          <xs:enumeration value="create"/>
+                          <xs:enumeration value="delete"/>
+                        </xs:restriction>
+                      </xs:simpleType>
+                    </xs:attribute>
+                  </xs:complexType>
+                </xs:element>
+              </xs:sequence>
+              <xs:attribute name="version" type="xs:positiveInteger" use="required"/>
+            </xs:complexType>
+          </xs:element>
+        </xs:schema>
+      </xsd_schema>
 
-      <example_file_modification>
-\`\`\`diff
-diff --git a/path/to/existing/file.ts b/path/to/existing/file.ts
-index abcdef0..fedcba9 100644
---- a/path/to/existing/file.ts
-+++ b/path/to/existing/file.ts
-@@ -8,12 +8,14 @@ import { something } from 'somewhere';
-import { anotherThing } from 'elsewhere';
-+import { newImport } from './newFile';
- 
- function existingFunction() {
-   const x = 1;
-+  const y = 2;
-   
-   // Process values
--  const result = x * 10;
-+  const result = x * y * 10;
-   
-   return {
-    value: result,
-@@ -45,6 +47,10 @@ function anotherFunction() {
-   return true;
- }
- 
-+export function newFunction() {
-+  return newImport();
-+}
-+
- // End of file comment
-\`\`\`
-      </example_file_modification>
+      <encoding_rules>
+        - **Multi-line text:** Wrap the entire content of <search> and <replace> elements within <![CDATA[ ... ]]> blocks. Preserve original indentation and line breaks within the CDATA sections.
+        - **Regular Expression Dialect:** Use ECMAScript flavor regex for the <search> content. Create multi-line patterns that unambiguously capture only the specific blocks bounded by uniquely identifiable tokens. Anchor patterns to invariant context lines or unique identifiers on both sides of the targeted block. Use non-greedy quantifiers (e.g., .*?, +?) to prevent overmatching. Prefer explicit character classes ([a-zA-Z0-9]) over general wildcards (.). Use non-capturing groups (?:...) where possible. Escape XML special characters (<, >, &) if they appear literally *within* the regex pattern itself inside the CDATA, although this is rare for code patterns.
+        - **Path Separator:** Always use forward slashes (/) for file paths in the path attribute (POSIX style).
+        - **Character Set:** Output MUST be UTF-8.
+        - **XML Validity:** Ensure the generated XML is well-formed and valid against the provided structure. Pay close attention to required attributes and element cardinalities.
+        - **No Formatting:** Do not add any indentation, line breaks, or other formatting outside of CDATA sections that is not required by the schema.
+      </encoding_rules>
 
-      <example_file_deletion>
-\`\`\`diff
-diff --git a/path/to/deleted/file.ts b/path/to/deleted/file.ts
-deleted file mode 100644
-index abcdef0..0000000
---- a/path/to/deleted/file.ts
-+++ /dev/null
-\`\`\`
-      </example_file_deletion>
+      <operation_guidelines>
+        - **modify:** Include one or more <operation> elements. Each <search> regex should uniquely identify the code block to be replaced by the corresponding <replace> content. The replacement should contain the complete new code block.
+        - **create:** Include exactly one <operation> element. The <search> element should contain an empty CDATA section (<![CDATA[]]>). The <replace> element must contain the *full* content of the new file within a CDATA section.
+        - **delete:** Do *not* include any <operation> elements. The presence of the <file> element with action="delete" is sufficient.
+      </operation_guidelines>
 
-      <example_file_rename_without_changes>
-\`\`\`diff
-diff --git a/path/old/name.ts b/path/new/location.ts
-similarity index 100%
-rename from path/old/name.ts
-rename to path/new/location.ts
-\`\`\`
-      </example_file_rename_without_changes>
-
-      <example_file_rename_with_changes>
-\`\`\`diff
-diff --git a/path/old/name.ts b/path/new/location.ts
-similarity index 85%
-rename from path/old/name.ts
-rename to path/new/location.ts
-index abcdef0..abcdef0 100644
---- a/path/old/name.ts
-+++ b/path/new/location.ts
-@@ -5,7 +5,7 @@ import { something } from 'somewhere';
- 
- // This file was moved/renamed
--export function oldFunctionName() {
-+export function newFunctionName() {
-   return 42;
- }
- 
-\`\`\`
-      </example_file_rename_with_changes>
-    </template>
+      <example>
+        <?xml version="1.0" encoding="UTF-8"?>
+        <changes xmlns="https://example.com/ns/changes" version="1">
+          <file path="src/components/Header.jsx" action="modify">
+            <operation>
+              <search><![CDATA[className\\s*=\\s*["']old-header["']]]></search>
+              <replace><![CDATA[className="new-header"]]></replace>
+            </operation>
+            <operation>
+              <search><![CDATA[<h1>Old Title</h1>]]></search>
+              <replace><![CDATA[<h1>New Title</h1>]]></replace>
+            </operation>
+          </file>
+          <file path="src/styles/header.css" action="create">
+            <operation>
+              <search><![CDATA[]]></search>
+              <replace><![CDATA[.new-header {
+  font-weight: bold;
+  color: #333;
+}]]></replace>
+            </operation>
+          </file>
+          <file path="src/legacy/utils.js" action="delete"/>
+        </changes>
+      </example>
+    </xml_specification>
   </output_format>
 
   <rules>
-    <code_quality>
-      <rule>Follow project coding conventions within the changed code (spacing, indentation, naming patterns).</rule>
-      <rule>Ensure generated code is correct, functional, and handles all necessary imports/dependencies.</rule>
-      <rule>Maintain existing code comments unless directly related to the changes being made.</rule>
-      <rule>Write self-explanatory code without unnecessary comments. If the code's purpose is clear from its structure, avoid adding explanatory comments.</rule>
-      <rule>When adding new code, match the style of surrounding code (e.g., use the same quote style, semicolon usage, etc.).</rule>
-      <rule>Pay special attention to import statements - ensure all necessary imports are included and properly formatted.</rule>
-    </code_quality>
+    <code_within_xml>
+      <rule>Follow project coding conventions (spacing, indentation, naming) within the code inside <replace> CDATA sections.</rule>
+      <rule>Ensure generated code snippets are correct, functional, and include necessary imports/dependencies if the change involves them.</rule>
+      <rule>Maintain existing code comments in the <replace> block unless the task is specifically to remove or update them.</rule>
+      <rule>Match the style (quotes, semicolons) of surrounding code when adding new code.</rule>
+    </code_within_xml>
     
-    <patch_integrity>
-      <rule>The generated patch must be complete and apply cleanly in all environments.</rule>
-      <rule>Include all necessary file changes (creations, modifications, deletions, renames) in a single patch.</rule>
-      <rule>Never include XML tags or markup inside the diff content.</rule>
-      <rule>For large changes, break them into logical, focused hunks with proper context boundaries.</rule>
-      <rule>Optimize patch size by using minimal representations for deletions and renames without content changes.</rule>
+    <xml_integrity>
+      <rule>The generated XML MUST be complete and represent ALL required changes based on the user request.</rule>
+      <rule>Include all necessary file changes (creations, modifications, deletions) as separate <file> elements.</rule>
+      <rule>The <search> regex must be accurate and specific enough to only match the intended target code.</rule>
+      <rule>The <replace> content must be the complete, correct code snippet or file content, properly escaped within CDATA.</rule>
+      <rule>Represent a file rename as a delete of the old path and a create of the new path with the final content.</rule>
       <rule>Ensure proper encoding handling - maintain UTF-8 encoding and don't introduce encoding issues.</rule>
-    </patch_integrity>
+      <rule>Strictly adhere to the XML structure: Use <operation> for modify/create, omit it for delete. Ensure required attributes (path, action, version) are present.</rule>
+    </xml_integrity>
 
     <output_structure>
-      <rule>The Git patch MUST contain all the necessary changes.</rule>
-      <rule>Do not include any explanatory text before or after the patch.</rule>
-      <rule>Consistently use proper file paths across all parts of the patch.</rule>
-      <rule>Ensure the diff is generated based *only* on the provided file contents and the task description.</rule>
+      <rule>Output ONLY the raw XML document starting with <?xml ...?> and ending with </changes>.</rule>
+      <rule>No extra text, explanations, introductions, or markdown formatting outside the XML tags.</rule>
+      <rule>The XML will be parsed by machine, so it must be syntactically perfect. Any deviation from the specified format may cause parsing errors.</rule>
     </output_structure>
-    
-    <edge_cases>
-      <rule>For large files, focus patches only on the changed regions with sufficient context.</rule>
-      <rule>For changes that depend on each other, ensure the patch presents them in a logical order.</rule>
-      <rule>For binary files, use the minimal header approach without content inclusion.</rule>
-    </edge_cases>
+
+    <token_efficiency>
+      <rule>Make each <search> regex as specific and targeted as possible to match only the exact code that needs changing.</rule>
+      <rule>For <replace> elements, include only the necessary code changes and avoid repeating large unchanged code blocks.</rule>
+      <rule>Break complex changes into multiple focused operations targeting minimal code segments instead of replacing large blocks.</rule>
+      <rule>When possible, use multiple small, specific operations rather than one large operation that includes unchanged code.</rule>
+      <rule>For large files with small changes, target only the specific functions, methods, or blocks that need modification.</rule>
+      <rule>Use precise line anchors (^, $) and word boundaries (\\b) in regex patterns to ensure accurate targeting.</rule>
+      <rule>Avoid overly general patterns that could match multiple code locations unintentionally.</rule>
+      <rule>When creating multi-line search patterns, include enough unique context to prevent accidental matches elsewhere in the codebase.</rule>
+      <rule>Prioritize efficiency by targeting only the specific text area between the tokens of interest rather than capturing large blocks.</rule>
+    </token_efficiency>
+
+    <regex_precision>
+      <rule>Accuracy is the top priority—100% precision in targeting the correct code block is essential, execution speed is secondary.</rule>
+      <rule>Anchor regex patterns to unique, invariant context lines or identifiers that bound the target code block.</rule>
+      <rule>For multi-line blocks, capture a precise signature at the beginning and end of the block that cannot be confused with other code.</rule>
+      <rule>When uncertainty exists about uniqueness, expand the capture to include additional surrounding context rather than risk incorrect replacements.</rule>
+      <rule>Use explicit character classes and non-greedy quantifiers to eliminate accidental matches.</rule>
+      <rule>Look for distinctive patterns such as unique variable names, function signatures, or comment blocks to serve as anchors.</rule>
+      <rule>Test for uniqueness—ensure your regex pattern could not possibly match any other section of the codebase.</rule>
+      <rule>For complex or repetitive codebases, combine multiple signals to ensure uniqueness (e.g., nearby comments, function signatures, and variable names).</rule>
+    </regex_precision>
   </rules>
 </prompt>`;
 }

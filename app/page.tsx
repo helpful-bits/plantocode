@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useInitialization } from "@/lib/contexts/initialization-context";
 import { InitializationStatus } from "./_components/initialization-status";
 import GeneratePromptRoot from "./_components/generate-prompt/generate-prompt-root";
+import { XmlChangesPanel } from "./_components/xml-changes/xml-changes-panel";
 
 export default function Home() {
   const { stage, isLoading } = useInitialization();
@@ -24,6 +25,7 @@ export default function Home() {
             </div>
           }>
             <GeneratePromptRoot />
+            <XmlChangesPanel />
           </Suspense>
         </div>
       ) : (

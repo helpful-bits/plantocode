@@ -79,6 +79,7 @@ export function getDirectoryName(filePath: string): string {
 
 /**
  * Returns the path to the patches directory in the project directory
+ * This directory is used for XML files that contain changes to be applied
  * @param projectDirectory Path to the project directory
  * @returns Path to the patches directory within the project
  */
@@ -91,6 +92,7 @@ export function getProjectPatchesDirectory(projectDirectory: string): string {
 
 /**
  * Returns the path to the fallback patches directory in the application directory
+ * This directory is used for XML files when project directory is not accessible
  * @returns Path to the application's patches directory
  */
 export function getAppPatchesDirectory(): string {
@@ -98,10 +100,10 @@ export function getAppPatchesDirectory(): string {
 }
 
 /**
- * Resolves a patch filename to a full path in either project directory or app directory
- * @param filename The patch filename
+ * Resolves a patch or XML filename to a full path in either project directory or app directory
+ * @param filename The XML filename
  * @param projectDirectory Optional project directory
- * @returns The full path to the patch file
+ * @returns The full path to the XML file
  */
 export function resolvePatchPath(filename: string, projectDirectory?: string): string {
   if (projectDirectory) {
@@ -114,10 +116,29 @@ export function resolvePatchPath(filename: string, projectDirectory?: string): s
 }
 
 /**
- * Extracts just the filename from a full patch path
- * @param patchPath Full path to a patch file
+ * Extracts just the filename from a full path
+ * @param filePath Full path to a file
  * @returns Just the filename
  */
-export function getPatchFilename(patchPath: string): string {
-  return path.basename(patchPath);
+export function getPatchFilename(filePath: string): string {
+  return path.basename(filePath);
+}
+
+/**
+ * Checks if a filename has an XML extension
+ * @param filename The filename to check
+ * @returns True if the file has an XML extension
+ */
+export function isXmlFile(filename: string): boolean {
+  return /\.xml$/i.test(filename);
+}
+
+/**
+ * Gets the extension of a file
+ * @param filename The filename to check
+ * @returns The file extension (without the dot)
+ */
+export function getFileExtension(filename: string): string {
+  const ext = path.extname(filename);
+  return ext ? ext.substring(1).toLowerCase() : '';
 }

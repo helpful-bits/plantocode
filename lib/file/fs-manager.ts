@@ -47,7 +47,7 @@ export class FileSystemManager {
     requestId: string,
     sessionName: string,
     projectDir?: string,
-    extension: string = 'patch'
+    extension: string = 'xml'
   ): Promise<string> {
     const timestamp = new Date().toISOString()
       .replace(/:/g, '-')

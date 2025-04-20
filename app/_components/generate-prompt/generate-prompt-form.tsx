@@ -7,7 +7,7 @@ import { findRelevantFilesAction } from "@/actions/path-finder-actions"; // Impo
 import { correctPathsAction } from "@/actions/path-correction-actions"; // Import path correction action
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { resetSessionStateAction } from "@/actions/session-actions"; // Import reset action
-import { estimateTokens } from "@/lib/token-estimator"; // Keep token-estimator import
+import { estimateTokens } from "@/lib/token-estimator";
 import { getDiffPrompt } from "@/prompts/diff-prompt"; // Import only diff prompt
 import ProjectDirectorySelector from "./_components/project-directory-selector"; // Keep ProjectDirectorySelector import
 import { useProject } from "@/lib/contexts/project-context"; // Keep project-context import
@@ -1051,8 +1051,8 @@ ${content}
         .join("\n\n");
 
       let instructions = await getDiffPrompt(); // Always use diff prompt
-      // No longer need the replace operations as the prompt structure has been updated
-      
+      // The getDiffPrompt now returns the XML prompt structure
+
       const fullPrompt = `${instructions}
 
 <project_files>
@@ -1111,7 +1111,7 @@ ${taskDescription}
     geminiStatus: 'idle' as const,
     geminiStartTime: null,
     geminiEndTime: null,
-    geminiPatchPath: null,
+    geminiXmlPath: null,
     geminiStatusMessage: null,
     geminiTokensReceived: 0,
     geminiCharsReceived: 0,
@@ -1224,7 +1224,7 @@ ${taskDescription}
       geminiStatus: 'idle' as const,
       geminiStartTime: null,
       geminiEndTime: null,
-      geminiPatchPath: null,
+      geminiXmlPath: null,
       geminiStatusMessage: null,
       geminiTokensReceived: 0,
       geminiCharsReceived: 0,
@@ -1561,7 +1561,7 @@ ${taskDescription}
                 </div>
               )}
 
-              {prompt && (
+              {prompt && !isLoading && ( // Only show prompt preview when not loading
                 <div className="bg-muted p-4 rounded-lg mt-6 relative border shadow-inner">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-lg font-semibold">Generated Prompt</h3>
@@ -1575,7 +1575,7 @@ ${taskDescription}
                       {copySuccess ? "Copied!" : "Copy to Clipboard"}
                     </Button>}
                   </div>
-                  <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-sm max-h-[650px]">
+                  <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[650px]"> {/* Reduced font size for dense prompt */}
                     {prompt}
                   </pre>
                 </div>
@@ -1592,7 +1592,7 @@ ${taskDescription}
         )}
 
         {/* Gemini Processor Section - Render only when session is active */}
-        {activeSessionId && projectDirectory && sessionInitialized && ( // Render Gemini controls only when session is fully active and initialized
+        {activeSessionId && projectDirectory && sessionInitialized && prompt && ( // Render Gemini controls only when session is active, initialized, AND a prompt has been generated
             <Suspense fallback={<div>Loading Gemini Processor...</div>}>
               <GeminiProcessor prompt={prompt} activeSessionId={activeSessionId} />
             </Suspense>

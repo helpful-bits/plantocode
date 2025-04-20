@@ -31,7 +31,17 @@ ${clipboardText}
 
 <focus>
 Process all changes thoroughly and implement everything specified in the diff without seeking additional permissions. Use the provided file contents as the base for applying the diff.
-</focus></prompt>`;
+</focus>
+
+<token_efficiency>
+Make highly targeted, precise changes when applying diffs to minimize token usage:
+- Focus on applying ONLY the exact changes specified in the diff without including surrounding unchanged code.
+- When summarizing changes, be brief and concise, focusing only on what was changed.
+- Avoid repeating large sections of unchanged code.
+- Only include affected code regions in your response.
+- Prioritize precision over verbosity.
+</token_efficiency>
+</prompt>`;
 }
 
  

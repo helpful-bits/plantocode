@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)), -- Boolean represented as integer
   codebase_structure TEXT DEFAULT '', -- ASCII structure of codebase
   output_format TEXT NOT NULL, -- Will be removed by migration 0004
-  custom_format TEXT DEFAULT '', -- Will be removed by migration 0004 // Keep comment
+  custom_format TEXT DEFAULT '', -- Will be removed by migration 0004 /* Keep comment */
 
   -- Using default strftime for creation time is problematic if row is updated
   -- Instead, rely on application logic to set timestamps
@@ -53,11 +53,11 @@ CREATE TABLE IF NOT EXISTS project_settings (
   active_session_id TEXT, -- Can be NULL if no session is active
   updated_at INTEGER,
   PRIMARY KEY (project_hash, output_format),
-  FOREIGN KEY (active_session_id) REFERENCES sessions(id) ON DELETE SET NULL // Keep foreign key
+  FOREIGN KEY (active_session_id) REFERENCES sessions(id) ON DELETE SET NULL /* Keep foreign key */
 );
 
 -- Create cached_state table
-CREATE TABLE IF NOT EXISTS cached_state ( // Keep table definition
+CREATE TABLE IF NOT EXISTS cached_state ( /* Keep table definition */
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_hash TEXT NOT NULL,
   output_format TEXT NOT NULL,

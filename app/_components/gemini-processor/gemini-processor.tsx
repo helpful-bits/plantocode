@@ -3,18 +3,22 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import { useDebounceValue } from 'usehooks-ts';
 import {Button} from '@/components/ui/button';
-import {Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw, Clock, ExternalLink, ChevronDown, ChevronUp} from 'lucide-react';
+import {Loader2, Save, XOctagon, AlertCircle, CheckCircle, RefreshCw, Clock, ExternalLink, ChevronDown, ChevronUp, Hammer, Search} from 'lucide-react';
 import {
     sendPromptToGeminiAction,
     cancelGeminiRequestAction,
     cancelGeminiProcessingAction
 } from '@/actions/gemini-actions';
-import {resetSessionStateAction, clearSessionPatchPathAction} from '@/actions/session-actions';
-import {GeminiProcessorContext, useGeminiProcessor} from './gemini-processor-context'; // Import the context and hook
+import {resetSessionStateAction, clearSessionXmlPathAction} from '@/actions/session-actions';
+import {GeminiProcessorContext, useGeminiProcessor} from './gemini-processor-context';
 import {useDatabase} from '@/lib/contexts/database-context';
 import {GeminiRequest, Session, GeminiStatus} from '@/types';
 import {normalizePath} from '@/lib/path-utils';
 import {IdeIntegration} from './ide-integration';
+import { applyXmlChangesFromFileAction } from '@/actions/apply-xml-changes-action';
+import { useProject } from '@/lib/contexts/project-context';
+import path from 'path';
+import { toast } from '@/components/ui/use-toast';
 
 interface GeminiProcessorProps {
     prompt: string;
@@ -37,6 +41,7 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
     const [errorMessage, setErrorMessage] = useState<string>("");
     const [sessionData, setSessionData] = useState<Session | null>(null);
     const {repository, isInitialized} = useDatabase();
+    const { projectDirectory } = useProject();
     const isMountedRef = useRef(true);
 
     // Timer display string state for each request
@@ -44,6 +49,19 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
 
     // Debounce session data to prevent excessive updates
     const [debouncedSessionData] = useDebounceValue(sessionData, 300);
+
+    // Add state for XML application
+    const [applyingXmlId, setApplyingXmlId] = useState<string | null>(null);
+    const [applyResult, setApplyResult] = useState<{
+        requestId: string;
+        isSuccess: boolean;
+        message: string;
+        changes: string[];
+    } | null>(null);
+    const [showChangesMap, setShowChangesMap] = useState<Record<string, boolean>>({});
+
+    // Add a state variable for collapsed requests
+    const [isRequestsCollapsed, setIsRequestsCollapsed] = useState(false);
 
     // --- Request Timer Logic ---
     const updateRequestTimers = useCallback((requests: ExtendedGeminiRequest[] | undefined) => {
@@ -95,7 +113,7 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
                     updateRequestTimers(session.geminiRequests);
 
                     // Find if any request is in failed/canceled state
-                    const hasFailedOrCanceledRequest = session.geminiRequests?.some(req => req.status === 'failed' || req.status === 'canceled');
+                    const hasFailedOrCanceledRequest = session.geminiRequests?.some((req: any) => req.status === 'failed' || req.status === 'canceled');
 
                     if (!hasFailedOrCanceledRequest) {
                         setErrorMessage("");
@@ -391,34 +409,74 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
         }
     }, [repository, sessionData?.id, fetchSessionData]);
 
-    // Handler for IDE integration error, using useCallback
-    const handleIdeIntegrationError = useCallback(async (errorMsg: string, patchPath: string | null) => {
-        console.log(`[Gemini UI] IDE Integration Error: ${errorMsg}, Path: ${patchPath}`);
-
-        // If the file wasn't found, try clearing the path in the session
-        if (errorMsg.includes('File not found') && patchPath && activeSessionId && repository) {
-            const normalizedPath = normalizePath(patchPath);
-            setErrorMessage(`Patch file not found: ${normalizedPath}`);
-
-            // Find the request associated with this path
-            const requestWithError = sessionData?.geminiRequests?.find(req =>
-                req.patchPath && normalizePath(req.patchPath) === normalizedPath
-            );
-
-            if (requestWithError) {
-                console.log(`[Gemini UI] Clearing patch path for request ${requestWithError.id} due to file not found error.`);
-                // Clear the path in the specific request record
-                // Also update the status message to reflect the issue
-                await repository.updateGeminiRequestStatus(requestWithError.id, requestWithError.status, requestWithError.startTime, requestWithError.endTime, null, `Patch file not found: ${normalizedPath}`);
-            } else {
-                console.warn(`[Gemini UI] Could not find request matching patch path ${normalizedPath} to clear.`);
-            }
-            // Re-fetch data to update UI
-            await fetchSessionData();
-        } else {
-            setErrorMessage(`Error opening file: ${errorMsg}`);
+    // Function to handle applying XML changes
+    const handleApplyXmlChanges = async (requestId: string, xmlPath: string) => {
+        if (!xmlPath || !projectDirectory) {
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: "XML file path is missing or project directory is not set."
+            });
+            return;
         }
-    }, [repository, fetchSessionData, activeSessionId, sessionData?.geminiRequests]);
+        
+        setApplyingXmlId(requestId);
+        
+        try {
+            const result = await applyXmlChangesFromFileAction(xmlPath, projectDirectory);
+            
+            if (result.isSuccess) {
+                toast({
+                    title: "Success",
+                    description: result.message || "XML changes applied successfully."
+                });
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: result.message || "Failed to apply XML changes."
+                });
+            }
+        } catch (error) {
+            console.error("Error applying XML changes:", error);
+            toast({
+                variant: "destructive",
+                title: "Error",
+                description: error instanceof Error ? error.message : "Failed to apply XML changes."
+            });
+        } finally {
+            setApplyingXmlId(null);
+        }
+    };
+
+    // Function to toggle showing changes for a specific request
+    const toggleShowChanges = useCallback((requestId: string) => {
+        setShowChangesMap(prev => ({
+            ...prev,
+            [requestId]: !prev[requestId]
+        }));
+    }, []);
+
+    /**
+     * Handle IDE integration error by clearing the XML path if file is missing
+     */
+    const handleIdeIntegrationError = async (errorMessage: string, filePath: string) => {
+        if (errorMessage.includes("File not found") && activeSessionId) {
+            console.log(`XML file not found: ${filePath}, clearing from session`);
+            await clearSessionXmlPathAction(activeSessionId);
+            
+            // Refresh data by triggering a refetch
+            setTimeout(() => {
+                fetchSessionData();
+            }, 500);
+            
+            toast({
+                variant: "destructive",
+                title: "File Not Found",
+                description: "The XML file was missing and has been cleared from the session."
+            });
+        }
+    };
 
     // Determine the send button state - only disable if there's no prompt
     const isSendDisabled = !prompt?.trim();
@@ -426,27 +484,22 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
     // Get all requests with the newest first, including pending ones
     // Use debouncedSessionData to avoid flicker during rapid updates
     const requests = debouncedSessionData?.geminiRequests || [];
-    const allRequests = [...pendingRequests, ...requests];
-    const sortedRequests = [...allRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // Ensure sorting is correct
+    const sortedRequests = [...pendingRequests, ...requests]
+        .sort((a, b) => (b.startTime || Date.now()) - (a.startTime || Date.now()));
 
-    // Check if there's at least one running request
-    const hasRunningRequests = sortedRequests.some(req => req.status === 'running');
-
-    // Count running and queued requests
+    // Count of requests by status for displaying in UI
     const runningRequestsCount = sortedRequests.filter(req => req.status === 'running').length;
     const queuedRequestsCount = sortedRequests.filter(req => req.status === 'preparing').length;
+    const hasRunningRequests = runningRequestsCount > 0;
     const processingRequestsCount = runningRequestsCount - queuedRequestsCount;
 
     // Provide context value
     const contextValue = useMemo(() => ({
         resetProcessorState
     }), [resetProcessorState]);
-
-    // Add a state variable for collapsed requests
-    const [isRequestsCollapsed, setIsRequestsCollapsed] = useState(false);
-
+    
     // Add this function before the return statement
-    const renderRequestItem = (request, index) => {
+    const renderRequestItem = (request: any, index: number) => {
         const isProcessing = request.status === 'running';
         const isCompleted = request.status === 'completed';
         const isFailed = request.status === 'failed';
@@ -455,10 +508,13 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
         const isPreparing = request.status === 'preparing';
 
         return (
-            <div key={request.id} 
-                className={`p-3 border-b last:border-b-0 relative ${
-                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                } hover:bg-blue-50 transition-colors duration-150`}>
+            <div key={request.id || index} 
+                className={`flex flex-col border-b last:border-b-0 p-3 ${
+                    isPending ? 'bg-blue-50/30' : 
+                    isCompleted ? 'bg-green-50/30' :
+                    isFailed ? 'bg-red-50/30' :
+                    isCanceled ? 'bg-orange-50/30' : ''
+                }`}>
                 {/* Pending indicator badge */}
                 {isPending && (
                     <div className="absolute top-2 right-2">
@@ -514,7 +570,7 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
                         </p>
 
                         {/* Error Message */}
-                        {request.statusMessage && (isFailed || isCanceled || (isCompleted && !request.patchPath)) && (
+                        {request.statusMessage && (isFailed || isCanceled || (isCompleted && !request.xmlPath && request.statusMessage !== 'Gemini processing completed successfully.')) && ( // Only show completion message if it's an error/warning
                             <p className="text-sm text-red-600 mt-1">{request.statusMessage}</p>
                         )}
 
@@ -526,19 +582,77 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
                             </div>
                         )}
 
-                        {/* File Path with IDE Integration (only if path exists) */}
-                        {request.patchPath && (
+                        {/* XML Changes File Path with IDE Integration and Apply Button */}
+                        {request.xmlPath && ( // xmlPath refers to the XML change file
                             <div className="mt-2 text-xs">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                     <span
                                         className="font-mono bg-muted p-1 rounded truncate max-w-[300px]">
-                                        {request.patchPath}
+                                        {normalizePath(request.xmlPath)}
                                     </span>
-                                    <IdeIntegration
-                                        filePath={request.patchPath}
-                                        onError={(msg) => handleIdeIntegrationError(msg, request.patchPath)}
-                                    />
+                                    <div className="flex gap-2 items-center">
+                                        <IdeIntegration
+                                            filePath={request.xmlPath}
+                                            onError={(msg) => handleIdeIntegrationError(msg, request.xmlPath)}
+                                        />
+                                        
+                                        {/* Only show Apply button for completed requests with valid xmlPath */}
+                                        {request.status === 'completed' && (
+                                            <Button 
+                                                className="px-2 py-1 h-7 text-xs"
+                                                variant="outline"
+                                                onClick={() => handleApplyXmlChanges(request.id, request.xmlPath)}
+                                                disabled={applyingXmlId === request.id}
+                                            >
+                                                {applyingXmlId === request.id ? (
+                                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                                ) : (
+                                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                                )}
+                                                Apply
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Show Apply results if available for this request */}
+                        {applyResult && applyResult.requestId === request.id && (
+                            <div className={`mt-2 text-xs p-2 rounded-md ${
+                                applyResult.isSuccess ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                            }`}>
+                                <p className={`font-medium ${applyResult.isSuccess ? 'text-green-700' : 'text-red-700'}`}>
+                                    {applyResult.message}
+                                </p>
+                                
+                                {applyResult.changes.length > 0 && (
+                                    <div className="mt-2">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            onClick={() => toggleShowChanges(request.id)}
+                                            className="text-xs p-0 h-auto mb-1 font-medium"
+                                        >
+                                            {showChangesMap[request.id] ? "Hide Details" : "Show Details"}
+                                            {showChangesMap[request.id] ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
+                                        </Button>
+                                        
+                                        {showChangesMap[request.id] && (
+                                            <ul className="space-y-1 max-h-32 overflow-y-auto bg-white/50 p-1 rounded text-xs">
+                                                {applyResult.changes.map((change, idx) => (
+                                                    <li key={idx} className={
+                                                        change.startsWith("Error") || change.startsWith("Warning") 
+                                                            ? "text-amber-600" 
+                                                            : "text-foreground"
+                                                    }>
+                                                        {change}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
