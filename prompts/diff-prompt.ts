@@ -178,25 +178,27 @@ sixth_setting = value6]]></search>
     </output_structure>
 
     <token_efficiency>
-      <rule>Make each <search> element contain the minimum text necessary to uniquely identify the target content, ideally 10-20 lines maximum.</rule>
+      <rule>Make each <search> element contain the minimum text necessary to uniquely identify the target content, ideally 5-10 lines maximum.</rule>
       <rule>For <replace> elements, include only the necessary changes and avoid repeating large unchanged blocks.</rule>
-      <rule>Break complex changes into multiple focused operations targeting minimal segments instead of replacing large blocks.</rule>
-      <rule>When possible, use multiple small, specific operations rather than one large operation that includes unchanged content.</rule>
+      <rule>CRITICAL: Keep search patterns under 500 characters total to maximize matching success.</rule>
+      <rule>Break complex changes into multiple small, focused operations targeting minimal segments instead of replacing large blocks.</rule>
+      <rule>Always use multiple small, specific operations rather than one large operation that includes unchanged content.</rule>
       <rule>For large files with small changes, target only the specific sections that need modification.</rule>
       <rule>AVOID REGULAR EXPRESSIONS in the <search> element - use exact text matching instead.</rule>
       <rule>When creating multi-line search patterns, include enough unique context to prevent accidental matches elsewhere in the file.</rule>
       <rule>Prioritize efficiency by targeting only the specific text area between the elements of interest rather than capturing large blocks.</rule>
-      <rule>CRITICAL: Avoid search patterns longer than 20-30 lines as they are more likely to fail due to minor differences.</rule>
+      <rule>CRITICAL: Avoid search patterns longer than 10-15 lines as they are more likely to fail due to minor differences.</rule>
     </token_efficiency>
 
     <pattern_precision>
       <rule>Accuracy is the top priority—100% precision in targeting the correct content is essential.</rule>
       <rule>Copy the exact text from the source file into the <search> element, including whitespace and indentation.</rule>
-      <rule>For function or block changes, target just the definitive unique signature and first few lines rather than entire blocks.</rule>
-      <rule>When uncertainty exists about uniqueness, expand the selection to include additional surrounding context rather than risk incorrect replacements.</rule>
+      <rule>CRITICAL: Target unique string literals, function names, or distinctive comments rather than common code structures.</rule>
+      <rule>For function or block changes, target just the function signature and first 1-3 lines rather than entire blocks.</rule>
+      <rule>When uncertainty exists about uniqueness, select shorter patterns with more distinctive content rather than longer generic patterns.</rule>
       <rule>Look for distinctive patterns such as unique identifiers, section headers, or comment markers to serve as context.</rule>
       <rule>Test for uniqueness—ensure your search text could not possibly match any other section of the file.</rule>
-      <rule>For complex or repetitive content, combine multiple signals to ensure uniqueness (e.g., nearby markers, unique labels, and distinctive formatting).</rule>
+      <rule>For complex or repetitive content, provide multiple smaller operations with distinct uniquely identifiable patterns.</rule>
       <rule>IMPORTANT: Keep search patterns simple! Use exact text matching rather than complex regex patterns.</rule>
       <rule>CRITICAL: Prefer multiple smaller search/replace operations instead of one large operation covering an entire block or section.</rule>
     </pattern_precision>
@@ -206,12 +208,22 @@ sixth_setting = value6]]></search>
       <rule>For markup files, include unique element structures, attributes, or distinctive content with surrounding context.</rule>
       <rule>For style files, include specific selectors with minimal property blocks.</rule>
       <rule>PRESERVE ALL WHITESPACE and indentation in both search and replace elements exactly as it appears in the source/target.</rule>
-      <rule>When targeting block structures, prefer to include just the signature/header and 3-5 lines rather than the entire block.</rule>
-      <rule>When targeting imports or includes, use the exact lines with surrounding context.</rule>
-      <rule>For data files, include unique field declarations or section headers with surrounding context.</rule>
-      <rule>Match the minimum amount of text needed to uniquely identify the target location, plus 1-2 lines of context.</rule>
-      <rule>Prefer search patterns no longer than 20 lines maximum to minimize the risk of whitespace or line ending mismatches.</rule>
+      <rule>When targeting block structures, ONLY include the signature/header and 1-3 lines rather than more lines.</rule>
+      <rule>When targeting imports or includes, use the exact lines with minimal surrounding context.</rule>
+      <rule>For data files, include unique field declarations or section headers with minimal surrounding context.</rule>
+      <rule>Match the minimum amount of text needed to uniquely identify the target location, plus 1 line of context maximum.</rule>
+      <rule>NEVER create search patterns longer than 10 lines to minimize the risk of whitespace or line ending mismatches.</rule>
+      <rule>For each complex change, provide at least 2-3 smaller operations with different pattern approaches as fallbacks.</rule>
+      <rule>When modifying large blocks, first target a unique anchor point with a small operation, then target subsequent sections.</rule>
     </pattern_construction>
+    
+    <whitespace_handling>
+      <rule>CRITICAL: Be extremely careful with whitespace in search patterns - even small indentation differences will cause failures.</rule>
+      <rule>Prefer targeting unique string literals or comments rather than code with complex indentation patterns.</rule>
+      <rule>When selecting multi-line patterns, choose lines with distinctive text content rather than lines with mostly whitespace.</rule>
+      <rule>Avoid patterns that start or end with blank lines or lines containing only whitespace/brackets.</rule>
+      <rule>For languages sensitive to whitespace (Python, YAML), prefer targeting non-indentation-dependent unique parts.</rule>
+    </whitespace_handling>
   </rules>
 </prompt>`;
 }
