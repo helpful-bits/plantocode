@@ -75,6 +75,11 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
             ? sessionToSave.name.trim() // Fallback to current DB name
             : `Session ${new Date().toLocaleString()}`;
 
+        // Fallback to prop projectDirectory if missing from form state during HMR
+        const effectiveProjectDirectory = formFields.projectDirectory?.trim() 
+          ? formFields.projectDirectory 
+          : projectDirectory;
+
         // Create the update payload - start with existing DB data, merge *only* form fields
         // Crucially, DO NOT merge Gemini status fields from formState, they are managed by background processes
         const updatePayload: Session = {
@@ -82,7 +87,7 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
           ...formFields,             // Apply the current form fields (task desc, files, etc.)
           id: sessionId!,             // Ensure ID remains the same
           name: effectiveSessionName, // Use the determined session name
-          projectDirectory: formState.projectDirectory, // Ensure these are correct
+          projectDirectory: effectiveProjectDirectory, // Use fallback if needed
           updatedAt: Date.now(), // Update timestamp
         };
 
@@ -125,7 +130,7 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     } finally {
       isSavingRef.current = false; // Ensure saving flag is reset
     }
-  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, formState, sessionName]);
+  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, formState, sessionName, projectDirectory]);
 
   // Debounce the save function
   const debouncedSaveFn = useDebounceCallback(debouncedSave, 500); // Reduced from 1500ms to 500ms for faster saves during HMR
@@ -157,8 +162,8 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     if (onStateChange) onStateChange(hasChanges);
 
     if (hasChanges) {
-      if (!formState.projectDirectory?.trim()) {
-        console.warn(`[FormStateManager] Auto-save skipped for session ${activeSessionId} - projectDirectory is empty in current formState.`);
+      if (!formState.projectDirectory?.trim() && !projectDirectory?.trim()) {
+        console.warn(`[FormStateManager] Auto-save skipped for session ${activeSessionId} - projectDirectory is missing in current formState.`);
         setSaveError("Cannot auto-save: Project directory is missing.");
         if (onSaveError) onSaveError("Cannot auto-save: Project directory is missing.");
         return;

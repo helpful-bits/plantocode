@@ -46,6 +46,11 @@ Generate comprehensive prompts for AI models tailored to your codebase and task.
     - **Paste Paths:** Directly paste file paths (relative to the project or absolute external paths) to include specific files.
     - **AI Path Finder:** Click a button near the "Paste Paths" area. Gemini Flash analyzes the codebase structure and task description to automatically suggest relevant files, populating the "Paste Paths" area. Handles large codebases by requesting intelligent splitting if necessary.
     - **Regex Generation:** Describe file patterns (e.g., "React components using useState") and use Anthropic Claude (if API key is provided) to generate corresponding title (path) and content regex patterns for filtering.
+- **UI Controls:**
+    - **Find Relevant Files:** Uses a dedicated loading state (`isFindingFiles`) while finding relevant files.
+    - **Get Architectural Guidance:** Uses a separate loading state (`isGeneratingGuidance`) when calling Gemini for guidance.
+    - **Copy Prompt:** Uses its own loading state (`isCopyingPrompt`) when copying the prompt template to clipboard. This operation uses a shared server action and never triggers a Gemini API call. 
+    - Each button maintains an isolated state flag, preventing UI cross-talk between different operations.
 - **Codebase Structure:** Optionally provide or generate (using `tree` command logic) an ASCII representation of your codebase structure for better AI understanding, especially useful for refactoring tasks.
 - **Task Description:** Detail the changes you want the AI to perform. Use the integrated voice transcription and correction features if needed.
 - **Session Management:**
