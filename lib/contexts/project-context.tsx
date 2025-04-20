@@ -9,6 +9,8 @@ interface ProjectContextType {
   setProjectDirectory: (dir: string) => void;
   isLoading: boolean;
   error: string | null;
+  activeSessionId: string | null;
+  setActiveSessionId: (id: string | null) => void;
 }
 
 // Default context values
@@ -16,7 +18,9 @@ const defaultContextValue: ProjectContextType = {
   projectDirectory: "",
   setProjectDirectory: () => {},
   isLoading: true,
-  error: null
+  error: null,
+  activeSessionId: null,
+  setActiveSessionId: () => {}
 };
 
 const ProjectContext = createContext<ProjectContextType>(defaultContextValue);
@@ -35,6 +39,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projectDirectory, setProjectDirectoryState] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   
   // Sync with initialization context
   useEffect(() => {
@@ -64,7 +69,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       projectDirectory, 
       setProjectDirectory,
       isLoading,
-      error
+      error,
+      activeSessionId,
+      setActiveSessionId
     }}>
       {children}
     </ProjectContext.Provider>

@@ -32,8 +32,8 @@ export async function getDiffPrompt(): Promise<string> {
          │    ├─ path        (required attribute, string) — relative POSIX path from project root
          │    ├─ action      (required attribute, enum: modify | create | delete)
          │    └─ operation   (0..N, required unless action="delete") — Represents a single search/replace operation
-         │         ├─ search   (required element, string) — multi-line ECMAScript regex
-         │         └─ replace  (required element, string) — multi-line literal replacement text
+         │         ├─ search   (required element, string) — text to search for, preferably exact snippets
+         │         └─ replace  (required element, string) — exact replacement text
          └─ meta        (0..1, element, string) — optional free-form metadata for tracing (omit unless necessary)
       </data_model>
 
@@ -80,7 +80,7 @@ export async function getDiffPrompt(): Promise<string> {
 
       <encoding_rules>
         - **Multi-line text:** Wrap the entire content of <search> and <replace> elements within <![CDATA[ ... ]]> blocks. Preserve original indentation and line breaks within the CDATA sections.
-        - **Regular Expression Dialect:** Use ECMAScript flavor regex for the <search> content. Create multi-line patterns that unambiguously capture only the specific blocks bounded by uniquely identifiable tokens. Anchor patterns to invariant context lines or unique identifiers on both sides of the targeted block. Use non-greedy quantifiers (e.g., .*?, +?) to prevent overmatching. Prefer explicit character classes ([a-zA-Z0-9]) over general wildcards (.). Use non-capturing groups (?:...) where possible. Escape XML special characters (<, >, &) if they appear literally *within* the regex pattern itself inside the CDATA, although this is rare for code patterns.
+        - **Search Strategy:** PREFER EXACT TEXT MATCHING over regular expressions. The <search> element should contain the exact text to find, with proper indentation and line breaks, not regex patterns.
         - **Path Separator:** Always use forward slashes (/) for file paths in the path attribute (POSIX style).
         - **Character Set:** Output MUST be UTF-8.
         - **XML Validity:** Ensure the generated XML is well-formed and valid against the provided structure. Pay close attention to required attributes and element cardinalities.
@@ -88,7 +88,7 @@ export async function getDiffPrompt(): Promise<string> {
       </encoding_rules>
 
       <operation_guidelines>
-        - **modify:** Include one or more <operation> elements. Each <search> regex should uniquely identify the code block to be replaced by the corresponding <replace> content. The replacement should contain the complete new code block.
+        - **modify:** Include one or more <operation> elements. Each <search> should contain the exact text snippet to be replaced by the corresponding <replace> content. Include enough context (a few lines before and after) to uniquely identify the code location.
         - **create:** Include exactly one <operation> element. The <search> element should contain an empty CDATA section (<![CDATA[]]>). The <replace> element must contain the *full* content of the new file within a CDATA section.
         - **delete:** Do *not* include any <operation> elements. The presence of the <file> element with action="delete" is sufficient.
       </operation_guidelines>
@@ -98,7 +98,7 @@ export async function getDiffPrompt(): Promise<string> {
         <changes xmlns="https://example.com/ns/changes" version="1">
           <file path="src/components/Header.jsx" action="modify">
             <operation>
-              <search><![CDATA[className\\s*=\\s*["']old-header["']]]></search>
+              <search><![CDATA[className="old-header"]]></search>
               <replace><![CDATA[className="new-header"]]></replace>
             </operation>
             <operation>
@@ -118,6 +118,42 @@ export async function getDiffPrompt(): Promise<string> {
           <file path="src/legacy/utils.js" action="delete"/>
         </changes>
       </example>
+
+      <search_examples>
+        <good_example>
+          <!-- Example 1: Exact function text with context -->
+          <search><![CDATA[function calculateTotal(items) {
+  return items.reduce((sum, item) => {
+    return sum + item.price;
+  }, 0);
+}]]></search>
+          
+          <!-- Example 2: Exact function signature with specific context -->
+          <search><![CDATA[function processUser(user, options) {
+  // Process the user
+  const id = user.id;]]></search>
+          
+          <!-- Example 3: Specific code block with context -->
+          <search><![CDATA[// Calculate discount
+const discount = price * 0.1;
+const total = price - discount;]]></search>
+        </good_example>
+        
+        <bad_example>
+          <!-- Regex pattern instead of exact text -->
+          <search><![CDATA[function\\s+calculateTotal\\s*\\(\\s*items\\s*\\)\\s*\\{\\s*return\\s+items\\.reduce]]></search>
+          
+          <!-- Too short, not enough context -->
+          <search><![CDATA[const discount]]></search>
+          
+          <!-- Missing indentation compared to actual file -->
+          <search><![CDATA[function calculateTotal(items) {
+return items.reduce((sum, item) => {
+return sum + item.price;
+}, 0);
+}]]></search>
+        </bad_example>
+      </search_examples>
     </xml_specification>
   </output_format>
 
@@ -132,7 +168,7 @@ export async function getDiffPrompt(): Promise<string> {
     <xml_integrity>
       <rule>The generated XML MUST be complete and represent ALL required changes based on the user request.</rule>
       <rule>Include all necessary file changes (creations, modifications, deletions) as separate <file> elements.</rule>
-      <rule>The <search> regex must be accurate and specific enough to only match the intended target code.</rule>
+      <rule>The <search> content must be the exact text to find, with correct indentation and formatting.</rule>
       <rule>The <replace> content must be the complete, correct code snippet or file content, properly escaped within CDATA.</rule>
       <rule>Represent a file rename as a delete of the old path and a create of the new path with the final content.</rule>
       <rule>Ensure proper encoding handling - maintain UTF-8 encoding and don't introduce encoding issues.</rule>
@@ -146,27 +182,37 @@ export async function getDiffPrompt(): Promise<string> {
     </output_structure>
 
     <token_efficiency>
-      <rule>Make each <search> regex as specific and targeted as possible to match only the exact code that needs changing.</rule>
+      <rule>Make each <search> element contain the minimum text necessary to uniquely identify the target code, plus 1-2 lines of context.</rule>
       <rule>For <replace> elements, include only the necessary code changes and avoid repeating large unchanged code blocks.</rule>
       <rule>Break complex changes into multiple focused operations targeting minimal code segments instead of replacing large blocks.</rule>
       <rule>When possible, use multiple small, specific operations rather than one large operation that includes unchanged code.</rule>
       <rule>For large files with small changes, target only the specific functions, methods, or blocks that need modification.</rule>
-      <rule>Use precise line anchors (^, $) and word boundaries (\\b) in regex patterns to ensure accurate targeting.</rule>
-      <rule>Avoid overly general patterns that could match multiple code locations unintentionally.</rule>
+      <rule>AVOID REGULAR EXPRESSIONS in the <search> element - use exact text matching instead.</rule>
       <rule>When creating multi-line search patterns, include enough unique context to prevent accidental matches elsewhere in the codebase.</rule>
       <rule>Prioritize efficiency by targeting only the specific text area between the tokens of interest rather than capturing large blocks.</rule>
     </token_efficiency>
 
-    <regex_precision>
-      <rule>Accuracy is the top priority—100% precision in targeting the correct code block is essential, execution speed is secondary.</rule>
-      <rule>Anchor regex patterns to unique, invariant context lines or identifiers that bound the target code block.</rule>
-      <rule>For multi-line blocks, capture a precise signature at the beginning and end of the block that cannot be confused with other code.</rule>
-      <rule>When uncertainty exists about uniqueness, expand the capture to include additional surrounding context rather than risk incorrect replacements.</rule>
-      <rule>Use explicit character classes and non-greedy quantifiers to eliminate accidental matches.</rule>
-      <rule>Look for distinctive patterns such as unique variable names, function signatures, or comment blocks to serve as anchors.</rule>
-      <rule>Test for uniqueness—ensure your regex pattern could not possibly match any other section of the codebase.</rule>
+    <pattern_precision>
+      <rule>Accuracy is the top priority—100% precision in targeting the correct code block is essential.</rule>
+      <rule>Copy the exact text from the source file into the <search> element, including whitespace and indentation.</rule>
+      <rule>For multi-line blocks, include enough context before and after the changed lines to ensure unique identification.</rule>
+      <rule>When uncertainty exists about uniqueness, expand the selection to include additional surrounding context rather than risk incorrect replacements.</rule>
+      <rule>Look for distinctive patterns such as unique variable names, function signatures, or comment blocks to serve as context.</rule>
+      <rule>Test for uniqueness—ensure your search text could not possibly match any other section of the codebase.</rule>
       <rule>For complex or repetitive codebases, combine multiple signals to ensure uniqueness (e.g., nearby comments, function signatures, and variable names).</rule>
-    </regex_precision>
+      <rule>IMPORTANT: Keep search patterns simple! Use exact text matching rather than complex regex patterns.</rule>
+    </pattern_precision>
+    
+    <pattern_construction>
+      <rule>For TypeScript/JavaScript files, include function signatures, class definitions, or unique variable declarations with surrounding context.</rule>
+      <rule>For HTML/JSX/TSX files, include component structure, props, or unique className values with surrounding context.</rule>
+      <rule>For CSS files, include specific selector patterns with their property blocks.</rule>
+      <rule>PRESERVE ALL WHITESPACE and indentation in both search and replace elements exactly as it appears in the source/target.</rule>
+      <rule>When targeting functions, include the function signature and several lines of the body.</rule>
+      <rule>When targeting imports or exports, include the exact lines with surrounding context.</rule>
+      <rule>For database schema files, include table declarations or column definitions with surrounding context.</rule>
+      <rule>Match the minimum amount of text needed to uniquely identify the target location, plus 1-2 lines of context.</rule>
+    </pattern_construction>
   </rules>
 </prompt>`;
 }

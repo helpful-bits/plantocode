@@ -262,13 +262,23 @@ class GeminiClient {
           );
           console.log(`[Gemini Client] XML changes will be saved to: ${outputPath}`);
           
+          // Extract temperature from prompt settings if present
+          let temperature = options.temperature || 0.7;
+          const temperatureMatch = promptText.match(/<settings>[\s\S]*?<temperature>([\d\.]+)<\/temperature>[\s\S]*?<\/settings>/);
+          if (temperatureMatch && temperatureMatch[1]) {
+            const parsedTemp = parseFloat(temperatureMatch[1]);
+            if (!isNaN(parsedTemp) && parsedTemp >= 0 && parsedTemp <= 1) {
+              temperature = parsedTemp;
+              console.log(`[Gemini Client] Using temperature ${temperature} from prompt settings`);
+            }
+          }
+
           const modelId = options.model || GEMINI_FLASH_MODEL;
           const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?alt=sse&key=${apiKey}`;
 
           // Set max output tokens based on the chosen model
           const defaultMaxOutputTokens = modelId === GEMINI_PRO_PREVIEW_MODEL ? GEMINI_PRO_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
           const maxOutputTokens = options.maxOutputTokens || defaultMaxOutputTokens;
-          const temperature = options.temperature || 0.7;
           const topP = options.topP || 0.95;
           const topK = options.topK || 40;
 
@@ -280,7 +290,7 @@ class GeminiClient {
             generationConfig: { 
               responseMimeType: "text/plain", // Expecting plain text XML output
               maxOutputTokens: maxOutputTokens, // Use calculated max tokens
-              temperature: temperature, // Use calculated temperature
+              temperature: temperature, // Use extracted or default temperature
               topP: topP, // Use calculated topP
               topK: topK // Use calculated topK
             },
@@ -357,8 +367,15 @@ class GeminiClient {
             }
             
             // Call the onStart callback if provided
-             if (options.streamingUpdates?.onStart) {
-              options.streamingUpdates.onStart();
+            if (options.streamingUpdates?.onStart) {
+              try {
+                // Only call client-side callbacks if we're in a browser environment
+                if (typeof window !== 'undefined') {
+                  options.streamingUpdates.onStart();
+                }
+              } catch (callbackError) {
+                console.error(`[Gemini Client] Error calling onStart callback:`, callbackError);
+              }
             }
              
             // Process the stream
@@ -403,14 +420,24 @@ class GeminiClient {
                   
                   // Removed direct session status update here
                   if (options.streamingUpdates?.onError) {
-                    options.streamingUpdates.onError(new Error('Processing canceled by user.'));
+                    try {
+                      // Check if we're in a server context before calling the callback
+                      if (typeof window !== 'undefined') {
+                        options.streamingUpdates.onError(new Error('Processing canceled by user.'));
+                      } else {
+                        // Server-side - just log the error
+                        console.error(`[Gemini Client] Error in request processing: Processing canceled by user.`);
+                      }
+                    } catch (callbackError) {
+                      console.error(`[Gemini Client] Error calling onError callback:`, callbackError);
+                    }
                   }
                   
                   return {
                     isSuccess: false,
                     message: "Processing canceled by user.",
-                     data: { requestId: request.id, savedFilePath: null }
-                   };
+                    data: { requestId: request.id, savedFilePath: null }
+                  };
                 }
                 
                 // Process the event
@@ -425,10 +452,17 @@ class GeminiClient {
                 
                 // Call update callback if provided
                 if (result.content && options.streamingUpdates?.onUpdate) {
-                  options.streamingUpdates.onUpdate(
-                    result.content,
-                    { tokens: totalTokens, chars: totalChars }
-                  );
+                  try {
+                    // Only call client-side callbacks if we're in a browser environment
+                    if (typeof window !== 'undefined') {
+                      options.streamingUpdates.onUpdate(
+                        result.content,
+                        { tokens: totalTokens, chars: totalChars }
+                      );
+                    }
+                  } catch (callbackError) {
+                    console.error(`[Gemini Client] Error calling onUpdate callback:`, callbackError);
+                  }
                 }
                 
                 // Update request stats
@@ -463,10 +497,17 @@ class GeminiClient {
               
               // Call update callback if provided
               if (result.content && options.streamingUpdates?.onUpdate) {
-                options.streamingUpdates.onUpdate(
-                  result.content,
-                  { tokens: totalTokens, chars: totalChars }
-                );
+                try {
+                  // Only call client-side callbacks if we're in a browser environment
+                  if (typeof window !== 'undefined') {
+                    options.streamingUpdates.onUpdate(
+                      result.content,
+                      { tokens: totalTokens, chars: totalChars }
+                    );
+                  }
+                } catch (callbackError) {
+                  console.error(`[Gemini Client] Error calling onUpdate callback:`, callbackError);
+                }
               }
             }
             
@@ -476,10 +517,17 @@ class GeminiClient {
             
             // Call the onComplete callback if provided
             if (options.streamingUpdates?.onComplete) {
-              options.streamingUpdates.onComplete(
-                hasWrittenAnyContent ? "Content generated successfully" : "No content was generated",
-                { tokens: totalTokens, chars: totalChars }
-              );
+              try {
+                // Only call client-side callbacks if we're in a browser environment
+                if (typeof window !== 'undefined') {
+                  options.streamingUpdates.onComplete(
+                    hasWrittenAnyContent ? "Content generated successfully" : "No content was generated",
+                    { tokens: totalTokens, chars: totalChars }
+                  );
+                }
+              } catch (callbackError) {
+                console.error(`[Gemini Client] Error calling onComplete callback:`, callbackError);
+              }
             }
             
             // Check if any content was written

@@ -28,6 +28,8 @@ import { Button } from "@/components/ui/button";
 import { generateDirectoryTree } from "@/lib/directory-tree"; // Import directory tree generator
 import { Tabs, TabsList, TabsContent } from "@/components/ui/tabs";
 import { useGeminiProcessor } from '../gemini-processor/gemini-processor-context'; // Fix the import path
+import { Slider } from "@/components/ui/slider";
+import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 
 // Constants for form state handling
 const FORM_ID = "generate-prompt-form";
@@ -128,6 +130,7 @@ export default function GeneratePromptForm() {
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
   const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(false);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("markdown");
+  const [diffTemperature, setDiffTemperature] = useState<number>(0.9);
 
   // Ref to control initial loading and prevent loops
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1061,7 +1064,11 @@ ${fileContentMarkup}
 
 <task>
 ${taskDescription}
-</task>`;
+</task>
+
+<settings>
+<temperature>${diffTemperature}</temperature>
+</settings>`;
 
       setPrompt(fullPrompt);
       // Use await with estimateTokens since it returns a Promise
@@ -1514,29 +1521,44 @@ ${taskDescription}
 
               {/* Generate Button */}
               <div className="flex flex-col pt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <div className="text-sm text-muted-foreground">
-                    {hasUnsavedChanges && (
-                      <span className="italic">Changes will be saved automatically</span>
-                    )}
+                <div className="flex flex-col space-y-2 mb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm">Diff Temperature: {diffTemperature.toFixed(2)}</div>
+                    <div className="w-64">
+                      <Slider 
+                        value={[diffTemperature]} 
+                        min={0} 
+                        max={1.0} 
+                        step={0.05}
+                        onValueChange={(values: number[]) => setDiffTemperature(values[0])}
+                      />
+                    </div>
                   </div>
-                  
-                  <Button
-                    type="button"
-                    variant="default"
-                    onClick={handleGenerate}
-                    disabled={isLoading || isLoadingFiles}
-                    className="px-6"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                        Generating...
-                      </>
-                    ) : (
-                      "Generate Prompt"
-                    )}
-                  </Button>
+
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm text-muted-foreground">
+                      {hasUnsavedChanges && (
+                        <span className="italic">Changes will be saved automatically</span>
+                      )}
+                    </div>
+                    
+                    <Button
+                      type="button"
+                      variant="default"
+                      onClick={handleGenerate}
+                      disabled={isLoading || isLoadingFiles}
+                      className="px-6"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                          Generating...
+                        </>
+                      ) : (
+                        "Generate Prompt"
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
                 {tokenCount > 0 && (
@@ -1594,7 +1616,7 @@ ${taskDescription}
         {/* Gemini Processor Section - Render only when session is active */}
         {activeSessionId && projectDirectory && sessionInitialized && prompt && ( // Render Gemini controls only when session is active, initialized, AND a prompt has been generated
             <Suspense fallback={<div>Loading Gemini Processor...</div>}>
-              <GeminiProcessor prompt={prompt} activeSessionId={activeSessionId} />
+              <GeminiProcessor prompt={prompt} activeSessionId={activeSessionId} model={GEMINI_PRO_PREVIEW_MODEL} />
             </Suspense>
         )}
       </div>

@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"; // Keep ThemeProvid
 import { DatabaseProvider } from "@/lib/contexts/database-context"; // Keep DatabaseProvider import
 import { InitializationProvider } from "@/lib/contexts/initialization-context"; // Add InitializationProvider import
 import { Toaster } from "@/components/ui/toaster"
+import { Navigation } from "./_components/navigation";
 
 export const metadata: Metadata = {
   title: "O1 Pro Flow", // Keep title
@@ -19,7 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <DatabaseProvider>
             <InitializationProvider>
               <ProjectProvider>
-                {children}
+                <div className="container mx-auto px-4">
+                  <Navigation />
+                  {children}
+                </div>
               </ProjectProvider>
             </InitializationProvider>
           </DatabaseProvider>

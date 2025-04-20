@@ -4,13 +4,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { 
   Loader2, RefreshCw, Hammer, CheckCircle, 
-  ChevronUp, ChevronDown, Search, AlertCircle 
+  ChevronUp, ChevronDown, Search, AlertCircle, Eye 
 } from "lucide-react";
 import path from 'path';
 import { useProject } from "@/lib/contexts/project-context";
 import { IdeIntegration } from "../gemini-processor/ide-integration";
 import { normalizePath } from "@/lib/path-utils";
 import { applyXmlChangesFromFileAction } from "@/actions/apply-xml-changes-action";
+import { previewXmlChangesFromFileAction } from "@/actions/preview-xml-changes-action";
 
 // Define types for XML files
 interface XmlFile {
@@ -28,6 +29,13 @@ interface XmlChangesResult {
   changes: string[];
 }
 
+interface XmlPreviewResult {
+  requestId: string;
+  isSuccess: boolean;
+  message: string;
+  report: string;
+}
+
 export function XmlChangesPanel() {
   const { projectDirectory } = useProject();
   const [isLoading, setIsLoading] = useState(false);
@@ -41,6 +49,11 @@ export function XmlChangesPanel() {
   const [applyResult, setApplyResult] = useState<XmlChangesResult | null>(null);
   const [showChangesMap, setShowChangesMap] = useState<Record<string, boolean>>({});
   const [loadingFormatId, setLoadingFormatId] = useState<string | null>(null);
+  
+  // State for XML preview
+  const [previewingXmlId, setPreviewingXmlId] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<XmlPreviewResult | null>(null);
+  const [showPreviewMap, setShowPreviewMap] = useState<Record<string, boolean>>({});
 
   // Function to load XML files from patches directory
   const loadXmlFiles = useCallback(async () => {
@@ -190,6 +203,50 @@ export function XmlChangesPanel() {
     } finally {
       setLoadingFormatId(null);
     }
+  }, []);
+
+  // Function to handle previewing XML changes
+  const handlePreviewXmlChanges = useCallback(async (fileId: string, xmlPath: string) => {
+    if (!xmlPath || !projectDirectory) {
+      setErrorMessage("Missing XML changes file or project directory");
+      return;
+    }
+    
+    setPreviewingXmlId(fileId);
+    setPreviewResult(null);
+    setShowPreviewMap(prev => ({ ...prev, [fileId]: false }));
+    
+    try {
+      const result = await previewXmlChangesFromFileAction(xmlPath, projectDirectory);
+      
+      setPreviewResult({
+        requestId: fileId,
+        isSuccess: result.isSuccess,
+        message: result.message || (result.isSuccess ? "Preview generated successfully!" : "Failed to preview changes."),
+        report: result.data?.report || ""
+      });
+      
+      if (result.isSuccess && result.data?.report) {
+        setShowPreviewMap(prev => ({ ...prev, [fileId]: true }));
+      }
+    } catch (error: any) {
+      setPreviewResult({
+        requestId: fileId,
+        isSuccess: false,
+        message: `Error previewing changes: ${error.message}`,
+        report: ""
+      });
+    } finally {
+      setPreviewingXmlId(null);
+    }
+  }, [projectDirectory]);
+
+  // Function to toggle showing preview for a specific file
+  const toggleShowPreview = useCallback((fileId: string) => {
+    setShowPreviewMap(prev => ({
+      ...prev,
+      [fileId]: !prev[fileId]
+    }));
   }, []);
 
   // Load XML files when component mounts or project directory changes
@@ -351,6 +408,21 @@ export function XmlChangesPanel() {
                             )}
                             <span>Apply XML</span>
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2"
+                            onClick={() => handlePreviewXmlChanges(file.id, file.patchPath)}
+                            disabled={previewingXmlId === file.id}
+                            title="Preview XML changes"
+                          >
+                            {previewingXmlId === file.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            <span className="text-xs">Preview</span>
+                          </Button>
                         </div>
                       </div>
                       
@@ -388,6 +460,39 @@ export function XmlChangesPanel() {
                                   ))}
                                 </ul>
                               )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Preview result */}
+                      {previewResult && previewResult.requestId === file.id && (
+                        <div className={`mt-2 px-2 py-1.5 text-xs rounded ${
+                          previewResult.isSuccess 
+                            ? 'bg-green-100 dark:bg-green-950/20 text-green-800 dark:text-green-300' 
+                            : 'bg-red-100 dark:bg-red-950/20 text-red-800 dark:text-red-300'
+                        }`}>
+                          <div className="flex justify-between items-center">
+                            <span>{previewResult.message}</span>
+                            {previewResult.report && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 p-1"
+                                onClick={() => toggleShowPreview(file.id)}
+                              >
+                                {showPreviewMap[file.id] ? (
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                          
+                          {showPreviewMap[file.id] && previewResult.report && (
+                            <div className="mt-2 p-2 rounded bg-background/50 max-h-60 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] leading-tight">
+                              {previewResult.report}
                             </div>
                           )}
                         </div>
