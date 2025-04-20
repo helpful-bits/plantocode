@@ -7,7 +7,8 @@ type StreamingRequestFn<T> = () => Promise<ActionState<T>>;
 export enum RequestType {
   GEMINI_CHAT = 'gemini_chat',      // Standard chat request
   CODE_ANALYSIS = 'code_analysis',   // Code analysis request
-  GENERAL = 'general'                // Any other request
+  GENERAL = 'general',               // Any other request
+  FILE_OPERATION = 'file_operation'  // Added file operation type with highest priority
 }
 
 // Type for queued requests
@@ -35,7 +36,8 @@ class StreamingRequestPool {
   private maxConcurrentPerType: Record<RequestType, number> = {
     [RequestType.GEMINI_CHAT]: 3,
     [RequestType.CODE_ANALYSIS]: 2,  
-    [RequestType.GENERAL]: 5
+    [RequestType.GENERAL]: 5,
+    [RequestType.FILE_OPERATION]: 3  // Allow 3 concurrent file operations
   };
   
   private activeGlobal: number = 0;
@@ -64,6 +66,11 @@ class StreamingRequestPool {
     priority: number = 1,
     requestType: RequestType = RequestType.GENERAL
   ): Promise<ActionState<T>> {
+    // Special handling for file operations - they should have high priority
+    if (requestType === RequestType.FILE_OPERATION) {
+      priority = 20; // Highest priority for file operations
+    }
+    
     // Check if we have capacity to run this request immediately
     if (this.hasCapacity(sessionId, requestType)) {
       return this.runRequest(requestFn, sessionId, requestType);
@@ -159,11 +166,15 @@ class StreamingRequestPool {
    */
   private sortQueue(): void {
     this.queue.sort((a, b) => {
-      // First sort by request type priority (code analysis > chat > general)
+      // First sort by request type priority
       const typeA = a.requestType;
       const typeB = b.requestType;
       
       if (typeA !== typeB) {
+        // FILE_OPERATION gets highest priority
+        if (typeA === RequestType.FILE_OPERATION) return -1;
+        if (typeB === RequestType.FILE_OPERATION) return 1;
+        
         // CODE_ANALYSIS gets higher priority than GEMINI_CHAT for better UX
         if (typeA === RequestType.CODE_ANALYSIS) return -1;
         if (typeB === RequestType.CODE_ANALYSIS) return 1;

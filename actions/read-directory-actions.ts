@@ -2,9 +2,10 @@
 
 import { promises as fs } from "fs";
 import path from "path"; // Keep path import
-import { getAllNonIgnoredFiles } from "@/lib/git-utils";
+import { getAllNonIgnoredFiles, invalidateFileCache } from "@/lib/git-utils";
 import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
+import streamingRequestPool, { RequestType } from "@/lib/api/streaming-request-pool";
 
 const DEBUG_LOGS = process.env.NODE_ENV === 'development'; // Enable logs in development
 
@@ -23,71 +24,87 @@ class DirectoryCache {
     this.checkHotReload();
   }
 
+  /**
+   * Check if we're in a hot reload scenario
+   */
   private checkHotReload() {
     const now = Date.now();
+    // Only check at a reasonable interval
     if (now - this.lastHotReloadCheck < this.HOT_RELOAD_CHECK_INTERVAL) {
-      // We were loaded again very quickly, likely a hot reload
-      this.isHotReloading = true;
-      if (DEBUG_LOGS) console.log("[DirectoryCache] Hot reload detected. Extending cache validity.");
-    } else {
-      this.isHotReloading = false;
+      return;
     }
+    
     this.lastHotReloadCheck = now;
+    this.isHotReloading = this.detectHotReload();
+    
+    if (this.isHotReloading && DEBUG_LOGS) {
+      console.log('[DirectoryCache] Hot reload detected, extending cache TTL');
+    }
   }
-
-  has(key: string): boolean {
-    return this.cache.has(key);
+  
+  /**
+   * Simple detection for hot reload scenarios
+   */
+  private detectHotReload(): boolean {
+    const stack = new Error().stack || '';
+    // During hot reload, the stack trace often includes specific patterns
+    return stack.includes('webpack-internal:') || 
+           stack.includes('HotModuleReplacement') ||
+           stack.includes('next-dev');
   }
-
-  get(key: string): { [key: string]: string } | undefined {
+  
+  /**
+   * Set cache entry
+   */
+  set(key: string, data: { [key: string]: string }): void {
+    this.cache.set(key, { 
+      data, 
+      timestamp: Date.now() 
+    });
+  }
+  
+  /**
+   * Get cache entry if valid
+   */
+  get(key: string): { [key: string]: string } | null {
     const entry = this.cache.get(key);
-    if (!entry) return undefined;
+    if (!entry) return null;
     
     const now = Date.now();
     const age = now - entry.timestamp;
     
-    // During hot reload, extend the cache TTL significantly
-    const effectiveTTL = this.isHotReloading ? this.TTL * 5 : this.TTL;
+    // Apply longer TTL during hot reload to maintain stability
+    const effectiveTTL = this.isHotReloading ? this.TTL * 2 : this.TTL;
     
+    // Check if cache entry is still valid
     if (age < effectiveTTL) {
-      if (DEBUG_LOGS) console.log(`[DirectoryCache] Using valid cache for ${key}, age: ${age}ms`);
       return entry.data;
     }
     
-    // If we're in a hot reload scenario and the cache is expired but not too old,
-    // still use it to prevent empty file lists
-    if (this.isHotReloading && age < this.TTL * 10) {
-      if (DEBUG_LOGS) console.log(`[DirectoryCache] Hot reload: Using expired cache for ${key}, age: ${age}ms`);
-      return entry.data;
-    }
-    
-    if (DEBUG_LOGS) console.log(`[DirectoryCache] Cache expired for ${key}, age: ${age}ms`);
-    return undefined;
+    // Cache is expired
+    if (DEBUG_LOGS) console.log(`[DirectoryCache] Cache expired for ${key} (age: ${age}ms)`);
+    return null;
   }
-
-  set(key: string, data: { [key: string]: string }): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
-    if (DEBUG_LOGS) console.log(`[DirectoryCache] Cached ${Object.keys(data).length} files for ${key}`);
+  
+  /**
+   * Check if cache has valid entry
+   */
+  has(key: string): boolean {
+    return this.get(key) !== null;
   }
-
+  
+  /**
+   * Delete cache entry
+   */
   delete(key: string): void {
-    if (this.isHotReloading) {
-      // Don't actually delete during hot reload to prevent emptying the cache
-      if (DEBUG_LOGS) console.log(`[DirectoryCache] Hot reload: Skipping delete for ${key}`);
-      return;
-    }
     this.cache.delete(key);
-    if (DEBUG_LOGS) console.log(`[DirectoryCache] Deleted cache for ${key}`);
   }
-
+  
+  /**
+   * Clear all cache entries
+   */
   clear(): void {
-    if (this.isHotReloading) {
-      // Don't clear during hot reload
-      if (DEBUG_LOGS) console.log(`[DirectoryCache] Hot reload: Skipping clear operation`);
-      return;
-    }
     this.cache.clear();
-    if (DEBUG_LOGS) console.log(`[DirectoryCache] Cleared all cache entries`);
   }
 }
 
@@ -134,6 +151,20 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
 }
 
 export async function readDirectoryAction(projectDirectory: string): Promise<ActionState<{ [key: string]: string }>> {
+  // Use streamingRequestPool with FILE_OPERATION type to give this action highest priority
+  return streamingRequestPool.execute(
+    async () => {
+      // Implementation of directory reading
+      return await readDirectoryImplementation(projectDirectory);
+    },
+    'file-system', // Use a constant session ID for file system operations
+    10, // High priority
+    RequestType.FILE_OPERATION // Mark as file operation to ensure it takes priority
+  );
+}
+
+// Separate implementation function for directory reading
+async function readDirectoryImplementation(projectDirectory: string): Promise<ActionState<{ [key: string]: string }>> {
   const MAX_RETRIES = 2;
   let attempts = 0;
 
@@ -181,24 +212,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
         const result = await getAllNonIgnoredFiles(finalDirectory);
         files = result.files;
         isGitRepo = result.isGitRepo;
-        if (DEBUG_LOGS) console.log(`[ReadDir] Found ${files.length} non-ignored files via git in ${finalDirectory} (Is Git Repo: ${isGitRepo})`);
-        
-        if (files.length === 0) {
-          // During retry, we might want to wait a moment before failing
-          if (attempts < MAX_RETRIES) {
-            attempts++;
-            const delay = 500 * attempts; // Increasing delay for each retry
-            if (DEBUG_LOGS) console.log(`[ReadDir] No files found, retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue; // Try again
-          }
-
-          return {
-            isSuccess: false,
-            message: `No files found in git repository at ${finalDirectory}. The repository may be empty or there might be an issue with git.`,
-            data: {}
-          };
-        }
+        if (DEBUG_LOGS) console.log(`[ReadDir] Found ${files.length} non-ignored files`);
       } catch (gitError) {
         console.error(`[ReadDir] Error using git to list files:`, gitError);
         
@@ -332,7 +346,7 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
         message: `Successfully read ${fileCount} text files from the repository.`,
         data: fileContents
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[ReadDir] Error reading directory (attempt ${attempts + 1}/${MAX_RETRIES + 1}):`, error);
       
       // Try again if we haven't reached max retries

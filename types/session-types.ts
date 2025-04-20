@@ -9,7 +9,8 @@ export type GeminiRequest = {
     status: GeminiStatus;
     startTime: number | null;
     endTime: number | null;
-    patchPath: string | null;
+    xmlPath: string | null;
+    patchPath?: string | null; // Kept for backwards compatibility
     statusMessage: string | null;
     tokensReceived: number;
     charsReceived: number;
@@ -32,7 +33,7 @@ export type Session = {
     geminiStatus?: GeminiStatus; // Status of Gemini processing - Made optional as it might not exist on old sessions initially
     geminiStartTime?: number | null; // Unix timestamp (ms) when processing started
     geminiEndTime?: number | null;
-    geminiPatchPath?: string | null; // Path to the saved patch file
+    geminiXmlPath?: string | null; // Path to the XML changes file (renamed from geminiPatchPath)
     geminiStatusMessage?: string | null; // Error or success message from Gemini process
     geminiTokensReceived?: number; // Number of tokens received during streaming (optional)
     geminiCharsReceived?: number; // Number of characters received during streaming (optional)

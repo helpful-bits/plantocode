@@ -5,40 +5,53 @@ import { setupDatabase } from '@/lib/db'; // Use index export
 import { ActionState } from '@/types';
 
 /**
- * Clears the geminiPatchPath field for a given session.
+ * Clears the geminiXmlPath field for a given session.
  * This is typically used when the patch file is confirmed to be missing.
  */
-export async function clearSessionPatchPathAction(sessionId: string): Promise<ActionState<null>> {
-    if (!sessionId) {
-        return { isSuccess: false, message: "Session ID is required." };
-    }
-
-    await setupDatabase();
-
+export async function clearSessionXmlPathAction(sessionId: string): Promise<ActionState<null>> {
     try {
-        const session = await sessionRepository.getSession(sessionId);
-        if (!session) {
-            return { isSuccess: false, message: `Session ${sessionId} not found.` };
+        if (!sessionId) {
+            return { isSuccess: false, message: "Session ID is required" };
         }
-
-        // Find the *latest* request associated with the session that has a patch path
-        const requests = await sessionRepository.getGeminiRequests(sessionId);
-        const latestRequestWithPatch = requests.find(r => r.patchPath);
-
-        if (!latestRequestWithPatch) {
-            return { isSuccess: true, message: "No requests with patch paths found to clear." };
-        }
-
-        await sessionRepository.updateSessionGeminiStatus(
-            sessionId,
-            session.geminiStatus || 'idle', // Use existing status or default
-            session.geminiStartTime,
-            session.geminiEndTime,
-            null // Set patch path to null for the session (summary)
+        
+        await setupDatabase();
+        const repository = sessionRepository; // Use singleton repository
+        
+        // Remove the xml path from the session
+        await repository.updateSessionGeminiStatus(
+            sessionId, 
+            undefined, 
+            undefined, 
+            undefined, 
+            null, // Set xml path to null
+            undefined
         );
-        return { isSuccess: true, message: "Session patch path cleared." };
+        
+        // Check if we need to update the xml path for the last gemini request as well
+        const requests = await repository.getGeminiRequests(sessionId);
+        const latestRequestWithXml = requests.find(r => r.xmlPath);
+        
+        if (latestRequestWithXml) {
+            await repository.updateGeminiRequestStatus(
+                latestRequestWithXml.id,
+                latestRequestWithXml.status,
+                latestRequestWithXml.startTime,
+                latestRequestWithXml.endTime,
+                null, // Set xml path to null
+                latestRequestWithXml.statusMessage || "XML file not found"
+            );
+        }
+        
+        return {
+            isSuccess: true,
+            message: "XML path cleared successfully",
+        };
     } catch (error) {
-        return { isSuccess: false, message: `Failed to clear patch path: ${error instanceof Error ? error.message : String(error)}` };
+        console.error("[clearSessionXmlPathAction]", error);
+        return {
+            isSuccess: false,
+            message: error instanceof Error ? error.message : "Unknown error clearing XML path",
+        };
     }
 }
 

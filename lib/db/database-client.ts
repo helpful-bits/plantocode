@@ -346,7 +346,7 @@ export async function getSessions(projectDirectory: string): Promise<Session[]> 
                   geminiStatus: row.gemini_status || 'idle',
                   geminiStartTime: row.gemini_start_time || null,
                   geminiEndTime: row.gemini_end_time || null,
-                  geminiPatchPath: row.gemini_patch_path || null,
+                  geminiXmlPath: row.gemini_xml_path || null,
                   geminiStatusMessage: row.gemini_status_message || null,
                   geminiTokensReceived: row.gemini_tokens_received || 0,
                   geminiCharsReceived: row.gemini_chars_received || 0,

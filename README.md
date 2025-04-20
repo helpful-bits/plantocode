@@ -114,3 +114,67 @@ Contributions are welcome. To contribute:
 
 ## License
 This project is open source under the MIT license.
+
+## Database Migration Fix
+
+If you encounter the following error when starting the application:
+
+```
+Error executing migration 0008_rename_patch_path_to_xml_path.sql: [Error: SQLITE_ERROR: no such column: gemini_patch_path] {
+  errno: 1,
+  code: 'SQLITE_ERROR'
+}
+```
+
+This is due to a SQLite migration issue. We've implemented a fix in the following ways:
+
+1. Created a safer migration script that properly handles column renaming
+2. Added better error handling for database migrations
+3. Made the code more resilient to schema differences
+
+### How to Fix
+
+#### Option 1: Run the fixed code
+The simplest solution is to pull the latest code which includes these fixes. The application should now handle the migration properly.
+
+#### Option 2: Reset your database
+If you're still experiencing issues, you can reset your database. This will delete all your saved sessions and preferences, but will fix any database corruption or migration issues.
+
+Run the following command from the project root:
+
+```bash
+npm run reset-db
+```
+
+Or if you're using pnpm:
+
+```bash
+pnpm reset-db
+```
+
+This script will:
+1. Create a backup of your existing database
+2. Delete the database file
+3. Ask if you want to restart the application
+
+The next time you start the application, a new database will be created with the correct schema.
+
+## Development
+
+### Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+### Database Migrations
+
+Database migrations are located in the `migrations` folder and are automatically applied when the application starts.
+
+If you're developing database changes, see `lib/db/README.md` for guidelines on creating safe SQLite migrations.

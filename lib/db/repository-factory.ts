@@ -16,136 +16,91 @@ export function createSessionRepository() {
     saveSession: async (session: Session): Promise<Session> => {
       console.log(`[Repo] saveSession called for ID: ${session.id} - Name: ${session.name}`);
       
-      // Generate project hash for safer SQL queries
+      // Calculate hash for project directory
       const projectHash = hashString(session.projectDirectory);
       
-      // Extract included and excluded files from session
-      const includedFilesArray = session.includedFiles || [];
-      const excludedFilesArray = session.forceExcludedFiles || [];
-      
-      // Determine current Gemini status for cleaner database operations
+      // Determine the current Gemini status
       const currentGeminiStatus = session.geminiStatus || 'idle';
       
       // Use the connection pool with transaction
       return connectionPool.withTransaction(async (db) => {
-        // Prepare data for insertion/replacement
-        const sessionValues = [
-          session.id,
-          session.name,
-          session.projectDirectory,
-          projectHash,
-          session.taskDescription || '',
-          session.searchTerm || '',
-          session.pastedPaths || '',
-          session.patternDescription || '',
-          session.titleRegex || '',
-          session.contentRegex || '',
-          session.isRegexActive ? 1 : 0,
-          '', // Empty codebase structure
-          Date.now(), // Updated timestamp
-          currentGeminiStatus,
-          session.geminiStartTime || null,
-          session.geminiEndTime || null,
-          session.geminiPatchPath ? normalizePath(session.geminiPatchPath) : null,
-          session.geminiStatusMessage || null,
-          session.geminiTokensReceived || 0,
-          session.geminiCharsReceived || 0,
-          session.geminiLastUpdate || null
-        ];
-        
-        // Insert or replace the session
-        await new Promise<void>((resolve, reject) => {
-          db.run(`
-            INSERT OR REPLACE INTO sessions
-            (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
-             pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at,
-             gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, 
-             gemini_tokens_received, gemini_chars_received, gemini_last_update)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, sessionValues, function(err) {
-            if (err) {
-              console.error("Error saving session:", err);
-              return reject(err);
-            }
-            resolve();
-          });
-        });
-        
-        // Delete and reinsert included files
-        await new Promise<void>((resolve, reject) => {
-          db.run(`DELETE FROM included_files WHERE session_id = ?`, [session.id], (err) => {
-            if (err) {
-              console.error("Error deleting included files:", err);
-              return reject(err);
-            }
-            resolve();
-          });
-        });
-        
-        // Insert new included files
-        if (includedFilesArray.length > 0) {
-          const includedStmt = db.prepare(`INSERT INTO included_files (session_id, file_path) VALUES (?, ?)`);
-          
-          for (const filePath of includedFilesArray) {
-            await new Promise<void>((resolve) => {
-              includedStmt.run(session.id, filePath, (err) => {
-                if (err) { // Log error but don't reject transaction immediately
-                  console.error("Error inserting included file:", err, { filePath });
-                }
-                resolve();
-              });
-            });
-          }
-          
-          await new Promise<void>((resolve, reject) => {
-            includedStmt.finalize((err) => {
+        try {
+          // First check if the sessions table exists and get column info
+          const columnsResult = await new Promise<any[]>((resolve, reject) => {
+            db.all("PRAGMA table_info(sessions)", [], (err, rows) => {
               if (err) {
-                console.error("Error finalizing included files statement:", err); // Log error
+                reject(err);
+                return;
+              }
+              resolve(rows || []);
+            });
+          });
+          
+          // Determine if we have xml_path or patch_path column
+          const hasXmlPath = columnsResult.some(col => col.name === 'gemini_xml_path');
+          const hasPatchPath = columnsResult.some(col => col.name === 'gemini_patch_path');
+          
+          // Normalize the path value
+          const xmlPathValue = session.geminiXmlPath ? normalizePath(session.geminiXmlPath) : null;
+          
+          // Prepare data for insertion/replacement
+          const sessionValues = [
+            session.id,
+            session.name,
+            session.projectDirectory,
+            projectHash,
+            session.taskDescription || '',
+            session.searchTerm || '',
+            session.pastedPaths || '',
+            session.patternDescription || '',
+            session.titleRegex || '',
+            session.contentRegex || '',
+            session.isRegexActive ? 1 : 0,
+            '', // Empty codebase structure
+            Date.now(), // Updated timestamp
+            currentGeminiStatus,
+            session.geminiStartTime || null,
+            session.geminiEndTime || null,
+            // The XML path will be inserted in the appropriate column
+            xmlPathValue,
+            session.geminiStatusMessage || null,
+            session.geminiTokensReceived || 0,
+            session.geminiCharsReceived || 0,
+            session.geminiLastUpdate || null
+          ];
+          
+          // Build the SQL query based on which column exists
+          const columnName = hasXmlPath ? 'gemini_xml_path' : 'gemini_patch_path';
+          
+          // Insert or replace the session
+          await new Promise<void>((resolve, reject) => {
+            db.run(`
+              INSERT OR REPLACE INTO sessions
+              (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
+               pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at,
+               gemini_status, gemini_start_time, gemini_end_time, ${columnName}, gemini_status_message, 
+               gemini_tokens_received, gemini_chars_received, gemini_last_update)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, sessionValues, function(err) {
+              if (err) {
+                console.error("Error saving session:", err);
                 return reject(err);
               }
               resolve();
             });
           });
-        }
-        
-        // Delete and reinsert excluded files
-        await new Promise<void>((resolve, reject) => {
-          db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [session.id], (err) => {
-            if (err) {
-              console.error("Error deleting excluded files:", err);
-              return reject(err);
-            }
-            resolve();
-          });
-        });
-        
-        // Insert new excluded files
-        if (excludedFilesArray.length > 0) {
-          const excludedStmt = db.prepare(`INSERT INTO excluded_files (session_id, file_path) VALUES (?, ?)`);
           
-          for (const filePath of excludedFilesArray) {
-            await new Promise<void>((resolve) => {
-              excludedStmt.run(session.id, filePath, (err) => {
-                if (err) { // Log error but don't reject transaction immediately
-                  console.error("Error inserting excluded file:", err, { filePath });
-                }
-                resolve();
-              });
-            });
-          }
-          
-          await new Promise<void>((resolve, reject) => {
-            excludedStmt.finalize((err) => {
-              if (err) {
-                console.error("Error finalizing excluded files statement:", err); // Log error
-                return reject(err);
-              }
-              resolve();
-            });
-          });
+          // Return the updated session
+          return {
+            ...session,
+            projectHash,
+            geminiStatus: currentGeminiStatus as GeminiStatus,
+            updatedAt: Date.now()
+          };
+        } catch (error) {
+          console.error("Error in saveSession:", error);
+          throw error;
         }
-        
-        return session;
       });
     },
     
@@ -219,7 +174,7 @@ export function createSessionRepository() {
               geminiStatus: row.gemini_status || 'idle',
               geminiStartTime: row.gemini_start_time || null,
               geminiEndTime: row.gemini_end_time || null,
-              geminiPatchPath: row.gemini_patch_path || null,
+              geminiXmlPath: row.gemini_xml_path || null,
               geminiStatusMessage: row.gemini_status_message || null,
               geminiTokensReceived: row.gemini_tokens_received || 0,
               geminiCharsReceived: row.gemini_chars_received || 0,
@@ -249,7 +204,7 @@ export function createSessionRepository() {
         status: 'idle',
         startTime: null,
         endTime: null,
-        patchPath: null,
+        xmlPath: null,
         statusMessage: null,
         tokensReceived: 0,
         charsReceived: 0,
@@ -259,30 +214,48 @@ export function createSessionRepository() {
       
       return connectionPool.withConnection(async (db) => {
         return new Promise<GeminiRequest>((resolve, reject) => {
-          db.run(`
-            INSERT INTO gemini_requests 
-            (id, session_id, prompt, status, start_time, end_time, patch_path, 
-             status_message, tokens_received, chars_received, last_update, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            request.id,
-            request.sessionId,
-            request.prompt,
-            request.status,
-            request.startTime,
-            request.endTime,
-            request.patchPath,
-            request.statusMessage,
-            request.tokensReceived,
-            request.charsReceived,
-            request.lastUpdate,
-            request.createdAt
-          ], (err) => {
+          // Check if xml_path column exists
+          db.get("PRAGMA table_info(gemini_requests)", [], (err, rows: any[]) => {
             if (err) {
-              console.error("Error creating Gemini request:", err);
+              console.error("Error checking table schema:", err);
               reject(err);
-            } else {
-              resolve(request);
+              return;
+            }
+            
+            try {
+              // Determine if we're using the old or new column name
+              const hasXmlPath = Array.isArray(rows) && rows.some((row: any) => row.name === 'xml_path');
+              const patchColumn = hasXmlPath ? 'xml_path' : 'patch_path';
+              
+              db.run(`
+                INSERT INTO gemini_requests 
+                (id, session_id, prompt, status, start_time, end_time, ${patchColumn}, 
+                 status_message, tokens_received, chars_received, last_update, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `, [
+                request.id,
+                request.sessionId,
+                request.prompt,
+                request.status,
+                request.startTime,
+                request.endTime,
+                request.xmlPath,
+                request.statusMessage,
+                request.tokensReceived,
+                request.charsReceived,
+                request.lastUpdate,
+                request.createdAt
+              ], (err) => {
+                if (err) {
+                  console.error("Error creating Gemini request:", err);
+                  reject(err);
+                } else {
+                  resolve(request);
+                }
+              });
+            } catch (error) {
+              console.error("Error processing table info:", error);
+              reject(error);
             }
           });
         });
@@ -313,7 +286,7 @@ export function createSessionRepository() {
                 status: row.status as GeminiStatus,
                 startTime: row.start_time,
                 endTime: row.end_time,
-                patchPath: row.patch_path,
+                xmlPath: row.xml_path || row.patch_path, // Use xml_path with fallback to patch_path
                 statusMessage: row.status_message,
                 tokensReceived: row.tokens_received || 0,
                 charsReceived: row.chars_received || 0,
@@ -351,7 +324,7 @@ export function createSessionRepository() {
                 status: row.status as GeminiStatus,
                 startTime: row.start_time,
                 endTime: row.end_time,
-                patchPath: row.patch_path,
+                xmlPath: row.xml_path || row.patch_path, // Use xml_path with fallback to patch_path
                 statusMessage: row.status_message,
                 tokensReceived: row.tokens_received || 0,
                 charsReceived: row.chars_received || 0,
@@ -365,7 +338,7 @@ export function createSessionRepository() {
       }, true); // Use read-only connection
     },
     
-    /** // Keep comment
+    /**
      * Update the status of a Gemini request
      */
     updateGeminiRequestStatus: async (
@@ -373,7 +346,7 @@ export function createSessionRepository() {
       status: GeminiStatus,
       startTime?: number | null,
       endTime?: number | null,
-      patchPath?: string | null,
+      patchPath?: string | null, // Keep parameter name for backward compatibility
       statusMessage?: string | null,
       streamStats?: {
         tokensReceived?: number;
@@ -397,7 +370,7 @@ export function createSessionRepository() {
       }
       
       if (patchPath !== undefined) {
-        setClauses.push('patch_path = ?');
+        setClauses.push('xml_path = ?');
         values.push(patchPath);
       }
       
@@ -492,7 +465,7 @@ export function createSessionRepository() {
       }
       
       if (patchPath !== undefined) {
-        setClauses.push('gemini_patch_path = ?');
+        setClauses.push('gemini_xml_path = ?');
         values.push(patchPath ? normalizePath(patchPath) : null);
       }
       

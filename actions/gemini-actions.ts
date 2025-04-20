@@ -7,6 +7,7 @@ import { getProjectPatchesDirectory, getAppPatchesDirectory, normalizePath, getP
 import geminiClient from '@/lib/api/gemini-client';
 import { WriteStream } from 'fs';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { stripMarkdownCodeFences } from '@/lib/utils'; // Keep for potential other uses, but remove from processing logic here
 
 const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_MODEL}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
@@ -210,14 +211,16 @@ export async function processGeminiEventData(
 
         // Extract text, strip fences, check if non-empty after stripping
         if (textContent) {
-          const strippedText = stripMarkdownCodeFences(textContent);
-          charCount += strippedText.length; // Count characters of the *stripped* text
-          textContent = strippedText; // Use stripped text from now on
+          // Clean potential markdown fences from XML content
+          const cleanedXml = await extractXmlContent(textContent);
+          const finalContent = cleanedXml || textContent;
+          
+          charCount += finalContent.length; // Count characters of the raw text
           
           if (writeStream) {
-            writeStream.write(textContent); // Write the actual cleaned content
+            writeStream.write(finalContent); // Write the cleaned content
             success = true;
-            processedContent += textContent;
+            processedContent += finalContent; // Accumulate content
           }
         }
       } catch (e) {
@@ -227,4 +230,47 @@ export async function processGeminiEventData(
   }
 
   return { success, content: processedContent, tokenCount, charCount };
+}
+
+/**
+ * Extract and clean XML content from model output
+ * Handles common issues like markdown fences, leading/trailing text, etc.
+ * 
+ * @param rawContent The raw content from the model
+ * @returns Cleaned XML content or null if no valid XML found
+ */
+export async function extractXmlContent(rawContent: string): Promise<string | null> {
+  if (!rawContent) return null;
+  
+  // 1. First, try to find content between markdown code fences
+  const markdownMatch = rawContent.match(/```(?:xml)?([\s\S]*?)```/);
+  const contentToProcess = markdownMatch ? markdownMatch[1].trim() : rawContent;
+  
+  // 2. Look for XML declaration and changes tag
+  const xmlDeclMatch = contentToProcess.match(/<\?xml[^>]*\?>/);
+  const changesTagMatch = contentToProcess.match(/<changes[^>]*>/);
+  
+  if (!xmlDeclMatch || !changesTagMatch) {
+    // If we don't have both XML declaration and changes tag,
+    // try a last resort approach to find anything that looks like XML
+    const lastResortMatch = contentToProcess.match(/<\?xml[\s\S]*<\/changes>/);
+    if (lastResortMatch) {
+      return lastResortMatch[0];
+    }
+    return null;
+  }
+  
+  // Get the positions of the XML declaration and changes tag
+  const xmlDeclPos = contentToProcess.indexOf(xmlDeclMatch[0]);
+  const changesOpenPos = contentToProcess.indexOf(changesTagMatch[0]);
+  
+  // Find the closing changes tag
+  const changesClosePos = contentToProcess.lastIndexOf('</changes>');
+  
+  // If we have all the required parts, extract the XML
+  if (xmlDeclPos >= 0 && changesOpenPos >= 0 && changesClosePos >= 0) {
+    return contentToProcess.substring(xmlDeclPos, changesClosePos + 10); // 10 = '</changes>'.length
+  }
+  
+  return null;
 } 

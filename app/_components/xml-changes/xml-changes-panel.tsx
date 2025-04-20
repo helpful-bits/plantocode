@@ -1,0 +1,412 @@
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { 
+  Loader2, RefreshCw, Hammer, CheckCircle, 
+  ChevronUp, ChevronDown, Search, AlertCircle 
+} from "lucide-react";
+import path from 'path';
+import { useProject } from "@/lib/contexts/project-context";
+import { IdeIntegration } from "../gemini-processor/ide-integration";
+import { normalizePath } from "@/lib/path-utils";
+import { applyXmlChangesFromFileAction } from "@/actions/apply-xml-changes-action";
+
+// Define types for XML files
+interface XmlFile {
+  id: string;
+  patchPath: string;
+  displayName?: string;
+  lastModified?: number;
+  format?: string;
+}
+
+interface XmlChangesResult {
+  requestId: string;
+  isSuccess: boolean;
+  message: string;
+  changes: string[];
+}
+
+export function XmlChangesPanel() {
+  const { projectDirectory } = useProject();
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [xmlFiles, setXmlFiles] = useState<XmlFile[]>([]);
+  const [xmlSearchTerm, setXmlSearchTerm] = useState("");
+  const [xmlSortOrder, setXmlSortOrder] = useState<"newest" | "oldest" | "name">("newest");
+  
+  // State for XML application
+  const [applyingXmlId, setApplyingXmlId] = useState<string | null>(null);
+  const [applyResult, setApplyResult] = useState<XmlChangesResult | null>(null);
+  const [showChangesMap, setShowChangesMap] = useState<Record<string, boolean>>({});
+  const [loadingFormatId, setLoadingFormatId] = useState<string | null>(null);
+
+  // Function to load XML files from patches directory
+  const loadXmlFiles = useCallback(async () => {
+    if (!projectDirectory) {
+      setErrorMessage("No project directory selected");
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage("");
+    
+    try {
+      // Determine the patches directory at the repository root
+      const patchesDir = path.join(projectDirectory, 'patches');
+      
+      // Call API to list XML files from patches directory
+      const response = await fetch('/api/list-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          directory: patchesDir,
+          pattern: '**/*.xml'
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to load XML files (${response.status})`);
+      }
+      
+      const { files } = await response.json();
+      
+      // Transform file paths into XmlFile objects
+      const xmlFileObjects = (files || []).map((filePath: string) => {
+        const fileName = path.basename(filePath);
+        return {
+          id: `file-${Math.random().toString(36).substring(2, 11)}`,
+          patchPath: filePath,
+          displayName: fileName,
+          lastModified: Date.now() // Ideally we'd get this from the file stats
+        };
+      });
+      
+      setXmlFiles(xmlFileObjects);
+      
+      if (xmlFileObjects.length === 0) {
+        console.log("No XML files found in patches directory");
+      }
+    } catch (error) {
+      console.error("Error loading XML files:", error);
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load XML files");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectDirectory]);
+
+  // Function to handle applying XML changes
+  const handleApplyXmlChanges = useCallback(async (fileId: string, xmlPath: string) => {
+    if (!xmlPath || !projectDirectory) {
+      setErrorMessage("Missing XML changes file or project directory");
+      return;
+    }
+    
+    setApplyingXmlId(fileId);
+    setApplyResult(null);
+    setShowChangesMap(prev => ({ ...prev, [fileId]: false }));
+    
+    try {
+      const result = await applyXmlChangesFromFileAction(xmlPath, projectDirectory);
+      
+      setApplyResult({
+        requestId: fileId,
+        isSuccess: result.isSuccess,
+        message: result.message || (result.isSuccess ? "Changes applied successfully!" : "Failed to apply changes."),
+        changes: result.data?.changes || []
+      });
+      
+      if (result.isSuccess && result.data?.changes) {
+        setShowChangesMap(prev => ({ ...prev, [fileId]: true }));
+      }
+    } catch (error: any) {
+      setApplyResult({
+        requestId: fileId,
+        isSuccess: false,
+        message: `Error applying changes: ${error.message}`,
+        changes: []
+      });
+    } finally {
+      setApplyingXmlId(null);
+    }
+  }, [projectDirectory]);
+
+  // Function to toggle showing changes for a specific file
+  const toggleShowChanges = useCallback((fileId: string) => {
+    setShowChangesMap(prev => ({
+      ...prev,
+      [fileId]: !prev[fileId]
+    }));
+  }, []);
+
+  // Function to detect XML format
+  const detectXmlFormat = useCallback(async (fileId: string, xmlPath: string) => {
+    if (!xmlPath) {
+      return;
+    }
+
+    setLoadingFormatId(fileId);
+    
+    try {
+      // First, read the XML file content
+      const readResponse = await fetch('/api/read-xml-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath: xmlPath })
+      });
+      
+      if (!readResponse.ok) {
+        const errorData = await readResponse.json();
+        throw new Error(errorData.error || `Failed to read XML file (${readResponse.status})`);
+      }
+      
+      const { content } = await readResponse.json();
+      
+      // Then, detect the format
+      const detectResponse = await fetch('/api/detect-xml-format', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      
+      if (!detectResponse.ok) {
+        const errorData = await detectResponse.json();
+        throw new Error(errorData.error || `Failed to detect XML format (${detectResponse.status})`);
+      }
+      
+      const { format } = await detectResponse.json();
+      
+      // Update the xmlFiles state with the detected format
+      setXmlFiles(prevFiles => 
+        prevFiles.map(file => 
+          file.id === fileId ? { ...file, format } : file
+        )
+      );
+    } catch (error) {
+      console.error("Error detecting XML format:", error);
+      setErrorMessage(error instanceof Error ? error.message : "Failed to detect XML format");
+    } finally {
+      setLoadingFormatId(null);
+    }
+  }, []);
+
+  // Load XML files when component mounts or project directory changes
+  useEffect(() => {
+    if (projectDirectory) {
+      loadXmlFiles();
+    }
+  }, [projectDirectory, loadXmlFiles]);
+
+  // Get filtered and sorted XML files
+  const filteredAndSortedFiles = xmlFiles
+    .filter(file => {
+      // Apply search filter
+      if (!xmlSearchTerm) return true;
+      return file.patchPath.toLowerCase().includes(xmlSearchTerm.toLowerCase()) ||
+             (file.displayName?.toLowerCase().includes(xmlSearchTerm.toLowerCase()));
+    })
+    .sort((a, b) => {
+      // Apply sort order
+      if (xmlSortOrder === "newest") {
+        return (b.lastModified || 0) - (a.lastModified || 0);
+      } else if (xmlSortOrder === "oldest") {
+        return (a.lastModified || 0) - (b.lastModified || 0);
+      } else { // "name"
+        return (a.displayName || a.patchPath).localeCompare(b.displayName || b.patchPath);
+      }
+    });
+
+  return (
+    <div className="w-full border rounded-md overflow-hidden shadow-sm mt-4">
+      <div className="bg-muted px-3 py-2 font-medium text-sm border-b flex justify-between items-center">
+        <span className="flex items-center">
+          <span className="font-semibold">Project XML Changes</span>
+          <span className="ml-2 text-sm text-muted-foreground">
+            ({xmlFiles.length})
+          </span>
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={loadXmlFiles}
+            disabled={isLoading}
+            title="Refresh XML Files"
+            className="h-7 w-7 p-0"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>
+          </Button>
+        </div>
+      </div>
+      
+      <div className="max-h-96 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex justify-center p-4">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : xmlFiles.length === 0 ? (
+          <div className="p-4 text-center text-muted-foreground text-sm">
+            No XML files found in patches directory. {errorMessage ? `Error: ${errorMessage}` : ''}
+          </div>
+        ) : (
+          <>
+            {/* Filter and sort controls */}
+            <div className="p-2 border-b bg-background/50">
+              <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex-1 min-w-[200px]">
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      placeholder="Search XML files..."
+                      value={xmlSearchTerm}
+                      onChange={(e) => setXmlSearchTerm(e.target.value)}
+                      className="w-full px-3 py-1 pr-8 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+                      <Search className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground">Sort:</span>
+                  <select 
+                    value={xmlSortOrder}
+                    onChange={(e) => setXmlSortOrder(e.target.value as any)}
+                    className="text-xs border rounded px-1 py-0.5 bg-background"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="name">By filename</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            {/* XML Files List */}
+            <div className="divide-y">
+              {filteredAndSortedFiles.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground text-sm">
+                  No XML files match your search criteria.
+                </div>
+              ) : (
+                <div className="space-y-2 p-2">
+                  {filteredAndSortedFiles.map((file) => (
+                    <div key={file.id} className="bg-white p-2 rounded border text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1 mb-1">
+                            <CheckCircle className="h-3 w-3 text-green-600" />
+                            <span className="font-medium">
+                              {file.displayName || path.basename(file.patchPath)}
+                            </span>
+                            {file.format && (
+                              <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded-sm">
+                                {file.format}
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono bg-muted p-1 rounded truncate">
+                            {normalizePath(file.patchPath)}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <IdeIntegration
+                            filePath={file.patchPath}
+                            tooltip="Open XML file"
+                            onError={(msg) => setErrorMessage(msg)}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => detectXmlFormat(file.id, file.patchPath)}
+                            disabled={loadingFormatId === file.id}
+                            className="flex items-center gap-1 text-xs h-7"
+                            title="Detect XML format"
+                          >
+                            {loadingFormatId === file.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Search className="h-3 w-3" />
+                            )}
+                            <span>Format</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleApplyXmlChanges(file.id, file.patchPath)}
+                            disabled={applyingXmlId === file.id}
+                            className="flex items-center gap-1 text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                            title="Apply these XML changes to your project files"
+                          >
+                            {applyingXmlId === file.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <Hammer className="h-3 w-3 mr-1" />
+                            )}
+                            <span>Apply XML</span>
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Show Apply results if available for this file */}
+                      {applyResult && applyResult.requestId === file.id && (
+                        <div className={`mt-2 text-xs p-2 rounded-md ${
+                          applyResult.isSuccess ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                        }`}>
+                          <p className={`font-medium ${applyResult.isSuccess ? 'text-green-700' : 'text-red-700'}`}>
+                            {applyResult.message}
+                          </p>
+                          
+                          {applyResult.changes.length > 0 && (
+                            <div className="mt-2">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => toggleShowChanges(file.id)}
+                                className="text-xs p-0 h-auto mb-1 font-medium"
+                              >
+                                {showChangesMap[file.id] ? "Hide Details" : "Show Details"}
+                                {showChangesMap[file.id] ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
+                              </Button>
+                              
+                              {showChangesMap[file.id] && (
+                                <ul className="space-y-1 max-h-32 overflow-y-auto bg-white/50 p-1 rounded text-xs">
+                                  {applyResult.changes.map((change, idx) => (
+                                    <li key={idx} className={
+                                      change.startsWith("Error") || change.startsWith("Warning") 
+                                        ? "text-amber-600" 
+                                        : "text-foreground"
+                                    }>
+                                      {change}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      
+      {/* Show general component-level errors */}
+      {errorMessage && !isLoading && xmlFiles.length > 0 && (
+        <div className="w-full rounded-md border border-red-200 bg-red-50 p-3 text-red-600 flex items-center justify-center gap-1 break-words max-w-full">
+          <AlertCircle className="h-4 w-4 flex-shrink-0 mr-1"/> {errorMessage}
+        </div>
+      )}
+    </div>
+  );
+} 
