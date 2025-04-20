@@ -126,7 +126,8 @@ function formatTimestampForFilename(date: Date, timeZone?: string): string {
 export async function sendPromptToGeminiAction(
   promptText: string,
   sessionId: string,
-  userTimezone?: string
+  userTimezone?: string,
+  options?: { model?: string; streamingUpdates?: any }
 ): Promise<ActionState<{ requestId: string, savedFilePath: string | null }>> {
   await setupDatabase();
   
@@ -141,7 +142,8 @@ export async function sendPromptToGeminiAction(
   // Use the new Gemini client for streaming requests
   return geminiClient.sendStreamingRequest(promptText, sessionId, {
     // Can pass optional configuration here
-    streamingUpdates: {
+    model: options?.model, // Pass the model if provided
+    streamingUpdates: options?.streamingUpdates || {
       onStart: () => {
         console.log(`[Gemini Action] Started processing for session ${sessionId}`);
       },

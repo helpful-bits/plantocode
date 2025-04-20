@@ -17,19 +17,21 @@ import {normalizePath} from '@/lib/path-utils';
 import {IdeIntegration} from './ide-integration';
 import { applyXmlChangesFromFileAction } from '@/actions/apply-xml-changes-action';
 import { useProject } from '@/lib/contexts/project-context';
+import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 import path from 'path';
 import { toast } from '@/components/ui/use-toast';
 
 interface GeminiProcessorProps {
     prompt: string;
     activeSessionId: string | null;
+    model: string;
 }
 
 interface ExtendedGeminiRequest extends GeminiRequest {
     isPending?: boolean;
 }
 
-export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps) {
+export function GeminiProcessor({prompt, activeSessionId, model}: GeminiProcessorProps) {
     // Track loading state for operations like cancellation, but not for send operations
     const [isLoading, setIsLoading] = useState(false);
     // Add state for tracking last request time to prevent rapid-fire requests
@@ -305,8 +307,14 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
         try {
             console.log(`[Gemini UI] Sending prompt to Gemini for session ${activeSessionId}`);
 
-            // Send the actual request to the server
-            const result = await sendPromptToGeminiAction(prompt, activeSessionId);
+            // Create options with the provided model
+            const options = {
+                model: model // Always use the provided model
+                // Don't include client-side callbacks for server actions
+            };
+
+            // Send the actual request to the server with the model
+            const result = await sendPromptToGeminiAction(prompt, activeSessionId, undefined, options);
             console.log(`[Gemini UI] Send action completed with result:`, result);
 
             // Always remove the pending request regardless of success or failure
@@ -351,7 +359,7 @@ export function GeminiProcessor({prompt, activeSessionId}: GeminiProcessorProps)
             // Force a refresh of session data to ensure UI is in correct state
             await fetchSessionData();
         }
-    }, [activeSessionId, cooldownRemaining, fetchSessionData, prompt, repository, sessionData?.geminiStatus]);
+    }, [activeSessionId, cooldownRemaining, fetchSessionData, prompt, repository, sessionData?.geminiStatus, model]);
 
     // Handler for canceling a specific request, using useCallback
     const handleCancelRequest = useCallback(async (requestId: string) => {
