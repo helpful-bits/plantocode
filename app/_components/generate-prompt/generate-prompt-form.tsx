@@ -57,9 +57,10 @@ export default function GeneratePromptForm() {
               activeSessionId={state.activeSessionId}
               projectDirectory={state.projectDirectory || ""}
               formState={state.formStateForManager}
-              onStateChange={setHasUnsavedChanges => state.hasUnsavedChanges !== setHasUnsavedChanges}
+              onStateChange={actions.setHasUnsavedChanges}
               isSaving={state.isFormSaving}
               onSaveError={actions.setSessionSaveError}
+              onIsSavingChange={actions.setIsFormSaving}
             >
               {/* Task Description Section */}
               <TaskSection state={state} actions={actions} />
