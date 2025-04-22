@@ -164,6 +164,7 @@ path/to/file2.ts
         <p>• You can use both paths within the project and external/absolute paths</p>
         <p>• Lines starting with # are treated as comments</p>
         <p>• External paths will be read from the file system directly</p>
+        <p>• If this field is empty, checked files from the file browser below will be used</p>
       </div>
     </div> // Close main div
   );

@@ -11,6 +11,13 @@ const nextConfig = {
       } // Keep externals push
       return config;
     }, // Keep webpack function
+    
+    // Configure Server Actions body size limit
+    experimental: {
+      serverActions: {
+        bodySizeLimit: '16mb' // Increase the body size limit from default 1MB to 4MB
+      }
+    }
 };
 
 export default nextConfig;

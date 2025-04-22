@@ -12,12 +12,16 @@ import { useFileLoader } from "./use-file-loader";
 import { usePromptGenerator } from "./use-prompt-generator";
 import { trackSelectionChanges } from "../_utils/debug";
 import { shouldIncludeByDefault, normalizeFilePath } from "../_utils/file-selection";
+import { findRelevantFilesAction } from "@/actions/path-finder-actions";
+import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
+import { generateDirectoryTree } from "@/lib/directory-tree";
 
 // Constants
 const AUTO_SAVE_INTERVAL = 3000; // 3 seconds
 const LOCAL_STORAGE_KEY = "o1pro.generate-prompt.form-state";
 const OUTPUT_FORMAT_KEY = "generate-prompt-output-format";
 const SEARCH_SELECTED_FILES_ONLY_KEY = "search-selected-files-only";
+const FILE_SELECTIONS_KEY = "file-selections";
 
 // Types
 export interface FileInfo {
@@ -101,7 +105,8 @@ export function useGeneratePromptState() {
     allFilesMap,
     setAllFilesMap,
     setFileContentsMap,
-    shouldIncludeByDefault
+    shouldIncludeByDefault,
+    previousFilesMap: allFilesMap
   });
 
   // Initialize prompt generator hook
@@ -136,6 +141,17 @@ export function useGeneratePromptState() {
     
     return { includedPaths: included, excludedPaths: excluded };
   }, [allFilesMap]);
+
+  // Apply session selections if we have paths but session isn't initialized yet
+  useEffect(() => {
+    if (!sessionInitialized && projectDirectory && Object.keys(allFilesMap).length > 0 && 
+        (includedPaths.length > 0 || excludedPaths.length > 0)) {
+      loadFiles(projectDirectory, undefined, {
+        included: includedPaths,
+        excluded: excludedPaths
+      });
+    }
+  }, [sessionInitialized, projectDirectory, allFilesMap, includedPaths, excludedPaths, loadFiles]);
 
   const showLoadingOverlay = useMemo(() => {
     return (isLoadingFiles || isRefreshingFiles || isRestoringSession || projectDataLoading) && !isFindingFiles;
@@ -211,60 +227,82 @@ export function useGeneratePromptState() {
     setContentRegex("");
     setHasUnsavedChanges(false);
     setSessionInitialized(false);
-  }, []);
-
-  const handleLoadSession = useCallback(async (session: Session) => {
-    console.log(`Loading session: ${session.name} (${session.id})`);
-    setTaskDescription(session.taskDescription || "");
-    setProjectDirectory(session.projectDirectory);
-    setSearchTerm(session.searchTerm || "");
-    setPastedPaths(session.pastedPaths || "");
-    setPatternDescription(session.patternDescription || "");
-    setTitleRegex(session.titleRegex || "");
-    setIsRegexActive(session.isRegexActive ?? true);
-    setContentRegex(session.contentRegex || "");
     
-    let mapChanged = false;
-    if (session.includedFiles && session.includedFiles.length > 0) {
-      const updatedFilesMap = { ...allFilesMap };
+    // Also clear saved file selections for this project
+    if (projectDirectory) {
+      localStorage.removeItem(getLocalStorageKeyForProject(FILE_SELECTIONS_KEY));
+    }
+  }, [projectDirectory, getLocalStorageKeyForProject]);
+
+  const handleLoadSession = useCallback((session: Session) => {
+    if (!session || isRestoringSession) return;
+
+    console.log(`[GeneratePromptState] Loading session: ${session.id}`);
+    setIsRestoringSession(true);
+    
+    try {
+      // Extract relevant parts of session
+      const {
+        taskDescription: sessionTaskDescription,
+        patternDescription: sessionPatternDescription,
+        titleRegex: sessionTitleRegex,
+        contentRegex: sessionContentRegex,
+        projectDirectory: sessionProjectDirectory,
+        includedFiles,
+        forceExcludedFiles,
+        pastedPaths: sessionPastedPaths,
+        isRegexActive: sessionIsRegexActive,
+        diffTemperature: sessionDiffTemp,
+      } = session;
       
-      Object.keys(updatedFilesMap).forEach(key => {
-        updatedFilesMap[key] = { 
-          ...updatedFilesMap[key], 
-          included: false,
-          forceExcluded: false
-        };
-      });
+      // Prepare session selections
+      const sessionSelections = {
+        included: includedFiles || [],
+        excluded: forceExcludedFiles || []
+      };
       
-      session.includedFiles.forEach(filePath => {
-        if (updatedFilesMap[filePath]) {
-          updatedFilesMap[filePath].included = true;
-          updatedFilesMap[filePath].forceExcluded = false;
-          mapChanged = true;
-        }
-      });
-      
-      if (session.forceExcludedFiles) {
-        session.forceExcludedFiles.forEach(filePath => {
-          if (updatedFilesMap[filePath]) {
-            updatedFilesMap[filePath].forceExcluded = true;
-            updatedFilesMap[filePath].included = false;
-            mapChanged = true;
-          }
-        });
+      // Update directory first (this triggers file loading)
+      if (sessionProjectDirectory && sessionProjectDirectory !== projectDirectory) {
+        console.log(`[GeneratePromptState] Setting project directory to: ${sessionProjectDirectory}`);
+        setProjectDirectory(sessionProjectDirectory);
+        
+        // Load project files with session selections
+        loadFiles(sessionProjectDirectory, undefined, sessionSelections);
+      } else if (projectDirectory) {
+        // If already on the same directory, just apply session selections
+        loadFiles(projectDirectory, undefined, sessionSelections);
       }
       
-      setAllFilesMap(updatedFilesMap);
+      // Update form state
+      if (sessionTaskDescription) setTaskDescription(sessionTaskDescription);
+      if (sessionPatternDescription) setPatternDescription(sessionPatternDescription);
+      if (sessionTitleRegex) setTitleRegex(sessionTitleRegex);
+      if (sessionContentRegex) setContentRegex(sessionContentRegex);
+      if (sessionPastedPaths) setPastedPaths(sessionPastedPaths);
+      if (typeof sessionIsRegexActive === 'boolean') setIsRegexActive(sessionIsRegexActive);
+      if (typeof sessionDiffTemp === 'number') setDiffTemperature(sessionDiffTemp);
+      
+      // Session name handling is done by the SessionManager component
+      // which has its own onSessionNameChange prop
+      
+      // Mark as initialized and reset unsaved changes
+      setSessionInitialized(true);
+      setHasUnsavedChanges(false);
+      setSessionSaveError(null);
+      
+      console.log(`[GeneratePromptState] Session loaded: ${session.id}`);
+    } catch (error) {
+      console.error('Error loading session:', error);
+      setError(`Error loading session: ${error}`);
+    } finally {
+      setIsRestoringSession(false);
     }
-    
-    setActiveSessionId(session.id);
-    setHasUnsavedChanges(false);
-    setSessionInitialized(true);
-    if (mapChanged) {
-      handleInteraction();
-    }
-    console.log(`[Form] Session ${session.id} loaded into form state. Active session ID set.`); 
-  }, [allFilesMap, setProjectDirectory, handleInteraction]);
+  }, [
+    isRestoringSession, 
+    projectDirectory, 
+    setProjectDirectory, 
+    loadFiles
+  ]);
 
   // Field change handlers
   const handleTaskChange = useCallback(async (value: string) => {
@@ -351,6 +389,62 @@ export function useGeneratePromptState() {
     handleInteraction();
   }, [handleInteraction, saveToLocalStorage]);
 
+  const handleGenerateRegex = useCallback(async () => {
+    if (!patternDescription.trim()) {
+      setRegexGenerationError("Pattern description cannot be empty.");
+      return;
+    }
+
+    setIsGeneratingRegex(true);
+    setRegexGenerationError("");
+
+    try {
+      // Generate directory tree structure instead of just using the path
+      let dirTreeOption;
+      if (projectDirectory) {
+        try {
+          dirTreeOption = await generateDirectoryTree(projectDirectory);
+          console.log("Generated directory tree for regex context");
+        } catch (treeError) {
+          console.error("Error generating directory tree:", treeError);
+          // Fall back to just the path if tree generation fails
+          dirTreeOption = normalizePath(projectDirectory);
+        }
+      }
+      
+      const result = await generateRegexPatternsAction(patternDescription, dirTreeOption);
+      
+      if (result.isSuccess && result.data) {
+        // Update regex fields if we got results
+        if (result.data.titleRegex) {
+          setTitleRegex(result.data.titleRegex);
+          saveToLocalStorage('title-regex', result.data.titleRegex);
+        }
+        
+        if (result.data.contentRegex) {
+          setContentRegex(result.data.contentRegex);
+          saveToLocalStorage('content-regex', result.data.contentRegex);
+        }
+        
+        // Make sure regex is active
+        if (!isRegexActive) {
+          setIsRegexActive(true);
+          saveToLocalStorage('is-regex-active', 'true');
+        }
+        
+        handleInteraction();
+      } else {
+        setRegexGenerationError(result.message || "Failed to generate regex patterns");
+      }
+    } catch (error) {
+      console.error("Error generating regex patterns:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setRegexGenerationError(`Error generating regex patterns: ${errorMessage}`);
+    } finally {
+      setIsGeneratingRegex(false);
+    }
+  }, [patternDescription, projectDirectory, isRegexActive, handleInteraction, saveToLocalStorage]);
+
   const handleClearPatterns = useCallback(() => {
     setTitleRegex("");
     setContentRegex("");
@@ -376,8 +470,20 @@ export function useGeneratePromptState() {
     }
     
     setAllFilesMap(filesMap);
+    
+    // Save file selections to localStorage
+    const included = Object.values(filesMap)
+      .filter(f => f.included && !f.forceExcluded)
+      .map(f => f.path);
+    
+    const excluded = Object.values(filesMap)
+      .filter(f => f.forceExcluded)
+      .map(f => f.path);
+    
+    saveToLocalStorage(FILE_SELECTIONS_KEY, JSON.stringify({ included, excluded }));
+    
     handleInteraction();
-  }, [allFilesMap, debugMode, handleInteraction]);
+  }, [allFilesMap, debugMode, handleInteraction, saveToLocalStorage]);
 
   const handleAddPathToPastedPaths = useCallback((pathToAdd: string) => {
     // Normalize path to ensure consistent format
@@ -587,6 +693,32 @@ export function useGeneratePromptState() {
     loadPreferences();
   }, []);
 
+  // Restore file selections when project directory changes or files are loaded
+  useEffect(() => {
+    // Only proceed if we have a project directory and files have been loaded
+    if (!projectDirectory || Object.keys(allFilesMap).length === 0) return;
+    
+    try {
+      const savedSelectionsJson = localStorage.getItem(getLocalStorageKeyForProject(FILE_SELECTIONS_KEY));
+      if (savedSelectionsJson) {
+        const savedSelections = JSON.parse(savedSelectionsJson);
+        
+        if (savedSelections && 
+            (savedSelections.included?.length > 0 || savedSelections.excluded?.length > 0)) {
+          console.log(`[LocalStorage] Restoring file selections for project: ${projectDirectory}`);
+          
+          // Load files with the saved selections
+          loadFiles(projectDirectory, undefined, {
+            included: savedSelections.included || [],
+            excluded: savedSelections.excluded || []
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`[LocalStorage] Error restoring file selections:`, error);
+    }
+  }, [projectDirectory, allFilesMap, loadFiles, getLocalStorageKeyForProject]);
+
   // Reset copySuccess state after a delay
   useEffect(() => {
     if (copySuccess) {
@@ -602,6 +734,57 @@ export function useGeneratePromptState() {
       return () => clearTimeout(timer);
     }
   }, [taskCopySuccess]);
+
+  // Add the handleFindRelevantFiles function
+  const handleFindRelevantFiles = useCallback(async () => {
+    if (!taskDescription.trim() || !projectDirectory) {
+      return;
+    }
+
+    setIsFindingFiles(true);
+    setError("");
+
+    try {
+      const result = await findRelevantFilesAction(projectDirectory, taskDescription);
+      if (result.isSuccess && result.data) {
+        // Use the paths returned from the action
+        const paths = result.data.relevantPaths;
+        const pathsText = paths.join('\n');
+        setPastedPaths(pathsText);
+        saveToLocalStorage('pasted-paths', pathsText);
+        
+        // If there's enhanced guidance, add it to the task description
+        if (result.data.enhancedTaskDescription) {
+          // Optionally use the enhanced task description
+          // setTaskDescription(prevDesc => `${prevDesc}\n\n${result.data.enhancedTaskDescription}`);
+        }
+        
+        handleInteraction();
+      } else {
+        setError(result.message || "Failed to find relevant files");
+      }
+    } catch (error) {
+      console.error("Error finding relevant files:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(`Error finding relevant files: ${errorMessage}`);
+    } finally {
+      setIsFindingFiles(false);
+    }
+  }, [taskDescription, projectDirectory, handleInteraction, saveToLocalStorage]);
+
+  // Update refresh project handler to preserve selections
+  const handleRefreshProject = useCallback(async () => {
+    if (!projectDirectory) return;
+    
+    try {
+      resetProcessorState();
+      setError("");
+      await refreshFiles(true); // Pass true to preserve selection state
+    } catch (error) {
+      console.error('Error refreshing project:', error);
+      setError(`Error refreshing project: ${error}`);
+    }
+  }, [projectDirectory, refreshFiles, resetProcessorState]);
 
   // Export both state and actions
   return {
@@ -692,10 +875,12 @@ export function useGeneratePromptState() {
       toggleSearchSelectedFilesOnly,
       toggleOutputFormat,
       setDiffTemperature,
+      handleGenerateRegex,
       
       // Output actions
       generatePrompt,
       copyPrompt,
+      handleFindRelevantFiles,
       copyArchPrompt,
       copyTemplatePrompt,
       setError,
@@ -704,6 +889,8 @@ export function useGeneratePromptState() {
       handleInteraction,
       setIsFormSaving,
       setSessionSaveError,
+      handleRefreshProject,
+      setHasUnsavedChanges,
     }
   };
 } 

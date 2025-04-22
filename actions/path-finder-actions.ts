@@ -53,8 +53,18 @@ export async function findRelevantPathsAction(
     const systemPrompt = `You are a code path finder that helps identify the most relevant files for a given programming task.
 Given a project structure and a task description, analyze which files would be most important to understand or modify for the task.
 Return ONLY file paths and no other commentary, with one file path per line.
-Ignore node_modules, build directories, and binary files unless they are directly relevant to the task.
-Unless the task specifically mentions tests, favor implementation files over test files.`;
+Unless the task specifically mentions tests, favor implementation files over test files.
+
+When analyzing relevance, ensure you include:
+1. Direct dependencies and imported modules used by core files
+2. Parent files that call or include the main components
+3. Documentation files (.md, .mdc) that explain relevant features
+4. Configuration files that affect the behavior of relevant components
+5. Higher-level components that help understand the architecture
+
+ONLY list file paths that actually exist in this project.
+Do not hallucinate or make up file paths.
+List one file path per line and focus on files needed to FULLY understand the dataflow and context.`;
     
     // Create a prompt with project structure and task description
     const prompt = `Project Structure:
@@ -62,15 +72,6 @@ ${dirTree}
 
 Task Description:
 ${taskDescription}
-
-CRITICAL INSTRUCTIONS:
-1. ONLY list file paths that actually exist in this project
-2. Do not hallucinate or make up file paths
-3. Return ONLY file paths and no other commentary
-4. List one file path per line
-5. Focus on the most relevant files for the task described above
-6. Do not include node_modules, build directories, or binary files unless directly relevant
-7. Unless the task specifically mentions tests, favor implementation files over test files
 
 Please list the most relevant file paths for this task, one per line:`;
     
@@ -255,7 +256,18 @@ async function findAndValidateRelevantPaths(
 Given a project structure and a task description, analyze which files would be most important to understand or modify for the task.
 Return ONLY file paths and no other commentary, with one file path per line.
 Ignore node_modules, build directories, and binary files unless they are directly relevant to the task.
-Unless the task specifically mentions tests, favor implementation files over test files.`;
+Unless the task specifically mentions tests, favor implementation files over test files.
+
+When analyzing relevance, ensure you include:
+1. Direct dependencies and imported modules used by core files
+2. Parent files that call or include the main components
+3. Documentation files (.md, .mdx) that explain relevant features
+4. Configuration files that affect the behavior of relevant components
+5. Higher-level components that help understand the architecture
+
+ONLY list file paths that actually exist in this project.
+Do not hallucinate or make up file paths.
+List one file path per line and focus on files needed to FULLY understand the dataflow and context.`;
     
     // Create a prompt with project structure and task description
     const prompt = `Project Structure:
@@ -263,15 +275,6 @@ ${dirTree}
 
 Task Description:
 ${taskDescription}
-
-CRITICAL INSTRUCTIONS:
-1. ONLY list file paths that actually exist in this project
-2. Do not hallucinate or make up file paths
-3. Return ONLY file paths and no other commentary
-4. List one file path per line
-5. Focus on the most relevant files for the task described above
-6. Do not include node_modules, build directories, or binary files unless directly relevant
-7. Unless the task specifically mentions tests, favor implementation files over test files
 
 Please list the most relevant file paths for this task, one per line:`;
     
@@ -290,7 +293,7 @@ Please list the most relevant file paths for this task, one per line:`;
     const result = await geminiClient.sendRequest(prompt, {
       model: GEMINI_FLASH_MODEL,
       systemPrompt,
-      temperature: 0.6, // Lower temperature for more deterministic results
+      temperature: 0.5, // Lower temperature for more deterministic results
       maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS,
       requestType: RequestType.CODE_ANALYSIS
     });

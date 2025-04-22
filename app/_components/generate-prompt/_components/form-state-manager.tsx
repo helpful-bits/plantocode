@@ -14,6 +14,7 @@ export interface FormStateManagerProps {
   formState: Omit<Session, 'id' | 'name' | 'updatedAt'>; // The current state of the form (excluding generated/metadata fields)
   onStateChange?: (hasChanges: boolean) => void; // Notify parent about change status
   onSaveError?: (error: string | null) => void; // Callback for save errors
+  onIsSavingChange?: (isSaving: boolean) => void; // NEW: Callback to notify parent about saving state changes
   children: React.ReactNode;
 }
 
@@ -26,6 +27,7 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
   isSaving, // Receive isSaving state from parent
   onStateChange,
   onSaveError,
+  onIsSavingChange,
   children,
 }) => {
   const { repository, isInitialized } = useDatabase(); // Get repository and initialization status
@@ -59,7 +61,13 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
       console.log(`[FormStateManager] Skipping save - already in progress for session ${sessionId}`);
       return;
     }
+    
+    // Set saving state and notify parent
     isSavingRef.current = true;
+    if (onIsSavingChange) {
+      onIsSavingChange(true);
+    }
+    
     try {
       console.log(`[FormStateManager] Fetching current state of session ${sessionId} from DB before save...`);
       const sessionToSave = await repository.getSession(sessionId);
@@ -104,6 +112,7 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
         updatePayload.geminiCharsReceived = sessionToSave.geminiCharsReceived;
         updatePayload.geminiLastUpdate = sessionToSave.geminiLastUpdate;
         updatePayload.geminiRequests = sessionToSave.geminiRequests; // Preserve requests
+        
         // Prevent concurrent saves
         // Re-check isSavingRef just before the DB call, although it should be true here
         if (!isSavingRef.current) {
@@ -128,9 +137,13 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
       setSaveError(errorMsg);
       if (onSaveError) onSaveError(errorMsg); // Notify parent
     } finally {
-      isSavingRef.current = false; // Ensure saving flag is reset
+      // Reset saving flag and notify parent
+      isSavingRef.current = false;
+      if (onIsSavingChange) {
+        onIsSavingChange(false);
+      }
     }
-  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, formState, sessionName, projectDirectory]);
+  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, onIsSavingChange, formState, sessionName, projectDirectory]);
 
   // Debounce the save function
   const debouncedSaveFn = useDebounceCallback(debouncedSave, 500); // Reduced from 1500ms to 500ms for faster saves during HMR

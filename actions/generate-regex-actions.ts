@@ -40,6 +40,8 @@ Consider this structure when creating patterns to match files in the appropriate
 
 Description: "${description}"
 
+IMPORTANT: The generated patterns will be used in an OR relationship - files matching EITHER the titleRegex OR the contentRegex will be included in the results. You don't need to combine both patterns into one; they will be applied separately.
+
 Provide the output ONLY as a JSON object with the keys "titleRegex" and "contentRegex". If a pattern is not applicable or cannot be generated for a category, omit the key or set its value to an empty string. Do not include any explanatory text outside the JSON object. Escaped backslashes are needed for JSON strings containing regex.
 Output *only* the raw JSON object, without any markdown formatting (like \`\`\`json).
 IMPORTANT: Do NOT use inline flags like (?i) or lookarounds within the regex patterns. Standard, widely compatible JavaScript RegExp syntax only.

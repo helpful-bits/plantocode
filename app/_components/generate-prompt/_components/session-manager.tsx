@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef, useTransition } from "react";
+import React, { useState, useEffect, useCallback, useRef, useTransition, memo } from "react";
 import { Session } from '@/types/session-types';
 import { Save, Trash2, Plus, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { useDatabase } from "@/lib/contexts/database-context";
 import { useProject } from "@/lib/contexts/project-context";
 import { useInitialization } from "@/lib/contexts/initialization-context";
 import { normalizePath } from "@/lib/path-utils";
+import { debounce } from "@/lib/utils/debounce";
 
 export interface SessionManagerProps {
   projectDirectory: string;
@@ -49,6 +50,33 @@ function generateUUID() {
       return v.toString(16);
     });
   }
+}
+
+// Helper function to check if two session arrays are functionally equal
+// We only consider changes to ids and names as relevant for UI updates
+function sessionsAreEqual(sessionsA: Session[], sessionsB: Session[]): boolean {
+  if (sessionsA.length !== sessionsB.length) return false;
+  
+  // Create maps for faster lookup
+  const mapA = new Map(sessionsA.map(s => [s.id, s]));
+  const mapB = new Map(sessionsB.map(s => [s.id, s]));
+  
+  // Check if all sessions in A exist in B with the same name
+  for (const session of sessionsA) {
+    const sessionB = mapB.get(session.id);
+    if (!sessionB || sessionB.name !== session.name) {
+      return false;
+    }
+  }
+  
+  // Check if all sessions in B exist in A
+  for (const session of sessionsB) {
+    if (!mapA.has(session.id)) {
+      return false;
+    }
+  }
+  
+  return true;
 }
 
 const SessionManager = ({
@@ -89,6 +117,7 @@ const SessionManager = ({
   const pendingLoadRef = useRef(false);
   const lastSavedSessionIdRef = useRef<string | null>(null);
   const saveLockRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const loadSessions = useCallback(async () => {
     if (!projectDirectory || !repository || pendingLoadRef.current) {
@@ -96,15 +125,32 @@ const SessionManager = ({
     }
     
     const normalizedProjectDir = normalizePath(projectDirectory);
-    console.log(`[SessionManager] Loading sessions for: ${normalizedProjectDir}`);
+    console.log(`[SessionManager] Loading sessions for: ${normalizedProjectDir}, hasLoadedOnce: ${hasLoadedOnceRef.current}`);
     
     pendingLoadRef.current = true;
-    setIsLoading(true);
+    if (!hasLoadedOnceRef.current) {
+      console.log('[SessionManager] First load, showing loading indicator');
+      setIsLoading(true);
+    }
     
     try {
       const loadedSessions = await repository.getSessions(normalizedProjectDir);
       
+      // Always mark as loaded to prevent stuck loading state
+      hasLoadedOnceRef.current = true;
+      console.log(`[SessionManager] Loaded ${loadedSessions.length} sessions, hasLoadedOnce set to true`);
+      
       startTransition(() => {
+        // Skip update if only timestamps changed (auto-saves)
+        if (sessionsAreEqual(loadedSessions, sessions)) {
+          console.log('[SessionManager] Sessions unchanged except for timestamps, skipping UI update');
+          pendingLoadRef.current = false;
+          if (!hasLoadedOnceRef.current) {
+            setIsLoading(false);
+          }
+          return;
+        }
+        
         setSessions(loadedSessions);
         setError(null);
         
@@ -122,11 +168,27 @@ const SessionManager = ({
       if (onSessionStatusChange) {
         onSessionStatusChange(false);
       }
+      
+      // Ensure loading is cleared on error
+      hasLoadedOnceRef.current = true;
     } finally {
+      console.log(`[SessionManager] Finish loading, setting isLoading to false, hasLoadedOnce: ${hasLoadedOnceRef.current}`);
       setIsLoading(false);
       pendingLoadRef.current = false;
     }
-  }, [projectDirectory, repository, onSessionStatusChange, activeSessionId]);
+  }, [projectDirectory, repository, onSessionStatusChange, activeSessionId, sessions]);
+
+  // Debounced load sessions function for automatic session reloads
+  const debouncedLoadSessions = useCallback(
+    debounce(() => {
+      console.log('[SessionManager] Executing debounced load sessions');
+      // Only call loadSessions if we're not already loading
+      if (!pendingLoadRef.current) {
+        loadSessions();
+      }
+    }, 1000),
+    [loadSessions]
+  );
 
   // Sync with initialization context's active session
   useEffect(() => {
@@ -172,7 +234,22 @@ const SessionManager = ({
     onSessionStatusChange
   ]);
 
-  // Load sessions when project directory changes
+  // Auto-sync when data changes
+  useEffect(() => {
+    if (projectDirectory && repository) {
+      // Set up auto-sync for sessions
+      const interval = setInterval(() => {
+        if (!pendingLoadRef.current) {
+          console.log('[SessionManager] Auto-syncing sessions...');
+          debouncedLoadSessions();
+        }
+      }, 10000); // Every 10 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [projectDirectory, repository, debouncedLoadSessions]);
+
+  // Load sessions when project directory changes - use direct load for initial load
   useEffect(() => {
     if (projectDirectory && repository && !pendingProjectSwitchRef.current) {
       console.log(`[SessionManager] Project directory changed to: ${projectDirectory}, loading sessions`);
@@ -186,11 +263,12 @@ const SessionManager = ({
         // Clear any pending changes
         pendingChangesRef.current = {};
         sessionLoadedRef.current = false;
+        hasLoadedOnceRef.current = false;
       }
       
-      loadSessions();
+      loadSessions(); // Keep using direct load for initial project load
     }
-  }, [projectDirectory, repository, loadSessions, setActiveSessionIdExternally]);
+  }, [projectDirectory, repository, loadSessions, setActiveSessionIdExternally, debouncedLoadSessions]);
 
   // Save session to database
   const handleSave = async () => {
@@ -224,7 +302,7 @@ const SessionManager = ({
       
       console.log(`[SessionManager] Session saved successfully: ${savedSession.id}`);
       
-      // Update sessions list
+      // Update sessions list - we want immediate feedback after an explicit save
       await loadSessions();
       
       // Set active session ID in both contexts
@@ -303,8 +381,8 @@ const SessionManager = ({
       // Save to database
       await repository.saveSession(updatedSession);
       
-      // Update sessions list
-      await loadSessions();
+      // Update sessions list - use debounced version for non-critical update
+      debouncedLoadSessions();
       
       // If this is the active session, update the display name
       if (activeSessionId === sessionId) {
@@ -328,6 +406,7 @@ const SessionManager = ({
     try {
       await repository.deleteSession(sessionId);
       
+      // Refresh sessions list - need immediate feedback after delete
       await loadSessions();
       
       if (activeSessionId === sessionId) {
@@ -422,6 +501,9 @@ const SessionManager = ({
       <div className="border rounded-lg p-4 flex flex-col gap-3 bg-card shadow-sm">
         <h3 className="font-semibold text-lg text-card-foreground flex items-center gap-2">
           <Save className="h-4 w-4" /> Saved Sessions
+          {isLoading && hasLoadedOnceRef.current && (
+            <Loader2 className="animate-spin h-3 w-3 ml-2 text-muted-foreground opacity-70" />
+          )}
         </h3>
         {error && <p className="text-sm text-destructive bg-destructive/10 p-2 rounded">{error}</p>}
         <div className="flex gap-2 items-center">
@@ -458,7 +540,7 @@ const SessionManager = ({
           className="h-48 w-full rounded-md border bg-background/50 overflow-auto" 
         >
           <div className="p-4 space-y-2">
-            {isLoading ? (
+            {isLoading && !hasLoadedOnceRef.current ? (
               <div className="flex justify-center items-center h-8">
                 <Loader2 className="animate-spin h-4 w-4 text-muted-foreground" />
               </div>
@@ -523,4 +605,5 @@ const SessionManager = ({
   );
 };
 
-export default SessionManager;
+// Export memoized component to avoid unnecessary re-renders
+export default memo(SessionManager);

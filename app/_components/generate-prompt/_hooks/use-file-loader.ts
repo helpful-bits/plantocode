@@ -5,6 +5,7 @@ import { readDirectoryAction, invalidateDirectoryCache } from "@/actions/read-di
 import { invalidateFileCache } from '@/lib/git-utils';
 import { normalizePath } from "@/lib/path-utils";
 import { FilesMap } from "./use-generate-prompt-state";
+import { mergeFileMaps, applySessionSelections } from "../_utils/selection-merge";
 
 // Constant for minimum time between file loads to prevent spam
 const MIN_LOAD_INTERVAL = 60000; // 1 minute
@@ -15,6 +16,11 @@ interface UseFileLoaderProps {
   setAllFilesMap: (map: FilesMap) => void;
   setFileContentsMap: (map: Record<string, string>) => void;
   shouldIncludeByDefault: (filePath: string) => boolean;
+  previousFilesMap?: FilesMap;
+  sessionSelections?: {
+    included: string[];
+    excluded: string[];
+  };
 }
 
 export function useFileLoader({
@@ -22,7 +28,9 @@ export function useFileLoader({
   allFilesMap,
   setAllFilesMap,
   setFileContentsMap,
-  shouldIncludeByDefault
+  shouldIncludeByDefault,
+  previousFilesMap,
+  sessionSelections
 }: UseFileLoaderProps) {
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState("");
@@ -37,8 +45,18 @@ export function useFileLoader({
     isLoading: false 
   });
 
+  // Keep track of whether we've applied session selections
+  const sessionSelectionsAppliedRef = useRef(false);
+
   // Load files for a project directory
-  const loadFiles = useCallback(async (dirToLoad: string) => {
+  const loadFiles = useCallback(async (
+    dirToLoad: string, 
+    mapToMerge?: FilesMap,
+    applySessions?: {
+      included: string[];
+      excluded: string[];
+    }
+  ) => {
     const normalizedDir = normalizePath(dirToLoad);
     
     // Check if files were recently loaded
@@ -72,7 +90,7 @@ export function useFileLoader({
         const fileContents = result.data;
         
         // Process file paths
-        const filesMap: FilesMap = {};
+        let filesMap: FilesMap = {};
         for (const filePath of Object.keys(fileContents)) {
           const content = fileContents[filePath];
           
@@ -86,6 +104,33 @@ export function useFileLoader({
             included: include,
             forceExcluded: false
           };
+        }
+        
+        // Preserve selection state if previous map is provided or mapToMerge is passed
+        const mapToUse = mapToMerge || previousFilesMap;
+        if (mapToUse) {
+          console.log('[File Loader] Merging selection state from previous files map');
+          filesMap = mergeFileMaps(mapToUse, filesMap);
+        }
+        
+        // Apply session selections if explicitly provided in this call
+        if (applySessions) {
+          console.log('[File Loader] Applying explicit session selections');
+          filesMap = applySessionSelections(
+            filesMap, 
+            applySessions.included, 
+            applySessions.excluded
+          );
+        }
+        // Or apply session selections from props if provided and not yet applied
+        else if (sessionSelections && !sessionSelectionsAppliedRef.current) {
+          console.log('[File Loader] Applying session selections from props');
+          filesMap = applySessionSelections(
+            filesMap, 
+            sessionSelections.included, 
+            sessionSelections.excluded
+          );
+          sessionSelectionsAppliedRef.current = true;
         }
         
         // Update state
@@ -107,10 +152,10 @@ export function useFileLoader({
       setIsLoadingFiles(false);
       setLoadingStatus("");
     }
-  }, [allFilesMap, setAllFilesMap, setFileContentsMap, shouldIncludeByDefault]);
+  }, [allFilesMap, setAllFilesMap, setFileContentsMap, shouldIncludeByDefault, previousFilesMap, sessionSelections]);
 
   // Refresh files (clear cache and reload)
-  const refreshFiles = useCallback(async () => {
+  const refreshFiles = useCallback(async (preserveState: boolean = false) => {
     if (!projectDirectory) {
       console.warn('[File Loader] Cannot refresh files - no project directory selected.');
       return;
@@ -136,8 +181,17 @@ export function useFileLoader({
       // Force reset the last loaded time
       loadFilesRef.current.lastLoaded[projectDirectory] = 0;
       
-      // Load files again
-      await loadFiles(projectDirectory);
+      // Reset the session selections applied flag so we don't re-apply them
+      // when refreshing (we want to keep our current selections, not restore session ones)
+      sessionSelectionsAppliedRef.current = true;
+      
+      // Load files again, passing current map if preserving state
+      if (preserveState) {
+        console.log('[File Loader] Preserving selection state during refresh');
+        await loadFiles(projectDirectory, allFilesMap);
+      } else {
+        await loadFiles(projectDirectory);
+      }
       
       console.log('[File Loader] Files refreshed successfully.');
     } catch (error) {
@@ -147,7 +201,7 @@ export function useFileLoader({
       setIsRefreshingFiles(false);
       setLoadingStatus("");
     }
-  }, [projectDirectory, isRefreshingFiles, isLoadingFiles, loadFiles]);
+  }, [projectDirectory, isRefreshingFiles, isLoadingFiles, loadFiles, allFilesMap]);
 
   return {
     loadFiles,

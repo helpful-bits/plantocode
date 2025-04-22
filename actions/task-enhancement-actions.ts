@@ -39,7 +39,7 @@ You are an expert software architect tasked with providing a detailed implementa
 <role>
 1. Review the codebase to understand its structure and architecture
 2. Analyze how the task should be implemented within the existing architecture
-3. Create a step-by-step implementation plan
+3. Create a step-by-step implementation plan with clear file operations
 </role>
 
 <implementation_plan_requirements>
@@ -49,21 +49,45 @@ You are an expert software architect tasked with providing a detailed implementa
 - Clear organization of the implementation steps in logical order
 - Rationale for architectural decisions made in the plan
 - Follow the existing naming conventions and folder-file organization patterns found in the codebase
+- Include a single comprehensive bash command for all file operations
 </implementation_plan_requirements>
 
 <response_format>
+Your response MUST use structured XML tags as follows:
+
+<implementation_plan>
+  <steps>
+    <step number="1">
+      <title>Descriptive title of step</title>
+      <description>Detailed explanation of what needs to be done</description>
+      <file_operations>
+        <operation type="create|modify|delete|move">
+          <path>Exact file path</path>
+          <changes>Description of exact changes needed</changes>
+        </operation>
+        <!-- Multiple operations can be listed -->
+      </file_operations>
+    </step>
+    <!-- Additional steps as needed -->
+  </steps>
+  <combined_bash>mkdir -p path/to/dir && touch path/to/file.js && cp source/file.js dest/file.js</combined_bash>
+</implementation_plan>
+
 DO NOT include actual code implementations, only describe what code changes are needed.
 DO NOT include any instructions about git branches, version control, or tests.
+DO NOT include any touch bash commands, only use mkdir, cp, mv, rm, etc. that are necessary for the task.
 Focus on providing an actionable, concrete plan that a developer can follow to implement the task correctly.
 Be specific about file paths, component names, and function names that should be modified or created.
 Always follow existing project conventions for naming and file organization.
+Provide a SINGLE combined bash command at the end that handles ALL file operations for the entire task.
+This should be a one-liner using && or ; to combine multiple operations if needed.
 </response_format>`;
 
     // Prepare file content for the prompt context, with specific highlighting of the most relevant files
     const codeContext = relevantFiles
       .map(filePath => {
         const content = fileContents[filePath];
-        return content ? `${filePath}\n\`\`\`\n${content}\n\`\`\`` : null;
+        return content ? `<file path="${filePath}">\n\`\`\`\n${content}\n\`\`\`\n</file>` : null;
       })
       .filter(Boolean)
       .join("\n\n");
@@ -87,7 +111,7 @@ ${codeContext}
 </codebase_info>
 
 <request>
-Provide a detailed, step-by-step implementation plan for this task. Include specific file paths, component names, and describe exactly what changes are needed for each file. Clearly identify any files, functions, or code sections that need to be deleted or removed. DO NOT include actual code implementations, only describe what needs to be changed, added, or removed. DO NOT include any instructions about git branches, version control, or tests. Follow the existing naming conventions and folder structure patterns found in the codebase.
+Provide a detailed, step-by-step implementation plan for this task using the required XML structure. Include specific file paths, component names, and describe exactly what changes are needed for each file. At the end of the plan, provide a SINGLE combined bash command that handles ALL file operations for the entire task (creating, modifying, moving, or deleting files). This should be a one-liner using && or ; to combine operations. Clearly identify any files, functions, or code sections that need to be deleted or removed. DO NOT include actual code implementations, only describe what needs to be changed, added, or removed. DO NOT include any instructions about git branches, version control, or tests. Follow the existing naming conventions and folder structure patterns found in the codebase.
 </request>`;
 
     // Combine the prompts
@@ -96,7 +120,8 @@ Provide a detailed, step-by-step implementation plan for this task. Include spec
     return {
       isSuccess: true,
       message: "Successfully generated task prompt template.",
-      data: fullPrompt
+      data: fullPrompt,
+      clipboardFeedback: true
     };
   } catch (error: unknown) {
     console.error("Error generating task prompt template:", error);
@@ -138,7 +163,7 @@ You are an expert software architect tasked with providing a detailed implementa
 <role>
 1. Review the codebase to understand its structure and architecture
 2. Analyze how the task should be implemented within the existing architecture
-3. Create a step-by-step implementation plan
+3. Create a step-by-step implementation plan with clear file operations
 </role>
 
 <implementation_plan_requirements>
@@ -148,21 +173,45 @@ You are an expert software architect tasked with providing a detailed implementa
 - Clear organization of the implementation steps in logical order
 - Rationale for architectural decisions made in the plan
 - Follow the existing naming conventions and folder-file organization patterns found in the codebase
+- Include a single comprehensive bash command for all file operations
 </implementation_plan_requirements>
 
 <response_format>
+Your response MUST use structured XML tags as follows:
+
+<implementation_plan>
+  <steps>
+    <step number="1">
+      <title>Descriptive title of step</title>
+      <description>Detailed explanation of what needs to be done</description>
+      <file_operations>
+        <operation type="create|modify|delete|move">
+          <path>Exact file path</path>
+          <changes>Description of exact changes needed</changes>
+        </operation>
+        <!-- Multiple operations can be listed -->
+      </file_operations>
+    </step>
+    <!-- Additional steps as needed -->
+  </steps>
+  <combined_bash>mkdir -p path/to/dir && touch path/to/file.js && cp source/file.js dest/file.js</combined_bash>
+</implementation_plan>
+
 DO NOT include actual code implementations, only describe what code changes are needed.
 DO NOT include any instructions about git branches, version control, or tests.
+DO NOT include any touch bash commands, only use mkdir, cp, mv, rm, etc. that are necessary for the task.
 Focus on providing an actionable, concrete plan that a developer can follow to implement the task correctly.
 Be specific about file paths, component names, and function names that should be modified or created.
 Always follow existing project conventions for naming and file organization.
+Provide a SINGLE combined bash command at the end that handles ALL file operations for the entire task.
+This should be a one-liner using && or ; to combine multiple operations if needed.
 </response_format>`;
 
     // Prepare file content for the prompt context, with specific highlighting of the most relevant files
     const codeContext = relevantFiles
       .map(filePath => {
         const content = fileContents[filePath];
-        return content ? `${filePath}\n\`\`\`\n${content}\n\`\`\`` : null;
+        return content ? `<file path="${filePath}">\n\`\`\`\n${content}\n\`\`\`\n</file>` : null;
       })
       .filter(Boolean)
       .join("\n\n");
@@ -186,7 +235,7 @@ ${codeContext}
 </codebase_info>
 
 <request>
-Provide a detailed, step-by-step implementation plan for this task. Include specific file paths, component names, and describe exactly what changes are needed for each file. Clearly identify any files, functions, or code sections that need to be deleted or removed. DO NOT include actual code implementations, only describe what needs to be changed, added, or removed. DO NOT include any instructions about git branches, version control, or tests. Follow the existing naming conventions and folder structure patterns found in the codebase.
+Provide a detailed, step-by-step implementation plan for this task using the required XML structure. Include specific file paths, component names, and describe exactly what changes are needed for each file. At the end of the plan, provide a SINGLE combined bash command that handles ALL file operations for the entire task (creating, modifying, moving, or deleting files). This should be a one-liner using && or ; to combine operations. Clearly identify any files, functions, or code sections that need to be deleted or removed. DO NOT include actual code implementations, only describe what needs to be changed, added, or removed. DO NOT include any instructions about git branches, version control, or tests. Follow the existing naming conventions and folder structure patterns found in the codebase.
 </request>`;
 
     // Call the Gemini API
@@ -208,7 +257,8 @@ Provide a detailed, step-by-step implementation plan for this task. Include spec
     return {
       isSuccess: true,
       message: "Successfully enhanced task description.",
-      data: result.data.trim()
+      data: result.data.trim(),
+      clipboardFeedback: true
     };
   } catch (error: unknown) {
     console.error("Error enhancing task description:", error);
