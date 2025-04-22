@@ -226,14 +226,44 @@ ${taskDescription}
 
   // Generate and copy architectural prompt
   const copyArchPrompt = useCallback(async () => {
-    if (!taskDescription.trim() || !pastedPaths.trim()) {
+    // Get file paths from either pasted paths or selected files in browser
+    let relevantFiles: string[] = [];
+    
+    if (pastedPaths.trim()) {
+      // If pasted paths exist, use those (override browser selections)
+      relevantFiles = pastedPaths.split('\n')
+        .map(path => path.trim())
+        .filter(p => !!p && !p.startsWith('#'));
+    } else {
+      // Otherwise, use files selected in the browser
+      const isAnyFileIncludedFromBrowser = Object.values(allFilesMap || {})
+        .some((f) => f.included && !f.forceExcluded);
+        
+      if (isAnyFileIncludedFromBrowser) {
+        relevantFiles = Object.values(allFilesMap)
+          .filter(f => f.included && !f.forceExcluded)
+          .map(f => f.path);
+      }
+    }
+    
+    // Check if we have a task description and files
+    if (!taskDescription.trim() || relevantFiles.length === 0) {
+      const errorMsg = !taskDescription.trim() 
+        ? "Please enter a task description."
+        : "Please select files in the browser or paste file paths.";
+      setError(errorMsg);
       return;
     }
     
     setIsGeneratingGuidance(true);
     
     try {
-      const enhancedTaskResult = await enhanceTaskDescriptionAction(taskDescription, pastedPaths);
+      const enhancedTaskResult = await enhanceTaskDescriptionAction({
+        originalDescription: taskDescription,
+        relevantFiles,
+        fileContents: fileContentsMap,
+        projectDirectory
+      });
       
       if (enhancedTaskResult.isSuccess && enhancedTaskResult.data) {
         const enhancedPrompt = enhancedTaskResult.data;
@@ -241,11 +271,14 @@ ${taskDescription}
         
         // Copy the enhanced prompt to clipboard
         await navigator.clipboard.writeText(enhancedPrompt);
+        
+        // Set copy success state if clipboardFeedback property exists or by default
         setTaskCopySuccess(true);
         
+        // Reset after a short delay
         setTimeout(() => {
           setTaskCopySuccess(false);
-        }, 2000);
+        }, 3000);
       } else {
         setError(`Failed to generate architectural guidance: ${enhancedTaskResult.message}`);
       }
@@ -255,22 +288,57 @@ ${taskDescription}
     } finally {
       setIsGeneratingGuidance(false);
     }
-  }, [taskDescription, pastedPaths]);
+  }, [taskDescription, pastedPaths, allFilesMap, fileContentsMap, projectDirectory]);
 
   // Copy prompt template
   const copyTemplatePrompt = useCallback(async () => {
     setIsCopyingPrompt(true);
     
     try {
-      const templateResult = await generateTaskPromptTemplateAction();
+      // Get file paths from either pasted paths or selected files in browser
+      let relevantFiles: string[] = [];
+      
+      if (pastedPaths.trim()) {
+        // If pasted paths exist, use those (override browser selections)
+        relevantFiles = pastedPaths.split('\n')
+          .map(path => path.trim())
+          .filter(p => !!p && !p.startsWith('#'));
+      } else {
+        // Otherwise, use files selected in the browser
+        const isAnyFileIncludedFromBrowser = Object.values(allFilesMap || {})
+          .some((f) => f.included && !f.forceExcluded);
+          
+        if (isAnyFileIncludedFromBrowser) {
+          relevantFiles = Object.values(allFilesMap)
+            .filter(f => f.included && !f.forceExcluded)
+            .map(f => f.path);
+        }
+      }
+      
+      // Ensure we have files to work with
+      if (relevantFiles.length === 0) {
+        setError("Please select files in the browser or paste file paths.");
+        setIsCopyingPrompt(false);
+        return;
+      }
+      
+      const templateResult = await generateTaskPromptTemplateAction({
+        originalDescription: taskDescription,
+        relevantFiles,
+        fileContents: fileContentsMap,
+        projectDirectory
+      });
       
       if (templateResult.isSuccess && templateResult.data) {
         await navigator.clipboard.writeText(templateResult.data);
+        
+        // Set copy success state if clipboardFeedback property exists or by default
         setTaskCopySuccess(true);
         
+        // Reset after a short delay
         setTimeout(() => {
           setTaskCopySuccess(false);
-        }, 2000);
+        }, 3000);
       } else {
         setError(`Failed to copy prompt template: ${templateResult.message}`);
       }
@@ -280,7 +348,7 @@ ${taskDescription}
     } finally {
       setIsCopyingPrompt(false);
     }
-  }, []);
+  }, [taskDescription, pastedPaths, allFilesMap, fileContentsMap, projectDirectory]);
 
   return {
     prompt,

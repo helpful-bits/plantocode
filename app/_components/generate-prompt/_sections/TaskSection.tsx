@@ -84,28 +84,30 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
           
           <Button
             type="button"
-            variant="secondary"
+            variant={taskCopySuccess ? "default" : "secondary"}
             size="sm"
             onClick={copyArchPrompt}
             disabled={isGeneratingGuidance || !taskDescription.trim() || !pastedPaths.trim()}
             title={!taskDescription.trim() ? "Enter a task description first" : 
                    !pastedPaths.trim() ? "Add file paths first" :
                    "Analyze selected files to generate architectural guidance"}
+            className={taskCopySuccess ? "bg-green-500 hover:bg-green-600 text-white" : ""}
           >
             <Sparkles className="h-4 w-4 mr-2" />
-            {isGeneratingGuidance ? "Generating Guidance..." : "Get Architectural Guidance"}
+            {isGeneratingGuidance ? "Generating Guidance..." : taskCopySuccess ? "Copied to Clipboard!" : "Get Architectural Guidance"}
           </Button>
 
           <Button
             type="button"
-            variant="outline"
+            variant={taskCopySuccess ? "default" : "outline"}
             size="sm"
             onClick={copyTemplatePrompt}
             disabled={isCopyingPrompt}
             title="Copy architectural guidance prompt template"
+            className={taskCopySuccess ? "bg-green-500 hover:bg-green-600 text-white" : ""}
           >
             <Copy className="h-4 w-4 mr-2" />
-            {isCopyingPrompt ? "Copying…" : taskCopySuccess ? "Copied!" : "Copy Prompt"}
+            {isCopyingPrompt ? "Copying…" : taskCopySuccess ? "Copied to Clipboard!" : "Copy Prompt"}
           </Button>
 
           {toggleSearchSelectedFilesOnly && (
