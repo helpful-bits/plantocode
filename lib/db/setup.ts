@@ -13,7 +13,7 @@ export async function setupDatabase(): Promise<void> {
   }
 
     // Check if the database file exists before attempting migrations
-    // const dbPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.o1-pro-flow/o1-pro-flow.db'); // Example path, adjust as needed
+    // const dbPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.ai-architect-studio/ai-architect-studio.db'); // Example path, adjust as needed
 
   try {
     await runMigrations(); // Ensure migrations run on setup

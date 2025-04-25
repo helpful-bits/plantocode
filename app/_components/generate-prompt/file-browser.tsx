@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from "react";
-import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy, RefreshCw } from "lucide-react"; // Kept imports
+import { Info, ToggleLeft, ToggleRight, Loader2, FileText, FolderClosed, AlertCircle, X, Copy, RefreshCw, FileCheck, Files } from "lucide-react"; // Kept imports
 import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { useProject } from "@/lib/contexts/project-context";
 import { useDatabase } from "@/lib/contexts/database-context";
 import { formatPathForDisplay } from "@/lib/path-utils";
 import { FileInfo } from "@/types";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 // Constants for auto-retry logic
 const AUTO_RETRY_DELAY = 2000; // 2 seconds delay for auto-retry
@@ -434,20 +436,27 @@ export default function FileBrowser({
             </Button>
           )}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={toggleShowOnlySelected}
-          className={cn(
-            "flex gap-1.5 items-center whitespace-nowrap",
-            showOnlySelected && "bg-accent"
-          )}
-          title={showOnlySelected ? "Show all files" : "Show only selected files"}
-        >
-          {showOnlySelected ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-          {showOnlySelected ? "Selected" : "All Files"}
-        </Button>
+        <p className="text-xs text-muted-foreground mt-1">Filter the file list by path.</p>
+
+        <div className="flex items-center space-x-2 border rounded-md px-3 py-1.5 bg-background">
+          <div className="flex items-center gap-1.5">
+            {showOnlySelected ? (
+              <FileCheck className="h-4 w-4 text-primary" />
+            ) : (
+              <Files className="h-4 w-4 text-muted-foreground" />
+            )}
+            <Label htmlFor="show-selected-toggle" className="text-sm font-medium cursor-pointer">
+              {showOnlySelected ? "Selected Files" : "All Files"}
+            </Label>
+          </div>
+          <Switch
+            id="show-selected-toggle"
+            checked={showOnlySelected}
+            onCheckedChange={toggleShowOnlySelected}
+            title={showOnlySelected ? "Show selected files only" : "Show all files"}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">Toggle between viewing all project files or only the ones currently selected for inclusion.</p>
         
         {/* Keep manual refresh button */}
         <Button

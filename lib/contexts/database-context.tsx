@@ -249,8 +249,7 @@ class DatabaseClient {
     }
     
     try {
-      // Make the API call to save the session
-      const response = await fetch('/api/sessions', { // Keep fetch call
+      const response = await fetch('/api/sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -258,84 +257,77 @@ class DatabaseClient {
         body: JSON.stringify(session),
       });
       
-      // Handle non-ok responses
       if (!response.ok) {
-        // Try to get detailed error information
         let errorMessage = `Failed to save session: ${response.status} ${response.statusText}`;
-        
+        // Only try to parse JSON if the content type is application/json
         if (response.headers.get('content-type')?.includes('application/json')) {
           try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorData.message || errorMessage;
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
           } catch (parseError) {
-            console.error('[DB Client] Error parsing error response:', parseError);
+            console.error('Error parsing JSON error response:', parseError);
           }
         }
-        
-        console.error(`[DB Client] HTTP error saving session: ${response.status} ${response.statusText}`, { errorMessage });
         throw new Error(errorMessage);
       }
       
-      try {
-        const savedSession = await response.json();
-        
-        // Invalidate relevant caches *after* successful save
-        this.clearCacheForSession(savedSession.id); // Clears details and sessionWithRequests cache
-        this.clearCacheForProjectSessions(savedSession.projectDirectory); // Clears project sessions list cache
-        
-        // Update the specific session details cache immediately with the saved data
-        this.cache.sessionDetails[savedSession.id] = {
-          data: savedSession,
-          timestamp: Date.now()
-        };
-        
-        // Update the session with requests cache too
-        const sessionWithRequestsCacheKey = `session_with_requests_${savedSession.id}`;
-        if (this.cache.sessionWithRequests[sessionWithRequestsCacheKey]) {
-             this.cache.sessionWithRequests[sessionWithRequestsCacheKey] = {
-                 data: savedSession, // Assuming savedSession contains requests if fetched before save
-                 timestamp: Date.now()
-             };
-        }
-
-        return savedSession;
-      } catch (parseError) {
-        console.error('[DB Client] Error parsing saved session response:', parseError);
-        throw new Error('Failed to parse saved session response');
-      }
+      const updatedSession = await response.json();
+      
+      // Update cache
+      this.cache.sessionDetails[session.id] = {
+        data: updatedSession,
+        timestamp: Date.now()
+      };
+      
+      // Also clear the session list cache for this project to ensure it's refreshed
+      this.clearCacheForProjectSessions(session.projectDirectory);
+      
+      console.log(`[DB Client] Session saved: ${session.id}`);
+      return updatedSession;
     } catch (error) {
-      console.error('[DB Client] Exception saving session:', error);
-      throw new Error(error instanceof Error ? error.message : 'Failed to save session');
+      console.error('[DB Client] Error saving session:', error);
+      throw error;
     }
   }
   
   async deleteSession(sessionId: string): Promise<void> {
-    console.log(`[DB Client] Deleting session ${sessionId}`);
+    console.log(`[DB Client] Deleting session: ${sessionId}`);
     
-    // Invalidate cache *before* API call for optimistic UI update
-    this.clearCacheForSession(sessionId); // Clears details and sessionWithRequests
-    
-    const response = await fetch(`/api/sessions?id=${encodeURIComponent(sessionId)}`, {
-      method: 'DELETE',
-    });
-    
-    if (!response.ok) {
-      let errorMessage = `Failed to delete session: ${response.status} ${response.statusText}`;
-      // Only try to parse JSON if the content type is application/json
-      if (response.headers.get('content-type')?.includes('application/json')) {
-        try {
-          const error = await response.json();
-          errorMessage = error.message || errorMessage;
-        } catch (parseError) {
-          console.error('Error parsing JSON error response:', parseError);
+    try {
+      // First, get the session details to determine its project directory
+      const sessionToDelete = await this.getSession(sessionId);
+      const projectDirectory = sessionToDelete?.projectDirectory;
+      
+      const response = await fetch(`/api/sessions?id=${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        let errorMessage = `Failed to delete session: ${response.status} ${response.statusText}`;
+        if (response.headers.get('content-type')?.includes('application/json')) {
+          try {
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
+          } catch (parseError) {
+            console.error('Error parsing JSON error response:', parseError);
+          }
         }
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
-    } else {
-      // On success, ensure project session lists are invalidated if the deleted session was part of them
-      // This requires knowing the project directory, which we don't have here easily.
-      // Rely on the next getSessions call for the affected project to re-fetch.
-      console.log(`[DB Client] Session ${sessionId} deleted successfully. Project session list cache will update on next fetch.`);
+      
+      // Clear caches
+      this.clearCacheForSession(sessionId);
+      this.clearCacheForSessionWithRequests(sessionId);
+      
+      // If we know the project directory, clear the sessions list for that project too
+      if (projectDirectory) {
+        this.clearCacheForProjectSessions(projectDirectory);
+      }
+      
+      console.log(`[DB Client] Session deleted: ${sessionId}`);
+    } catch (error) {
+      console.error('[DB Client] Error deleting session:', error);
+      throw error;
     }
   }
   

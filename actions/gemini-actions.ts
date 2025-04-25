@@ -141,7 +141,7 @@ export async function sendPromptToGeminiAction(
   
   // Use the new Gemini client for streaming requests
   return geminiClient.sendStreamingRequest(promptText, sessionId, {
-    // Can pass optional configuration here
+    // Pass all options to the streaming request
     model: options?.model, // Pass the model if provided
     temperature: options?.temperature, // Pass the temperature if provided
     streamingUpdates: options?.streamingUpdates || {

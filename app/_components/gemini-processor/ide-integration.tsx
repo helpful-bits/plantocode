@@ -59,11 +59,11 @@ export function IdeIntegration({ filePath, tooltip = "Open in editor", onError }
         size="sm"
         className="flex items-center gap-1 text-xs"
         onClick={handleOpenInIde}
-        title={`${tooltip}: ${filePath}`} // Show full path in title
+        title={`Open ${filePath} in your default editor`} // Show full path in title with improved message
         disabled={!!error && error.includes('File not found')} // Disable if file not found
       >
         <Code className="h-3 w-3" />
-        <span>Open in IDE</span>
+        <span>Open in Editor</span>
         <ExternalLink className="h-3 w-3 ml-1" />
       </Button>
     </div>

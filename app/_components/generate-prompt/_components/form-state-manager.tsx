@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import { Session } from '@/types'; // Keep Session import
 import { useDatabase } from '@/lib/contexts/database-context';
 import { useDebounceCallback } from 'usehooks-ts';
+import { sessionSyncService } from '@/lib/services/session-sync-service';
+import { createSessionMonitor } from '@/lib/utils/session-debug';
 
 export interface FormStateManagerProps {
   activeSessionId: string | null;
@@ -31,32 +33,47 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
   children,
 }) => {
   const { repository, isInitialized } = useDatabase(); // Get repository and initialization status
-  const lastSavedStateRef = useRef<Omit<Session, 'id' | 'name' | 'updatedAt' | 'updatedAt'> | null>(null); // Adjust type
+  const lastSavedStateRef = useRef<Omit<Session, 'id' | 'name' | 'updatedAt'> | null>(null); // Adjust type
   const [saveError, setSaveError] = useState<string | null>(null);
   const isSavingRef = useRef(false); // Internal saving flag to prevent race conditions
   const initialLoadDoneRef = useRef<Record<string, boolean>>({}); // Track initial load per session
   const isFirstLoadRef = useRef<boolean>(true); // Add ref for tracking first load
+  const saveVersionRef = useRef<number>(0); // Track save versions to detect outdated saves
+
+  // Track session initialization time to prevent premature saves
+  const sessionInitTimeRef = useRef<Record<string, number>>({});
+  
+  // Session monitor for debugging
+  const sessionMonitorRef = useRef(createSessionMonitor());
+  
+  // Add prevSessionId ref at the component level
+  const prevSessionId = useRef<string | null>(null);
 
   // Memoize the form state string representation for dependency array
   const formStateString = useMemo(() => JSON.stringify(formState), [formState]);
 
-  // Reset state when session changes
-  useEffect(() => {
-    if (activeSessionId) {
-      setSaveError(null); // Clear error when session changes
-      lastSavedStateRef.current = null; // Reset last saved state on session change
-      isFirstLoadRef.current = true; // Reset first load flag on session change
-      console.log(`[FormStateManager] Session changed to ${activeSessionId}. Resetting state.`);
-    } else {
-      // No active session, clear error and state
-      setSaveError(null);
-      lastSavedStateRef.current = null;
+  // Define debouncedSave function first
+  const debouncedSave = useCallback(async (sessionId: string, currentState: any, sessionName: string, saveVersion: number) => {
+    console.log(`[FormStateManager] Running debounced save for session ${sessionId} (version ${saveVersion})`);
+    
+    // Skip if this save version is outdated
+    if (saveVersion < saveVersionRef.current) {
+      console.log(`[FormStateManager] Skipping outdated save version ${saveVersion} < ${saveVersionRef.current}`);
+      return;
     }
-  }, [activeSessionId]);
-
-
-  const debouncedSave = useCallback(async (sessionId: string, currentState: any, sessionName: string) => {
-    console.log(`[FormStateManager] Running debounced save for session ${sessionId}`);
+    
+    // Check if session is busy with an incompatible operation
+    if (sessionSyncService.isSessionBusy(sessionId) && sessionSyncService.getSessionState(sessionId) !== 'saving') {
+      console.log(`[FormStateManager] Session ${sessionId} is busy with operation ${sessionSyncService.getSessionState(sessionId)}, deferring save`);
+      // Queue another save attempt
+      setTimeout(() => {
+        if (saveVersion >= saveVersionRef.current) {
+          debouncedSave(sessionId, currentState, sessionName, saveVersion);
+        }
+      }, 500);
+      return;
+    }
+    
     if (isSavingRef.current) {
       console.log(`[FormStateManager] Skipping save - already in progress for session ${sessionId}`);
       return;
@@ -69,68 +86,61 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     }
     
     try {
-      console.log(`[FormStateManager] Fetching current state of session ${sessionId} from DB before save...`);
-      const sessionToSave = await repository.getSession(sessionId);
-      if (sessionToSave) {
-        console.log(`[FormStateManager] Current DB state for ${sessionId}:`, sessionToSave);
-        const { geminiRequests, ...formFields } = currentState; // Exclude geminiRequests from direct save
+      // Use the synchronization service to coordinate saving
+      await sessionSyncService.queueOperation(
+        'save',
+        sessionId,
+        async () => {
+          console.log(`[FormStateManager] Fetching current state of session ${sessionId} from DB before save...`);
+          const sessionToSave = await repository.getSession(sessionId);
+          if (sessionToSave) {
+            console.log(`[FormStateManager] Current DB state for ${sessionId}:`, sessionToSave);
+            const { geminiRequests, ...formFields } = currentState; // Exclude geminiRequests from direct save
 
-        // Ensure session name is not empty
-        // Use the provided sessionName prop if available, otherwise fallback to DB or generate
-        const effectiveSessionName = sessionName && sessionName.trim()
-          ? sessionName.trim()
-          : sessionToSave.name && sessionToSave.name.trim()
-            ? sessionToSave.name.trim() // Fallback to current DB name
-            : `Session ${new Date().toLocaleString()}`;
+            // Ensure session name is not empty
+            // Use the provided sessionName prop if available, otherwise fallback to DB or generate
+            const effectiveSessionName = sessionName && sessionName.trim()
+              ? sessionName.trim()
+              : sessionToSave.name && sessionToSave.name.trim()
+                ? sessionToSave.name.trim() // Fallback to current DB name
+                : `Session ${new Date().toLocaleString()}`;
 
-        // Fallback to prop projectDirectory if missing from form state during HMR
-        const effectiveProjectDirectory = formFields.projectDirectory?.trim() 
-          ? formFields.projectDirectory 
-          : projectDirectory;
+            // Fallback to prop projectDirectory if missing from form state during HMR
+            const effectiveProjectDirectory = formFields.projectDirectory?.trim() 
+              ? formFields.projectDirectory 
+              : projectDirectory;
 
-        // Create the update payload - start with existing DB data, merge *only* form fields
-        // Crucially, DO NOT merge Gemini status fields from formState, they are managed by background processes
-        const updatePayload: Session = {
-          ...sessionToSave,          // Start with existing session data from DB
-          ...formFields,             // Apply the current form fields (task desc, files, etc.)
-          id: sessionId!,             // Ensure ID remains the same
-          name: effectiveSessionName, // Use the determined session name
-          projectDirectory: effectiveProjectDirectory, // Use fallback if needed
-          updatedAt: Date.now(), // Update timestamp
-        };
+            // Create the update payload - start with existing DB data, merge *only* form fields
+            const updatePayload: Session = {
+              ...sessionToSave,          // Start with existing session data from DB
+              ...formFields,             // Apply the current form fields (task desc, files, etc.)
+              id: sessionId!,            // Ensure ID remains the same
+              name: effectiveSessionName, // Use the determined session name
+              projectDirectory: effectiveProjectDirectory, // Use fallback if needed
+              updatedAt: Date.now(), // Update timestamp
+            };
 
-        // NOTE: Gemini fields (status, start/end time, patch path, message, stats)
-        // are NOT merged here. They are updated separately by the Gemini actions
-        // to avoid overwriting background process state. We explicitly take Gemini fields
-        // ONLY from sessionToSave (the current DB state).
-        updatePayload.geminiStatus = sessionToSave.geminiStatus;
-        updatePayload.geminiStartTime = sessionToSave.geminiStartTime;
-        updatePayload.geminiEndTime = sessionToSave.geminiEndTime;
-        updatePayload.geminiXmlPath = sessionToSave.geminiXmlPath;
-        updatePayload.geminiStatusMessage = sessionToSave.geminiStatusMessage;
-        updatePayload.geminiTokensReceived = sessionToSave.geminiTokensReceived;
-        updatePayload.geminiCharsReceived = sessionToSave.geminiCharsReceived;
-        updatePayload.geminiLastUpdate = sessionToSave.geminiLastUpdate;
-        updatePayload.geminiRequests = sessionToSave.geminiRequests; // Preserve requests
-        
-        // Prevent concurrent saves
-        // Re-check isSavingRef just before the DB call, although it should be true here
-        if (!isSavingRef.current) {
-           console.warn(`[FormStateManager] isSavingRef became false unexpectedly before DB call for session ${sessionId}`);
-           isSavingRef.current = true; // Ensure it's true
-        }
+            // Keep geminiRequests from the session in DB (they're managed separately)
+            updatePayload.geminiRequests = sessionToSave.geminiRequests;
+            
+            // Keep modelUsed from the form state if provided, otherwise preserve the existing one
+            updatePayload.modelUsed = formFields.modelUsed || sessionToSave.modelUsed;
 
-        console.log(`[FormStateManager] Saving updated payload for session ${sessionId}...`, updatePayload);
-        await repository.saveSession(updatePayload);
-        // Update lastSavedStateRef *after* successful save
-        // Save only the formState part, not the full payload
-        lastSavedStateRef.current = { ...currentState }; // Use currentState which excludes geminiRequests
-        if (onStateChange) onStateChange(false); // Reset change status after save
-        console.log(`[FormStateManager] Auto-save successful for session ${activeSessionId}. State updated.`);
-        setSaveError(null); // Clear error on success
-      } else {
-        console.warn(`[FormStateManager] Session ${activeSessionId} not found during auto-save attempt.`);
-      }
+            console.log(`[FormStateManager] Saving updated payload for session ${sessionId}...`);
+            await repository.saveSession(updatePayload);
+            
+            // Update lastSavedStateRef *after* successful save
+            // Save only the formState part, not the full payload
+            lastSavedStateRef.current = { ...currentState }; // Use currentState which excludes geminiRequests
+            if (onStateChange) onStateChange(false); // Reset change status after save
+            console.log(`[FormStateManager] Auto-save successful for session ${activeSessionId}. State updated.`);
+            setSaveError(null); // Clear error on success
+          } else {
+            console.warn(`[FormStateManager] Session ${activeSessionId} not found during auto-save attempt.`);
+          }
+        },
+        1 // Lower priority for auto-saves
+      );
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error during auto-save";
       console.error("[FormStateManager] Auto-save failed:", error);
@@ -143,10 +153,88 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
         onIsSavingChange(false);
       }
     }
-  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, onIsSavingChange, formState, sessionName, projectDirectory]);
+  }, [activeSessionId, repository, isInitialized, onStateChange, onSaveError, onIsSavingChange, projectDirectory]);
 
   // Debounce the save function
-  const debouncedSaveFn = useDebounceCallback(debouncedSave, 500); // Reduced from 1500ms to 500ms for faster saves during HMR
+  const debouncedSaveFn = useDebounceCallback(
+    (sessionId: string, formState: any, sessionName: string) => {
+      const saveVersion = ++saveVersionRef.current;
+      debouncedSave(sessionId, formState, sessionName, saveVersion);
+    }, 
+    1000 // Increased from 500ms to 1000ms for better debounce behavior
+  );
+
+  // Reset state when session changes
+  useEffect(() => {
+    // Record session for monitoring
+    sessionMonitorRef.current.recordSession(activeSessionId);
+    
+    if (activeSessionId !== prevSessionId.current) {
+      console.log(`[FormStateManager] Session ID changed from ${prevSessionId.current} to ${activeSessionId}`);
+      
+      // Cancel any pending debounced saves if debouncedSaveFn is available
+      if (debouncedSaveFn && typeof debouncedSaveFn.cancel === 'function') {
+        console.log('[FormStateManager] Cancelling pending saves due to session change');
+        debouncedSaveFn.cancel();
+      }
+      
+      // If we're switching to a new session (not just initializing)
+      if (prevSessionId.current !== null && activeSessionId !== null) {
+        console.log(`[FormStateManager] Detected session switch from ${prevSessionId.current} to ${activeSessionId}`);
+        
+        // Increase cooldown periods to better handle transitions
+        // Add a cooldown to previous session to prevent racing conditions
+        if (prevSessionId.current) {
+          sessionSyncService.setCooldown(prevSessionId.current, 'save', 3000);
+          console.log(`[FormStateManager] Set 3000ms cooldown on previous session ${prevSessionId.current}`);
+        }
+        
+        // Wait longer before allowing saves on the new session
+        if (activeSessionId) {
+          sessionSyncService.setCooldown(activeSessionId, 'save', 2000);
+          console.log(`[FormStateManager] Set 2000ms cooldown on new session ${activeSessionId}`);
+        }
+      }
+      
+      // Record the time this session was initialized
+      if (activeSessionId) {
+        sessionInitTimeRef.current[activeSessionId] = Date.now();
+        console.log(`[FormStateManager] Recorded init time for session ${activeSessionId}: ${new Date().toISOString()}`);
+      }
+      
+      // Reset local state
+      setSaveError(null); // Clear error when session changes
+      lastSavedStateRef.current = null; // Reset last saved state on session change
+      isFirstLoadRef.current = true; // Reset first load flag on session change
+      console.log(`[FormStateManager] Session changed to ${activeSessionId || 'null'}. Resetting state.`);
+      
+      // Update tracked previous session ID
+      prevSessionId.current = activeSessionId;
+    } else {
+      // No active session, clear error and state
+      if (!activeSessionId) {
+        setSaveError(null);
+        lastSavedStateRef.current = null;
+      }
+    }
+    
+    // Start the session monitor if this is first load
+    if (isFirstLoadRef.current) {
+      sessionMonitorRef.current.startMonitoring();
+      isFirstLoadRef.current = false;
+    }
+    
+    // Cleanup function
+    return () => {
+      // If component unmounts, consider stopping the monitor
+      if (typeof window !== 'undefined') {
+        // But persist it in the window object so we can still check it
+        if (!(window as any).__sessionMonitorState) {
+          (window as any).__sessionMonitorState = sessionMonitorRef.current;
+        }
+      }
+    };
+  }, [activeSessionId, debouncedSaveFn]);
 
   // Effect to trigger debounced save on state change
   useEffect(() => {
@@ -155,7 +243,34 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
     // - Dependencies not ready (DB)
     // - Session data hasn't finished loading yet (new sessionLoaded prop)
     // - Already saving
-    if (!activeSessionId || !repository || !isInitialized || !sessionLoaded || isSavingRef.current) {
+    // - Session is busy with incompatible operation
+    if (!activeSessionId || 
+        !repository || 
+        !isInitialized || 
+        !sessionLoaded || 
+        isSavingRef.current) {
+      return;
+    }
+    
+    // Check if session is in an incompatible state
+    const sessionState = sessionSyncService.getSessionState(activeSessionId);
+    if (sessionState === 'loading') {
+      console.log(`[FormStateManager] Not saving - session ${activeSessionId} is in loading state`);
+      return;
+    }
+
+    // Additional check for time-based cooldown after session initialization
+    // Wait at least 2.5 seconds after session initialization before allowing saves
+    const initTime = sessionInitTimeRef.current[activeSessionId] || 0;
+    const timeSinceInit = Date.now() - initTime;
+    if (timeSinceInit < 2500) {
+      console.log(`[FormStateManager] Not saving session ${activeSessionId} - too soon after initialization (${timeSinceInit}ms)`);
+      return;
+    }
+
+    // Check if there's a session-specific cooldown active
+    if (sessionState !== 'idle' && sessionState !== 'saving') {
+      console.log(`[FormStateManager] Not saving - session ${activeSessionId} is in ${sessionState} state`);
       return;
     }
 
@@ -185,9 +300,11 @@ const FormStateManager: React.FC<FormStateManagerProps> = ({
       // Use the debounced function
       debouncedSaveFn(activeSessionId, formState, sessionName);
     }
-    // Added sessionLoaded and debouncedSaveFn to dependencies
-  }, [activeSessionId, sessionLoaded, formStateString, repository, isInitialized, onStateChange, onSaveError, formState, sessionName, debouncedSaveFn]);
+  }, [activeSessionId, sessionLoaded, formStateString, repository, isInitialized, onStateChange, onSaveError, formState, sessionName, debouncedSaveFn, projectDirectory]);
 
-  return <>{children}</>; // Render children regardless of state
+  return (
+    <>{children}</>
+  );
 };
-export default FormStateManager;
+
+export default React.memo(FormStateManager);

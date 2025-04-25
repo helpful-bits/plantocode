@@ -113,15 +113,14 @@ export default function PastePaths({
           onChange(cleanedValue);
           onInteraction(); // Call interaction handler on change
         }}
-        placeholder={`# Project paths
+        placeholder={`# Paste file paths here (one per line)
 path/to/file1.ts
 path/to/file2.ts
 
-  # Lines starting with # are ignored
-  # Paste paths from your file system or the 'Path Finder' output
-  # The 'Find Relevant Files (AI)' button below can auto-populate this field.
+# Lines starting with # are ignored
+# The 'Find Relevant Files' button can auto-populate this area with AI-suggested paths
 
-# External paths (absolute or relative)
+# External paths (absolute or relative) are also supported
 /home/user/projects/other-project/src/main.ts
 ../other-project/src/components/Button.tsx`}
       />
@@ -155,6 +154,7 @@ path/to/file2.ts
                   </>
               )}
           </Button>
+          <p className="text-xs text-muted-foreground mt-1">Uses AI to check pasted paths against project files and suggest corrections for typos.</p>
           {correctionError && <p className="text-xs text-destructive mt-1">{correctionError}</p>}
           {correctionSuccess && <p className="text-xs text-green-600 mt-1">{correctionSuccess}</p>}
       </div>

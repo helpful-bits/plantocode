@@ -135,6 +135,15 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
     }
   };
 
+  // Handle input keydown events
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // If Enter key is pressed, submit the form
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
   // Validate directory with server action
   const validateDirectory = async (path: string): Promise<boolean> => {
     if (!path.trim()) {
@@ -319,47 +328,31 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
       <form onSubmit={handleSubmit} className="flex w-full items-center space-x-2">
         <div className="relative flex-1">
           <div className="relative">
-            <Input
-              ref={inputRef}
-              type="text"
-              placeholder="Enter project directory path"
-              value={inputValue}
-              onChange={handleInputChange}
-              onClick={() => history.length > 0 && setShowHistoryDropdown(true)}
-              className={cn(
-                "pr-20", // Make room for buttons
-                validationStatus?.type === ValidationType.Error && "border-red-500 focus-visible:ring-red-500",
-                validationStatus?.type === ValidationType.Success && "border-green-500 focus-visible:ring-green-500",
-              )}
-              disabled={isValidating || initIsLoading}
-            />
-            
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1">
-              {inputValue && (
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-6 w-6" 
-                  onClick={handleClearClick}
-                  disabled={isValidating || initIsLoading}
-                  title="Clear input"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-              <Button 
-                type="button" 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6" 
-                onClick={handleOpenDirectoryBrowser}
+            <div className="flex items-center gap-2">
+              <Input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+                placeholder="Enter or browse to your project's root directory"
+                className="flex-1"
                 disabled={isValidating || initIsLoading}
-                title="Browse directories"
+              />
+              <Button
+                onClick={handleOpenDirectoryBrowser}
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10"
+                title="Browse for directory"
+                disabled={isValidating || initIsLoading}
               >
-                <FolderOpen className="h-4 w-4" />
+                <FolderOpen className="h-5 w-5" />
               </Button>
             </div>
+            
+            <p className="text-xs text-muted-foreground mt-1">Enter the root directory of the project you want to work with.</p>
           </div>
           
           {/* History dropdown */}
@@ -425,15 +418,20 @@ export default function ProjectDirectorySelector({ onRefresh, isRefreshing }: { 
           </Button>
         )}
         
-        <Button 
-          type="submit" 
-          disabled={isValidating || initIsLoading || !inputValue.trim()}
-          title="Set this directory as the current project"
-          className="flex-shrink-0"
-        >
-          Set Project
-        </Button>
+        <div className="flex justify-between items-center mt-2">
+          <div className="flex items-center gap-2">
+            <Button 
+              type="submit"
+              disabled={isValidating || initIsLoading || !inputValue.trim()}
+              className="flex-shrink-0"
+              title="Validate and set this directory as the active project context"
+            >
+              Set Project
+            </Button>
+          </div>
+        </div>
       </form>
+      <p className="text-xs text-muted-foreground mt-1">Validates the path and sets it as the active project context.</p>
       
       {/* Directory browser dialog */}
       {isDirectoryBrowserOpen && (

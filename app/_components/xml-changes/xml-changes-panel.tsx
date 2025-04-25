@@ -338,7 +338,7 @@ export function XmlChangesPanel() {
       <div className="w-full border rounded-md overflow-hidden shadow-sm mt-4">
         <div className="bg-muted px-3 py-2 font-medium text-sm border-b flex justify-between items-center">
           <span className="flex items-center">
-            <span className="font-semibold">Project XML Changes</span>
+            <span className="font-semibold">Generated Plans (XML)</span>
             <span className="ml-2 text-sm text-muted-foreground">
               ({xmlFiles.length})
             </span>
@@ -374,16 +374,14 @@ export function XmlChangesPanel() {
                 <div className="flex flex-wrap gap-2 items-center">
                   <div className="flex-1 min-w-[200px]">
                     <div className="relative">
-                      <input 
-                        type="text" 
-                        placeholder="Search XML files..."
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Search generated plans by filename..."
                         value={xmlSearchTerm}
                         onChange={(e) => setXmlSearchTerm(e.target.value)}
-                        className="w-full px-3 py-1 pr-8 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="pl-8 pr-4 py-2 text-sm border rounded-md w-64 bg-background"
                       />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-2">
-                        <Search className="h-4 w-4 text-muted-foreground" />
-                      </div>
                     </div>
                   </div>
                   
@@ -435,54 +433,71 @@ export function XmlChangesPanel() {
                               tooltip="Open XML file"
                               onError={(msg) => setErrorMessage(msg)}
                             />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handlePreviewXmlChanges(file.id, file.patchPath)}
-                              disabled={previewingXmlId === file.id}
-                              className="flex items-center gap-1 text-xs"
-                              title="Preview XML changes"
-                            >
-                              {previewingXmlId === file.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                              ) : (
-                                <Eye className="h-3.5 w-3.5 mr-1" />
-                              )}
-                              <span className="text-xs">Preview</span>
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleApplyXmlChanges(file.id, file.patchPath)}
-                              disabled={applyingXmlId === file.id}
-                              className="flex items-center gap-1 text-xs bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                              title="Apply these XML changes to your project files"
-                            >
-                              {applyingXmlId === file.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                              ) : (
-                                <Hammer className="h-3 w-3 mr-1" />
-                              )}
-                              <span>Apply XML</span>
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => confirmDeleteXmlFile(file.id, file.patchPath)}
-                              disabled={deletingXmlId === file.id}
-                              className="flex items-center gap-1 text-xs text-destructive hover:bg-destructive/10"
-                              title="Delete this XML file"
-                            >
-                              {deletingXmlId === file.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                              ) : (
-                                <Trash2 className="h-3 w-3 mr-1" />
-                              )}
-                              <span>Delete</span>
-                            </Button>
+                            <div className="flex flex-col">
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleApplyXmlChanges(file.id, file.patchPath)}
+                                disabled={!!applyingXmlId}
+                                className="min-w-[100px]"
+                                title="Apply the changes from this XML file"
+                              >
+                                {applyingXmlId === file.id ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                    Applying...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Hammer className="h-3 w-3 mr-2" />
+                                    Apply Plan
+                                  </>
+                                )}
+                              </Button>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Applies the file modifications described in this plan.
+                              </p>
+                            </div>
+                            <div className="flex flex-col">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePreviewXmlChanges(file.id, file.patchPath)}
+                                disabled={!!previewingXmlId}
+                                className="min-w-[100px]"
+                                title="Preview the changes without applying them"
+                              >
+                                {previewingXmlId === file.id ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                    Previewing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Eye className="h-3 w-3 mr-2" />
+                                    Preview Plan
+                                  </>
+                                )}
+                              </Button>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Show a preview of the file changes this plan will make.
+                              </p>
+                            </div>
+                            <div className="flex flex-col">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => confirmDeleteXmlFile(file.id, file.patchPath)}
+                                className="min-w-[100px] hover:text-destructive"
+                                title="Delete this XML file"
+                              >
+                                <Trash2 className="h-3 w-3 mr-2" />
+                                Delete Plan
+                              </Button>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Permanently delete this generated plan file.
+                              </p>
+                            </div>
                           </div>
                         </div>
                         

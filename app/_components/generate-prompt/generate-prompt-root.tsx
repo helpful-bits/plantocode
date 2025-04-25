@@ -2,7 +2,6 @@
 
 import React, { Suspense } from "react";
 import GeneratePromptForm from "./generate-prompt-form";
-import { GeminiProcessorProvider } from "../gemini-processor/gemini-processor-context";
 import { useInitialization } from "@/lib/contexts/initialization-context";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,18 +41,15 @@ function FormWithProviders() {
   return <GeneratePromptForm />;
 }
 
-// Main component that renders the providers and form
+// Main component that renders the form
 export default function GeneratePromptRoot() {
   return (
-    // Wrap everything in the GeminiProcessorProvider
-    <GeminiProcessorProvider>
-      <Suspense fallback={
-        <div className="flex justify-center items-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      }>
-        <FormWithProviders />
-      </Suspense>
-    </GeminiProcessorProvider>
+    <Suspense fallback={
+      <div className="flex justify-center items-center h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <FormWithProviders />
+    </Suspense>
   );
 } 

@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   task_description TEXT DEFAULT '',
   search_term TEXT DEFAULT '',
   pasted_paths TEXT DEFAULT '',
-  pattern_description TEXT DEFAULT '',
   title_regex TEXT DEFAULT '',
   content_regex TEXT DEFAULT '',
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)), -- Boolean represented as integer

@@ -1,185 +1,175 @@
-# O1 Pro Flow
+# AI Architect Studio
 
-O1 Pro Flow is a comprehensive utility designed to streamline the workflow of generating prompts for AI models (like the O1 Pro model in ChatGPT or Anthropic's Claude) and applying the resulting code changes directly to your codebase. Built with Next.js (App Router) and React, it focuses on end-to-end automation: from preparing context-rich prompts based on your project files to processing AI-generated diffs or refactoring plans and updating your local repository.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Next.js](https://img.shields.io/badge/Next.js-15.3.0-black)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-18.3.1-blue)](https://reactjs.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-3.x-blue)](https://www.sqlite.org/)
+[![Gemini](https://img.shields.io/badge/Gemini-2.5-green)](https://ai.google.dev/gemini-api)
+[![Claude](https://img.shields.io/badge/Claude-3.7-purple)](https://www.anthropic.com/)
 
-**Key Update:** The application now uses a persistent SQLite database to store your sessions and settings, ensuring data is saved reliably across browser sessions and even after restarts.
-All your inputs (project directory, file selections, task descriptions, regex patterns, etc.) are saved automatically as you work, associated with the current project directory. **When a session is active, changes automatically update that session in the database.** You must create or load a session before you can interact with the main input form. The selected project directory is synced with the browser URL for easier sharing and bookmarking.
+<p align="center">
+  <img src="https://via.placeholder.com/800x400?text=AI+Architect+Studio" alt="AI Architect Studio Screenshot" width="800"/>
+</p>
 
-## Prerequisites
- 
-- Git installed and available in PATH
+## 🚀 What is AI Architect Studio?
+
+AI Architect Studio is a comprehensive tool that bridges AI and software development, enabling you to:
+
+1. **Generate architectural plans** tailored to your existing codebase
+2. **Apply code changes** directly using AI-generated patches
+3. **Streamline your workflow** with persistent sessions and intelligent file selection
+
+Perfect for developers who want to leverage AI for code architecture and refactoring without compromising control.
+
+## ✨ Key Features
+
+- **Intelligent File Selection** - AI automatically identifies relevant files based on your task
+- **Voice-to-Architecture** - Record your ideas and let AI transcribe and refine them
+- **Background Processing** - Generate plans while you continue working
+- **Persistent Sessions** - All work is saved automatically per project
+- **Database Integration** - Reliable SQLite storage ensures no work is lost
+- **Multi-API Support** - Leverages the best AI models for each task:
+  - **Google Gemini** for architecture generation
+  - **Anthropic Claude** for text refinement and regex creation
+  - **Groq (Whisper)** for voice transcription
+
+## 🛠️ Quick Start
+
+### Prerequisites
+
+- Git in your PATH
 - Node.js (v18+) and pnpm
-- Next.js 14+ with React 18
-- (Required) `GROQ_API_KEY` for voice transcription service (uses Whisper via Groq for faster performance than OpenAI)
-- (Required) `ANTHROPIC_API_KEY` for text improvement and regex generation via Anthropic's Claude (specifically `claude-3-7-sonnet-20250219` model as configured)
-- (Required) `GEMINI_API_KEY` for generating patches or other content via Google Gemini (currently `gemini-2.5-pro-preview-03-25`).
+- API keys:
+  - `GROQ_API_KEY` (Whisper via Groq)
+  - `ANTHROPIC_API_KEY` (Claude 3.7 Sonnet)
+  - `GEMINI_API_KEY` (Gemini 2.5 Pro)
 
-## Installation & Quick Start 
-
-1. **Install Dependencies**:
-    ```bash # Make sure you are in the root directory of the cloned repository
-    cd o1-pro-flow
-    pnpm install
-    ```
-2. **Configure Environment Variables**:
-    - Copy the example file:
-    ```bash
-    cp .env.example .env.local
-    ```
-    - Edit `.env.local` to add your required `GROQ_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY`.
-    - **Important:** The SQLite database (`o1-pro-flow.db`) will be automatically created in the `~/.o1-pro-flow/` directory on first run.
-3. **Run Development Server**:
-    ```bash
-    pnpm dev
-    ```
-4. **Open the App & Get Started**:
-   - Navigate to [http://localhost:3000](http://localhost:3000) and explore the interface.
-   - The app automatically saves your working state for each project/format combination and restores it on reload.
-   - Multiple tabs/sessions for the same project directory are supported without interference.
- 
-## Core Features
-### Prompt Generation
-Generate comprehensive prompts for AI models tailored to your codebase and task.
-- **Project Context:** Select your project directory. The tool uses `git ls-files` (if available) to find tracked files, ignoring those specified in `.gitignore`. It can also operate on non-Git directories.
-- **File Selection:**
-    - **File Browser:** Browse your Git repository, search, and select files to include in the prompt context.
-    - **Paste Paths:** Directly paste file paths (relative to the project or absolute external paths) to include specific files.
-    - **AI Path Finder:** Click a button near the "Paste Paths" area. Gemini Flash analyzes the codebase structure and task description to automatically suggest relevant files, populating the "Paste Paths" area. Handles large codebases by requesting intelligent splitting if necessary.
-    - **Regex Generation:** Describe file patterns (e.g., "React components using useState") and use Anthropic Claude (if API key is provided) to generate corresponding title (path) and content regex patterns for filtering.
-- **UI Controls:**
-    - **Find Relevant Files:** Uses a dedicated loading state (`isFindingFiles`) while finding relevant files.
-    - **Get Architectural Guidance:** Uses a separate loading state (`isGeneratingGuidance`) when calling Gemini for guidance.
-    - **Copy Prompt:** Uses its own loading state (`isCopyingPrompt`) when copying the prompt template to clipboard. This operation uses a shared server action and never triggers a Gemini API call. 
-    - Each button maintains an isolated state flag, preventing UI cross-talk between different operations.
-- **Codebase Structure:** Optionally provide or generate (using `tree` command logic) an ASCII representation of your codebase structure for better AI understanding, especially useful for refactoring tasks.
-- **Task Description:** Detail the changes you want the AI to perform. Use the integrated voice transcription and correction features if needed.
-- **Session Management:**
-    - Explicitly save all current inputs (project, files, task, regex, etc.) as a named session.
-    - Sessions are specific to a **Project Directory**.
-    - **Gemini processing status** (idle, running, completed, failed, canceled), along with start/end times and the path to the saved patch file, is stored per session. The server action continues running even if the browser is refreshed or closed.
-    - The UI reflects the current status by polling the database.
-    - When a session is active, any changes made to the inputs (task description, file selections, regex, etc.) automatically update that session in the database.
-    - The main input form (Task Description, File Selection, etc.) is only accessible *after* a session has been created or loaded for the current project directory.
-### Voice Transcription 
-Record audio instructions directly in the browser for the Task Description.
-- **Transcription:** Uses the Groq API (requires `GROQ_API_KEY`) for fast transcription via Whisper.
-- **Language Selection:** Specify the language for transcription.
-- **Correction:** If transcribed text is available, it is automatically sent to Anthropic Claude (Sonnet 3.7) for correction and refinement. You can revert to the raw transcription if needed.
-
-### Text Improvement
-Select text within the Task Description area and use Anthropic Claude (if configured) to improve clarity and grammar while preserving formatting (line breaks, indentation, etc.).
-
-### Process Prompt with Gemini (Background Task)
-- Takes the generated prompt from Step 1.
-- Sends the prompt to the Google Gemini API (`gemini-2.5-pro-preview-03-25`) using the provided `GEMINI_API_KEY`. The prompt is designed to elicit a Git patch as the response.
-- Expects a Git patch in the response, potentially wrapped in markdown code fences (```diff ... ```) which are automatically stripped.
-- Automatically streams the received patch content directly to a file in the `patches/` directory within your selected **Project Directory**. The filename includes an ISO timestamp and the current session name (e.g., `patches/2024-07-28T10-30-05_123Z_MySessionName.patch`). If writing to the project directory fails (e.g., permissions), it falls back to a central `patches/` directory in the application root. **You can monitor this file in your IDE to see changes appear in real-time.**
-- The UI displays the processing status (running, completed, failed, canceled) and elapsed time by polling the session state in the database.
-- **IDE Integration:** Provides a button to directly open the generated patch file in your default IDE/editor.
-- **Background Processing:** The server action runs independently. You can refresh the page, close the tab, or even restart the browser; the processing continues on the server. Re-opening the session will show the current status.
-- **Cancellation:** Allows canceling the ongoing Gemini processing request via a button in the UI.
-
-## Important Note
-
-The tool itself does not directly execute code changes on your local machine. It generates prompts and, via the Gemini integration, produces patch files. Applying these patches is a separate step you perform using standard Git tools or IDE features.
-
-## Project Structure
-- `app` - Next.js App Router with server actions, API routes, pages, and layout
-- `app/api` - Next.js API routes for backend database interactions
-- `components` - UI and utility components
-- `app/_components` - Feature-specific components grouped by functionality (e.g., `generate-prompt`, `gemini-processor`)
-- `lib` - Utility libraries (token estimation, file utilities, Git utils, hashing, path utils, etc.)
-- `lib/db` - Database setup, schema, repository pattern, connection pool and migrations (uses SQLite)
-- `patches` - Application-level directory where generated patch files are saved as a fallback
-- `lib/contexts` - React context providers (Project, Database for managing global state)
-- `actions` - Server actions (reading directories, voice transcription, text correction, regex generation)
-- `prompts` - Functions to generate prompts for specific LLM tasks
-- `public` - Static assets
-- `migrations` - SQL files for database schema evolution
-- `hooks` - Custom React hooks for shared logic
-- `types` - Type definitions
-## Recommended Workflow
-1. **Select Project:** Choose your project directory.
-2. **Manage Session:** Create a new session or load an existing one for the selected project. Your work (task description, file selections, etc.) is auto-saved to the active session.
-3. **Define Task & Context:**
-   - Write or record the task description.
-   - **Find Files:** Use the "Find Relevant Files" button (near Paste Paths) to let AI populate relevant file paths based on your task description.
-   - **Adjust Files:** Manually adjust the pasted paths, use the file browser for selection, or use regex for filtering.
-   - Optionally provide codebase structure information.
-4. **Generate Prompt:** Click "Generate Prompt" to create the input for the AI model (Gemini) based on your selections and task.
-5. **Process with Gemini:** Click "Send to Gemini & Save Patch". The tool will send the prompt to Gemini, stream the response (expected to be a patch) to a file in the `patches/` directory within your selected project directory (or fallback), and display the progress.
-6. **Apply Patch:** Once Gemini processing is complete, use the "Open in IDE" button or standard tools (`git apply your-patch-file.patch`) to apply the generated changes to your local codebase.
-7. **Alternative (Manual Copy/Paste):** Copy the generated prompt from step 4 and paste it into your preferred AI model interface (like ChatGPT with O1 Pro). Obtain the response (e.g., diff) and apply it manually.
-## Contributing
-Contributions are welcome. To contribute:
-1. Fork the repo and clone your fork.
-2. Create a new branch.
-3. Make your changes, then test thoroughly.
-4. Submit a pull request explaining your modifications.
-
-## License
-This project is open source under the MIT license.
-
-## Database Migration Fix
-
-If you encounter the following error when starting the application:
-
-```
-Error executing migration 0008_rename_patch_path_to_xml_path.sql: [Error: SQLITE_ERROR: no such column: gemini_patch_path] {
-  errno: 1,
-  code: 'SQLITE_ERROR'
-}
-```
-
-This is due to a SQLite migration issue. We've implemented a fix in the following ways:
-
-1. Created a safer migration script that properly handles column renaming
-2. Added better error handling for database migrations
-3. Made the code more resilient to schema differences
-
-### How to Fix
-
-#### Option 1: Run the fixed code
-The simplest solution is to pull the latest code which includes these fixes. The application should now handle the migration properly.
-
-#### Option 2: Reset your database
-If you're still experiencing issues, you can reset your database. This will delete all your saved sessions and preferences, but will fix any database corruption or migration issues.
-
-Run the following command from the project root:
+### Installation
 
 ```bash
-npm run reset-db
-```
+# Clone the repository
+git clone https://github.com/yourusername/ai-architect-studio.git
+cd ai-architect-studio
 
-Or if you're using pnpm:
+# Install dependencies
+pnpm install
 
-```bash
-pnpm reset-db
-```
+# Configure environment variables
+cp .env.example .env.local
+# Edit .env.local to add your API keys
 
-This script will:
-1. Create a backup of your existing database
-2. Delete the database file
-3. Ask if you want to restart the application
-
-The next time you start the application, a new database will be created with the correct schema.
-
-## Development
-
-### Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
+# Start development server
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Getting Started
+
+1. Visit [http://localhost:3000](http://localhost:3000)
+2. Select your project directory
+3. Create a new session or load an existing one
+4. Describe your architecture task (write or record)
+5. Let AI find relevant files or select them manually
+6. Generate and apply your architectural plan
+
+## 🔄 Workflow
+
+1. **Select Project & Create Session** - Choose your working directory
+2. **Define Task** - Describe what you want to build or refactor
+3. **Generate Context** - Select relevant files (manually or with AI)
+4. **Create Plan** - Generate the architecture plan
+5. **Process with AI** - Send to Gemini and receive a patch file
+6. **Apply Changes** - Apply the generated patch to your code
+
+## 📂 Architecture
+
+```
+├── app                 # Next.js App Router components
+│   ├── _components     # Feature-specific components
+│   └── api             # Backend API routes
+├── components          # Reusable UI components
+├── lib                 # Utility libraries
+│   ├── db              # Database layer (SQLite)
+│   └── contexts        # React context providers
+├── actions             # Server actions
+├── migrations          # Database migrations
+├── patches             # Generated patches storage
+└── prompts             # AI prompt templates
+```
+
+## 🧠 Core Capabilities
+
+### Plan Generation
+- **Project Context** - Select directory and files
+- **File Selection** - Multiple ways to choose files:
+  - File browser
+  - Direct path input
+  - AI-assisted file finding
+  - Regex pattern matching
+- **Task Description** - Write or record your requirements
+
+### Voice Transcription
+- Record directly in browser
+- Fast transcription via Groq API
+- Language selection
+- AI-powered correction
+
+### Background Processing
+- Sessions persist across browser restarts
+- Real-time status updates
+- Cancel running processes
+- Direct integration with your IDE
+
+## 🛠️ Development
 
 ### Database Migrations
 
-Database migrations are located in the `migrations` folder and are automatically applied when the application starts.
+```bash
+# Apply migrations
+pnpm migrate
 
-If you're developing database changes, see `lib/db/README.md` for guidelines on creating safe SQLite migrations.
+# Reset database (creates backup first)
+pnpm reset-db
+```
+
+### Database Path Migration
+
+The application's database has been renamed from `o1-pro-flow.db` to `ai-architect-studio.db` and moved to a new location (`~/.ai-architect-studio/`). If you're updating from an older version, you can migrate your existing database using:
+
+```bash
+# Migrate database to new location
+pnpm migrate-database-path
+```
+
+This script will:
+1. Check if you have an existing database at the old location
+2. Create a backup of your old database
+3. Copy the database to the new location
+4. Give you the option to delete the old database
+
+The migration process is safe and preserves all your existing data (sessions, files, settings, etc.).
+
+### Troubleshooting
+
+If you encounter database migration errors, try:
+
+```bash
+# Fix database tables
+pnpm fix-tables
+
+# Or reset completely
+pnpm reset-db
+```
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🤝 Contributing
+
+Contributions welcome! To contribute:
+
+1. Fork and clone the repo
+2. Create a new branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request with explanation

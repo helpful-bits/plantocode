@@ -14,10 +14,10 @@ import { exec } from 'child_process';
 import readline from 'readline';
 import sqlite3 from 'sqlite3';
 
-// Get the path to the o1-pro-flow directory in the user's home directory
-const o1ProFlowDir = path.join(homedir(), '.o1-pro-flow');
-const dbFilePath = path.join(o1ProFlowDir, 'o1-pro-flow.db');
-const dbBackupDir = path.join(o1ProFlowDir, 'backups');
+// Get the path to the AI Architect Studio directory in the user's home directory
+const appDataDir = path.join(homedir(), '.ai-architect-studio');
+const dbFilePath = path.join(appDataDir, 'ai-architect-studio.db');
+const dbBackupDir = path.join(appDataDir, 'backups');
 
 // Check if automatic mode is enabled
 const args = process.argv.slice(2);
@@ -45,7 +45,7 @@ function backupDatabase(): string | null {
 
     // Create a timestamp for the backup filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = path.join(dbBackupDir, `o1-pro-flow-${timestamp}.db.bak`);
+    const backupPath = path.join(dbBackupDir, `ai-architect-studio-${timestamp}.db.bak`);
 
     // Copy the database file to the backup location
     fs.copyFileSync(dbFilePath, backupPath);
@@ -96,9 +96,9 @@ function runMigrations() {
     console.log('Running database migrations...');
     
     // Ensure the database directory exists
-    if (!fs.existsSync(o1ProFlowDir)) {
-      fs.mkdirSync(o1ProFlowDir, { recursive: true });
-      console.log(`Created database directory: ${o1ProFlowDir}`);
+    if (!fs.existsSync(appDataDir)) {
+      fs.mkdirSync(appDataDir, { recursive: true });
+      console.log(`Created database directory: ${appDataDir}`);
     }
     
     // Create a new empty database file to ensure SQLite can open it
@@ -160,7 +160,7 @@ function startApp() {
  * Main function to handle the database reset process
  */
 function resetDatabase() {
-  console.log('This utility will reset your o1-pro-flow database.');
+  console.log('This utility will reset your AI Architect Studio database.');
   console.log('This is useful if you are experiencing database migration errors.');
   console.log('A backup will be created before deletion.');
   console.log('');

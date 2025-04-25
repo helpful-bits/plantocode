@@ -1,7 +1,7 @@
 import { sessionRepository } from './index';
 import connectionPool from './connection-pool';
 import { hashString } from '@/lib/hash';
-import { Session } from '@/types';
+import { Session, GeminiStatus } from '@/types';
 
 // Cache implementation to match the one in database-context.tsx
 interface CacheEntry<T> {
@@ -331,26 +331,26 @@ export async function getSessions(projectDirectory: string): Promise<Session[]> 
                 // Create session object
                 const session: Session = {
                   id: row.id,
-                  name: row.name,
-                  projectDirectory: row.project_directory,
+                  name: row.name || '',
+                  projectDirectory: row.project_directory || '',
                   taskDescription: row.task_description || '',
                   searchTerm: row.search_term || '',
                   pastedPaths: row.pasted_paths || '',
-                  patternDescription: row.pattern_description || '',
                   titleRegex: row.title_regex || '',
                   contentRegex: row.content_regex || '',
                   isRegexActive: !!row.is_regex_active,
-                  includedFiles,
-                  forceExcludedFiles: excludedFiles,
-                  // Gemini fields
-                  geminiStatus: row.gemini_status || 'idle',
+                  diffTemperature: row.diff_temperature || 0.9,
+                  includedFiles: [],
+                  forceExcludedFiles: [],
+                  geminiStatus: (row.gemini_status || 'idle') as GeminiStatus,
                   geminiStartTime: row.gemini_start_time || null,
                   geminiEndTime: row.gemini_end_time || null,
-                  geminiXmlPath: row.gemini_xml_path || null,
+                  geminiXmlPath: row.gemini_xml_path || row.gemini_patch_path || null,
                   geminiStatusMessage: row.gemini_status_message || null,
                   geminiTokensReceived: row.gemini_tokens_received || 0,
                   geminiCharsReceived: row.gemini_chars_received || 0,
                   geminiLastUpdate: row.gemini_last_update || null,
+                  updatedAt: row.updated_at || 0
                 };
                 
                 sessions.push(session);

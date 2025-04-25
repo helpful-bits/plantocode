@@ -27,7 +27,7 @@ export default function ActionSection({ state, actions }: ActionSectionProps) {
     <div className="flex flex-col pt-4">
       <div className="flex flex-col space-y-2 mb-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm">Diff Temperature: {diffTemperature.toFixed(2)}</div>
+          <div className="text-sm">Plan Generation Temperature: {diffTemperature.toFixed(2)}</div>
           <div className="w-64">
             <Slider 
               value={[diffTemperature]} 
@@ -38,6 +38,9 @@ export default function ActionSection({ state, actions }: ActionSectionProps) {
             />
           </div>
         </div>
+        <div className="text-xs text-muted-foreground">
+          Controls the creativity/randomness of the generated plan. Lower values (e.g., 0.2) are more deterministic, higher values (e.g., 0.9) are more creative.
+        </div>
 
         <div className="flex justify-between items-center">
           <div className="text-sm text-muted-foreground">
@@ -46,22 +49,27 @@ export default function ActionSection({ state, actions }: ActionSectionProps) {
             )}
           </div>
           
-          <Button
-            type="button"
-            variant="default"
-            onClick={generatePrompt}
-            disabled={isLoading || isLoadingFiles}
-            className="px-6"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                Generating...
-              </>
-            ) : (
-              "Generate Prompt"
-            )}
-          </Button>
+          <div className="flex flex-col">
+            <Button
+              type="button"
+              variant="default"
+              onClick={generatePrompt}
+              disabled={isLoading || isLoadingFiles}
+              className="px-6"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                  Generating...
+                </>
+              ) : (
+                "Generate Plan"
+              )}
+            </Button>
+            <div className="text-xs text-muted-foreground mt-1">
+              Generates the structured plan based on the task description and selected file context. This plan can then be processed by Gemini or copied.
+            </div>
+          </div>
         </div>
       </div>
 
