@@ -37,7 +37,7 @@ export default function PromptPreview({ state, actions }: PromptPreviewProps) {
       {prompt && !isLoading && (
         <div className="bg-muted p-4 rounded-lg mt-6 relative border shadow-inner">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold">Generated Prompt</h3>
+            <h2 className="text-lg font-semibold mb-2">Generated Plan Preview</h2>
             <Button
               type="button"
               onClick={copyPrompt}
@@ -48,6 +48,7 @@ export default function PromptPreview({ state, actions }: PromptPreviewProps) {
               {copySuccess ? "Copied!" : "Copy to Clipboard"}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-1 mb-3">Copies the generated plan text to your clipboard.</p>
           <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[650px]">
             {prompt}
           </pre>

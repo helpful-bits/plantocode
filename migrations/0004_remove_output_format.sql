@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS sessions_new (
   task_description TEXT DEFAULT '',
   search_term TEXT DEFAULT '',
   pasted_paths TEXT DEFAULT '',
-  pattern_description TEXT DEFAULT '',
   title_regex TEXT DEFAULT '',
   content_regex TEXT DEFAULT '',
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
@@ -43,8 +42,8 @@ CREATE TABLE project_settings_new (
 -- Step 2: Copy data from old tables to new tables, but only if source tables exist
 
 -- Check if the sessions table exists first
-INSERT INTO sessions_new (id, name, project_directory, project_hash, task_description, search_term, pasted_paths, pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at, gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update)
-SELECT id, name, project_directory, project_hash, task_description, search_term, pasted_paths, pattern_description, title_regex, content_regex, is_regex_active, codebase_structure, updated_at, gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update 
+INSERT INTO sessions_new (id, name, project_directory, project_hash, task_description, search_term, pasted_paths, title_regex, content_regex, is_regex_active, codebase_structure, updated_at, gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update)
+SELECT id, name, project_directory, project_hash, task_description, search_term, pasted_paths, title_regex, content_regex, is_regex_active, codebase_structure, updated_at, gemini_status, gemini_start_time, gemini_end_time, gemini_patch_path, gemini_status_message, gemini_tokens_received, gemini_chars_received, gemini_last_update 
 FROM sessions
 WHERE EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions');
 

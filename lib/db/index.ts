@@ -15,9 +15,10 @@ import {
   getSessionWithRequests
 } from './database-client';
 
-const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
-const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db'); // Keep database file path
+const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
+const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
 
+// Create the new app directory if it doesn't exist
 if (!fs.existsSync(APP_DATA_DIR)) {
   fs.mkdirSync(APP_DATA_DIR, { recursive: true });
 }

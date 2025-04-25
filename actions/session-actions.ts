@@ -17,16 +17,6 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
         await setupDatabase();
         const repository = sessionRepository; // Use singleton repository
         
-        // Remove the xml path from the session
-        await repository.updateSessionGeminiStatus(
-            sessionId, 
-            undefined, 
-            undefined, 
-            undefined, 
-            null, // Set xml path to null
-            undefined
-        );
-        
         // Check if we need to update the xml path for the last gemini request as well
         const requests = await repository.getGeminiRequests(sessionId);
         const latestRequestWithXml = requests.find(r => r.xmlPath);
@@ -56,7 +46,7 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
 }
 
 /**
- * Resets a session's Gemini status to idle.
+ * Resets a session's Gemini request processing status.
  * This is used to allow restarting processing for a session that was canceled or failed.
  */
 export async function resetSessionStateAction(sessionId: string): Promise<ActionState<null>> {
@@ -74,16 +64,6 @@ export async function resetSessionStateAction(sessionId: string): Promise<Action
 
         // Cancel any running Gemini requests associated with the session
         await sessionRepository.cancelAllSessionRequests(sessionId);
-
-        // Reset the session's *summary* status to idle
-        await sessionRepository.updateSessionGeminiStatus(
-            sessionId,
-            'idle', // Reset to idle
-            null, // Clear fields managed by requests
-            null,
-            null,
-            null,   // Clear message
-        );
         
         return { isSuccess: true, message: "Session state reset successfully." };
     } catch (error) {

@@ -9,6 +9,8 @@ import FileSection from "./_sections/FileSection";
 import ActionSection from "./_sections/ActionSection";
 import PromptPreview from "./_sections/PromptPreview";
 import GeminiSection from "./_sections/GeminiSection";
+import ModelSelection from "./_components/model-selection";
+import { Button } from "@/components/ui/button";
 
 // Lazy load form-state-manager and session-guard
 const SessionGuard = React.lazy(() => import("./_components/session-guard"));
@@ -23,7 +25,7 @@ const FormStateManager = React.lazy(() => import("./_components/form-state-manag
  */
 export default function GeneratePromptForm() {
   // Initialize state and actions from the central hook
-  const { state, actions } = useGeneratePromptState();
+  const { state, actions, modelUsed, setModelUsed } = useGeneratePromptState();
 
   return (
     <div className="py-4 container flex h-full">
@@ -65,17 +67,39 @@ export default function GeneratePromptForm() {
               {/* Task Description Section */}
               <TaskSection state={state} actions={actions} />
 
+              {/* Model Selection Section */}
+              <ModelSelection
+                modelUsed={modelUsed}
+                setModelUsed={setModelUsed}
+                onInteraction={actions.handleInteraction}
+              />
+
               {/* Pattern & Regex Section */}
               <Suspense fallback={<div>Loading pattern input...</div>}>
                 <div className="flex flex-col gap-4">
-                  <PatternDescriptionInput
-                    value={state.patternDescription}
-                    onChange={actions.handlePatternDescriptionChange}
-                    onGenerateRegex={actions.handleGenerateRegex} 
-                    isGenerating={state.isGeneratingRegex}
-                    generationError={state.regexGenerationError}
-                    onInteraction={actions.handleInteraction}
-                  />
+                  <div className="flex justify-between items-center mb-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={actions.handleGenerateRegexFromTask}
+                      disabled={!state.taskDescription.trim() || state.isGeneratingTaskRegex}
+                      className="h-8"
+                    >
+                      {state.isGeneratingTaskRegex ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        "Generate Regex from Task"
+                      )}
+                    </Button>
+                    {state.regexGenerationError && (
+                      <p className="text-xs text-destructive">{state.regexGenerationError}</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Uses AI to suggest regex patterns based on the task description.</p>
 
                   <RegexInput
                     titleRegex={state.titleRegex}
@@ -104,13 +128,15 @@ export default function GeneratePromptForm() {
           </SessionGuard>
         </Suspense>
 
-        {/* Gemini Processor Section */}
-        <GeminiSection state={state} />
+        {/* Gemini Processor Section - Pass modelUsed to use in processing */}
+        <GeminiSection state={{
+          ...state,
+          modelUsed
+        }} />
       </div>
     </div>
   );
 }
 
-// Lazy load components if not already imported in outer scope
-const PatternDescriptionInput = React.lazy(() => import("./_components/pattern-description-input"));
+// Lazy load RegexInput component
 const RegexInput = React.lazy(() => import("./_components/regex-input"));

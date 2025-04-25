@@ -16,6 +16,7 @@ export type GeminiRequest = {
     charsReceived: number;
     lastUpdate: number | null;
     createdAt: number;
+    cleared?: boolean; // Added for history clearing functionality
 };
 
 // Session structure including Gemini processing state and file selections
@@ -26,18 +27,11 @@ export type Session = {
     taskDescription: string;
     searchTerm: string;
     pastedPaths: string;
-    patternDescription: string;
     titleRegex: string;
     contentRegex: string;
     isRegexActive: boolean;
-    geminiStatus?: GeminiStatus; // Status of Gemini processing - Made optional as it might not exist on old sessions initially
-    geminiStartTime?: number | null; // Unix timestamp (ms) when processing started
-    geminiEndTime?: number | null;
-    geminiXmlPath?: string | null; // Path to the XML changes file (renamed from geminiPatchPath)
-    geminiStatusMessage?: string | null; // Error or success message from Gemini process
-    geminiTokensReceived?: number; // Number of tokens received during streaming (optional)
-    geminiCharsReceived?: number; // Number of characters received during streaming (optional)
-    geminiLastUpdate?: number; // Timestamp of the last chunk update
+    diffTemperature?: number; // Temperature setting for diff generation
+    modelUsed?: string; // Added for model selection
     updatedAt?: number; // Timestamp of last update (managed by repository)
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths forced excluded

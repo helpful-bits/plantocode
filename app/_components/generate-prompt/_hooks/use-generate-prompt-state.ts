@@ -6,7 +6,6 @@ import { estimateTokens } from "@/lib/token-estimator";
 import { useProject } from "@/lib/contexts/project-context";
 import { useDatabase } from "@/lib/contexts/database-context";
 import { normalizePath } from "@/lib/path-utils";
-import { useGeminiProcessor } from '@/app/_components/gemini-processor/gemini-processor-context';
 import { Session } from "@/types";
 import { useFileLoader } from "./use-file-loader";
 import { usePromptGenerator } from "./use-prompt-generator";
@@ -15,13 +14,15 @@ import { shouldIncludeByDefault, normalizeFilePath } from "../_utils/file-select
 import { findRelevantFilesAction } from "@/actions/path-finder-actions";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { generateDirectoryTree } from "@/lib/directory-tree";
+import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { sessionSyncService } from '@/lib/services/session-sync-service';
 
 // Constants
 const AUTO_SAVE_INTERVAL = 3000; // 3 seconds
-const LOCAL_STORAGE_KEY = "o1pro.generate-prompt.form-state";
 const OUTPUT_FORMAT_KEY = "generate-prompt-output-format";
 const SEARCH_SELECTED_FILES_ONLY_KEY = "search-selected-files-only";
-const FILE_SELECTIONS_KEY = "file-selections";
+const PREFERENCE_FILE_SELECTIONS_KEY = "file-selections";
+const MODEL_USED_KEY = "model-used";
 
 // Types
 export interface FileInfo {
@@ -41,18 +42,16 @@ export function useGeneratePromptState() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const { resetProcessorState } = useGeminiProcessor();
 
   // Form state
   const [taskDescription, setTaskDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [pastedPaths, setPastedPaths] = useState("");
-  const [patternDescription, setPatternDescription] = useState("");
   const [titleRegex, setTitleRegex] = useState("");
   const [contentRegex, setContentRegex] = useState("");
   const [error, setError] = useState("");
+  const [isGeneratingTaskRegex, setIsGeneratingTaskRegex] = useState(false);
   const [regexGenerationError, setRegexGenerationError] = useState("");
-  const [isGeneratingRegex, setIsGeneratingRegex] = useState(false);
   const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
   const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [allFilesMap, setAllFilesMap] = useState<FilesMap>({});
@@ -74,6 +73,7 @@ export function useGeneratePromptState() {
   const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(false);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("markdown");
   const [diffTemperature, setDiffTemperature] = useState<number>(0.9);
+  const [modelUsed, setModelUsed] = useState<string>(GEMINI_FLASH_MODEL);
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [projectDataLoading, setProjectDataLoading] = useState(false);
 
@@ -81,6 +81,7 @@ export function useGeneratePromptState() {
   const taskDescriptionRef = useRef<any>(null);
   const saveTaskDebounceTimer = useRef<NodeJS.Timeout | null>(null);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevSessionId = useRef<string | null>(null);
   const initializationRef = useRef<{ 
     projectInitialized: boolean; 
     formMounted: boolean; 
@@ -170,7 +171,7 @@ export function useGeneratePromptState() {
     }, 500);
   }, []);
 
-  // Local storage utilities
+  // Local storage utilities for user preferences only
   const getLocalStorageKeyForProject = useCallback((key: string) => {
     const safeProjDir = projectDirectory ? 
       encodeURIComponent(projectDirectory.replace(/[\/\\?%*:|"<>]/g, '_')).substring(0, 50) : 
@@ -178,7 +179,7 @@ export function useGeneratePromptState() {
     return `form-backup-${safeProjDir}-${key}`;
   }, [projectDirectory]);
 
-  const saveToLocalStorage = useCallback((key: string, value: string) => {
+  const savePreferenceToLocalStorage = useCallback((key: string, value: string) => {
     if (!projectDirectory) return;
     
     try {
@@ -189,7 +190,7 @@ export function useGeneratePromptState() {
     }
   }, [projectDirectory, getLocalStorageKeyForProject]);
 
-  const restoreFromLocalStorage = useCallback((key: string, setter: (value: string) => void, currentValue: string) => {
+  const restorePreferenceFromLocalStorage = useCallback((key: string, setter: (value: string) => void, currentValue: string) => {
     if (!projectDirectory) return false;
     
     try {
@@ -218,79 +219,132 @@ export function useGeneratePromptState() {
     }
   }, [savedSessionId, setSavedSessionId]);
 
+  // Effect to reset form state when active session changes
+  useEffect(() => {
+    if (activeSessionId === null) return;
+    
+    // Check if we're actually switching sessions (not just initializing)
+    if (prevSessionId.current !== null && prevSessionId.current !== activeSessionId) {
+      console.log(`[State] Detected session switch from ${prevSessionId.current} to ${activeSessionId}`);
+      
+      // Reset form state when switching sessions to prevent data leakage
+      setTaskDescription("");
+      setSearchTerm("");
+      setPastedPaths("");
+      setTitleRegex("");
+      setContentRegex("");
+      setIsRegexActive(true);
+      
+      // Reset session initialized status during transition
+      // This prevents premature displaying of the form with mixed state
+      setSessionInitialized(false);
+      
+      console.log(`[State] Reset form state due to session change to: ${activeSessionId}`);
+    }
+    
+    // Remember current session ID for next change
+    prevSessionId.current = activeSessionId;
+  }, [activeSessionId]);
+
   const clearFormFields = useCallback(() => {
     setTaskDescription("");
     setSearchTerm("");
     setPastedPaths("");
-    setPatternDescription("");
     setTitleRegex("");
     setContentRegex("");
     setHasUnsavedChanges(false);
     setSessionInitialized(false);
+  }, []);
+
+  const handleLoadSession = useCallback(async (sessionIdOrObject: string | Session) => {
+    // Handle both string ID and Session object
+    const sessionId = typeof sessionIdOrObject === 'string' 
+      ? sessionIdOrObject 
+      : sessionIdOrObject?.id;
     
-    // Also clear saved file selections for this project
-    if (projectDirectory) {
-      localStorage.removeItem(getLocalStorageKeyForProject(FILE_SELECTIONS_KEY));
+    if (!sessionId || isRestoringSession) return;
+
+    // If we're already on this session and it's initialized, don't reload
+    if (sessionId === activeSessionId && sessionInitialized) {
+      console.log(`[State] Already on session ${sessionId}, skipping reload`);
+      return;
     }
-  }, [projectDirectory, getLocalStorageKeyForProject]);
 
-  const handleLoadSession = useCallback((session: Session) => {
-    if (!session || isRestoringSession) return;
-
-    console.log(`[GeneratePromptState] Loading session: ${session.id}`);
+    console.log(`[State] Loading session ${sessionId}`);
     setIsRestoringSession(true);
+    setSessionInitialized(false); // Explicitly mark as not initialized until fully loaded
     
     try {
-      // Extract relevant parts of session
-      const {
-        taskDescription: sessionTaskDescription,
-        patternDescription: sessionPatternDescription,
-        titleRegex: sessionTitleRegex,
-        contentRegex: sessionContentRegex,
-        projectDirectory: sessionProjectDirectory,
-        includedFiles,
-        forceExcludedFiles,
-        pastedPaths: sessionPastedPaths,
-        isRegexActive: sessionIsRegexActive,
-        diffTemperature: sessionDiffTemp,
-      } = session;
-      
-      // Prepare session selections
-      const sessionSelections = {
-        included: includedFiles || [],
-        excluded: forceExcludedFiles || []
-      };
-      
-      // Update directory first (this triggers file loading)
-      if (sessionProjectDirectory && sessionProjectDirectory !== projectDirectory) {
-        console.log(`[GeneratePromptState] Setting project directory to: ${sessionProjectDirectory}`);
-        setProjectDirectory(sessionProjectDirectory);
-        
-        // Load project files with session selections
-        loadFiles(sessionProjectDirectory, undefined, sessionSelections);
-      } else if (projectDirectory) {
-        // If already on the same directory, just apply session selections
-        loadFiles(projectDirectory, undefined, sessionSelections);
-      }
-      
-      // Update form state
-      if (sessionTaskDescription) setTaskDescription(sessionTaskDescription);
-      if (sessionPatternDescription) setPatternDescription(sessionPatternDescription);
-      if (sessionTitleRegex) setTitleRegex(sessionTitleRegex);
-      if (sessionContentRegex) setContentRegex(sessionContentRegex);
-      if (sessionPastedPaths) setPastedPaths(sessionPastedPaths);
-      if (typeof sessionIsRegexActive === 'boolean') setIsRegexActive(sessionIsRegexActive);
-      if (typeof sessionDiffTemp === 'number') setDiffTemperature(sessionDiffTemp);
-      
-      // Session name handling is done by the SessionManager component
-      // which has its own onSessionNameChange prop
-      
-      // Mark as initialized and reset unsaved changes
-      setSessionInitialized(true);
-      setHasUnsavedChanges(false);
-      setSessionSaveError(null);
-      
-      console.log(`[GeneratePromptState] Session loaded: ${session.id}`);
+      // Use the session synchronization service to coordinate loading
+      await sessionSyncService.queueOperation(
+        'load',
+        sessionId,
+        async () => {
+          // Get session data from the repository
+          const sessionData = await repository.getSession(sessionId);
+          
+          if (!sessionData) {
+            console.warn(`[State] Session ${sessionId} not found`);
+            setError(`Session ${sessionId} not found or could not be loaded.`);
+            setIsRestoringSession(false);
+            // Return void instead of false to match the SessionCallback type
+            return;
+          }
+          
+          console.log(`[State] Session loaded:`, sessionData);
+          
+          // Set form state from session data in a controlled, specific order
+          // First set non-file-related settings
+          setTaskDescription(sessionData.taskDescription || "");
+          setSearchTerm(sessionData.searchTerm || "");
+          setPastedPaths(sessionData.pastedPaths || "");
+          setTitleRegex(sessionData.titleRegex || "");
+          setContentRegex(sessionData.contentRegex || "");
+          setIsRegexActive(sessionData.isRegexActive);
+          setDiffTemperature(sessionData.diffTemperature || 0.9);
+          // Set the model from session data with a fallback to the default
+          setModelUsed(sessionData.modelUsed || GEMINI_FLASH_MODEL);
+          
+          // Prepare session selections
+          const sessionSelections = {
+            included: sessionData.includedFiles || [],
+            excluded: sessionData.forceExcludedFiles || []
+          };
+          
+          // Update directory first (this triggers file loading)
+          if (sessionData.projectDirectory && sessionData.projectDirectory !== projectDirectory) {
+            console.log(`[GeneratePromptState] Setting project directory to: ${sessionData.projectDirectory}`);
+            
+            // First set the project directory
+            await new Promise<void>((resolve) => {
+              setProjectDirectory(sessionData.projectDirectory);
+              // Small delay to ensure project directory update propagates
+              setTimeout(resolve, 100);
+            });
+            
+            // Then load files with session selections
+            await loadFiles(sessionData.projectDirectory, undefined, sessionSelections);
+          } else if (projectDirectory) {
+            // If already on the same directory, just apply session selections
+            await loadFiles(projectDirectory, undefined, sessionSelections);
+          }
+          
+          // Set a small delay to ensure all state has settled
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Mark as initialized and reset unsaved changes
+          console.log(`[GeneratePromptState] Marking session as initialized: ${sessionId}`);
+          setSessionInitialized(true);
+          setHasUnsavedChanges(false);
+          setSessionSaveError(null);
+          
+          // Add a cooldown to prevent immediate auto-saves
+          sessionSyncService.setCooldown(sessionId, 'save', 1500);
+          
+          console.log(`[GeneratePromptState] Session loaded: ${sessionId}`);
+        },
+        3 // High priority for user-triggered session load
+      );
     } catch (error) {
       console.error('Error loading session:', error);
       setError(`Error loading session: ${error}`);
@@ -301,36 +355,29 @@ export function useGeneratePromptState() {
     isRestoringSession, 
     projectDirectory, 
     setProjectDirectory, 
-    loadFiles
+    loadFiles,
+    repository,
+    setError,
+    setTaskDescription,
+    setSearchTerm,
+    setPastedPaths,
+    setTitleRegex,
+    setContentRegex,
+    setIsRegexActive,
+    setDiffTemperature,
+    setModelUsed,
+    setSessionInitialized,
+    setHasUnsavedChanges,
+    setSessionSaveError,
+    activeSessionId,
+    sessionInitialized
   ]);
 
   // Field change handlers
   const handleTaskChange = useCallback(async (value: string) => {
     setTaskDescription(value);
-    saveToLocalStorage('task-description', value);
     handleInteraction();
-    
-    try {
-      if (projectDirectory && repository && activeSessionId) {
-        const backupDescription = await repository.getCachedState(projectDirectory, 'task-description');
-        await repository.saveCachedState(projectDirectory, 'task-description', value);
-        console.log('Task description saved directly to prevent loss during HMR');
-      }
-    } catch (error) {
-      console.error("Error saving task description:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setError(`Failed to save task description: ${errorMessage}`);
-      
-      setTimeout(() => {
-        setError(prev => {
-          if (prev.includes("Failed to save task description")) {
-            return "";
-          }
-          return prev;
-        });
-      }, 5000);
-    }
-  }, [activeSessionId, projectDirectory, repository, handleInteraction, saveToLocalStorage]);
+  }, [handleInteraction]);
 
   const handleTranscribedText = useCallback((text: string) => {
     if (taskDescriptionRef.current) {
@@ -338,16 +385,14 @@ export function useGeneratePromptState() {
     } else {
       const newText = taskDescription + (taskDescription ? ' ' : '') + text;
       setTaskDescription(newText);
-      saveToLocalStorage('task-description', newText);
       handleInteraction();
     }
-  }, [taskDescription, handleInteraction, saveToLocalStorage]);
+  }, [taskDescription, handleInteraction]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchTerm(value);
-    saveToLocalStorage('search-term', value);
     handleInteraction();
-  }, [handleInteraction, saveToLocalStorage]);
+  }, [handleInteraction]);
 
   const cleanXmlTags = useCallback((input: string): string => {
     return input.split('\n')
@@ -358,48 +403,38 @@ export function useGeneratePromptState() {
   const handlePastedPathsChange = useCallback((value: string) => {
     const cleanedValue = cleanXmlTags(value);
     setPastedPaths(cleanedValue);
-    saveToLocalStorage('pasted-paths', cleanedValue);
     handleInteraction();
-  }, [cleanXmlTags, handleInteraction, saveToLocalStorage]);
+  }, [cleanXmlTags, handleInteraction]);
 
   const handlePathsPreview = useCallback((paths: string[]) => {
     if (!paths || paths.length === 0) return;
     
     const pathsText = paths.join('\n');
     setPastedPaths(pathsText);
-    saveToLocalStorage('pasted-paths', pathsText);
     handleInteraction();
-  }, [handleInteraction, saveToLocalStorage]);
-
-  const handlePatternDescriptionChange = useCallback((value: string) => {
-    setPatternDescription(value);
-    saveToLocalStorage('pattern-description', value);
-    handleInteraction();
-  }, [handleInteraction, saveToLocalStorage]);
+  }, [handleInteraction]);
 
   const handleTitleRegexChange = useCallback((value: string) => {
     setTitleRegex(value);
-    saveToLocalStorage('title-regex', value);
     handleInteraction();
-  }, [handleInteraction, saveToLocalStorage]);
+  }, [handleInteraction]);
 
   const handleContentRegexChange = useCallback((value: string) => {
     setContentRegex(value);
-    saveToLocalStorage('content-regex', value);
     handleInteraction();
-  }, [handleInteraction, saveToLocalStorage]);
+  }, [handleInteraction]);
 
-  const handleGenerateRegex = useCallback(async () => {
-    if (!patternDescription.trim()) {
-      setRegexGenerationError("Pattern description cannot be empty.");
+  const handleGenerateRegexFromTask = useCallback(async () => {
+    if (!taskDescription.trim()) {
+      setRegexGenerationError("Task description cannot be empty.");
       return;
     }
 
-    setIsGeneratingRegex(true);
+    setIsGeneratingTaskRegex(true);
     setRegexGenerationError("");
 
     try {
-      // Generate directory tree structure instead of just using the path
+      // Generate directory tree structure for regex context
       let dirTreeOption;
       if (projectDirectory) {
         try {
@@ -412,53 +447,53 @@ export function useGeneratePromptState() {
         }
       }
       
-      const result = await generateRegexPatternsAction(patternDescription, dirTreeOption);
+      const result = await generateRegexPatternsAction(taskDescription, dirTreeOption);
       
       if (result.isSuccess && result.data) {
-        // Update regex fields if we got results
-        if (result.data.titleRegex) {
-          setTitleRegex(result.data.titleRegex);
-          saveToLocalStorage('title-regex', result.data.titleRegex);
+        console.log("Received regex patterns:", result.data);
+        
+        // Set the received regex patterns
+        const { titleRegex: newTitleRegex, contentRegex: newContentRegex } = result.data;
+        
+        // Only set if not undefined
+        if (newTitleRegex !== undefined) {
+          setTitleRegex(newTitleRegex);
         }
         
-        if (result.data.contentRegex) {
-          setContentRegex(result.data.contentRegex);
-          saveToLocalStorage('content-regex', result.data.contentRegex);
+        if (newContentRegex !== undefined) {
+          setContentRegex(newContentRegex);
         }
         
-        // Make sure regex is active
-        if (!isRegexActive) {
-          setIsRegexActive(true);
-          saveToLocalStorage('is-regex-active', 'true');
-        }
+        // Ensure regex is active
+        setIsRegexActive(true);
         
         handleInteraction();
       } else {
-        setRegexGenerationError(result.message || "Failed to generate regex patterns");
+        // Display error
+        const errorMessage = result.message || "Unknown error generating regex patterns.";
+        console.error("Error generating regex patterns:", errorMessage);
+        setRegexGenerationError(`Error generating regex patterns: ${errorMessage}`);
       }
     } catch (error) {
-      console.error("Error generating regex patterns:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("Error in handleGenerateRegex:", error);
       setRegexGenerationError(`Error generating regex patterns: ${errorMessage}`);
     } finally {
-      setIsGeneratingRegex(false);
+      setIsGeneratingTaskRegex(false);
     }
-  }, [patternDescription, projectDirectory, isRegexActive, handleInteraction, saveToLocalStorage]);
+  }, [taskDescription, projectDirectory, handleInteraction]);
 
   const handleClearPatterns = useCallback(() => {
     setTitleRegex("");
     setContentRegex("");
-    saveToLocalStorage('title-regex', "");
-    saveToLocalStorage('content-regex', "");
     handleInteraction();
-  }, [handleInteraction, saveToLocalStorage]);
+  }, [handleInteraction]);
 
   const handleToggleRegexActive = useCallback(() => {
     const newValue = !isRegexActive;
     setIsRegexActive(newValue);
-    saveToLocalStorage('is-regex-active', String(newValue));
     handleInteraction();
-  }, [isRegexActive, handleInteraction, saveToLocalStorage]);
+  }, [isRegexActive, handleInteraction]);
 
   const handleFilesMapChange = useCallback(async (filesMap: FilesMap) => {
     // Track file selection changes in debug mode
@@ -470,20 +505,8 @@ export function useGeneratePromptState() {
     }
     
     setAllFilesMap(filesMap);
-    
-    // Save file selections to localStorage
-    const included = Object.values(filesMap)
-      .filter(f => f.included && !f.forceExcluded)
-      .map(f => f.path);
-    
-    const excluded = Object.values(filesMap)
-      .filter(f => f.forceExcluded)
-      .map(f => f.path);
-    
-    saveToLocalStorage(FILE_SELECTIONS_KEY, JSON.stringify({ included, excluded }));
-    
     handleInteraction();
-  }, [allFilesMap, debugMode, handleInteraction, saveToLocalStorage]);
+  }, [allFilesMap, debugMode, handleInteraction]);
 
   const handleAddPathToPastedPaths = useCallback((pathToAdd: string) => {
     // Normalize path to ensure consistent format
@@ -500,9 +523,8 @@ export function useGeneratePromptState() {
       : normalizedPath;
     
     setPastedPaths(newPastedPaths);
-    saveToLocalStorage('pasted-paths', newPastedPaths);
     handleInteraction();
-  }, [pastedPaths, projectDirectory, handleInteraction, saveToLocalStorage]);
+  }, [pastedPaths, projectDirectory, handleInteraction]);
 
   const toggleSearchSelectedFilesOnly = useCallback(async () => {
     const newValue = !searchSelectedFilesOnly;
@@ -531,24 +553,28 @@ export function useGeneratePromptState() {
   // Form state for FormStateManager
   const formStateForManager = useMemo(() => {
     return {
+      projectDirectory,
       taskDescription,
       searchTerm,
       pastedPaths,
-      patternDescription,
       titleRegex,
       contentRegex,
       isRegexActive,
+      diffTemperature,
+      modelUsed,
       includedFiles: includedPaths,
       forceExcludedFiles: excludedPaths
     };
   }, [
+    projectDirectory,
     taskDescription,
     searchTerm,
     pastedPaths,
-    patternDescription,
     titleRegex,
     contentRegex,
     isRegexActive,
+    diffTemperature,
+    modelUsed,
     includedPaths,
     excludedPaths
   ]);
@@ -561,10 +587,11 @@ export function useGeneratePromptState() {
       taskDescription,
       searchTerm,
       pastedPaths,
-      patternDescription,
       titleRegex,
       contentRegex,
       isRegexActive,
+      diffTemperature,
+      modelUsed,
       includedFiles: includedPaths,
       forceExcludedFiles: excludedPaths,
       name: '', // Session name is managed by the SessionManager
@@ -577,10 +604,11 @@ export function useGeneratePromptState() {
     taskDescription,
     searchTerm,
     pastedPaths,
-    patternDescription,
     titleRegex,
     contentRegex,
     isRegexActive,
+    diffTemperature,
+    modelUsed,
     includedPaths,
     excludedPaths
   ]);
@@ -631,7 +659,7 @@ export function useGeneratePromptState() {
             
             if (sessionToLoad) {
               console.log(`[Form Init] Loading session data: ${sessionToLoad.name}`);
-              handleLoadSession(sessionToLoad);
+              handleLoadSession(savedActiveSessionId);
             } else {
               console.warn(`[Form Init] Active session ${savedActiveSessionId} not found in DB. Clearing active session.`);
               await repository.setActiveSession(dirToLoad, null);
@@ -685,6 +713,11 @@ export function useGeneratePromptState() {
         if (searchFilterPref !== null) {
           setSearchSelectedFilesOnly(searchFilterPref === 'true');
         }
+        
+        const modelPref = localStorage.getItem(MODEL_USED_KEY);
+        if (modelPref) {
+          setModelUsed(modelPref);
+        }
       } catch (e) {
         console.error('Error loading preferences:', e);
       }
@@ -693,39 +726,28 @@ export function useGeneratePromptState() {
     loadPreferences();
   }, []);
 
-  // Restore file selections when project directory changes or files are loaded
+  // Save model preference when it changes
   useEffect(() => {
-    // Only proceed if we have a project directory and files have been loaded
-    if (!projectDirectory || Object.keys(allFilesMap).length === 0) return;
-    
     try {
-      const savedSelectionsJson = localStorage.getItem(getLocalStorageKeyForProject(FILE_SELECTIONS_KEY));
-      if (savedSelectionsJson) {
-        const savedSelections = JSON.parse(savedSelectionsJson);
-        
-        if (savedSelections && 
-            (savedSelections.included?.length > 0 || savedSelections.excluded?.length > 0)) {
-          console.log(`[LocalStorage] Restoring file selections for project: ${projectDirectory}`);
-          
-          // Load files with the saved selections
-          loadFiles(projectDirectory, undefined, {
-            included: savedSelections.included || [],
-            excluded: savedSelections.excluded || []
-          });
-        }
-      }
-    } catch (error) {
-      console.error(`[LocalStorage] Error restoring file selections:`, error);
+      localStorage.setItem(MODEL_USED_KEY, modelUsed);
+    } catch (e) {
+      console.error('Failed to save model preference:', e);
     }
-  }, [projectDirectory, allFilesMap, loadFiles, getLocalStorageKeyForProject]);
+  }, [modelUsed]);
 
   // Reset copySuccess state after a delay
   useEffect(() => {
     if (copySuccess) {
-      const timer = setTimeout(() => setCopySuccess(false), 2000);
+      const timer = setTimeout(() => {
+        // Reset the copy success state
+        if (copyPrompt && typeof copyPrompt === 'function') {
+          // We can't reset directly as copyPrompt is a function
+          // The success state will be handled by prompt generator hook
+        }
+      }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [copySuccess]);
+  }, [copySuccess, copyPrompt]);
 
   // Reset taskCopySuccess state after a delay
   useEffect(() => {
@@ -751,7 +773,6 @@ export function useGeneratePromptState() {
         const paths = result.data.relevantPaths;
         const pathsText = paths.join('\n');
         setPastedPaths(pathsText);
-        saveToLocalStorage('pasted-paths', pathsText);
         
         // If there's enhanced guidance, add it to the task description
         if (result.data.enhancedTaskDescription) {
@@ -770,21 +791,20 @@ export function useGeneratePromptState() {
     } finally {
       setIsFindingFiles(false);
     }
-  }, [taskDescription, projectDirectory, handleInteraction, saveToLocalStorage]);
+  }, [taskDescription, projectDirectory, handleInteraction]);
 
   // Update refresh project handler to preserve selections
   const handleRefreshProject = useCallback(async () => {
     if (!projectDirectory) return;
     
     try {
-      resetProcessorState();
       setError("");
       await refreshFiles(true); // Pass true to preserve selection state
     } catch (error) {
       console.error('Error refreshing project:', error);
       setError(`Error refreshing project: ${error}`);
     }
-  }, [projectDirectory, refreshFiles, resetProcessorState]);
+  }, [projectDirectory, refreshFiles]);
 
   // Export both state and actions
   return {
@@ -802,7 +822,7 @@ export function useGeneratePromptState() {
       isLoadingFiles,
       isRefreshingFiles,
       isFindingFiles,
-      isGeneratingRegex,
+      isGeneratingTaskRegex,
       isGeneratingGuidance,
       isCopyingPrompt,
       isFormSaving,
@@ -820,7 +840,6 @@ export function useGeneratePromptState() {
       taskDescription,
       searchTerm,
       pastedPaths,
-      patternDescription,
       titleRegex,
       contentRegex,
       isRegexActive,
@@ -866,7 +885,6 @@ export function useGeneratePromptState() {
       handleSearchChange,
       handlePastedPathsChange,
       handlePathsPreview,
-      handlePatternDescriptionChange,
       handleTitleRegexChange,
       handleContentRegexChange,
       handleClearPatterns,
@@ -875,7 +893,7 @@ export function useGeneratePromptState() {
       toggleSearchSelectedFilesOnly,
       toggleOutputFormat,
       setDiffTemperature,
-      handleGenerateRegex,
+      handleGenerateRegexFromTask,
       
       // Output actions
       generatePrompt,
@@ -891,6 +909,8 @@ export function useGeneratePromptState() {
       setSessionSaveError,
       handleRefreshProject,
       setHasUnsavedChanges,
-    }
+    },
+    modelUsed,
+    setModelUsed,
   };
 } 

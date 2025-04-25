@@ -5,16 +5,38 @@ const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
 
-// Same location as in the main app
-const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
-const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db');
+// Updated location with new names
+const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
+const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
+// Legacy location for migration
+const OLD_APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
+const OLD_DB_FILE = path.join(OLD_APP_DATA_DIR, 'o1-pro-flow.db');
 
 console.log(`Attempting to fix schema for database at: ${DB_FILE}`);
 
-// Check if database file exists
-if (!fs.existsSync(DB_FILE)) {
-  console.log('Database file does not exist. Nothing to fix.');
-  process.exit(0);
+// Ensure directory exists
+if (!fs.existsSync(APP_DATA_DIR)) {
+  fs.mkdirSync(APP_DATA_DIR, { recursive: true });
+}
+
+// Check if migration is needed
+if (!fs.existsSync(DB_FILE) && fs.existsSync(OLD_DB_FILE)) {
+  console.log(`New database not found but old database exists at: ${OLD_DB_FILE}`);
+  console.log('Migrating old database to new location before fixing schema...');
+  
+  try {
+    // Copy old database to new location
+    fs.copyFileSync(OLD_DB_FILE, DB_FILE);
+    console.log('Database migrated successfully.');
+    
+    // Create a backup of the old database
+    const backupFile = `${OLD_DB_FILE}.backup-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    fs.copyFileSync(OLD_DB_FILE, backupFile);
+    console.log(`Backup of old database created at: ${backupFile}`);
+  } catch (error) {
+    console.error('Error during migration:', error);
+    process.exit(1);
+  }
 }
 
 // Open database connection
@@ -64,7 +86,6 @@ db.run('PRAGMA foreign_keys=off;', async (err) => {
         task_description TEXT DEFAULT '',
         search_term TEXT DEFAULT '',
         pasted_paths TEXT DEFAULT '',
-        pattern_description TEXT DEFAULT '',
         title_regex TEXT DEFAULT '',
         content_regex TEXT DEFAULT '',
         is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),

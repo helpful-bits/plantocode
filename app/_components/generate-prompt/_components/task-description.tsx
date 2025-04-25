@@ -128,8 +128,9 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     textarea.setSelectionRange(newPosition, newPosition);
     setSelectionStart(newPosition); // Update selection state
     setSelectionEnd(newPosition);
-  }, [onChange, onInteraction, selectionStart, selectionEnd]);
-  // Modify the handler function to not check for canImproveText
+  }, [onChange, onInteraction]);
+
+  // Handler function to improve selected text
   const handleImproveSelection = async () => {
     const originalFocus = document.activeElement; // Remember focus
     const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
@@ -159,7 +160,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     }
   };
 
-  const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd; // Keep this check
+  const hasSelection = !!textareaRef.current && textareaRef.current.selectionStart !== textareaRef.current.selectionEnd;
 
   // Update handler to ensure local storage backup
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -182,7 +183,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
         <Button
           type="button"
           variant="secondary" size="sm"
-          onClick={handleImproveSelection} // Keep onClick handler
+          onClick={handleImproveSelection}
           disabled={isImproving || !hasSelection}
           className="h-7 text-xs px-2"
         >
@@ -192,6 +193,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
             <Sparkles className="h-3.5 w-3.5 mr-1" />)} Improve Selection
         </Button>
       </div>
+      <p className="text-xs text-muted-foreground mt-1">Uses AI to refine the clarity and grammar of the selected text.</p>
       <Textarea // Use the Textarea component
         ref={textareaRef} // Add ref to Textarea
         id="taskDescArea" // Ensure ID matches htmlFor
@@ -199,7 +201,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
         value={value}
         onChange={handleChange} // Use the new handler that includes localStorage backup
         onSelect={handleSelect}
-        placeholder="Describe what changes you want to make..."
+        placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
       />
     </div>
   );

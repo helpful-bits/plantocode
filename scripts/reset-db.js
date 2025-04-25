@@ -4,76 +4,105 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-// Same location as in the main app
-const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
-const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db');
+// Updated location with new names
+const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
+const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
+// Legacy location for migration
+const OLD_APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
+const OLD_DB_FILE = path.join(OLD_APP_DATA_DIR, 'o1-pro-flow.db');
 
 console.log(`Attempting to reset database at: ${DB_FILE}`);
 
-// Check if database file exists
+// Check if the database exists
 if (!fs.existsSync(DB_FILE)) {
-  console.log('Database file does not exist. Nothing to reset.');
-  process.exit(0);
+  // Check if old database exists for migration
+  if (fs.existsSync(OLD_DB_FILE)) {
+    console.log(`New database not found but old database exists at: ${OLD_DB_FILE}`);
+    console.log('Migrating old database to new location before reset...');
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(APP_DATA_DIR)) {
+      fs.mkdirSync(APP_DATA_DIR, { recursive: true });
+    }
+    
+    // Copy old database to new location
+    fs.copyFileSync(OLD_DB_FILE, DB_FILE);
+    console.log('Database migrated successfully.');
+  } else {
+    console.log('No database found. A new one will be created when the application starts.');
+    process.exit(0);
+  }
 }
 
-// Open database connection
+// Open the database
 const db = new sqlite3.Database(DB_FILE, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
     process.exit(1);
   }
-  console.log('Connected to database.');
-});
-
-// Get all table names
-db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", (err, tables) => {
-  if (err) {
-    console.error('Error getting tables:', err.message);
-    db.close();
-    process.exit(1);
-  }
-
-  if (tables.length === 0) {
-    console.log('No tables found in database.');
-    db.close();
-    process.exit(0);
-  }
-
-  console.log(`Found ${tables.length} tables to drop: ${tables.map(t => t.name).join(', ')}`);
-
-  // Create a promise to track when all tables are dropped
-  let dropped = 0;
-  const totalTables = tables.length;
-
-  // Drop each table
-  tables.forEach(table => {
-    console.log(`Dropping table: ${table.name}`);
-    db.run(`DROP TABLE IF EXISTS ${table.name}`, (dropErr) => {
-      if (dropErr) {
-        console.error(`Error dropping table ${table.name}:`, dropErr.message);
-      } else {
-        console.log(`Successfully dropped table: ${table.name}`);
+  
+  console.log('Connected to the database. Dropping all tables...');
+  
+  // Get a list of all tables
+  db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", (err, tables) => {
+    if (err) {
+      console.error('Error getting table list:', err.message);
+      db.close();
+      process.exit(1);
+    }
+    
+    if (tables.length === 0) {
+      console.log('No tables found in the database.');
+      db.close();
+      process.exit(0);
+    }
+    
+    // Start a transaction
+    db.run('BEGIN TRANSACTION', (err) => {
+      if (err) {
+        console.error('Error starting transaction:', err.message);
+        db.close();
+        process.exit(1);
       }
       
-      dropped++;
-      if (dropped === totalTables) {
-        console.log('All tables dropped successfully.');
+      // Function to recursively drop tables
+      function dropTables(index) {
+        if (index >= tables.length) {
+          // All tables dropped, commit the transaction
+          db.run('COMMIT', (err) => {
+            if (err) {
+              console.error('Error committing transaction:', err.message);
+              db.run('ROLLBACK');
+              db.close();
+              process.exit(1);
+            }
+            
+            console.log('All tables dropped successfully.');
+            db.close();
+            console.log('Database reset complete.');
+            process.exit(0);
+          });
+          return;
+        }
         
-        // Create empty migrations table to start fresh
-        db.run('CREATE TABLE migrations (id INTEGER PRIMARY KEY, name TEXT UNIQUE, applied_at INTEGER)', (createErr) => {
-          if (createErr) {
-            console.error('Error creating migrations table:', createErr.message);
-          } else {
-            console.log('Created empty migrations table.');
+        const tableName = tables[index].name;
+        console.log(`Dropping table: ${tableName}`);
+        
+        db.run(`DROP TABLE IF EXISTS ${tableName}`, (err) => {
+          if (err) {
+            console.error(`Error dropping table ${tableName}:`, err.message);
+            db.run('ROLLBACK');
+            db.close();
+            process.exit(1);
           }
           
-          // Close database connection
-          db.close(() => {
-            console.log('Database reset completed. Database connection closed.');
-            console.log('You can now restart your application to run migrations on a clean database.');
-          });
+          // Drop the next table
+          dropTables(index + 1);
         });
       }
+      
+      // Start dropping tables
+      dropTables(0);
     });
   });
 }); 
