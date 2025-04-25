@@ -4,8 +4,8 @@ import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 
-const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
-const DB_FILE = path.join(APP_DATA_DIR, 'o1-pro-flow.db');
+const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
+const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
 
 // Connection pool settings
 const POOL_SIZE = 10;

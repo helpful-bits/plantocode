@@ -58,6 +58,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
               : <FolderTree className="h-4 w-4 mr-2" /> } {/* Use FolderTree instead of TreeStructure */}
             Generate
           </Button>
+          <p className="text-xs text-muted-foreground mt-1">Automatically generates the project structure using the 'tree' command (if available).</p>
           <Button
             type="button"
             variant="ghost" size="sm"
@@ -81,7 +82,9 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
             placeholder={`project/
   ├── folder/        # Purpose
   │   └── file.ts    # Description
-  └── ...`}
+  └── ...
+
+Optionally provide the project's file structure for better AI context.`}
             className="min-h-[150px] font-mono text-sm" // Increased min height and added font
           />
           {error && (

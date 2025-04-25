@@ -12,11 +12,11 @@ function isValidRegex(pattern: string): boolean {
 }
 
 export async function generateRegexPatternsAction(
-  description: string,
+  taskDescription: string,
   directoryTree?: string,
 ): Promise<ActionState<{ titleRegex?: string; contentRegex?: string }>> {
-  if (!description || !description.trim()) {
-    return { isSuccess: false, message: "Pattern description cannot be empty." };
+  if (!taskDescription || !taskDescription.trim()) {
+    return { isSuccess: false, message: "Task description cannot be empty." };
   }
 
   try {
@@ -36,9 +36,9 @@ Consider this structure when creating patterns to match files in the appropriate
       max_tokens: 1024,
       messages: [{
           role: "user",
-          content: `Based on the following description of file patterns, generate appropriate JavaScript-compatible regular expressions for matching file paths (titles) and file content.${structureContext}
+          content: `Based on the following task description, identify the user's intent regarding file selection and generate appropriate JavaScript-compatible regular expressions for matching file paths (titles) and file content.${structureContext}
 
-Description: "${description}"
+Task Description: "${taskDescription}"
 
 IMPORTANT: The generated patterns will be used in an OR relationship - files matching EITHER the titleRegex OR the contentRegex will be included in the results. You don't need to combine both patterns into one; they will be applied separately.
 
@@ -63,7 +63,7 @@ Example for "Find Markdown files containing 'TODO'":
   "contentRegex": "TODO"
 }
 
-Now, generate the JSON for the provided description.`,
+Now, generate the JSON for the provided task description.`,
         }, // Close user message
       ],
     };
@@ -90,27 +90,69 @@ Now, generate the JSON for the provided description.`,
       const cleanedJsonResponse = (jsonMatch ? jsonMatch[1] : jsonResponse).trim();
 
       console.log("Cleaned JSON response string:", cleanedJsonResponse);
-      const patterns = JSON.parse(cleanedJsonResponse);
+      
+      // Try to sanitize the JSON string before parsing
+      let sanitizedJson = cleanedJsonResponse;
+      // Handle potential issues with escaped backslashes in regex patterns
+      try {
+        // First attempt - try regular JSON.parse
+        const patterns = JSON.parse(cleanedJsonResponse);
+        
+        const titleRegex = patterns.titleRegex || "";
+        const contentRegex = patterns.contentRegex || "";
 
-      const titleRegex = patterns.titleRegex || "";
-      const contentRegex = patterns.contentRegex || "";
-
-      if (titleRegex && !isValidRegex(titleRegex)) {
-        throw new Error(`AI generated an invalid title regex: ${titleRegex}`);
+        if (titleRegex && !isValidRegex(titleRegex)) {
+          throw new Error(`AI generated an invalid title regex: ${titleRegex}`);
+        }
+        if (contentRegex && !isValidRegex(contentRegex)) {
+          throw new Error(`AI generated an invalid content regex: ${contentRegex}`);
+        }
+        return {
+          isSuccess: true,
+          message: "Regex patterns generated successfully",
+          data: { titleRegex, contentRegex }
+        };
+      } catch (parseError) {
+        console.error("Initial JSON parse failed, attempting to sanitize:", parseError);
+        
+        // Second attempt - try to fix common JSON escaping issues
+        try {
+          // Convert single backslashes to double in regex patterns (common issue)
+          sanitizedJson = sanitizedJson.replace(/([^\\])\\([^\\"])/g, '$1\\\\$2');
+          
+          // Sometimes Claude doesn't properly escape quotes inside regex patterns
+          sanitizedJson = sanitizedJson.replace(/([^\\])"/g, '$1\\"').replace(/^"/, '\\"');
+          
+          // Try to create a simpler JSON structure manually
+          const titleMatch = sanitizedJson.match(/"titleRegex"\s*:\s*"([^"]*?)(?<!\\)"/);
+          const contentMatch = sanitizedJson.match(/"contentRegex"\s*:\s*"([^"]*?)(?<!\\)"/);
+          
+          const titleRegex = titleMatch ? titleMatch[1].replace(/\\"/g, '"') : "";
+          const contentRegex = contentMatch ? contentMatch[1].replace(/\\"/g, '"') : "";
+          
+          console.log("Extracted patterns manually:", { titleRegex, contentRegex });
+          
+          if (titleRegex && !isValidRegex(titleRegex)) {
+            throw new Error(`AI generated an invalid title regex: ${titleRegex}`);
+          }
+          if (contentRegex && !isValidRegex(contentRegex)) {
+            throw new Error(`AI generated an invalid content regex: ${contentRegex}`);
+          }
+          
+          return {
+            isSuccess: true,
+            message: "Regex patterns extracted successfully",
+            data: { titleRegex, contentRegex }
+          };
+        } catch (extractError) {
+          console.error("Failed to extract regex patterns:", extractError);
+          // Keep the existing error handling
+          throw parseError;
+        }
       }
-      if (contentRegex && !isValidRegex(contentRegex)) {
-        throw new Error(`AI generated an invalid content regex: ${contentRegex}`);
-      }
-      return {
-        isSuccess: true,
-        message: "Regex patterns generated successfully",
-        data: { titleRegex, contentRegex }
-      };
     } catch (err: any) {
       console.error("Error parsing JSON response:", err, jsonResponse);
       let parseErrorMsg = `Failed to parse Anthropic response: ${err.message}`;
-      if (err instanceof SyntaxError && err.message.includes("Unterminated string")) {
-      }
       return { isSuccess: false, message: parseErrorMsg };
     }
   } catch (error) {

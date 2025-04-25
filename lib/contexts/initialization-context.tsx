@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useDatabase } from "./database-context";
 import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
 import { normalizePath } from "@/lib/path-utils";
+import { sessionSyncService } from '@/lib/services/session-sync-service';
 
 export type InitStage = 
   | 'database_init'     // Database is initializing
@@ -155,21 +156,29 @@ export function InitializationProvider({ children }: { children: ReactNode }) {
     try {
       console.log(`[Init] Setting active session ID to ${sessionId || 'null'}`);
       
-      // Update state
-      setActiveSessionIdState(sessionId);
-      
-      // Persist to database
-      if (repository && projectDirectory) {
-        try {
-          await repository.setActiveSession(projectDirectory, sessionId);
-        } catch (err) {
-          console.error("[Init] Failed to save active session ID to DB:", err);
-          // Non-fatal error, continue
-        }
-      }
-      
-      // Mark as ready
-      setStage('ready');
+      // Use the session synchronization service
+      await sessionSyncService.queueOperation(
+        'load',
+        sessionId,
+        async () => {
+          // Update state
+          setActiveSessionIdState(sessionId);
+          
+          // Persist to database
+          if (repository && projectDirectory) {
+            try {
+              await repository.setActiveSession(projectDirectory, sessionId);
+            } catch (err) {
+              console.error("[Init] Failed to save active session ID to DB:", err);
+              // Non-fatal error, continue
+            }
+          }
+          
+          // Mark as ready
+          setStage('ready');
+        },
+        5 // Highest priority for initialization context
+      );
     } catch (err) {
       console.error("[Init] Error setting active session ID:", err);
       setError(`Failed to set active session: ${err instanceof Error ? err.message : String(err)}`);
@@ -267,29 +276,38 @@ export function InitializationProvider({ children }: { children: ReactNode }) {
         setIsLoading(true);
         
         console.log(`[Init] Loading active session for project: ${projectDirectory}`);
-        const sessionId = await repository.getActiveSessionId(projectDirectory);
         
-        if (sessionId) {
-          console.log(`[Init] Active session found: ${sessionId}`);
-          
-          // Verify session exists
-          const session = await repository.getSession(sessionId);
-          if (session) {
-            setActiveSessionIdState(sessionId);
-            console.log(`[Init] Session ${sessionId} loaded successfully`);
-          } else {
-            console.warn(`[Init] Active session ${sessionId} not found in DB`);
-            // Reset active session in DB since it doesn't exist
-            await repository.setActiveSession(projectDirectory, null);
-            setActiveSessionIdState(null);
-          }
-        } else {
-          console.log("[Init] No active session for this project");
-          setActiveSessionIdState(null);
-        }
-        
-        // Mark as ready
-        setStage('ready');
+        // Use the session synchronization service
+        await sessionSyncService.queueOperation(
+          'load',
+          null, // Not tied to a specific session yet
+          async () => {
+            const sessionId = await repository.getActiveSessionId(projectDirectory);
+            
+            if (sessionId) {
+              console.log(`[Init] Active session found: ${sessionId}`);
+              
+              // Verify session exists
+              const session = await repository.getSession(sessionId);
+              if (session) {
+                setActiveSessionIdState(sessionId);
+                console.log(`[Init] Session ${sessionId} loaded successfully`);
+              } else {
+                console.warn(`[Init] Active session ${sessionId} not found in DB`);
+                // Reset active session in DB since it doesn't exist
+                await repository.setActiveSession(projectDirectory, null);
+                setActiveSessionIdState(null);
+              }
+            } else {
+              console.log("[Init] No active session for this project");
+              setActiveSessionIdState(null);
+            }
+            
+            // Mark as ready
+            setStage('ready');
+          },
+          5 // Highest priority for initialization context
+        );
       } catch (err) {
         console.error("[Init] Error loading active session:", err);
         setError(`Failed to load active session: ${err instanceof Error ? err.message : String(err)}`);

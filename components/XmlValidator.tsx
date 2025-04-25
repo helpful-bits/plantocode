@@ -50,18 +50,18 @@ export function XmlValidator({ xmlPath, projectPath, onValidated }: XmlValidator
     <div className="space-y-4">
       <div className="flex flex-col">
         <div className="flex justify-between items-center">
-          <h3 className="text-lg font-medium">XML Changes Validator</h3>
+          <h3 className="text-lg font-medium">Plan Validator</h3>
           <Button 
             onClick={handleValidate} 
             disabled={isValidating}
             variant="outline"
             size="sm"
           >
-            {isValidating ? 'Validating...' : 'Validate Changes'}
+            {isValidating ? 'Validating...' : 'Validate Plan'}
           </Button>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          Performs a dry run to validate XML changes without applying them
+          Performs a dry run to validate the generated plan without applying changes
         </p>
       </div>
 

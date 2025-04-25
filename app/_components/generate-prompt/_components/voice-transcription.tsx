@@ -52,33 +52,36 @@ export default function VoiceTranscription({
 
   return (
     <div className="flex flex-col gap-2 border rounded-lg p-4 bg-card shadow-sm">
-      <label className="font-semibold text-card-foreground">Record Task Description:</label>
+      <label className="font-semibold text-card-foreground">Record Description:</label>
       <div className="flex gap-2 items-center">
-        <Button
-          type="button" // Add type="button"
-          onClick={handleToggleRecording}
-          disabled={isProcessing}
-          variant={isRecording ? "destructive" : "secondary"}
-          size="sm"
-          className="min-w-[120px] flex justify-center items-center gap-2"
-        > {/* Keep button structure */}
-          {isProcessing ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Processing...</span>
-            </>
-          ) : isRecording ? (
-            <>
-              <MicOff className="h-4 w-4" />
-              <span>Stop Recording</span>
-            </>
-          ) : (
-            <>
-              <Mic className="h-4 w-4" />
-              <span>Record Audio</span>
-            </>
-          )}
-        </Button>
+        <div className="flex flex-col">
+          <Button
+            type="button" // Add type="button"
+            onClick={handleToggleRecording}
+            disabled={isProcessing}
+            variant={isRecording ? "destructive" : "secondary"}
+            size="sm"
+            className="min-w-[120px] flex justify-center items-center gap-2"
+          > {/* Keep button structure */}
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Processing...</span>
+              </>
+            ) : isRecording ? (
+              <>
+                <MicOff className="h-4 w-4" />
+                <span>Stop Recording</span>
+              </>
+            ) : (
+              <>
+                <Mic className="h-4 w-4" />
+                <span>Record Audio</span>
+              </>
+            )}
+          </Button>
+          <p className="text-xs text-muted-foreground mt-1">Record your task description using your microphone. Transcription uses Groq (Whisper).</p>
+        </div>
         <Select value={languageCode} onValueChange={(value) => { setLanguageCode(value); setLanguage(value); }} disabled={isRecording || isProcessing}>
           <SelectTrigger className="w-[100px] h-9" aria-label="Select transcription language">
             <SelectValue placeholder="Language" />
@@ -90,6 +93,7 @@ export default function VoiceTranscription({
             {/* Add more languages as needed */}
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground mt-1">Select the language you will be speaking.</p>
 
         {showRevertOption && rawText && (
           <Button // Add type="button"

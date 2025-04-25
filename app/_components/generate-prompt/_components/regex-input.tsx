@@ -52,6 +52,7 @@ export default function RegexInput({
             {isRegexActive ? "Active" : "Inactive"}
           </span>
         </div>
+        <p className="text-xs text-muted-foreground mt-1">Enable or disable regex filtering for file selection.</p>
         {(titleRegex.trim() || contentRegex.trim()) && (
             <button
             type="button"
@@ -85,7 +86,7 @@ export default function RegexInput({
           /> 
           {titleRegexError ? (
             <p className="text-xs text-destructive">{titleRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Matches against file paths (e.g., `src/.*\.ts$`).</p>)} 
+          ) : (<p className="text-xs text-muted-foreground">Enter a JavaScript regex to filter files based on their path (e.g., `src/.*\.ts$`).</p>)} 
         </div>
         <div className="flex flex-col gap-2">
           <label htmlFor="contentRegex" className="font-medium text-foreground">Content Regex:</label>
@@ -103,7 +104,7 @@ export default function RegexInput({
           />
           {contentRegexError ? ( 
             <p className="text-xs text-destructive">{contentRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Matches against file content (e.g., `useState\(`).</p>)}
+          ) : (<p className="text-xs text-muted-foreground">Enter a JavaScript regex to filter files based on their content (e.g., `import React`).</p>)}
         </div>
       </div>
     </div>

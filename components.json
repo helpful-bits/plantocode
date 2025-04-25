@@ -13,8 +13,9 @@
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
-    "lib": "@/lib", // Keep lib alias
-    "hooks": "@/hooks" // Keep hooks alias
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
   },
   "outputPath": "components/ui"
 }

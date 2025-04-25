@@ -11,7 +11,7 @@ export default function Home() {
   
   return (
     <main className="container mx-auto py-8 flex flex-col min-h-screen">
-      <h1 className="text-3xl font-bold mb-8 text-center text-foreground">O1 Pro Flow</h1>
+      <h1 className="text-3xl font-bold mb-8 text-center text-foreground">AI Architect Studio</h1>
       
       {/* Show initialization status if not ready */}
       <InitializationStatus />
