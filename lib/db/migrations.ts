@@ -20,7 +20,7 @@ export async function runMigrations(): Promise<void> { // Make function async
   // First, check if we have already run migrations by trying to query the migrations table
   try {
     const tableExists = await new Promise((resolve, reject) => {
-      db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'", (err, row) => {
+      db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'", (err: Error | null, row: any) => {
         if (err) {
           console.error("Error checking migrations table:", err);
           reject(err);
@@ -38,7 +38,7 @@ export async function runMigrations(): Promise<void> { // Make function async
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         applied_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-      )`, (createErr) => {
+      )`, (createErr: Error | null) => {
           if (createErr) {
             console.error("Error creating migrations table:", createErr);
             reject(createErr);
@@ -53,7 +53,7 @@ export async function runMigrations(): Promise<void> { // Make function async
     } else {
       // If migrations table exists, get the list of applied migrations
       const appliedMigrations = await new Promise<Set<string>>((resolve, reject) => {
-        db.all("SELECT name FROM migrations", (fetchErr, rows: any[]) => {
+        db.all("SELECT name FROM migrations", (fetchErr: Error | null, rows: any[]) => {
         if (fetchErr) {
           console.error("Error fetching applied migrations:", fetchErr);
           reject(fetchErr);
@@ -105,13 +105,13 @@ async function applyMigrations(migrationsFolder: string, appliedMigrations: Set<
       try {
         await new Promise<void>((resolve, reject) => {
           // Use a transaction to ensure each migration is atomic
-          db.exec(sql, (execErr) => {
+          db.exec(sql, (execErr: Error | null) => {
             if (execErr) {
               console.error(`Error executing migration ${file}:`, execErr);
               reject(execErr);
             } else {
               // Record the migration in the migrations table
-              db.run('INSERT INTO migrations (name) VALUES (?)', [file], (recordErr) => {
+              db.run('INSERT INTO migrations (name) VALUES (?)', [file], (recordErr: Error | null) => {
                 if (recordErr) {
                   console.error(`Error recording ${file}:`, recordErr);
                   reject(recordErr); // Reject if recording fails

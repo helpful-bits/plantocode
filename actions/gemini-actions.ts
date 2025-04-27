@@ -1,17 +1,18 @@
 "use server";
 
-import { ActionState, GeminiRequest } from '@/types';
-import { sessionRepository } from '@/lib/db';
+import { ActionState } from '@/types';
+import { sessionRepository } from '@/lib/db/repository-factory';
 import { setupDatabase } from '@/lib/db'; // Use index export
 import { getProjectPatchesDirectory, getAppPatchesDirectory, normalizePath, getPatchFilename } from '@/lib/path-utils';
 import geminiClient from '@/lib/api/gemini-client';
 import { WriteStream } from 'fs';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 import { stripMarkdownCodeFences } from '@/lib/utils'; // Keep for potential other uses, but remove from processing logic here
+import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
+// Constants
 const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_MODEL}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
-
 const FALLBACK_PATCHES_DIR = getAppPatchesDirectory(); // Used as fallback if we can't write to project directory
 const MAX_OUTPUT_TOKENS = 65536; // Maximum output tokens for Gemini 2.5 Pro
 
@@ -40,84 +41,9 @@ interface GeminiResponse {
     // Add promptFeedback if needed
 }
 
-
 function sanitizeFilename(name: string): string {
     if (!name) return 'untitled_session'; // Handle empty session names
     return name.replace(/[^a-z0-9_\-\.]/gi, '_').substring(0, 60); // Keep it reasonably short
-}
-
-/**
- * Determines the appropriate patches directory based on the session
- * @param session The current session
- * @returns The path to use for storing patches
- */
-async function getPatchesDir(session: Session): Promise<string> {
-  if (!session || !session.projectDirectory) {
-    console.log(`[getPatchesDir] No project directory in session, using fallback: ${FALLBACK_PATCHES_DIR}`);
-    return FALLBACK_PATCHES_DIR;
-  }
-
-  // Ensure fallback directory exists
-  if (!existsSync(FALLBACK_PATCHES_DIR)) {
-      await fs.mkdir(FALLBACK_PATCHES_DIR, { recursive: true });
-  }
-
-  try {
-    // Try to use a 'patches' directory within the project directory
-    const projectPatchesDir = getProjectPatchesDirectory(session.projectDirectory);
-    
-    // Check if we can write to the project directory
-    try {
-      // Create directory if it doesn't exist
-      await fs.mkdir(projectPatchesDir, { recursive: true });
-      return projectPatchesDir;
-    } catch (err: any) {
-      console.warn(`Cannot create patches directory in project: ${err.message}`);
-      return FALLBACK_PATCHES_DIR;
-    }
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.warn(`Error determining patches directory: ${errorMessage}`);
-    return FALLBACK_PATCHES_DIR;
-  }
-}
-/**
- * Formats a Date object into a filename-safe timestamp string, considering the user's timezone.
- * Falls back to a safe UTC format if the timezone is invalid or formatting fails.
- * @param date The Date object to format.
- * @param timeZone Optional IANA timezone string (e.g., 'America/New_York').
- * @returns A filename-safe timestamp string (e.g., '2024-07-28_15-30-05' or fallback UTC).
- */
-function formatTimestampForFilename(date: Date, timeZone?: string): string {
-    try {
-        if (!timeZone) {
-            console.warn("[formatTimestampForFilename] No timezone provided, falling back to UTC.");
-            throw new Error("Timezone not provided"); // Force fallback
-        }
-
-        // Validate timezone using Intl.DateTimeFormat - throws RangeError for invalid zones
-        new Intl.DateTimeFormat(undefined, { timeZone: timeZone }).format(date);
-
-        // Use Intl.DateTimeFormat for timezone-aware formatting.
-        // 'sv-SE' locale often gives a close-to-ISO format (YYYY-MM-DD HH:MM:SS).
-        const formatter = new Intl.DateTimeFormat('sv-SE', { // Use locale that gives YYYY-MM-DD HH:MM:SS like format
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false, // Use 24-hour format
-            timeZone: timeZone, // Apply the user's timezone
-        });
-        // Format the date and replace non-filename-friendly characters
-        const formatted = formatter.format(date); // e.g., "2024-07-28 15:30:05"
-        return formatted.replace(/ /g, '_').replace(/:/g, '-'); // -> "2024-07-28_15-30-05"
-    } catch (error) {
-        console.warn(`[formatTimestampForFilename] Error formatting timestamp with timezone "${timeZone}". Falling back to UTC ISO string. Error: ${error instanceof Error ? error.message : error}`);
-        // Fallback to UTC ISO string, making it filename-safe (remove T, Z, milliseconds)
-        return date.toISOString().replace(/[:.]/g, '-').replace('T', '_').substring(0, 19); // YYYY-MM-DD_HH-MM-SS
-    }
 }
 
 /**
@@ -127,7 +53,7 @@ export async function sendPromptToGeminiAction(
   promptText: string,
   sessionId: string,
   userTimezone?: string,
-  options?: { model?: string; temperature?: number; streamingUpdates?: any }
+  options?: { temperature?: number; streamingUpdates?: any }
 ): Promise<ActionState<{ requestId: string, savedFilePath: string | null }>> {
   await setupDatabase();
   
@@ -139,20 +65,48 @@ export async function sendPromptToGeminiAction(
     return { isSuccess: false, message: "Session ID is required." };
   }
   
-  // Use the new Gemini client for streaming requests
-  return geminiClient.sendStreamingRequest(promptText, sessionId, {
-    // Pass all options to the streaming request
-    model: options?.model, // Pass the model if provided
-    temperature: options?.temperature, // Pass the temperature if provided
-    streamingUpdates: options?.streamingUpdates || {
-      onStart: () => {
-        console.log(`[Gemini Action] Started processing for session ${sessionId}`);
-      },
-      onError: (error) => {
-        console.error(`[Gemini Action] Error processing request: ${error.message}`);
-      }
+  try {
+    // Get the session to retrieve project directory
+    const session = await sessionRepository.getSession(sessionId);
+    if (!session) {
+      return { isSuccess: false, message: "Session not found." };
     }
-  });
+    
+    // Get the global model settings for the project
+    const projectSettings = await getModelSettingsForProject(session.projectDirectory);
+    
+    // Get the XML generation task settings or use defaults
+    const xmlSettings = projectSettings?.xml_generation || {
+      model: GEMINI_FLASH_MODEL,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      temperature: 0.7
+    };
+    
+    // Use the Gemini client for streaming requests
+    return geminiClient.sendStreamingRequest(promptText, sessionId, {
+      // Use settings from project settings
+      model: xmlSettings.model,
+      maxOutputTokens: xmlSettings.maxTokens,
+      temperature: options?.temperature || xmlSettings.temperature, // Allow override of temperature
+      streamingUpdates: options?.streamingUpdates || {
+        onStart: () => {
+          console.log(`[Gemini Action] Started processing for session ${sessionId}`);
+        },
+        onError: (error) => {
+          console.error(`[Gemini Action] Error processing request:`, error);
+        }
+      },
+      taskType: 'xml_generation',
+      apiType: 'gemini',
+      projectDirectory: session.projectDirectory
+    });
+  } catch (error) {
+    console.error(`[Gemini Action] Error preparing request:`, error);
+    return { 
+      isSuccess: false, 
+      message: error instanceof Error ? error.message : "Unknown error preparing request." 
+    };
+  }
 }
 
 /**
@@ -276,4 +230,4 @@ export async function extractXmlContent(rawContent: string): Promise<string | nu
   }
   
   return null;
-} 
+}

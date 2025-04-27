@@ -60,7 +60,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     } catch (error) {
       console.error('[TaskDescription] Error accessing localStorage:', error);
     }
-  }, []);
+  }, [localStorageKey, onChange, onInteraction, value]);
   
   // Update local storage when value changes
   useEffect(() => {

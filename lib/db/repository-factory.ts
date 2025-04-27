@@ -1,15 +1,32 @@
 import connectionPool from './connection-pool';
-import { Session, GeminiStatus, GeminiRequest } from '@/types';
+import { Session, JobStatus, BackgroundJob, ApiType, TaskType } from '@/types';
 import { hashString } from '@/lib/hash';
 import { normalizePath } from '../path-utils';
 import crypto from 'crypto';
+
+/**
+ * Repository Factory for Session Management
+ * 
+ * IMPORTANT REFACTORING NOTES:
+ * - The 'gemini_requests' table has been replaced by the 'background_jobs' table
+ * - All methods have been updated to use the new table structure
+ * - 'background_jobs' now supports multiple API types (Gemini, Claude, Whisper) 
+ *   and task types (xml_generation, pathfinder, transcription, etc.)
+ * - The 'task_settings' column has been removed from the 'sessions' table
+ *   as settings are now stored globally per project in the 'cached_state' table
+ * - References to model-specific fields in 'sessions' have been removed
+ *
+ * This factory creates a repository for managing sessions, their files,
+ * and associated background jobs (formerly gemini_requests).
+ */
 
 /**
  * Creates a SessionRepository instance that uses the connection pool
  * for better concurrent database access
  */
 export function createSessionRepository() {
-  return {
+  // Create the repository object
+  const repository = {
     /**
      * Save a session to the database (create or update)
      */
@@ -33,9 +50,6 @@ export function createSessionRepository() {
             });
           });
           
-          // Check if model_used column exists (for backward compatibility)
-          const hasModelUsed = columnsResult.some(col => col.name === 'model_used');
-          
           // Prepare data for insertion/replacement
           const sessionValues = [
             session.id,
@@ -50,32 +64,15 @@ export function createSessionRepository() {
             session.isRegexActive ? 1 : 0,
             session.diffTemperature || 0.9, // Default to 0.9 if not provided
             '', // Empty codebase structure
-            Date.now() // Updated timestamp
+            Date.now(), // Updated timestamp
           ];
           
-          // Add model_used if the column exists
-          if (hasModelUsed) {
-            sessionValues.push(session.modelUsed || 'gemini-2.5-flash-preview-04-17');
-          }
-          
-          // Build SQL statement with conditional model_used column
+          // Build SQL statement
           let sql = `
             INSERT OR REPLACE INTO sessions
             (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
-             title_regex, content_regex, is_regex_active, diff_temperature, codebase_structure, updated_at`;
-          
-          if (hasModelUsed) {
-            sql += `, model_used`;
-          }
-          
-          sql += `)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
-          
-          if (hasModelUsed) {
-            sql += `, ?`;
-          }
-          
-          sql += `)`;
+             title_regex, content_regex, is_regex_active, diff_temperature, codebase_structure, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
           
           // Insert or replace the session
           await new Promise<void>((resolve, reject) => {
@@ -158,6 +155,7 @@ export function createSessionRepository() {
               id: row.id,
               name: row.name,
               projectDirectory: row.project_directory || '',
+              projectHash: row.project_hash,
               taskDescription: row.task_description || '',
               searchTerm: row.search_term || '',
               pastedPaths: row.pasted_paths || '',
@@ -165,9 +163,10 @@ export function createSessionRepository() {
               contentRegex: row.content_regex || '',
               isRegexActive: !!row.is_regex_active,
               diffTemperature: row.diff_temperature || 0.9,
-              modelUsed: row.model_used || 'gemini-2.5-flash-preview-04-17',
+              codebaseStructure: row.codebase_structure || '',
               includedFiles,
               forceExcludedFiles: excludedFiles,
+              updatedAt: row.updated_at || Date.now(),
             };
             
             resolve(session);
@@ -176,17 +175,248 @@ export function createSessionRepository() {
       }, true); // Use read-only connection
     },
     
-    createGeminiRequest: async (sessionId: string,
-      prompt: string
-    ): Promise<GeminiRequest> => {
-      console.log(`[Repo] Creating Gemini request for session: ${sessionId}`);
+    /**
+     * Get all sessions
+     */
+    getAllSessions: async (): Promise<Session[]> => {
+      console.log(`[Repo] Getting all sessions`);
       
-      // Generate a random ID for the request
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<Session[]>((resolve, reject) => {
+          db.all(`SELECT * FROM sessions ORDER BY updated_at DESC`, [], async (err, rows: any[]) => {
+            if (err) {
+              console.error("Error fetching all sessions:", err);
+              return reject(err);
+            }
+            
+            if (!rows || rows.length === 0) {
+              return resolve([]);
+            }
+            
+            try {
+              // Process each session
+              const sessions: Session[] = [];
+              
+              for (const row of rows) {
+                const sessionId = row.id;
+                
+                // Fetch included files for this session
+                let includedFiles: string[] = [];
+                try {
+                  includedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
+                    db.all(`SELECT file_path FROM included_files WHERE session_id = ?`, [sessionId], (fileErr, fileRows: any[]) => {
+                      if (fileErr) {
+                        console.error(`Error fetching included files for session ${sessionId}:`, fileErr);
+                        return rejectFiles(fileErr);
+                      }
+                      resolveFiles(fileRows.map(r => r.file_path));
+                    });
+                  });
+                } catch (error) {
+                  console.error(`Error fetching included files for session ${sessionId}:`, error);
+                  includedFiles = [];
+                }
+                
+                // Fetch excluded files for this session
+                let excludedFiles: string[] = [];
+                try {
+                  excludedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
+                    db.all(`SELECT file_path FROM excluded_files WHERE session_id = ?`, [sessionId], (fileErr, fileRows: any[]) => {
+                      if (fileErr) {
+                        console.error(`Error fetching excluded files for session ${sessionId}:`, fileErr);
+                        return rejectFiles(fileErr);
+                      }
+                      resolveFiles(fileRows.map(r => r.file_path));
+                    });
+                  });
+                } catch (error) {
+                  console.error(`Error fetching excluded files for session ${sessionId}:`, error);
+                  excludedFiles = [];
+                }
+                
+                // Create and add the Session object
+                const session: Session = {
+                  id: sessionId,
+                  name: row.name,
+                  projectDirectory: row.project_directory || '',
+                  projectHash: row.project_hash,
+                  taskDescription: row.task_description || '',
+                  searchTerm: row.search_term || '',
+                  pastedPaths: row.pasted_paths || '',
+                  titleRegex: row.title_regex || '',
+                  contentRegex: row.content_regex || '',
+                  isRegexActive: !!row.is_regex_active,
+                  diffTemperature: row.diff_temperature || 0.9,
+                  codebaseStructure: row.codebase_structure || '',
+                  includedFiles,
+                  forceExcludedFiles: excludedFiles,
+                  updatedAt: row.updated_at || Date.now(),
+                };
+                
+                sessions.push(session);
+              }
+              
+              resolve(sessions);
+            } catch (error) {
+              console.error("Error processing sessions:", error);
+              reject(error);
+            }
+          });
+        });
+      }, true); // Use read-only connection
+    },
+    
+    /**
+     * Delete a session by ID
+     */
+    deleteSession: async (sessionId: string): Promise<void> => {
+      console.log(`[Repo] Deleting session: ${sessionId}`);
+      
+      try {
+        return await connectionPool.withTransaction(async (db) => {
+          try {
+            // Delete included files
+            await new Promise<void>((resolve, reject) => {
+              db.run(`DELETE FROM included_files WHERE session_id = ?`, [sessionId], (err) => {
+                if (err) {
+                  console.error(`Error deleting included files for session ${sessionId}:`, err);
+                  return reject(err);
+                }
+                resolve();
+              });
+            });
+            
+            // Delete excluded files
+            await new Promise<void>((resolve, reject) => {
+              db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [sessionId], (err) => {
+                if (err) {
+                  console.error(`Error deleting excluded files for session ${sessionId}:`, err);
+                  return reject(err);
+                }
+                resolve();
+              });
+            });
+            
+            // Delete background jobs
+            await new Promise<void>((resolve, reject) => {
+              db.run(`DELETE FROM background_jobs WHERE session_id = ?`, [sessionId], (err) => {
+                if (err) {
+                  console.error(`Error deleting background jobs for session ${sessionId}:`, err);
+                  return reject(err);
+                }
+                resolve();
+              });
+            });
+            
+            // Delete the session itself
+            await new Promise<void>((resolve, reject) => {
+              db.run(`DELETE FROM sessions WHERE id = ?`, [sessionId], function(err) {
+                if (err) {
+                  console.error(`Error deleting session ${sessionId}:`, err);
+                  return reject(err);
+                }
+                
+                if (this.changes === 0) {
+                  console.warn(`No session found with ID ${sessionId} to delete`);
+                }
+                
+                resolve();
+              });
+            });
+          } catch (error) {
+            console.error(`Error deleting session ${sessionId}:`, error);
+            throw error;
+          }
+        });
+      } catch (error) {
+        // Check for readonly database error and provide more helpful message
+        if (error instanceof Error && 
+            (error.message.includes('SQLITE_READONLY') || 
+             error.message.includes('readonly database'))) {
+          console.error(`Cannot delete session: database is in read-only mode. Please check file permissions for the database.`);
+          throw new Error(`Cannot delete session: The database is in read-only mode. This may be due to file permission issues.`);
+        }
+        throw error;
+      }
+    },
+    
+    /**
+     * Delete all sessions
+     */
+    deleteAllSessions: async (): Promise<void> => {
+      console.log(`[Repo] Deleting all sessions`);
+      
+      return connectionPool.withTransaction(async (db) => {
+        try {
+          // Delete all included files
+          await new Promise<void>((resolve, reject) => {
+            db.run(`DELETE FROM included_files`, [], (err) => {
+              if (err) {
+                console.error(`Error deleting all included files:`, err);
+                return reject(err);
+              }
+              resolve();
+            });
+          });
+          
+          // Delete all excluded files
+          await new Promise<void>((resolve, reject) => {
+            db.run(`DELETE FROM excluded_files`, [], (err) => {
+              if (err) {
+                console.error(`Error deleting all excluded files:`, err);
+                return reject(err);
+              }
+              resolve();
+            });
+          });
+          
+          // Delete all background jobs
+          await new Promise<void>((resolve, reject) => {
+            db.run(`DELETE FROM background_jobs`, [], (err) => {
+              if (err) {
+                console.error(`Error deleting all background jobs:`, err);
+                return reject(err);
+              }
+              resolve();
+            });
+          });
+          
+          // Delete all sessions
+          await new Promise<void>((resolve, reject) => {
+            db.run(`DELETE FROM sessions`, [], (err) => {
+              if (err) {
+                console.error(`Error deleting all sessions:`, err);
+                return reject(err);
+              }
+              resolve();
+            });
+          });
+        } catch (error) {
+          console.error(`Error deleting all sessions:`, error);
+          throw error;
+        }
+      });
+    },
+    
+    /**
+     * Create a background job record
+     */
+    createBackgroundJob: async (
+      sessionId: string,
+      prompt: string,
+      apiType: ApiType = 'gemini',
+      taskType: TaskType = 'xml_generation',
+      modelUsed: string | null = null,
+      maxOutputTokens: number | null = null
+    ): Promise<BackgroundJob> => {
+      console.log(`[Repo] Creating background job for session: ${sessionId}, type: ${taskType}, api: ${apiType}`);
+      
+      // Generate a random ID for the job
       const id = crypto.randomUUID();
       const timestamp = Date.now();
       
-      // Create the default request object
-      const request: GeminiRequest = {
+      // Create the default job object
+      const job: BackgroundJob = {
         id,
         sessionId,
         prompt,
@@ -198,91 +428,82 @@ export function createSessionRepository() {
         tokensReceived: 0,
         charsReceived: 0,
         lastUpdate: null,
-        createdAt: timestamp
+        createdAt: timestamp,
+        apiType,
+        taskType,
+        modelUsed,
+        maxOutputTokens
       };
       
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<GeminiRequest>((resolve, reject) => {
-          // Check if xml_path column exists
-          db.get("PRAGMA table_info(gemini_requests)", [], (err, rows: any[]) => {
+      // Insert the job record
+      await connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`
+            INSERT INTO background_jobs (
+              id, session_id, prompt, status, created_at, 
+              api_type, task_type, model_used, max_output_tokens
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            id,
+            sessionId,
+            prompt,
+            'idle',
+            timestamp,
+            apiType,
+            taskType,
+            modelUsed,
+            maxOutputTokens
+          ], (err) => {
             if (err) {
-              console.error("Error checking table schema:", err);
+              console.error("Error creating background job:", err);
               reject(err);
-              return;
-            }
-            
-            try {
-              // Determine if we're using the old or new column name
-              const hasXmlPath = Array.isArray(rows) && rows.some((row: any) => row.name === 'xml_path');
-              const patchColumn = hasXmlPath ? 'xml_path' : 'patch_path';
-              
-              db.run(`
-                INSERT INTO gemini_requests 
-                (id, session_id, prompt, status, start_time, end_time, ${patchColumn}, 
-                 status_message, tokens_received, chars_received, last_update, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `, [
-                request.id,
-                request.sessionId,
-                request.prompt,
-                request.status,
-                request.startTime,
-                request.endTime,
-                request.xmlPath,
-                request.statusMessage,
-                request.tokensReceived,
-                request.charsReceived,
-                request.lastUpdate,
-                request.createdAt
-              ], (err) => {
-                if (err) {
-                  console.error("Error creating Gemini request:", err);
-                  reject(err);
-                } else {
-                  resolve(request);
-                }
-              });
-            } catch (error) {
-              console.error("Error processing table info:", error);
-              reject(error);
+            } else {
+              resolve();
             }
           });
         });
       });
+      
+      return job;
     },
     
     /**
-     * Get a Gemini request by ID
+     * Get a background job by ID
      */
-    getGeminiRequest: async (requestId: string): Promise<GeminiRequest | null> => {
-      console.log(`[Repo] Getting Gemini request: ${requestId}`);
+    getBackgroundJob: async (jobId: string): Promise<BackgroundJob | null> => {
+      console.log(`[Repo] Getting background job: ${jobId}`);
       
       return connectionPool.withConnection(async (db) => {
-        return new Promise<GeminiRequest | null>((resolve, reject) => {
+        return new Promise<BackgroundJob | null>((resolve, reject) => {
           db.get(`
-            SELECT * FROM gemini_requests WHERE id = ?
-          `, [requestId], (err, row: any) => {
+            SELECT * FROM background_jobs WHERE id = ?
+          `, [jobId], (err, row: any) => {
             if (err) {
-              console.error("Error fetching Gemini request:", err);
+              console.error("Error fetching background job:", err);
               reject(err);
             } else if (!row) {
               resolve(null);
             } else {
-              const request: GeminiRequest = {
+              const job: BackgroundJob = {
                 id: row.id,
                 sessionId: row.session_id,
                 prompt: row.prompt,
-                status: row.status as GeminiStatus,
+                status: row.status as JobStatus,
                 startTime: row.start_time,
                 endTime: row.end_time,
-                xmlPath: row.xml_path || row.patch_path, // Use xml_path with fallback to patch_path
+                xmlPath: row.xml_path,
                 statusMessage: row.status_message,
                 tokensReceived: row.tokens_received || 0,
                 charsReceived: row.chars_received || 0,
                 lastUpdate: row.last_update,
-                createdAt: row.created_at
+                createdAt: row.created_at,
+                cleared: !!row.cleared,
+                apiType: row.api_type as ApiType,
+                taskType: row.task_type as TaskType,
+                modelUsed: row.model_used,
+                maxOutputTokens: row.max_output_tokens
               };
-              resolve(request);
+              resolve(job);
             }
           });
         });
@@ -290,37 +511,42 @@ export function createSessionRepository() {
     },
     
     /**
-     * Get all Gemini requests for a session
+     * Get all background jobs for a session
      */
-    getGeminiRequests: async (sessionId: string): Promise<GeminiRequest[]> => {
-      console.log(`[Repo] Getting Gemini requests for session: ${sessionId}`);
+    getBackgroundJobs: async (sessionId: string): Promise<BackgroundJob[]> => {
+      console.log(`[Repo] Getting background jobs for session: ${sessionId}`);
       
       return connectionPool.withConnection(async (db) => {
-        return new Promise<GeminiRequest[]>((resolve, reject) => {
+        return new Promise<BackgroundJob[]>((resolve, reject) => {
           db.all(`
-            SELECT * FROM gemini_requests 
+            SELECT * FROM background_jobs 
             WHERE session_id = ? 
             ORDER BY created_at DESC
           `, [sessionId], (err, rows: any[]) => {
             if (err) {
-              console.error("Error fetching Gemini requests:", err);
+              console.error("Error fetching background jobs:", err);
               reject(err);
             } else {
-              const requests: GeminiRequest[] = rows.map(row => ({
+              const jobs: BackgroundJob[] = rows.map(row => ({
                 id: row.id,
                 sessionId: row.session_id,
                 prompt: row.prompt,
-                status: row.status as GeminiStatus,
+                status: row.status as JobStatus,
                 startTime: row.start_time,
                 endTime: row.end_time,
-                xmlPath: row.xml_path || row.patch_path, // Use xml_path with fallback to patch_path
+                xmlPath: row.xml_path,
                 statusMessage: row.status_message,
                 tokensReceived: row.tokens_received || 0,
                 charsReceived: row.chars_received || 0,
                 lastUpdate: row.last_update,
-                createdAt: row.created_at
+                createdAt: row.created_at,
+                cleared: !!row.cleared,
+                apiType: row.api_type as ApiType,
+                taskType: row.task_type as TaskType,
+                modelUsed: row.model_used,
+                maxOutputTokens: row.max_output_tokens
               }));
-              resolve(requests);
+              resolve(jobs);
             }
           });
         });
@@ -328,228 +554,484 @@ export function createSessionRepository() {
     },
     
     /**
-     * Get all visible (non-cleared) Gemini requests
+     * Find background jobs for a session with filtering options
      */
-    getAllVisibleGeminiRequests: async (): Promise<GeminiRequest[]> => {
-      const timestamp = new Date().toISOString();
-      console.log(`[Repo] [${timestamp}] Getting all visible Gemini requests`);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<GeminiRequest[]>((resolve, reject) => {
-          // Query for all non-cleared requests regardless of status
-          const sql = `
-            SELECT * FROM gemini_requests 
-            WHERE (cleared = 0 OR cleared IS NULL)
-            ORDER BY created_at DESC
-          `;
-          
-          db.all(sql, [], (err, rows: any[]) => {
-            if (err) {
-              console.error("Error fetching visible Gemini requests:", err);
-              return reject(err);
-            }
-            
-            // Map rows to GeminiRequest objects
-            const requests: GeminiRequest[] = (rows || []).map(row => ({
-              id: row.id,
-              sessionId: row.session_id,
-              prompt: row.prompt,
-              status: row.status as GeminiStatus,
-              startTime: row.start_time,
-              endTime: row.end_time,
-              xmlPath: row.xml_path || row.patch_path, // Handle both column names
-              statusMessage: row.status_message,
-              tokensReceived: row.tokens_received || 0,
-              charsReceived: row.chars_received || 0,
-              lastUpdate: row.last_update,
-              createdAt: row.created_at,
-              cleared: !!row.cleared
-            }));
-            
-            resolve(requests);
-          });
-        });
-      }, true); // Use read-only connection for queries
-    },
-    
-    /**
-     * Retrieve a session with all of its Gemini requests
-     */
-    getSessionWithRequests: async (sessionId: string): Promise<Session | null> => {
-      console.log(`[Repo] Getting session with requests: ${sessionId}`);
-      
-      try {
-        // First, get the session
-        const session = await this.getSession(sessionId);
-        if (!session) {
-          return null;
-        }
-        
-        // Then, get the Gemini requests for the session
-        const requests = await this.getGeminiRequests(sessionId);
-        
-        // Add the requests to the session
-        session.geminiRequests = requests;
-        
-        return session;
-      } catch (error) {
-        console.error("Error getting session with requests:", error);
-        throw error;
+    findBackgroundJobsBySessionId: async (
+      sessionId: string,
+      options?: { 
+        limit?: number, 
+        status?: JobStatus | JobStatus[], 
+        type?: TaskType 
       }
-    },
-    
-    /**
-     * Cancel all running Gemini requests for a session
-     */
-    cancelAllSessionRequests: async (sessionId: string): Promise<void> => {
-      console.log(`[Repo] Canceling all running requests for session: ${sessionId}`);
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`
-            UPDATE gemini_requests SET status = 'canceled', end_time = ?, status_message = 'Canceled by user.'
-            WHERE session_id = ? AND status = 'running'
-          `, [Date.now(), sessionId], (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-      });
-    },
-    
-    /**
-     * Clear Gemini request history (mark completed/failed/canceled requests as cleared)
-     */
-    clearGeminiRequestHistory: async (): Promise<void> => {
-      console.log('[Repo] Clearing Gemini request history');
+    ): Promise<BackgroundJob[]> => {
+      console.log(`[Repo] Finding background jobs for session: ${sessionId} with options:`, options);
       
-      return connectionPool.withTransaction(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          // Update completed/failed/canceled requests to set cleared=1
-          const sql = `
-            UPDATE gemini_requests
-            SET cleared = 1
-            WHERE status IN ('completed', 'failed', 'canceled')
-              AND (cleared = 0 OR cleared IS NULL)
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<BackgroundJob[]>((resolve, reject) => {
+          // Build the query with conditions
+          let query = `
+            SELECT * FROM background_jobs 
+            WHERE session_id = ?
           `;
           
-          db.run(sql, [], function(err) {
-            if (err) {
-              console.error("Error clearing Gemini request history:", err);
-              return reject(err);
+          const params: any[] = [sessionId];
+          
+          // Add status condition if provided
+          if (options?.status) {
+            if (Array.isArray(options.status)) {
+              // Handle multiple statuses with IN clause
+              const placeholders = options.status.map(() => '?').join(',');
+              query += ` AND status IN (${placeholders})`;
+              params.push(...options.status);
+            } else {
+              // Handle single status
+              query += ` AND status = ?`;
+              params.push(options.status);
             }
-            
-            console.log(`[Repo] Cleared ${this.changes} Gemini requests from history`);
-            resolve();
+          }
+          
+          // Add task type condition if provided
+          if (options?.type) {
+            query += ` AND task_type = ?`;
+            params.push(options.type);
+          }
+          
+          // Add ordering
+          query += ` ORDER BY created_at DESC`;
+          
+          // Add limit if provided
+          if (options?.limit) {
+            query += ` LIMIT ?`;
+            params.push(options.limit);
+          }
+          
+          db.all(query, params, (err, rows: any[]) => {
+            if (err) {
+              console.error("Error finding background jobs:", err);
+              reject(err);
+            } else {
+              const jobs: BackgroundJob[] = rows.map(row => ({
+                id: row.id,
+                sessionId: row.session_id,
+                prompt: row.prompt,
+                status: row.status as JobStatus,
+                startTime: row.start_time,
+                endTime: row.end_time,
+                xmlPath: row.xml_path,
+                statusMessage: row.status_message,
+                tokensReceived: row.tokens_received || 0,
+                charsReceived: row.chars_received || 0,
+                lastUpdate: row.last_update,
+                createdAt: row.created_at,
+                cleared: !!row.cleared,
+                apiType: row.api_type as ApiType,
+                taskType: row.task_type as TaskType,
+                modelUsed: row.model_used,
+                maxOutputTokens: row.max_output_tokens
+              }));
+              resolve(jobs);
+            }
           });
         });
-      });
+      }, true); // Use read-only connection
     },
     
     /**
-     * Update the 'cleared' status of a specific request
+     * Get all visible background jobs
      */
-    updateRequestClearedStatus: async (requestId: string, cleared: boolean): Promise<void> => {
-      console.log(`[Repo] Updating cleared status for request ${requestId} to ${cleared}`);
+    getAllVisibleBackgroundJobs: async (): Promise<BackgroundJob[]> => {
+      // Removed logging to prevent spam
       
-      return connectionPool.withTransaction(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(
-            'UPDATE gemini_requests SET cleared = ? WHERE id = ?',
-            [cleared ? 1 : 0, requestId],
-            function(err) {
-              if (err) {
-                console.error(`Error updating cleared status for request ${requestId}:`, err);
-                return reject(err);
-              }
-              
-              if (this.changes === 0) {
-                console.warn(`Request ${requestId} not found when updating cleared status`);
-              }
-              
-              resolve();
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<BackgroundJob[]>((resolve, reject) => {
+          db.all(`
+            SELECT * FROM background_jobs 
+            WHERE cleared = 0 
+            ORDER BY created_at DESC
+          `, [], (err, rows: any[]) => {
+            if (err) {
+              console.error("Error fetching visible background jobs:", err);
+              reject(err);
+            } else {
+              const jobs: BackgroundJob[] = rows.map(row => ({
+                id: row.id,
+                sessionId: row.session_id,
+                prompt: row.prompt,
+                status: row.status as JobStatus,
+                startTime: row.start_time,
+                endTime: row.end_time,
+                xmlPath: row.xml_path,
+                statusMessage: row.status_message,
+                tokensReceived: row.tokens_received || 0,
+                charsReceived: row.chars_received || 0,
+                lastUpdate: row.last_update,
+                createdAt: row.created_at,
+                cleared: !!row.cleared,
+                apiType: row.api_type as ApiType,
+                taskType: row.task_type as TaskType,
+                modelUsed: row.model_used,
+                maxOutputTokens: row.max_output_tokens
+              }));
+              resolve(jobs);
             }
-          );
+          });
         });
-      });
+      }, true); // Use read-only connection
     },
     
     /**
-     * Update the status of a Gemini request
+     * Update background job status
      */
-    updateGeminiRequestStatus: async (
-      requestId: string,
-      status: GeminiStatus,
+    updateBackgroundJobStatus: async (
+      jobId: string,
+      status: JobStatus,
       startTime?: number | null,
       endTime?: number | null,
-      patchPath?: string | null, // Keep parameter name for backward compatibility
+      xmlPath?: string | null,
       statusMessage?: string | null,
-      streamStats?: {
-        tokensReceived?: number;
-        charsReceived?: number;
-      }
+      stats?: { tokensReceived?: number, charsReceived?: number }
     ): Promise<void> => {
-      console.log(`[Repo] Updating Gemini request ${requestId} to ${status}`);
+      console.log(`[Repo] Updating background job ${jobId} status to ${status}`);
       
-      // Construct the SET clause and values dynamically
-      const setClauses: string[] = ['status = ?'];
-      const values: any[] = [status];
+      // Build the update fields and parameters
+      const updates: string[] = [];
+      const params: any[] = [];
+      
+      updates.push('status = ?');
+      params.push(status);
       
       if (startTime !== undefined) {
-        setClauses.push('start_time = ?');
-        values.push(startTime);
+        updates.push('start_time = ?');
+        params.push(startTime);
       }
       
       if (endTime !== undefined) {
-        setClauses.push('end_time = ?');
-        values.push(endTime);
+        updates.push('end_time = ?');
+        params.push(endTime);
       }
       
-      if (patchPath !== undefined) {
-        setClauses.push('xml_path = ?');
-        values.push(patchPath);
+      if (xmlPath !== undefined) {
+        updates.push('xml_path = ?');
+        params.push(xmlPath);
       }
       
       if (statusMessage !== undefined) {
-        setClauses.push('status_message = ?');
-        values.push(statusMessage);
+        updates.push('status_message = ?');
+        params.push(statusMessage);
       }
       
-      // Add streaming stats if provided and are valid numbers
-      if (streamStats?.tokensReceived !== undefined) {
-        setClauses.push('tokens_received = ?');
-        values.push(streamStats.tokensReceived);
+      if (stats) {
+        if (stats.tokensReceived !== undefined) {
+          updates.push('tokens_received = ?');
+          params.push(stats.tokensReceived);
+        }
+        
+        if (stats.charsReceived !== undefined) {
+          updates.push('chars_received = ?');
+          params.push(stats.charsReceived);
+        }
       }
       
-      if (streamStats?.charsReceived !== undefined) {
-        setClauses.push('chars_received = ?');
-        values.push(streamStats.charsReceived);
+      if (status === 'running' || startTime !== undefined || stats) {
+        updates.push('last_update = ?');
+        params.push(Date.now());
       }
       
-      // Update last update timestamp if status is 'running' or stats were provided
-      if (streamStats?.tokensReceived !== undefined || streamStats?.charsReceived !== undefined) {
-        setClauses.push('last_update = ?');
-        values.push(Date.now());
-      }
+      // Add the job ID to the params
+      params.push(jobId);
       
-      // Add the requestId for the WHERE clause
-      values.push(requestId);
-      
-      return connectionPool.withConnection(async (db) => {
+      // Execute the update query
+      await connectionPool.withConnection(async (db) => {
         return new Promise<void>((resolve, reject) => {
-          const sql = `UPDATE gemini_requests SET ${setClauses.join(', ')} WHERE id = ?`;
+          const sql = `UPDATE background_jobs SET ${updates.join(', ')} WHERE id = ?`;
           
-          db.run(sql, values, (err) => {
+          db.run(sql, params, function(err) {
             if (err) {
-              console.error("Error updating Gemini request status:", err);
+              console.error("Error updating background job status:", err);
               reject(err);
             } else {
               resolve();
             }
           });
-        }); 
+        });
       });
-    }
+    },
+    
+    /**
+     * Clear background job history for all sessions
+     */
+    clearBackgroundJobHistory: async (): Promise<void> => {
+      console.log(`[Repo] Clearing all background job history`);
+      
+      await connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`UPDATE background_jobs SET cleared = 1`, [], (err) => {
+            if (err) {
+              console.error("Error clearing background job history:", err);
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        });
+      });
+    },
+    
+    /**
+     * Update background job cleared status
+     */
+    updateBackgroundJobClearedStatus: async (jobId: string, cleared: boolean): Promise<void> => {
+      console.log(`[Repo] Updating background job ${jobId} cleared status to ${cleared}`);
+      
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`
+            UPDATE background_jobs 
+            SET cleared = ?
+            WHERE id = ?
+          `, [cleared ? 1 : 0, jobId], async (err) => {
+            if (err) {
+              console.error(`Error updating background job ${jobId} cleared status:`, err);
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        });
+      });
+    },
+    
+    /**
+     * Cancel all running background jobs for a session
+     */
+    cancelAllSessionBackgroundJobs: async (sessionId: string): Promise<void> => {
+      console.log(`[Repo] Canceling all running background jobs for session: ${sessionId}`);
+      
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`
+            UPDATE background_jobs 
+            SET status = 'canceled', end_time = ?, status_message = 'Canceled by user.'
+            WHERE session_id = ? AND status = 'running'
+          `, [Date.now(), sessionId], async (err) => {
+            if (err) {
+              reject(err);
+            } else {
+              try {
+                // Fetch and broadcast all canceled jobs
+                const canceledJobs = await repository.getBackgroundJobs(sessionId);
+                // Note: Broadcasting can be handled by the consumer of this method
+                // We've removed direct reference to websocketHandler as it's not defined here
+              } catch (error) {
+                console.error(`Error fetching canceled jobs for session ${sessionId}:`, error);
+              }
+              resolve();
+            }
+          });
+        });
+      });
+    },
+    
+    /**
+     * Retrieve a session with all of its background jobs
+     */
+    getSessionWithBackgroundJobs: async (sessionId: string): Promise<Session | null> => {
+      console.log(`[Repo] Getting session with background jobs: ${sessionId}`);
+      
+      try {
+        // First, get the session
+        const session = await repository.getSession(sessionId);
+        if (!session) {
+          return null;
+        }
+        
+        // Then, get the background jobs for the session
+        const jobs = await repository.getBackgroundJobs(sessionId);
+        
+        // Add the jobs to the session
+        session.backgroundJobs = jobs;
+        
+        return session;
+      } catch (error) {
+        console.error("Error getting session with background jobs:", error);
+        throw error;
+      }
+    },
+    
+    updateSessionProjectDirectory: async (sessionId: string, projectDirectory: string): Promise<void> => {
+      const projectHash = hashString(projectDirectory);
+      console.log(`[Repo] Updating project directory for session ${sessionId} to: ${projectDirectory} (hash: ${projectHash})`);
+      
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`
+            UPDATE sessions 
+            SET project_directory = ?, project_hash = ?, updated_at = ?
+            WHERE id = ?
+          `, [projectDirectory, projectHash, Date.now(), sessionId], function(err) {
+            if (err) {
+              console.error(`Error updating project directory for session ${sessionId}:`, err);
+              reject(err);
+            } else {
+              if (this.changes === 0) {
+                console.warn(`No session found with ID ${sessionId} to update project directory`);
+              }
+              resolve();
+            }
+          });
+        });
+      });
+    },
+    
+    /**
+     * Update a session's name
+     */
+    updateSessionName: async (sessionId: string, name: string): Promise<void> => {
+      console.log(`[Repo] Updating name for session ${sessionId} to: ${name}`);
+      
+      return connectionPool.withConnection(async (db) => {
+        return new Promise<void>((resolve, reject) => {
+          db.run(`
+            UPDATE sessions 
+            SET name = ?, updated_at = ?
+            WHERE id = ?
+          `, [name, Date.now(), sessionId], function(err) {
+            if (err) {
+              console.error(`Error updating name for session ${sessionId}:`, err);
+              reject(err);
+            } else {
+              if (this.changes === 0) {
+                console.warn(`No session found with ID ${sessionId} to update name`);
+                reject(new Error(`Session not found: ${sessionId}`));
+              } else {
+                resolve();
+              }
+            }
+          });
+        });
+      });
+    },
+    
+    /**
+     * Update specific fields of a session
+     * Used for partial updates via the API
+     */
+    updateSessionFields: async (sessionId: string, fields: Partial<Session>): Promise<void> => {
+      console.log(`[Repo] Updating fields for session ${sessionId}:`, Object.keys(fields));
+      
+      // Validate session ID
+      if (!sessionId) {
+        throw new Error('Session ID is required for updating session fields');
+      }
+      
+      // Max retries for transient errors like database locks
+      const MAX_RETRIES = 3;
+      let lastError: Error | null = null;
+      
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        // Add delay between retries
+        if (attempt > 0) {
+          const delay = 300 * attempt; // Progressive delay
+          console.log(`[Repo] Retry attempt ${attempt}/${MAX_RETRIES} for updating session ${sessionId} after ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        try {
+          return await connectionPool.withConnection(async (db) => {
+            return new Promise<void>((resolve, reject) => {
+              // Build the update fields and parameters
+              const updates: string[] = [];
+              const params: any[] = [];
+              
+              // Map Session properties to database column names
+              const fieldMappings: Record<string, string> = {
+                name: 'name',
+                projectDirectory: 'project_directory',
+                taskDescription: 'task_description',
+                searchTerm: 'search_term',
+                pastedPaths: 'pasted_paths',
+                titleRegex: 'title_regex',
+                contentRegex: 'content_regex',
+                isRegexActive: 'is_regex_active',
+                diffTemperature: 'diff_temperature',
+                codebaseStructure: 'codebase_structure'
+              };
+              
+              // Process each field in the update
+              for (const [key, value] of Object.entries(fields)) {
+                // Skip non-scalar properties that can't be directly updated
+                if (key === 'id' || key === 'includedFiles' || key === 'forceExcludedFiles' || 
+                    key === 'backgroundJobs' || key === 'updatedAt' || key === 'projectHash') {
+                  continue;
+                }
+                
+                const columnName = fieldMappings[key];
+                if (columnName) {
+                  updates.push(`${columnName} = ?`);
+                  
+                  // Convert boolean to integer for SQLite
+                  const paramValue = key === 'isRegexActive' ? (value ? 1 : 0) : value;
+                  params.push(paramValue);
+                }
+              }
+              
+              // Always update the timestamp
+              updates.push('updated_at = ?');
+              params.push(Date.now());
+              
+              // Add the session ID to the params
+              params.push(sessionId);
+              
+              // Execute the update query if there are fields to update
+              if (updates.length > 0) {
+                const sql = `UPDATE sessions SET ${updates.join(', ')} WHERE id = ?`;
+                
+                db.run(sql, params, function(err) {
+                  if (err) {
+                    console.error(`Error updating fields for session ${sessionId}:`, err);
+                    reject(err);
+                  } else {
+                    if (this.changes === 0) {
+                      console.warn(`No session found with ID ${sessionId} to update fields`);
+                      reject(new Error(`Session not found: ${sessionId}`));
+                    } else {
+                      resolve();
+                    }
+                  }
+                });
+              } else {
+                // No valid fields to update
+                console.warn(`No valid fields to update for session ${sessionId}`);
+                resolve();
+              }
+            });
+          });
+        } catch (error: any) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          
+          // Only retry on database locked/busy errors
+          const isTransientError = 
+            error.code === 'SQLITE_BUSY' || 
+            error.code === 'SQLITE_LOCKED' ||
+            (error.message && (
+              error.message.includes('database is locked') || 
+              error.message.includes('SQLITE_BUSY')
+            ));
+            
+          if (!isTransientError || attempt === MAX_RETRIES - 1) {
+            break; // Don't retry on non-transient errors or if it's the last attempt
+          }
+        }
+      }
+      
+      // If we've exhausted all retries, throw the last error
+      if (lastError) {
+        throw lastError;
+      }
+    },
   };
+  
+  return repository;
 }
 
 // Create and export a default instance

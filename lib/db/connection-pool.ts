@@ -4,13 +4,16 @@ import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 
+// Define DB_FILE directly to avoid circular dependency
 const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
 const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
 
 // Connection pool settings
-const POOL_SIZE = 10;
-const MAX_CONNECTION_AGE_MS = 60000; // 1 minute
+const POOL_SIZE = 3;
+const MAX_CONNECTION_AGE_MS = 30000; // 30 seconds
 const CONNECTION_TIMEOUT_MS = 5000; // 5 seconds busy timeout
+const MAX_RETRIES = 3; // Maximum retries for locked database
+const RETRY_DELAY_BASE_MS = 200; // Base delay for exponential backoff
 
 export interface DbConnection {
   id: string;
@@ -36,15 +39,8 @@ class ConnectionPool {
   }
   
   private initialize() {
-    // Ensure directory exists
-    if (!fs.existsSync(APP_DATA_DIR)) {
-      fs.mkdirSync(APP_DATA_DIR, { recursive: true });
-    }
-    
-    // Create initial connections
-    for (let i = 0; i < Math.ceil(this.maxSize / 2); i++) {
-      this.createConnection(i % 2 === 0); // Alternate read/write
-    }
+    // Create initial connections (just 1 to start, will grow as needed)
+    this.createConnection(false);
     
     // Set up maintenance interval
     setInterval(() => this.maintainPool(), 30000);
@@ -54,14 +50,31 @@ class ConnectionPool {
     const id = crypto.randomUUID();
     const mode = readOnly ? sqlite3.OPEN_READONLY : sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE;
     
-    const db = new sqlite3.Database(DB_FILE, mode);
+    let db: sqlite3.Database;
     
-    // Configure connection
-    db.run('PRAGMA journal_mode = WAL;'); // Write-ahead logging for better concurrency
-    db.run(`PRAGMA busy_timeout = ${CONNECTION_TIMEOUT_MS};`); // Timeout for busy waits
-    
-    if (!readOnly) {
+    try {
+      db = new sqlite3.Database(DB_FILE, mode);
+      
+      // Configure connection
+      // Use DELETE journal mode for better compatibility
+      db.run('PRAGMA journal_mode = DELETE;');
+      
+      // Set busy timeout to 5 seconds
+      db.run(`PRAGMA busy_timeout = ${CONNECTION_TIMEOUT_MS};`);
+      
+      // Enable foreign keys
       db.run('PRAGMA foreign_keys = ON;');
+      
+    } catch (error) {
+      console.error("Error creating database connection:", error);
+      
+      // Fallback to readonly if we get a permission error
+      if (!readOnly && error instanceof Error && error.message?.includes('SQLITE_READONLY')) {
+        console.warn("Database is readonly, falling back to readonly mode");
+        return this.createConnection(true); // Retry with readonly flag
+      }
+      
+      throw new Error(`Failed to create database connection: ${error instanceof Error ? error.message : String(error)}`);
     }
     
     const conn: DbConnection = {
@@ -76,9 +89,9 @@ class ConnectionPool {
     return conn;
   }
   
-  async getConnection(readOnly: boolean = false, timeoutMs: number = 10000): Promise<DbConnection> {
+  async getConnection(readOnly: boolean = false, timeoutMs: number = 5000): Promise<DbConnection> {
     // First try to find an available connection of the right type
-    const conn = this.pool.find(c => !c.inUse && c.isReadOnly === readOnly);
+    const conn = this.pool.find(c => !c.inUse && (c.isReadOnly === readOnly || c.isReadOnly));
     
     if (conn) {
       conn.inUse = true;
@@ -124,7 +137,7 @@ class ConnectionPool {
     
     // Check if anyone is waiting for a connection
     const waitingIndex = this.waitingForConnection.findIndex(
-      w => w.readOnly === poolConn.isReadOnly
+      w => w.readOnly === poolConn.isReadOnly || poolConn.isReadOnly
     );
     
     if (waitingIndex >= 0) {
@@ -147,70 +160,103 @@ class ConnectionPool {
       }
       return true;
     });
-    
-    // Ensure minimum pool size
-    const minSize = Math.ceil(this.maxSize / 2);
-    if (this.pool.length < minSize) {
-      const numToCreate = minSize - this.pool.length;
-      for (let i = 0; i < numToCreate; i++) {
-        this.createConnection(i % 2 === 0); // Alternate read/write
-      }
-    }
   }
   
   async withConnection<T>(callback: (db: sqlite3.Database) => Promise<T>, readOnly: boolean = false): Promise<T> {
-    const conn = await this.getConnection(readOnly);
-    try {
-      return await callback(conn.db);
-    } finally {
-      this.releaseConnection(conn);
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        // If not the first attempt, add a delay before retrying
+        if (attempt > 0) {
+          // Exponential backoff with jitter
+          const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1) * (0.5 + Math.random());
+          console.log(`Retry attempt ${attempt}/${MAX_RETRIES} for database operation after ${Math.round(delay)}ms delay`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        const conn = await this.getConnection(readOnly);
+        try {
+          return await callback(conn.db);
+        } finally {
+          this.releaseConnection(conn);
+        }
+      } catch (error: any) {
+        lastError = error;
+        
+        // Only retry on database locked errors
+        const isBusyError = error && (
+          error.code === 'SQLITE_BUSY' || 
+          error.code === 'SQLITE_LOCKED' ||
+          (error.message && (
+            error.message.includes('database is locked') || 
+            error.message.includes('SQLITE_BUSY')
+          ))
+        );
+        
+        if (!isBusyError || attempt === MAX_RETRIES - 1) {
+          // Not a busy error or last attempt, don't retry
+          throw error;
+        }
+        
+        console.warn(`Database busy or locked, will retry (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      }
     }
+    
+    // Should never reach here due to throw in the loop, but just in case
+    throw lastError || new Error('Unknown database error');
   }
   
-  // Run transaction with automatic rollback on error
   async withTransaction<T>(callback: (db: sqlite3.Database) => Promise<T>): Promise<T> {
     return this.withConnection(async (db) => {
-      return new Promise<T>((resolve, reject) => {
-        db.run('BEGIN TRANSACTION', async (beginErr) => {
-          if (beginErr) return reject(beginErr);
+      return new Promise<T>(async (resolve, reject) => {
+        db.run('BEGIN TRANSACTION', async (beginError) => {
+          if (beginError) {
+            return reject(beginError);
+          }
           
           try {
             const result = await callback(db);
             
-            db.run('COMMIT', (commitErr) => {
-              if (commitErr) {
-                db.run('ROLLBACK', () => reject(commitErr));
+            db.run('COMMIT', (commitError) => {
+              if (commitError) {
+                // Try to rollback on commit error
+                db.run('ROLLBACK', () => {
+                  reject(commitError);
+                });
               } else {
                 resolve(result);
               }
             });
           } catch (error) {
-            db.run('ROLLBACK', () => reject(error));
+            // Rollback the transaction on error
+            db.run('ROLLBACK', (rollbackError) => {
+              if (rollbackError) {
+                console.error("Error rolling back transaction:", rollbackError);
+              }
+              reject(error);
+            });
           }
         });
       });
-    }, false); // Write connection needed for transaction
+    }, false); // Always use a writeable connection for transactions
   }
   
   closeAll() {
     for (const conn of this.pool) {
       try {
         conn.db.close();
-      } catch (error) {
-        console.error('Error closing database connection:', error);
+      } catch (err) {
+        console.error("Error closing connection:", err);
       }
     }
     this.pool = [];
-    
-    // Reject any waiting promises
-    for (const waiting of this.waitingForConnection) {
-      clearTimeout(waiting.timeoutId);
-      waiting.reject(new Error('Connection pool is being closed'));
-    }
-    this.waitingForConnection = [];
   }
 }
 
-// Export singleton instance
+// Create pool instance and assign to variable before export
 const connectionPool = new ConnectionPool();
-export default connectionPool; 
+
+// Export the pool instance and DB_FILE
+export default connectionPool;
+export { DB_FILE }; 

@@ -5,6 +5,7 @@ import { useState, useCallback } from "react";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording"; // Keep useVoiceRecording import
 import { Mic, MicOff, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useProject } from "@/lib/contexts/project-context"; // Add useProject context
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
@@ -17,10 +18,11 @@ export default function VoiceTranscription({
 }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
   const [languageCode, setLanguageCode] = useState('en');
+  const { activeSessionId } = useProject(); // Get active session ID from project context
+  
   const handleCorrectionComplete = useCallback((raw: string, corrected: string) => {
     // Only show revert if correction actually changed the text
     if (raw !== corrected) {
-      console.log('Correction changed text, showing revert option.');
       setShowRevertOption(true);
     }
   }, []);
@@ -39,7 +41,8 @@ export default function VoiceTranscription({
     onCorrectionComplete: handleCorrectionComplete,
     // Pass the interaction handler
     onInteraction,
-    languageCode // Pass the current language code to the hook
+    languageCode, // Pass the current language code to the hook
+    sessionId: activeSessionId // Pass the active session ID for background job tracking
   });
 
   const handleToggleRecording = async () => {

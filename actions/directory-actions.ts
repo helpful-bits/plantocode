@@ -48,6 +48,27 @@ export async function getCommonPaths(): Promise<DirectoryInfo[]> {
 export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
   try {
     const homeDir = normalizePath(os.homedir());
+    
+    // Verify the home directory exists and is accessible
+    if (!existsSync(homeDir)) {
+      console.error(`[HomeDir] Home directory ${homeDir} does not exist`);
+      return {
+        isSuccess: false,
+        message: "Home directory could not be accessed",
+        data: "/" // Provide fallback data
+      };
+    }
+    
+    // Ensure we have a non-empty string
+    if (!homeDir || homeDir.trim() === '') {
+      console.error(`[HomeDir] Got empty home directory path`);
+      return {
+        isSuccess: false,
+        message: "Home directory path is empty",
+        data: "/" // Provide fallback data
+      };
+    }
+    
     return {
       isSuccess: true,
       message: "Home directory retrieved",
@@ -57,7 +78,8 @@ export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
     console.error("Error getting home directory:", error);
     return {
       isSuccess: false,
-      message: error instanceof Error ? error.message : "Failed to get home directory"
+      message: error instanceof Error ? error.message : "Failed to get home directory",
+      data: "/" // Always provide fallback data
     };
   }
 }
@@ -81,9 +103,11 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
   try {
     console.log(`[ListDirs] Listing directories in: ${directoryPath}`);
     const resolvedPath = normalizePath(path.resolve(directoryPath));
+    console.log(`[ListDirs] Resolved path: ${resolvedPath}`);
 
     // Check if path exists
     if (!existsSync(resolvedPath)) {
+      console.error(`[ListDirs] Directory does not exist: ${resolvedPath}`);
       return {
         isSuccess: false,
         message: "Directory does not exist",
@@ -94,6 +118,7 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
     // Check if it's a directory
     const stats = await fs.stat(resolvedPath);
     if (!stats.isDirectory()) {
+      console.error(`[ListDirs] Path exists but is not a directory: ${resolvedPath}`);
       return {
         isSuccess: false,
         message: "Path exists but is not a directory",

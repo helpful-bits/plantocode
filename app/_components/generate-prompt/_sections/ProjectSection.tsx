@@ -14,7 +14,7 @@ interface ProjectSectionProps {
     isRestoringSession: boolean;
     projectDataLoading: boolean;
     isLoadingFiles: boolean;
-    sessionSaveError: string | null;
+    sessionLoadError: string | null;
     showLoadingOverlay: boolean;
   };
   actions: {
@@ -33,7 +33,7 @@ export default function ProjectSection({ state, actions }: ProjectSectionProps) 
     sessionInitialized, 
     isRefreshingFiles,
     showLoadingOverlay,
-    sessionSaveError
+    sessionLoadError
   } = state;
   
   const { 
@@ -69,10 +69,10 @@ export default function ProjectSection({ state, actions }: ProjectSectionProps) 
           onActiveSessionIdChange={handleSetActiveSessionId}
         />
         
-        {/* Display auto-save errors near session manager */}
-        {sessionSaveError && (
+        {/* Display session errors near session manager */}
+        {sessionLoadError && (
           <div className="text-xs text-destructive text-center mt-0.5 -mb-2">
-            ⚠️ Auto-save failed: {sessionSaveError}
+            ⚠️ {sessionLoadError}
           </div>
         )}
       </Suspense>

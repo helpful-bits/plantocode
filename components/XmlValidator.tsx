@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { validateXmlChangesFromFileAction } from '@/actions/apply-xml-changes-action';
+import { validateXmlChangesFileAction } from '@/actions/apply-xml-changes-action';
 import { Button } from './ui/button';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -23,7 +23,7 @@ export function XmlValidator({ xmlPath, projectPath, onValidated }: XmlValidator
   const handleValidate = async () => {
     try {
       setIsValidating(true);
-      const result = await validateXmlChangesFromFileAction(xmlPath, projectPath);
+      const result = await validateXmlChangesFileAction(xmlPath, projectPath);
       setResults({
         isSuccess: result.isSuccess,
         message: result.message || '',

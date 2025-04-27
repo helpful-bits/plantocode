@@ -10,6 +10,7 @@ import { estimateTokens } from '@/lib/token-estimator';
 import { GEMINI_FLASH_MODEL, GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 import geminiClient from '@/lib/api/gemini-client';
 import { RequestType } from '@/lib/api/streaming-request-pool';
+import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
 // Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
@@ -37,6 +38,14 @@ export async function findRelevantPathsAction(
     }
     
     console.log(`[PathFinder] Finding relevant paths for task: ${taskDescription}`);
+    
+    // Get project-specific model settings
+    const modelSettings = await getModelSettingsForProject(projectDirectory);
+    const pathfinderSettings = modelSettings?.pathfinder || {
+      model: GEMINI_FLASH_MODEL,
+      maxTokens: FLASH_MAX_OUTPUT_TOKENS,
+      temperature: 0.6
+    };
     
     // Get all non-ignored files in the project
     const allFiles = await getAllNonIgnoredFiles(projectDirectory);
@@ -88,11 +97,13 @@ Please list the most relevant file paths for this task, one per line:`;
     
     // Call Gemini Flash through our client
     const result = await geminiClient.sendRequest(prompt, {
-      model: GEMINI_FLASH_MODEL,
+      model: pathfinderSettings.model,
       systemPrompt,
-      temperature: 0.6, // Lower temperature for more deterministic results
-      maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS,
-      requestType: RequestType.CODE_ANALYSIS
+      temperature: pathfinderSettings.temperature,
+      maxOutputTokens: pathfinderSettings.maxTokens,
+      requestType: RequestType.CODE_ANALYSIS,
+      projectDirectory,
+      taskType: 'pathfinder'
     });
     
     if (!result.isSuccess || !result.data) {
@@ -163,14 +174,15 @@ Please list the most relevant file paths for this task, one per line:`;
 export async function findRelevantFilesAction(
   projectDirectory: string,
   taskDescription: string,
-  specificFilePaths?: string[]
+  sessionId: string,
+  options?: { modelOverride?: string }
 ): Promise<ActionState<{ relevantPaths: string[], enhancedTaskDescription: string }>> {
   try {
     // First step: Find relevant paths
     const pathFinderResult = await findAndValidateRelevantPaths(
       projectDirectory,
       taskDescription,
-      specificFilePaths
+      options
     );
 
     if (!pathFinderResult.isSuccess || !pathFinderResult.data) {
@@ -219,49 +231,51 @@ export async function findRelevantFilesAction(
 async function findAndValidateRelevantPaths(
   projectDirectory: string,
   taskDescription: string,
-  specificFilePaths?: string[]
+  options?: { modelOverride?: string }
 ): Promise<ActionState<{ paths: string[] }>> {
-  // Validate inputs
-  if (!taskDescription || !taskDescription.trim()) {
-    return { isSuccess: false, message: "Task description cannot be empty." };
-  }
-
-  if (!projectDirectory || !projectDirectory.trim()) {
-    return { isSuccess: false, message: "Project directory cannot be empty." };
-  }
-
   try {
-    // Get files to analyze
-    let allFilePaths: string[];
-    if (specificFilePaths && specificFilePaths.length > 0) {
-      // If specific files are provided, use those
-      allFilePaths = specificFilePaths;
-      console.log(`Using ${allFilePaths.length} provided specific files for analysis`);
-    } else {
-      // Otherwise get all non-ignored files
-      const result = await getAllNonIgnoredFiles(projectDirectory);
-      allFilePaths = result.files;
-      console.log(`Found ${allFilePaths.length} files in the project directory.`);
+    if (!projectDirectory) {
+      return { isSuccess: false, message: "Project directory is required" };
     }
     
-    if (!allFilePaths || allFilePaths.length === 0) {
-      return { isSuccess: false, message: "No files to analyze." };
+    if (!taskDescription || taskDescription.trim().length < 10) {
+      return { isSuccess: false, message: "Please provide a detailed task description" };
     }
+    
+    // Get project-specific model settings
+    const modelSettings = await getModelSettingsForProject(projectDirectory);
+    const pathfinderSettings = modelSettings?.pathfinder || {
+      model: GEMINI_FLASH_MODEL,
+      maxTokens: FLASH_MAX_OUTPUT_TOKENS,
+      temperature: 0.6
+    };
+    
+    // Use model override if specified
+    const modelToUse = options?.modelOverride || pathfinderSettings.model;
+    
+    console.log(`[PathFinder] Finding relevant paths for task: ${taskDescription}`);
+    
+    // Get all non-ignored files in the project
+    const allFiles = await getAllNonIgnoredFiles(projectDirectory);
+    if (!allFiles || allFiles.files.length === 0) {
+      return { isSuccess: false, message: "No files found in project directory" };
+    }
+    
+    console.log(`[PathFinder] Found ${allFiles.files.length} files in project`);
     
     // Generate directory tree for context
     const dirTree = await generateDirectoryTree(projectDirectory);
     
-    // Create a system prompt that instructs the model to find paths
+    // Create a system prompt that instructs the model
     const systemPrompt = `You are a code path finder that helps identify the most relevant files for a given programming task.
 Given a project structure and a task description, analyze which files would be most important to understand or modify for the task.
 Return ONLY file paths and no other commentary, with one file path per line.
-Ignore node_modules, build directories, and binary files unless they are directly relevant to the task.
 Unless the task specifically mentions tests, favor implementation files over test files.
 
 When analyzing relevance, ensure you include:
 1. Direct dependencies and imported modules used by core files
 2. Parent files that call or include the main components
-3. Documentation files (.md, .mdx) that explain relevant features
+3. Documentation files (.md, .mdc) that explain relevant features
 4. Configuration files that affect the behavior of relevant components
 5. Higher-level components that help understand the architecture
 
@@ -291,11 +305,13 @@ Please list the most relevant file paths for this task, one per line:`;
     
     // Call Gemini Flash through our client
     const result = await geminiClient.sendRequest(prompt, {
-      model: GEMINI_FLASH_MODEL,
+      model: modelToUse,
       systemPrompt,
-      temperature: 0.5, // Lower temperature for more deterministic results
-      maxOutputTokens: FLASH_MAX_OUTPUT_TOKENS,
-      requestType: RequestType.CODE_ANALYSIS
+      temperature: pathfinderSettings.temperature,
+      maxOutputTokens: pathfinderSettings.maxTokens,
+      requestType: RequestType.CODE_ANALYSIS,
+      projectDirectory,
+      taskType: 'pathfinder'
     });
     
     if (!result.isSuccess || !result.data) {
@@ -365,249 +381,125 @@ async function generateGuidanceForPaths(
   taskDescription: string,
   relevantPaths: string[]
 ): Promise<ActionState<{ guidance: string }>> {
-  if (!relevantPaths || relevantPaths.length === 0) {
-    return { isSuccess: false, message: "No relevant paths provided for guidance generation." };
-  }
-
   try {
-    console.log(`Generating guidance for ${relevantPaths.length} relevant paths`);
-
-    // Read content of all relevant files
-    const fileInfos: { path: string, content: string, tokens: number }[] = [];
-    const MAX_FILE_SIZE = 100 * 1024; // 100KB max per file to prevent token overflow
-    let totalFiles = 0;
-    let totalSkippedBinaryFiles = 0;
-    let totalSkippedLargeFiles = 0;
-    let totalErrorFiles = 0;
+    if (!projectDirectory) {
+      return { isSuccess: false, message: "Project directory is required" };
+    }
     
-    // Calculate token count for task description
-    const taskDescriptionTokens = await estimateTokens(taskDescription);
-    console.log(`Task description token count: ${taskDescriptionTokens}`);
+    if (!relevantPaths || relevantPaths.length === 0) {
+      return { isSuccess: false, message: "No relevant paths provided" };
+    }
     
-    // Process all files and gather token counts
-    for (const filePath of relevantPaths) {
-      // Skip binary files by extension
-      const ext = path.extname(filePath).toLowerCase();
-      if (BINARY_EXTENSIONS.has(ext)) {
-        totalSkippedBinaryFiles++;
-        continue;
-      }
-      
+    // Get project-specific model settings
+    const modelSettings = await getModelSettingsForProject(projectDirectory);
+    const guidanceSettings = modelSettings?.guidance_generation || {
+      model: GEMINI_PRO_PREVIEW_MODEL,
+      maxTokens: 16384,
+      temperature: 0.7
+    };
+    
+    console.log(`[PathFinder] Generating guidance for ${relevantPaths.length} paths`);
+    
+    // Limit to a reasonable number of paths to avoid context overflow
+    const limitedPaths = relevantPaths.slice(0, 15);
+    
+    // We'll build up file contents to include in our prompt
+    const fileInfos: { path: string; content: string | null }[] = [];
+    
+    // Get contents of each relevant file
+    for (const filePath of limitedPaths) {
       try {
         const fullPath = path.join(projectDirectory, filePath);
-        const stats = await fs.stat(fullPath);
+        const content = await fs.readFile(fullPath, 'utf8');
         
-        // Skip files that are too large
-        if (stats.size > MAX_FILE_SIZE) {
-          console.log(`Skipping large file: ${filePath} (${stats.size} bytes)`);
-          totalSkippedLargeFiles++;
-          continue;
-        }
-        
-        const buffer = await fs.readFile(fullPath);
-        
-        // Skip binary files based on content analysis
-        if (await isBinaryFile(buffer)) {
-          console.log(`Skipping detected binary file: ${filePath}`);
-          totalSkippedBinaryFiles++;
-          continue;
-        }
-        
-        // Add the file content
-        const content = buffer.toString('utf8');
-        const tokens = await estimateTokens(content);
-        
-        fileInfos.push({
-          path: filePath,
-          content,
-          tokens
-        });
-        
-        totalFiles++;
-      } catch (err) {
-        console.log(`Error reading file ${filePath}:`, err);
-        totalErrorFiles++;
-        // Continue with other files if one fails
-      }
-    }
-    
-    console.log(`Processed ${totalFiles} files. Binary: ${totalSkippedBinaryFiles}, Too Large: ${totalSkippedLargeFiles}, Errors: ${totalErrorFiles}`);
-    console.log(`Total files collected: ${fileInfos.length}`);
-    
-    // Sort files by number of tokens (smallest first) - helps with bin packing
-    fileInfos.sort((a, b) => a.tokens - b.tokens);
-    
-    // Create batches of files that fit within token limits
-    const batches: Array<{ files: Array<{ path: string, content: string }>, tokenCount: number }> = [];
-    let currentBatch: { files: Array<{ path: string, content: string }>, tokenCount: number } = { files: [], tokenCount: 0 };
-    
-    // Starting token overhead: system prompt + task description + extra formatting overhead
-    const SYSTEM_PROMPT_TOKENS = 600; // Approximate tokens for system prompt
-    let currentBatchTokens = SYSTEM_PROMPT_TOKENS + taskDescriptionTokens;
-    const MAX_BATCH_TOKENS = MAX_INPUT_TOKENS - 10000; // Allow buffer for JSON overhead
-    
-    for (const fileInfo of fileInfos) {
-      // If this file would push the batch over limit, finalize the current batch and start a new one
-      if (currentBatchTokens + fileInfo.tokens > MAX_BATCH_TOKENS) {
-        if (currentBatch.files.length > 0) {
-          batches.push(currentBatch);
-          
-          // Start a new batch with the task description as overhead
-          currentBatchTokens = SYSTEM_PROMPT_TOKENS + taskDescriptionTokens;
-          currentBatch = { files: [], tokenCount: currentBatchTokens };
-        }
-      }
-      
-      // Add file to current batch
-      currentBatch.files.push({
-        path: fileInfo.path,
-        content: fileInfo.content
-      });
-      
-      currentBatchTokens += fileInfo.tokens;
-      currentBatch.tokenCount = currentBatchTokens;
-    }
-    
-    // Add the last batch if it has files
-    if (currentBatch.files.length > 0) {
-      batches.push(currentBatch);
-    }
-    
-    console.log(`Split into ${batches.length} batches for guidance generation`);
-
-    // System prompt template for guidance analysis
-    const systemPrompt = `You are a senior principal architect and expert software engineer tasked with providing exceptional, production-quality implementation guidance.
-Given code files and a task description, you must provide concrete, executable instructions that enable a developer to implement the solution with minimal uncertainty.
-
-Your guidance MUST include:
-1. CONCRETE technical specifications with explicit API signatures, type definitions, and return values
-2. EXECUTABLE step-by-step implementation instructions with specific file paths and line numbers where possible
-3. ACTUAL CODE SNIPPETS showing critical implementation details (not pseudocode)
-4. EXACT imports and dependencies needed with version numbers
-5. CRITICAL edge cases with explicit handling code
-6. SPECIFIC performance considerations with measurable targets
-
-Follow this structured format in your response:
-<guidance>
-## Task Analysis
-[PRECISE understanding of the task requirements and identified technical challenges]
-
-## Core Implementation Plan
-[NUMBERED step-by-step plan with EXPLICIT file locations, code snippets, and imports]
-
-## Technical Specifications
-[CONCRETE API specs, type definitions, data models, validation rules, and expected behavior]
-
-## Code Samples
-[ACTUAL functioning code snippets that demonstrate key implementation points, with comments explaining the important logic]
-
-## Integration Points
-[SPECIFIC files and functions that need to be modified to integrate this solution, with exact import statements]
-
-## Error Handling & Edge Cases
-[COMPLETE error handling code and edge case solutions with explicit catch blocks]
-
-## Testing Strategy
-[EXACT test scenarios with expected inputs and outputs, including both happy and error paths]
-
-## Context-Specific Considerations
-[SPECIFIC architectural patterns used in THIS codebase, and how the solution aligns with the existing patterns]
-
-Only reference files you've been provided in the input. Do not hallucinate file paths.
-</guidance>
-
-Your guidance should be extremely precise, leaving no room for ambiguity. Focus on production-ready implementation details that will ensure successful execution on the first attempt, with proper error handling, performance considerations, and architecture alignment. Analyze existing patterns in the codebase and ensure your solution is compatible with them. Provide specific code examples for all complex or critical sections, and make sure your solution can be directly implemented without requiring additional clarification.`;
-
-    // Process each batch and collect results
-    let enhancedTaskDescription = '';
-    let batchIndex = 0;
-    for (const batch of batches) {
-      batchIndex++;
-      console.log(`Processing guidance batch ${batchIndex}/${batches.length} with ${batch.files.length} files and ${batch.tokenCount} tokens`);
-      
-      let fullPrompt = `Task Description: ${taskDescription}\n\n`;
-      
-      // Add clear instructions directly in the user prompt
-      fullPrompt += `CRITICAL INSTRUCTIONS:
-1. ONLY include file paths from the list below - do not reference any files not shown here
-2. Analyze the provided files to generate guidance for completing the task
-3. Format your response as requested below
-
-Files to analyze:\n`;
-      
-      // Create a list of file paths for reference
-      fullPrompt += "\nAvailable files:\n";
-      const availableFiles = batch.files.map(file => file.path);
-      for (const filePath of availableFiles) {
-        fullPrompt += `- ${filePath}\n`;
-      }
-      
-      // Now include full file contents
-      fullPrompt += "\nFile contents:\n";
-      for (const file of batch.files) {
-        fullPrompt += `\nFile: ${file.path}\n${'='.repeat(file.path.length + 6)}\n${file.content}\n\n`;
-      }
-      
-      fullPrompt += "\nRESPONSE FORMAT: Provide guidance for this task using the following format:\n";
-      fullPrompt += "<guidance>\n[Your analysis explaining how these files relate to the task and providing insights for implementation]\n</guidance>";
-      
-      try {
-        // Call Gemini API with CODE_ANALYSIS request type
-        const result = await geminiClient.sendRequest(fullPrompt, {
-          model: GEMINI_PRO_PREVIEW_MODEL,
-          temperature: 0.9, // Higher temperature for more creative responses
-          maxOutputTokens: 8000,
-          requestType: RequestType.CODE_ANALYSIS
-        });
-        
-        if (result.isSuccess && result.data) {
-          // Try to extract guidance content
-          const guidance = extractGuidanceContent(result.data);
-          if (guidance) {
-            // Add batch number if we have multiple batches
-            if (batches.length > 1) {
-              enhancedTaskDescription += `\n\n== Analysis Batch ${batchIndex} ==\n${guidance}`;
-            } else {
-              enhancedTaskDescription += guidance;
-            }
-          } else {
-            console.log(`No guidance content found in batch ${batchIndex} response`);
-            
-            // Try to extract as much useful content as possible
-            const lines = result.data.split('\n').filter(line => 
-              !line.includes('<relevant_files>') && 
-              !line.includes('</relevant_files>') && 
-              line.trim().length > 0 &&
-              !line.match(/^file_path_\d+$/) // Filter out placeholder lines
-            );
-            
-            if (lines.length > 0) {
-              if (batches.length > 1) {
-                enhancedTaskDescription += `\n\n== Analysis Batch ${batchIndex} ==\n${lines.join('\n')}`;
-              } else {
-                enhancedTaskDescription += lines.join('\n');
-              }
-            }
-          }
+        // Skip binary files and very large files
+        if (content.length > 50000) {
+          fileInfos.push({ path: filePath, content: `[File too large: ${Math.round(content.length / 1024)}KB]` });
+        } else if (isBinaryFile(Buffer.from(content))) {
+          fileInfos.push({ path: filePath, content: `[Binary file: ${path.extname(filePath)}]` });
         } else {
-          console.error(`Error processing guidance batch ${batchIndex}:`, result.message);
+          fileInfos.push({ path: filePath, content });
         }
       } catch (error) {
-        console.error(`Error calling Gemini API for guidance batch ${batchIndex}:`, error);
+        console.warn(`[PathFinder] Could not read file: ${filePath}`, error);
+        fileInfos.push({ path: filePath, content: null });
       }
     }
     
-    if (enhancedTaskDescription.length === 0) {
-      return { isSuccess: false, message: "No guidance could be generated." };
+    // Build up the system prompt
+    const systemPrompt = `You are an expert coding assistant that helps developers understand code and improve their tasks.
+Given a task description and relevant files from a project, analyze the code to provide clear, practical guidance.
+
+Your response MUST include:
+1. A concise summary of what these files do and how they work together
+2. Focused analysis of the code patterns, architecture, and data flow
+3. Specific advice for implementing the described task
+4. Details about any gotchas, edge cases, or important considerations
+
+Format your response in markdown. Include relevant code snippets or examples when they help illustrate a point.
+Be concise but comprehensive. Focus on helping the developer implement their task efficiently with a solid understanding of the codebase.`;
+    
+    // Build the prompt with task description and file contents
+    let prompt = `Task Description: ${taskDescription}\n\n`;
+    prompt += `Here are the most relevant files for this task:\n\n`;
+    
+    for (const fileInfo of fileInfos) {
+      if (fileInfo.content === null) {
+        prompt += `File: ${fileInfo.path}\n[Could not read file]\n\n`;
+      } else if (fileInfo.content.startsWith('[')) {
+        prompt += `File: ${fileInfo.path}\n${fileInfo.content}\n\n`;
+      } else {
+        prompt += `File: ${fileInfo.path}\n\`\`\`\n${fileInfo.content}\n\`\`\`\n\n`;
+      }
     }
     
-    console.log(`Generated ${enhancedTaskDescription.length} characters of guidance`);
+    prompt += `Based on these files and the task description, please provide guidance for implementing the task efficiently.`;
     
-    return {
-      isSuccess: true,
-      message: `Generated guidance successfully`,
-      data: { guidance: enhancedTaskDescription }
-    };
+    // Estimate tokens to ensure we're within limits
+    const promptTokens = await estimateTokens(prompt);
+    const systemPromptTokens = await estimateTokens(systemPrompt);
+    const estimatedTokens = promptTokens + systemPromptTokens;
+    const tokenLimit = 1000000; // 1M token limit for context window
+    
+    if (estimatedTokens > tokenLimit) {
+      // If we're over the token limit, truncate the files
+      console.warn(`[PathFinder] Prompt too large (${estimatedTokens} tokens), truncating files`);
+      return {
+        isSuccess: false,
+        message: `The combined file contents exceed the token limit. Try selecting fewer files or focusing on smaller files.`
+      };
+    }
+    
+    // Call Gemini Pro through our client
+    const result = await geminiClient.sendRequest(prompt, {
+      model: guidanceSettings.model,
+      systemPrompt,
+      temperature: guidanceSettings.temperature,
+      maxOutputTokens: guidanceSettings.maxTokens,
+      requestType: RequestType.TASK_GUIDANCE,
+      projectDirectory,
+      taskType: 'guidance_generation'
+    });
+    
+    if (!result.isSuccess || !result.data) {
+      return { isSuccess: false, message: result.message || "Failed to generate guidance" };
+    }
+    
+    // Extract guidance content from the response
+    const guidance = extractGuidanceContent(result.data);
+    
+    if (guidance) {
+      return {
+        isSuccess: true,
+        message: `Generated guidance successfully`,
+        data: { guidance }
+      };
+    } else {
+      return {
+        isSuccess: false,
+        message: "No guidance content found in the response"
+      };
+    }
   } catch (error) {
     console.error('Error in generateGuidanceForPaths:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);

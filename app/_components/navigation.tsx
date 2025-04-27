@@ -1,43 +1,52 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { Home } from 'lucide-react';
+import { Home, Settings, MoreHorizontal } from 'lucide-react';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from '@/components/ui/dropdown-menu';
 
 export function Navigation() {
   const pathname = usePathname();
   
-  const navItems = [
-    {
-      name: 'Home',
-      href: '/',
-      icon: <Home className="h-4 w-4 mr-2" />
-    }
-  ];
-  
   return (
-    <nav className="flex items-center space-x-2 py-4">
-      {navItems.map((item) => (
-        <Button
-          key={item.href}
-          variant={pathname === item.href ? 'secondary' : 'ghost'}
-          size="sm"
-          asChild
-          className={cn(
-            pathname === item.href 
-              ? 'bg-secondary text-secondary-foreground' 
-              : 'text-muted-foreground hover:text-foreground',
-            'transition-all'
-          )}
-        >
-          <Link href={item.href}>
-            {item.icon}
-            {item.name}
-          </Link>
-        </Button>
-      ))}
-    </nav>
+    <div className="flex items-center justify-between py-4 border-b mb-6">
+      <div className="flex space-x-2">
+        <Link href="/">
+          <Button variant={pathname === '/' ? 'default' : 'ghost'} size="sm">
+            <Home className="h-4 w-4 mr-2" />
+            Home
+          </Button>
+        </Link>
+        <Link href="/settings">
+          <Button variant={pathname === '/settings' ? 'default' : 'ghost'} size="sm">
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
+        </Link>
+      </div>
+      
+      <div className="flex items-center">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <MoreHorizontal className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => window.location.href = '/'}>
+              Reload Application
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 } 
