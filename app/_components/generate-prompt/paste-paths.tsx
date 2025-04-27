@@ -64,7 +64,7 @@ export default function PastePaths({
     setCorrectionSuccess(null);
 
     try {
-      const result = await correctPathsAction(projectDirectory, value);
+      const result = await correctPathsAction(value);
       if (result.isSuccess && result.data) {
         onChange(result.data.correctedPaths.join('\n')); // Update the textarea with corrected paths
         setCorrectionSuccess(result.message || "Paths checked/corrected successfully.");

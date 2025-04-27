@@ -14,6 +14,8 @@ function isValidRegex(pattern: string): boolean {
 export async function generateRegexPatternsAction(
   taskDescription: string,
   directoryTree?: string,
+  projectDirectory?: string,
+  sessionId?: string
 ): Promise<ActionState<{ titleRegex?: string; contentRegex?: string }>> {
   if (!taskDescription || !taskDescription.trim()) {
     return { isSuccess: false, message: "Task description cannot be empty." };
@@ -69,7 +71,7 @@ Now, generate the JSON for the provided task description.`,
     };
     console.log("Sending payload to Anthropic for regex generation...");
 
-    const result: ActionState<string> = await claudeClient.sendRequest(payload);
+    const result: ActionState<string> = await claudeClient.sendRequest(payload, sessionId, 'regex_generation', projectDirectory);
 
     if (!result.isSuccess || !result.data) {
       console.error("Anthropic API call failed:", result.message);

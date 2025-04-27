@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository, getSessionWithRequests, setupDatabase } from '@/lib/db'; // Import getSessionWithRequests
-import { Session } from '@/types'; // Keep Session import
+import { sessionRepository, getSessionWithRequests, setupDatabase } from '@/lib/db';
+import { Session } from '@/types';
+
 // GET /api/session?id=...
 // Fetches a single session by its ID
 export async function GET(request: NextRequest) {
@@ -11,9 +12,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Session ID is required' }, { status: 400 });
   }
 
-  await setupDatabase();
-
   try {
+    await setupDatabase();
+    
     let session: Session | null;
     
     if (includeRequests) {
@@ -26,7 +27,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    return NextResponse.json(session);
+    // Ensure we're always returning the session in a consistent structure
+    return NextResponse.json({ session });
   } catch (error: unknown) {
     console.error('Error fetching session:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch session';

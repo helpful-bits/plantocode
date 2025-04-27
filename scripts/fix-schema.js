@@ -131,17 +131,6 @@ db.run('PRAGMA foreign_keys=off;', async (err) => {
     `);
     console.log('- Ensured cached_state table exists with correct schema');
 
-    // Ensure project_settings table exists with project_hash as a column
-    await executeQuery(`
-      CREATE TABLE IF NOT EXISTS project_settings (
-        project_hash TEXT PRIMARY KEY,
-        active_session_id TEXT,
-        updated_at INTEGER,
-        FOREIGN KEY (active_session_id) REFERENCES sessions(id) ON DELETE SET NULL
-      )
-    `);
-    console.log('- Ensured project_settings table exists with project_hash as primary key');
-
     // Ensure gemini_requests table exists
     await executeQuery(`
       CREATE TABLE IF NOT EXISTS gemini_requests (
@@ -215,18 +204,10 @@ db.run('PRAGMA foreign_keys=off;', async (err) => {
       console.log(`- Marked migration ${file} as applied`);
     }
 
-    // Insert a default entry in project_settings for the current project
+    // Add entry in active_sessions for the current project
     const currentProjectDir = process.cwd();
     const currentProjectHash = hashString(currentProjectDir);
     
-    await executeQuery(`
-      INSERT OR IGNORE INTO project_settings 
-      (project_hash, updated_at) 
-      VALUES ('${currentProjectHash}', ${now})
-    `);
-    console.log(`- Added default project settings for current directory: ${currentProjectDir} (hash: ${currentProjectHash})`);
-
-    // Add entry in active_sessions 
     await executeQuery(`
       INSERT OR IGNORE INTO active_sessions
       (project_directory, project_hash, updated_at)
@@ -249,9 +230,8 @@ db.run('PRAGMA foreign_keys=off;', async (err) => {
 // Helper function to execute a query
 function executeQuery(sql) {
   return new Promise((resolve, reject) => {
-    db.exec(sql, (err) => {
+    db.run(sql, (err) => {
       if (err) {
-        console.error(`Error executing SQL: ${sql.substring(0, 100)}...`, err.message);
         reject(err);
       } else {
         resolve();
@@ -265,10 +245,10 @@ function getTableColumns(tableName) {
   return new Promise((resolve, reject) => {
     db.all(`PRAGMA table_info(${tableName})`, (err, rows) => {
       if (err) {
-        console.error(`Error getting columns for ${tableName}:`, err.message);
         reject(err);
       } else {
-        resolve(rows.map(row => row.name));
+        const columns = rows.map(row => row.name);
+        resolve(columns);
       }
     });
   });
@@ -277,31 +257,18 @@ function getTableColumns(tableName) {
 // Helper function to get all tables
 function getTables() {
   return new Promise((resolve, reject) => {
-    db.all(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-      (err, rows) => {
-        if (err) {
-          console.error('Error getting tables:', err.message);
-          reject(err);
-        } else {
-          resolve(rows.map(row => row.name));
-        }
+    db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        const tables = rows.map(row => row.name);
+        resolve(tables);
       }
-    );
+    });
   });
 }
 
-// Implementation of hashString to match the one used in the application
+// Helper function to create hash
 function hashString(str) {
-  // Treat null, undefined, empty string, or 'global' as 'global' consistently
-  if (str === 'global' || !str) return 'global';
-  
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  // Convert to hex string and pad to ensure consistent length
-  return (hash >>> 0).toString(16).padStart(8, '0'); // Pad to ensure consistent length
+  return crypto.createHash('sha256').update(str).digest('hex');
 } 

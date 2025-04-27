@@ -2,8 +2,9 @@
 
 import { ActionState } from "@/types";
 import geminiClient from '@/lib/api/gemini-client';
-import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants'; // Use Pro model for better analysis
+import { GEMINI_PRO_PREVIEW_MODEL, MODEL_SETTINGS_KEY } from '@/lib/constants'; // Use Pro model for better analysis
 import { generateDirectoryTree } from '@/lib/directory-tree';
+import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
 const TASK_ENHANCER_MODEL_ID = GEMINI_PRO_PREVIEW_MODEL; // Use Pro model
 
@@ -152,6 +153,16 @@ export async function enhanceTaskDescriptionAction({
   }
 
   try {
+    // Get model settings for the project
+    const projectSettings = await getModelSettingsForProject(projectDirectory);
+    
+    // Get task enhancement settings or use defaults
+    const enhancementSettings = projectSettings?.task_enhancement || {
+      model: TASK_ENHANCER_MODEL_ID,
+      maxTokens: 16384,
+      temperature: 0.9
+    };
+    
     // Generate project structure tree
     const projectStructure = await generateDirectoryTree(projectDirectory);
     
@@ -242,10 +253,13 @@ Provide a detailed, step-by-step implementation plan for this task using the req
     const result = await geminiClient.sendRequest(
       userPromptContent,
       {
-        model: GEMINI_PRO_PREVIEW_MODEL,
+        model: enhancementSettings.model,
         systemPrompt: systemPrompt,
-        maxOutputTokens: 16384,
-        temperature: 0.9
+        maxOutputTokens: enhancementSettings.maxTokens,
+        temperature: enhancementSettings.temperature,
+        taskType: 'task_enhancement',
+        apiType: 'gemini',
+        projectDirectory: projectDirectory
       }
     );
 

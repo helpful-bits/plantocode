@@ -2,7 +2,8 @@
 import { normalizePath } from '@/lib/path-utils';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Code, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { safeFetch } from '@/lib/utils';
 
 interface IdeIntegrationProps {
   filePath: string;
@@ -12,6 +13,38 @@ interface IdeIntegrationProps {
 
 export function IdeIntegration({ filePath, tooltip = "Open in editor", onError }: IdeIntegrationProps) {
   const [error, setError] = useState<string | null>(null); // Add error state
+  const [isOpening, setIsOpening] = useState(false);
+
+  const openInIDE = useCallback(async (filePath: string, line?: number, column?: number) => {
+    try {
+      setIsOpening(true);
+      
+      const response = await safeFetch('/api/open-in-ide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          filePath,
+          line,
+          column
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to open file in IDE (${response.status})`);
+      }
+      
+      const result = await response.json();
+      console.log('Opened file in IDE:', result);
+    } catch (error) {
+      console.error('Error opening file in IDE:', error);
+      setError(error instanceof Error ? error.message : 'Failed to open file in IDE');
+    } finally {
+      setIsOpening(false);
+    }
+  }, []);
 
   const handleOpenInIde = async () => {
     setError(null); // Clear previous errors
@@ -24,21 +57,7 @@ export function IdeIntegration({ filePath, tooltip = "Open in editor", onError }
 
     try {
       // Call an API endpoint to open the file in the system's default IDE
-      const response = await fetch('/api/open-in-ide', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Pass the raw path, let the server resolve and normalize it for security
-        body: JSON.stringify({ filePath: filePath }),
-      });
-
-      if (!response.ok) {
-          // Use the specific error message from API if available
-          const errorData = await response.json(); // Await JSON response
-          const errorMsg = errorData.error || `Failed to open in IDE (Status: ${response.status})`;          setError(errorMsg); // Set error state
-          if (onError) onError(errorMsg); // Call error callback
-          throw new Error(errorMsg);
-      }
-      // Success - no error to display
+      await openInIDE(filePath);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'An unknown error occurred';
       setError(errorMsg);

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import VoiceTranscription from "../_components/voice-transcription";
+import { P, Subtle } from "@/components/ui/typography";
 
 const TaskDescriptionArea = React.lazy(() => import("../_components/task-description"));
 
@@ -83,7 +84,7 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
                 <Wand2 className="h-4 w-4 mr-2" />
                 {isFindingFiles && !pastedPaths ? "Finding Files..." : "Find Relevant Files"}
               </Button>
-              <p className="text-xs text-muted-foreground mt-1">Uses AI to analyze the task and suggest relevant files, populating the 'Paste File Paths' area above.</p>
+              <p className="text-xs text-muted-foreground mt-1">Uses AI to analyze the task and suggest relevant files, populating the &apos;Paste File Paths&apos; area above.</p>
             </div>
           )}
           
@@ -105,6 +106,9 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
             <p className="text-xs text-muted-foreground mt-1">
               Uses AI to analyze selected files and provide high-level implementation guidance or architectural insights.
             </p>
+            <Subtle className="text-xs">
+              This will be shared with AI, so don&apos;t include sensitive info. Be as specific as possible for better results.
+            </Subtle>
           </div>
 
           <div className="flex flex-col">
