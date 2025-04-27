@@ -9,4 +9,11 @@ export * from './dialog';
 export * from "./toast"
 export * from "./toaster"
 export * from "./use-toast"
+export * from "./accordion"
+export * from "./alert"
+export * from "./badge"
+export * from "./dropdown-menu"
+export * from "./label"
+export * from "./progress"
+export * from "./typography" // Add typography export
  

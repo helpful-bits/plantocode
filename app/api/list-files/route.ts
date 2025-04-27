@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-import glob from 'glob';
-import { promisify } from 'util';
-
-const globPromise = promisify(glob);
+import { glob } from 'glob';
 
 export async function POST(request: Request) {
   try {
@@ -21,8 +18,8 @@ export async function POST(request: Request) {
       // Make sure directory exists
       await fs.access(directory);
       
-      // Use glob to find files matching the pattern
-      const files = await globPromise(pattern, { 
+      // Use glob to find files matching the pattern - glob v11 returns promises directly
+      const files = await glob(pattern, { 
         cwd: directory,
         dot: false,
         nodir: true,

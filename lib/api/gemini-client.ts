@@ -2,12 +2,41 @@ import { ActionState } from "@/types";
 import requestQueue from "./request-queue";
 import fsManager from "../file/fs-manager";
 import { GEMINI_FLASH_MODEL, GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
-import { sessionRepository } from '@/lib/db';
 import { setupDatabase } from '@/lib/db'; // Use index export
 import { WriteStream } from "fs";
 import { stripMarkdownCodeFences } from '@/lib/utils';
 import streamingRequestPool, { RequestType } from "./streaming-request-pool";
 import fs from 'fs/promises';
+import { getModelSettingsForProject } from "@/actions/project-settings-actions";
+import { createChatHistory } from '../codebase/chat-history';
+import { sessionRepository } from '@/lib/db/repository-factory';
+
+// Temporary mock for sessionRepository until properly implemented
+const sessionRepository = {
+  createBackgroundJob: async (
+    sessionId: string,
+    prompt: string,
+    apiType: string,
+    taskType: string,
+    model: string,
+    maxTokens: number
+  ) => {
+    console.log(`[MOCK] Creating background job for session ${sessionId}`);
+    return { id: `mock-job-${Date.now()}` };
+  },
+  
+  updateBackgroundJobStatus: async (
+    jobId: string,
+    status: string,
+    startTime: number | null,
+    endTime: number | null,
+    progress: number | null,
+    message: string
+  ) => {
+    console.log(`[MOCK] Updating job ${jobId} to status ${status}: ${message}`);
+    return true;
+  }
+};
 
 // Constants
 const GENERATE_CONTENT_API = "generateContent";
@@ -30,6 +59,9 @@ export interface GeminiRequestOptions {
   sessionId?: string;
   systemPrompt?: string;
   requestType?: RequestType;
+  apiType?: string;
+  taskType?: string;
+  projectDirectory?: string;
 }
 
 export interface GeminiRequestPayload {
@@ -87,6 +119,65 @@ class GeminiClient {
       return { isSuccess: false, message: "Gemini API key not found in environment variables" };
     }
     
+    // Create a job if sessionId and taskType are provided
+    let job: BackgroundJob | null = null;
+    
+    // Load project settings if projectDirectory is provided
+    const taskType = options.taskType || 'xml_generation';
+    const projectDirectory = options.projectDirectory;
+    
+    if (projectDirectory && taskType) {
+      try {
+        const modelSettings = await getModelSettingsForProject(projectDirectory);
+        if (modelSettings && modelSettings[taskType as any]) {
+          const settings = modelSettings[taskType as any];
+          
+          // Apply settings if not explicitly overridden in options
+          if (settings.model && !options.model) {
+            options.model = settings.model;
+          }
+          
+          if (settings.maxTokens && !options.maxOutputTokens) {
+            options.maxOutputTokens = settings.maxTokens;
+          }
+          
+          if (settings.temperature !== undefined && !options.temperature) {
+            options.temperature = settings.temperature;
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to load project settings for ${projectDirectory}:`, err);
+      }
+    }
+    
+    // Create background job if sessionId is provided
+    if (options.sessionId && options.taskType) {
+      await setupDatabase();
+      
+      try {
+        job = await sessionRepository.createBackgroundJob(
+          options.sessionId,
+          userPromptContent,
+          options.apiType || 'gemini',
+          options.taskType,
+          options.model || GEMINI_FLASH_MODEL,
+          options.maxOutputTokens || MAX_OUTPUT_TOKENS
+        );
+        
+        // Update to preparing status
+        await sessionRepository.updateBackgroundJobStatus(
+          job.id,
+          'preparing',
+          null,
+          null,
+          null,
+          'Setting up Gemini API request'
+        );
+      } catch (error) {
+        console.error(`[Gemini Client] Error creating background job:`, error);
+      }
+    }
+    
     // Extract options
     const modelId = options.model || GEMINI_FLASH_MODEL;
     const maxOutputTokens = options.maxOutputTokens || MAX_OUTPUT_TOKENS;
@@ -101,77 +192,154 @@ class GeminiClient {
     // This ensures proper prioritization alongside streaming requests
     return streamingRequestPool.execute(
       async () => {
-        // Build the API URL
-        const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?key=${apiKey}`;
-        
-        // Build request payload
-        const payload: GeminiRequestPayload = {
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: userPromptContent }
-              ]
-            }
-          ],
-          generationConfig: {
-            maxOutputTokens,
-            temperature,
-            topP,
-            topK,
-          },
-        };
-        
-        // Add system instruction if provided
-        if (options.systemPrompt) {
-          payload.systemInstruction = {
-            parts: [
-              { text: options.systemPrompt }
-            ]
-          };
-        }
-        
-        // Make the API request
-        console.log(`[Gemini Client] Calling ${modelId}`);
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[Gemini Client] Error: ${response.status} ${response.statusText}`, errorText);
-          
-          // Handle different error types
-          if (response.status === 429) {
-            throw new Error(`RATE_LIMIT:${response.status}:Gemini API rate limit exceeded. Please try again later.`);
-          } else if (response.status >= 500) {
-            throw new Error(`SERVER_ERROR:${response.status}:Gemini API server error.`);
-          } else {
-            throw new Error(`API_ERROR:${response.status}:${errorText.slice(0, 150)}`);
+        try {
+          // Update job status to running if we have a job
+          if (job) {
+            await sessionRepository.updateBackgroundJobStatus(
+              job.id,
+              'running',
+              Date.now(),
+              null,
+              null,
+              'Processing with Gemini API'
+            );
           }
+          
+          // Build the API URL
+          const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?key=${apiKey}`;
+          
+          // Build request payload
+          const payload: GeminiRequestPayload = {
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: userPromptContent }
+                ]
+              }
+            ],
+            generationConfig: {
+              maxOutputTokens,
+              temperature,
+              topP,
+              topK,
+            },
+          };
+          
+          // Add system instruction if provided
+          if (options.systemPrompt) {
+            payload.systemInstruction = {
+              parts: [
+                { text: options.systemPrompt }
+              ]
+            };
+          }
+          
+          // Make the API request
+          console.log(`[Gemini Client] Calling ${modelId}`);
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[Gemini Client] Error: ${response.status} ${response.statusText}`, errorText);
+            
+            // Update job status to failed if we have a job
+            if (job) {
+              await sessionRepository.updateBackgroundJobStatus(
+                job.id,
+                'failed',
+                null,
+                Date.now(),
+                null,
+                `Error: ${response.status} ${errorText.substring(0, 100)}`
+              );
+            }
+            
+            // Handle different error types
+            if (response.status === 429) {
+              throw new Error(`RATE_LIMIT:${response.status}:Gemini API rate limit exceeded. Please try again later.`);
+            } else if (response.status >= 500) {
+              throw new Error(`SERVER_ERROR:${response.status}:Gemini API server error.`);
+            } else {
+              throw new Error(`API_ERROR:${response.status}:${errorText.slice(0, 150)}`);
+            }
+          }
+          
+          const data = await response.json();
+          
+          // Extract text from response
+          if (!data.candidates || !data.candidates.length || 
+              !data.candidates[0].content || 
+              !data.candidates[0].content.parts || 
+              !data.candidates[0].content.parts.length) {
+            console.error('[Gemini Client] No valid response data found', data);
+            
+            // Update job status to failed if we have a job
+            if (job) {
+              await sessionRepository.updateBackgroundJobStatus(
+                job.id,
+                'failed',
+                null,
+                Date.now(),
+                null,
+                'No valid response from Gemini API'
+              );
+            }
+            
+            throw new Error('No valid response from Gemini API');
+          }
+          
+          const text = data.candidates[0].content.parts[0].text;
+          
+          // Update job status to completed if we have a job
+          if (job) {
+            await sessionRepository.updateBackgroundJobStatus(
+              job.id,
+              'completed',
+              null,
+              Date.now(),
+              null,
+              'Successfully processed with Gemini API',
+              {
+                tokensReceived: data.usage?.outputTokens || 0,
+                charsReceived: text.length
+              }
+            );
+          }
+          
+          return {
+            isSuccess: true,
+            message: "Gemini API call successful",
+            data: text,
+            metadata: {
+              jobId: job?.id
+            }
+          };
+        } catch (error) {
+          // Update job status to failed if we have a job and it wasn't updated already
+          if (job) {
+            try {
+              await sessionRepository.updateBackgroundJobStatus(
+                job.id,
+                'failed',
+                null,
+                Date.now(),
+                null,
+                `Error: ${error instanceof Error ? error.message : String(error)}`
+              );
+            } catch (updateErr) {
+              console.error("[Gemini Client] Error updating job status:", updateErr);
+            }
+          }
+          
+          throw error;
         }
-        
-        const data = await response.json();
-        
-        // Extract text from response
-        if (!data.candidates || !data.candidates.length || 
-            !data.candidates[0].content || 
-            !data.candidates[0].content.parts || 
-            !data.candidates[0].content.parts.length) {
-          console.error('[Gemini Client] No valid response data found', data);
-          throw new Error('No valid response from Gemini API');
-        }
-        
-        const text = data.candidates[0].content.parts[0].text;
-        return {
-          isSuccess: true,
-          message: "Gemini API call successful",
-          data: text,
-        };
       },
       'non-streaming', // Use a constant session ID for non-streaming requests
       requestType === RequestType.CODE_ANALYSIS ? 10 : 5, // Higher priority for code analysis
@@ -189,6 +357,37 @@ class GeminiClient {
   ): Promise<ActionState<{ requestId: string, savedFilePath: string | null }>> {
     // Get the request type or default to GEMINI_CHAT
     const requestType = options.requestType || RequestType.GEMINI_CHAT;
+    const apiType = options.apiType || 'gemini';
+    const taskType = options.taskType || 'xml_generation';
+    const projectDirectory = options.projectDirectory;
+    
+    // Load project settings if projectDirectory is provided
+    if (projectDirectory && taskType) {
+      try {
+        const modelSettings = await getModelSettingsForProject(projectDirectory);
+        if (modelSettings && modelSettings[taskType as any]) {
+          const settings = modelSettings[taskType as any];
+          
+          // Apply settings if not explicitly overridden in options
+          if (settings.model && !options.model) {
+            options.model = settings.model;
+          }
+          
+          if (settings.maxTokens && !options.maxOutputTokens) {
+            options.maxOutputTokens = settings.maxTokens;
+          }
+          
+          if (settings.temperature !== undefined && !options.temperature) {
+            options.temperature = settings.temperature;
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to load project settings for ${projectDirectory}:`, err);
+      }
+    }
+    
+    const modelUsed = options.model || GEMINI_FLASH_MODEL;
+    const maxOutputTokens = options.maxOutputTokens || MAX_OUTPUT_TOKENS;
     
     // If this is a code analysis request, cancel any pending chat requests for this session
     // This prevents conflicts between the two types of requests
@@ -200,478 +399,338 @@ class GeminiClient {
     // Set appropriate priority based on request type
     const priority = requestType === RequestType.CODE_ANALYSIS ? 10 : 5;
     
-    // Use the streaming request pool to execute the request with the appropriate type
+    // Create background job record first before passing to execute
+    await setupDatabase();
+    let job: BackgroundJob | null = null;
+    
+    try {
+      job = await sessionRepository.createBackgroundJob(
+        sessionId,
+        promptText,
+        apiType as any,
+        taskType as any,
+        modelUsed,
+        maxOutputTokens
+      );
+      
+      // Update to 'preparing' status
+      await sessionRepository.updateBackgroundJobStatus(
+        job.id,
+        'preparing',
+        null,
+        null,
+        null,
+        'Setting up request'
+      );
+    } catch (error) {
+      console.error(`[Gemini Client] Error creating background job:`, error);
+      return {
+        isSuccess: false,
+        message: `Error creating background job: ${error instanceof Error ? error.message : String(error)}`,
+        error: error instanceof Error ? error : new Error(String(error))
+      };
+    }
+    
     return streamingRequestPool.execute(
       async () => { 
-        // The actual function remains the same, wrapped by the executor
-        await setupDatabase();
-        
-        let request: GeminiRequest | null = null; // Will store the request object
-        // Get API key from environment
-        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-        if (!apiKey) {
-          return { isSuccess: false, message: "GEMINI_API_KEY is not configured." };
-        }
-        let outputPath: string | null = null;
-        let releaseStream: (() => Promise<void>) | null = null;
-        let writeStream: WriteStream | null = null;
-        let totalTokens = 0;
-        let totalChars = 0;
-        
         try {
-          // Fetch Session
-          const session = await sessionRepository.getSession(sessionId);
-          if (!session) {
-            throw new Error(`Session ${sessionId} not found.`);
-          }
-          
-          // Create a new Gemini request
-          request = await sessionRepository.createGeminiRequest(sessionId, promptText); // Assign created request
-          console.log(`[Gemini Client] Created new request ${request.id} for session ${sessionId} with type ${requestType}`);
-          
-          // Update request status to running
-          const startTime = Date.now();
-          await sessionRepository.updateGeminiRequestStatus(
-            request.id,
-            'running',
-            startTime
-          );
-          
-          // Create a unique file path for the XML changes output
-          outputPath = await fsManager.createUniqueFilePath(
-            request.id,
-            session.name || 'unnamed_session',
-            session.projectDirectory,
-            'xml' // Use .xml extension for the output file
-          );
-          
-          // Create write stream for the XML output
-          const streamResult = await fsManager.createWriteStream(outputPath);
-          writeStream = streamResult.stream;
-          releaseStream = streamResult.releaseStream;
-          
-          // Update request with path and initial status
-          await sessionRepository.updateGeminiRequestStatus(
-            request.id,
-            'running',
-            startTime, 
-            null, 
-            outputPath, 
-            'Processing started, generating XML changes...',
-            { tokensReceived: 0, charsReceived: 0 } // Initial stats
-          );
-          console.log(`[Gemini Client] XML changes will be saved to: ${outputPath}`);
-          
-          // Use temperature from options or default
-          let temperature = options.temperature || 0.7;
-          
-          const modelId = options.model || GEMINI_FLASH_MODEL;
-          const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?alt=sse&key=${apiKey}`;
-
-          // Set max output tokens based on the chosen model
-          const defaultMaxOutputTokens = modelId === GEMINI_PRO_PREVIEW_MODEL ? GEMINI_PRO_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS;
-          const maxOutputTokens = options.maxOutputTokens || defaultMaxOutputTokens;
-          const topP = options.topP || 0.95;
-          const topK = options.topK || 40;
-
-          // Prepare payload
-          const payload: GeminiRequestPayload = {
-            contents: [
-              { role: "user", parts: [{ text: promptText }] }
-            ],
-            generationConfig: { 
-              responseMimeType: "text/plain", // Expecting plain text XML output
-              maxOutputTokens: maxOutputTokens, // Use calculated max tokens
-              temperature: temperature, // Use extracted or default temperature
-              topP: topP, // Use calculated topP
-              topK: topK // Use calculated topK
-            },
-          };
-          
-          // Add system instruction if provided
-          if (options.systemPrompt) {
-            payload.systemInstruction = {
-              parts: [
-                { text: options.systemPrompt }
-              ]
-            };
-          }
-          
-          // Check for cancellation just before the API call
-          const currentRequest = await sessionRepository.getGeminiRequest(request.id);
-          if (!currentRequest || currentRequest.status === 'canceled') {
-             console.log(`[Gemini Client] Request ${request.id}: Processing canceled before API call.`);
-             if (releaseStream) await releaseStream(); // Ensure releaseStream is called
-             releaseStream = null;
-             writeStream = null;
-             return { 
-              isSuccess: false, 
-              message: "Gemini processing was canceled.", 
-              data: { requestId: request.id, savedFilePath: null } 
-            }; 
-          }
-          
-          // Make the API request
-          console.log(`[Gemini Client] Sending streaming request to ${modelId} API`);
-          
-          // Add a timeout for the fetch request to prevent hanging indefinitely
-          const timeoutMs = 590000; // ~9.8 minutes
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+          let outputPath: string | null = null;
+          let releaseStream: (() => Promise<void>) | null = null;
+          let writeStream: WriteStream | null = null;
+          let totalTokens = 0;
+          let totalChars = 0;
           
           try {
-            const response = await fetch(apiUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId); // Clear timeout if request succeeds
-            
-            clearTimeout(timeoutId);
-            
-            // Handle response errors
-            if (!response.ok) {
-              const errText = await response.text();
-              console.error(`[Gemini Client] Request ${request.id}: API error ${response.status}: ${errText}`);
-              throw new Error(`Gemini API error (${response.status}): ${errText.slice(0, 250)}`);
+            // Fetch Session
+            const session = await sessionRepository.getSession(sessionId);
+            if (!session) {
+              throw new Error(`Session ${sessionId} not found.`);
             }
             
-            // Check for cancellation after API call but before streaming
-             const postFetchRequest = await sessionRepository.getGeminiRequest(request.id);
-            if (!postFetchRequest || postFetchRequest.status === 'canceled') {
-              console.log(`[Gemini Client] Request ${request.id}: Processing canceled after API call, before streaming.`);
-              if (releaseStream) await releaseStream(); // Ensure releaseStream is called
-              releaseStream = null;
-              writeStream = null;
-              
-              return { 
-                isSuccess: false, 
-                message: "Gemini processing was canceled.", 
-                data: { requestId: request.id, savedFilePath: null } 
+            // Update to 'running' status when the request starts
+            await sessionRepository.updateBackgroundJobStatus(
+              job!.id,
+              'running',
+              Date.now(),
+              null,
+              null,
+              'Streaming response from Gemini'
+            );
+            
+            // Create a unique file path for the XML changes output
+            outputPath = await fsManager.createUniqueFilePath(
+              job!.id,
+              session.name || 'unnamed_session',
+              session.projectDirectory,
+              'xml' // Use .xml extension for the output file
+            );
+            
+            // Create write stream for the XML output
+            const streamResult = await fsManager.createWriteStream(outputPath);
+            writeStream = streamResult.stream;
+            releaseStream = streamResult.releaseStream;
+            
+            // Notify of stream start via callback
+            if (options.streamingUpdates?.onStart) {
+              options.streamingUpdates.onStart();
+            }
+            
+            // Prepare for API call
+            const sseUrl = `${GEMINI_API_BASE}/${modelUsed}:${GENERATE_CONTENT_API}?alt=sse&key=${process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY}`;
+            
+            // Add model specific temp and tokens logic here if needed
+            const finalOutputTokens = modelUsed.includes('pro') ? Math.min(maxOutputTokens, 65536) : Math.min(maxOutputTokens, 60000);
+            
+            // Prepare payload for the API request
+            const payload: GeminiRequestPayload = {
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { text: promptText }
+                  ]
+                }
+              ],
+              generationConfig: {
+                maxOutputTokens: finalOutputTokens,
+                temperature: typeof options.temperature === 'number' ? options.temperature : 0.7,
+                topP: options.topP || 0.95,
+                topK: options.topK || 40,
+              }
+            };
+            
+            // Add system instruction if provided
+            if (options.systemPrompt) {
+              payload.systemInstruction = {
+                parts: [
+                  { text: options.systemPrompt }
+                ]
               };
             }
             
-            // Process streaming response
-            const reader = response.body?.getReader();
-             if (!reader) {
-              throw new Error("Failed to get response stream reader");
+            console.log(`[Gemini Client] Sending streaming request to ${modelUsed}`);
+            
+            // Make the actual fetch call
+            const response = await fetch(sseUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`[Gemini Client] HTTP Error: ${response.status} ${response.statusText}`, errorText);
+              throw new Error(`API HTTP error: ${response.status} ${errorText.substring(0, 100)}`);
             }
             
-            // Call the onStart callback if provided
-            if (options.streamingUpdates?.onStart) {
-              try {
-                // Only call client-side callbacks if we're in a browser environment
-                if (typeof window !== 'undefined') {
-                  options.streamingUpdates.onStart();
-                }
-              } catch (callbackError) {
-                console.error(`[Gemini Client] Error calling onStart callback:`, callbackError);
-              }
+            if (!response.body) {
+              throw new Error('Response has no body stream');
             }
-             
+            
+            // Prepare for streaming using a reader
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            // Track statistics for each chunk
+            const chunkStats = {
+              totalTokens: 0,
+              totalChars: 0
+            };
+            
             // Process the stream
-            let buffer = '';
-            let hasWrittenAnyContent = false;
+            let accumBuffer = '';
+            let isDone = false;
             
-            // Process the stream in chunks
-            while (true) {
+            // Periodically update the job with token counts
+            let lastUpdateTokenCount = 0;
+            let lastUpdateTime = Date.now();
+            const UPDATE_INTERVAL = 1000; // Update the DB at most once per second
+            
+            while (!isDone) {
               const { done, value } = await reader.read();
+              
               if (done) {
-                console.log(`[Gemini Client] Request ${request.id}: Stream completed.`);
+                isDone = true;
+                // Process any remaining data
+                if (accumBuffer.trim()) {
+                  const results = this.processSseEvent(accumBuffer, writeStream);
+                  chunkStats.totalTokens += results.tokenCount;
+                  chunkStats.totalChars += results.charCount;
+                  accumBuffer = '';
+                }
                 break;
               }
               
-              // Decode chunk and append to buffer
-              const decodedChunk = new TextDecoder().decode(value, { stream: true });
-              buffer += decodedChunk;
+              // Decode the chunk and add to buffer
+              const chunkText = decoder.decode(value, { stream: true });
+              accumBuffer += chunkText;
               
-              // Process complete SSE events in the buffer
-               const events = buffer.split('\n\n');
+              // Split on double newlines which separate events
+              const events = accumBuffer.split('\n\n');
               
-              // Process all complete events except possibly the last partial one
-               const completeEvents = events.slice(0, -1);
-              
-              for (const eventData of completeEvents) {
-                // Check for cancellation during streaming
-                const checkRequest = await sessionRepository.getGeminiRequest(request.id);
-                if (!checkRequest || checkRequest.status === 'canceled') {
-                  console.log(`[Gemini Client] Request ${request.id}: Cancellation detected during stream processing.`);
-                  
-                  if (releaseStream) await releaseStream(); // Ensure releaseStream is called
-                  releaseStream = null;
-                  
-                  await sessionRepository.updateGeminiRequestStatus(
-                    request.id, 
-                    'canceled', 
-                    startTime, 
-                    Date.now(), 
-                    null, 
-                    "Processing canceled by user."
-                  );
-                  
-                  // Removed direct session status update here
-                  if (options.streamingUpdates?.onError) {
-                    try {
-                      // Check if we're in a server context before calling the callback
-                      if (typeof window !== 'undefined') {
-                        options.streamingUpdates.onError(new Error('Processing canceled by user.'));
-                      } else {
-                        // Server-side - just log the error
-                        console.error(`[Gemini Client] Error in request processing: Processing canceled by user.`);
-                      }
-                    } catch (callbackError) {
-                      console.error(`[Gemini Client] Error calling onError callback:`, callbackError);
-                    }
-                  }
-                  
-                  return {
-                    isSuccess: false,
-                    message: "Processing canceled by user.",
-                    data: { requestId: request.id, savedFilePath: null }
-                  };
-                }
+              // Process all complete events except the last one which might be incomplete
+              for (let i = 0; i < events.length - 1; i++) {
+                const eventText = events[i].trim();
+                if (!eventText) continue;
                 
-                // Process the event
-                const result = this.processSseEvent(eventData, writeStream);
-                if (result.success && result.content && result.content.length > 0) {
-                  hasWrittenAnyContent = true;
-                }
+                // Process each event
+                const results = this.processSseEvent(eventText, writeStream);
                 
-                // Update totals
-                totalTokens += result.tokenCount;
-                totalChars += result.charCount;
+                // Update stats
+                chunkStats.totalTokens += results.tokenCount;
+                chunkStats.totalChars += results.charCount;
                 
-                // Call update callback if provided
-                if (result.content && options.streamingUpdates?.onUpdate) {
-                  try {
-                    // Only call client-side callbacks if we're in a browser environment
-                    if (typeof window !== 'undefined') {
-                      options.streamingUpdates.onUpdate(
-                        result.content,
-                        { tokens: totalTokens, chars: totalChars }
-                      );
-                    }
-                  } catch (callbackError) {
-                    console.error(`[Gemini Client] Error calling onUpdate callback:`, callbackError);
-                  }
-                }
-                
-                // Update request stats
-                if (result.tokenCount > 0 || result.charCount > 0) {
-                  await sessionRepository.updateGeminiRequestStatus(
-                    request.id, 
-                    'running', 
-                    startTime, 
-                    null, 
-                    outputPath,
-                    null, // Don't change status message
+                // Update token count if sufficient time has passed and we have new tokens
+                if (Date.now() - lastUpdateTime > UPDATE_INTERVAL && 
+                    chunkStats.totalTokens > lastUpdateTokenCount) {
+                  await sessionRepository.updateBackgroundJobStatus(
+                    job!.id,
+                    'running',
+                    null,
+                    null,
+                    null,
+                    null,
                     { 
-                      tokensReceived: totalTokens, 
-                      charsReceived: totalChars 
+                      tokensReceived: chunkStats.totalTokens, 
+                      charsReceived: chunkStats.totalChars 
                     }
                   );
+                  lastUpdateTokenCount = chunkStats.totalTokens;
+                  lastUpdateTime = Date.now();
                 }
-              }
-              
-              // Update buffer with the potentially incomplete last event
-              buffer = events[events.length - 1];
-            }
-            
-            // Process any remaining data in the buffer
-            if (buffer.trim().length > 0) {
-              const result = this.processSseEvent(buffer, writeStream);
-              if (result.success && result.content && result.content.length > 0) {
-                hasWrittenAnyContent = true;
-              }
-              totalTokens += result.tokenCount;
-              totalChars += result.charCount;
-              
-              // Call update callback if provided
-              if (result.content && options.streamingUpdates?.onUpdate) {
-                try {
-                  // Only call client-side callbacks if we're in a browser environment
-                  if (typeof window !== 'undefined') {
-                    options.streamingUpdates.onUpdate(
-                      result.content,
-                      { tokens: totalTokens, chars: totalChars }
-                    );
-                  }
-                } catch (callbackError) {
-                  console.error(`[Gemini Client] Error calling onUpdate callback:`, callbackError);
-                }
-              }
-            }
-            
-            // Release file stream
-            if (releaseStream) await releaseStream(); // Ensure releaseStream is called
-            releaseStream = null;
-            
-            // Call the onComplete callback if provided
-            if (options.streamingUpdates?.onComplete) {
-              try {
-                // Only call client-side callbacks if we're in a browser environment
-                if (typeof window !== 'undefined') {
-                  options.streamingUpdates.onComplete(
-                    hasWrittenAnyContent ? "Content generated successfully" : "No content was generated",
-                    { tokens: totalTokens, chars: totalChars }
-                  );
-                }
-              } catch (callbackError) {
-                console.error(`[Gemini Client] Error calling onComplete callback:`, callbackError);
-              }
-            }
-            
-            // Check if any content was written
-            if (!hasWrittenAnyContent) {
-              console.log(`[Gemini Client] Request ${request.id}: No content was generated.`);
-              
-              // Update the request as completed but with a warning
-              await sessionRepository.updateGeminiRequestStatus(
-                request.id,
-                'completed',
-                startTime,
-                Date.now(),
-                null, // Don't set the path since no valid content
-                'No XML content was generated from this prompt.',
-                { tokensReceived: totalTokens, charsReceived: totalChars }
-              );
-              
-              return {
-                isSuccess: false,
-                message: "Request completed but no content was generated.",
-                data: { requestId: request.id, savedFilePath: null }
-              };
-            }
-            
-            // Verify the XML content is valid by reading the file
-            try {
-              const xmlContent = await fs.readFile(outputPath, 'utf-8');
-              
-              // Basic validation - check if it has XML declaration and changes tag
-              const hasXmlDecl = xmlContent.includes('<?xml');
-              const hasChangesOpen = xmlContent.includes('<changes');
-              const hasChangesClose = xmlContent.includes('</changes>');
-              
-              if (!hasXmlDecl || !hasChangesOpen || !hasChangesClose) {
-                console.log(`[Gemini Client] Request ${request.id}: Generated content is not valid XML. XML decl: ${hasXmlDecl}, changes open: ${hasChangesOpen}, changes close: ${hasChangesClose}`);
                 
-                // Update request with warning
-                await sessionRepository.updateGeminiRequestStatus(
-                  request.id,
-                  'completed',
-                  startTime,
-                  Date.now(),
-                  outputPath, // Keep the path so user can see the content
-                  'Generated content may not be valid XML. Please check the file.',
-                  { tokensReceived: totalTokens, charsReceived: totalChars }
-                );
-                
-                return {
-                  isSuccess: true, // Still return success so the user can see the output
-                  message: "Request completed but generated content may not be valid XML.",
-                  data: { requestId: request.id, savedFilePath: outputPath }
-                };
+                // Call streaming update callback if provided
+                if (options.streamingUpdates?.onUpdate && results.content) {
+                  options.streamingUpdates.onUpdate(results.content, {
+                    tokens: chunkStats.totalTokens,
+                    chars: chunkStats.totalChars
+                  });
+                }
               }
               
-              // Content appears to be valid XML
-              console.log(`[Gemini Client] Request ${request.id}: Valid XML content generated (${xmlContent.length} chars).`);
-            } catch (readError) {
-              console.error(`[Gemini Client] Error reading generated XML file: ${readError}`);
-              
-              // Update request with error
-              await sessionRepository.updateGeminiRequestStatus(
-                request.id,
-                'completed',
-                startTime,
-                Date.now(),
-                outputPath,
-                `Error verifying XML content: ${readError instanceof Error ? readError.message : String(readError)}`,
-                { tokensReceived: totalTokens, charsReceived: totalChars }
-              );
-              
-              return {
-                isSuccess: true, // Still return success so the user can see the output
-                message: "Request completed but error verifying XML content.",
-                data: { requestId: request.id, savedFilePath: outputPath }
-              };
+              // Keep only the potentially incomplete last event for the next iteration
+              accumBuffer = events[events.length - 1];
             }
             
-            // Update the request as completed successfully
-            await sessionRepository.updateGeminiRequestStatus(
-              request.id,
+            // Close and release the file stream
+            if (writeStream) {
+              writeStream.end();
+              if (releaseStream) {
+                await releaseStream();
+              }
+            }
+            
+            // Save total stats
+            totalTokens = chunkStats.totalTokens;
+            totalChars = chunkStats.totalChars;
+            
+            // Update job as completed
+            await sessionRepository.updateBackgroundJobStatus(
+              job!.id,
               'completed',
-              startTime,
+              null,
               Date.now(),
               outputPath,
-              'XML changes generated successfully.',
+              `Successfully generated response. Tokens: ${totalTokens}, Characters: ${totalChars}`,
               { tokensReceived: totalTokens, charsReceived: totalChars }
             );
             
+            // Call completion callback if provided
+            if (options.streamingUpdates?.onComplete) {
+              let finalContent = '';
+              if (outputPath) {
+                try {
+                  finalContent = await fs.readFile(outputPath, 'utf8');
+                } catch (readErr) {
+                  console.error(`[Gemini Client] Error reading final content from ${outputPath}:`, readErr);
+                }
+              }
+              
+              options.streamingUpdates.onComplete(finalContent, {
+                tokens: totalTokens,
+                chars: totalChars
+              });
+            }
+            
+            // Return success
             return {
               isSuccess: true,
-              message: "XML changes generated successfully.",
-              data: { requestId: request.id, savedFilePath: outputPath }
+              message: "Gemini API streaming request completed successfully",
+              data: { requestId: job!.id, savedFilePath: outputPath }
             };
-          } catch (fetchError) {
-            clearTimeout(timeoutId);
-            console.error(`[Gemini Client] Fetch error for request ${request?.id}:`, fetchError);
-            throw fetchError; // Rethrow to be caught by outer try/catch
-          }
-        } catch (error) {
-          // Ensure resources are cleaned up on error
-          if (releaseStream) {
-            try {
-              await releaseStream();
-            } catch (closeError) {
-              console.warn(`[Gemini Client] Request ${request.id}: Error closing file stream during error handling:`, closeError);
+          } catch (error) {
+            console.error("[Gemini Client] Error in streaming request:", error);
+            
+            // Update job as failed
+            if (job && job.id) {
+              try {
+                await sessionRepository.updateBackgroundJobStatus(
+                  job.id,
+                  'failed',
+                  null,
+                  Date.now(),
+                  null,
+                  `Error: ${error instanceof Error ? error.message : "Unknown error"}`.substring(0, 500),
+                  { tokensReceived: totalTokens, charsReceived: totalChars }
+                );
+              } catch (updateError) {
+                console.error("[Gemini Client] Error updating job status:", updateError);
+              }
             }
-            releaseStream = null; // Nullify after closing
+            
+            // Clean up resources
+            if (writeStream) {
+              writeStream.end();
+              if (releaseStream) {
+                try {
+                  await releaseStream();
+                } catch (releaseError) {
+                  console.error("[Gemini Client] Error releasing stream:", releaseError);
+                }
+              }
+            }
+            
+            // Call error callback if provided
+            if (options.streamingUpdates?.onError) {
+              options.streamingUpdates.onError(error instanceof Error ? error : new Error(String(error)));
+            }
+            
+            // Return error response
+            return {
+              isSuccess: false,
+              message: error instanceof Error ? error.message : "Unknown error during Gemini streaming request",
+              data: { requestId: job!.id, savedFilePath: null }
+            };
           }
+        } catch (outerError) {
+          console.error(`[Gemini Client] Outer streaming request error: ${outerError}`);
           
-          // Format error message
-          let errorMessage = "An unexpected error occurred during Gemini processing.";
-          if (error instanceof Error) {
-            errorMessage = error.message;
-          } else if (typeof error === 'string') {
-            errorMessage = error;
-          } else if (error && typeof error === 'object' && 'message' in error) {
-            errorMessage = String(error.message);
-          }
-          
-          // Call error callback if provided
-          if (options.streamingUpdates?.onError) {
-            options.streamingUpdates.onError(
-              error instanceof Error ? error : new Error(errorMessage)
+          // Update job status to failed if we have a job ID
+          if (job && job.id) {
+            await sessionRepository.updateBackgroundJobStatus(
+              job.id,
+              'failed',
+              job.startTime || null,
+              Date.now(),
+              null,
+              `Error: ${outerError instanceof Error ? outerError.message : String(outerError)}`
             );
-          }
-          
-          // Update request status if request was created
-          if (request) {
-            try {
-              await sessionRepository.updateGeminiRequestStatus(
-                request.id,
-                'failed',
-                request.startTime,
-                Date.now(),
-                null, // Clear path on failure
-                errorMessage
-              );
-            } catch (updateError) {
-              console.error(`[Gemini Client] Error updating request status after failure:`, updateError);
-            }
           }
           
           return {
             isSuccess: false,
-            message: errorMessage,
-            data: { requestId: request?.id ?? '', savedFilePath: null }
+            message: outerError instanceof Error ? outerError.message : "Unknown error",
+            error: outerError instanceof Error ? outerError : new Error("Unknown error")
           };
         }
       },
-      sessionId,
-      priority,
-      requestType
+      {
+        sessionId,
+        requestId: job.id,
+        requestType,
+        options,
+        priority
+      }
     );
   }
   
@@ -766,94 +825,65 @@ class GeminiClient {
   }
   
   /**
-   * Cancel a specific Gemini request
+   * Cancel a request by ID
    */
   async cancelRequest(requestId: string): Promise<ActionState<null>> {
     await setupDatabase();
     
     try {
-      // Get the request
-      const request = await sessionRepository.getGeminiRequest(requestId);
-      if (!request) {
-        return { isSuccess: false, message: `Request ${requestId} not found.` };
+      // Get the request to verify it exists
+      const job = await sessionRepository.getBackgroundJob(requestId);
+      
+      if (!job) {
+        return { isSuccess: false, message: `Request ${requestId} not found` };
       }
       
-      // Only attempt to cancel if status is 'running'
-      if (request.status !== 'running') {
-        console.log(`[Gemini Client] Request ${requestId}: Cannot cancel - status is not 'running'. Current status: ${request.status}`);
-        return { isSuccess: false, message: `Cannot cancel Gemini processing. Current status: ${request.status}` };
+      if (job.status !== 'running' && job.status !== 'preparing') {
+        return { isSuccess: false, message: `Request ${requestId} is not running (status: ${job.status})` };
       }
       
       // Update the request status to canceled
-      const endTime = Date.now();
-      await sessionRepository.updateGeminiRequestStatus(
-        requestId, 
-        'canceled', 
-        request.startTime, 
-        endTime, 
-        null, // Clear xml path
-        "Processing canceled by user."
+      await sessionRepository.updateBackgroundJobStatus(
+        requestId,
+        'canceled',
+        job.startTime ? job.startTime : null,
+        Date.now(),
+        null,
+        'Canceled by user'
       );
       
-      // Removed direct session status update here
-      return { isSuccess: true, message: "Gemini processing cancellation requested." };
+      // Cancel any pending requests in the pool
+      streamingRequestPool.cancelQueuedRequestsById(job.sessionId, requestId);
+      
+      return { isSuccess: true, message: `Successfully canceled request ${requestId}` };
     } catch (error) {
-      console.error(`[Gemini Client] Error canceling processing for request ${requestId}:`, error);
+      console.error(`[Gemini Client] Error canceling request ${requestId}:`, error);
       return { 
-        isSuccess: false,
-        message: error instanceof Error ? error.message : "Failed to cancel Gemini processing."
+        isSuccess: false, 
+        message: `Error canceling request: ${error instanceof Error ? error.message : "unknown error"}`
       };
     }
   }
-  
+
   /**
-   * Cancel all running requests for a session
+   * Cancel all requests for a session
    */
   async cancelAllSessionRequests(sessionId: string): Promise<ActionState<null>> {
     await setupDatabase();
     
     try {
-      // Cancel any queued requests first
-      const queuedCancelled = streamingRequestPool.cancelQueuedSessionRequests(sessionId);
-      console.log(`[Gemini Client] Canceled ${queuedCancelled} queued requests for session ${sessionId}`);
+      // Cancel all running requests in the database
+      await sessionRepository.cancelAllSessionBackgroundJobs(sessionId);
       
-      // Get all running requests for the session
-      const requests = await sessionRepository.getGeminiRequests(sessionId);
-      const runningRequests = requests.filter(r => r.status === 'running');
+      // Cancel any pending requests in the pool
+      streamingRequestPool.cancelQueuedSessionRequests(sessionId);
       
-      if (runningRequests.length === 0 && queuedCancelled === 0) {
-        return { 
-          isSuccess: false, 
-          message: "No running or queued Gemini processing found for this session." 
-        };
-      }
-      
-      // Cancel all running requests
-      const cancelResults = await Promise.all(
-        runningRequests.map(r => this.cancelRequest(r.id))
-      );
-      
-      // Check if all cancellations were successful
-      const allSuccessful = cancelResults.every(r => r.isSuccess);
-      
-      if (allSuccessful || queuedCancelled > 0) {
-        const totalCancelled = runningRequests.length + queuedCancelled;
-        return { 
-          isSuccess: true, 
-          message: `Successfully canceled ${totalCancelled} Gemini processing request(s).` 
-        };
-      } else {
-        const failedCount = cancelResults.filter(r => !r.isSuccess).length;
-        return { 
-          isSuccess: false, 
-          message: `Failed to cancel ${failedCount} of ${runningRequests.length} Gemini processing request(s).` 
-        };
-      }
+      return { isSuccess: true, message: `Successfully canceled all requests for session ${sessionId}` };
     } catch (error) {
-      console.error(`[Gemini Client] Error canceling processing for session ${sessionId}:`, error);
+      console.error(`[Gemini Client] Error canceling all requests for session ${sessionId}:`, error);
       return { 
-        isSuccess: false,
-        message: error instanceof Error ? error.message : "Failed to cancel Gemini processing."
+        isSuccess: false, 
+        message: `Error canceling requests: ${error instanceof Error ? error.message : "unknown error"}`
       };
     }
   }

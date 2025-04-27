@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils"; // Keep cn import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProject } from "@/lib/contexts/project-context";
-import { useDatabase } from "@/lib/contexts/database-context";
 import { formatPathForDisplay } from "@/lib/path-utils";
 import { FileInfo } from "@/types";
 import { Switch } from "@/components/ui/switch";
@@ -65,13 +64,13 @@ export default function FileBrowser({
   loadingMessage = "", // Add default empty string for loadingMessage
   onAddPath, // Add new prop
 }: FileBrowserProps) { // Keep FileBrowserProps type
+  const { projectDirectory } = useProject();
+  
   // Normalize props to use both naming conventions
-  const allFilesMap = propsAllFilesMap || propsFiles || {};
+  const allFilesMap = useMemo(() => propsAllFilesMap || propsFiles || {}, [propsAllFilesMap, propsFiles]);
   // Handle legacy search prop name
   const searchTerm = propSearchTerm || searchFilter || "";
 
-  const { projectDirectory } = useProject();
-  const { repository } = useDatabase();
   const [showOnlySelected, setShowOnlySelected] = useState<boolean>(false);
   const [showPathInfo, setShowPathInfo] = useState(false);
   const lastRenderedMapRef = useRef<string | null>(null); // Track rendered file list
@@ -87,13 +86,13 @@ export default function FileBrowser({
 
   useEffect(() => {
     setIsPreferenceLoading(true); // Set loading state for preference
-    const loadPreference = async () => { // Keep loadPreference function
-      if (repository && projectDirectory) {
+    
+    // Load preference from localStorage instead of repository
+    const loadPreference = () => {
+      if (projectDirectory) {
         try {
-          const savedPreference = await repository.getCachedState(
-            projectDirectory,
-            SHOW_ONLY_SELECTED_KEY
-          );
+          const key = `${SHOW_ONLY_SELECTED_KEY}-${projectDirectory}`;
+          const savedPreference = localStorage.getItem(key);
           setShowOnlySelected(savedPreference === "true");
         } catch (e) {
           console.error("Failed to load 'showOnlySelected' preference:", e);
@@ -106,18 +105,17 @@ export default function FileBrowser({
     };
 
     loadPreference();
-  }, [projectDirectory, repository]); // Removed outputFormat dependency
-  // Keep toggleShowOnlySelected function
-  const toggleShowOnlySelected = async () => { // Make async to save preference
+  }, [projectDirectory]); // Removed repository dependency
+  
+  // Update toggleShowOnlySelected to use localStorage
+  const toggleShowOnlySelected = () => {
     const newValue = !showOnlySelected;
     setShowOnlySelected(newValue);
-    if (projectDirectory && repository) { // Check dependencies before saving 
+    
+    if (projectDirectory) {
       try {
-        await repository.saveCachedState(
-          projectDirectory,
-          SHOW_ONLY_SELECTED_KEY,
-          String(newValue)
-        );
+        const key = `${SHOW_ONLY_SELECTED_KEY}-${projectDirectory}`;
+        localStorage.setItem(key, String(newValue));
       } catch (error) {
         console.error("Failed to save 'showOnlySelected' preference:", error);
       }
@@ -130,7 +128,28 @@ export default function FileBrowser({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; // Keep MB calculation
   };
 
-  const handleToggleFile = (path: string) => {
+  // Define handleFilesMapChangeInternal before it's used in other callbacks
+  const handleFilesMapChangeInternal = useCallback((newMap: FilesMap) => {
+    if (onFilesMapChange) {
+      onFilesMapChange(newMap);
+    }
+    if (onFilesChange) {
+      onFilesChange(newMap);
+    }
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [onFilesMapChange, onFilesChange, onInteraction]);
+  
+  // Define handleSearchChangeInternal before it's used
+  const handleSearchChangeInternal = (value: string) => {
+    onSearchChange(value);
+    if (onInteraction) {
+      onInteraction();
+    }
+  };
+
+  const handleToggleFile = useCallback((path: string) => {
     const newMap = { ...allFilesMap };
     if (newMap[path]) { // Check if file exists in map
       const currentFile = newMap[path]; // Get current state
@@ -149,9 +168,9 @@ export default function FileBrowser({
       console.warn(`[FileBrowser] Attempted to toggle nonexistent file: ${path}`);
     }
     handleFilesMapChangeInternal(newMap);
-  };
+  }, [allFilesMap, handleFilesMapChangeInternal]);
 
-  const handleToggleForceExclude = (path: string) => {
+  const handleToggleForceExclude = useCallback((path: string) => {
     const newMap = { ...allFilesMap };
     if (newMap[path]) { // Check if file exists in map
       const currentFile = newMap[path];
@@ -170,11 +189,11 @@ export default function FileBrowser({
       console.warn(`[FileBrowser] Attempted to toggle force exclude on nonexistent file: ${path}`);
     }
     handleFilesMapChangeInternal(newMap);
-  };
+  }, [allFilesMap, handleFilesMapChangeInternal]);
 
   // Specific handler for toggling force exclude OFF via filename click
   // This makes the file included immediately when force exclude is removed by clicking the filename.
-  const handleToggleForceExcludeOffAndInclude = (path: string) => {
+  const handleToggleForceExcludeOffAndInclude = useCallback((path: string) => {
     const newMap = { ...allFilesMap };
     if (newMap[path]) {
       const currentFile = newMap[path];
@@ -192,7 +211,7 @@ export default function FileBrowser({
       console.warn(`[FileBrowser] Attempted to un-force-exclude nonexistent file: ${path}`);
     }
     handleFilesMapChangeInternal(newMap);
-  };
+  }, [allFilesMap, handleFilesMapChangeInternal]);
 
     // Handler for clearing the search term
     const handleClearSearch = () => {
@@ -200,19 +219,7 @@ export default function FileBrowser({
         // No need to call onInteraction here, as handleSearchChangeInternal already does
     };
 
-    const handleFilesMapChangeInternal = (newMap: FilesMap) => {
-      if (onFilesMapChange) {
-        onFilesMapChange(newMap);
-      }
-      if (onFilesChange) {
-        onFilesChange(newMap);
-      }
-      if (onInteraction) {
-        onInteraction();
-      }
-    };
-
-    const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
+  const handleBulkToggle = useCallback((include: boolean, filesToToggle: FileInfo[]) => {
     // Create a new map to avoid direct state mutation
     const newMap = { ...allFilesMap };
     let changedCount = 0;
@@ -405,11 +412,6 @@ export default function FileBrowser({
       }, 2000);
     }
   }, [onAddPath]);
-
-  const handleSearchChangeInternal = (value: string) => {
-    onSearchChange(value);
-    if (onInteraction) onInteraction(); // Call interaction handler
-  };
 
   return (
     // Use key to force re-render when projectDirectory changes, ensuring cache state is reset

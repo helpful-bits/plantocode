@@ -146,9 +146,47 @@ if (typeof window !== 'undefined') {
     record: monitor.recordSession,
     stop: monitor.stopMonitoring
   };
+  
+  // Add function to clear stuck sessions
+  (window as any).clearStuckSession = (sessionId?: string) => {
+    if (!sessionId) {
+      console.error('Session ID is required');
+      return;
+    }
+    console.log(`Clearing potentially stuck session: ${sessionId}`);
+    sessionSyncService.clearStuckSession(sessionId);
+    return `Attempted to clear stuck session: ${sessionId}`;
+  };
+  
+  // Add an improved force continue function
+  (window as any).forceContinueSession = async (sessionId?: string) => {
+    if (!sessionId) {
+      console.error('Session ID is required');
+      return 'Error: Session ID required';
+    }
+    
+    console.log(`Force continuing session: ${sessionId}`);
+    try {
+      const session = await sessionSyncService.forceLoadSession(sessionId);
+      
+      if (!session) {
+        console.error(`Failed to force load session: ${sessionId}`);
+        return 'Error: Failed to load session';
+      }
+      
+      console.log('Session loaded successfully:', session);
+      return `Successfully loaded session: ${sessionId}. UI may need manual refresh.`;
+    } catch (err) {
+      console.error('Error forcing session continuation:', err);
+      return `Error: ${err?.message || 'Unknown error'}`;
+    }
+  };
 }
 
-export default {
+// Named object for default export
+const sessionDebugUtils = {
   debugSessionState,
   createSessionMonitor
-}; 
+};
+
+export default sessionDebugUtils; 

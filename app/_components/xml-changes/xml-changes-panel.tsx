@@ -22,6 +22,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { safeFetch } from '@/lib/utils';
+import { RequireProjectDirectory } from "@/components/with-project-directory";
 
 // Define types for XML files
 interface XmlFile {
@@ -46,7 +49,7 @@ interface XmlPreviewResult {
   report: string;
 }
 
-export function XmlChangesPanel() {
+function XmlChangesPanelContent() {
   const { projectDirectory } = useProject();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -81,54 +84,30 @@ export function XmlChangesPanel() {
     setErrorMessage("");
     
     try {
-      // Determine the patches directory at the repository root
-      const patchesDir = path.join(projectDirectory, 'patches');
-      
-      // Call API to list XML files from patches directory
-      const response = await fetch('/api/list-files', {
+      const response = await safeFetch('/api/list-files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          directory: patchesDir,
-          pattern: '**/*.xml',
-          includeStats: true  // Request file stats to get lastModified date
-        }),
+          directory: projectDirectory,
+          extensions: ['.xml', '.config', '.xaml', '.xsl', '.xslt', '.svg', '.resx', '.csproj', '.props', '.html']
+        })
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to load XML files (${response.status})`);
+        throw new Error(`Failed to load files: ${response.status}`);
       }
       
-      const { files, stats } = await response.json();
-      
-      // Transform file paths into XmlFile objects
-      const xmlFileObjects = (files || []).map((filePath: string, index: number) => {
-        const fileName = path.basename(filePath);
-        const fileStats = stats?.[index] || {};
-        
-        return {
-          id: `file-${Math.random().toString(36).substring(2, 11)}`,
-          patchPath: filePath,
-          displayName: fileName,
-          lastModified: fileStats.mtimeMs || Date.now() // Use actual file modification time if available
-        };
-      });
-      
-      setXmlFiles(xmlFileObjects);
-      
-      if (xmlFileObjects.length === 0) {
-        console.log("No XML files found in patches directory");
-      }
-    } catch (error) {
-      console.error("Error loading XML files:", error);
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load XML files");
+      const data = await response.json();
+      setXmlFiles(data.files);
+    } catch (err) {
+      setErrorMessage(`Failed to load XML files: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('Error loading XML files:', err);
     } finally {
       setIsLoading(false);
     }
   }, [projectDirectory]);
 
-  // Function to handle applying XML changes
+  // Function to handle applying XML changes with improved error handling
   const handleApplyXmlChanges = useCallback(async (fileId: string, xmlPath: string) => {
     if (!xmlPath || !projectDirectory) {
       setErrorMessage("Missing XML changes file or project directory");
@@ -139,29 +118,52 @@ export function XmlChangesPanel() {
     setApplyResult(null);
     setShowChangesMap(prev => ({ ...prev, [fileId]: false }));
     
-    try {
-      const result = await applyXmlChangesFromFileAction(xmlPath, projectDirectory);
-      
-      setApplyResult({
-        requestId: fileId,
-        isSuccess: result.isSuccess,
-        message: result.message || (result.isSuccess ? "Changes applied successfully!" : "Failed to apply changes."),
-        changes: result.data?.changes || []
-      });
-      
-      if (result.isSuccess && result.data?.changes) {
-        setShowChangesMap(prev => ({ ...prev, [fileId]: true }));
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: Error | null = null;
+    
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        console.log(`Applying XML changes, attempt ${attempt}/${maxRetries}`);
+        
+        const result = await applyXmlChangesFromFileAction(xmlPath, projectDirectory);
+        
+        setApplyResult({
+          requestId: fileId,
+          isSuccess: result.isSuccess,
+          message: result.message || (result.isSuccess ? "Changes applied successfully!" : "Failed to apply changes."),
+          changes: result.data?.changes || []
+        });
+        
+        if (result.isSuccess && result.data?.changes) {
+          setShowChangesMap(prev => ({ ...prev, [fileId]: true }));
+        }
+        
+        // If successful, break out of retry loop
+        break;
+      } catch (error: any) {
+        console.error(`Error applying XML changes (attempt ${attempt}/${maxRetries}):`, error);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // If we haven't reached max retries yet, wait a bit before retrying
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
       }
-    } catch (error: any) {
+    }
+    
+    // If we've exhausted all retries and still have an error, report it
+    if (attempt >= maxRetries && lastError) {
       setApplyResult({
         requestId: fileId,
         isSuccess: false,
-        message: `Error applying changes: ${error.message}`,
+        message: `Error applying changes after ${maxRetries} attempts: ${lastError.message}`,
         changes: []
       });
-    } finally {
-      setApplyingXmlId(null);
     }
+    
+    setApplyingXmlId(null);
   }, [projectDirectory]);
 
   // Function to toggle showing changes for a specific file
@@ -181,35 +183,33 @@ export function XmlChangesPanel() {
     setLoadingFormatId(fileId);
     
     try {
-      // First, read the XML file content
-      const readResponse = await fetch('/api/read-xml-file', {
+      const readResponse = await safeFetch('/api/read-xml-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filePath: xmlPath })
       });
       
       if (!readResponse.ok) {
-        const errorData = await readResponse.json();
-        throw new Error(errorData.error || `Failed to read XML file (${readResponse.status})`);
+        throw new Error(`Failed to read XML file: ${readResponse.status}`);
       }
       
       const { content } = await readResponse.json();
       
-      // Then, detect the format
-      const detectResponse = await fetch('/api/detect-xml-format', {
+      const detectResponse = await safeFetch('/api/detect-xml-format', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ 
+          filePath: xmlPath,
+          content: content
+        })
       });
       
       if (!detectResponse.ok) {
-        const errorData = await detectResponse.json();
-        throw new Error(errorData.error || `Failed to detect XML format (${detectResponse.status})`);
+        throw new Error(`Failed to detect XML format: ${detectResponse.status}`);
       }
       
       const { format } = await detectResponse.json();
       
-      // Update the xmlFiles state with the detected format
       setXmlFiles(prevFiles => 
         prevFiles.map(file => 
           file.id === fileId ? { ...file, format } : file
@@ -223,7 +223,7 @@ export function XmlChangesPanel() {
     }
   }, []);
 
-  // Function to handle previewing XML changes
+  // Function to handle previewing XML changes with improved error handling
   const handlePreviewXmlChanges = useCallback(async (fileId: string, xmlPath: string) => {
     if (!xmlPath || !projectDirectory) {
       setErrorMessage("Missing XML changes file or project directory");
@@ -234,29 +234,52 @@ export function XmlChangesPanel() {
     setPreviewResult(null);
     setShowPreviewMap(prev => ({ ...prev, [fileId]: false }));
     
-    try {
-      const result = await previewXmlChangesFromFileAction(xmlPath, projectDirectory);
-      
-      setPreviewResult({
-        requestId: fileId,
-        isSuccess: result.isSuccess,
-        message: result.message || (result.isSuccess ? "Preview generated successfully!" : "Failed to preview changes."),
-        report: result.data?.report || ""
-      });
-      
-      if (result.isSuccess && result.data?.report) {
-        setShowPreviewMap(prev => ({ ...prev, [fileId]: true }));
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: Error | null = null;
+    
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        console.log(`Previewing XML changes, attempt ${attempt}/${maxRetries}`);
+        
+        const result = await previewXmlChangesFromFileAction(xmlPath, projectDirectory);
+        
+        setPreviewResult({
+          requestId: fileId,
+          isSuccess: result.isSuccess,
+          message: result.message || (result.isSuccess ? "Preview generated successfully!" : "Failed to preview changes."),
+          report: result.data?.report || ""
+        });
+        
+        if (result.isSuccess && result.data?.report) {
+          setShowPreviewMap(prev => ({ ...prev, [fileId]: true }));
+        }
+        
+        // If successful, break out of retry loop
+        break;
+      } catch (error: any) {
+        console.error(`Error previewing XML changes (attempt ${attempt}/${maxRetries}):`, error);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // If we haven't reached max retries yet, wait a bit before retrying
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
       }
-    } catch (error: any) {
+    }
+    
+    // If we've exhausted all retries and still have an error, report it
+    if (attempt >= maxRetries && lastError) {
       setPreviewResult({
         requestId: fileId,
         isSuccess: false,
-        message: `Error previewing changes: ${error.message}`,
+        message: `Error previewing changes after ${maxRetries} attempts: ${lastError.message}`,
         report: ""
       });
-    } finally {
-      setPreviewingXmlId(null);
     }
+    
+    setPreviewingXmlId(null);
   }, [projectDirectory]);
 
   // Function to toggle showing preview for a specific file
@@ -284,18 +307,16 @@ export function XmlChangesPanel() {
     setDeleteConfirmOpen(false);
     
     try {
-      const response = await fetch('/api/delete-file', {
+      const response = await safeFetch('/api/delete-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filePath: path }),
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to delete file (${response.status})`);
+        throw new Error(`Failed to delete file: ${response.status}`);
       }
       
-      // Remove the file from state if deletion was successful
       setXmlFiles(prevFiles => prevFiles.filter(file => file.id !== id));
       
     } catch (error) {
@@ -334,258 +355,209 @@ export function XmlChangesPanel() {
     });
 
   return (
-    <>
-      <div className="w-full border rounded-md overflow-hidden shadow-sm mt-4">
-        <div className="bg-muted px-3 py-2 font-medium text-sm border-b flex justify-between items-center">
-          <span className="flex items-center">
-            <span className="font-semibold">Generated Plans (XML)</span>
-            <span className="ml-2 text-sm text-muted-foreground">
-              ({xmlFiles.length})
-            </span>
-          </span>
+    <div className="w-full">
+      <div className="flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-medium">XML Change Files</h2>
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={loadXmlFiles}
+            <div className="relative max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search files..."
+                className="pl-8 h-9 w-[200px] rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={xmlSearchTerm}
+                onChange={(e) => setXmlSearchTerm(e.target.value)}
+              />
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={loadXmlFiles} 
               disabled={isLoading}
-              title="Refresh XML Files"
-              className="h-7 w-7 p-0"
+              className="h-9"
             >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Refresh
             </Button>
           </div>
         </div>
         
-        <div className="max-h-96 overflow-y-auto">
-          {isLoading ? (
-            <div className="flex justify-center p-4">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        {errorMessage && (
+          <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+            {errorMessage}
+          </div>
+        )}
+        
+        {!projectDirectory ? (
+          <div className="text-center p-6 border border-dashed rounded-md border-border">
+            <p className="text-muted-foreground">Select a project directory to view XML change files.</p>
+          </div>
+        ) : xmlFiles.length === 0 && !isLoading ? (
+          <div className="text-center p-6 border border-dashed rounded-md border-border">
+            <p className="text-muted-foreground">No XML files found in the patches directory.</p>
+            <p className="text-xs text-muted-foreground mt-2">When you generate changes, they will appear here.</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between items-center mb-3">
+              <div className="text-sm text-muted-foreground">
+                {filteredAndSortedFiles.length} {filteredAndSortedFiles.length === 1 ? 'file' : 'files'} found
+              </div>
+              <select
+                className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={xmlSortOrder}
+                onChange={(e) => setXmlSortOrder(e.target.value as "newest" | "oldest" | "name")}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="name">Name (A-Z)</option>
+              </select>
             </div>
-          ) : xmlFiles.length === 0 ? (
-            <div className="p-4 text-center text-muted-foreground text-sm">
-              No XML files found in patches directory. {errorMessage ? `Error: ${errorMessage}` : ''}
-            </div>
-          ) : (
-            <>
-              {/* Filter and sort controls */}
-              <div className="p-2 border-b bg-background/50">
-                <div className="flex flex-wrap gap-2 items-center">
-                  <div className="flex-1 min-w-[200px]">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        placeholder="Search generated plans by filename..."
-                        value={xmlSearchTerm}
-                        onChange={(e) => setXmlSearchTerm(e.target.value)}
-                        className="pl-8 pr-4 py-2 text-sm border rounded-md w-64 bg-background"
-                      />
+            
+            <div className="space-y-3">
+              {filteredAndSortedFiles.map((file) => (
+                <div key={file.id} className="border rounded-md p-3 bg-card">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="font-mono text-sm bg-muted px-2 py-1 rounded-md truncate max-w-[300px]">
+                        {file.displayName}
+                      </div>
+                      {file.format && (
+                        <Badge variant="outline" className="h-6">
+                          {file.format}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {!file.format && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          disabled={loadingFormatId === file.id}
+                          onClick={() => detectXmlFormat(file.id, file.patchPath)}
+                          className="h-8"
+                        >
+                          {loadingFormatId === file.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Detect Format"}
+                        </Button>
+                      )}
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        disabled={previewingXmlId === file.id}
+                        onClick={() => handlePreviewXmlChanges(file.id, file.patchPath)}
+                        className="h-8"
+                      >
+                        {previewingXmlId === file.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                        ) : (
+                          <Eye className="h-3 w-3 mr-2" />
+                        )}
+                        Preview
+                      </Button>
+                      <Button 
+                        variant="default"
+                        size="sm"
+                        disabled={applyingXmlId === file.id}
+                        onClick={() => handleApplyXmlChanges(file.id, file.patchPath)}
+                        className="h-8"
+                      >
+                        {applyingXmlId === file.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                        ) : (
+                          <Hammer className="h-3 w-3 mr-2" />
+                        )}
+                        Apply
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setFileToDelete({ id: file.id, path: file.patchPath });
+                          setDeleteConfirmOpen(true);
+                        }}
+                        className="h-8 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground">Sort:</span>
-                    <select 
-                      value={xmlSortOrder}
-                      onChange={(e) => setXmlSortOrder(e.target.value as any)}
-                      className="text-xs border rounded px-1 py-0.5 bg-background"
-                    >
-                      <option value="newest">Newest first</option>
-                      <option value="oldest">Oldest first</option>
-                      <option value="name">By filename</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              
-              {/* XML Files List */}
-              <div className="divide-y">
-                {filteredAndSortedFiles.length === 0 ? (
-                  <div className="p-4 text-center text-muted-foreground text-sm">
-                    No XML files match your search criteria.
-                  </div>
-                ) : (
-                  <div className="space-y-2 p-2">
-                    {filteredAndSortedFiles.map((file) => (
-                      <div key={file.id} className="bg-white p-2 rounded border text-xs">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-1 mb-1">
-                              <CheckCircle className="h-3 w-3 text-green-600" />
-                              <span className="font-medium">
-                                {file.displayName || path.basename(file.patchPath)}
-                              </span>
-                              {file.format && (
-                                <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded-sm">
-                                  {file.format}
-                                </span>
-                              )}
-                            </div>
-                            <div className="font-mono bg-muted p-1 rounded truncate">
-                              {normalizePath(file.patchPath)}
-                            </div>
-                          </div>
-                          <div className="flex gap-2 items-center">
-                            <IdeIntegration
-                              filePath={file.patchPath}
-                              tooltip="Open XML file"
-                              onError={(msg) => setErrorMessage(msg)}
-                            />
-                            <div className="flex flex-col">
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleApplyXmlChanges(file.id, file.patchPath)}
-                                disabled={!!applyingXmlId}
-                                className="min-w-[100px]"
-                                title="Apply the changes from this XML file"
-                              >
-                                {applyingXmlId === file.id ? (
-                                  <>
-                                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                                    Applying...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Hammer className="h-3 w-3 mr-2" />
-                                    Apply Plan
-                                  </>
-                                )}
-                              </Button>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Applies the file modifications described in this plan.
-                              </p>
-                            </div>
-                            <div className="flex flex-col">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handlePreviewXmlChanges(file.id, file.patchPath)}
-                                disabled={!!previewingXmlId}
-                                className="min-w-[100px]"
-                                title="Preview the changes without applying them"
-                              >
-                                {previewingXmlId === file.id ? (
-                                  <>
-                                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                                    Previewing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="h-3 w-3 mr-2" />
-                                    Preview Plan
-                                  </>
-                                )}
-                              </Button>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Show a preview of the file changes this plan will make.
-                              </p>
-                            </div>
-                            <div className="flex flex-col">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => confirmDeleteXmlFile(file.id, file.patchPath)}
-                                className="min-w-[100px] hover:text-destructive"
-                                title="Delete this XML file"
-                              >
-                                <Trash2 className="h-3 w-3 mr-2" />
-                                Delete Plan
-                              </Button>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Permanently delete this generated plan file.
-                              </p>
-                            </div>
-                          </div>
+                  {/* Show Apply results if available for this file */}
+                  {applyResult && applyResult.requestId === file.id && (
+                    <div className={`mt-2 text-xs p-2 rounded-md ${
+                      applyResult.isSuccess ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                    }`}>
+                      <p className={`font-medium ${applyResult.isSuccess ? 'text-green-700' : 'text-red-700'}`}>
+                        {applyResult.message}
+                      </p>
+                      
+                      {applyResult.changes.length > 0 && (
+                        <div className="mt-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => toggleShowChanges(file.id)}
+                            className="text-xs p-0 h-auto mb-1 font-medium"
+                          >
+                            {showChangesMap[file.id] ? "Hide Details" : "Show Details"}
+                            {showChangesMap[file.id] ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
+                          </Button>
+                          
+                          {showChangesMap[file.id] && (
+                            <ul className="space-y-1 max-h-32 overflow-y-auto bg-white/50 p-1 rounded text-xs">
+                              {applyResult.changes.map((change, idx) => (
+                                <li key={`change-${file.id}-${idx}`} className={
+                                  change.startsWith("Error") || change.startsWith("Warning") 
+                                    ? "text-amber-600" 
+                                    : "text-foreground"
+                                }>
+                                  {change}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
-                        
-                        {/* Show Apply results if available for this file */}
-                        {applyResult && applyResult.requestId === file.id && (
-                          <div className={`mt-2 text-xs p-2 rounded-md ${
-                            applyResult.isSuccess ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                          }`}>
-                            <p className={`font-medium ${applyResult.isSuccess ? 'text-green-700' : 'text-red-700'}`}>
-                              {applyResult.message}
-                            </p>
-                            
-                            {applyResult.changes.length > 0 && (
-                              <div className="mt-2">
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  onClick={() => toggleShowChanges(file.id)}
-                                  className="text-xs p-0 h-auto mb-1 font-medium"
-                                >
-                                  {showChangesMap[file.id] ? "Hide Details" : "Show Details"}
-                                  {showChangesMap[file.id] ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
-                                </Button>
-                                
-                                {showChangesMap[file.id] && (
-                                  <ul className="space-y-1 max-h-32 overflow-y-auto bg-white/50 p-1 rounded text-xs">
-                                    {applyResult.changes.map((change, idx) => (
-                                      <li key={idx} className={
-                                        change.startsWith("Error") || change.startsWith("Warning") 
-                                          ? "text-amber-600" 
-                                          : "text-foreground"
-                                      }>
-                                        {change}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Preview result */}
+                  {previewResult && previewResult.requestId === file.id && (
+                    <div className={`mt-2 px-2 py-1.5 text-xs rounded ${
+                      previewResult.isSuccess 
+                        ? 'bg-green-100 dark:bg-green-950/20 text-green-800 dark:text-green-300' 
+                        : 'bg-red-100 dark:bg-red-950/20 text-red-800 dark:text-red-300'
+                    }`}>
+                      <div className="flex justify-between items-center">
+                        <span>{previewResult.message}</span>
+                        {previewResult.report && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 p-1"
+                            onClick={() => toggleShowPreview(file.id)}
+                          >
+                            {showPreviewMap[file.id] ? (
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5" />
                             )}
-                          </div>
-                        )}
-                        
-                        {/* Preview result */}
-                        {previewResult && previewResult.requestId === file.id && (
-                          <div className={`mt-2 px-2 py-1.5 text-xs rounded ${
-                            previewResult.isSuccess 
-                              ? 'bg-green-100 dark:bg-green-950/20 text-green-800 dark:text-green-300' 
-                              : 'bg-red-100 dark:bg-red-950/20 text-red-800 dark:text-red-300'
-                          }`}>
-                            <div className="flex justify-between items-center">
-                              <span>{previewResult.message}</span>
-                              {previewResult.report && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 p-1"
-                                  onClick={() => toggleShowPreview(file.id)}
-                                >
-                                  {showPreviewMap[file.id] ? (
-                                    <ChevronUp className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                  )}
-                                </Button>
-                              )}
-                            </div>
-                            
-                            {showPreviewMap[file.id] && previewResult.report && (
-                              <div className="mt-2 p-2 rounded bg-background/50 max-h-60 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] leading-tight">
-                                {previewResult.report}
-                              </div>
-                            )}
-                          </div>
+                          </Button>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        
-        {/* Show general component-level errors */}
-        {errorMessage && !isLoading && xmlFiles.length > 0 && (
-          <div className="w-full rounded-md border border-red-200 bg-red-50 p-3 text-red-600 flex items-center justify-center gap-1 break-words max-w-full">
-            <AlertCircle className="h-4 w-4 flex-shrink-0 mr-1"/> {errorMessage}
-          </div>
+                      
+                      {showPreviewMap[file.id] && previewResult.report && (
+                        <div className="mt-2 p-2 rounded bg-background/50 max-h-60 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] leading-tight">
+                          {previewResult.report}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -614,6 +586,15 @@ export function XmlChangesPanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
-} 
+}
+
+// Wrapper component that requires a project directory
+export function XmlChangesPanel() {
+  return (
+    <RequireProjectDirectory>
+      <XmlChangesPanelContent />
+    </RequireProjectDirectory>
+  );
+}

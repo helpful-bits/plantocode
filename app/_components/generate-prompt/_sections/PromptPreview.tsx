@@ -3,13 +3,15 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 
+type PromptPreviewState = {
+  prompt: string;
+  error: string;
+  isLoading: boolean;
+  copySuccess: boolean;
+};
+
 interface PromptPreviewProps {
-  state: {
-    prompt: string;
-    error: string;
-    isLoading: boolean;
-    copySuccess: boolean;
-  };
+  state: PromptPreviewState;
   actions: {
     copyPrompt: () => Promise<void>;
   };

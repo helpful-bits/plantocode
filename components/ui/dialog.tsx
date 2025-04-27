@@ -40,8 +40,15 @@ const DialogContent = React.forwardRef<
         className
       )}
       {...props}
+      aria-describedby={props['aria-describedby'] || 'dialog-description'}
     >
       {children}
+      {/* Add invisible description if none is provided */}
+      {!props['aria-describedby'] && (
+        <span id="dialog-description" className="sr-only">
+          Dialog content
+        </span>
+      )}
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"> {/* Use X icon */}
         <X className="h-4 w-4" /> {/* Use X icon */}
         <span className="sr-only">Close</span>

@@ -10,6 +10,7 @@ interface UseVoiceRecordingProps {
   onCorrectionComplete?: (rawText: string, correctedText: string) => void;
   languageCode?: string; // Add language code prop
   onInteraction?: () => void;
+  sessionId?: string | null; // Add session ID for background job tracking
 }
 
 interface VoiceRecordingState {
@@ -30,6 +31,7 @@ export function useVoiceRecording({
   languageCode: initialLanguageCode = 'en', // Default language
   onCorrectionComplete,
   onInteraction, // Use the interaction handler
+  sessionId = null, // Default to null
 }: UseVoiceRecordingProps): VoiceRecordingState {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -47,6 +49,7 @@ export function useVoiceRecording({
   const onTranscribedRef = useRef(onTranscribed);
   const onCorrectionCompleteRef = useRef(onCorrectionComplete);
   const onInteractionRef = useRef(onInteraction);
+  const sessionIdRef = useRef(sessionId); // Store sessionId in a ref to avoid dependency issues
 
   useEffect(() => { // Keep effect hook
     onTranscribedRef.current = onTranscribed;
@@ -59,6 +62,10 @@ export function useVoiceRecording({
   useEffect(() => {
     onInteractionRef.current = onInteraction;
   }, [onInteraction]);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   const isSafari = typeof window !== 'undefined' && 
     (navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome'));
@@ -73,7 +80,6 @@ export function useVoiceRecording({
       mediaStreamRef.current.getTracks().forEach(track => {
         if (track.readyState === 'live') {
           track.stop();
-          console.log("Track stopped:", track.kind);
         }
       });
       mediaStreamRef.current = null;
@@ -95,17 +101,29 @@ export function useVoiceRecording({
 
   const handleTranscription = useCallback(async (blob: Blob): Promise<ActionState<string>> => {
     const actualMimeType = blob.type || (isSafari ? 'audio/mp4' : 'audio/webm');
-    return await transcribeVoiceAction({ blob, mimeType: actualMimeType, languageCode: language }); // Pass language
-  }, [isSafari, language]); // Add language dependency
+    
+    // Pass the sessionId to the transcription action
+    return await transcribeVoiceAction({ 
+      blob, 
+      mimeType: actualMimeType, 
+      languageCode: language,
+      sessionId: sessionIdRef.current // Add sessionId from ref
+    });
+  }, [isSafari, language]); // No need to add sessionIdRef as dependency since we're using the ref value
 
   // Attempt correction if text is provided
   const handleCorrection = useCallback(async (text: string): Promise<ActionState<string>> => { // Added async keyword
     if (text.trim()) {
-      return await correctTaskDescriptionAction(text);
+      // Pass sessionId to correction action as well for better tracking
+      return await correctTaskDescriptionAction(
+        text,
+        undefined, // No project directory needed here
+        sessionIdRef.current // Add sessionId for tracking
+      );
     } else {
       return { isSuccess: true, data: text, message: "Empty text, correction skipped." };
     }
-  }, []);
+  }, []); // No dependencies needed
   
   const processAudio = useCallback(async () => {
       const recordingDuration = recordingStartTimeRef.current 
@@ -189,7 +207,6 @@ export function useVoiceRecording({
 
   const stopRecording = useCallback(() => {
     if (isStoppingRef.current || !mediaRecorderRef.current) { // Check if already stopping or no recorder
-      console.log("Stop recording called but already stopping or no recorder");
       return;
     }
     isStoppingRef.current = true;
@@ -200,14 +217,12 @@ export function useVoiceRecording({
     if (recorder.state === 'recording') { // Only stop if recording
       recorder.stop();
     } else {
-      console.warn(`Stop called but recorder state is: ${recorder.state}. Trying to process any existing audio.`);
       processAudio();
     }
   }, [processAudio]); 
 
   const startRecording = useCallback(async () => {
     if (isRecording || isProcessing || isStoppingRef.current) {
-      console.log(`Start recording prevented: isRecording=${isRecording}, isProcessing=${isProcessing}, isStopping=${isStoppingRef.current}`);
       return;
     }
 
@@ -264,7 +279,6 @@ export function useVoiceRecording({
       };
       
       recorder.onstop = () => {
-        console.log(`MediaRecorder stopped. State: ${recorder?.state}`); // Log recorder state
         processAudio(); // Process audio when recorder stops
       };
       
@@ -274,10 +288,8 @@ export function useVoiceRecording({
       recordingStartTimeRef.current = Date.now(); 
 
       recorder.start();
-      console.log(`MediaRecorder started. State: ${recorder.state}`);
 
       recordingTimeoutRef.current = setTimeout(() => {
-        console.log("Maximum recording time reached, stopping.");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording' && !isStoppingRef.current) {
           const currentRecorder = mediaRecorderRef.current;
           if (currentRecorder && currentRecorder.state === 'recording' && !isStoppingRef.current) {
@@ -307,7 +319,6 @@ export function useVoiceRecording({
   useEffect(() => {
     // Cleanup function to stop recording and release resources on unmount
     return () => {
-      console.log("[useVoiceRecording] Hook unmounting, ensuring cleanup."); // Keep log
       cleanupMedia(); // Ensure cleanup on unmount
     }
   }, []);

@@ -4,9 +4,8 @@ import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { estimateTokens } from "@/lib/token-estimator";
 import { useProject } from "@/lib/contexts/project-context";
-import { useDatabase } from "@/lib/contexts/database-context";
 import { normalizePath } from "@/lib/path-utils";
-import { Session } from "@/types";
+import { Session, TaskSettings, TaskType } from "@/types";
 import { useFileLoader } from "./use-file-loader";
 import { usePromptGenerator } from "./use-prompt-generator";
 import { trackSelectionChanges } from "../_utils/debug";
@@ -14,15 +13,45 @@ import { shouldIncludeByDefault, normalizeFilePath } from "../_utils/file-select
 import { findRelevantFilesAction } from "@/actions/path-finder-actions";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { generateDirectoryTree } from "@/lib/directory-tree";
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { GEMINI_FLASH_MODEL, GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 import { sessionSyncService } from '@/lib/services/session-sync-service';
+import { getModelSettingsForProject } from "@/actions/project-settings-actions";
+import { cancelGeminiProcessingAction } from '@/actions/gemini-actions';
+import { useLocalStorage } from '@/lib/hooks/use-local-storage';
+import { useNotification } from '@/lib/contexts/notification-context';
+import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
+import {
+  createSessionAction,
+  updateSessionProjectDirectoryAction,
+  deleteSessionAction,
+  renameSessionAction,
+  getSessionAction,
+} from '@/actions/session-actions';
+import {
+  sendPromptToGeminiAction,
+} from '@/actions/gemini-actions';
+import {
+  enhanceTaskDescriptionAction
+} from '@/actions/task-enhancement-actions';
+import {
+  generateGuidanceForPathsAction
+} from '@/actions/guidance-generation-actions';
+import {
+  correctPathsAction
+} from '@/actions/path-correction-actions';
+import globToRegexp from 'glob-to-regexp';
+import debounce from '@/lib/utils/debounce';
+import { v4 as uuidv4 } from 'uuid';
+import { 
+  AUTO_RETRY_INTERVAL,
+  AUTO_SAVE_INTERVAL,
+  GEMINI_MODEL,
+} from "@/lib/constants";
 
 // Constants
-const AUTO_SAVE_INTERVAL = 3000; // 3 seconds
 const OUTPUT_FORMAT_KEY = "generate-prompt-output-format";
 const SEARCH_SELECTED_FILES_ONLY_KEY = "search-selected-files-only";
 const PREFERENCE_FILE_SELECTIONS_KEY = "file-selections";
-const MODEL_USED_KEY = "model-used";
 
 // Types
 export interface FileInfo {
@@ -37,11 +66,12 @@ export type OutputFormat = "markdown" | "xml" | "plain";
 
 export function useGeneratePromptState() {
   const { projectDirectory, setProjectDirectory } = useProject();
-  const { repository } = useDatabase();
   const { activeSessionId: savedSessionId, setActiveSessionId: setSavedSessionId } = useProject();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
+  const { showNotification } = useNotification();
+  const { activeJobs } = useBackgroundJobs();
 
   // Form state
   const [taskDescription, setTaskDescription] = useState("");
@@ -64,7 +94,7 @@ export function useGeneratePromptState() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(false);
-  const [sessionSaveError, setSessionSaveError] = useState<string | null>(null);
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
   const [isFormSaving, setIsFormSaving] = useState(false);
   const [isFindingFiles, setIsFindingFiles] = useState(false);
   const [isGeneratingGuidance, setIsGeneratingGuidance] = useState(false);
@@ -73,7 +103,7 @@ export function useGeneratePromptState() {
   const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(false);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("markdown");
   const [diffTemperature, setDiffTemperature] = useState<number>(0.9);
-  const [modelUsed, setModelUsed] = useState<string>(GEMINI_FLASH_MODEL);
+  const [sessionName, setSessionName] = useState<string>("Untitled Session");
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [projectDataLoading, setProjectDataLoading] = useState(false);
 
@@ -82,6 +112,8 @@ export function useGeneratePromptState() {
   const saveTaskDebounceTimer = useRef<NodeJS.Timeout | null>(null);
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevSessionId = useRef<string | null>(null);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevProjectDirectory = useRef<string | null>(null);
   const initializationRef = useRef<{ 
     projectInitialized: boolean; 
     formMounted: boolean; 
@@ -142,6 +174,229 @@ export function useGeneratePromptState() {
     
     return { includedPaths: included, excludedPaths: excluded };
   }, [allFilesMap]);
+
+  // Auto-save functionality
+  const saveFormState = useCallback(async () => {
+    if (!activeSessionId || !sessionInitialized || isRestoringSession) return;
+    
+    try {
+      setIsFormSaving(true);
+      
+      // Only save if we have an active session
+      if (activeSessionId) {
+        // First, check if the session still exists and what its current data is
+        try {
+          const currentSession = await sessionSyncService.getSessionById(activeSessionId);
+          if (!currentSession) {
+            console.error(`[saveFormState] Session ${activeSessionId} no longer exists, cannot save state`);
+            setSessionLoadError(`Session no longer exists. Please create a new one.`);
+            showNotification({
+              title: "Error",
+              message: `Session no longer exists. Please create a new one.`,
+              type: "error"
+            });
+            return;
+          }
+          
+          // Create a diff object with only fields that actually changed
+          const updatedFields: Partial<Session> = {};
+          let hasChanges = false;
+          
+          // For task description, only update if it's actually different
+          if (taskDescription !== currentSession.taskDescription) {
+            console.log(`[saveFormState] Task description changed for session ${activeSessionId}:`, {
+              oldLength: currentSession.taskDescription?.length || 0,
+              newLength: taskDescription?.length || 0,
+              oldPreview: currentSession.taskDescription?.substring(0, 40) || 'none',
+              newPreview: taskDescription?.substring(0, 40) || 'none'
+            });
+            updatedFields.taskDescription = taskDescription;
+            hasChanges = true;
+          }
+          
+          // Add other fields that might have changed
+          if (searchTerm !== currentSession.searchTerm) {
+            updatedFields.searchTerm = searchTerm;
+            hasChanges = true;
+          }
+          
+          if (pastedPaths !== currentSession.pastedPaths) {
+            updatedFields.pastedPaths = pastedPaths;
+            hasChanges = true;
+          }
+          
+          if (titleRegex !== currentSession.titleRegex) {
+            updatedFields.titleRegex = titleRegex;
+            hasChanges = true;
+          }
+          
+          if (contentRegex !== currentSession.contentRegex) {
+            updatedFields.contentRegex = contentRegex;
+            hasChanges = true;
+          }
+          
+          if (isRegexActive !== currentSession.isRegexActive) {
+            updatedFields.isRegexActive = isRegexActive;
+            hasChanges = true;
+          }
+          
+          if (diffTemperature !== currentSession.diffTemperature) {
+            updatedFields.diffTemperature = diffTemperature;
+            hasChanges = true;
+          }
+          
+          if (outputFormat !== currentSession.outputFormat) {
+            updatedFields.outputFormat = outputFormat;
+            hasChanges = true;
+          }
+          
+          // Check for file selection changes
+          const currentIncluded = new Set(currentSession.includedFiles || []);
+          const currentExcluded = new Set(currentSession.forceExcludedFiles || []);
+          const newIncluded = new Set(includedPaths);
+          const newExcluded = new Set(excludedPaths);
+          
+          const includesDifferent = 
+            currentIncluded.size !== newIncluded.size ||
+            ![...newIncluded].every(path => currentIncluded.has(path));
+            
+          const excludesDifferent = 
+            currentExcluded.size !== newExcluded.size ||
+            ![...newExcluded].every(path => currentExcluded.has(path));
+          
+          if (includesDifferent) {
+            updatedFields.includedFiles = includedPaths;
+            hasChanges = true;
+          }
+          
+          if (excludesDifferent) {
+            updatedFields.forceExcludedFiles = excludedPaths;
+            hasChanges = true;
+          }
+          
+          // Only save if there are actually changes
+          if (hasChanges) {
+            console.log(`[saveFormState] Saving changes to session ${activeSessionId}:`, 
+              Object.keys(updatedFields).join(', '));
+            
+            // Use the sessionSyncService to save the state
+            await sessionSyncService.updateSessionState(activeSessionId, updatedFields);
+            setHasUnsavedChanges(false);
+            setSessionLoadError(null);
+          } else {
+            console.log(`[saveFormState] No changes to save for session ${activeSessionId}`);
+          }
+        } catch (sessionErr) {
+          console.error(`[saveFormState] Error checking current session state:`, sessionErr);
+          setSessionLoadError(`Failed to check session state: ${sessionErr instanceof Error ? sessionErr.message : String(sessionErr)}`);
+          showNotification({
+            title: "Warning",
+            message: `Could not verify session state before saving. Changes may be incomplete.`,
+            type: "warning"
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[saveFormState] Error saving form state:', error);
+      setSessionLoadError(`Failed to save session ${activeSessionId}: ${error instanceof Error ? error.message : String(error)}`);
+      showNotification({
+        title: "Error",
+        message: `Failed to save session: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error"
+      });
+    } finally {
+      setIsFormSaving(false);
+    }
+  }, [
+    activeSessionId,
+    sessionInitialized,
+    isRestoringSession,
+    taskDescription,
+    searchTerm,
+    pastedPaths,
+    titleRegex,
+    contentRegex,
+    isRegexActive,
+    diffTemperature,
+    outputFormat,
+    includedPaths,
+    excludedPaths,
+    showNotification
+  ]);
+  
+  // Debounced auto-save
+  const debouncedSaveFormState = useMemo(
+    () => debounce(saveFormState, AUTO_SAVE_INTERVAL),
+    [saveFormState]
+  );
+  
+  // Auto-save when form fields change
+  useEffect(() => {
+    if (!activeSessionId || !sessionInitialized || isRestoringSession) return;
+    
+    // Mark as having unsaved changes
+    setHasUnsavedChanges(true);
+    
+    // Schedule auto-save
+    debouncedSaveFormState();
+    
+    // Clear any existing auto-save timeout
+    return () => {
+      debouncedSaveFormState.cancel();
+    };
+  }, [
+    activeSessionId,
+    sessionInitialized,
+    isRestoringSession,
+    debouncedSaveFormState,
+    taskDescription,
+    searchTerm,
+    pastedPaths,
+    titleRegex,
+    contentRegex,
+    isRegexActive,
+    diffTemperature,
+    outputFormat
+  ]);
+  
+  // Clear auto-save on unmount
+  useEffect(() => {
+    const currentTimeoutId = autoSaveTimeoutRef.current;
+    
+    return () => {
+      if (currentTimeoutId) {
+        clearTimeout(currentTimeoutId);
+      }
+    };
+  }, []);
+
+  // Helper function to get task-specific model settings
+  const getTaskModelSettings = useCallback(async (taskType: TaskType) => {
+    if (!projectDirectory) {
+      // Default values if no project directory
+      return {
+        model: GEMINI_FLASH_MODEL,
+        maxTokens: taskType === 'xml_generation' ? 65536 : 8192,
+        temperature: 0.7
+      };
+    }
+    
+    try {
+      const settings = await getModelSettingsForProject(projectDirectory);
+      if (settings && settings[taskType]) {
+        return settings[taskType]!;
+      }
+    } catch (err) {
+      console.error("Error loading project task settings:", err);
+    }
+    
+    // Default values if task settings not configured
+    return {
+      model: GEMINI_FLASH_MODEL,
+      maxTokens: taskType === 'xml_generation' ? 65536 : 8192,
+      temperature: 0.7
+    };
+  }, [projectDirectory]);
 
   // Apply session selections if we have paths but session isn't initialized yet
   useEffect(() => {
@@ -211,13 +466,20 @@ export function useGeneratePromptState() {
 
   // Session management
   const handleSetActiveSessionId = useCallback(async (id: string | null) => {
-    setActiveSessionId(id);
-    setSavedSessionId(id); // Update context
+    console.log(`[State] Setting active session ID: ${id || 'null'} (current: ${activeSessionId || 'null'})`);
     
-    if (id !== savedSessionId) {
-      setSessionInitialized(!!id); // Mark as initialized if an ID is set
+    // Only reset session initialized if we're changing to a different session
+    if (activeSessionId !== id) {
+      console.log(`[State] Session ID changed - resetting sessionInitialized flag`);
+      setSessionInitialized(false);
     }
-  }, [savedSessionId, setSavedSessionId]);
+    
+    // Update local state
+    setActiveSessionId(id);
+    
+    // Update parent context 
+    setSavedSessionId(id);
+  }, [activeSessionId, setSavedSessionId]);
 
   // Effect to reset form state when active session changes
   useEffect(() => {
@@ -246,118 +508,213 @@ export function useGeneratePromptState() {
     prevSessionId.current = activeSessionId;
   }, [activeSessionId]);
 
-  const clearFormFields = useCallback(() => {
-    setTaskDescription("");
-    setSearchTerm("");
-    setPastedPaths("");
-    setTitleRegex("");
-    setContentRegex("");
-    setHasUnsavedChanges(false);
-    setSessionInitialized(false);
-  }, []);
+  // Make sure files are loaded when session is initialized
+  useEffect(() => {
+    if (sessionInitialized && activeSessionId && projectDirectory && Object.keys(allFilesMap).length === 0) {
+      console.log(`[State] Session initialized but no files loaded, forcing file refresh`);
+      refreshFiles(true); // Preserve selections if any
+    }
+  }, [sessionInitialized, activeSessionId, projectDirectory, allFilesMap, refreshFiles]);
 
-  const handleLoadSession = useCallback(async (sessionIdOrObject: string | Session) => {
-    // Handle both string ID and Session object
-    const sessionId = typeof sessionIdOrObject === 'string' 
-      ? sessionIdOrObject 
-      : sessionIdOrObject?.id;
-    
-    if (!sessionId || isRestoringSession) return;
-
-    // If we're already on this session and it's initialized, don't reload
-    if (sessionId === activeSessionId && sessionInitialized) {
-      console.log(`[State] Already on session ${sessionId}, skipping reload`);
+  // Updated handleLoadSession to properly restore session state
+  const handleLoadSession = useCallback(async (sessionData: Session) => {
+    if (!sessionData) {
+      console.warn(`[State] Cannot load session: no session data provided`);
       return;
     }
-
-    console.log(`[State] Loading session ${sessionId}`);
+    
+    console.log(`[State] Loading session: ${sessionData.id} (${sessionData.name || 'Unnamed'})`);
+    console.log(`[State] Session task description:`, {
+      length: sessionData.taskDescription?.length || 0,
+      preview: sessionData.taskDescription ? sessionData.taskDescription.substring(0, 40) + '...' : 'none'
+    });
+    
+    // Set loading state
     setIsRestoringSession(true);
-    setSessionInitialized(false); // Explicitly mark as not initialized until fully loaded
+    setSessionInitialized(false); // Ensure initialized state is reset during loading
+    setError("");
     
     try {
-      // Use the session synchronization service to coordinate loading
-      await sessionSyncService.queueOperation(
-        'load',
-        sessionId,
-        async () => {
-          // Get session data from the repository
-          const sessionData = await repository.getSession(sessionId);
+      // Make sure we have the latest session data (might have changed since we got it)
+      let freshSessionData: Session | null = null;
+      try {
+        freshSessionData = await sessionSyncService.getSessionById(sessionData.id);
+        if (freshSessionData) {
+          console.log(`[State] Retrieved fresh session data for ${sessionData.id}`, {
+            originalTaskLength: sessionData.taskDescription?.length || 0,
+            freshTaskLength: freshSessionData.taskDescription?.length || 0,
+            taskChanged: sessionData.taskDescription !== freshSessionData.taskDescription
+          });
           
-          if (!sessionData) {
-            console.warn(`[State] Session ${sessionId} not found`);
-            setError(`Session ${sessionId} not found or could not be loaded.`);
-            setIsRestoringSession(false);
-            // Return void instead of false to match the SessionCallback type
-            return;
-          }
-          
-          console.log(`[State] Session loaded:`, sessionData);
-          
-          // Set form state from session data in a controlled, specific order
-          // First set non-file-related settings
-          setTaskDescription(sessionData.taskDescription || "");
-          setSearchTerm(sessionData.searchTerm || "");
-          setPastedPaths(sessionData.pastedPaths || "");
-          setTitleRegex(sessionData.titleRegex || "");
-          setContentRegex(sessionData.contentRegex || "");
-          setIsRegexActive(sessionData.isRegexActive);
-          setDiffTemperature(sessionData.diffTemperature || 0.9);
-          // Set the model from session data with a fallback to the default
-          setModelUsed(sessionData.modelUsed || GEMINI_FLASH_MODEL);
-          
-          // Prepare session selections
-          const sessionSelections = {
+          // Use the most up-to-date data
+          sessionData = freshSessionData;
+        } else {
+          console.warn(`[State] Could not retrieve fresh session data for ${sessionData.id}, using provided data`);
+        }
+      } catch (refreshErr) {
+        console.warn(`[State] Error refreshing session data:`, refreshErr);
+        // Continue with original session data
+      }
+      
+      // First handle project directory verification/change
+      const sessionProjectDir = sessionData.projectDirectory;
+      if (!sessionProjectDir) {
+        console.error(`[State] Session has no project directory`);
+        throw new Error("Session is missing project directory");
+      }
+      
+      // Double-check that we're not loading stale data
+      if (activeSessionId === sessionData.id) {
+        console.log(`[State] Already loaded session ${sessionData.id}, checking for changes`);
+        // If task description is the same, we don't need to reload the entire session
+        if (taskDescription === sessionData.taskDescription) {
+          console.log(`[State] Task description unchanged, skipping full reload`);
+          setSessionInitialized(true);
+          setIsRestoringSession(false);
+          return;
+        }
+      }
+      
+      // Check if we need to switch project directory first
+      let projectSwitched = false;
+      if (sessionProjectDir !== projectDirectory) {
+        console.log(`[State] Session has different project directory - switching from ${projectDirectory} to ${sessionProjectDir}`);
+        await setProjectDirectory(sessionProjectDir);
+        projectSwitched = true;
+        
+        // Give time for project directory change to propagate
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      // IMPORTANT: Reset all form fields to prevent state mixing
+      // This explicit clearing helps prevent data from leaking between sessions
+      console.log(`[State] Resetting form fields before loading session data`);
+      
+      // Task description is most important to clear, do it first
+      if (taskDescription) {
+        console.log(`[State] Clearing existing task description: ${taskDescription.substring(0, 40)}...`);
+        setTaskDescription("");
+      }
+      
+      // Clear other fields
+      setTitleRegex("");
+      setContentRegex("");
+      setIsRegexActive(true);
+      setPastedPaths("");
+      setSearchTerm("");
+      setDiffTemperature(0.9);
+      setOutputFormat("markdown");
+      
+      // Update session ID - important to do this after clearing fields
+      await handleSetActiveSessionId(sessionData.id);
+      
+      // Update session name
+      setSessionName(sessionData.name || "Untitled Session");
+      
+      // Handle file selections after the project directory is confirmed
+      if (projectSwitched || Object.keys(allFilesMap).length === 0) {
+        console.log(`[State] Loading files for session with selections...`);
+        
+        try {
+          await loadFiles(sessionProjectDir, undefined, {
             included: sessionData.includedFiles || [],
             excluded: sessionData.forceExcludedFiles || []
-          };
+          });
+        } catch (loadError) {
+          console.error(`[State] Error loading files from session:`, loadError);
+          showNotification({
+            title: "Error",
+            message: `Could not load files for session: ${loadError instanceof Error ? loadError.message : String(loadError)}`,
+            type: "error"
+          });
+        }
+      } else {
+        // If we already have files loaded but need to apply selections from session
+        if (sessionData.includedFiles?.length || sessionData.forceExcludedFiles?.length) {
+          console.log(`[State] Applying file selections to existing files...`);
           
-          // Update directory first (this triggers file loading)
-          if (sessionData.projectDirectory && sessionData.projectDirectory !== projectDirectory) {
-            console.log(`[GeneratePromptState] Setting project directory to: ${sessionData.projectDirectory}`);
-            
-            // First set the project directory
-            await new Promise<void>((resolve) => {
-              setProjectDirectory(sessionData.projectDirectory);
-              // Small delay to ensure project directory update propagates
-              setTimeout(resolve, 100);
-            });
-            
-            // Then load files with session selections
-            await loadFiles(sessionData.projectDirectory, undefined, sessionSelections);
-          } else if (projectDirectory) {
-            // If already on the same directory, just apply session selections
-            await loadFiles(projectDirectory, undefined, sessionSelections);
-          }
+          // Create a new files map with the session's selections
+          const updatedFilesMap = { ...allFilesMap };
           
-          // Set a small delay to ensure all state has settled
-          await new Promise(resolve => setTimeout(resolve, 200));
+          // Reset all selections first
+          Object.keys(updatedFilesMap).forEach(path => {
+            updatedFilesMap[path] = {
+              ...updatedFilesMap[path],
+              included: false,
+              forceExcluded: false
+            };
+          });
           
-          // Mark as initialized and reset unsaved changes
-          console.log(`[GeneratePromptState] Marking session as initialized: ${sessionId}`);
-          setSessionInitialized(true);
-          setHasUnsavedChanges(false);
-          setSessionSaveError(null);
+          // Apply included files
+          (sessionData.includedFiles || []).forEach(path => {
+            if (updatedFilesMap[path]) {
+              updatedFilesMap[path] = {
+                ...updatedFilesMap[path],
+                included: true
+              };
+            }
+          });
           
-          // Add a cooldown to prevent immediate auto-saves
-          sessionSyncService.setCooldown(sessionId, 'save', 1500);
+          // Apply excluded files
+          (sessionData.forceExcludedFiles || []).forEach(path => {
+            if (updatedFilesMap[path]) {
+              updatedFilesMap[path] = {
+                ...updatedFilesMap[path],
+                forceExcluded: true
+              };
+            }
+          });
           
-          console.log(`[GeneratePromptState] Session loaded: ${sessionId}`);
-        },
-        3 // High priority for user-triggered session load
-      );
+          // Update the files map
+          setAllFilesMap(updatedFilesMap);
+        }
+      }
+      
+      // Now populate form fields from session data AFTER files have loaded
+      // This ensures we don't have mixed state during loading
+      console.log(`[State] Populating form fields from session data`);
+      
+      // Task description needs special treatment as it's the most critical field
+      const sessionTaskDesc = sessionData.taskDescription || "";
+      console.log(`[State] Setting task description:`, {
+        length: sessionTaskDesc.length,
+        preview: sessionTaskDesc ? sessionTaskDesc.substring(0, 40) + '...' : 'none'
+      });
+      setTaskDescription(sessionTaskDesc);
+      
+      // Set other fields
+      setTitleRegex(sessionData.titleRegex || "");
+      setContentRegex(sessionData.contentRegex || "");
+      setIsRegexActive(sessionData.isRegexActive !== undefined ? sessionData.isRegexActive : true);
+      setPastedPaths(sessionData.pastedPaths || "");
+      setSearchTerm(sessionData.searchTerm || "");
+      setDiffTemperature(sessionData.diffTemperature || 0.9);
+      setOutputFormat(sessionData.outputFormat || "markdown");
+      
+      // Mark session as initialized and not having unsaved changes
+      // This is done at the very end after all state has been restored
+      setHasUnsavedChanges(false);
+      
+      // Brief delay before setting session initialized to ensure everything is in sync
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log(`[State] Setting sessionInitialized to true`);
+      setSessionInitialized(true);
+      
+      console.log(`[State] Session ${sessionData.id} loaded successfully`);
     } catch (error) {
-      console.error('Error loading session:', error);
-      setError(`Error loading session: ${error}`);
+      console.error(`[State] Error loading session:`, error);
+      setError(`Failed to load session: ${error instanceof Error ? error.message : String(error)}`);
+      showNotification({
+        title: "Error",
+        message: `Failed to load session: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error"
+      });
+      setSessionInitialized(false); // Ensure initialized state is reset if loading failed
     } finally {
       setIsRestoringSession(false);
     }
   }, [
-    isRestoringSession, 
-    projectDirectory, 
-    setProjectDirectory, 
-    loadFiles,
-    repository,
-    setError,
+    projectDirectory,
     setTaskDescription,
     setSearchTerm,
     setPastedPaths,
@@ -365,195 +722,19 @@ export function useGeneratePromptState() {
     setContentRegex,
     setIsRegexActive,
     setDiffTemperature,
-    setModelUsed,
-    setSessionInitialized,
-    setHasUnsavedChanges,
-    setSessionSaveError,
+    setOutputFormat,
+    loadFiles,
+    showNotification,
     activeSessionId,
-    sessionInitialized
+    allFilesMap,
+    handleSetActiveSessionId,
+    setProjectDirectory,
+    taskDescription
   ]);
 
-  // Field change handlers
-  const handleTaskChange = useCallback(async (value: string) => {
-    setTaskDescription(value);
-    handleInteraction();
-  }, [handleInteraction]);
-
-  const handleTranscribedText = useCallback((text: string) => {
-    if (taskDescriptionRef.current) {
-      taskDescriptionRef.current.insertTextAtCursorPosition(text);
-    } else {
-      const newText = taskDescription + (taskDescription ? ' ' : '') + text;
-      setTaskDescription(newText);
-      handleInteraction();
-    }
-  }, [taskDescription, handleInteraction]);
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchTerm(value);
-    handleInteraction();
-  }, [handleInteraction]);
-
-  const cleanXmlTags = useCallback((input: string): string => {
-    return input.split('\n')
-      .map(line => line.replace(/<file>|<\/file>/g, '').trim())
-      .join('\n');
-  }, []);
-
-  const handlePastedPathsChange = useCallback((value: string) => {
-    const cleanedValue = cleanXmlTags(value);
-    setPastedPaths(cleanedValue);
-    handleInteraction();
-  }, [cleanXmlTags, handleInteraction]);
-
-  const handlePathsPreview = useCallback((paths: string[]) => {
-    if (!paths || paths.length === 0) return;
-    
-    const pathsText = paths.join('\n');
-    setPastedPaths(pathsText);
-    handleInteraction();
-  }, [handleInteraction]);
-
-  const handleTitleRegexChange = useCallback((value: string) => {
-    setTitleRegex(value);
-    handleInteraction();
-  }, [handleInteraction]);
-
-  const handleContentRegexChange = useCallback((value: string) => {
-    setContentRegex(value);
-    handleInteraction();
-  }, [handleInteraction]);
-
-  const handleGenerateRegexFromTask = useCallback(async () => {
-    if (!taskDescription.trim()) {
-      setRegexGenerationError("Task description cannot be empty.");
-      return;
-    }
-
-    setIsGeneratingTaskRegex(true);
-    setRegexGenerationError("");
-
-    try {
-      // Generate directory tree structure for regex context
-      let dirTreeOption;
-      if (projectDirectory) {
-        try {
-          dirTreeOption = await generateDirectoryTree(projectDirectory);
-          console.log("Generated directory tree for regex context");
-        } catch (treeError) {
-          console.error("Error generating directory tree:", treeError);
-          // Fall back to just the path if tree generation fails
-          dirTreeOption = normalizePath(projectDirectory);
-        }
-      }
-      
-      const result = await generateRegexPatternsAction(taskDescription, dirTreeOption);
-      
-      if (result.isSuccess && result.data) {
-        console.log("Received regex patterns:", result.data);
-        
-        // Set the received regex patterns
-        const { titleRegex: newTitleRegex, contentRegex: newContentRegex } = result.data;
-        
-        // Only set if not undefined
-        if (newTitleRegex !== undefined) {
-          setTitleRegex(newTitleRegex);
-        }
-        
-        if (newContentRegex !== undefined) {
-          setContentRegex(newContentRegex);
-        }
-        
-        // Ensure regex is active
-        setIsRegexActive(true);
-        
-        handleInteraction();
-      } else {
-        // Display error
-        const errorMessage = result.message || "Unknown error generating regex patterns.";
-        console.error("Error generating regex patterns:", errorMessage);
-        setRegexGenerationError(`Error generating regex patterns: ${errorMessage}`);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error("Error in handleGenerateRegex:", error);
-      setRegexGenerationError(`Error generating regex patterns: ${errorMessage}`);
-    } finally {
-      setIsGeneratingTaskRegex(false);
-    }
-  }, [taskDescription, projectDirectory, handleInteraction]);
-
-  const handleClearPatterns = useCallback(() => {
-    setTitleRegex("");
-    setContentRegex("");
-    handleInteraction();
-  }, [handleInteraction]);
-
-  const handleToggleRegexActive = useCallback(() => {
-    const newValue = !isRegexActive;
-    setIsRegexActive(newValue);
-    handleInteraction();
-  }, [isRegexActive, handleInteraction]);
-
-  const handleFilesMapChange = useCallback(async (filesMap: FilesMap) => {
-    // Track file selection changes in debug mode
-    if (debugMode) {
-      const changes = trackSelectionChanges(allFilesMap, filesMap);
-      if (changes.length > 0) {
-        console.log('File selection changes:', changes);
-      }
-    }
-    
-    setAllFilesMap(filesMap);
-    handleInteraction();
-  }, [allFilesMap, debugMode, handleInteraction]);
-
-  const handleAddPathToPastedPaths = useCallback((pathToAdd: string) => {
-    // Normalize path to ensure consistent format
-    const normalizedPath = normalizeFilePath(pathToAdd, projectDirectory);
-    
-    // Check if path already exists in pasted paths
-    const existingPaths = pastedPaths.split('\n').map(p => p.trim()).filter(Boolean);
-    if (existingPaths.includes(normalizedPath)) {
-      return; // Already exists, nothing to do
-    }
-    
-    const newPastedPaths = existingPaths.length > 0
-      ? `${pastedPaths}\n${normalizedPath}`
-      : normalizedPath;
-    
-    setPastedPaths(newPastedPaths);
-    handleInteraction();
-  }, [pastedPaths, projectDirectory, handleInteraction]);
-
-  const toggleSearchSelectedFilesOnly = useCallback(async () => {
-    const newValue = !searchSelectedFilesOnly;
-    setSearchSelectedFilesOnly(newValue);
-    try {
-      localStorage.setItem(SEARCH_SELECTED_FILES_ONLY_KEY, String(newValue));
-    } catch (e) {
-      console.error('Failed to save search filter preference:', e);
-    }
-  }, [searchSelectedFilesOnly]);
-
-  const toggleOutputFormat = useCallback(async () => {
-    const formats: OutputFormat[] = ["markdown", "xml", "plain"];
-    const currentIndex = formats.indexOf(outputFormat);
-    const nextIndex = (currentIndex + 1) % formats.length;
-    const newFormat = formats[nextIndex];
-    
-    setOutputFormat(newFormat);
-    try {
-      localStorage.setItem(OUTPUT_FORMAT_KEY, newFormat);
-    } catch (e) {
-      console.error('Failed to save output format preference:', e);
-    }
-  }, [outputFormat]);
-
-  // Form state for FormStateManager
-  const formStateForManager = useMemo(() => {
+  // Get current session state for saving
+  const getCurrentSessionState = (): Partial<Session> => {
     return {
-      projectDirectory,
       taskDescription,
       searchTerm,
       pastedPaths,
@@ -561,356 +742,460 @@ export function useGeneratePromptState() {
       contentRegex,
       isRegexActive,
       diffTemperature,
-      modelUsed,
+      projectDirectory: projectDirectory || "",
       includedFiles: includedPaths,
       forceExcludedFiles: excludedPaths
     };
-  }, [
-    projectDirectory,
-    taskDescription,
-    searchTerm,
-    pastedPaths,
-    titleRegex,
-    contentRegex,
-    isRegexActive,
-    diffTemperature,
-    modelUsed,
-    includedPaths,
-    excludedPaths
-  ]);
+  };
 
-  // Get current session state
-  const getCurrentSessionState = useCallback(() => {
-    return {
-      id: activeSessionId || '',
-      projectDirectory: projectDirectory || '',
-      taskDescription,
-      searchTerm,
-      pastedPaths,
-      titleRegex,
-      contentRegex,
-      isRegexActive,
-      diffTemperature,
-      modelUsed,
-      includedFiles: includedPaths,
-      forceExcludedFiles: excludedPaths,
-      name: '', // Session name is managed by the SessionManager
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-  }, [
-    activeSessionId,
-    projectDirectory,
-    taskDescription,
-    searchTerm,
-    pastedPaths,
-    titleRegex,
-    contentRegex,
-    isRegexActive,
-    diffTemperature,
-    modelUsed,
-    includedPaths,
-    excludedPaths
-  ]);
-
-  // Initialization from URL parameters
-  useEffect(() => {
-    if (!searchParams || initializationRef.current.urlProjectInitialized) return;
-    
-    const dirParam = searchParams.get('dir');
-    if (dirParam) {
-      console.log(`[URL Init] Directory from URL: ${dirParam}`);
-      setProjectDirectory(dirParam);
-      initializationRef.current.urlProjectInitialized = true;
-    }
-  }, [searchParams, setProjectDirectory]);
-
-  // Initialize project data when directory is selected
-  useEffect(() => {
-    if (!projectDirectory) {
-      console.log('[Form Init] No project directory selected.');
-      return;
-    }
-
-    const normalizedProjectDir = normalizePath(projectDirectory);
-    console.log(`[Form Init] Project selected: ${normalizedProjectDir}. Initializing...`);
-    
-    if (initializationRef.current.initializedProjectDir === normalizedProjectDir) {
-      console.log(`[Form Init] Already initialized for project: ${normalizedProjectDir}`);
-      return;
-    }
-    
-    const initializeProjectData = async (dirToLoad: string) => {
-      console.log(`[Form Init] Starting project data initialization for: ${dirToLoad}`);
-      setProjectDataLoading(true);
-      
-      try {
-        // First, load file list for the project
-        await loadFiles(dirToLoad);
-        
-        // Then load the active session ID for this project
-        console.log(`[Form Init] Loading active session ID for project: ${dirToLoad}`);
-        const savedActiveSessionId = await repository.getActiveSessionId(dirToLoad);
-        
-        if (savedActiveSessionId) {
-          console.log(`[Form Init] Active session ID ${savedActiveSessionId} found for project. Loading session...`);
-          try {
-            const sessionToLoad = await repository.getSession(savedActiveSessionId);
-            
-            if (sessionToLoad) {
-              console.log(`[Form Init] Loading session data: ${sessionToLoad.name}`);
-              handleLoadSession(savedActiveSessionId);
-            } else {
-              console.warn(`[Form Init] Active session ${savedActiveSessionId} not found in DB. Clearing active session.`);
-              await repository.setActiveSession(dirToLoad, null);
-              handleSetActiveSessionId(null);
-              clearFormFields();
-            }
-          } catch (error) {
-            console.error(`[Form Init] Error loading active session: ${error}`);
-            await repository.setActiveSession(dirToLoad, null);
-            handleSetActiveSessionId(null);
-            clearFormFields();
-          }
-        } else {
-          console.log("[Form Init] No active session for project, clearing form fields");
-          clearFormFields();
-        }
-        
-        initializationRef.current.initializedProjectDir = normalizedProjectDir;
-        initializationRef.current.projectInitialized = true;
-      } catch (error) {
-        console.error(`[Form Init] Error initializing project data: ${error}`);
-        setAllFilesMap({});
-        setFileContentsMap({});
-        handleSetActiveSessionId(null);
-        clearFormFields();
-      } finally {
-        setProjectDataLoading(false);
-      }
-    };
-    
-    initializeProjectData(normalizedProjectDir);
-  }, [
-    projectDirectory, 
-    repository, 
-    loadFiles, 
-    handleSetActiveSessionId, 
-    handleLoadSession, 
-    clearFormFields
-  ]);
-
-  // Load preferences on init
-  useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const savedFormat = localStorage.getItem(OUTPUT_FORMAT_KEY);
-        if (savedFormat && (savedFormat === 'markdown' || savedFormat === 'xml' || savedFormat === 'plain')) {
-          setOutputFormat(savedFormat as OutputFormat);
-        }
-        
-        const searchFilterPref = localStorage.getItem(SEARCH_SELECTED_FILES_ONLY_KEY);
-        if (searchFilterPref !== null) {
-          setSearchSelectedFilesOnly(searchFilterPref === 'true');
-        }
-        
-        const modelPref = localStorage.getItem(MODEL_USED_KEY);
-        if (modelPref) {
-          setModelUsed(modelPref);
-        }
-      } catch (e) {
-        console.error('Error loading preferences:', e);
-      }
-    };
-    
-    loadPreferences();
-  }, []);
-
-  // Save model preference when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(MODEL_USED_KEY, modelUsed);
-    } catch (e) {
-      console.error('Failed to save model preference:', e);
-    }
-  }, [modelUsed]);
-
-  // Reset copySuccess state after a delay
-  useEffect(() => {
-    if (copySuccess) {
-      const timer = setTimeout(() => {
-        // Reset the copy success state
-        if (copyPrompt && typeof copyPrompt === 'function') {
-          // We can't reset directly as copyPrompt is a function
-          // The success state will be handled by prompt generator hook
-        }
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [copySuccess, copyPrompt]);
-
-  // Reset taskCopySuccess state after a delay
-  useEffect(() => {
-    if (taskCopySuccess) {
-      const timer = setTimeout(() => setTaskCopySuccess(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [taskCopySuccess]);
-
-  // Add the handleFindRelevantFiles function
+  // Update handleFindRelevantFiles to use task-specific model settings
   const handleFindRelevantFiles = useCallback(async () => {
-    if (!taskDescription.trim() || !projectDirectory) {
-      return;
-    }
-
-    setIsFindingFiles(true);
-    setError("");
-
     try {
-      const result = await findRelevantFilesAction(projectDirectory, taskDescription);
-      if (result.isSuccess && result.data) {
-        // Use the paths returned from the action
-        const paths = result.data.relevantPaths;
-        const pathsText = paths.join('\n');
-        setPastedPaths(pathsText);
+      if (!taskDescription.trim()) {
+        showNotification({
+          title: "Error",
+          message: "Please provide a task description first",
+          type: "error"
+        });
+        return;
+      }
+      
+      if (!activeSessionId) {
+        showNotification({
+          title: "Error",
+          message: "No active session",
+          type: "error"
+        });
+        return;
+      }
+      
+      // Get model settings for pathfinder task
+      const settings = await getTaskModelSettings('pathfinder');
+      
+      setIsFindingFiles(true);
+      const result = await findRelevantFilesAction(
+        taskDescription,
+        projectDirectory,
+        activeSessionId,
+        { modelOverride: settings.model }
+      );
+      
+      if (!result.isSuccess) {
+        throw new Error(result.message);
+      }
+      
+      if (result.data?.relevantPaths && result.data.relevantPaths.length > 0) {
+        console.log("Found relevant files:", result.data.relevantPaths);
         
-        // If there's enhanced guidance, add it to the task description
-        if (result.data.enhancedTaskDescription) {
-          // Optionally use the enhanced task description
-          // setTaskDescription(prevDesc => `${prevDesc}\n\n${result.data.enhancedTaskDescription}`);
+        // Extract the file paths and remove duplicates
+        const foundPaths = [...new Set(result.data.relevantPaths)];
+        
+        // First, update the allFilesMap to include the found paths
+        const updatedFilesMap = { ...allFilesMap };
+        
+        // Mark the found paths as included
+        foundPaths.forEach(path => {
+          if (updatedFilesMap[path]) {
+            updatedFilesMap[path] = {
+              ...updatedFilesMap[path],
+              included: true
+            };
+          }
+        });
+        
+        // Update the allFilesMap
+        setAllFilesMap(updatedFilesMap);
+        
+        // Now refresh files with preserveState=true to keep our selections
+        refreshFiles(true);
+        
+        // Update the textarea with the found paths
+        setPastedPaths(foundPaths.join('\n'));
+        handleInteraction();
+        
+        showNotification({
+          title: "Success",
+          message: `Found ${foundPaths.length} files relevant to your task`,
+          type: "success"
+        });
+      } else {
+        showNotification({
+          title: "Warning",
+          message: "No files found that match your task description",
+          type: "warning"
+        });
+      }
+    } catch (error) {
+      console.error("Error finding relevant files:", error);
+      showNotification({
+        title: "Error",
+        message: `Error finding files: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error"
+      });
+    } finally {
+      setIsFindingFiles(false);
+    }
+  }, [
+    taskDescription, 
+    projectDirectory, 
+    activeSessionId, 
+    refreshFiles,
+    allFilesMap,
+    setAllFilesMap,
+    showNotification, 
+    handleInteraction,
+    getTaskModelSettings
+  ]);
+
+  // Update handleGenerateRegexFromTask to use task-specific model settings
+  const handleGenerateRegexFromTask = useCallback(async () => {
+    if (!taskDescription.trim()) return;
+    
+    setIsGeneratingTaskRegex(true);
+    setRegexGenerationError("");
+    
+    try {
+      const result = await generateRegexPatternsAction(taskDescription);
+      
+      if (result && result.isSuccess && result.data) {
+        const { titleRegex, contentRegex } = result.data;
+        
+        if (titleRegex) {
+          setTitleRegex(titleRegex);
+        }
+        
+        if (contentRegex) {
+          setContentRegex(contentRegex);
         }
         
         handleInteraction();
       } else {
-        setError(result.message || "Failed to find relevant files");
+        setRegexGenerationError(result?.message || "Failed to generate regex patterns. Try again or create them manually.");
       }
-    } catch (error) {
-      console.error("Error finding relevant files:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setError(`Error finding relevant files: ${errorMessage}`);
+    } catch (err) {
+      setRegexGenerationError(`Error generating patterns: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setIsFindingFiles(false);
+      setIsGeneratingTaskRegex(false);
     }
-  }, [taskDescription, projectDirectory, handleInteraction]);
+  }, [taskDescription, handleInteraction]);
 
-  // Update refresh project handler to preserve selections
-  const handleRefreshProject = useCallback(async () => {
-    if (!projectDirectory) return;
+  // Modify the useEffect for handling project directory changes to explicitly reset session initialization
+  useEffect(() => {
+    // Reset session initialized state when project directory changes
+    if (projectDirectory && prevProjectDirectory.current !== projectDirectory) {
+      console.log(`[State] Project directory changed from ${prevProjectDirectory.current || 'none'} to ${projectDirectory}`);
+      setSessionInitialized(false);
+      // Don't clear activeSessionId here - that should happen in the ProjectContext
+    }
+    
+    // Remember current project directory for next change
+    prevProjectDirectory.current = projectDirectory;
+  }, [projectDirectory]);
+
+  // Read from storage and restore session state
+  const restoreSessionState = useCallback(async (sessionId: string) => {
+    console.log(`[restoreSessionState] Attempting to restore session: ${sessionId} (current project: ${projectDirectory})`);
+    
+    if (!sessionId) {
+      console.warn('[restoreSessionState] Cannot restore session: No session ID provided');
+      return;
+    }
     
     try {
-      setError("");
-      await refreshFiles(true); // Pass true to preserve selection state
-    } catch (error) {
-      console.error('Error refreshing project:', error);
-      setError(`Error refreshing project: ${error}`);
-    }
-  }, [projectDirectory, refreshFiles]);
+      setIsRestoringSession(true);
+      setSessionLoadError(null);
+      
+      const session = await sessionSyncService.getSessionById(sessionId);
+      if (!session) {
+        console.error(`[restoreSessionState] Session not found: ${sessionId}`);
+        setSessionLoadError(`Session not found: ${sessionId}`);
+        showNotification({
+          title: "Error",
+          message: `Session not found: ${sessionId}`,
+          type: "error"
+        });
+        return;
+      }
 
-  // Export both state and actions
+      console.log(`[restoreSessionState] Loaded session: ${session.name} (ID: ${sessionId})`);
+      
+      // Check if session's project directory matches current project directory
+      if (projectDirectory && session.projectDirectory && 
+          projectDirectory !== session.projectDirectory) {
+        console.warn(`[restoreSessionState] Session project directory mismatch:`, {
+          sessionProject: session.projectDirectory,
+          currentProject: projectDirectory
+        });
+        
+        // Ask user if they want to update the session's project directory
+        if (window.confirm(
+          `This session was created for project "${session.projectDirectory}" but you're now in "${projectDirectory}". ` +
+          `Would you like to update this session to use the current project directory?`
+        )) {
+          console.log(`[restoreSessionState] Updating session project directory to: ${projectDirectory}`);
+          await sessionSyncService.updateSessionProjectDirectory(sessionId, projectDirectory);
+          session.projectDirectory = projectDirectory;
+        } else {
+          console.log(`[restoreSessionState] User chose to keep original project directory`);
+        }
+      }
+      
+      // Set the active session ID for the project
+      if (projectDirectory) {
+        await sessionSyncService.setActiveSession(projectDirectory, sessionId);
+        console.log(`[restoreSessionState] Set active session for project "${projectDirectory}" to: ${sessionId}`);
+      }
+      
+      // Populate form fields from session data
+      setActiveSessionId(sessionId);
+      setSessionName(session.name || '');
+      
+      if (session.taskDescription) {
+        setTaskDescription(session.taskDescription);
+      }
+      
+      if (session.searchTerm) {
+        setSearchTerm(session.searchTerm);
+      }
+      
+      if (session.pastedPaths) {
+        setPastedPaths(session.pastedPaths);
+      }
+      
+      if (session.titleRegex) {
+        setTitleRegex(session.titleRegex);
+      }
+      
+      if (session.contentRegex) {
+        setContentRegex(session.contentRegex);
+      }
+      
+      if (session.isRegexActive !== undefined) {
+        setIsRegexActive(session.isRegexActive);
+      }
+      
+      if (session.diffTemperature !== undefined) {
+        setDiffTemperature(session.diffTemperature);
+      }
+      
+      if (session.outputFormat !== undefined) {
+        setOutputFormat(session.outputFormat);
+      }
+      
+      // Handle file selections by updating allFilesMap to reflect included and excluded files
+      // This will cause includedPaths and excludedPaths to be recalculated via useMemo
+      if ((session.includedFiles && session.includedFiles.length > 0) || 
+          (session.forceExcludedFiles && session.forceExcludedFiles.length > 0)) {
+        
+        // When we have files to restore, do it by updating the allFilesMap
+        // We'll make sure to load the files properly in the next step
+        console.log(`[restoreSessionState] Found file selections to restore:`, {
+          includedCount: session.includedFiles?.length || 0,
+          excludedCount: session.forceExcludedFiles?.length || 0
+        });
+        
+        // We'll need to load or refresh files with the right selections
+        // The file loading mechanism will handle updating allFilesMap
+        loadFiles(
+          session.projectDirectory || projectDirectory, 
+          undefined, 
+          {
+            included: session.includedFiles || [],
+            excluded: session.forceExcludedFiles || []
+          }
+        );
+      }
+      
+      // Set the state as initialized and clear unsaved changes flag
+      setSessionInitialized(true);
+      setHasUnsavedChanges(false);
+      
+      console.log(`[restoreSessionState] Successfully restored session state for: ${sessionId}`);
+      
+      // Return to the UI that we were successful
+      return {
+        success: true,
+        sessionName: session.name || '',
+      };
+    } catch (error) {
+      console.error('[restoreSessionState] Error restoring session state:', error);
+      setSessionLoadError(`Failed to restore session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+      showNotification({
+        title: "Error",
+        message: `Failed to restore session: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error"
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      setIsRestoringSession(false);
+    }
+  }, [
+    projectDirectory,
+    setActiveSessionId,
+    setTaskDescription,
+    setSearchTerm,
+    setPastedPaths,
+    setTitleRegex,
+    setContentRegex,
+    setIsRegexActive,
+    setDiffTemperature,
+    setOutputFormat,
+    loadFiles,
+    showNotification
+  ]);
+
   return {
     state: {
-      // Project and session state
-      projectDirectory,
-      activeSessionId,
-      sessionInitialized,
-      isRestoringSession,
-      sessionSaveError,
-      hasUnsavedChanges,
-      
-      // Loading states
-      isLoading: isGenerating,
-      isLoadingFiles,
-      isRefreshingFiles,
-      isFindingFiles,
-      isGeneratingTaskRegex,
-      isGeneratingGuidance,
-      isCopyingPrompt,
-      isFormSaving,
-      projectDataLoading,
-      showLoadingOverlay,
-      loadingStatus,
-      
-      // File states
-      allFilesMap,
-      fileContentsMap,
-      includedPaths,
-      excludedPaths,
-      
-      // Form input states
       taskDescription,
       searchTerm,
       pastedPaths,
       titleRegex,
       contentRegex,
+      error,
+      isGeneratingTaskRegex,
+      regexGenerationError,
+      titleRegexError,
+      contentRegexError,
+      allFilesMap,
+      fileContentsMap,
+      externalPathWarnings,
       isRegexActive,
+      activeSessionId,
+      debugMode,
+      pathDebugInfo,
+      hasUnsavedChanges,
+      sessionInitialized,
+      showLoadingOverlay,
+      isRestoringSession,
+      sessionLoadError,
+      isFormSaving,
+      isFindingFiles,
+      isGeneratingGuidance,
+      isCopyingPrompt,
+      isRebuildingIndex,
       searchSelectedFilesOnly,
       outputFormat,
       diffTemperature,
-      
-      // Output states
       prompt,
-      error,
-      regexGenerationError,
       tokenCount,
       architecturalPrompt,
-      externalPathWarnings,
+      isGenerating,
       copySuccess,
       taskCopySuccess,
-      
-      // Debug states
-      debugMode,
-      pathDebugInfo,
-      
-      // References
+      projectDirectory,
+      loadingStatus,
+      sessionName,
       taskDescriptionRef,
-      formStateForManager,
+      isLoadingFiles,
+      isRefreshingFiles
     },
-    
     actions: {
-      // Project and session actions
-      setProjectDirectory,
-      handleSetActiveSessionId,
-      handleLoadSession,
-      setSessionInitialized,
-      getCurrentSessionState,
-      
-      // File operations
-      loadFiles,
-      refreshFiles,
-      handleFilesMapChange,
-      
-      // Form input handlers
-      handleTaskChange,
-      handleTranscribedText,
-      handleSearchChange,
-      handlePastedPathsChange,
-      handlePathsPreview,
-      handleTitleRegexChange,
-      handleContentRegexChange,
-      handleClearPatterns,
-      handleToggleRegexActive,
-      handleAddPathToPastedPaths,
-      toggleSearchSelectedFilesOnly,
-      toggleOutputFormat,
+      setTaskDescription,
+      setSearchTerm,
+      setPastedPaths,
+      setTitleRegex,
+      setContentRegex,
       setDiffTemperature,
-      handleGenerateRegexFromTask,
-      
-      // Output actions
+      handleTaskChange: (value: string) => {
+        setTaskDescription(value);
+        handleInteraction();
+      },
+      handleTitleRegexChange: (value: string) => {
+        setTitleRegex(value);
+        handleInteraction();
+      },
+      handleContentRegexChange: (value: string) => {
+        setContentRegex(value);
+        handleInteraction();
+      },
+      setError,
+      setExternalPathWarnings,
+      handleToggleRegexActive: (active: boolean) => {
+        setIsRegexActive(active);
+        handleInteraction();
+      },
+      handleInteraction,
+      handleLoadSession,
+      handleSetActiveSessionId,
+      getCurrentSessionState,
+      setHasUnsavedChanges,
+      setSessionInitialized,
+      clearFormFields: () => {
+        setTaskDescription("");
+        setSearchTerm("");
+        setPastedPaths("");
+        setTitleRegex("");
+        setContentRegex("");
+        setIsRegexActive(true);
+        setError("");
+        setSessionName("Untitled Session");
+        handleInteraction();
+      },
+      setSessionLoadError,
+      setIsFormSaving,
+      handleClearPatterns: () => {
+        setTitleRegex("");
+        setContentRegex("");
+        setError("");
+        handleInteraction();
+      },
+      handleFindRelevantFiles,
       generatePrompt,
       copyPrompt,
-      handleFindRelevantFiles,
       copyArchPrompt,
       copyTemplatePrompt,
-      setError,
-      
-      // General handlers
-      handleInteraction,
-      setIsFormSaving,
-      setSessionSaveError,
-      handleRefreshProject,
-      setHasUnsavedChanges,
+      setProjectDirectory,
+      handleGenerateRegexFromTask,
+      handleTranscribedText: (text: string) => {
+        if (taskDescriptionRef.current) {
+          taskDescriptionRef.current.appendText(text);
+        } else {
+          setTaskDescription((prev) => prev + (prev ? "\n\n" : "") + text);
+        }
+        handleInteraction();
+      },
+      handleToggleSearchSelectedFilesOnly: (value: boolean) => {
+        setSearchSelectedFilesOnly(value);
+        savePreferenceToLocalStorage(SEARCH_SELECTED_FILES_ONLY_KEY, value ? "true" : "false");
+      },
+      toggleSearchSelectedFilesOnly: () => {
+        setSearchSelectedFilesOnly(prev => !prev);
+        savePreferenceToLocalStorage(SEARCH_SELECTED_FILES_ONLY_KEY, !searchSelectedFilesOnly ? "true" : "false");
+      },
+      handleFilesMapChange: (newMap: FilesMap) => {
+        setAllFilesMap(newMap);
+        handleInteraction();
+      },
+      handleSearchChange: (value: string) => {
+        setSearchTerm(value);
+        handleInteraction();
+      },
+      handlePastedPathsChange: (value: string) => {
+        setPastedPaths(value);
+        handleInteraction();
+      },
+      handlePathsPreview: (paths: string[]) => {
+        // If this is just for preview, we don't need to implement anything specific here
+        console.log(`[State] Previewing ${paths.length} paths`);
+      },
+      handleAddPathToPastedPaths: (path: string) => {
+        setPastedPaths(prev => {
+          const lines = prev.split('\n').filter(line => line.trim());
+          // Only add if not already in the list
+          if (!lines.includes(path)) {
+            lines.push(path);
+          }
+          return lines.join('\n');
+        });
+        handleInteraction();
+      },
+      refreshFiles,
+      restoreSessionState
     },
-    modelUsed,
-    setModelUsed,
+    sessionName,
+    setSessionName
   };
 } 

@@ -1,11 +1,15 @@
 "use server";
 
-import { sessionRepository } from '@/lib/db';
-import { setupDatabase } from '@/lib/db'; // Use index export
+import { sessionRepository } from '@/lib/db/repository-factory';
+import { setupDatabase, setActiveSession } from '@/lib/db'; // Add setActiveSession
 import { ActionState } from '@/types';
+import { revalidatePath } from 'next/cache';
+import { type Session } from '@/types';
+import { handleActionError } from '@/lib/action-utils';
+import { normalizePath } from '@/lib/path-utils';
 
 /**
- * Clears the geminiXmlPath field for a given session.
+ * Clears the xml path field for a given session.
  * This is typically used when the patch file is confirmed to be missing.
  */
 export async function clearSessionXmlPathAction(sessionId: string): Promise<ActionState<null>> {
@@ -15,20 +19,24 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
         }
         
         await setupDatabase();
-        const repository = sessionRepository; // Use singleton repository
         
-        // Check if we need to update the xml path for the last gemini request as well
-        const requests = await repository.getGeminiRequests(sessionId);
-        const latestRequestWithXml = requests.find(r => r.xmlPath);
+        // Check if we need to update the xml path for any background jobs
+        const session = await sessionRepository.getSessionWithBackgroundJobs(sessionId);
+        if (!session || !session.backgroundJobs) {
+            return { isSuccess: true, message: "No background jobs found to update" };
+        }
         
-        if (latestRequestWithXml) {
-            await repository.updateGeminiRequestStatus(
-                latestRequestWithXml.id,
-                latestRequestWithXml.status,
-                latestRequestWithXml.startTime,
-                latestRequestWithXml.endTime,
+        // Find the latest job with an XML path
+        const latestJobWithXml = session.backgroundJobs.find(job => job.xmlPath);
+        
+        if (latestJobWithXml) {
+            await sessionRepository.updateBackgroundJobStatus(
+                latestJobWithXml.id,
+                latestJobWithXml.status,
+                latestJobWithXml.startTime,
+                latestJobWithXml.endTime,
                 null, // Set xml path to null
-                latestRequestWithXml.statusMessage || "XML file not found"
+                "XML file not found"
             );
         }
         
@@ -46,7 +54,7 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
 }
 
 /**
- * Resets a session's Gemini request processing status.
+ * Resets a session's background job processing status.
  * This is used to allow restarting processing for a session that was canceled or failed.
  */
 export async function resetSessionStateAction(sessionId: string): Promise<ActionState<null>> {
@@ -62,11 +70,246 @@ export async function resetSessionStateAction(sessionId: string): Promise<Action
             return { isSuccess: false, message: `Session ${sessionId} not found.` };
         }
 
-        // Cancel any running Gemini requests associated with the session
-        await sessionRepository.cancelAllSessionRequests(sessionId);
+        // Cancel any running background jobs associated with the session
+        await sessionRepository.cancelAllSessionBackgroundJobs(sessionId);
         
         return { isSuccess: true, message: "Session state reset successfully." };
     } catch (error) {
         return { isSuccess: false, message: `Failed to reset session state: ${error instanceof Error ? error.message : String(error)}` };
     }
+}
+
+/**
+ * Create a new session with the specified settings
+ */
+export async function createSessionAction(
+  sessionData: Partial<Session>
+): Promise<ActionState<Session>> {
+  try {
+    console.log(`[Action] Creating new session: ${sessionData.name || 'Untitled'}`);
+    
+    await setupDatabase();
+    
+    if (!sessionData.projectDirectory) {
+      return {
+        isSuccess: false,
+        message: "Project directory is required"
+      };
+    }
+    
+    const session = await sessionRepository.createSession(sessionData);
+    
+    // If this is a new session, automatically set it as the active session for the project
+    if (session) {
+      console.log(`[Action] Setting new session ${session.id} as active for project: ${session.projectDirectory}`);
+      await setActiveSession(session.projectDirectory, session.id);
+    }
+    
+    revalidatePath('/');
+    
+    return {
+      isSuccess: true,
+      data: session
+    };
+  } catch (error) {
+    console.error(`[createSessionAction] Error:`, error);
+    return {
+      isSuccess: false,
+      message: `Failed to create session: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Get all sessions for a specific project
+ */
+export async function getSessionsAction(projectDirectory: string): Promise<ActionState<Session[]>> {
+  try {
+    console.log(`[Action] Getting sessions for project: ${projectDirectory}`);
+    await setupDatabase();
+    
+    // Get all sessions and filter by project directory
+    const allSessions = await sessionRepository.getAllSessions();
+    const normalizedProjectDir = normalizePath(projectDirectory);
+    
+    // Filter sessions by project directory
+    const filteredSessions = allSessions.filter(session => 
+      normalizePath(session.projectDirectory) === normalizedProjectDir
+    );
+    
+    console.log(`[Action] Found ${filteredSessions.length} sessions for project: ${projectDirectory}`);
+    
+    return {
+      isSuccess: true,
+      data: filteredSessions
+    };
+  } catch (error) {
+    console.error(`[getSessionsAction] Error:`, error);
+    
+    return {
+      isSuccess: false, 
+      message: `Failed to get sessions: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Get a single session by ID
+ */
+export async function getSessionAction(sessionId: string): Promise<ActionState<Session>> {
+  try {
+    console.log(`[Action] Getting session: ${sessionId}`);
+    await setupDatabase();
+    const session = await sessionRepository.getSession(sessionId);
+    
+    if (!session) {
+      return {
+        isSuccess: false,
+        message: `Session with ID ${sessionId} not found`
+      };
+    }
+    
+    return {
+      isSuccess: true,
+      data: session
+    };
+  } catch (error) {
+    console.error(`[getSessionAction] Error:`, error);
+    return {
+      isSuccess: false,
+      message: `Failed to get session: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Delete a session by ID
+ */
+export async function deleteSessionAction(sessionId: string): Promise<ActionState<null>> {
+  try {
+    console.log(`[Action] Deleting session: ${sessionId}`);
+    await setupDatabase();
+    
+    // First, get the session to obtain the project directory
+    const session = await sessionRepository.getSession(sessionId);
+    
+    if (!session) {
+      return {
+        isSuccess: false,
+        message: `Session with ID ${sessionId} not found`
+      };
+    }
+    
+    // Delete the session
+    await sessionRepository.deleteSession(sessionId);
+    
+    // If the deleted session was the active one for its project, clear the active session
+    if (session.projectDirectory) {
+      console.log(`[Action] Checking if deleted session was active for project: ${session.projectDirectory}`);
+      await setActiveSession(session.projectDirectory, null);
+    }
+    
+    revalidatePath('/');
+    
+    return {
+      isSuccess: true,
+      message: "Session deleted successfully"
+    };
+  } catch (error) {
+    console.error(`[deleteSessionAction] Error:`, error);
+    return {
+      isSuccess: false,
+      message: `Failed to delete session: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Clear all sessions
+ */
+export async function clearSessionsAction(): Promise<void> {
+  try {
+    console.log('[Action] Clearing all sessions');
+    await setupDatabase();
+    await sessionRepository.deleteAllSessions();
+    revalidatePath('/');
+  } catch (error) {
+    throw new Error(`Failed to clear sessions: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Rename a session
+ */
+export async function renameSessionAction(sessionId: string, name: string): Promise<ActionState<null>> {
+  try {
+    console.log(`[Action] Renaming session ${sessionId} to: ${name}`);
+    await setupDatabase();
+    await sessionRepository.updateSessionName(sessionId, name);
+    revalidatePath('/');
+    
+    return {
+      isSuccess: true,
+      message: "Session renamed successfully"
+    };
+  } catch (error) {
+    console.error(`[renameSessionAction] Error:`, error);
+    return {
+      isSuccess: false,
+      message: `Failed to rename session: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Update a session's project directory
+ */
+export async function updateSessionProjectDirectoryAction(
+  sessionId: string, 
+  projectDirectory: string
+): Promise<ActionState<null>> {
+  try {
+    console.log(`[Action] Updating project directory for session ${sessionId} to: ${projectDirectory}`);
+    await setupDatabase();
+    
+    // Get the current session to check its project directory
+    const session = await sessionRepository.getSession(sessionId);
+    
+    if (!session) {
+      return {
+        isSuccess: false,
+        message: `Session with ID ${sessionId} not found`
+      };
+    }
+    
+    // If project directory is changing, we need to handle active sessions
+    if (session.projectDirectory !== projectDirectory) {
+      // Clear this session as active from the old project directory
+      if (session.projectDirectory) {
+        await setActiveSession(session.projectDirectory, null);
+      }
+      
+      // Update the project directory
+      await sessionRepository.updateSessionProjectDirectory(sessionId, projectDirectory);
+      
+      // Set this session as active for the new project directory
+      await setActiveSession(projectDirectory, sessionId);
+    } else {
+      // Just update the project directory (no change to active sessions needed)
+      await sessionRepository.updateSessionProjectDirectory(sessionId, projectDirectory);
+    }
+    
+    revalidatePath('/');
+    
+    return {
+      isSuccess: true,
+      message: "Project directory updated successfully"
+    };
+  } catch (error) {
+    console.error(`[updateSessionProjectDirectoryAction] Error:`, error);
+    return {
+      isSuccess: false,
+      message: `Failed to update session project directory: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
 }

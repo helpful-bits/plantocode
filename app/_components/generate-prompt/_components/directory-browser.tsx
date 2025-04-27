@@ -42,12 +42,14 @@ interface DirectoryBrowserProps {
   onClose: () => void;
   onSelect: (directoryPath: string) => void;
   initialPath?: string;
+  isOpen: boolean;
 }
 type DirectoryInfo = { name: string; path: string; isAccessible: boolean };
 export default function DirectoryBrowser({ 
   onClose, 
   onSelect,
-  initialPath
+  initialPath,
+  isOpen
 }: DirectoryBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>("");
   const [parentPath, setParentPath] = useState<string | null>(null);
@@ -56,46 +58,9 @@ export default function DirectoryBrowser({
   const [error, setError] = useState<string | null>(null);
   const [pathParts, setPathParts] = useState<{ name: string; path: string }[]>([]);
   const [commonPaths, setCommonPaths] = useState<Array<{name: string, path: string}>>([]);
+  const [inputValue, setInputValue] = useState<string>("");
 
-  // Function to load directories from the current path
-  const loadDirectories = useCallback(async (path: string) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await listDirectoriesAction(path);
-      console.log(`[DirBrowser] List action result for '${path}':`, result);
-
-      if (!result.isSuccess) {
-        // Check if it's a permission error
-        if (result.message?.includes("permission denied") || result.message?.includes("cannot be read")) {
-          setError(result.message);
-          // Still update current path if possible, but show empty directories
-          if (result.data?.currentPath) {
-            setCurrentPath(result.data.currentPath);
-            setParentPath(result.data.parentPath ?? null);
-            setDirectories([]); // Show no directories on permission error
-            updatePathParts(result.data.currentPath); // Update breadcrumbs
-          }
-        } else {
-          setError(result.message || "Failed to load directories");
-          // Keep previous directories if there's an error that's not permission-related
-        }
-      } else {
-        setCurrentPath(result.data.currentPath);
-        setParentPath(result.data.parentPath ?? null);
-        setDirectories(result.data.directories);
-        updatePathParts(result.data.currentPath);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred while loading directories");
-      console.error(`[DirBrowser] Error loading directories for '${path}':`, err);
-    } finally {
-      setIsLoading(false);
-      console.log(`[DirBrowser] Finished loading for '${path}', isLoading: false`);
-    }
-  }, []);
-
+  // Define updatePathParts first before loadDirectories
   const updatePathParts = useCallback((fullPath: string) => {
     if (!fullPath) {
       setPathParts([]);
@@ -130,25 +95,74 @@ export default function DirectoryBrowser({
     }
     
     setPathParts(parts);
-  }, []);
+  }, [setPathParts]);
+
+  // Function to load directories from the current path
+  const loadDirectories = useCallback(async (path: string) => {
+    console.log(`[DirBrowser] Loading directories for '${path}'`);
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      if (path) {
+        const result = await listDirectoriesAction(path);
+        // Handle potentially undefined response
+        if (!result) {
+          console.error(`[DirBrowser] listDirectoriesAction returned undefined for path: ${path}`);
+          setError("Failed to load directories - received an invalid response");
+          return;
+        }
+        
+        if (result.isSuccess && result.data) {
+          setDirectories(result.data.directories);
+          setCurrentPath(result.data.currentPath);
+          setParentPath(result.data.parentPath);
+          updatePathParts(result.data.currentPath);
+          console.log(`[DirBrowser] Successfully loaded directories for '${path}'`);
+        } else {
+          setError(result.message || "An error occurred while loading directories");
+          console.error(`[DirBrowser] Error loading directories for '${path}':`, result.message);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred while loading directories");
+      console.error(`[DirBrowser] Error loading directories for '${path}':`, err);
+    } finally {
+      setIsLoading(false);
+      console.log(`[DirBrowser] Finished loading for '${path}', isLoading: false`);
+    }
+  }, [updatePathParts]);
 
   // Load initial directory on mount
   useEffect(() => {
     const loadInitialDirectory = async () => {
+      // Always have a fallback
+      let directoryToLoad = '/';
+      
       if (initialPath) {
-        await loadDirectories(initialPath);
+        directoryToLoad = initialPath;
       } else {
         try {
           const result = await getHomeDirectoryAction();
-          if (result.isSuccess && result.data) {
-            await loadDirectories(result.data);
+          
+          // Validate the response is complete and contains valid data
+          if (result && result.isSuccess && result.data && typeof result.data === 'string' && result.data.trim()) {
+            directoryToLoad = result.data;
           } else {
-            await loadDirectories('/');
+            console.log("[DirBrowser] Using fallback path: home directory action returned incomplete data");
           }
         } catch (err) {
           console.error("Error getting home directory:", err);
-          await loadDirectories('/');
         }
+      }
+      
+      try {
+        // Use the determined path or fallback
+        await loadDirectories(directoryToLoad);
+      } catch (loadErr) {
+        console.error(`[DirBrowser] Failed to load directories for '${directoryToLoad}':`, loadErr);
+        setError(`Failed to load directories: ${loadErr instanceof Error ? loadErr.message : 'Unknown error'}`);
+        setIsLoading(false);
       }
     };
 
@@ -177,6 +191,7 @@ export default function DirectoryBrowser({
   // Handle directory selection
   const handleSelect = useCallback(() => {
     if (currentPath) {
+      console.log("Directory selected from browser:", currentPath);
       onSelect(currentPath);
       onClose();
     }
@@ -201,18 +216,51 @@ export default function DirectoryBrowser({
     loadCommonPaths();
   }, []);
 
+  const handleSubmit = useCallback(() => {
+    if (inputValue.trim()) {
+      onSelect(inputValue.trim());
+      updatePathParts(inputValue.trim());
+    }
+  }, [inputValue, onSelect, updatePathParts]);
+
+  // Footer buttons
+  const renderFooterButtons = () => {
+    return (
+      <div className="flex gap-2 items-center">
+        <Button
+          variant="secondary"
+          onClick={onClose}
+          className="gap-2"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSelect}
+          disabled={!currentPath || isLoading}
+          className="gap-2"
+        >
+          <FolderOpen className="h-4 w-4" />
+          Select this Directory
+        </Button>
+      </div>
+    );
+  };
+
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col overflow-hidden w-[95vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="h-5 w-5" /> Select Directory
           </DialogTitle>
+          <DialogDescription className="text-sm">
+            Browse and select a directory for your project.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 h-[450px]">
+        <div className="flex flex-col gap-4 h-[450px] overflow-hidden">
           {/* Shortcuts */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap overflow-x-auto pb-2">
             {commonPaths && commonPaths.length > 0 ? (
               commonPaths.map((item) => (
                 <Button
@@ -220,7 +268,7 @@ export default function DirectoryBrowser({
                   variant="outline"
                   size="sm"
                   onClick={() => navigateToDirectory(item.path)}
-                  className="flex items-center gap-1.5"
+                  className="flex items-center gap-1.5 whitespace-nowrap"
                 >
                   {item.name.toLowerCase() === "home" ? (
                     <Home className="h-3.5 w-3.5 flex-shrink-0" />
@@ -344,12 +392,24 @@ export default function DirectoryBrowser({
                 try {
                   const result = await getHomeDirectoryAction();
                   
+                  // Handle potentially undefined result
+                  if (!result) {
+                    console.error("[DirBrowser] Home button - getHomeDirectoryAction returned undefined");
+                    await loadDirectories('/');
+                    return;
+                  }
+                  
                   if (result.isSuccess && result.data) {
                     await loadDirectories(result.data);
+                  } else {
+                    // If home directory can't be determined, fall back to root
+                    await loadDirectories('/');
                   }
                 } catch (error) {
                   console.error("Error navigating to home directory:", error);
                   setError("Failed to navigate to home directory");
+                  // Still try to load something meaningful
+                  await loadDirectories('/');
                 }
               }}
               disabled={isLoading}
@@ -359,16 +419,7 @@ export default function DirectoryBrowser({
             </Button>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSelect}
-              className="gap-1.5"
-            >
-              <Check className="h-4 w-4" />
-              Select Directory
-            </Button>
+            {renderFooterButtons()}
           </div>
         </DialogFooter>
       </DialogContent>

@@ -1,158 +1,95 @@
 "use server";
 
-import { promises as fs, existsSync } from 'fs';
-import path from 'path';
 import { ActionState } from '@/types';
-import { getAllNonIgnoredFiles, invalidateFileCache } from '@/lib/git-utils';
-import { normalizePath } from '@/lib/path-utils';
+import { setupDatabase } from '@/lib/db';
 import geminiClient from '@/lib/api/gemini-client';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
-// Use the flash model directly from constants
-const PATH_CORRECTION_MODEL = GEMINI_FLASH_MODEL;
-
-interface PathCorrectionResult {
-    correctedPaths: string[];
-    originalPaths: string[];
-    correctionsMade: Record<string, string | null>; // Maps original invalid path to corrected path (or null if no correction)
-}
-
+/**
+ * Correct paths based on task description and project structure
+ */
 export async function correctPathsAction(
-    projectDirectory: string,
-    pastedPathsString: string
-): Promise<ActionState<PathCorrectionResult>> {
-    if (!projectDirectory) {
-        return { isSuccess: false, message: "Project directory is required." };
+  taskDescription: string,
+  paths: string[],
+  projectDirectory: string,
+  options?: { modelOverride?: string }
+): Promise<ActionState<{ correctedPaths: string[] }>> {
+  await setupDatabase();
+  
+  if (!taskDescription.trim()) {
+    return { isSuccess: false, message: "Task description cannot be empty" };
+  }
+  
+  if (!paths.length) {
+    return { isSuccess: false, message: "No paths provided to correct" };
+  }
+  
+  try {
+    // Get project settings
+    const projectSettings = await getModelSettingsForProject(projectDirectory);
+    
+    // Get settings for path correction
+    const pathSettings = projectSettings?.path_correction || {
+      model: GEMINI_FLASH_MODEL,
+      maxTokens: 8192,
+      temperature: 0.3 // Lower temperature for more precise path correction
+    };
+    
+    // Override model if provided
+    const model = options?.modelOverride || pathSettings.model;
+    
+    // Prepare prompt for path correction
+    const promptText = `
+Task: ${taskDescription}
+
+The following file paths have been identified but may contain errors or may not exist in the project:
+${paths.map(p => `- ${p}`).join('\n')}
+
+Please correct these paths based on:
+1. Most likely real paths in typical project structures
+2. Usual naming conventions for files based on the task description
+3. What files would typically be needed for this task
+
+Return ONLY a list of corrected file paths, one per line.
+`;
+    
+    // Call the Gemini client
+    const result = await geminiClient.sendRequest(promptText, {
+      model,
+      maxOutputTokens: pathSettings.maxTokens,
+      temperature: pathSettings.temperature,
+      apiType: 'gemini',
+      taskType: 'path_correction',
+      projectDirectory
+    });
+    
+    if (!result.isSuccess) {
+      return { 
+        isSuccess: false, 
+        message: result.message || "Failed to correct paths" 
+      };
     }
-    if (!pastedPathsString.trim()) {
-        return { isSuccess: false, message: "No paths provided to correct." };
-    }
-
-    try {
-        // Invalidate file cache before reading to ensure we get the latest list
-        await invalidateFileCache(projectDirectory);
-
-        // 1. Get all valid files in the project
-        const { files: validProjectFiles } = await getAllNonIgnoredFiles(projectDirectory);
-        const validProjectFileSet = new Set(validProjectFiles.map(p => normalizePath(p, projectDirectory)));
-
-        // 2. Parse and validate pasted paths
-        const originalPaths = pastedPathsString
-            .split('\n')
-            .map(p => p.trim())
-            .filter(p => p && !p.startsWith('#'));
-
-        const validatedPaths: { original: string; normalized: string; isValid: boolean }[] = [];
-        const invalidPaths: string[] = [];
-
-        for (const originalPath of originalPaths) {
-            const normalized = normalizePath(originalPath, projectDirectory);
-            let isValid = false;
-
-            // Check if it's a valid project file (relative)
-            if (validProjectFileSet.has(normalized)) {
-                isValid = true;
-            } else {
-                // Check if it's an existing absolute path (external file)
-                try {
-                    const absolutePath = path.resolve(originalPath); // Resolve to absolute
-                    if (existsSync(absolutePath)) {
-                       const stats = await fs.stat(absolutePath);
-                       if (stats.isFile()) { // Ensure it's a file
-                           isValid = true;
-                       }
-                    }
-                } catch (e) { /* Ignore errors during absolute path check */ }
-            }
-
-            validatedPaths.push({ original: originalPath, normalized: normalized, isValid });
-            if (!isValid) {
-                invalidPaths.push(originalPath); // Use original path for reporting/correction
-            }
-        }
-
-        if (invalidPaths.length === 0) {
-            return {
-                isSuccess: true,
-                message: "All paths are valid.",
-                data: { correctedPaths: originalPaths, originalPaths, correctionsMade: {} }
-            };
-        }
-
-        // 3. Use AI to suggest corrections for invalid paths
-        const systemPrompt = `You are an expert system analyzing file paths. Given a list of potentially incorrect file paths and a list of all valid file paths within a project, suggest the most likely correct path from the valid list for each incorrect path. Focus on finding close matches based on spelling, structure, and common typos.`;
-
-        const userPrompt = `Invalid Paths:\n${invalidPaths.join('\n')}
-
-Valid Project Files:\n${validProjectFiles.join('\n')}
-
-Output ONLY a JSON object mapping each invalid path to its most likely correction from the 'Valid Project Files' list, or null if no confident correction can be made. Example:
-{
-  "src/componens/Button.tsx": "src/components/Button.tsx",
-  "utils/helpers.js": "lib/helpers.ts",
-  "non/existent/file.md": null
-}`;
-
-        console.log(`[PathCorrection] Using Gemini model: ${PATH_CORRECTION_MODEL} for path correction`);
-        const aiResult = await geminiClient.sendRequest(userPrompt, {
-          model: PATH_CORRECTION_MODEL,
-          systemPrompt,
-        });
-
-        if (!aiResult.isSuccess || !aiResult.data) {
-            return { isSuccess: false, message: `AI correction failed: ${aiResult.message || 'No response'}` };
-        }
-
-        let correctionsMade: Record<string, string | null> = {};
-        try {
-            // Handle case where the AI returns JSON wrapped in Markdown code blocks
-            let jsonData = aiResult.data;
-            
-            // Check if response is wrapped in markdown code blocks
-            const markdownJsonRegex = /```(?:json)?\s*([\s\S]*?)```/;
-            const match = markdownJsonRegex.exec(jsonData);
-            
-            if (match && match[1]) {
-                // Extract the JSON content from the markdown code block
-                jsonData = match[1].trim();
-                console.log("Extracted JSON from markdown code block");
-            } else {
-                // Fallback: try to find a JSON object directly in the response
-                const jsonObjectRegex = /(\{[\s\S]*?\})/;
-                const objectMatch = jsonObjectRegex.exec(jsonData);
-                if (objectMatch && objectMatch[1]) {
-                    jsonData = objectMatch[1].trim();
-                    console.log("Extracted JSON object directly from response");
-                }
-            }
-            
-            // Ensure we have a valid JSON object that starts with {
-            if (!jsonData.trim().startsWith('{')) {
-                console.error("Invalid JSON format - doesn't start with {:", jsonData);
-                return { isSuccess: false, message: "AI returned data in an invalid format (not a JSON object)." };
-            }
-            
-            correctionsMade = JSON.parse(jsonData);
-        } catch (e) {
-            console.error("Failed to parse AI correction response:", e);
-            console.error("Raw response data:", aiResult.data);
-            return { isSuccess: false, message: "AI returned invalid correction format." };
-        }
-
-        // 4. Construct the final list of paths
-        const correctedPaths = originalPaths.map(originalPath => {
-            // If the path was invalid and a correction exists, use the correction
-            return correctionsMade[originalPath] ?? originalPath;
-        });
-
-        return {
-            isSuccess: true,
-            message: `Corrected ${Object.values(correctionsMade).filter(v => v !== null).length} out of ${invalidPaths.length} invalid paths.`,
-            data: { correctedPaths, originalPaths, correctionsMade }
-        };
-
-    } catch (error) {
-        console.error('Error in correctPathsAction:', error);
-        return { isSuccess: false, message: `Failed to correct paths: ${error instanceof Error ? error.message : String(error)}` };
-    }
+    
+    // Parse the corrected paths from the result
+    const correctedPaths = result.data
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('-')) // Filter out empty lines and bullet points
+      .map(line => line.replace(/^- /, '')); // Remove bullet points if any
+    
+    return {
+      isSuccess: true,
+      message: "Successfully corrected paths",
+      data: { correctedPaths }
+    };
+  } catch (error) {
+    console.error("[correctPathsAction]", error);
+    
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Unknown error correcting paths",
+      error: error instanceof Error ? error : new Error("Unknown error")
+    };
+  }
 }

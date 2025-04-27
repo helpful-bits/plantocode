@@ -9,11 +9,11 @@ import { toast } from '@/components/ui/use-toast';
 
 interface GeminiProcessorProps {
     prompt: string;
-    model: string;
     temperature?: number;
+    activeSessionId: string | null;
 }
 
-export function GeminiProcessor({ prompt, model, temperature = 0.7 }: GeminiProcessorProps) {
+export function GeminiProcessor({ prompt, temperature = 0.7, activeSessionId }: GeminiProcessorProps) {
     // Track loading state for send operations
     const [isSending, setIsSending] = useState(false);
     // Add state for tracking last request time to prevent rapid-fire requests
@@ -52,7 +52,6 @@ export function GeminiProcessor({ prompt, model, temperature = 0.7 }: GeminiProc
             setLastRequestTime(Date.now());
 
             // Get the active session ID
-            const activeSessionId = sessionStorage.getItem('activeSessionId');
             if (!activeSessionId) {
                 throw new Error('No active session found. Please create a session first.');
             }
@@ -63,7 +62,6 @@ export function GeminiProcessor({ prompt, model, temperature = 0.7 }: GeminiProc
                 activeSessionId,
                 Intl.DateTimeFormat().resolvedOptions().timeZone,
                 {
-                    model,
                     temperature
                 }
             );
@@ -106,7 +104,7 @@ export function GeminiProcessor({ prompt, model, temperature = 0.7 }: GeminiProc
                 <Button 
                     variant="default"
                     onClick={handleSendToGemini}
-                    disabled={isSending || !prompt.trim() || cooldownRemaining > 0}
+                    disabled={isSending || !prompt.trim() || cooldownRemaining > 0 || !activeSessionId}
                     className="flex items-center gap-2"
                 >
                     {isSending ? (

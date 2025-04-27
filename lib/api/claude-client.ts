@@ -1,5 +1,8 @@
-import { ActionState } from "@/types";
+import { ActionState, BackgroundJob } from "@/types";
 import requestQueue from "./request-queue";
+import { setupDatabase } from "@/lib/db";
+import { sessionRepository } from "@/lib/db/repository-factory";
+import { getModelSettingsForProject } from "@/actions/project-settings-actions";
 
 // Constants
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -14,6 +17,7 @@ export interface ClaudeRequestPayload {
   top_p?: number;
   top_k?: number;
   system?: string;
+  model?: string;
 }
 
 export interface ClaudeResponse {
@@ -25,15 +29,91 @@ class ClaudeClient {
   /**
    * Send a request to Claude API with automatic queueing, rate limiting and retries
    */
-  async sendRequest(payload: ClaudeRequestPayload): Promise<ActionState<string>> {
+  async sendRequest(
+    payload: ClaudeRequestPayload, 
+    sessionId?: string,
+    taskType: string = 'text_improvement',
+    projectDirectory?: string
+  ): Promise<ActionState<string>> {
     // Get API key from environment
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return { isSuccess: false, message: "Anthropic API key is not configured." };
     }
     
+    let job: BackgroundJob | null = null;
+    
+    // Load project settings if project directory is provided
+    let modelSettings = null;
+    if (projectDirectory) {
+      try {
+        modelSettings = await getModelSettingsForProject(projectDirectory);
+        if (modelSettings && modelSettings[taskType as any]) {
+          const settings = modelSettings[taskType as any];
+          
+          // Apply settings to payload if not explicitly overridden
+          if (settings.model && !payload.model) {
+            payload.model = settings.model;
+          }
+          
+          if (settings.maxTokens && !payload.max_tokens) {
+            payload.max_tokens = settings.maxTokens;
+          }
+          
+          if (settings.temperature !== undefined && !payload.temperature) {
+            payload.temperature = settings.temperature;
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to load project settings for ${projectDirectory}:`, err);
+      }
+    }
+    
+    // Create a background job record if sessionId is provided
+    if (sessionId) {
+      await setupDatabase();
+      try {
+        // Extract the prompt text from the messages
+        const promptText = payload.messages.map(m => `${m.role}: ${m.content}`).join('\n');
+        
+        // Create background job
+        job = await sessionRepository.createBackgroundJob(
+          sessionId,
+          promptText,
+          'claude',
+          taskType,
+          payload.model || DEFAULT_MODEL,
+          payload.max_tokens || 2048
+        );
+        
+        // Update status to preparing
+        await sessionRepository.updateBackgroundJobStatus(
+          job.id,
+          'preparing',
+          null,
+          null,
+          null,
+          'Setting up Claude API request'
+        );
+      } catch (err) {
+        console.error("Error creating background job:", err);
+      }
+    }
+    
     // Prepare the execution function
     const executeRequest = async (): Promise<ClaudeResponse> => {
+      // Update job status to running if we have a job
+      if (job) {
+        await sessionRepository.updateBackgroundJobStatus(
+          job.id,
+          'running',
+          Date.now(),
+          null,
+          null,
+          'Processing with Claude API'
+        );
+      }
+      
       const response = await fetch(ANTHROPIC_API_URL, {
         method: "POST",
         headers: {
@@ -42,7 +122,7 @@ class ClaudeClient {
           "anthropic-version": ANTHROPIC_VERSION,
         },
         body: JSON.stringify({
-          model: DEFAULT_MODEL,
+          model: payload.model || DEFAULT_MODEL,
           max_tokens: payload.max_tokens ?? 2048,
           messages: payload.messages,
           temperature: payload.temperature,
@@ -98,17 +178,47 @@ class ClaudeClient {
           priority: 0,
           onSuccess: (data: ClaudeResponse) => {
             const responseText = data.content[0].text.trim();
+            
+            // Update job status to completed if we have a job
+            if (job) {
+              sessionRepository.updateBackgroundJobStatus(
+                job.id,
+                'completed',
+                null,
+                Date.now(),
+                null,
+                "Successfully processed with Claude API",
+                {
+                  tokensReceived: data.usage?.output_tokens || 0,
+                  charsReceived: responseText.length
+                }
+              ).catch(err => console.error("Error updating job status:", err));
+            }
+            
             resolve({
               isSuccess: true,
               message: "Anthropic API call successful",
               data: responseText,
               metadata: {
-                usage: data.usage
+                usage: data.usage,
+                jobId: job?.id
               }
             });
           },
           onError: (error: Error) => {
             console.error("Error calling Anthropic API:", error);
+            
+            // Update job status to failed if we have a job
+            if (job) {
+              sessionRepository.updateBackgroundJobStatus(
+                job.id,
+                'failed',
+                null,
+                Date.now(),
+                null,
+                `Error: ${error.message}`
+              ).catch(err => console.error("Error updating job status:", err));
+            }
             
             // Extract information from error message
             let errorType = "UNKNOWN";
@@ -128,7 +238,8 @@ class ClaudeClient {
               message: errorMessage,
               metadata: {
                 errorType,
-                statusCode
+                statusCode,
+                jobId: job?.id
               }
             });
           }
@@ -140,10 +251,16 @@ class ClaudeClient {
   /**
    * Simplified method to improve text using Claude
    */
-  async improveText(text: string, options?: {
-    max_tokens?: number;
-    preserveFormatting?: boolean;
-  }): Promise<ActionState<string>> {
+  async improveText(
+    text: string, 
+    sessionId?: string,
+    options?: {
+      max_tokens?: number;
+      preserveFormatting?: boolean;
+      model?: string;
+    },
+    projectDirectory?: string
+  ): Promise<ActionState<string>> {
     const preserveFormatting = options?.preserveFormatting !== false;
     
     const formattingInstructions = preserveFormatting ? 
@@ -168,16 +285,26 @@ ${text}
 
 Return only the improved text without any additional commentary.`
       }],
-      max_tokens: options?.max_tokens ?? 2048
+      max_tokens: options?.max_tokens,
+      model: options?.model
     };
-    return this.sendRequest(payload);
+    
+    return this.sendRequest(payload, sessionId, 'text_improvement', projectDirectory);
   }
 
 
   /**
    * Method to correct task descriptions
    */
-  async correctTaskDescription(rawText: string): Promise<ActionState<string>> {
+  async correctTaskDescription(
+    rawText: string,
+    sessionId?: string,
+    options?: {
+      max_tokens?: number;
+      model?: string;
+    },
+    projectDirectory?: string
+  ): Promise<ActionState<string>> {
     if (!rawText || !rawText.trim()) {
       return { isSuccess: false, message: "No text provided for correction." };
     }
@@ -191,10 +318,11 @@ ${rawText}
 ---
 Return only the corrected text without any additional commentary.`
       }],
-      max_tokens: 1024
+      max_tokens: options?.max_tokens,
+      model: options?.model
     };
     
-    return this.sendRequest(payload);
+    return this.sendRequest(payload, sessionId, 'voice_correction', projectDirectory);
   }
   
   /**

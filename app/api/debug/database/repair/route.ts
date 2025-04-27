@@ -56,6 +56,14 @@ export async function GET(request: NextRequest) {
     // 3. Migrate project settings to use project_hash
     const projectSettingsResults = await new Promise<any[]>((resolve) => {
       db.all("SELECT * FROM project_settings_old", (err, rows) => {
+        if (err) {
+          console.error("Error fetching project settings:", err);
+          resolve([]);
+          return;
+        }
+        resolve(rows || []);
+      });
+    });
     
     // Insert any old settings into the new table with hashed project directories
     let migratedSettingsCount = 0;

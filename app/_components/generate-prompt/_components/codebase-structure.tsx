@@ -58,7 +58,7 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
               : <FolderTree className="h-4 w-4 mr-2" /> } {/* Use FolderTree instead of TreeStructure */}
             Generate
           </Button>
-          <p className="text-xs text-muted-foreground mt-1">Automatically generates the project structure using the 'tree' command (if available).</p>
+          <p className="text-xs text-muted-foreground mt-1">Automatically generates the project structure using the &apos;tree&apos; command (if available).</p>
           <Button
             type="button"
             variant="ghost" size="sm"
@@ -92,6 +92,9 @@ Optionally provide the project's file structure for better AI context.`}
           )}
         </>
       )}
+      <div className="mt-3 text-white">
+        Loading or generating your project structure is essential to help the AI understand your codebase. If you&apos;re experiencing issues, try selecting a smaller directory that contains only the files you&apos;re working with.
+      </div>
     </div>
   );
 }
