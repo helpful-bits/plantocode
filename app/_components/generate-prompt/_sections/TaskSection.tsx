@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense } from "react";
-import { Wand2, Sparkles, Copy, FileCheck, Files } from "lucide-react";
+import { Wand2, Sparkles, Copy, FileCheck, Files, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -67,8 +67,8 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
         />
       </Suspense>
       
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
+      <div className="flex justify-between items-start">
+        <div className="flex items-start gap-2">
           {handleFindRelevantFiles && (
             <div className="flex flex-col">
               <Button
@@ -116,13 +116,22 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
               type="button"
               variant={taskCopySuccess ? "default" : "outline"}
               size="sm"
-              onClick={copyTemplatePrompt}
+              onClick={(e) => {
+                console.log("Copy Plan Template button clicked");
+                copyTemplatePrompt();
+              }}
               disabled={isCopyingPrompt}
               title="Copy architectural guidance prompt template"
-              className={taskCopySuccess ? "bg-green-500 hover:bg-green-600 text-white" : ""}
+              className={`transition-all duration-200 ${
+                taskCopySuccess 
+                  ? "bg-green-500 hover:bg-green-600 text-white scale-105" 
+                  : ""
+              }`}
             >
-              <Copy className="h-4 w-4 mr-2" />
-              {isCopyingPrompt ? "Copying…" : taskCopySuccess ? "Copied to Clipboard!" : "Copy Plan Template"}
+              {taskCopySuccess 
+                ? <span className="flex items-center gap-1.5"><Check className="h-4 w-4 animate-appear" /> Copied!</span>
+                : <span className="flex items-center gap-1.5"><Copy className="h-4 w-4" /> Copy Plan Template</span>
+              }
             </Button>
             <p className="text-xs text-muted-foreground mt-1">
               Copies the structured plan template to the clipboard.
@@ -130,31 +139,37 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
           </div>
 
           {toggleSearchSelectedFilesOnly && (
-            <div className="flex items-center space-x-2 border rounded-md px-3 py-1.5 bg-background">
-              <div className="flex items-center gap-1.5">
-                {searchSelectedFilesOnly ? (
-                  <FileCheck className="h-4 w-4 text-primary" />
-                ) : (
-                  <Files className="h-4 w-4 text-muted-foreground" />
-                )}
-                <Label htmlFor="search-files-toggle" className="text-sm font-medium cursor-pointer">
-                  {searchSelectedFilesOnly ? "Selected Files" : "All Files"}
-                </Label>
+            <div className="flex flex-col">
+              <div className="flex items-center space-x-2 border rounded-md px-3 py-1.5 bg-background">
+                <div className="flex items-center gap-1.5">
+                  {searchSelectedFilesOnly ? (
+                    <FileCheck className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Files className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <Label htmlFor="search-files-toggle" className="text-sm font-medium cursor-pointer">
+                    {searchSelectedFilesOnly ? "Selected Files" : "All Files"}
+                  </Label>
+                </div>
+                <Switch
+                  id="search-files-toggle"
+                  checked={searchSelectedFilesOnly}
+                  onCheckedChange={toggleSearchSelectedFilesOnly}
+                  title={searchSelectedFilesOnly ? "Search in selected files only" : "Search in all files"}
+                />
               </div>
-              <Switch
-                id="search-files-toggle"
-                checked={searchSelectedFilesOnly}
-                onCheckedChange={toggleSearchSelectedFilesOnly}
-                title={searchSelectedFilesOnly ? "Search in selected files only" : "Search in all files"}
-              />
+              <p className="text-xs text-muted-foreground mt-1">Toggle between viewing all project files or only the ones selected for inclusion.</p>
             </div>
           )}
         </div>
         
-        <VoiceTranscription
-          onTranscribed={handleTranscribedText}
-          onInteraction={handleInteraction}
-        />
+        <div className="ml-4">
+          <VoiceTranscription
+            onTranscribed={handleTranscribedText}
+            onInteraction={handleInteraction}
+            textareaRef={taskDescriptionRef}
+          />
+        </div>
       </div>
     </div>
   );

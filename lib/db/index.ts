@@ -21,6 +21,21 @@ if (!fs.existsSync(APP_DATA_DIR)) {
   fs.mkdirSync(APP_DATA_DIR, { recursive: true });
 }
 
+/**
+ * Fix database file permissions to ensure it's writable
+ */
+async function fixDatabasePermissions(): Promise<void> {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      // Set permissions to 0666 (rw-rw-rw-)
+      fs.chmodSync(DB_FILE, 0o666);
+      console.log("Database file permissions set to rw-rw-rw-");
+    }
+  } catch (err) {
+    console.warn("Failed to set database file permissions:", err);
+  }
+}
+
 // Singleton database instance
 let db: sqlite3.Database;
 
@@ -38,7 +53,7 @@ function openDatabase(): Promise<sqlite3.Database> {
   connectionInProgress = true;
   
   // Create and store the connection promise
-  connectionPromise = new Promise<sqlite3.Database>((resolve, reject) => {
+  connectionPromise = new Promise<sqlite3.Database>(async (resolve, reject) => {
     try {
       // First check for directory existence and permissions
       const dbDir = path.dirname(DB_FILE);
@@ -54,8 +69,11 @@ function openDatabase(): Promise<sqlite3.Database> {
         }
       }
       
+      // Fix database file permissions before trying to open
+      await fixDatabasePermissions();
+      
       // First try to open with read-write access
-      db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+      db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, async (err) => {
         if (err) {
           console.error("Failed to open database with read-write access:", err.message);
           
@@ -64,22 +82,99 @@ function openDatabase(): Promise<sqlite3.Database> {
             console.warn("Database is readonly, falling back to readonly mode");
             isReadOnly = true;
             
-            // Try to open as readonly
-            db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
-              if (roErr) {
-                console.error("Failed to open database even in readonly mode:", roErr.message);
-                dbIsOpen = false;
-                connectionInProgress = false;
-                connectionPromise = null;
-                reject(new Error(`Failed to open database: ${roErr.message}`));
-              } else {
-                console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
-                dbIsOpen = true;
-                setupDatabasePragmas();
-                connectionInProgress = false;
-                resolve(db);
+            // Try to fix permissions and create a new file if the file exists and is readonly
+            if (fs.existsSync(DB_FILE)) {
+              try {
+                // Create a backup of the readonly file
+                const backupFile = `${DB_FILE}.readonly-backup`;
+                fs.copyFileSync(DB_FILE, backupFile);
+                console.log(`Created backup of readonly database at ${backupFile}`);
+                
+                // Delete the readonly file
+                fs.unlinkSync(DB_FILE);
+                console.log("Deleted readonly database file");
+                
+                // Try to open again with create flag after deleting
+                db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, async (recreateErr) => {
+                  if (recreateErr) {
+                    console.error("Failed to recreate database after deleting readonly file:", recreateErr.message);
+                    
+                    // Fall back to readonly mode with the original file
+                    try {
+                      // Restore the backup
+                      fs.copyFileSync(backupFile, DB_FILE);
+                      await fixDatabasePermissions();
+                      
+                      db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
+                        if (roErr) {
+                          console.error("Failed to open database even in readonly mode:", roErr.message);
+                          dbIsOpen = false;
+                          connectionInProgress = false;
+                          connectionPromise = null;
+                          reject(new Error(`Failed to open database: ${roErr.message}`));
+                        } else {
+                          console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
+                          dbIsOpen = true;
+                          setupDatabasePragmas();
+                          connectionInProgress = false;
+                          resolve(db);
+                        }
+                      });
+                    } catch (restoreErr) {
+                      console.error("Failed to restore database from backup:", restoreErr);
+                      dbIsOpen = false;
+                      connectionInProgress = false;
+                      connectionPromise = null;
+                      reject(new Error(`Failed to restore database: ${restoreErr.message}`));
+                    }
+                  } else {
+                    console.log(`Successfully recreated database with proper permissions: ${DB_FILE}`);
+                    isReadOnly = false;
+                    dbIsOpen = true;
+                    await fixDatabasePermissions();
+                    setupDatabasePragmas();
+                    connectionInProgress = false;
+                    resolve(db);
+                  }
+                });
+              } catch (fixErr) {
+                console.error("Failed to fix readonly database:", fixErr);
+                
+                // Still try to open in readonly mode as fallback
+                db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
+                  if (roErr) {
+                    console.error("Failed to open database even in readonly mode:", roErr.message);
+                    dbIsOpen = false;
+                    connectionInProgress = false;
+                    connectionPromise = null;
+                    reject(new Error(`Failed to open database: ${roErr.message}`));
+                  } else {
+                    console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
+                    dbIsOpen = true;
+                    setupDatabasePragmas();
+                    connectionInProgress = false;
+                    resolve(db);
+                  }
+                });
               }
-            });
+            } else {
+              // Try to open as readonly
+              db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
+                if (roErr) {
+                  console.error("Failed to open database even in readonly mode:", roErr.message);
+                  dbIsOpen = false;
+                  connectionInProgress = false;
+                  connectionPromise = null;
+                  reject(new Error(`Failed to open database: ${roErr.message}`));
+                } else {
+                  console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
+                  dbIsOpen = true;
+                  setupDatabasePragmas();
+                  connectionInProgress = false;
+                  resolve(db);
+                }
+              });
+            }
           } else {
             console.error("Failed to open database:", err);
             dbIsOpen = false;
@@ -90,23 +185,19 @@ function openDatabase(): Promise<sqlite3.Database> {
         } else {
           console.log(`Connected to SQLite database: ${DB_FILE}`);
           dbIsOpen = true;
+          // Fix permissions after successful connection
+          await fixDatabasePermissions();
           setupDatabasePragmas();
           connectionInProgress = false;
           resolve(db);
         }
       });
     } catch (error) {
-      console.error("Error opening database:", error);
-      dbIsOpen = false;
+      console.error("Unexpected error connecting to database:", error);
       connectionInProgress = false;
       connectionPromise = null;
-      reject(new Error(`Error during database connection: ${error.message}`));
+      reject(new Error(`Database connection error: ${error instanceof Error ? error.message : String(error)}`));
     }
-  });
-  
-  // Reset connectionPromise when it completes (whether success or failure)
-  connectionPromise.catch(() => {
-    connectionPromise = null;
   });
   
   return connectionPromise;

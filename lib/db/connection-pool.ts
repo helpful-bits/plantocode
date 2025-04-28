@@ -3,10 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
+import { fixDatabasePermissions, handleReadonlyDatabase } from './utils';
 
 // Define DB_FILE directly to avoid circular dependency
 const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
 const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
+
+// Export DB_FILE location for other modules
+export { DB_FILE };
 
 // Connection pool settings
 const POOL_SIZE = 3;
@@ -38,21 +42,36 @@ class ConnectionPool {
     this.initialize();
   }
   
-  private initialize() {
+  private async initialize() {
+    // Ensure the app directory exists
+    if (!fs.existsSync(APP_DATA_DIR)) {
+      try {
+        fs.mkdirSync(APP_DATA_DIR, { recursive: true });
+      } catch (err) {
+        console.error("[ConnectionPool] Failed to create app data directory:", err);
+      }
+    }
+    
+    // Fix permissions on startup
+    await fixDatabasePermissions();
+    
     // Create initial connections (just 1 to start, will grow as needed)
-    this.createConnection(false);
+    await this.createConnection(false);
     
     // Set up maintenance interval
     setInterval(() => this.maintainPool(), 30000);
   }
   
-  private createConnection(readOnly: boolean = false): DbConnection {
+  private async createConnection(readOnly: boolean = false): Promise<DbConnection> {
     const id = crypto.randomUUID();
     const mode = readOnly ? sqlite3.OPEN_READONLY : sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE;
     
     let db: sqlite3.Database;
     
     try {
+      // Fix permissions before opening
+      await fixDatabasePermissions();
+      
       db = new sqlite3.Database(DB_FILE, mode);
       
       // Configure connection
@@ -65,12 +84,45 @@ class ConnectionPool {
       // Enable foreign keys
       db.run('PRAGMA foreign_keys = ON;');
       
+      // Fix permissions after creating/opening the database
+      await fixDatabasePermissions();
+      
     } catch (error) {
-      console.error("Error creating database connection:", error);
+      console.error("[ConnectionPool] Error creating database connection:", error);
       
       // Fallback to readonly if we get a permission error
-      if (!readOnly && error instanceof Error && error.message?.includes('SQLITE_READONLY')) {
-        console.warn("Database is readonly, falling back to readonly mode");
+      if (!readOnly && error instanceof Error && 
+          (error.message?.includes('SQLITE_READONLY') || error.message?.includes('readonly database'))) {
+        
+        // Try to fix the readonly database
+        if (await handleReadonlyDatabase()) {
+          // Retry creating a writable connection since we fixed the issue
+          try {
+            db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
+            
+            // Configure connection
+            db.run('PRAGMA journal_mode = DELETE;');
+            db.run(`PRAGMA busy_timeout = ${CONNECTION_TIMEOUT_MS};`);
+            db.run('PRAGMA foreign_keys = ON;');
+            
+            const conn: DbConnection = {
+              id,
+              db,
+              inUse: false,
+              lastUsed: Date.now(),
+              isReadOnly: false
+            };
+            
+            console.log("[ConnectionPool] Successfully fixed readonly database issue");
+            this.pool.push(conn);
+            return conn;
+            
+          } catch (retryErr) {
+            console.error("[ConnectionPool] Still failed to create writable connection after fix:", retryErr);
+          }
+        }
+        
+        console.warn("[ConnectionPool] Falling back to readonly mode");
         return this.createConnection(true); // Retry with readonly flag
       }
       
@@ -101,7 +153,7 @@ class ConnectionPool {
     
     // If pool is not at max size, create a new connection
     if (this.pool.length < this.maxSize) {
-      const newConn = this.createConnection(readOnly);
+      const newConn = await this.createConnection(readOnly);
       newConn.inUse = true;
       return newConn;
     }
@@ -149,7 +201,7 @@ class ConnectionPool {
     }
   }
   
-  private maintainPool() {
+  private async maintainPool() {
     const now = Date.now();
     
     // Close old unused connections
@@ -160,6 +212,9 @@ class ConnectionPool {
       }
       return true;
     });
+    
+    // Periodically check and fix database file permissions
+    await fixDatabasePermissions();
   }
   
   async withConnection<T>(callback: (db: sqlite3.Database) => Promise<T>, readOnly: boolean = false): Promise<T> {
@@ -173,33 +228,77 @@ class ConnectionPool {
           const delay = RETRY_DELAY_BASE_MS * Math.pow(2, attempt - 1) * (0.5 + Math.random());
           console.log(`Retry attempt ${attempt}/${MAX_RETRIES} for database operation after ${Math.round(delay)}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Check and fix permissions before retry
+          await fixDatabasePermissions();
         }
         
         const conn = await this.getConnection(readOnly);
         try {
           return await callback(conn.db);
-        } finally {
+        } catch (error: any) {
+          // Check for readonly errors directly in the callback
+          if (error && (
+            error.code === 'SQLITE_READONLY' || 
+            (error.message && (error.message.includes('SQLITE_READONLY') || error.message.includes('readonly database')))
+          )) {
+            console.error("Read-only database error detected during operation:", error);
+            
+            // Release this connection before attempting fix
+            this.releaseConnection(conn);
+            
+            // Attempt to fix readonly database issue
+            if (await handleReadonlyDatabase()) {
+              // If fixed, immediately continue to the next retry attempt
+              console.log("Readonly database issue possibly fixed, retrying operation");
+              continue;
+            }
+          }
+          
+          // For other errors or if readonly fix failed, release and rethrow
           this.releaseConnection(conn);
+          throw error;
+        } finally {
+          // Only release if not already released by error handling
+          if (conn.inUse) {
+            this.releaseConnection(conn);
+          }
         }
       } catch (error: any) {
         lastError = error;
         
-        // Only retry on database locked errors
+        // Special handling for readonly errors
+        if (error && (
+          error.code === 'SQLITE_READONLY' || 
+          (error.message && (error.message.includes('SQLITE_READONLY') || error.message.includes('readonly database')))
+        )) {
+          console.error("Read-only database error detected. Attempting to fix permissions.");
+          if (await handleReadonlyDatabase()) {
+            console.log("Readonly database fixed, will retry with new connection");
+            // Immediately retry after fixing
+            continue;
+          }
+        }
+        
+        // Only retry on database locked errors or readonly errors
         const isBusyError = error && (
           error.code === 'SQLITE_BUSY' || 
           error.code === 'SQLITE_LOCKED' ||
+          error.code === 'SQLITE_READONLY' ||
           (error.message && (
             error.message.includes('database is locked') || 
-            error.message.includes('SQLITE_BUSY')
+            error.message.includes('SQLITE_BUSY') ||
+            error.message.includes('SQLITE_READONLY') ||
+            error.message.includes('readonly database')
           ))
         );
         
         if (!isBusyError || attempt === MAX_RETRIES - 1) {
-          // Not a busy error or last attempt, don't retry
+          // Not a busy/readonly error or last attempt, don't retry
           throw error;
         }
         
-        console.warn(`Database busy or locked, will retry (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        console.warn(`Database busy/locked/readonly, will retry (attempt ${attempt + 1}/${MAX_RETRIES})`);
       }
     }
     
@@ -250,13 +349,10 @@ class ConnectionPool {
         console.error("Error closing connection:", err);
       }
     }
+    
     this.pool = [];
   }
 }
 
-// Create pool instance and assign to variable before export
-const connectionPool = new ConnectionPool();
-
-// Export the pool instance and DB_FILE
-export default connectionPool;
-export { DB_FILE }; 
+// Singleton connection pool for the entire application
+export const connectionPool = new ConnectionPool(); 

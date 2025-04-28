@@ -21,6 +21,66 @@ interface PathFinderRequestPayload {
   taskDescription: string;
 }
 
+// Add this type definition for type safety
+interface FileWithContent {
+  files: string[];
+  isGitRepo: boolean;
+}
+
+/**
+ * Helper function to validate a file path
+ */
+async function validateFilePath(
+  filePath: string, 
+  fileContents: Record<string, string>, 
+  projectDirectory: string
+): Promise<boolean> {
+  try {
+    // First check if we already have the content in our map
+    if (fileContents[filePath]) {
+      // Skip binary files by checking the extension
+      const ext = path.extname(filePath).toLowerCase();
+      if (BINARY_EXTENSIONS.has(ext)) return false;
+      
+      // We already have the content, so we can check if it's binary
+      const content = fileContents[filePath];
+      const isBinary = await isBinaryFile(Buffer.from(content));
+      return !isBinary;
+    } else {
+      // For compatibility with paths that might not be in our dictionary
+      // but are valid relative to the project directory
+      const fullPath = path.join(projectDirectory, filePath);
+      try {
+        const stats = await fs.stat(fullPath);
+        if (stats.isFile()) {
+          // Skip binary files
+          const ext = path.extname(filePath).toLowerCase();
+          if (BINARY_EXTENSIONS.has(ext)) return false;
+          
+          try {
+            const content = await fs.readFile(fullPath);
+            const isBinary = await isBinaryFile(content);
+            return !isBinary;
+          } catch (error) {
+            // Skip files we can't read
+            console.warn(`[PathFinder] Could not read file: ${filePath}`, error);
+            return false;
+          }
+        }
+      } catch (error) {
+        // Skip files that don't exist
+        console.warn(`[PathFinder] File doesn't exist: ${filePath}`);
+        return false;
+      }
+    }
+    return false;
+  } catch (error) {
+    // Skip files with any other issues
+    console.warn(`[PathFinder] Error processing file: ${filePath}`, error);
+    return false;
+  }
+}
+
 /**
  * Uses Gemini Flash to find the most relevant files for a given task
  */
@@ -121,31 +181,17 @@ Please list the most relevant file paths for this task, one per line:`;
         return line.replace(/^[\d\.\s-]+/, '').trim();
       });
     
-    // Validate the paths exist in the project
+    // Validate the paths exist in the project using our helper function
     const validatedPaths = [];
+    
+    // Since allFiles doesn't have content, we'll use an empty record
+    // and let validateFilePath use the filesystem fallback
+    const fileContents: Record<string, string> = {};
+    
+    // Validate the paths using our helper function
     for (const filePath of paths) {
-      try {
-        const fullPath = path.join(projectDirectory, filePath);
-        const stats = await fs.stat(fullPath);
-        if (stats.isFile()) {
-          // Skip binary files
-          const ext = path.extname(filePath).toLowerCase();
-          if (BINARY_EXTENSIONS.has(ext)) continue;
-          
-          try {
-            const content = await fs.readFile(fullPath);
-            const isBinary = await isBinaryFile(content);
-            if (!isBinary) {
-              validatedPaths.push(filePath);
-            }
-          } catch (error) {
-            // Skip files we can't read
-            console.warn(`[PathFinder] Could not read file: ${filePath}`, error);
-          }
-        }
-      } catch (error) {
-        // Skip files that don't exist
-        console.warn(`[PathFinder] File doesn't exist: ${filePath}`);
+      if (await validateFilePath(filePath, fileContents, projectDirectory)) {
+        validatedPaths.push(filePath);
       }
     }
     
@@ -255,13 +301,24 @@ async function findAndValidateRelevantPaths(
     
     console.log(`[PathFinder] Finding relevant paths for task: ${taskDescription}`);
     
-    // Get all non-ignored files in the project
-    const allFiles = await getAllNonIgnoredFiles(projectDirectory);
-    if (!allFiles || allFiles.files.length === 0) {
+    // NEW APPROACH: Use readDirectoryAction instead of directly calling getAllNonIgnoredFiles
+    // This provides better error handling and fallback mechanisms
+    const { readDirectoryAction } = await import('@/actions/read-directory-actions');
+    const directoryResult = await readDirectoryAction(projectDirectory);
+    
+    if (!directoryResult.isSuccess || !directoryResult.data) {
+      return { isSuccess: false, message: directoryResult.message || "Failed to read project directory" };
+    }
+    
+    // Extract the file paths from the directory result
+    const fileContents = directoryResult.data;
+    const allFilesPaths = Object.keys(fileContents);
+    
+    if (!allFilesPaths || allFilesPaths.length === 0) {
       return { isSuccess: false, message: "No files found in project directory" };
     }
     
-    console.log(`[PathFinder] Found ${allFiles.files.length} files in project`);
+    console.log(`[PathFinder] Found ${allFilesPaths.length} files in project`);
     
     // Generate directory tree for context
     const dirTree = await generateDirectoryTree(projectDirectory);
@@ -332,28 +389,8 @@ Please list the most relevant file paths for this task, one per line:`;
     // Validate the paths exist in the project
     const validatedPaths = [];
     for (const filePath of paths) {
-      try {
-        const fullPath = path.join(projectDirectory, filePath);
-        const stats = await fs.stat(fullPath);
-        if (stats.isFile()) {
-          // Skip binary files
-          const ext = path.extname(filePath).toLowerCase();
-          if (BINARY_EXTENSIONS.has(ext)) continue;
-          
-          try {
-            const content = await fs.readFile(fullPath);
-            const isBinary = await isBinaryFile(content);
-            if (!isBinary) {
-              validatedPaths.push(filePath);
-            }
-          } catch (error) {
-            // Skip files we can't read
-            console.warn(`[PathFinder] Could not read file: ${filePath}`, error);
-          }
-        }
-      } catch (error) {
-        // Skip files that don't exist
-        console.warn(`[PathFinder] File doesn't exist: ${filePath}`);
+      if (await validateFilePath(filePath, fileContents, projectDirectory)) {
+        validatedPaths.push(filePath);
       }
     }
     
@@ -415,10 +452,14 @@ async function generateGuidanceForPaths(
         // Skip binary files and very large files
         if (content.length > 50000) {
           fileInfos.push({ path: filePath, content: `[File too large: ${Math.round(content.length / 1024)}KB]` });
-        } else if (isBinaryFile(Buffer.from(content))) {
-          fileInfos.push({ path: filePath, content: `[Binary file: ${path.extname(filePath)}]` });
         } else {
-          fileInfos.push({ path: filePath, content });
+          // Fix the async handling here
+          const isBin = await isBinaryFile(Buffer.from(content));
+          if (isBin) {
+            fileInfos.push({ path: filePath, content: `[Binary file: ${path.extname(filePath)}]` });
+          } else {
+            fileInfos.push({ path: filePath, content });
+          }
         }
       } catch (error) {
         console.warn(`[PathFinder] Could not read file: ${filePath}`, error);
@@ -476,7 +517,7 @@ Be concise but comprehensive. Focus on helping the developer implement their tas
       systemPrompt,
       temperature: guidanceSettings.temperature,
       maxOutputTokens: guidanceSettings.maxTokens,
-      requestType: RequestType.TASK_GUIDANCE,
+      requestType: RequestType.CODE_ANALYSIS,
       projectDirectory,
       taskType: 'guidance_generation'
     });

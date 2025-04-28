@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sessionRepository, setupDatabase } from '@/lib/db';
 import { Session } from '@/types';
+import { fixDatabasePermissions } from '@/lib/db/utils';  // Make sure this import exists
 
 /**
  * PATCH /api/session/[sessionId]/state
@@ -77,30 +78,66 @@ export async function PATCH(
       }
     }
     
-    // Update the session fields
-    try {
-      await sessionRepository.updateSessionFields(sessionId, sessionData);
-      console.log(`[API session/state] Successfully updated session ${sessionId}`);
-    } catch (dbError: any) {
-      // Handle specific database errors
-      if (dbError.message?.includes('Session not found')) {
-        console.error(`[API session/state] Session ${sessionId} no longer exists during update`);
+    // Maximum retries for readonly errors
+    const MAX_READONLY_RETRIES = 3;
+    
+    // Update the session fields with retry for readonly errors
+    for (let attempt = 0; attempt < MAX_READONLY_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`[API session/state] Retrying update for session ${sessionId} after readonly error (attempt ${attempt}/${MAX_READONLY_RETRIES})`);
+          // Try to fix permissions before retry
+          await fixDatabasePermissions(); 
+        }
+        
+        await sessionRepository.updateSessionFields(sessionId, sessionData);
+        console.log(`[API session/state] Successfully updated session ${sessionId}`);
+        break; // Success, exit the retry loop
+      } catch (dbError: any) {
+        // Handle specific database errors
+        if (dbError.message?.includes('Session not found')) {
+          console.error(`[API session/state] Session ${sessionId} no longer exists during update`);
+          return NextResponse.json(
+            { error: 'Session no longer exists' },
+            { status: 404 }
+          );
+        }
+        
+        if (dbError.message?.includes('database is locked') || dbError.code === 'SQLITE_BUSY') {
+          console.error(`[API session/state] Database locked during update of session ${sessionId}`);
+          return NextResponse.json(
+            { error: 'Database is currently busy, please try again' },
+            { status: 503 }
+          );
+        }
+        
+        // Check for readonly database errors
+        const isReadonlyError = dbError.code === 'SQLITE_READONLY' || 
+          (dbError.message && (
+            dbError.message.includes('SQLITE_READONLY') || 
+            dbError.message.includes('readonly database')
+          ));
+        
+        // If it's a readonly error and we have retries left
+        if (isReadonlyError && attempt < MAX_READONLY_RETRIES - 1) {
+          console.error(`[API session/state] Readonly database error, will retry: ${dbError.message}`);
+          // Continue to the next retry attempt
+          continue;
+        }
+        
+        // If it's the last attempt or not a readonly error, return the error
+        console.error(`[API session/state] Database error updating session ${sessionId}:`, dbError);
+        
+        // Extract more detailed error information
+        const errorCode = dbError.code ? `[${dbError.code}] ` : '';
+        const errorDetails = dbError.message || 'Unknown database error';
+        const fullErrorMessage = `${errorCode}${errorDetails}`;
+        
         return NextResponse.json(
-          { error: 'Session no longer exists' },
-          { status: 404 }
+          { error: `Database error: ${fullErrorMessage}`, code: dbError.code },
+          { status: 500 }
         );
       }
-      
-      if (dbError.message?.includes('database is locked') || dbError.code === 'SQLITE_BUSY') {
-        console.error(`[API session/state] Database locked during update of session ${sessionId}`);
-        return NextResponse.json(
-          { error: 'Database is currently busy, please try again' },
-          { status: 503 }
-        );
-      }
-      
-      console.error(`[API session/state] Database error updating session ${sessionId}:`, dbError);
-      throw dbError; // Re-throw other errors to be caught by the outer catch
     }
     
     // Fetch the updated session to verify changes

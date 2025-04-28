@@ -293,6 +293,12 @@ ${taskDescription}
   // Copy prompt template
   const copyTemplatePrompt = useCallback(async () => {
     setIsCopyingPrompt(true);
+    console.log("Starting copyTemplatePrompt function", {
+      taskDescription: taskDescription ? `${taskDescription.length} chars` : "empty",
+      pastedPaths: pastedPaths ? `${pastedPaths.length} chars` : "empty",
+      allFilesMapSize: Object.keys(allFilesMap || {}).length,
+      projectDirectory: projectDirectory || "none",
+    });
     
     try {
       // Get file paths from either pasted paths or selected files in browser
@@ -303,6 +309,7 @@ ${taskDescription}
         relevantFiles = pastedPaths.split('\n')
           .map(path => path.trim())
           .filter(p => !!p && !p.startsWith('#'));
+        console.log(`Found ${relevantFiles.length} paths from pastedPaths`);
       } else {
         // Otherwise, use files selected in the browser
         const isAnyFileIncludedFromBrowser = Object.values(allFilesMap || {})
@@ -312,16 +319,19 @@ ${taskDescription}
           relevantFiles = Object.values(allFilesMap)
             .filter(f => f.included && !f.forceExcluded)
             .map(f => f.path);
+          console.log(`Found ${relevantFiles.length} paths from browser selections`);
         }
       }
       
       // Ensure we have files to work with
       if (relevantFiles.length === 0) {
+        console.log("No relevant files found");
         setError("Please select files in the browser or paste file paths.");
         setIsCopyingPrompt(false);
         return;
       }
       
+      console.log(`Calling generateTaskPromptTemplateAction with ${relevantFiles.length} relevant files`);
       const templateResult = await generateTaskPromptTemplateAction({
         originalDescription: taskDescription,
         relevantFiles,
@@ -330,16 +340,20 @@ ${taskDescription}
       });
       
       if (templateResult.isSuccess && templateResult.data) {
+        console.log("Successfully generated template, copying to clipboard");
         await navigator.clipboard.writeText(templateResult.data);
         
         // Set copy success state if clipboardFeedback property exists or by default
+        console.log("Setting taskCopySuccess to true");
         setTaskCopySuccess(true);
         
         // Reset after a short delay
         setTimeout(() => {
+          console.log("Resetting taskCopySuccess to false");
           setTaskCopySuccess(false);
         }, 3000);
       } else {
+        console.error("Template generation failed:", templateResult.message);
         setError(`Failed to copy prompt template: ${templateResult.message}`);
       }
     } catch (error) {

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef, useTransition, memo, useMemo } from "react";
 import { Session } from '@/types/session-types';
-import { Save, Trash2, Plus, Loader2, Pencil, Check, X, RefreshCw } from "lucide-react";
+import { Save, Trash2, Plus, Loader2, Pencil, Check, X, RefreshCw, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -241,13 +241,15 @@ const SessionManager = ({
       // Prepare session data
       const sessionState = getCurrentSessionState();
       
-      // Create new session ID if needed
-      const sessionId = activeSessionId || generateUUID();
+      // Always generate a new UUID for a new session
+      // This ensures we don't have conflicts with the database primary key
+      const sessionId = generateUUID();
       
       // Create session using server action
       const result = await createSessionAction({
         id: sessionId,
         name: sessionNameInput,
+        projectDirectory, // Ensure project directory is explicitly set
         ...sessionState
       });
       
@@ -459,6 +461,71 @@ const SessionManager = ({
     }
   };
 
+  // Handle cloning a session
+  const handleClone = async (session: Session, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsLoading(true);
+    
+    try {
+      // Get fresh session data
+      const result = await getSessionAction(session.id);
+      
+      if (!result.isSuccess || !result.data) {
+        throw new Error(result.message || "Failed to load session data");
+      }
+      
+      const sourceSession = result.data;
+      
+      // Generate clone name
+      const cloneName = `${sourceSession.name || 'Untitled'} (Copy)`;
+      
+      // Always generate a new UUID for the cloned session
+      const newSessionId = generateUUID();
+      
+      // Create new session data with a new ID but same content
+      const cloneData: Partial<Session> = {
+        id: newSessionId,
+        name: cloneName,
+        projectDirectory: sourceSession.projectDirectory,
+        taskDescription: sourceSession.taskDescription,
+        searchTerm: sourceSession.searchTerm,
+        pastedPaths: sourceSession.pastedPaths,
+        titleRegex: sourceSession.titleRegex,
+        contentRegex: sourceSession.contentRegex,
+        isRegexActive: sourceSession.isRegexActive,
+        diffTemperature: sourceSession.diffTemperature,
+        includedFiles: sourceSession.includedFiles,
+        forceExcludedFiles: sourceSession.forceExcludedFiles
+      };
+      
+      // Create the cloned session
+      const createResult = await createSessionAction(cloneData);
+      
+      if (createResult.isSuccess && createResult.data) {
+        // Reload sessions to show the new clone
+        await loadSessions();
+        
+        showNotification({
+          title: "Success",
+          message: `Session cloned successfully as "${cloneName}"`,
+          type: "success"
+        });
+      } else {
+        throw new Error(createResult.message || "Failed to clone session");
+      }
+    } catch (error) {
+      console.error("[SessionManager] Error cloning session:", error);
+      
+      showNotification({
+        title: "Error",
+        message: `Failed to clone session: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -565,7 +632,17 @@ const SessionManager = ({
                       size="icon"
                       variant="ghost"
                       className="h-7 w-7"
+                      onClick={(e) => handleClone(session, e)}
+                      title="Clone session"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
                       onClick={(e) => startEditingSession(session, e)}
+                      title="Rename session"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -577,6 +654,7 @@ const SessionManager = ({
                           variant="ghost"
                           className="h-7 w-7 text-destructive"
                           onClick={(e) => e.stopPropagation()}
+                          title="Delete session"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>

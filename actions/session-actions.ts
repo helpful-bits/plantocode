@@ -97,7 +97,7 @@ export async function createSessionAction(
       };
     }
     
-    const session = await sessionRepository.createSession(sessionData);
+    const session = await sessionRepository.saveSession(sessionData);
     
     // If this is a new session, automatically set it as the active session for the project
     if (session) {

@@ -52,7 +52,7 @@ Whether you're refactoring legacy code, planning new features, or designing enti
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ai-architect-studio.git
+git clone https://github.com/helpful-bits/ai-architect-studio.git
 cd ai-architect-studio
 
 # Install dependencies
@@ -115,6 +115,9 @@ pnpm check-db --repair
 
 # Reset database completely (creates backup before deleting all data)
 pnpm reset-db
+
+# Create a backup of the database
+pnpm db:backup
 ```
 
 Development mode diagnostic endpoints:
@@ -145,7 +148,7 @@ This safely moves data from the old location (`o1-pro-flow.db`) to the new locat
 
 ### Voice Integration
 - In-browser recording with instant feedback
-- Rapid transcription via Groq API
+- Rapid transcription via Groq API (Whisper model)
 - Multiple language support
 - AI-assisted correction and refinement
 
@@ -153,21 +156,23 @@ This safely moves data from the old location (`o1-pro-flow.db`) to the new locat
 - Sessions automatically saved and restored
 - Background processing with cancelation support
 - Real-time status updates
-- IDE integration for seamless workflow
+- Project settings customization for consistent workflows
 
 ## 📂 Project Structure
 
 ```
 ├── app                 # Next.js App Router components
 │   ├── _components     # Feature-specific components
-│   └── api             # Backend API routes
+│   ├── api             # Backend API routes
+│   └── settings        # Application settings UI
 ├── components          # Reusable UI components
 ├── lib                 # Utility functions and libraries
-│   ├── db              # Database layer (SQLite)
-│   └── contexts        # React context providers
-├── actions             # Server actions
+│   └── db              # Database layer (SQLite)
+├── actions             # Server actions for core functionality
 ├── migrations          # Database migrations
-├── patches             # Generated patches storage
+├── hooks               # React hooks
+├── types               # TypeScript type definitions
+├── scripts             # Utility scripts
 └── prompts             # AI prompt templates
 ```
 
