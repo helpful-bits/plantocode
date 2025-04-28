@@ -140,7 +140,8 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
 
     return {
       isSuccess: true,
-      data: fileInfo
+      data: fileInfo,
+      message: `Successfully read file: ${filePath}`
     };
   } catch (error: unknown) { // Use unknown type for catch block variable
     return {

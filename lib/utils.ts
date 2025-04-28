@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { createHash } from "crypto";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -145,4 +146,11 @@ export function debounce<T extends (...args: any[]) => any>(
       func.apply(this, args);
     }, wait);
   };
+}
+
+/**
+ * Hash a string using SHA-256
+ */
+export function hashString(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
 }

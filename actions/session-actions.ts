@@ -109,7 +109,8 @@ export async function createSessionAction(
     
     return {
       isSuccess: true,
-      data: session
+      data: session,
+      message: "Session created successfully"
     };
   } catch (error) {
     console.error(`[createSessionAction] Error:`, error);
@@ -141,7 +142,8 @@ export async function getSessionsAction(projectDirectory: string): Promise<Actio
     
     return {
       isSuccess: true,
-      data: filteredSessions
+      data: filteredSessions,
+      message: "Sessions retrieved successfully"
     };
   } catch (error) {
     console.error(`[getSessionsAction] Error:`, error);
@@ -171,7 +173,8 @@ export async function getSessionAction(sessionId: string): Promise<ActionState<S
     
     return {
       isSuccess: true,
-      data: session
+      data: session,
+      message: "Session retrieved successfully"
     };
   } catch (error) {
     console.error(`[getSessionAction] Error:`, error);
