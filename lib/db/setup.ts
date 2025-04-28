@@ -31,6 +31,21 @@ const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
 // DB_FILE is now imported from connection-pool
 
 /**
+ * Fix database file permissions to ensure it's writable
+ */
+async function fixDatabasePermissions(): Promise<void> {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      // Set permissions to 0666 (rw-rw-rw-)
+      fs.chmodSync(DB_FILE, 0o666);
+      console.log("[Setup] Database file permissions set to rw-rw-rw-");
+    }
+  } catch (err) {
+    console.warn("[Setup] Failed to set database file permissions:", err);
+  }
+}
+
+/**
  * Creates a minimal database with essential tables for recovery situations
  * Used when normal migrations have failed but we need a working database
  */
@@ -221,6 +236,9 @@ export async function setupDatabase(forceRecoveryMode: boolean = false): Promise
     if (!migrationsExist) {
       console.warn("Migrations table does not exist. Please run migrations manually with 'pnpm migrate'");
     }
+    
+    // Fix permissions immediately after ensuring connection
+    await fixDatabasePermissions();
     
     return {
       success: true,
@@ -453,6 +471,13 @@ export async function resetDatabase(): Promise<void> {
     try {
       fs.copyFileSync(DB_FILE, backupFile);
       console.log(`Backed up database to ${backupFile}`);
+      
+      // Also set proper permissions on the backup file
+      try {
+        fs.chmodSync(backupFile, 0o666); // rw-rw-rw-
+      } catch (permErr) {
+        console.warn("Failed to set permissions on backup file:", permErr);
+      }
     } catch (err) {
       console.error("Failed to backup database:", err);
     }
@@ -469,6 +494,9 @@ export async function resetDatabase(): Promise<void> {
   
   // Set up a new database
   await setupDatabase();
+  
+  // Ensure proper permissions after setting up
+  await fixDatabasePermissions();
   
   // Run migrations
   await runMigrations();
