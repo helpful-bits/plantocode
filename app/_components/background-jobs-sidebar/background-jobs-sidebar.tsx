@@ -37,7 +37,13 @@ const JobCard = memo(({
           <span className="w-4 h-4 inline-flex items-center justify-center">
             {getStatusIcon(job.status)}
           </span>
-          <span>{job.status === 'running' ? 'Processing' : job.status === 'preparing' ? 'Preparing' : job.status}</span>
+          <span>
+            {job.status === 'running' 
+              ? 'Processing' 
+              : job.status === 'preparing' || job.status === 'created' || job.status === 'queued'
+                ? 'Preparing' 
+                : job.status}
+          </span>
         </div>
         
         <div className="w-5 h-5">
@@ -61,7 +67,7 @@ const JobCard = memo(({
       </div>
       
       <div className="text-muted-foreground text-[10px] mt-1">
-        {job.startTime ? formatTimeAgo(job.startTime) : formatTimeAgo(job.createdAt)}
+        {job.startTime ? formatTimeAgo(job.startTime) : formatTimeAgo(typeof job.createdAt === 'string' ? new Date(job.createdAt).getTime() : job.createdAt)}
       </div>
     </div>
   );

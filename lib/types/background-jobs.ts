@@ -19,31 +19,48 @@ export enum AgentStatus {
   OFFLINE = "offline"
 }
 
-// Background job status
-export type BackgroundJobStatus = 
-  | 'created'
-  | 'queued'
-  | 'running' 
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+// Define the possible statuses for background jobs processing
+export type JobStatus = 'created' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
-// Background job structure
-export interface BackgroundJob {
-  id: string;
-  type: string;
-  status: BackgroundJobStatus;
-  progress?: number;
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  parameters: Record<string, any>;
-  result?: any;
-  error?: string;
-  assignedTo?: string;
-}
+// Type for API types
+export type ApiType = 'gemini' | 'claude' | 'whisper';
+
+// Type for task types
+export type TaskType = 
+  | 'xml_generation' 
+  | 'pathfinder' 
+  | 'transcription' 
+  | 'regex_generation'
+  | 'path_correction'
+  | 'text_improvement'
+  | 'voice_correction'
+  | 'task_enhancement'
+  | 'guidance_generation'
+  | 'unknown';
+
+// Type for individual background job
+export type BackgroundJob = {
+    id: string;
+    sessionId: string;
+    prompt: string;
+    status: JobStatus;
+    startTime: number | null;
+    endTime: number | null;
+    xmlPath: string | null;
+    statusMessage: string | null;
+    tokensReceived: number;
+    charsReceived: number;
+    lastUpdate: number | null;
+    createdAt: string;
+    cleared?: boolean; // For history clearing functionality
+    type: string;
+    updatedAt: string;
+    parameters: Record<string, any>;
+    apiType: ApiType;
+    taskType: TaskType;
+    modelUsed: string | null;
+    maxOutputTokens: number | null;
+};
 
 // Available agent structure
 export interface AvailableAgent {

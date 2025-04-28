@@ -2,7 +2,7 @@
 const isServer = typeof window === 'undefined';
 
 // Only import databases modules when on server
-import { db, closeDatabase, ensureConnection } from './index';
+import { closeDatabase, connectionPool } from './index';
 import { DB_FILE } from './connection-pool';
 import fs from 'fs';
 import path from 'path';
@@ -35,6 +35,15 @@ const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
  */
 async function fixDatabasePermissions(): Promise<void> {
   try {
+    // Fix directory permissions first
+    try {
+      fs.chmodSync(APP_DATA_DIR, 0o775);
+      console.log("[Setup] App data directory permissions set to rwxrwxr-x");
+    } catch (err) {
+      console.warn("[Setup] Failed to set app directory permissions:", err);
+    }
+
+    // Then fix database file permissions if it exists
     if (fs.existsSync(DB_FILE)) {
       // Set permissions to 0666 (rw-rw-rw-)
       fs.chmodSync(DB_FILE, 0o666);
@@ -52,89 +61,48 @@ async function fixDatabasePermissions(): Promise<void> {
 async function createMinimalDatabase(): Promise<void> {
   if (!isServer) return Promise.resolve();
   
-  // Ensure database connection is open
-  const database = await ensureConnection();
-  
-  return new Promise<void>((resolve, reject) => {
-    // Create transaction to ensure database is writable
-    database.run("BEGIN TRANSACTION", (err: Error | null) => {
-      if (err) {
-        console.error("Error starting minimal database transaction:", err);
-        reject(err);
-        return;
-      }
-      
-      // Try to create the migrations table if it doesn't exist
-      database.run(`
+  return connectionPool.withTransaction((db) => {
+    try {
+      // Create the migrations table if it doesn't exist
+      db.prepare(`
         CREATE TABLE IF NOT EXISTS migrations (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
           applied_at INTEGER NOT NULL
         )
-      `, (err: Error | null) => {
-        if (err) {
-          console.error("Error creating migrations table:", err);
-          database.run("ROLLBACK", () => reject(err));
-          return;
-        }
-        
-        // Create a minimal version of the meta table for configuration
-        database.run(`
-          CREATE TABLE IF NOT EXISTS meta (
-            key TEXT PRIMARY KEY, 
-            value TEXT NOT NULL
-          )
-        `, (err: Error | null) => {
-          if (err) {
-            console.error("Error creating meta table:", err);
-            database.run("ROLLBACK", () => reject(err));
-            return;
-          }
-          
-          // Create diagnostic logs table for tracking errors
-          database.run(`
-            CREATE TABLE IF NOT EXISTS db_diagnostic_logs (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              timestamp INTEGER NOT NULL,
-              error_type TEXT NOT NULL,
-              error_message TEXT NOT NULL,
-              stack_trace TEXT,
-              additional_info TEXT
-            )
-          `, (err: Error | null) => {
-            if (err) {
-              console.error("Error creating diagnostic logs table:", err);
-              database.run("ROLLBACK", () => reject(err));
-              return;
-            }
-            
-            // Set recovery flag in meta table
-            database.run(`
-              INSERT OR REPLACE INTO meta (key, value) 
-              VALUES ('recovery_mode', 'true'), ('recovery_timestamp', ?)
-            `, [Date.now()], (err: Error | null) => {
-              if (err) {
-                console.error("Error setting recovery mode:", err);
-                database.run("ROLLBACK", () => reject(err));
-                return;
-              }
-              
-              // Commit transaction
-              database.run("COMMIT", (err: Error | null) => {
-                if (err) {
-                  console.error("Error committing minimal database transaction:", err);
-                  database.run("ROLLBACK", () => reject(err));
-                  return;
-                }
-                
-                console.log("Created minimal recovery database successfully");
-                resolve();
-              });
-            });
-          });
-        });
-      });
-    });
+      `).run();
+      
+      // Create a minimal version of the meta table for configuration
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS meta (
+          key TEXT PRIMARY KEY, 
+          value TEXT NOT NULL
+        )
+      `).run();
+      
+      // Create diagnostic logs table for tracking errors
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS db_diagnostic_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp INTEGER NOT NULL,
+          error_type TEXT NOT NULL,
+          error_message TEXT NOT NULL,
+          stack_trace TEXT,
+          additional_info TEXT
+        )
+      `).run();
+      
+      // Set recovery flag in meta table
+      db.prepare(`
+        INSERT OR REPLACE INTO meta (key, value) 
+        VALUES ('recovery_mode', 'true'), ('recovery_timestamp', ?)
+      `).run(Date.now());
+      
+      console.log("Created minimal recovery database successfully");
+    } catch (error) {
+      console.error("Error creating minimal database:", error);
+      throw error;
+    }
   });
 }
 
@@ -151,11 +119,9 @@ async function logDatabaseError(
   if (!isServer) return Promise.resolve();
   
   try {
-    const database = await ensureConnection();
-    
-    // Create the diagnostic logs table if it doesn't exist
-    await new Promise<void>((resolve, reject) => {
-      database.run(`
+    return connectionPool.withConnection((db) => {
+      // Create the diagnostic logs table if it doesn't exist
+      db.prepare(`
         CREATE TABLE IF NOT EXISTS db_diagnostic_logs (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           timestamp INTEGER NOT NULL,
@@ -164,46 +130,33 @@ async function logDatabaseError(
           stack_trace TEXT,
           additional_info TEXT
         )
-      `, (err: Error | null) => {
-        if (err) {
-          console.error("Failed to create diagnostic logs table:", err);
-          resolve(); // Continue even if this fails
-        } else {
-          resolve();
-        }
-      });
-    });
-    
-    // Log the error
-    await new Promise<void>((resolve, reject) => {
-      database.run(`
+      `).run();
+      
+      // Log the error
+      db.prepare(`
         INSERT INTO db_diagnostic_logs (timestamp, error_type, error_message, stack_trace, additional_info)
         VALUES (?, ?, ?, ?, ?)
-      `, [
+      `).run(
         Date.now(),
         errorType,
         errorMessage,
         stackTrace || null,
         additionalInfo || null
-      ], (err: Error | null) => {
-        if (err) {
-          console.error("Failed to log database error:", err);
-        }
-        resolve(); // Always resolve to continue the flow
-      });
+      );
     });
   } catch (err) {
-    console.error("Error logging database diagnostic:", err);
+    console.error("Error logging database diagnostic info:", err);
   }
 }
 
 /**
- * Initialize the database
- * @param forceRecoveryMode If true, will attempt to create a minimal database even if initialization fails
+ * Setup and initialize the database
+ * Creates the database file if it doesn't exist and ensures it's usable
  */
 export async function setupDatabase(forceRecoveryMode: boolean = false): Promise<DBSetupResult> {
-  // Skip execution on client-side
   if (!isServer) return dummyPromise();
+  
+  console.log("[Setup] Setting up database:", DB_FILE);
   
   try {
     // Ensure the app directory exists
@@ -211,357 +164,379 @@ export async function setupDatabase(forceRecoveryMode: boolean = false): Promise
       fs.mkdirSync(APP_DATA_DIR, { recursive: true });
     }
     
-    // Make sure the database connection is open and valid
-    const database = await ensureConnection();
+    // Fix permissions
+    await fixDatabasePermissions();
     
-    // Validate database by running a simple query
-    await validateDatabaseConnection();
+    // Check if database file exists
+    const fileExists = fs.existsSync(DB_FILE);
     
-    console.log("Database connection established");
-    
-    // Check if migrations table exists (but don't run migrations automatically)
-    const migrationsExist = await new Promise<boolean>((resolve) => {
-      database.get(`
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name='migrations'
-      `, (err: Error | null, row: any) => {
-        if (err || !row) {
-          resolve(false);
-        } else {
-          resolve(true);
-        }
-      });
-    });
-    
-    if (!migrationsExist) {
-      console.warn("Migrations table does not exist. Please run migrations manually with 'pnpm migrate'");
+    if (!fileExists) {
+      console.log("[Setup] Database file doesn't exist, will create it");
     }
     
-    // Fix permissions immediately after ensuring connection
-    await fixDatabasePermissions();
+    // Try to connect and check the database condition
+    if (forceRecoveryMode) {
+      console.log("[Setup] Forced recovery mode enabled");
+      await createMinimalDatabase();
+      
+      return {
+        success: true,
+        message: "Database initialized in recovery mode",
+        recoveryMode: true
+      };
+    }
+    
+    // Test the database connection and structure
+    const isValid = await validateDatabaseConnection();
+    
+    if (!isValid) {
+      console.warn("[Setup] Database validation failed, creating minimal database");
+      await createMinimalDatabase();
+      
+      return {
+        success: true,
+        message: "Database initialized in recovery mode due to validation failure",
+        recoveryMode: true
+      };
+    }
     
     return {
       success: true,
-      message: "Database setup complete. Run migrations manually if needed."
+      message: fileExists 
+        ? "Connected to existing database"
+        : "Created new database successfully"
     };
+    
   } catch (error) {
-    console.error("Database setup error:", error);
+    console.error("[Setup] Error setting up database:", error);
     
-    // Log the error
+    // Try to create a minimal working database in recovery mode
     try {
-      await logDatabaseError(
-        "setup_failure",
-        error instanceof Error ? error.message : "Unknown setup error",
-        error instanceof Error ? error.stack : undefined
-      );
-    } catch (logError) {
-      console.error("Failed to log database error:", logError);
+      await createMinimalDatabase();
+      
+      return {
+        success: true,
+        message: "Database initialized in recovery mode due to setup error",
+        error: error instanceof Error ? error.message : String(error),
+        recoveryMode: true
+      };
+    } catch (recoveryError) {
+      return {
+        success: false,
+        message: "Failed to set up database, even in recovery mode",
+        error: `Original error: ${error instanceof Error ? error.message : String(error)}\nRecovery error: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`
+      };
     }
-    
-    if (forceRecoveryMode) {
-      console.warn("Attempting recovery mode due to setup failure");
-      try {
-        await createMinimalDatabase();
-        return {
-          success: true,
-          message: "Database initialized in recovery mode. Limited functionality available.",
-          recoveryMode: true
-        };
-      } catch (recoveryError) {
-        console.error("Failed to create recovery database:", recoveryError);
-        return {
-          success: false,
-          message: "Failed to initialize database even in recovery mode.",
-          error: recoveryError instanceof Error ? recoveryError.message : String(recoveryError)
-        };
-      }
-    }
-    
-    return {
-      success: false,
-      message: "Failed to initialize database.",
-      error: error instanceof Error ? error.message : String(error)
-    };
   }
 }
 
 /**
- * Validates database connection by running a simple query
+ * Validate that the database can be opened and has the expected tables
  */
 async function validateDatabaseConnection(): Promise<boolean> {
   try {
-    const database = await ensureConnection();
-    
-    return new Promise<boolean>((resolve, reject) => {
-      database.get('SELECT 1 as value', (err: Error | null, row: any) => {
-        if (err) {
-          console.error("Database validation failed:", err);
-          reject(new Error(`Database validation failed: ${err.message}`));
-          return;
+    // Use the connection pool to try to connect to the database
+    return await connectionPool.withConnection((db) => {
+      try {
+        // Query SQLite master table to see if our tables exist
+        const tables = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table' AND 
+          name IN ('sessions', 'included_files', 'excluded_files', 'background_jobs', 'migrations', 'meta')
+        `).all();
+        
+        // If this is a completely new database, that's valid too
+        if (tables.length === 0) {
+          console.log("[Setup] No tables found, this appears to be a new database");
+          return true;
         }
         
-        if (!row || row.value !== 1) {
-          console.error("Database validation failed: unexpected result");
-          reject(new Error("Database validation failed: unexpected result"));
-          return;
-        }
+        // Make sure we have at least the core tables
+        const tableNames = tables.map(t => t.name);
+        console.log("[Setup] Found tables:", tableNames.join(", "));
         
-        resolve(true);
-      });
-    });
+        // The database is considered valid even if missing some tables
+        // They will be created during migrations
+        return true;
+      } catch (error) {
+        console.error("[Setup] Error validating database:", error);
+        return false;
+      }
+    }, true); // Use readonly connection for validation
   } catch (error) {
-    console.error("Error validating database:", error);
+    console.error("[Setup] Failed to validate database connection:", error);
+    return false;
+  }
+}
+
+/**
+ * Run migrations on the database to ensure it's at the latest schema version
+ */
+export async function runMigrations(): Promise<void> {
+  if (!isServer) return Promise.resolve();
+  
+  console.log("[Setup] Running database migrations");
+  
+  // Function to create core tables
+  const createCoreTables = async () => {
+    return connectionPool.withTransaction((db) => {
+      // Create migrations table if not exist
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS migrations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          applied_at INTEGER NOT NULL
+        )
+      `).run();
+      
+      // Create meta table for configuration
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS meta (
+          key TEXT PRIMARY KEY, 
+          value TEXT NOT NULL
+        )
+      `).run();
+      
+      // Create session table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          project_directory TEXT NOT NULL,
+          project_hash TEXT NOT NULL,
+          task_description TEXT,
+          search_term TEXT,
+          pasted_paths TEXT,
+          title_regex TEXT,
+          content_regex TEXT,
+          is_regex_active INTEGER DEFAULT 0,
+          diff_temperature REAL DEFAULT 0.9,
+          codebase_structure TEXT,
+          updated_at INTEGER NOT NULL
+        )
+      `).run();
+      
+      // Create included_files table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS included_files (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+      `).run();
+      
+      // Create excluded_files table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS excluded_files (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+      `).run();
+      
+      // Create background_jobs table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS background_jobs (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          api_type TEXT NOT NULL,
+          task_type TEXT NOT NULL,
+          model TEXT,
+          prompt TEXT,
+          response TEXT,
+          error_message TEXT,
+          metadata TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        )
+      `).run();
+      
+      // Create active_sessions table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS active_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_directory TEXT NOT NULL,
+          project_hash TEXT NOT NULL UNIQUE,
+          session_id TEXT,
+          updated_at INTEGER NOT NULL
+        )
+      `).run();
+      
+      // Create cached_state table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS cached_state (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          key1 TEXT NOT NULL,
+          key1_hash TEXT NOT NULL,
+          key2 TEXT NOT NULL,
+          key2_hash TEXT NOT NULL,
+          value TEXT NOT NULL,
+          timestamp INTEGER NOT NULL,
+          UNIQUE(key1_hash, key2_hash)
+        )
+      `).run();
+      
+      // Create diagnostic logs table
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS db_diagnostic_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          timestamp INTEGER NOT NULL,
+          error_type TEXT NOT NULL,
+          error_message TEXT NOT NULL,
+          stack_trace TEXT,
+          additional_info TEXT
+        )
+      `).run();
+      
+      console.log("[Setup] Core tables created successfully");
+    });
+  };
+  
+  try {
+    // Run the core table creation first
+    await createCoreTables();
+    
+    // Check if we need to run any migrations
+    let migrations = [];
+    
+    // Get list of applied migrations
+    const appliedMigrations = await connectionPool.withConnection((db) => {
+      // Get all applied migrations
+      return db.prepare(`SELECT name FROM migrations ORDER BY id`).all().map(row => row.name);
+    }, true);
+    
+    console.log("[Setup] Applied migrations:", appliedMigrations.join(", ") || "none");
+    
+    // For now we don't have additional migrations to apply
+    // The core tables are already created above
+    
+    console.log("[Setup] All migrations completed successfully");
+    
+  } catch (error) {
+    console.error("[Setup] Error running migrations:", error);
+    
+    // Log the migration error
+    await logDatabaseError("migration_error", 
+      error instanceof Error ? error.message : String(error),
+      error instanceof Error ? error.stack : undefined
+    );
+    
     throw error;
   }
 }
 
 /**
- * Run database migrations
- * IMPORTANT: This should be run manually, not automatically
- */
-export async function runMigrations(): Promise<void> {
-  console.log("RUNNING MIGRATIONS MANUALLY - This must be done explicitly after installation or updates");
-  const database = await ensureConnection();
-  
-  // Create migrations table if it doesn't exist
-  await new Promise<void>((resolve, reject) => {
-    database.run(`
-      CREATE TABLE IF NOT EXISTS migrations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        applied_at INTEGER NOT NULL
-      )
-    `, (err: Error | null) => {
-      if (err) {
-        console.error("Error creating migrations table:", err);
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
-  
-  // Get list of migrations that have already been applied
-  const appliedMigrations = await new Promise<string[]>((resolve, reject) => {
-    database.all("SELECT name FROM migrations ORDER BY id", (err: Error | null, rows: any[]) => {
-      if (err) {
-        console.error("Error getting applied migrations:", err);
-        reject(err);
-      } else {
-        resolve(rows.map(row => row.name));
-      }
-    });
-  });
-  
-  // Get migration files from the migrations directory
-  const migrationsDir = path.join(__dirname, '../../migrations');
-  if (!fs.existsSync(migrationsDir)) {
-    console.log("No migrations directory found.");
-    return;
-  }
-  
-  const migrationFiles = fs.readdirSync(migrationsDir)
-    .filter(file => file.endsWith('.sql'))
-    .sort(); // Sort to ensure migrations run in order
-  
-  console.log(`Found ${migrationFiles.length} migration files, ${appliedMigrations.length} already applied`);
-  
-  // Apply each migration that hasn't been run yet
-  for (const file of migrationFiles) {
-    if (appliedMigrations.includes(file)) {
-      // Skip migrations that have already been applied
-      console.log(`Skipping already applied migration: ${file}`);
-      continue;
-    }
-    
-    console.log(`Applying migration: ${file}`);
-    
-    try {
-      // Read the migration file
-      const migration = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      
-      // Begin a transaction for this migration
-      await new Promise<void>((resolve, reject) => {
-        database.run("BEGIN TRANSACTION", (err: Error | null) => {
-          if (err) {
-            console.error(`Error starting transaction for ${file}:`, err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
-      
-      // Execute the migration
-      await new Promise<void>((resolve, reject) => {
-        database.exec(migration, (err: Error | null) => {
-          if (err) {
-            console.error(`Error executing migration ${file}:`, err);
-            
-            // Rollback the transaction
-            database.run("ROLLBACK", () => {
-              reject(err);
-            });
-          } else {
-            resolve();
-          }
-        });
-      });
-      
-      // Record the migration as applied
-      await new Promise<void>((resolve, reject) => {
-        database.run(
-          "INSERT INTO migrations (name, applied_at) VALUES (?, ?)",
-          [file, Date.now()],
-          (err: Error | null) => {
-            if (err) {
-              console.error(`Error recording migration ${file}:`, err);
-              
-              // Rollback the transaction
-              database.run("ROLLBACK", () => {
-                reject(err);
-              });
-            } else {
-              resolve();
-            }
-          }
-        );
-      });
-      
-      // Commit the transaction
-      await new Promise<void>((resolve, reject) => {
-        database.run("COMMIT", (err: Error | null) => {
-          if (err) {
-            console.error(`Error committing migration ${file}:`, err);
-            
-            // Try to rollback
-            database.run("ROLLBACK", () => {
-              reject(err);
-            });
-          } else {
-            console.log(`Successfully applied migration: ${file}`);
-            resolve();
-          }
-        });
-      });
-    } catch (error) {
-      console.error(`Migration '${file}' failed:`, error);
-      throw error;
-    }
-  }
-  
-  console.log("All migrations have been applied successfully");
-}
-
-/**
- * Reset the database (completely removes and recreates it)
- * WARNING: This will delete all data
+ * Reset the database by deleting and recreating it
+ * WARNING: This deletes all data
  */
 export async function resetDatabase(): Promise<void> {
-  // Close any open database connections
-  try {
-    await closeDatabase();
-  } catch (err) {
-    console.warn("Error closing database connection:", err);
-  }
+  if (!isServer) return Promise.resolve();
   
-  // Backup the current database if it exists
-  if (fs.existsSync(DB_FILE)) {
-    const backupFile = `${DB_FILE}.backup-${Date.now()}`;
-    try {
+  console.log("[Setup] Resetting database");
+  
+  try {
+    // Close all connections to the database
+    closeDatabase();
+    
+    // Delete the database file if it exists
+    if (fs.existsSync(DB_FILE)) {
+      // Create a backup before deleting
+      const backupFile = `${DB_FILE}.backup-${Date.now()}`;
       fs.copyFileSync(DB_FILE, backupFile);
-      console.log(`Backed up database to ${backupFile}`);
+      console.log(`[Setup] Created backup of database at ${backupFile}`);
       
-      // Also set proper permissions on the backup file
-      try {
-        fs.chmodSync(backupFile, 0o666); // rw-rw-rw-
-      } catch (permErr) {
-        console.warn("Failed to set permissions on backup file:", permErr);
-      }
-    } catch (err) {
-      console.error("Failed to backup database:", err);
+      // Delete the file
+      fs.unlinkSync(DB_FILE);
+      console.log("[Setup] Deleted database file");
     }
     
-    // Delete the database file
-    try {
-      fs.unlinkSync(DB_FILE);
-      console.log("Deleted existing database file");
-    } catch (err) {
-      console.error("Failed to delete database file:", err);
-      throw err;
-    }
+    // Initialize database with core tables
+    await setupDatabase();
+    
+    // Run migrations
+    await runMigrations();
+    
+    console.log("[Setup] Database reset successfully");
+  } catch (error) {
+    console.error("[Setup] Error resetting database:", error);
+    throw error;
   }
-  
-  // Set up a new database
-  await setupDatabase();
-  
-  // Ensure proper permissions after setting up
-  await fixDatabasePermissions();
-  
-  // Run migrations
-  await runMigrations();
-  
-  console.log("Database has been reset and migrations applied.");
 }
 
 /**
- * Get information about the database
+ * Get database information and statistics
  */
 export async function getDatabaseInfo(): Promise<any> {
+  if (!isServer) return Promise.resolve({ error: "Not available in browser" });
+  
   try {
-    const database = await ensureConnection();
-    
-    // Get SQLite version
-    const versionInfo = await new Promise((resolve, reject) => {
-      database.get("SELECT sqlite_version() as version", (err: Error | null, row: any) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(row);
+    return connectionPool.withConnection((db) => {
+      // Get database file info
+      let fileStats: any = { exists: false, size: 0 };
+      if (fs.existsSync(DB_FILE)) {
+        const stats = fs.statSync(DB_FILE);
+        fileStats = {
+          exists: true,
+          size: stats.size,
+          sizeFormatted: `${(stats.size / 1024 / 1024).toFixed(2)} MB`,
+          permissions: '0' + (stats.mode & parseInt('777', 8)).toString(8),
+          created: stats.birthtime,
+          modified: stats.mtime
+        };
+      }
+      
+      // Get table counts
+      const tables = db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      `).all();
+      
+      const tableCounts: any = {};
+      for (const table of tables) {
+        const count = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get();
+        tableCounts[table.name] = count ? count.count : 0;
+      }
+      
+      // Get database pragma information
+      const journalMode = db.prepare('PRAGMA journal_mode').get();
+      const foreignKeys = db.prepare('PRAGMA foreign_keys').get();
+      const integrityCheck = db.prepare('PRAGMA quick_check').get();
+      
+      // Get migrations info
+      const migrationsCount = db.prepare('SELECT COUNT(*) as count FROM migrations').get();
+      const lastMigration = db.prepare(`
+        SELECT name, applied_at FROM migrations ORDER BY id DESC LIMIT 1
+      `).get();
+      
+      // Construct response object
+      return {
+        file: fileStats,
+        dbFile: DB_FILE,
+        appDir: APP_DATA_DIR,
+        tables: tableCounts,
+        tableCount: tables.length,
+        recordCount: Object.values(tableCounts).reduce((sum: any, count: any) => sum + count, 0),
+        pragma: {
+          journalMode: journalMode ? journalMode['journal_mode'] : 'unknown',
+          foreignKeys: foreignKeys ? foreignKeys['foreign_keys'] : 'unknown',
+          integrityCheck: integrityCheck ? integrityCheck['quick_check'] : 'unknown'
+        },
+        migrations: {
+          count: migrationsCount ? migrationsCount.count : 0,
+          lastMigration: lastMigration ? {
+            name: lastMigration.name,
+            appliedAt: new Date(lastMigration.applied_at)
+          } : null
         }
-      });
-    });
-    
-    // Get table count
-    const tableCount = await new Promise((resolve, reject) => {
-      database.get(
-        "SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-        (err: Error | null, row: any) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(row.count);
-          }
-        }
-      );
-    });
-    
-    // Get applied migrations
-    const migrations = await new Promise((resolve, reject) => {
-      database.all(
-        "SELECT name, applied_at FROM migrations ORDER BY id DESC LIMIT 5",
-        (err: Error | null, rows: any[]) => {
-          if (err) {
-            // Table might not exist yet
-            resolve([]);
-          } else {
-            resolve(rows);
-          }
-        }
-      );
-    });
-    
-    return {
-      version: versionInfo.version,
-      tableCount,
-      recentMigrations: migrations,
-      databasePath: DB_FILE,
-      databaseSize: fs.existsSync(DB_FILE) ? fs.statSync(DB_FILE).size : 0,
-    };
+      };
+    }, true);
   } catch (error) {
-    console.error("Error getting database info:", error);
+    console.error("[Setup] Error getting database info:", error);
     return {
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error instanceof Error ? error.message : String(error),
+      dbFile: DB_FILE
     };
   }
 }

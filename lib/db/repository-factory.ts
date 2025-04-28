@@ -37,53 +37,72 @@ export function createSessionRepository() {
       const projectHash = hashString(session.projectDirectory);
       
       // Use the connection pool with transaction
-      return connectionPool.withTransaction(async (db) => {
+      return connectionPool.withTransaction((db) => {
         try {
           // First check if the sessions table exists and get column info
-          const columnsResult = await new Promise<any[]>((resolve, reject) => {
-            db.all("PRAGMA table_info(sessions)", [], (err, rows) => {
-              if (err) {
-                reject(err);
-                return;
-              }
-              resolve(rows || []);
-            });
-          });
+          const columnsResult = db.prepare("PRAGMA table_info(sessions)").all();
           
           // Prepare data for insertion/replacement
-          const sessionValues = [
-            session.id,
-            session.name,
-            session.projectDirectory,
-            projectHash,
-            session.taskDescription || '',
-            session.searchTerm || '',
-            session.pastedPaths || '',
-            session.titleRegex || '',
-            session.contentRegex || '',
-            session.isRegexActive ? 1 : 0,
-            session.diffTemperature || 0.9, // Default to 0.9 if not provided
-            '', // Empty codebase structure
-            Date.now(), // Updated timestamp
-          ];
+          const sessionValues = {
+            id: session.id,
+            name: session.name,
+            project_directory: session.projectDirectory,
+            project_hash: projectHash,
+            task_description: session.taskDescription || '',
+            search_term: session.searchTerm || '',
+            pasted_paths: session.pastedPaths || '',
+            title_regex: session.titleRegex || '',
+            content_regex: session.contentRegex || '',
+            is_regex_active: session.isRegexActive ? 1 : 0,
+            diff_temperature: session.diffTemperature || 0.9, // Default to 0.9 if not provided
+            codebase_structure: '', // Empty codebase structure
+            updated_at: Date.now(), // Updated timestamp
+          };
           
           // Build SQL statement
-          let sql = `
+          const sql = `
             INSERT OR REPLACE INTO sessions
             (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
              title_regex, content_regex, is_regex_active, diff_temperature, codebase_structure, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term, @pasted_paths,
+             @title_regex, @content_regex, @is_regex_active, @diff_temperature, @codebase_structure, @updated_at)`;
           
           // Insert or replace the session
-          await new Promise<void>((resolve, reject) => {
-            db.run(sql, sessionValues, function(err) {
-              if (err) {
-                console.error("Error saving session:", err);
-                return reject(err);
+          db.prepare(sql).run(sessionValues);
+          
+          // Handle included files
+          if (Array.isArray(session.includedFiles)) {
+            // First delete all existing included files for this session
+            db.prepare(`DELETE FROM included_files WHERE session_id = ?`).run(session.id);
+            
+            // Then insert new files if there are any
+            if (session.includedFiles.length > 0) {
+              // Use a prepared statement for better performance
+              const insertStmt = db.prepare(`INSERT INTO included_files (session_id, path) VALUES (?, ?)`);
+              
+              // Insert each included file path
+              for (const filePath of session.includedFiles) {
+                insertStmt.run(session.id, filePath);
               }
-              resolve();
-            });
-          });
+            }
+          }
+          
+          // Handle excluded files
+          if (Array.isArray(session.forceExcludedFiles)) {
+            // First delete all existing excluded files for this session
+            db.prepare(`DELETE FROM excluded_files WHERE session_id = ?`).run(session.id);
+            
+            // Then insert new files if there are any
+            if (session.forceExcludedFiles.length > 0) {
+              // Use a prepared statement for better performance
+              const insertStmt = db.prepare(`INSERT INTO excluded_files (session_id, path) VALUES (?, ?)`);
+              
+              // Insert each excluded file path
+              for (const filePath of session.forceExcludedFiles) {
+                insertStmt.run(session.id, filePath);
+              }
+            }
+          }
           
           // Return the updated session
           return {
@@ -104,75 +123,53 @@ export function createSessionRepository() {
     getSession: async (sessionId: string): Promise<Session | null> => {
       console.log(`[Repo] Getting session by ID: ${sessionId}`);
       
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<Session | null>((resolve, reject) => {
-          db.get(`SELECT * FROM sessions WHERE id = ?`, [sessionId], async (err, row: any) => {
-            if (err) {
-              console.error("Error fetching session:", err);
-              return reject(err);
-            }
-            
-            if (!row) {
-              return resolve(null);
-            }
-            
-            // Fetch included files
-            let includedFiles: string[] = [];
-            try {
-              includedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
-                db.all(`SELECT file_path FROM included_files WHERE session_id = ?`, [sessionId], (fileErr, rows: any[]) => {
-                  if (fileErr) {
-                    console.error("Error fetching included files:", fileErr);
-                    return rejectFiles(fileErr);
-                  }
-                  resolveFiles(rows.map(r => r.file_path));
-                });
-              });
-            } catch (error) {
-              console.error("Error fetching included files:", error);
-              includedFiles = [];
-            }
-            
-            // Fetch excluded files
-            let excludedFiles: string[] = [];
-            try {
-              excludedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
-                db.all(`SELECT file_path FROM excluded_files WHERE session_id = ?`, [sessionId], (fileErr, rows: any[]) => {
-                  if (fileErr) {
-                    console.error("Error fetching excluded files:", fileErr);
-                    return rejectFiles(fileErr);
-                  }
-                  resolveFiles(rows.map(r => r.file_path));
-                });
-              });
-            } catch (error) {
-              console.error("Error fetching excluded files:", error);
-              excludedFiles = [];
-            }
-            
-            // Create and return the Session object
-            const session: Session = {
-              id: row.id,
-              name: row.name,
-              projectDirectory: row.project_directory || '',
-              projectHash: row.project_hash,
-              taskDescription: row.task_description || '',
-              searchTerm: row.search_term || '',
-              pastedPaths: row.pasted_paths || '',
-              titleRegex: row.title_regex || '',
-              contentRegex: row.content_regex || '',
-              isRegexActive: !!row.is_regex_active,
-              diffTemperature: row.diff_temperature || 0.9,
-              codebaseStructure: row.codebase_structure || '',
-              includedFiles,
-              forceExcludedFiles: excludedFiles,
-              updatedAt: row.updated_at || Date.now(),
-            };
-            
-            resolve(session);
-          });
-        });
-      }, true); // Use read-only connection
+      return connectionPool.withConnection((db) => {
+        try {
+          // Get the session
+          const row = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId);
+          
+          if (!row) {
+            return null;
+          }
+          
+          // Fetch included files
+          const includedFiles = db.prepare(`
+            SELECT id, session_id, path 
+            FROM included_files 
+            WHERE session_id = ?
+          `).all(sessionId).map(r => r.path);
+          
+          // Fetch excluded files
+          const excludedFiles = db.prepare(`
+            SELECT id, session_id, path 
+            FROM excluded_files 
+            WHERE session_id = ?
+          `).all(sessionId).map(r => r.path);
+          
+          // Create and return the Session object
+          const session: Session = {
+            id: row.id,
+            name: row.name,
+            projectDirectory: row.project_directory,
+            projectHash: row.project_hash,
+            includedFiles,
+            forceExcludedFiles: excludedFiles,
+            taskDescription: row.task_description,
+            searchTerm: row.search_term,
+            pastedPaths: row.pasted_paths,
+            titleRegex: row.title_regex,
+            contentRegex: row.content_regex,
+            isRegexActive: !!row.is_regex_active,
+            diffTemperature: row.diff_temperature,
+            updatedAt: row.updated_at
+          };
+          
+          return session;
+        } catch (error) {
+          console.error("Error in getSession:", error);
+          throw error;
+        }
+      }, true); // Use readonly connection
     },
     
     /**
@@ -181,290 +178,323 @@ export function createSessionRepository() {
     getAllSessions: async (): Promise<Session[]> => {
       console.log(`[Repo] Getting all sessions`);
       
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<Session[]>((resolve, reject) => {
-          db.all(`SELECT * FROM sessions ORDER BY updated_at DESC`, [], async (err, rows: any[]) => {
-            if (err) {
-              console.error("Error fetching all sessions:", err);
-              return reject(err);
-            }
+      return connectionPool.withConnection((db) => {
+        try {
+          // Get all sessions
+          const rows = db.prepare(`
+            SELECT * FROM sessions 
+            ORDER BY updated_at DESC
+          `).all();
+          
+          if (!rows || rows.length === 0) {
+            return [];
+          }
+          
+          // Map rows to Session objects
+          const sessions = rows.map((row: any) => {
+            const includedFiles = db.prepare(`
+              SELECT path FROM included_files 
+              WHERE session_id = ?
+            `).all(row.id).map((r: any) => r.path);
             
-            if (!rows || rows.length === 0) {
-              return resolve([]);
-            }
+            const excludedFiles = db.prepare(`
+              SELECT path FROM excluded_files 
+              WHERE session_id = ?
+            `).all(row.id).map((r: any) => r.path);
             
-            try {
-              // Process each session
-              const sessions: Session[] = [];
-              
-              for (const row of rows) {
-                const sessionId = row.id;
-                
-                // Fetch included files for this session
-                let includedFiles: string[] = [];
-                try {
-                  includedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
-                    db.all(`SELECT file_path FROM included_files WHERE session_id = ?`, [sessionId], (fileErr, fileRows: any[]) => {
-                      if (fileErr) {
-                        console.error(`Error fetching included files for session ${sessionId}:`, fileErr);
-                        return rejectFiles(fileErr);
-                      }
-                      resolveFiles(fileRows.map(r => r.file_path));
-                    });
-                  });
-                } catch (error) {
-                  console.error(`Error fetching included files for session ${sessionId}:`, error);
-                  includedFiles = [];
-                }
-                
-                // Fetch excluded files for this session
-                let excludedFiles: string[] = [];
-                try {
-                  excludedFiles = await new Promise<string[]>((resolveFiles, rejectFiles) => {
-                    db.all(`SELECT file_path FROM excluded_files WHERE session_id = ?`, [sessionId], (fileErr, fileRows: any[]) => {
-                      if (fileErr) {
-                        console.error(`Error fetching excluded files for session ${sessionId}:`, fileErr);
-                        return rejectFiles(fileErr);
-                      }
-                      resolveFiles(fileRows.map(r => r.file_path));
-                    });
-                  });
-                } catch (error) {
-                  console.error(`Error fetching excluded files for session ${sessionId}:`, error);
-                  excludedFiles = [];
-                }
-                
-                // Create and add the Session object
-                const session: Session = {
-                  id: sessionId,
-                  name: row.name,
-                  projectDirectory: row.project_directory || '',
-                  projectHash: row.project_hash,
-                  taskDescription: row.task_description || '',
-                  searchTerm: row.search_term || '',
-                  pastedPaths: row.pasted_paths || '',
-                  titleRegex: row.title_regex || '',
-                  contentRegex: row.content_regex || '',
-                  isRegexActive: !!row.is_regex_active,
-                  diffTemperature: row.diff_temperature || 0.9,
-                  codebaseStructure: row.codebase_structure || '',
-                  includedFiles,
-                  forceExcludedFiles: excludedFiles,
-                  updatedAt: row.updated_at || Date.now(),
-                };
-                
-                sessions.push(session);
-              }
-              
-              resolve(sessions);
-            } catch (error) {
-              console.error("Error processing sessions:", error);
-              reject(error);
-            }
+            return {
+              id: row.id,
+              name: row.name,
+              projectDirectory: row.project_directory,
+              projectHash: row.project_hash,
+              includedFiles,
+              forceExcludedFiles: excludedFiles,
+              taskDescription: row.task_description,
+              searchTerm: row.search_term,
+              pastedPaths: row.pasted_paths,
+              titleRegex: row.title_regex,
+              contentRegex: row.content_regex,
+              isRegexActive: !!row.is_regex_active,
+              diffTemperature: row.diff_temperature,
+              updatedAt: row.updated_at
+            } as Session;
           });
-        });
-      }, true); // Use read-only connection
+          
+          return sessions;
+        } catch (error) {
+          console.error("Error in getAllSessions:", error);
+          throw error;
+        }
+      }, true); // Use readonly connection
     },
     
     /**
-     * Delete a session by ID
+     * Get all sessions for a project
      */
-    deleteSession: async (sessionId: string): Promise<void> => {
+    getSessionsForProject: async (projectDirectory: string): Promise<Session[]> => {
+      console.log(`[Repo] Getting sessions for project: ${projectDirectory}`);
+      
+      // Hash the project directory for consistent lookup
+      const projectHash = hashString(projectDirectory);
+      
+      return connectionPool.withConnection((db) => {
+        try {
+          // Get all sessions for this project
+          const rows = db.prepare(`
+            SELECT * FROM sessions 
+            WHERE project_hash = ? 
+            ORDER BY updated_at DESC
+          `).all(projectHash);
+          
+          if (!rows || rows.length === 0) {
+            return [];
+          }
+          
+          // Map rows to Session objects
+          const sessions = rows.map((row: any) => {
+            const includedFiles = db.prepare(`
+              SELECT path FROM included_files 
+              WHERE session_id = ?
+            `).all(row.id).map((r: any) => r.path);
+            
+            const excludedFiles = db.prepare(`
+              SELECT path FROM excluded_files 
+              WHERE session_id = ?
+            `).all(row.id).map((r: any) => r.path);
+            
+            return {
+              id: row.id,
+              name: row.name,
+              projectDirectory: row.project_directory,
+              projectHash: row.project_hash,
+              includedFiles,
+              forceExcludedFiles: excludedFiles,
+              taskDescription: row.task_description,
+              searchTerm: row.search_term,
+              pastedPaths: row.pasted_paths,
+              titleRegex: row.title_regex,
+              contentRegex: row.content_regex,
+              isRegexActive: !!row.is_regex_active,
+              diffTemperature: row.diff_temperature,
+              updatedAt: row.updated_at
+            } as Session;
+          });
+          
+          return sessions;
+        } catch (error) {
+          console.error("Error in getSessionsForProject:", error);
+          throw error;
+        }
+      }, true); // Use readonly connection
+    },
+    
+    /**
+     * Get a session with its background jobs
+     */
+    getSessionWithBackgroundJobs: async (sessionId: string): Promise<Session | null> => {
+      console.log(`[Repo] Getting session with background jobs: ${sessionId}`);
+      
+      return connectionPool.withConnection((db) => {
+        try {
+          // First get the session
+          const session = db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(sessionId);
+          
+          if (!session) {
+            return null;
+          }
+          
+          // Fetch included files
+          const includedFiles = db.prepare(`
+            SELECT path FROM included_files WHERE session_id = ?
+          `).all(sessionId).map(r => r.path);
+          
+          // Fetch excluded files
+          const excludedFiles = db.prepare(`
+            SELECT path FROM excluded_files WHERE session_id = ?
+          `).all(sessionId).map(r => r.path);
+          
+          // Fetch background jobs
+          const backgroundJobs = db.prepare(`
+            SELECT * FROM background_jobs WHERE session_id = ? ORDER BY created_at DESC
+          `).all(sessionId);
+          
+          // Create the Session object
+          const sessionObj: Session = {
+            id: session.id,
+            name: session.name,
+            projectDirectory: session.project_directory,
+            projectHash: session.project_hash,
+            includedFiles,
+            forceExcludedFiles: excludedFiles,
+            taskDescription: session.task_description,
+            searchTerm: session.search_term,
+            pastedPaths: session.pasted_paths,
+            titleRegex: session.title_regex,
+            contentRegex: session.content_regex,
+            isRegexActive: !!session.is_regex_active,
+            diffTemperature: session.diff_temperature,
+            updatedAt: session.updated_at,
+            backgroundJobs: backgroundJobs.map(job => ({
+              id: job.id,
+              sessionId: job.session_id,
+              status: job.status as JobStatus,
+              apiType: job.api_type as ApiType,
+              taskType: job.task_type as TaskType,
+              model: job.model,
+              prompt: job.prompt,
+              response: job.response,
+              errorMessage: job.error_message,
+              metadata: job.metadata ? JSON.parse(job.metadata) : {},
+              createdAt: job.created_at,
+              updatedAt: job.updated_at
+            }))
+          };
+          
+          return sessionObj;
+        } catch (error) {
+          console.error("Error in getSessionWithBackgroundJobs:", error);
+          throw error;
+        }
+      }, true); // Use readonly connection
+    },
+    
+    /**
+     * Delete a session and all of its data
+     */
+    deleteSession: async (sessionId: string): Promise<boolean> => {
       console.log(`[Repo] Deleting session: ${sessionId}`);
       
-      try {
-        return await connectionPool.withTransaction(async (db) => {
-          try {
-            // Delete included files
-            await new Promise<void>((resolve, reject) => {
-              db.run(`DELETE FROM included_files WHERE session_id = ?`, [sessionId], (err) => {
-                if (err) {
-                  console.error(`Error deleting included files for session ${sessionId}:`, err);
-                  return reject(err);
-                }
-                resolve();
-              });
-            });
-            
-            // Delete excluded files
-            await new Promise<void>((resolve, reject) => {
-              db.run(`DELETE FROM excluded_files WHERE session_id = ?`, [sessionId], (err) => {
-                if (err) {
-                  console.error(`Error deleting excluded files for session ${sessionId}:`, err);
-                  return reject(err);
-                }
-                resolve();
-              });
-            });
-            
-            // Delete background jobs
-            await new Promise<void>((resolve, reject) => {
-              db.run(`DELETE FROM background_jobs WHERE session_id = ?`, [sessionId], (err) => {
-                if (err) {
-                  console.error(`Error deleting background jobs for session ${sessionId}:`, err);
-                  return reject(err);
-                }
-                resolve();
-              });
-            });
-            
-            // Delete the session itself
-            await new Promise<void>((resolve, reject) => {
-              db.run(`DELETE FROM sessions WHERE id = ?`, [sessionId], function(err) {
-                if (err) {
-                  console.error(`Error deleting session ${sessionId}:`, err);
-                  return reject(err);
-                }
-                
-                if (this.changes === 0) {
-                  console.warn(`No session found with ID ${sessionId} to delete`);
-                }
-                
-                resolve();
-              });
-            });
-          } catch (error) {
-            console.error(`Error deleting session ${sessionId}:`, error);
-            throw error;
-          }
-        });
-      } catch (error) {
-        // Check for readonly database error and provide more helpful message
-        if (error instanceof Error && 
-            (error.message.includes('SQLITE_READONLY') || 
-             error.message.includes('readonly database'))) {
-          console.error(`Cannot delete session: database is in read-only mode. Please check file permissions for the database.`);
-          throw new Error(`Cannot delete session: The database is in read-only mode. This may be due to file permission issues.`);
-        }
-        throw error;
-      }
-    },
-    
-    /**
-     * Delete all sessions
-     */
-    deleteAllSessions: async (): Promise<void> => {
-      console.log(`[Repo] Deleting all sessions`);
-      
-      return connectionPool.withTransaction(async (db) => {
+      return connectionPool.withTransaction((db) => {
         try {
-          // Delete all included files
-          await new Promise<void>((resolve, reject) => {
-            db.run(`DELETE FROM included_files`, [], (err) => {
-              if (err) {
-                console.error(`Error deleting all included files:`, err);
-                return reject(err);
-              }
-              resolve();
-            });
-          });
+          // Delete all related data first
+          db.prepare(`DELETE FROM background_jobs WHERE session_id = ?`).run(sessionId);
+          db.prepare(`DELETE FROM included_files WHERE session_id = ?`).run(sessionId);
+          db.prepare(`DELETE FROM excluded_files WHERE session_id = ?`).run(sessionId);
           
-          // Delete all excluded files
-          await new Promise<void>((resolve, reject) => {
-            db.run(`DELETE FROM excluded_files`, [], (err) => {
-              if (err) {
-                console.error(`Error deleting all excluded files:`, err);
-                return reject(err);
-              }
-              resolve();
-            });
-          });
+          // Delete from active_sessions if it's the active session
+          db.prepare(`DELETE FROM active_sessions WHERE session_id = ?`).run(sessionId);
           
-          // Delete all background jobs
-          await new Promise<void>((resolve, reject) => {
-            db.run(`DELETE FROM background_jobs`, [], (err) => {
-              if (err) {
-                console.error(`Error deleting all background jobs:`, err);
-                return reject(err);
-              }
-              resolve();
-            });
-          });
+          // Finally delete the session
+          const result = db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
           
-          // Delete all sessions
-          await new Promise<void>((resolve, reject) => {
-            db.run(`DELETE FROM sessions`, [], (err) => {
-              if (err) {
-                console.error(`Error deleting all sessions:`, err);
-                return reject(err);
-              }
-              resolve();
-            });
-          });
+          return result.changes > 0;
         } catch (error) {
-          console.error(`Error deleting all sessions:`, error);
+          console.error("Error in deleteSession:", error);
           throw error;
         }
       });
     },
     
     /**
-     * Create a background job record
+     * Delete all sessions for a project
      */
-    createBackgroundJob: async (
-      sessionId: string,
-      prompt: string,
-      apiType: ApiType = 'gemini',
-      taskType: TaskType = 'xml_generation',
-      modelUsed: string | null = null,
-      maxOutputTokens: number | null = null
-    ): Promise<BackgroundJob> => {
-      console.log(`[Repo] Creating background job for session: ${sessionId}, type: ${taskType}, api: ${apiType}`);
+    deleteAllSessions: async (projectDirectory: string): Promise<number> => {
+      console.log(`[Repo] Deleting all sessions for project: ${projectDirectory}`);
       
-      // Generate a random ID for the job
-      const id = crypto.randomUUID();
-      const timestamp = Date.now();
+      const projectHash = hashString(projectDirectory);
       
-      // Create the default job object
-      const job: BackgroundJob = {
-        id,
-        sessionId,
-        prompt,
-        status: 'idle',
-        startTime: null,
-        endTime: null,
-        xmlPath: null,
-        statusMessage: null,
-        tokensReceived: 0,
-        charsReceived: 0,
-        lastUpdate: null,
-        createdAt: timestamp,
-        apiType,
-        taskType,
-        modelUsed,
-        maxOutputTokens
-      };
-      
-      // Insert the job record
-      await connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`
-            INSERT INTO background_jobs (
-              id, session_id, prompt, status, created_at, 
-              api_type, task_type, model_used, max_output_tokens
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            id,
-            sessionId,
-            prompt,
-            'idle',
-            timestamp,
-            apiType,
-            taskType,
-            modelUsed,
-            maxOutputTokens
-          ], (err) => {
-            if (err) {
-              console.error("Error creating background job:", err);
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        });
+      return connectionPool.withTransaction((db) => {
+        try {
+          // Get all session IDs for this project
+          const sessions = db.prepare(`
+            SELECT id FROM sessions WHERE project_hash = ?
+          `).all(projectHash);
+          
+          if (sessions.length === 0) {
+            return 0;
+          }
+          
+          // Delete all sessions one by one to handle relations correctly
+          for (const session of sessions) {
+            db.prepare(`DELETE FROM background_jobs WHERE session_id = ?`).run(session.id);
+            db.prepare(`DELETE FROM included_files WHERE session_id = ?`).run(session.id);
+            db.prepare(`DELETE FROM excluded_files WHERE session_id = ?`).run(session.id);
+          }
+          
+          // Delete from active_sessions
+          db.prepare(`DELETE FROM active_sessions WHERE project_hash = ?`).run(projectHash);
+          
+          // Delete all sessions for this project
+          const result = db.prepare(`DELETE FROM sessions WHERE project_hash = ?`).run(projectHash);
+          
+          return result.changes;
+        } catch (error) {
+          console.error("Error in deleteAllSessions:", error);
+          throw error;
+        }
       });
+    },
+    
+    /**
+     * Save a background job
+     */
+    saveBackgroundJob: async (job: BackgroundJob): Promise<BackgroundJob> => {
+      console.log(`[Repo] Saving background job: ${job.id} for session: ${job.sessionId}`);
       
-      return job;
+      return connectionPool.withTransaction((db) => {
+        try {
+          // Check if the background_jobs table exists
+          const tableExists = db.prepare(`
+            SELECT name FROM sqlite_master WHERE type='table' AND name='background_jobs'
+          `).get();
+          
+          if (!tableExists) {
+            // Create the table if it doesn't exist
+            db.prepare(`
+              CREATE TABLE background_jobs (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                api_type TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                model TEXT,
+                prompt TEXT,
+                response TEXT,
+                error_message TEXT,
+                metadata TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+              )
+            `).run();
+          }
+          
+          // Format the metadata as JSON string
+          const metadata = job.metadata ? JSON.stringify(job.metadata) : null;
+          
+          // Prepare values for insert/update
+          const jobValues = {
+            id: job.id,
+            session_id: job.sessionId,
+            status: job.status,
+            api_type: job.apiType,
+            task_type: job.taskType,
+            model: job.model || null,
+            prompt: job.prompt || null,
+            response: job.response || null,
+            error_message: job.errorMessage || null,
+            metadata: metadata,
+            created_at: job.createdAt || Date.now(),
+            updated_at: Date.now()
+          };
+          
+          // Insert or replace the job
+          db.prepare(`
+            INSERT OR REPLACE INTO background_jobs
+            (id, session_id, status, api_type, task_type, model, prompt, response, error_message, metadata, created_at, updated_at)
+            VALUES (@id, @session_id, @status, @api_type, @task_type, @model, @prompt, @response, @error_message, @metadata, @created_at, @updated_at)
+          `).run(jobValues);
+          
+          // Return the updated job with current timestamp
+          return {
+            ...job,
+            updatedAt: jobValues.updated_at
+          };
+        } catch (error) {
+          console.error("Error in saveBackgroundJob:", error);
+          throw error;
+        }
+      });
     },
     
     /**
@@ -473,566 +503,185 @@ export function createSessionRepository() {
     getBackgroundJob: async (jobId: string): Promise<BackgroundJob | null> => {
       console.log(`[Repo] Getting background job: ${jobId}`);
       
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<BackgroundJob | null>((resolve, reject) => {
-          db.get(`
-            SELECT * FROM background_jobs WHERE id = ?
-          `, [jobId], (err, row: any) => {
-            if (err) {
-              console.error("Error fetching background job:", err);
-              reject(err);
-            } else if (!row) {
-              resolve(null);
-            } else {
-              const job: BackgroundJob = {
-                id: row.id,
-                sessionId: row.session_id,
-                prompt: row.prompt,
-                status: row.status as JobStatus,
-                startTime: row.start_time,
-                endTime: row.end_time,
-                xmlPath: row.xml_path,
-                statusMessage: row.status_message,
-                tokensReceived: row.tokens_received || 0,
-                charsReceived: row.chars_received || 0,
-                lastUpdate: row.last_update,
-                createdAt: row.created_at,
-                cleared: !!row.cleared,
-                apiType: row.api_type as ApiType,
-                taskType: row.task_type as TaskType,
-                modelUsed: row.model_used,
-                maxOutputTokens: row.max_output_tokens
-              };
-              resolve(job);
+      return connectionPool.withConnection((db) => {
+        try {
+          // Get the job
+          const job = db.prepare(`SELECT * FROM background_jobs WHERE id = ?`).get(jobId);
+          
+          if (!job) {
+            return null;
+          }
+          
+          // Parse metadata if it exists
+          let metadata = {};
+          try {
+            if (job.metadata) {
+              metadata = JSON.parse(job.metadata);
             }
-          });
-        });
-      }, true); // Use read-only connection
+          } catch (err) {
+            console.warn(`Error parsing metadata for job ${jobId}:`, err);
+          }
+          
+          // Return the background job
+          return {
+            id: job.id,
+            sessionId: job.session_id,
+            status: job.status as JobStatus,
+            apiType: job.api_type as ApiType,
+            taskType: job.task_type as TaskType,
+            model: job.model,
+            prompt: job.prompt,
+            response: job.response,
+            errorMessage: job.error_message,
+            metadata,
+            createdAt: job.created_at,
+            updatedAt: job.updated_at
+          };
+        } catch (error) {
+          console.error("Error in getBackgroundJob:", error);
+          throw error;
+        }
+      }, true); // Use readonly connection
     },
     
     /**
-     * Get all background jobs for a session
-     */
-    getBackgroundJobs: async (sessionId: string): Promise<BackgroundJob[]> => {
-      console.log(`[Repo] Getting background jobs for session: ${sessionId}`);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<BackgroundJob[]>((resolve, reject) => {
-          db.all(`
-            SELECT * FROM background_jobs 
-            WHERE session_id = ? 
-            ORDER BY created_at DESC
-          `, [sessionId], (err, rows: any[]) => {
-            if (err) {
-              console.error("Error fetching background jobs:", err);
-              reject(err);
-            } else {
-              const jobs: BackgroundJob[] = rows.map(row => ({
-                id: row.id,
-                sessionId: row.session_id,
-                prompt: row.prompt,
-                status: row.status as JobStatus,
-                startTime: row.start_time,
-                endTime: row.end_time,
-                xmlPath: row.xml_path,
-                statusMessage: row.status_message,
-                tokensReceived: row.tokens_received || 0,
-                charsReceived: row.chars_received || 0,
-                lastUpdate: row.last_update,
-                createdAt: row.created_at,
-                cleared: !!row.cleared,
-                apiType: row.api_type as ApiType,
-                taskType: row.task_type as TaskType,
-                modelUsed: row.model_used,
-                maxOutputTokens: row.max_output_tokens
-              }));
-              resolve(jobs);
-            }
-          });
-        });
-      }, true); // Use read-only connection
-    },
-    
-    /**
-     * Find background jobs for a session with filtering options
-     */
-    findBackgroundJobsBySessionId: async (
-      sessionId: string,
-      options?: { 
-        limit?: number, 
-        status?: JobStatus | JobStatus[], 
-        type?: TaskType 
-      }
-    ): Promise<BackgroundJob[]> => {
-      console.log(`[Repo] Finding background jobs for session: ${sessionId} with options:`, options);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<BackgroundJob[]>((resolve, reject) => {
-          // Build the query with conditions
-          let query = `
-            SELECT * FROM background_jobs 
-            WHERE session_id = ?
-          `;
-          
-          const params: any[] = [sessionId];
-          
-          // Add status condition if provided
-          if (options?.status) {
-            if (Array.isArray(options.status)) {
-              // Handle multiple statuses with IN clause
-              const placeholders = options.status.map(() => '?').join(',');
-              query += ` AND status IN (${placeholders})`;
-              params.push(...options.status);
-            } else {
-              // Handle single status
-              query += ` AND status = ?`;
-              params.push(options.status);
-            }
-          }
-          
-          // Add task type condition if provided
-          if (options?.type) {
-            query += ` AND task_type = ?`;
-            params.push(options.type);
-          }
-          
-          // Add ordering
-          query += ` ORDER BY created_at DESC`;
-          
-          // Add limit if provided
-          if (options?.limit) {
-            query += ` LIMIT ?`;
-            params.push(options.limit);
-          }
-          
-          db.all(query, params, (err, rows: any[]) => {
-            if (err) {
-              console.error("Error finding background jobs:", err);
-              reject(err);
-            } else {
-              const jobs: BackgroundJob[] = rows.map(row => ({
-                id: row.id,
-                sessionId: row.session_id,
-                prompt: row.prompt,
-                status: row.status as JobStatus,
-                startTime: row.start_time,
-                endTime: row.end_time,
-                xmlPath: row.xml_path,
-                statusMessage: row.status_message,
-                tokensReceived: row.tokens_received || 0,
-                charsReceived: row.chars_received || 0,
-                lastUpdate: row.last_update,
-                createdAt: row.created_at,
-                cleared: !!row.cleared,
-                apiType: row.api_type as ApiType,
-                taskType: row.task_type as TaskType,
-                modelUsed: row.model_used,
-                maxOutputTokens: row.max_output_tokens
-              }));
-              resolve(jobs);
-            }
-          });
-        });
-      }, true); // Use read-only connection
-    },
-    
-    /**
-     * Get all visible background jobs
+     * Get all visible background jobs (not in terminal states)
      */
     getAllVisibleBackgroundJobs: async (): Promise<BackgroundJob[]> => {
-      // Removed logging to prevent spam
+      console.log(`[Repo] Getting all visible background jobs`);
       
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<BackgroundJob[]>((resolve, reject) => {
-          db.all(`
+      return connectionPool.withConnection((db) => {
+        try {
+          // Get active jobs (not in terminal states)
+          const rows = db.prepare(`
             SELECT * FROM background_jobs 
-            WHERE cleared = 0 
-            ORDER BY created_at DESC
-          `, [], (err, rows: any[]) => {
-            if (err) {
-              console.error("Error fetching visible background jobs:", err);
-              reject(err);
-            } else {
-              const jobs: BackgroundJob[] = rows.map(row => ({
-                id: row.id,
-                sessionId: row.session_id,
-                prompt: row.prompt,
-                status: row.status as JobStatus,
-                startTime: row.start_time,
-                endTime: row.end_time,
-                xmlPath: row.xml_path,
-                statusMessage: row.status_message,
-                tokensReceived: row.tokens_received || 0,
-                charsReceived: row.chars_received || 0,
-                lastUpdate: row.last_update,
-                createdAt: row.created_at,
-                cleared: !!row.cleared,
-                apiType: row.api_type as ApiType,
-                taskType: row.task_type as TaskType,
-                modelUsed: row.model_used,
-                maxOutputTokens: row.max_output_tokens
-              }));
-              resolve(jobs);
-            }
-          });
-        });
-      }, true); // Use read-only connection
-    },
-    
-    /**
-     * Update background job status
-     */
-    updateBackgroundJobStatus: async (
-      jobId: string,
-      status: JobStatus,
-      startTime?: number | null,
-      endTime?: number | null,
-      xmlPath?: string | null,
-      statusMessage?: string | null,
-      stats?: { tokensReceived?: number, charsReceived?: number }
-    ): Promise<void> => {
-      console.log(`[Repo] Updating background job ${jobId} status to ${status}`);
-      
-      // Build the update fields and parameters
-      const updates: string[] = [];
-      const params: any[] = [];
-      
-      updates.push('status = ?');
-      params.push(status);
-      
-      if (startTime !== undefined) {
-        updates.push('start_time = ?');
-        params.push(startTime);
-      }
-      
-      if (endTime !== undefined) {
-        updates.push('end_time = ?');
-        params.push(endTime);
-      }
-      
-      if (xmlPath !== undefined) {
-        updates.push('xml_path = ?');
-        params.push(xmlPath);
-      }
-      
-      if (statusMessage !== undefined) {
-        updates.push('status_message = ?');
-        params.push(statusMessage);
-      }
-      
-      if (stats) {
-        if (stats.tokensReceived !== undefined) {
-          updates.push('tokens_received = ?');
-          params.push(stats.tokensReceived);
-        }
-        
-        if (stats.charsReceived !== undefined) {
-          updates.push('chars_received = ?');
-          params.push(stats.charsReceived);
-        }
-      }
-      
-      if (status === 'running' || startTime !== undefined || stats) {
-        updates.push('last_update = ?');
-        params.push(Date.now());
-      }
-      
-      // Add the job ID to the params
-      params.push(jobId);
-      
-      // Execute the update query
-      await connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          const sql = `UPDATE background_jobs SET ${updates.join(', ')} WHERE id = ?`;
+            WHERE status NOT IN ('completed', 'failed', 'cancelled')
+          `).all();
           
-          db.run(sql, params, function(err) {
-            if (err) {
-              console.error("Error updating background job status:", err);
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        });
-      });
-    },
-    
-    /**
-     * Clear background job history for all sessions
-     */
-    clearBackgroundJobHistory: async (): Promise<void> => {
-      console.log(`[Repo] Clearing all background job history`);
-      
-      await connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`UPDATE background_jobs SET cleared = 1`, [], (err) => {
-            if (err) {
-              console.error("Error clearing background job history:", err);
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        });
-      });
-    },
-    
-    /**
-     * Update background job cleared status
-     */
-    updateBackgroundJobClearedStatus: async (jobId: string, cleared: boolean): Promise<void> => {
-      console.log(`[Repo] Updating background job ${jobId} cleared status to ${cleared}`);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`
-            UPDATE background_jobs 
-            SET cleared = ?
-            WHERE id = ?
-          `, [cleared ? 1 : 0, jobId], async (err) => {
-            if (err) {
-              console.error(`Error updating background job ${jobId} cleared status:`, err);
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        });
-      });
-    },
-    
-    /**
-     * Cancel all running background jobs for a session
-     */
-    cancelAllSessionBackgroundJobs: async (sessionId: string): Promise<void> => {
-      console.log(`[Repo] Canceling all running background jobs for session: ${sessionId}`);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`
-            UPDATE background_jobs 
-            SET status = 'canceled', end_time = ?, status_message = 'Canceled by user.'
-            WHERE session_id = ? AND status = 'running'
-          `, [Date.now(), sessionId], async (err) => {
-            if (err) {
-              reject(err);
-            } else {
-              try {
-                // Fetch and broadcast all canceled jobs
-                const canceledJobs = await repository.getBackgroundJobs(sessionId);
-                // Note: Broadcasting can be handled by the consumer of this method
-                // We've removed direct reference to websocketHandler as it's not defined here
-              } catch (error) {
-                console.error(`Error fetching canceled jobs for session ${sessionId}:`, error);
+          if (!rows || rows.length === 0) {
+            return [];
+          }
+          
+          // Map rows to BackgroundJob objects
+          return rows.map((job: any) => {
+            // Parse metadata if it exists
+            let metadata = {};
+            try {
+              if (job.metadata) {
+                metadata = JSON.parse(job.metadata);
               }
-              resolve();
+            } catch (err) {
+              console.warn(`Error parsing metadata for job ${job.id}:`, err);
             }
+            
+            return {
+              id: job.id,
+              sessionId: job.session_id,
+              status: job.status as JobStatus,
+              apiType: job.api_type as ApiType,
+              taskType: job.task_type as TaskType,
+              model: job.model,
+              prompt: job.prompt,
+              response: job.response,
+              errorMessage: job.error_message,
+              metadata,
+              createdAt: job.created_at,
+              updatedAt: job.updated_at
+            };
           });
-        });
-      });
-    },
-    
-    /**
-     * Retrieve a session with all of its background jobs
-     */
-    getSessionWithBackgroundJobs: async (sessionId: string): Promise<Session | null> => {
-      console.log(`[Repo] Getting session with background jobs: ${sessionId}`);
-      
-      try {
-        // First, get the session
-        const session = await repository.getSession(sessionId);
-        if (!session) {
-          return null;
+        } catch (error) {
+          console.error("Error in getAllVisibleBackgroundJobs:", error);
+          throw error;
         }
-        
-        // Then, get the background jobs for the session
-        const jobs = await repository.getBackgroundJobs(sessionId);
-        
-        // Add the jobs to the session
-        session.backgroundJobs = jobs;
-        
-        return session;
-      } catch (error) {
-        console.error("Error getting session with background jobs:", error);
-        throw error;
-      }
-    },
-    
-    updateSessionProjectDirectory: async (sessionId: string, projectDirectory: string): Promise<void> => {
-      const projectHash = hashString(projectDirectory);
-      console.log(`[Repo] Updating project directory for session ${sessionId} to: ${projectDirectory} (hash: ${projectHash})`);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`
-            UPDATE sessions 
-            SET project_directory = ?, project_hash = ?, updated_at = ?
-            WHERE id = ?
-          `, [projectDirectory, projectHash, Date.now(), sessionId], function(err) {
-            if (err) {
-              console.error(`Error updating project directory for session ${sessionId}:`, err);
-              reject(err);
-            } else {
-              if (this.changes === 0) {
-                console.warn(`No session found with ID ${sessionId} to update project directory`);
-              }
-              resolve();
-            }
-          });
-        });
-      });
-    },
-    
-    /**
-     * Update a session's name
-     */
-    updateSessionName: async (sessionId: string, name: string): Promise<void> => {
-      console.log(`[Repo] Updating name for session ${sessionId} to: ${name}`);
-      
-      return connectionPool.withConnection(async (db) => {
-        return new Promise<void>((resolve, reject) => {
-          db.run(`
-            UPDATE sessions 
-            SET name = ?, updated_at = ?
-            WHERE id = ?
-          `, [name, Date.now(), sessionId], function(err) {
-            if (err) {
-              console.error(`Error updating name for session ${sessionId}:`, err);
-              reject(err);
-            } else {
-              if (this.changes === 0) {
-                console.warn(`No session found with ID ${sessionId} to update name`);
-                reject(new Error(`Session not found: ${sessionId}`));
-              } else {
-                resolve();
-              }
-            }
-          });
-        });
-      });
+      }, true); // Use readonly connection
     },
     
     /**
      * Update specific fields of a session
-     * Used for partial updates via the API
      */
-    updateSessionFields: async (sessionId: string, fields: Partial<Session>): Promise<void> => {
-      console.log(`[Repo] Updating fields for session ${sessionId}:`, Object.keys(fields));
+    updateSessionFields: async (sessionId: string, fields: Partial<Session>): Promise<boolean> => {
+      console.log(`[Repo] Updating fields for session: ${sessionId}`, JSON.stringify(fields, null, 2));
       
-      // Validate session ID
-      if (!sessionId) {
-        throw new Error('Session ID is required for updating session fields');
-      }
-      
-      // Max retries for transient errors like database locks
-      const MAX_RETRIES = 3;
-      let lastError: Error | null = null;
-      
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        // Add delay between retries
-        if (attempt > 0) {
-          const delay = 300 * attempt; // Progressive delay
-          console.log(`[Repo] Retry attempt ${attempt}/${MAX_RETRIES} for updating session ${sessionId} after ${delay}ms`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-        
+      return connectionPool.withTransaction((db) => {
         try {
-          return await connectionPool.withConnection(async (db) => {
-            return new Promise<void>((resolve, reject) => {
-              // Build the update fields and parameters
-              const updates: string[] = [];
-              const params: any[] = [];
-              
-              // Map Session properties to database column names
-              const fieldMappings: Record<string, string> = {
-                name: 'name',
-                projectDirectory: 'project_directory',
-                taskDescription: 'task_description',
-                searchTerm: 'search_term',
-                pastedPaths: 'pasted_paths',
-                titleRegex: 'title_regex',
-                contentRegex: 'content_regex',
-                isRegexActive: 'is_regex_active',
-                diffTemperature: 'diff_temperature',
-                codebaseStructure: 'codebase_structure'
-              };
-              
-              // Process each field in the update
-              for (const [key, value] of Object.entries(fields)) {
-                // Skip non-scalar properties that can't be directly updated
-                if (key === 'id' || key === 'includedFiles' || key === 'forceExcludedFiles' || 
-                    key === 'backgroundJobs' || key === 'updatedAt' || key === 'projectHash') {
-                  continue;
-                }
-                
-                const columnName = fieldMappings[key];
-                if (columnName) {
-                  updates.push(`${columnName} = ?`);
-                  
-                  // Convert boolean to integer for SQLite
-                  const paramValue = key === 'isRegexActive' ? (value ? 1 : 0) : value;
-                  params.push(paramValue);
-                }
-              }
-              
-              // Always update the timestamp
-              updates.push('updated_at = ?');
-              params.push(Date.now());
-              
-              // Add the session ID to the params
-              params.push(sessionId);
-              
-              // Execute the update query if there are fields to update
-              if (updates.length > 0) {
-                const sql = `UPDATE sessions SET ${updates.join(', ')} WHERE id = ?`;
-                
-                db.run(sql, params, function(err) {
-                  if (err) {
-                    console.error(`Error updating fields for session ${sessionId}:`, err);
-                    reject(err);
-                  } else {
-                    if (this.changes === 0) {
-                      console.warn(`No session found with ID ${sessionId} to update fields`);
-                      reject(new Error(`Session not found: ${sessionId}`));
-                    } else {
-                      resolve();
-                    }
-                  }
-                });
-              } else {
-                // No valid fields to update
-                console.warn(`No valid fields to update for session ${sessionId}`);
-                resolve();
-              }
-            });
-          });
-        } catch (error: any) {
-          lastError = error instanceof Error ? error : new Error(String(error));
+          // First get the column names from the sessions table
+          const tableInfo = db.prepare("PRAGMA table_info(sessions)").all();
+          const columnNames = tableInfo.map((col: any) => col.name);
+          console.log(`[Repo] Available columns in sessions table:`, columnNames);
           
-          // Only retry on database locked/busy errors
-          const isTransientError = 
-            error.code === 'SQLITE_BUSY' || 
-            error.code === 'SQLITE_LOCKED' ||
-            (error.message && (
-              error.message.includes('database is locked') || 
-              error.message.includes('SQLITE_BUSY')
-            ));
+          // Build dynamic SET clause only for fields that exist in the database
+          const validFieldEntries = Object.entries(fields).filter(([key, _]) => {
+            // Skip id field
+            if (key === 'id') return false;
             
-          if (!isTransientError || attempt === MAX_RETRIES - 1) {
-            break; // Don't retry on non-transient errors or if it's the last attempt
+            // Convert camelCase to snake_case
+            const snakeCase = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            
+            // Check if this column exists in the database
+            const isValid = columnNames.includes(snakeCase);
+            if (!isValid) {
+              console.log(`[Repo] Skipping field ${key} -> ${snakeCase} as it doesn't exist in the database`);
+            }
+            return isValid;
+          });
+          
+          if (validFieldEntries.length === 0) {
+            console.log(`[Repo] No valid fields to update for session ${sessionId}`);
+            return true; // No valid fields to update
           }
+          
+          // Convert session field names to database column names
+          const setClause = validFieldEntries.map(([key, _]) => {
+            const snakeCase = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            return `${snakeCase} = @${key}`;
+          }).join(', ');
+          
+          // Add updated_at automatically
+          const query = `UPDATE sessions SET ${setClause}, updated_at = @updatedAt WHERE id = @id`;
+          console.log(`[Repo] Update query: ${query}`);
+          
+          // Prepare parameters with proper naming and ensure all values are safe for SQLite
+          const params: Record<string, string | number | bigint | Buffer | null> = {
+            id: sessionId,
+            updatedAt: Date.now()
+          };
+          
+          // Process and convert fields to valid SQLite types
+          for (const [key, value] of validFieldEntries) {
+            if (value === null || value === undefined) {
+              params[key] = null;
+            } else if (typeof value === 'boolean') {
+              params[key] = value ? 1 : 0;
+            } else if (typeof value === 'object') {
+              // Convert objects/arrays to JSON strings
+              params[key] = JSON.stringify(value);
+            } else {
+              // String, number types are passed directly
+              params[key] = value;
+            }
+            console.log(`[Repo] Parameter ${key} = ${params[key]} (${typeof params[key]})`);
+          }
+          
+          try {
+            // Execute the update
+            const result = db.prepare(query).run(params);
+            console.log(`[Repo] Update result: ${result.changes} rows affected`);
+            return result.changes > 0;
+          } catch (sqlError) {
+            console.error(`[Repo] SQL Error in updateSessionFields:`, sqlError);
+            console.log(`[Repo] Params:`, params);
+            throw sqlError;
+          }
+        } catch (error) {
+          console.error("Error in updateSessionFields:", error);
+          throw error;
         }
-      }
-      
-      // If we've exhausted all retries, throw the last error
-      if (lastError) {
-        throw lastError;
-      }
-    },
+      });
+    }
   };
   
   return repository;
 }
 
-// Create and export a default instance
+// Create and export a singleton instance of the repository
 export const sessionRepository = createSessionRepository(); 

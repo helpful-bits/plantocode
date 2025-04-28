@@ -52,6 +52,7 @@ export type Session = {
     id: string;
     name: string; // User-provided name for the session
     projectDirectory: string;
+    projectHash?: string; // Hashed project directory for database lookups
     taskDescription: string;
     searchTerm: string;
     pastedPaths: string;
@@ -62,8 +63,10 @@ export type Session = {
     updatedAt?: number; // Timestamp of last update (managed by repository)
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths forced excluded
+    outputFormat?: string; // Format for generated output (markdown, etc.)
     // taskSettings field removed - now stored globally per project
     backgroundJobs?: BackgroundJob[];
+    codebaseStructure?: string; // ASCII structure of codebase
 };
 
 // Action state type for server action responses

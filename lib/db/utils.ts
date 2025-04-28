@@ -24,8 +24,8 @@ export async function fixDatabasePermissions(): Promise<boolean> {
 
     // Fix directory permissions first
     try {
-      fs.chmodSync(APP_DATA_DIR, 0o755);
-      console.log("[DB Utils] App data directory permissions set to rwxr-xr-x");
+      fs.chmodSync(APP_DATA_DIR, 0o775);
+      console.log("[DB Utils] App data directory permissions set to rwxrwxr-x");
     } catch (err) {
       console.warn("[DB Utils] Failed to set app directory permissions:", err);
     }

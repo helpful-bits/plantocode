@@ -1,11 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import sqlite3 from 'sqlite3';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { ensureConnection, db, closeDatabase } from './index';
-import { DB_FILE } from './connection-pool';
+import { connectionPool, DB_FILE, closeDatabase } from './index';
 
 const execAsync = promisify(exec);
 
@@ -43,7 +41,7 @@ export async function backupDatabase(): Promise<string | null> {
     
     // Make sure the database is closed before copying
     try {
-      await closeDatabase();
+      closeDatabase();
     } catch (closeErr) {
       console.warn('Error closing database before backup:', closeErr);
       // Continue with backup attempt even if close fails
@@ -65,59 +63,49 @@ export async function backupDatabase(): Promise<string | null> {
  */
 export async function checkDatabaseIntegrity(): Promise<IntegrityResult> {
   try {
-    const database = await ensureConnection();
-    const errors: string[] = [];
-    
-    // Run SQLite integrity check
-    const integrityResults = await new Promise<any[]>((resolve, reject) => {
-      database.all('PRAGMA integrity_check;', (err: Error | null, rows: any[]) => {
-        if (err) {
-          reject(err);
-          return;
+    return connectionPool.withConnection((db) => {
+      const errors: string[] = [];
+      
+      // Run SQLite integrity check
+      const integrityResults = db.pragma('integrity_check');
+      
+      // If there's only one row with "ok", the database is fine
+      const isIntegrityOk = Array.isArray(integrityResults) && 
+                           integrityResults.length === 1 && 
+                           integrityResults[0].integrity_check === 'ok';
+      
+      if (!isIntegrityOk) {
+        errors.push('Database integrity check failed');
+        if (Array.isArray(integrityResults)) {
+          integrityResults.forEach((row: any) => {
+            if (row.integrity_check !== 'ok') {
+              errors.push(row.integrity_check);
+            }
+          });
+        } else if (typeof integrityResults === 'string' && integrityResults !== 'ok') {
+          errors.push(integrityResults);
         }
-        resolve(rows);
-      });
-    });
-    
-    // If there's only one row with "ok", the database is fine
-    const isIntegrityOk = integrityResults.length === 1 && 
-                         integrityResults[0].integrity_check === 'ok';
-    
-    if (!isIntegrityOk) {
-      errors.push('Database integrity check failed');
-      integrityResults.forEach(row => {
-        if (row.integrity_check !== 'ok') {
-          errors.push(row.integrity_check);
-        }
-      });
-    }
-    
-    // Check foreign key constraints
-    const foreignKeyCheck = await new Promise<any[]>((resolve, reject) => {
-      database.all('PRAGMA foreign_key_check;', (err: Error | null, rows: any[]) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(rows);
-      });
-    });
-    
-    if (foreignKeyCheck.length > 0) {
-      errors.push('Foreign key constraint violations found');
-      foreignKeyCheck.forEach(violation => {
-        errors.push(`Table ${violation.table}, rowid ${violation.rowid}, parent ${violation.parent}`);
-      });
-    }
-    
-    return {
-      isValid: isIntegrityOk && foreignKeyCheck.length === 0,
-      errors,
-      details: {
-        integrityCheck: integrityResults,
-        foreignKeyCheck
       }
-    };
+      
+      // Check foreign key constraints
+      const foreignKeyCheck = db.pragma('foreign_key_check');
+      
+      if (Array.isArray(foreignKeyCheck) && foreignKeyCheck.length > 0) {
+        errors.push('Foreign key constraint violations found');
+        foreignKeyCheck.forEach((violation: any) => {
+          errors.push(`Table ${violation.table}, rowid ${violation.rowid}, parent ${violation.parent}`);
+        });
+      }
+      
+      return {
+        isValid: isIntegrityOk && (!Array.isArray(foreignKeyCheck) || foreignKeyCheck.length === 0),
+        errors,
+        details: {
+          integrityCheck: integrityResults,
+          foreignKeyCheck
+        }
+      };
+    }, true); // Use readonly connection
   } catch (error) {
     console.error('Error checking database integrity:', error);
     return {
@@ -140,82 +128,57 @@ export async function recreateDatabaseStructure(): Promise<boolean> {
       return false;
     }
     
-    const database = await ensureConnection();
-    
-    // Start a transaction
-    await new Promise<void>((resolve, reject) => {
-      database.run('BEGIN TRANSACTION', (err: Error | null) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-    
-    try {
-      // Create temporary tables for data we want to preserve
-      await new Promise<void>((resolve, reject) => {
-        database.run('CREATE TEMPORARY TABLE temp_sessions AS SELECT * FROM sessions', (err: Error | null) => {
+    return connectionPool.withTransaction((db) => {
+      try {
+        // Create temporary tables for data we want to preserve
+        try {
+          db.prepare('CREATE TEMPORARY TABLE temp_sessions AS SELECT * FROM sessions').run();
+        } catch (err) {
           // Ignore errors if table doesn't exist
-          resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run('CREATE TEMPORARY TABLE temp_background_jobs AS SELECT * FROM background_jobs', (err: Error | null) => {
+          console.log("Failed to backup sessions table:", err);
+        }
+        
+        try {
+          db.prepare('CREATE TEMPORARY TABLE temp_background_jobs AS SELECT * FROM background_jobs').run();
+        } catch (err) {
           // Ignore errors if table doesn't exist
-          resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run('CREATE TEMPORARY TABLE temp_cached_state AS SELECT * FROM cached_state', (err: Error | null) => {
+          console.log("Failed to backup background_jobs table:", err);
+        }
+        
+        try {
+          db.prepare('CREATE TEMPORARY TABLE temp_cached_state AS SELECT * FROM cached_state').run();
+        } catch (err) {
           // Ignore errors if table doesn't exist
-          resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run('CREATE TEMPORARY TABLE temp_active_sessions AS SELECT * FROM active_sessions', (err: Error | null) => {
+          console.log("Failed to backup cached_state table:", err);
+        }
+        
+        try {
+          db.prepare('CREATE TEMPORARY TABLE temp_active_sessions AS SELECT * FROM active_sessions').run();
+        } catch (err) {
           // Ignore errors if table doesn't exist
-          resolve();
-        });
-      });
-      
-      // Drop all existing tables
-      const tables = await new Promise<string[]>((resolve, reject) => {
-        database.all(`
+          console.log("Failed to backup active_sessions table:", err);
+        }
+        
+        // Drop all existing tables
+        const tables = db.prepare(`
           SELECT name FROM sqlite_master 
           WHERE type='table' AND name NOT LIKE 'temp_%' AND name NOT LIKE 'sqlite_%'
-        `, (err: Error | null, rows: any[]) => {
-          if (err) reject(err);
-          else resolve(rows.map(row => row.name));
-        });
-      });
-      
-      for (const table of tables) {
-        await new Promise<void>((resolve, reject) => {
-          database.run(`DROP TABLE IF EXISTS ${table}`, (err: Error | null) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-      }
-      
-      // Create essential tables
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
+        `).all().map((row: any) => row.name);
+        
+        for (const table of tables) {
+          db.prepare(`DROP TABLE IF EXISTS ${table}`).run();
+        }
+        
+        // Create essential tables
+        db.prepare(`
           CREATE TABLE migrations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             applied_at INTEGER NOT NULL
           )
-        `, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
+        `).run();
+        
+        db.prepare(`
           CREATE TABLE sessions (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -231,180 +194,115 @@ export async function recreateDatabaseStructure(): Promise<boolean> {
             codebase_structure TEXT,
             updated_at INTEGER NOT NULL
           )
-        `, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
+        `).run();
+        
+        db.prepare(`
           CREATE TABLE background_jobs (
             id TEXT PRIMARY KEY,
             session_id TEXT NOT NULL,
-            prompt TEXT NOT NULL,
-            status TEXT DEFAULT 'idle' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing')),
-            start_time INTEGER,
-            end_time INTEGER,
-            xml_path TEXT,
-            status_message TEXT,
-            tokens_received INTEGER DEFAULT 0,
-            chars_received INTEGER DEFAULT 0,
-            last_update INTEGER,
+            status TEXT NOT NULL,
+            api_type TEXT NOT NULL,
+            task_type TEXT NOT NULL,
+            model TEXT,
+            prompt TEXT,
+            response TEXT,
+            error_message TEXT,
+            metadata TEXT,
             created_at INTEGER NOT NULL,
-            cleared INTEGER DEFAULT 0 CHECK(cleared IN (0, 1)),
-            api_type TEXT DEFAULT 'gemini' NOT NULL,
-            task_type TEXT DEFAULT 'xml_generation' NOT NULL,
-            model_used TEXT,
-            max_output_tokens INTEGER,
-            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
           )
-        `, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
+        `).run();
+        
+        db.prepare(`
+          CREATE TABLE included_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+          )
+        `).run();
+        
+        db.prepare(`
+          CREATE TABLE excluded_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+          )
+        `).run();
+        
+        db.prepare(`
+          CREATE TABLE active_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_directory TEXT NOT NULL,
+            project_hash TEXT NOT NULL UNIQUE,
+            session_id TEXT,
+            updated_at INTEGER NOT NULL
+          )
+        `).run();
+        
+        db.prepare(`
           CREATE TABLE cached_state (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key1 TEXT NOT NULL,
+            key1_hash TEXT NOT NULL,
+            key2 TEXT NOT NULL,
+            key2_hash TEXT NOT NULL,
+            value TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            UNIQUE(key1_hash, key2_hash)
+          )
+        `).run();
+        
+        db.prepare(`
+          CREATE TABLE meta (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
             updated_at INTEGER NOT NULL
           )
-        `, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
-          CREATE TABLE active_sessions (
-            project_directory TEXT PRIMARY KEY,
-            session_id TEXT,
-            updated_at INTEGER NOT NULL
-          )
-        `, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      // Create indexes
-      await new Promise<void>((resolve, reject) => {
-        database.run(`CREATE INDEX idx_sessions_project_hash ON sessions(project_hash)`, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`CREATE INDEX idx_sessions_project_directory ON sessions(project_directory)`, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`CREATE INDEX idx_sessions_updated_at ON sessions(updated_at)`, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`CREATE INDEX idx_background_jobs_session_id ON background_jobs(session_id)`, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`CREATE INDEX idx_background_jobs_status ON background_jobs(status)`, (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      // Restore data where possible
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
-          INSERT OR IGNORE INTO sessions
-          SELECT * FROM temp_sessions
-        `, (err: Error | null) => {
-          // Ignore errors
-          resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
-          INSERT OR IGNORE INTO background_jobs
-          SELECT * FROM temp_background_jobs
-        `, (err: Error | null) => {
-          // Ignore errors
-          resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
-          INSERT OR IGNORE INTO cached_state
-          SELECT * FROM temp_cached_state
-        `, (err: Error | null) => {
-          // Ignore errors
-          resolve();
-        });
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        database.run(`
-          INSERT OR IGNORE INTO active_sessions
-          SELECT * FROM temp_active_sessions
-        `, (err: Error | null) => {
-          // Ignore errors
-          resolve();
-        });
-      });
-      
-      // Commit the transaction
-      await new Promise<void>((resolve, reject) => {
-        database.run('COMMIT', (err: Error | null) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      return true;
-    } catch (err) {
-      console.error('Error recreating database structure:', err);
-      
-      // Try to rollback
-      try {
-        await new Promise<void>((resolve, reject) => {
-          database.run('ROLLBACK', (err: Error | null) => {
-            if (err) {
-              console.error('Error rolling back transaction:', err);
-            }
-            resolve();
-          });
-        });
-      } catch (rollbackErr) {
-        console.error('Error during rollback:', rollbackErr);
+        `).run();
+        
+        // Try to restore data
+        try {
+          db.prepare('INSERT INTO sessions SELECT * FROM temp_sessions').run();
+        } catch (err) {
+          console.log("Failed to restore sessions:", err);
+        }
+        
+        try {
+          db.prepare('INSERT INTO background_jobs SELECT * FROM temp_background_jobs').run();
+        } catch (err) {
+          console.log("Failed to restore background_jobs:", err);
+        }
+        
+        try {
+          db.prepare('INSERT INTO cached_state SELECT * FROM temp_cached_state').run();
+        } catch (err) {
+          console.log("Failed to restore cached_state:", err);
+        }
+        
+        try {
+          db.prepare('INSERT INTO active_sessions SELECT * FROM temp_active_sessions').run();
+        } catch (err) {
+          console.log("Failed to restore active_sessions:", err);
+        }
+        
+        return true;
+      } catch (error) {
+        console.error("Error recreating database structure:", error);
+        throw error; // Will trigger transaction rollback
       }
-      
-      return false;
-    }
-  } catch (err) {
-    console.error('Error recreating database structure:', err);
+    });
+  } catch (error) {
+    console.error('Error recreating database structure:', error);
     return false;
   }
 }
 
 /**
- * Reset the database to a clean state
- * WARNING: This deletes all data!
+ * Complete reset of the database
+ * WARNING: This will delete all data
  */
 export async function resetDatabase(): Promise<boolean> {
   try {
@@ -415,48 +313,30 @@ export async function resetDatabase(): Promise<boolean> {
       return false;
     }
     
-    // Close any open connections
-    try {
-      await closeDatabase();
-    } catch (closeErr) {
-      console.warn('Error closing database:', closeErr);
-    }
+    // Close all connections
+    closeDatabase();
     
     // Delete the database file
     if (fs.existsSync(DB_FILE)) {
       fs.unlinkSync(DB_FILE);
+      console.log('Database file deleted');
     }
     
-    // Recreate essential structure
-    const database = await ensureConnection();
+    // Also delete WAL and SHM files if they exist
+    const walFile = `${DB_FILE}-wal`;
+    const shmFile = `${DB_FILE}-shm`;
     
-    await new Promise<void>((resolve, reject) => {
-      database.run(`
-        CREATE TABLE migrations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          applied_at INTEGER NOT NULL
-        )
-      `, (err: Error | null) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    if (fs.existsSync(walFile)) {
+      fs.unlinkSync(walFile);
+      console.log('WAL file deleted');
+    }
     
-    await new Promise<void>((resolve, reject) => {
-      database.run(`
-        CREATE TABLE cached_state (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL,
-          updated_at INTEGER NOT NULL
-        )
-      `, (err: Error | null) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    if (fs.existsSync(shmFile)) {
+      fs.unlinkSync(shmFile);
+      console.log('SHM file deleted');
+    }
     
-    console.log('Database successfully reset');
+    console.log('Database has been completely reset');
     return true;
   } catch (error) {
     console.error('Error resetting database:', error);
@@ -465,61 +345,45 @@ export async function resetDatabase(): Promise<boolean> {
 }
 
 /**
- * Attempt to repair database issues
- * This performs several levels of repair depending on the severity of the issues
+ * Attempt to repair a corrupted database
  */
 export async function repairDatabase(): Promise<boolean> {
   try {
-    console.log("Starting database repair...");
-    
-    // First, make a backup
+    // First make a backup
     const backupPath = await backupDatabase();
-    if (backupPath) {
-      console.log(`Created backup at ${backupPath}`);
-    } else {
-      console.warn("Could not create backup before repair");
+    if (!backupPath) {
+      console.error('Failed to create backup before repairing database');
+      return false;
     }
     
-    // Check if database is accessible at all
+    // Close all connections
+    closeDatabase();
+    
+    // Attempt to recover using the sqlite3 command line tool
     try {
-      const database = await ensureConnection();
+      const { stdout, stderr } = await execAsync(`sqlite3 "${DB_FILE}" "PRAGMA integrity_check; VACUUM;"`);
       
-      // Try to run a simple query to see if it's functioning
-      await new Promise<void>((resolve, reject) => {
-        database.get("SELECT 1", (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      // Check integrity
-      const integrityResult = await checkDatabaseIntegrity();
-      
-      if (integrityResult.isValid) {
-        console.log("Database appears to be intact, no repair needed");
-        return true;
+      if (stderr) {
+        console.error('SQLite CLI error:', stderr);
+        return false;
       }
       
-      console.log("Found database integrity issues:", integrityResult.errors);
-      
-      // Try to fix by recreating the structure
-      const recreateResult = await recreateDatabaseStructure();
-      if (recreateResult) {
-        console.log("Successfully repaired database by recreating structure");
+      if (stdout.includes('ok')) {
+        console.log('Database repaired successfully');
         return true;
+      } else {
+        console.error('SQLite integrity check failed after repair attempt:', stdout);
+        return false;
       }
+    } catch (execError) {
+      console.error('Error executing SQLite CLI:', execError);
       
-      console.log("Structure recreation failed, database may need to be reset");
-      return false;
-    } catch (accessError) {
-      console.error("Cannot access database for repair:", accessError);
-      
-      // If we can't even access the database, we might need to reset it completely
-      console.log("Database is inaccessible, recommend a complete reset");
-      return false;
+      // If CLI repair fails, try recreating the structure
+      console.log('Attempting to recreate database structure...');
+      return await recreateDatabaseStructure();
     }
   } catch (error) {
-    console.error("Error during database repair:", error);
+    console.error('Error repairing database:', error);
     return false;
   }
 } 
