@@ -4,7 +4,7 @@ import { ActionState } from '@/types';
 import { setupDatabase } from '@/lib/db';
 import { normalizePath } from '@/lib/path-utils';
 import geminiClient from '@/lib/api/gemini-client';
-import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
+import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@/lib/constants';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
 /**
@@ -100,4 +100,144 @@ Structure your guidance in a clear, step-by-step format.
 async function getSessionWithBackgroundJobs(sessionId: string) {
   const { getSessionWithBackgroundJobs } = await import('@/lib/db');
   return getSessionWithBackgroundJobs(sessionId);
+}
+
+export async function generateTaskGuidanceAction(
+  taskDescription: string,
+  projectDirectory: string,
+  options?: {
+    modelOverride?: string;
+    guidanceType?: 'full' | 'planning' | 'structured';
+    projectSummary?: string;
+  },
+  sessionId?: string
+): Promise<ActionState<{ guidance: string }>> {
+  await setupDatabase();
+  
+  if (!taskDescription.trim()) {
+    return { isSuccess: false, message: "Task description cannot be empty" };
+  }
+  
+  try {
+    // Get project settings
+    const projectSettings = await getModelSettingsForProject(projectDirectory);
+    
+    // Get settings for task guidance
+    const guidanceSettings = projectSettings?.task_guidance || {
+      model: GEMINI_FLASH_MODEL,
+      maxTokens: 8192,
+      temperature: 0.3 // Lower temperature for more predictable output
+    };
+    
+    // Override model if provided
+    const model = options?.modelOverride || guidanceSettings.model;
+    
+    // Get the files listing from the project directory
+    const projectSummary = options?.projectSummary || await getProjectSummary(projectDirectory);
+    
+    const guidanceType = options?.guidanceType || 'full';
+    let promptText = '';
+    
+    switch (guidanceType) {
+      case 'planning':
+        promptText = `
+Task: ${taskDescription}
+
+Project summary:
+${projectSummary}
+
+Based on this information, please generate a comprehensive plan for implementing this task. The plan should include:
+
+1. An analysis of what the task requires
+2. A step-by-step breakdown of the implementation
+3. The files that will need to be modified or created
+4. Potential challenges or considerations
+
+Please provide specific details and actionable steps.
+`;
+        break;
+        
+      case 'structured':
+        promptText = `
+Task: ${taskDescription}
+
+Project summary:
+${projectSummary}
+
+Please provide a structured analysis and implementation guide for this task with the following sections:
+
+## Understanding the Task
+[Brief analysis of what the task requires]
+
+## Implementation Steps
+1. [First step with details]
+2. [Second step with details]
+...
+
+## Files to Modify
+- [File path]: [Description of changes]
+...
+
+## Testing Approach
+[How to verify the implementation works correctly]
+
+## Potential Challenges
+[List of challenges or considerations]
+`;
+        break;
+        
+      case 'full':
+      default:
+        promptText = `
+Task: ${taskDescription}
+
+Project summary:
+${projectSummary}
+
+Please provide detailed guidance on how to implement this task, including:
+
+1. Analysis of the task requirements
+2. Step-by-step implementation plan
+3. Specific files to modify and how to modify them
+4. Code examples where helpful
+5. Testing approach
+6. Any considerations or edge cases to be aware of
+
+The guidance should be thorough and actionable, enabling a developer to complete the task efficiently.
+`;
+        break;
+    }
+    
+    // Call the Gemini client
+    const result = await geminiClient.sendRequest(promptText, {
+      model,
+      maxOutputTokens: guidanceSettings.maxTokens,
+      temperature: guidanceSettings.temperature,
+      apiType: 'gemini',
+      taskType: 'task_guidance',
+      projectDirectory,
+      sessionId
+    });
+    
+    if (!result.isSuccess) {
+      return { 
+        isSuccess: false, 
+        message: result.message || "Failed to generate task guidance" 
+      };
+    }
+    
+    return {
+      isSuccess: true,
+      message: "Successfully generated task guidance",
+      data: { guidance: result.data || "" }
+    };
+  } catch (error) {
+    console.error("[generateTaskGuidanceAction]", error);
+    
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Unknown error generating guidance",
+      error: error instanceof Error ? error : new Error("Unknown error")
+    };
+  }
 } 

@@ -39,6 +39,9 @@ interface FileBrowserProps {
   files?: FilesMap; // Keep for backward compatibility
   onFilesChange?: (newMap: FilesMap) => void; // Keep for backward compatibility
   searchFilter?: string;
+  // New props for showOnlySelected state synchronization
+  showOnlySelected?: boolean;
+  onShowOnlySelectedChange?: () => void;
 }
 
 const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
@@ -63,6 +66,8 @@ export default function FileBrowser({
   isLoading,
   loadingMessage = "", // Add default empty string for loadingMessage
   onAddPath, // Add new prop
+  showOnlySelected: propShowOnlySelected,
+  onShowOnlySelectedChange,
 }: FileBrowserProps) { // Keep FileBrowserProps type
   const { projectDirectory } = useProject();
   
@@ -71,7 +76,11 @@ export default function FileBrowser({
   // Handle legacy search prop name
   const searchTerm = propSearchTerm || searchFilter || "";
 
-  const [showOnlySelected, setShowOnlySelected] = useState<boolean>(false);
+  const [localShowOnlySelected, setLocalShowOnlySelected] = useState<boolean>(false);
+  
+  // Use the prop value if provided, otherwise use local state
+  const showOnlySelected = propShowOnlySelected !== undefined ? propShowOnlySelected : localShowOnlySelected;
+  
   const [showPathInfo, setShowPathInfo] = useState(false);
   const lastRenderedMapRef = useRef<string | null>(null); // Track rendered file list
   const [isPreferenceLoading, setIsPreferenceLoading] = useState(true);
@@ -84,40 +93,49 @@ export default function FileBrowser({
     }
   }, [onInteraction]);
 
+  // Only load from localStorage if no prop is provided
   useEffect(() => {
-    setIsPreferenceLoading(true); // Set loading state for preference
-    
-    // Load preference from localStorage instead of repository
-    const loadPreference = () => {
+    if (propShowOnlySelected === undefined) {
+      setIsPreferenceLoading(true); // Set loading state for preference
+      
+      // Load preference from localStorage instead of repository
+      const loadPreference = () => {
+        if (projectDirectory) {
+          try {
+            const key = `${SHOW_ONLY_SELECTED_KEY}-${projectDirectory}`;
+            const savedPreference = localStorage.getItem(key);
+            setLocalShowOnlySelected(savedPreference === "true");
+          } catch (e) {
+            console.error("Failed to load 'showOnlySelected' preference:", e);
+          } finally {
+            setIsPreferenceLoading(false);
+          } // Always reset loading state
+        } else {
+          setIsPreferenceLoading(false); // Reset loading state if dependencies missing
+        }
+      };
+
+      loadPreference();
+    }
+  }, [projectDirectory, propShowOnlySelected]);
+  
+  // Update toggleShowOnlySelected to use either the provided callback or local storage
+  const toggleShowOnlySelected = () => {
+    if (onShowOnlySelectedChange) {
+      // Use parent's toggle function
+      onShowOnlySelectedChange();
+    } else {
+      // Use local state and storage
+      const newValue = !localShowOnlySelected;
+      setLocalShowOnlySelected(newValue);
+      
       if (projectDirectory) {
         try {
           const key = `${SHOW_ONLY_SELECTED_KEY}-${projectDirectory}`;
-          const savedPreference = localStorage.getItem(key);
-          setShowOnlySelected(savedPreference === "true");
-        } catch (e) {
-          console.error("Failed to load 'showOnlySelected' preference:", e);
-        } finally {
-          setIsPreferenceLoading(false);
-        } // Always reset loading state
-      } else {
-        setIsPreferenceLoading(false); // Reset loading state if dependencies missing
-      }
-    };
-
-    loadPreference();
-  }, [projectDirectory]); // Removed repository dependency
-  
-  // Update toggleShowOnlySelected to use localStorage
-  const toggleShowOnlySelected = () => {
-    const newValue = !showOnlySelected;
-    setShowOnlySelected(newValue);
-    
-    if (projectDirectory) {
-      try {
-        const key = `${SHOW_ONLY_SELECTED_KEY}-${projectDirectory}`;
-        localStorage.setItem(key, String(newValue));
-      } catch (error) {
-        console.error("Failed to save 'showOnlySelected' preference:", error);
+          localStorage.setItem(key, String(newValue));
+        } catch (error) {
+          console.error("Failed to save 'showOnlySelected' preference:", error);
+        }
       }
     }
   };

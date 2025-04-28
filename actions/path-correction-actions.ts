@@ -10,46 +10,56 @@ import { getModelSettingsForProject } from '@/actions/project-settings-actions';
  * Correct paths based on task description and project structure
  */
 export async function correctPathsAction(
-  taskDescription: string,
-  paths: string[],
-  projectDirectory: string,
-  options?: { modelOverride?: string }
+  paths: string,
+  projectDirectory?: string,
+  sessionId?: string
 ): Promise<ActionState<{ correctedPaths: string[] }>> {
   await setupDatabase();
   
-  if (!taskDescription.trim()) {
-    return { isSuccess: false, message: "Task description cannot be empty" };
-  }
-  
-  if (!paths.length) {
+  if (!paths.trim()) {
     return { isSuccess: false, message: "No paths provided to correct" };
   }
   
   try {
-    // Get project settings
-    const projectSettings = await getModelSettingsForProject(projectDirectory);
+    // Parse input paths
+    const pathsArray = paths
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'));
     
-    // Get settings for path correction
-    const pathSettings = projectSettings?.path_correction || {
-      model: GEMINI_FLASH_MODEL,
-      maxTokens: 8192,
-      temperature: 0.3 // Lower temperature for more precise path correction
-    };
+    if (pathsArray.length === 0) {
+      return { isSuccess: false, message: "No valid paths found in input" };
+    }
     
-    // Override model if provided
-    const model = options?.modelOverride || pathSettings.model;
+    // Get project settings if project directory is provided
+    let model = GEMINI_FLASH_MODEL;
+    let maxTokens = 8192;
+    let temperature = 0.3;
+    
+    if (projectDirectory) {
+      const projectSettings = await getModelSettingsForProject(projectDirectory);
+      
+      // Get settings for path correction
+      const pathSettings = projectSettings?.path_correction || {
+        model: GEMINI_FLASH_MODEL,
+        maxTokens: 8192,
+        temperature: 0.3 // Lower temperature for more precise path correction
+      };
+      
+      model = pathSettings.model;
+      maxTokens = pathSettings.maxTokens;
+      temperature = pathSettings.temperature;
+    }
     
     // Prepare prompt for path correction
     const promptText = `
-Task: ${taskDescription}
-
-The following file paths have been identified but may contain errors or may not exist in the project:
-${paths.map(p => `- ${p}`).join('\n')}
+I have the following file paths that may contain errors or may not exist:
+${pathsArray.map(p => `- ${p}`).join('\n')}
 
 Please correct these paths based on:
 1. Most likely real paths in typical project structures
-2. Usual naming conventions for files based on the task description
-3. What files would typically be needed for this task
+2. Usual naming conventions for files
+3. What files would typically be needed
 
 Return ONLY a list of corrected file paths, one per line.
 `;
@@ -57,11 +67,12 @@ Return ONLY a list of corrected file paths, one per line.
     // Call the Gemini client
     const result = await geminiClient.sendRequest(promptText, {
       model,
-      maxOutputTokens: pathSettings.maxTokens,
-      temperature: pathSettings.temperature,
+      maxOutputTokens: maxTokens,
+      temperature,
       apiType: 'gemini',
       taskType: 'path_correction',
-      projectDirectory
+      projectDirectory,
+      sessionId
     });
     
     if (!result.isSuccess) {
@@ -73,10 +84,12 @@ Return ONLY a list of corrected file paths, one per line.
     
     // Parse the corrected paths from the result
     const correctedPaths = result.data
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line && !line.startsWith('-')) // Filter out empty lines and bullet points
-      .map(line => line.replace(/^- /, '')); // Remove bullet points if any
+      ? result.data
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line && !line.startsWith('-')) // Filter out empty lines and bullet points
+          .map(line => line.replace(/^- /, '')) // Remove bullet points if any
+      : [];
     
     return {
       isSuccess: true,

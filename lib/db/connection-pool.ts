@@ -1,4 +1,4 @@
-import * as sqlite3 from 'sqlite3';
+import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -21,7 +21,7 @@ const RETRY_DELAY_BASE_MS = 200; // Base delay for exponential backoff
 
 export interface DbConnection {
   id: string;
-  db: sqlite3.Database;
+  db: Database.Database;
   inUse: boolean;
   lastUsed: number;
   isReadOnly: boolean;
@@ -64,25 +64,24 @@ class ConnectionPool {
   
   private async createConnection(readOnly: boolean = false): Promise<DbConnection> {
     const id = crypto.randomUUID();
-    const mode = readOnly ? sqlite3.OPEN_READONLY : sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE;
     
-    let db: sqlite3.Database;
+    let db: Database.Database;
     
     try {
       // Fix permissions before opening
       await fixDatabasePermissions();
       
-      db = new sqlite3.Database(DB_FILE, mode);
+      const options: Database.Options = {
+        readonly: readOnly,
+        fileMustExist: false,
+        timeout: CONNECTION_TIMEOUT_MS
+      };
       
-      // Configure connection
-      // Use DELETE journal mode for better compatibility
-      db.run('PRAGMA journal_mode = DELETE;');
+      db = new Database(DB_FILE, options);
       
-      // Set busy timeout to 5 seconds
-      db.run(`PRAGMA busy_timeout = ${CONNECTION_TIMEOUT_MS};`);
-      
-      // Enable foreign keys
-      db.run('PRAGMA foreign_keys = ON;');
+      // Configure connection using pragmas
+      db.pragma('journal_mode = DELETE');
+      db.pragma('foreign_keys = ON');
       
       // Fix permissions after creating/opening the database
       await fixDatabasePermissions();
@@ -98,12 +97,15 @@ class ConnectionPool {
         if (await handleReadonlyDatabase()) {
           // Retry creating a writable connection since we fixed the issue
           try {
-            db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
+            db = new Database(DB_FILE, {
+              readonly: false,
+              fileMustExist: false,
+              timeout: CONNECTION_TIMEOUT_MS
+            });
             
-            // Configure connection
-            db.run('PRAGMA journal_mode = DELETE;');
-            db.run(`PRAGMA busy_timeout = ${CONNECTION_TIMEOUT_MS};`);
-            db.run('PRAGMA foreign_keys = ON;');
+            // Configure connection using pragmas
+            db.pragma('journal_mode = DELETE');
+            db.pragma('foreign_keys = ON');
             
             const conn: DbConnection = {
               id,
@@ -217,7 +219,7 @@ class ConnectionPool {
     await fixDatabasePermissions();
   }
   
-  async withConnection<T>(callback: (db: sqlite3.Database) => Promise<T>, readOnly: boolean = false): Promise<T> {
+  async withConnection<T>(callback: (db: Database.Database) => Promise<T> | T, readOnly: boolean = false): Promise<T> {
     let lastError: Error | null = null;
     
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -234,8 +236,20 @@ class ConnectionPool {
         }
         
         const conn = await this.getConnection(readOnly);
+        
         try {
-          return await callback(conn.db);
+          // Call the callback with the database connection
+          // The callback can return either a Promise<T> or T directly
+          const result = callback(conn.db);
+          
+          // Handle both synchronous and asynchronous results
+          const finalResult = result instanceof Promise ? await result : result;
+          
+          // Release the connection back to the pool
+          this.releaseConnection(conn);
+          
+          // Return the result
+          return finalResult;
         } catch (error: any) {
           // Check for readonly errors directly in the callback
           if (error && (
@@ -249,110 +263,87 @@ class ConnectionPool {
             
             // Attempt to fix readonly database issue
             if (await handleReadonlyDatabase()) {
-              // If fixed, immediately continue to the next retry attempt
-              console.log("Readonly database issue possibly fixed, retrying operation");
-              continue;
+              console.log("Successfully fixed readonly database issue, retrying operation");
+              lastError = error;
+              continue; // Retry the operation
             }
           }
           
-          // For other errors or if readonly fix failed, release and rethrow
+          // Release the connection back to the pool
           this.releaseConnection(conn);
-          throw error;
-        } finally {
-          // Only release if not already released by error handling
-          if (conn.inUse) {
-            this.releaseConnection(conn);
-          }
+          
+          throw error; // Re-throw the error
         }
       } catch (error: any) {
         lastError = error;
         
-        // Special handling for readonly errors
+        // Only retry on certain errors
         if (error && (
-          error.code === 'SQLITE_READONLY' || 
-          (error.message && (error.message.includes('SQLITE_READONLY') || error.message.includes('readonly database')))
-        )) {
-          console.error("Read-only database error detected. Attempting to fix permissions.");
-          if (await handleReadonlyDatabase()) {
-            console.log("Readonly database fixed, will retry with new connection");
-            // Immediately retry after fixing
-            continue;
-          }
-        }
-        
-        // Only retry on database locked errors or readonly errors
-        const isBusyError = error && (
           error.code === 'SQLITE_BUSY' || 
           error.code === 'SQLITE_LOCKED' ||
-          error.code === 'SQLITE_READONLY' ||
           (error.message && (
-            error.message.includes('database is locked') || 
-            error.message.includes('SQLITE_BUSY') ||
-            error.message.includes('SQLITE_READONLY') ||
-            error.message.includes('readonly database')
+            error.message.includes('SQLITE_BUSY') || 
+            error.message.includes('database is locked') ||
+            error.message.includes('SQLITE_LOCKED')
           ))
-        );
-        
-        if (!isBusyError || attempt === MAX_RETRIES - 1) {
-          // Not a busy/readonly error or last attempt, don't retry
-          throw error;
+        )) {
+          console.warn(`Database locked or busy, attempt ${attempt + 1}/${MAX_RETRIES}:`, error);
+          continue; // Retry on lock or busy errors
         }
         
-        console.warn(`Database busy/locked/readonly, will retry (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        throw error; // Rethrow other errors immediately
       }
     }
     
-    // Should never reach here due to throw in the loop, but just in case
-    throw lastError || new Error('Unknown database error');
+    throw lastError || new Error('Failed to execute database operation after multiple retries');
   }
   
-  async withTransaction<T>(callback: (db: sqlite3.Database) => Promise<T>): Promise<T> {
+  async withTransaction<T>(callback: (db: Database.Database) => Promise<T> | T): Promise<T> {
     return this.withConnection(async (db) => {
-      return new Promise<T>(async (resolve, reject) => {
-        db.run('BEGIN TRANSACTION', async (beginError) => {
-          if (beginError) {
-            return reject(beginError);
-          }
-          
-          try {
-            const result = await callback(db);
-            
-            db.run('COMMIT', (commitError) => {
-              if (commitError) {
-                // Try to rollback on commit error
-                db.run('ROLLBACK', () => {
-                  reject(commitError);
-                });
-              } else {
-                resolve(result);
-              }
-            });
-          } catch (error) {
-            // Rollback the transaction on error
-            db.run('ROLLBACK', (rollbackError) => {
-              if (rollbackError) {
-                console.error("Error rolling back transaction:", rollbackError);
-              }
-              reject(error);
-            });
-          }
-        });
+      // Create a function that executes the transaction synchronously
+      const transaction = db.transaction((txDb: Database.Database) => {
+        // For better-sqlite3, the transaction callback must be synchronous
+        // But our callback might be async, so we need to handle it differently
+        // We'll use a placeholder to indicate that we need to get the actual result from the
+        // promise resolution outside the transaction
+        return 'TRANSACTION_COMMIT_MARKER';
       });
-    }, false); // Always use a writeable connection for transactions
+      
+      try {
+        // Start the transaction
+        db.prepare('BEGIN').run();
+        
+        // Run the user callback
+        const result = await callback(db);
+        
+        // Commit the transaction
+        db.prepare('COMMIT').run();
+        
+        return result;
+      } catch (error) {
+        // Roll back the transaction on error
+        try {
+          db.prepare('ROLLBACK').run();
+        } catch (rollbackError) {
+          console.error("Error rolling back transaction:", rollbackError);
+        }
+        
+        throw error;
+      }
+    }, false); // Transactions always need write access
   }
   
   closeAll() {
-    for (const conn of this.pool) {
+    this.pool.forEach(conn => {
       try {
         conn.db.close();
-      } catch (err) {
-        console.error("Error closing connection:", err);
+      } catch (error) {
+        console.error(`Error closing connection ${conn.id}:`, error);
       }
-    }
-    
+    });
     this.pool = [];
   }
 }
 
-// Singleton connection pool for the entire application
+// Create and export a singleton instance
 export const connectionPool = new ConnectionPool(); 

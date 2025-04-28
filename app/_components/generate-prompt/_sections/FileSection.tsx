@@ -22,6 +22,7 @@ interface FileSectionProps {
     titleRegexError: string | null;
     contentRegexError: string | null;
     taskDescription: string;
+    showOnlySelected: boolean;
   };
   actions: {
     handleFilesMapChange: (filesMap: FilesMap) => void;
@@ -34,6 +35,7 @@ interface FileSectionProps {
     handleInteraction: () => void;
     setTitleRegexError: (error: string | null) => void;
     setContentRegexError: (error: string | null) => void;
+    toggleShowOnlySelected: () => void;
   };
 }
 
@@ -53,7 +55,8 @@ export default function FileSection({ state, actions }: FileSectionProps) {
     externalPathWarnings,
     titleRegexError,
     contentRegexError,
-    taskDescription
+    taskDescription,
+    showOnlySelected
   } = state;
 
   const {
@@ -66,7 +69,8 @@ export default function FileSection({ state, actions }: FileSectionProps) {
     copyArchPrompt,
     handleInteraction,
     setTitleRegexError,
-    setContentRegexError
+    setContentRegexError,
+    toggleShowOnlySelected
   } = actions;
 
   return (
@@ -102,6 +106,8 @@ export default function FileSection({ state, actions }: FileSectionProps) {
         isLoading={isLoadingFiles}
         loadingMessage={loadingStatus}
         onAddPath={handleAddPathToPastedPaths}
+        showOnlySelected={showOnlySelected}
+        onShowOnlySelectedChange={toggleShowOnlySelected}
       />
     </>
   );

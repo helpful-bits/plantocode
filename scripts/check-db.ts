@@ -139,4 +139,4 @@ function formatBytes(bytes: number, decimals = 2): string {
 }
 
 // Run the function
-main(); 
+main();

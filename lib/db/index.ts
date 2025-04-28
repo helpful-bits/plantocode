@@ -2,19 +2,14 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import sqlite3 from 'sqlite3';
 import { setupDatabase, runMigrations } from './setup';
 import { sessionRepository } from './repository-factory'; // Import sessionRepository
 import { Session } from '@/types';
-import { DB_FILE } from './connection-pool'; // Import DB_FILE from connection-pool
+import { connectionPool, DB_FILE } from './connection-pool'; // Import DB_FILE and connectionPool
 
 // Set up database file path
 const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
 // DB_FILE is now imported from connection-pool
-let isReadOnly = false;
-let dbIsOpen = false;
-let connectionInProgress = false;
-let connectionPromise: Promise<sqlite3.Database> | null = null;
 
 // Create the app directory if it doesn't exist
 if (!fs.existsSync(APP_DATA_DIR)) {
@@ -26,6 +21,15 @@ if (!fs.existsSync(APP_DATA_DIR)) {
  */
 async function fixDatabasePermissions(): Promise<void> {
   try {
+    // Fix directory permissions first to prevent readonly database errors
+    try {
+      fs.chmodSync(APP_DATA_DIR, 0o775);
+      console.log("App data directory permissions set to rwxrwxr-x");
+    } catch (err) {
+      console.warn("Failed to set app directory permissions:", err);
+    }
+    
+    // Then fix database file permissions if it exists
     if (fs.existsSync(DB_FILE)) {
       // Set permissions to 0666 (rw-rw-rw-)
       fs.chmodSync(DB_FILE, 0o666);
@@ -36,401 +40,215 @@ async function fixDatabasePermissions(): Promise<void> {
   }
 }
 
-// Singleton database instance
-let db: sqlite3.Database;
-
-// Function to open database connection
-function openDatabase(): Promise<sqlite3.Database> {
-  // If we already have an open connection, return it
-  if (db && dbIsOpen) return Promise.resolve(db);
-  
-  // If a connection attempt is already in progress, return that promise
-  if (connectionPromise) return connectionPromise;
-  
-  console.log("Opening database connection to:", DB_FILE);
-  
-  // Set flag to indicate connection is in progress
-  connectionInProgress = true;
-  
-  // Create and store the connection promise
-  connectionPromise = new Promise<sqlite3.Database>(async (resolve, reject) => {
-    try {
-      // First check for directory existence and permissions
-      const dbDir = path.dirname(DB_FILE);
-      if (!fs.existsSync(dbDir)) {
-        try {
-          fs.mkdirSync(dbDir, { recursive: true });
-        } catch (err) {
-          console.error("Failed to create database directory:", err);
-          connectionInProgress = false;
-          connectionPromise = null;
-          reject(new Error(`Failed to create database directory: ${err.message}`));
-          return;
-        }
-      }
-      
-      // Fix database file permissions before trying to open
-      await fixDatabasePermissions();
-      
-      // First try to open with read-write access
-      db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, async (err) => {
-        if (err) {
-          console.error("Failed to open database with read-write access:", err.message);
-          
-          // Check if it's a readonly error
-          if (err.code === 'SQLITE_READONLY' || err.message.includes('readonly')) {
-            console.warn("Database is readonly, falling back to readonly mode");
-            isReadOnly = true;
-            
-            // Try to fix permissions and create a new file if the file exists and is readonly
-            if (fs.existsSync(DB_FILE)) {
-              try {
-                // Create a backup of the readonly file
-                const backupFile = `${DB_FILE}.readonly-backup`;
-                fs.copyFileSync(DB_FILE, backupFile);
-                console.log(`Created backup of readonly database at ${backupFile}`);
-                
-                // Delete the readonly file
-                fs.unlinkSync(DB_FILE);
-                console.log("Deleted readonly database file");
-                
-                // Try to open again with create flag after deleting
-                db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, async (recreateErr) => {
-                  if (recreateErr) {
-                    console.error("Failed to recreate database after deleting readonly file:", recreateErr.message);
-                    
-                    // Fall back to readonly mode with the original file
-                    try {
-                      // Restore the backup
-                      fs.copyFileSync(backupFile, DB_FILE);
-                      await fixDatabasePermissions();
-                      
-                      db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
-                        if (roErr) {
-                          console.error("Failed to open database even in readonly mode:", roErr.message);
-                          dbIsOpen = false;
-                          connectionInProgress = false;
-                          connectionPromise = null;
-                          reject(new Error(`Failed to open database: ${roErr.message}`));
-                        } else {
-                          console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
-                          dbIsOpen = true;
-                          setupDatabasePragmas();
-                          connectionInProgress = false;
-                          resolve(db);
-                        }
-                      });
-                    } catch (restoreErr) {
-                      console.error("Failed to restore database from backup:", restoreErr);
-                      dbIsOpen = false;
-                      connectionInProgress = false;
-                      connectionPromise = null;
-                      reject(new Error(`Failed to restore database: ${restoreErr.message}`));
-                    }
-                  } else {
-                    console.log(`Successfully recreated database with proper permissions: ${DB_FILE}`);
-                    isReadOnly = false;
-                    dbIsOpen = true;
-                    await fixDatabasePermissions();
-                    setupDatabasePragmas();
-                    connectionInProgress = false;
-                    resolve(db);
-                  }
-                });
-              } catch (fixErr) {
-                console.error("Failed to fix readonly database:", fixErr);
-                
-                // Still try to open in readonly mode as fallback
-                db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
-                  if (roErr) {
-                    console.error("Failed to open database even in readonly mode:", roErr.message);
-                    dbIsOpen = false;
-                    connectionInProgress = false;
-                    connectionPromise = null;
-                    reject(new Error(`Failed to open database: ${roErr.message}`));
-                  } else {
-                    console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
-                    dbIsOpen = true;
-                    setupDatabasePragmas();
-                    connectionInProgress = false;
-                    resolve(db);
-                  }
-                });
-              }
-            } else {
-              // Try to open as readonly
-              db = new sqlite3.Database(DB_FILE, sqlite3.OPEN_READONLY, (roErr) => {
-                if (roErr) {
-                  console.error("Failed to open database even in readonly mode:", roErr.message);
-                  dbIsOpen = false;
-                  connectionInProgress = false;
-                  connectionPromise = null;
-                  reject(new Error(`Failed to open database: ${roErr.message}`));
-                } else {
-                  console.log(`Connected to SQLite database (readonly): ${DB_FILE}`);
-                  dbIsOpen = true;
-                  setupDatabasePragmas();
-                  connectionInProgress = false;
-                  resolve(db);
-                }
-              });
-            }
-          } else {
-            console.error("Failed to open database:", err);
-            dbIsOpen = false;
-            connectionInProgress = false;
-            connectionPromise = null;
-            reject(new Error(`Failed to open database: ${err.message}`));
-          }
-        } else {
-          console.log(`Connected to SQLite database: ${DB_FILE}`);
-          dbIsOpen = true;
-          // Fix permissions after successful connection
-          await fixDatabasePermissions();
-          setupDatabasePragmas();
-          connectionInProgress = false;
-          resolve(db);
-        }
-      });
-    } catch (error) {
-      console.error("Unexpected error connecting to database:", error);
-      connectionInProgress = false;
-      connectionPromise = null;
-      reject(new Error(`Database connection error: ${error instanceof Error ? error.message : String(error)}`));
-    }
-  });
-  
-  return connectionPromise;
-}
-
-// Set database pragmas
-function setupDatabasePragmas() {
-  if (!db || !dbIsOpen) return;
-  
-  // Enable foreign key support
-  db.run('PRAGMA foreign_keys = ON;');
-  
-  // Set journal mode to DELETE for better compatibility
-  db.run('PRAGMA journal_mode = DELETE;');
-  
-  // Set busy timeout
-  db.run('PRAGMA busy_timeout = 5000;');
-}
-
-// Function to ensure database is open before any operation
-async function ensureConnection(): Promise<sqlite3.Database> {
-  if (!db || !dbIsOpen) {
-    try {
-      return await openDatabase();
-    } catch (error) {
-      console.error("Database connection failed:", error);
-      throw new Error(`Database connection failed: ${error.message}`);
-    }
-  }
-  
-  // Check if database is in readonly mode
-  if (isReadOnly) {
-    console.warn("Database is in readonly mode, operations may be limited");
-  }
-  
-  return db;
-}
-
-function closeDatabase() {
-  if (db && dbIsOpen) {
-    db.close((err) => {
-      if (err) {
-        console.error("Error closing database:", err.message);
-      } else {
-        console.log("Database connection closed");
-        dbIsOpen = false;
-        connectionPromise = null;
-      }
-    });
-  }
-}
-
-// Get a cached state value from the database
-async function getCachedState(key1: string, key2: string): Promise<string | null> {
+/**
+ * Ensures that a database connection is available
+ * Used by integrity checks and other utilities
+ */
+async function ensureConnection() {
   try {
-    const database = await ensureConnection();
-    
-    return new Promise((resolve, reject) => {
-      database.get(
-        'SELECT value FROM cached_state WHERE key1 = ? AND key2 = ?',
-        [key1, key2],
-        (err, row) => {
-          if (err) {
-            console.error(`Error getting cached state for ${key1}/${key2}:`, err);
-            reject(err);
-            return;
-          }
-          
-          if (row) {
-            resolve(row.value);
-          } else {
-            resolve(null);
-          }
-        }
-      );
-    });
+    return connectionPool.getConnection();
   } catch (error) {
-    console.error(`Error in getCachedState for ${key1}/${key2}:`, error);
-    return null;
-  }
-}
-
-// Save a cached state value to the database
-async function saveCachedState(key1: string, key2: string, value: string): Promise<void> {
-  try {
-    const database = await ensureConnection();
-    
-    return new Promise((resolve, reject) => {
-      database.run(
-        `INSERT INTO cached_state (key1, key2, value, updated_at) 
-         VALUES (?, ?, ?, datetime('now')) 
-         ON CONFLICT (key1, key2) 
-         DO UPDATE SET value = ?, updated_at = datetime('now')`,
-        [key1, key2, value, value],
-        (err) => {
-          if (err) {
-            console.error(`Error saving cached state for ${key1}/${key2}:`, err);
-            reject(err);
-            return;
-          }
-          
-          resolve();
-        }
-      );
-    });
-  } catch (error) {
-    console.error(`Error in saveCachedState for ${key1}/${key2}:`, error);
+    console.error("Error ensuring database connection:", error);
     throw error;
   }
 }
 
 /**
- * Get a session with all its background job requests
- * This is a convenience wrapper around sessionRepository.getSessionWithBackgroundJobs
+ * Close all open database connections
+ */
+function closeDatabase() {
+  connectionPool.closeAll();
+}
+
+/**
+ * Get a cached state entry by key
+ */
+async function getCachedState(key1: string, key2: string): Promise<string | null> {
+  try {
+    // Use connection pool to get a connection
+    return await connectionPool.withConnection((db) => {
+      // Generate hash of key1 and key2 for a consistent lookup
+      const key1Hash = hashString(key1);
+      const key2Hash = hashString(key2);
+      
+      // Try to get cached state value
+      const row = db.prepare('SELECT value FROM cached_state WHERE key1_hash = ? AND key2_hash = ?')
+                    .get(key1Hash, key2Hash);
+      
+      return row ? row.value : null;
+    }, true); // Use readonly connection
+  } catch (error) {
+    console.error("Error getting cached state:", error);
+    return null;
+  }
+}
+
+/**
+ * Save a value to the cached state
+ */
+async function saveCachedState(key1: string, key2: string, value: string): Promise<void> {
+  try {
+    // Use connection pool to get a connection
+    await connectionPool.withConnection((db) => {
+      // Generate hash of key1 and key2 for a consistent lookup
+      const key1Hash = hashString(key1);
+      const key2Hash = hashString(key2);
+      
+      // Check if the table exists
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cached_state'")
+                            .get();
+      
+      // Create table if it doesn't exist
+      if (!tableExists) {
+        db.prepare(`
+          CREATE TABLE cached_state (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key1 TEXT NOT NULL,
+            key1_hash TEXT NOT NULL,
+            key2 TEXT NOT NULL,
+            key2_hash TEXT NOT NULL,
+            value TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            UNIQUE(key1_hash, key2_hash)
+          )
+        `).run();
+      }
+      
+      // Insert or replace value
+      db.prepare(`
+        INSERT OR REPLACE INTO cached_state (key1, key1_hash, key2, key2_hash, value, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        key1, 
+        key1Hash,
+        key2,
+        key2Hash,
+        value,
+        Date.now()
+      );
+      
+      return;
+    });
+  } catch (error) {
+    console.error("Error saving cached state:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get a session with its background jobs
  */
 async function getSessionWithRequests(sessionId: string): Promise<Session | null> {
-  // Ensure database is initialized
-  await ensureConnection();
-  
-  // Use the repository's getSessionWithBackgroundJobs method
   return sessionRepository.getSessionWithBackgroundJobs(sessionId);
 }
 
 /**
  * Get the active session ID for a project directory
- * @param projectDirectory The project directory
- * @returns The active session ID, or null if none is set
  */
 async function getActiveSessionId(projectDirectory: string): Promise<string | null> {
   try {
-    console.log(`[DB] Getting active session ID for project: ${projectDirectory}`);
-    const database = await ensureConnection();
+    // Convert project directory to consistent format
+    projectDirectory = projectDirectory.trim();
     
-    // Calculate hash for the project directory
+    // hash the project directory for lookup
     const projectHash = hashString(projectDirectory);
     
-    return new Promise((resolve, reject) => {
-      database.get(
-        'SELECT session_id FROM active_sessions WHERE project_hash = ?',
-        [projectHash],
-        (err, row) => {
-          if (err) {
-            console.error(`Error getting active session for ${projectDirectory}:`, err);
-            reject(err);
-            return;
-          }
-          
-          if (row) {
-            console.log(`[DB] Found active session ${row.session_id || 'null'} for project ${projectDirectory}`);
-            resolve(row.session_id);
-          } else {
-            console.log(`[DB] No active session found for project ${projectDirectory}`);
-            resolve(null);
-          }
-        }
-      );
-    });
+    return await connectionPool.withConnection((db) => {
+      // Check if table exists
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='active_sessions'")
+                            .get();
+      
+      if (!tableExists) {
+        return null;
+      }
+      
+      // Get active session ID
+      const row = db.prepare('SELECT session_id FROM active_sessions WHERE project_hash = ?')
+                    .get(projectHash);
+      
+      return row ? row.session_id : null;
+    }, true); // Read-only operation
   } catch (error) {
-    console.error(`Error in getActiveSessionId for ${projectDirectory}:`, error);
+    console.error("Error getting active session ID:", error);
     return null;
   }
 }
 
 /**
- * Set the active session ID for a project directory
- * @param projectDirectory The project directory
- * @param sessionId The active session ID, or null to clear
+ * Set or clear the active session for a project directory
  */
 async function setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> {
   try {
-    console.log(`[DB] Setting active session for project ${projectDirectory} to: ${sessionId || 'null'}`);
-    const database = await ensureConnection();
+    // Convert project directory to consistent format
+    projectDirectory = projectDirectory.trim();
     
-    // Calculate hash for the project directory
+    // hash the project directory for storage
     const projectHash = hashString(projectDirectory);
-    const now = Math.floor(Date.now() / 1000);
     
-    return new Promise((resolve, reject) => {
-      database.run(
-        `INSERT INTO active_sessions (project_directory, project_hash, session_id, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT (project_hash)
-         DO UPDATE SET session_id = ?, updated_at = ?`,
-        [projectDirectory, projectHash, sessionId, now, sessionId, now],
-        (err) => {
-          if (err) {
-            console.error(`Error setting active session for ${projectDirectory}:`, err);
-            reject(err);
-            return;
-          }
-          
-          console.log(`[DB] Successfully set active session for project ${projectDirectory}`);
-          resolve();
-        }
-      );
+    await connectionPool.withConnection((db) => {
+      // Check if table exists
+      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='active_sessions'")
+                            .get();
+      
+      // Create table if it doesn't exist
+      if (!tableExists) {
+        db.prepare(`
+          CREATE TABLE active_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_directory TEXT NOT NULL,
+            project_hash TEXT NOT NULL UNIQUE,
+            session_id TEXT,
+            updated_at INTEGER NOT NULL
+          )
+        `).run();
+      }
+      
+      if (sessionId) {
+        // Set active session
+        db.prepare(`
+          INSERT OR REPLACE INTO active_sessions 
+          (project_directory, project_hash, session_id, updated_at) 
+          VALUES (?, ?, ?, ?)
+        `).run(
+          projectDirectory,
+          projectHash,
+          sessionId,
+          Date.now()
+        );
+      } else {
+        // Clear active session
+        db.prepare('DELETE FROM active_sessions WHERE project_hash = ?')
+          .run(projectHash);
+      }
+      
+      return;
     });
   } catch (error) {
-    console.error(`Error in setActiveSession for ${projectDirectory}:`, error);
+    console.error("Error setting active session:", error);
     throw error;
   }
 }
 
 /**
- * Helper function to hash a string
- * This matches the hash function used elsewhere in the app
+ * Hash a string using SHA-256 algorithm
  */
 function hashString(str: string): string {
-  // Treat null, undefined, empty string, or 'global' as 'global' consistently
-  if (str === 'global' || !str) return 'global';
-  
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  // Convert to hex string and pad to ensure consistent length
-  return (hash >>> 0).toString(16).padStart(8, '0'); // Pad to ensure consistent length
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(str).digest('hex');
 }
 
-// Export only what's needed
+// Export the necessary functions and objects
 export {
-  db,
-  ensureConnection,
-  closeDatabase,
-  setupDatabase,
-  runMigrations,
   DB_FILE,
-  isReadOnly,
+  closeDatabase,
+  connectionPool,
   getCachedState,
   saveCachedState,
-  sessionRepository,
-  getSessionWithRequests,
   getActiveSessionId,
-  setActiveSession
+  setActiveSession,
+  getSessionWithRequests,
+  sessionRepository,
+  setupDatabase,
+  runMigrations,
+  ensureConnection
 };

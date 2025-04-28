@@ -106,6 +106,7 @@ export function useGeneratePromptState() {
   const [sessionName, setSessionName] = useState<string>("Untitled Session");
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [projectDataLoading, setProjectDataLoading] = useState(false);
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
 
   // Refs
   const taskDescriptionRef = useRef<any>(null);
@@ -773,11 +774,41 @@ export function useGeneratePromptState() {
       const settings = await getTaskModelSettings('pathfinder');
       
       setIsFindingFiles(true);
+      
+      // Get selected files if in "Selected Files" mode
+      const selectedFilesList: string[] = [];
+      const shouldUseSelectedFilesOnly = showOnlySelected && Object.keys(allFilesMap).length > 0;
+      
+      if (shouldUseSelectedFilesOnly) {
+        // Get the paths of all included files from the filesMap
+        Object.entries(allFilesMap).forEach(([path, info]) => {
+          if (info.included && !info.forceExcluded) {
+            selectedFilesList.push(path);
+          }
+        });
+        
+        if (selectedFilesList.length === 0) {
+          showNotification({
+            title: "Warning",
+            message: "You have 'Selected Files' mode active but no files are selected. Please select files first or switch to 'All Files' mode.",
+            type: "warning"
+          });
+          setIsFindingFiles(false);
+          return;
+        }
+        
+        console.log(`[State] Using ${selectedFilesList.length} selected files for AI analysis`);
+      }
+      
       const result = await findRelevantFilesAction(
-        taskDescription,
         projectDirectory,
+        taskDescription,
         activeSessionId,
-        { modelOverride: settings.model }
+        {
+          modelOverride: settings.model,
+          selectedFilesOnly: shouldUseSelectedFilesOnly,
+          selectedFiles: shouldUseSelectedFilesOnly ? selectedFilesList : undefined
+        }
       );
       
       if (!result.isSuccess) {
@@ -844,7 +875,8 @@ export function useGeneratePromptState() {
     setAllFilesMap,
     showNotification, 
     handleInteraction,
-    getTaskModelSettings
+    getTaskModelSettings,
+    showOnlySelected
   ]);
 
   // Update handleGenerateRegexFromTask to use task-specific model settings
@@ -1047,6 +1079,40 @@ export function useGeneratePromptState() {
     showNotification
   ]);
 
+  // Load the showOnlySelected preference from local storage on init
+  useEffect(() => {
+    if (projectDirectory) {
+      try {
+        const key = `file-browser-show-only-selected-${projectDirectory}`;
+        const savedPreference = localStorage.getItem(key);
+        setShowOnlySelected(savedPreference === "true");
+      } catch (e) {
+        console.error("Failed to load 'showOnlySelected' preference:", e);
+      }
+    }
+  }, [projectDirectory]);
+
+  // Allow the file browser to update this state
+  const toggleShowOnlySelected = useCallback(() => {
+    setShowOnlySelected(prev => {
+      const newValue = !prev;
+      if (projectDirectory) {
+        try {
+          const key = `file-browser-show-only-selected-${projectDirectory}`;
+          localStorage.setItem(key, String(newValue));
+        } catch (error) {
+          console.error("Failed to save 'showOnlySelected' preference:", error);
+        }
+      }
+      return newValue;
+    });
+  }, [projectDirectory]);
+
+  // Allow the file browser to check if we're in showOnlySelected mode
+  const getShowOnlySelectedState = useCallback(() => {
+    return showOnlySelected;
+  }, [showOnlySelected]);
+
   return {
     state: {
       taskDescription,
@@ -1090,7 +1156,8 @@ export function useGeneratePromptState() {
       sessionName,
       taskDescriptionRef,
       isLoadingFiles,
-      isRefreshingFiles
+      isRefreshingFiles,
+      showOnlySelected,
     },
     actions: {
       setTaskDescription,
@@ -1193,7 +1260,9 @@ export function useGeneratePromptState() {
         handleInteraction();
       },
       refreshFiles,
-      restoreSessionState
+      restoreSessionState,
+      toggleShowOnlySelected,
+      getShowOnlySelectedState,
     },
     sessionName,
     setSessionName

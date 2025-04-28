@@ -1,5 +1,0 @@
--- Add columns for tracking Gemini streaming statistics
-ALTER TABLE sessions ADD COLUMN gemini_tokens_received INTEGER DEFAULT 0;
-ALTER TABLE sessions ADD COLUMN gemini_chars_received INTEGER DEFAULT 0;
-ALTER TABLE sessions ADD COLUMN gemini_response_id TEXT; -- ID of the latest Gemini response
-ALTER TABLE sessions ADD COLUMN gemini_last_update INTEGER; -- Timestamp of last update chunk /* Keep comment */

@@ -215,20 +215,28 @@ Please list the most relevant file paths for this task, one per line:`;
  * Enhanced version of findRelevantPathsAction that also provides task context
  * @param projectDirectory The root directory of the project
  * @param taskDescription The user's task description
- * @param specificFilePaths Optional array of file paths to limit analysis to
+ * @param sessionId The current session ID
+ * @param options Additional options including model override and filtering
  */
 export async function findRelevantFilesAction(
   projectDirectory: string,
   taskDescription: string,
   sessionId: string,
-  options?: { modelOverride?: string }
+  options?: { 
+    modelOverride?: string,
+    selectedFilesOnly?: boolean,
+    selectedFiles?: string[]
+  }
 ): Promise<ActionState<{ relevantPaths: string[], enhancedTaskDescription: string }>> {
   try {
     // First step: Find relevant paths
     const pathFinderResult = await findAndValidateRelevantPaths(
       projectDirectory,
       taskDescription,
-      options
+      {
+        ...options,
+        sessionId
+      }
     );
 
     if (!pathFinderResult.isSuccess || !pathFinderResult.data) {
@@ -242,7 +250,8 @@ export async function findRelevantFilesAction(
     const guidanceResult = await generateGuidanceForPaths(
       projectDirectory,
       taskDescription,
-      pathFinderResult.data.paths
+      pathFinderResult.data.paths,
+      sessionId
     );
 
     if (!guidanceResult.isSuccess || !guidanceResult.data) {
@@ -277,7 +286,12 @@ export async function findRelevantFilesAction(
 async function findAndValidateRelevantPaths(
   projectDirectory: string,
   taskDescription: string,
-  options?: { modelOverride?: string }
+  options?: { 
+    modelOverride?: string,
+    selectedFilesOnly?: boolean,
+    selectedFiles?: string[],
+    sessionId?: string
+  }
 ): Promise<ActionState<{ paths: string[] }>> {
   try {
     if (!projectDirectory) {
@@ -301,6 +315,43 @@ async function findAndValidateRelevantPaths(
     
     console.log(`[PathFinder] Finding relevant paths for task: ${taskDescription}`);
     
+    // Check if we're using selected files only mode
+    if (options?.selectedFilesOnly && options?.selectedFiles && options.selectedFiles.length > 0) {
+      console.log(`[PathFinder] Using selected files only mode with ${options.selectedFiles.length} selected files`);
+      
+      // Validate that the selected files exist
+      const { readDirectoryAction } = await import('@/actions/read-directory-actions');
+      const directoryResult = await readDirectoryAction(projectDirectory);
+      
+      if (!directoryResult.isSuccess || !directoryResult.data) {
+        return { isSuccess: false, message: directoryResult.message || "Failed to read project directory" };
+      }
+      
+      const fileContents = directoryResult.data;
+      
+      // Filter to only the selected files that actually exist
+      const validSelectedFiles = [];
+      for (const filePath of options.selectedFiles) {
+        if (await validateFilePath(filePath, fileContents, projectDirectory)) {
+          validSelectedFiles.push(filePath);
+        }
+      }
+      
+      if (validSelectedFiles.length === 0) {
+        return { isSuccess: false, message: "None of the selected files could be found in the project" };
+      }
+      
+      console.log(`[PathFinder] Found ${validSelectedFiles.length} valid selected files`);
+      
+      // Return the valid selected files directly without using AI to find relevant files
+      return {
+        isSuccess: true,
+        message: `Using ${validSelectedFiles.length} selected files`,
+        data: { paths: validSelectedFiles }
+      };
+    }
+    
+    // Regular path - use AI to find relevant files from all project files
     // NEW APPROACH: Use readDirectoryAction instead of directly calling getAllNonIgnoredFiles
     // This provides better error handling and fallback mechanisms
     const { readDirectoryAction } = await import('@/actions/read-directory-actions');
@@ -368,7 +419,8 @@ Please list the most relevant file paths for this task, one per line:`;
       maxOutputTokens: pathfinderSettings.maxTokens,
       requestType: RequestType.CODE_ANALYSIS,
       projectDirectory,
-      taskType: 'pathfinder'
+      taskType: 'pathfinder',
+      sessionId: options?.sessionId
     });
     
     if (!result.isSuccess || !result.data) {
@@ -416,7 +468,8 @@ Please list the most relevant file paths for this task, one per line:`;
 async function generateGuidanceForPaths(
   projectDirectory: string,
   taskDescription: string,
-  relevantPaths: string[]
+  relevantPaths: string[],
+  sessionId: string
 ): Promise<ActionState<{ guidance: string }>> {
   try {
     if (!projectDirectory) {
@@ -519,7 +572,8 @@ Be concise but comprehensive. Focus on helping the developer implement their tas
       maxOutputTokens: guidanceSettings.maxTokens,
       requestType: RequestType.CODE_ANALYSIS,
       projectDirectory,
-      taskType: 'guidance_generation'
+      taskType: 'guidance_generation',
+      sessionId
     });
     
     if (!result.isSuccess || !result.data) {

@@ -56,9 +56,12 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
       // Update state with fetched jobs
       setJobs(jobsData);
       
-      // Filter active jobs (those that are still running)
-      const activeJobsList = jobsData.filter((job) => 
-        job.status === 'running' || job.status === 'queued' || job.status === 'preparing'
+      // Filter for active jobs only
+      const activeJobsList = jobsData.filter(job => 
+        job.status === 'running' || 
+        job.status === 'queued' || 
+        job.status === 'preparing' || 
+        job.status === 'created'
       );
       setActiveJobs(activeJobsList);
       
