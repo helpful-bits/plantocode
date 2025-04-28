@@ -1,4 +1,4 @@
-import connectionPool from './connection-pool';
+import { connectionPool } from './connection-pool';
 import { Session, JobStatus, BackgroundJob, ApiType, TaskType } from '@/types';
 import { hashString } from '@/lib/hash';
 import { normalizePath } from '../path-utils';

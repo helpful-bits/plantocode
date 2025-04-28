@@ -111,10 +111,18 @@ class SessionSyncService {
     // Check for stuck operations (operations that have been active for too long)
     const now = Date.now();
     
-    // If we have too many consecutive errors, reset the service
+    // If we have too many consecutive errors, reset the service and attempt database recovery
     if (this.consecutiveErrors >= this.MAX_CONSECUTIVE_ERRORS) {
-      console.warn(`[SessionSync] Detected ${this.consecutiveErrors} consecutive errors, resetting service state`);
+      console.warn(`[SessionSync] Detected ${this.consecutiveErrors} consecutive errors, resetting service state and attempting database recovery`);
       this.resetServiceState();
+      
+      // Attempt to fix database issues
+      try {
+        await this.attemptDatabaseRecovery();
+      } catch (error) {
+        console.error('[SessionSync] Failed to recover database during health check:', error);
+      }
+      
       return;
     }
     
@@ -145,6 +153,13 @@ class SessionSyncService {
           // Restart queue processing
           setTimeout(() => this.processQueue(), 100);
         }
+        
+        // If we found stuck operations, attempt database recovery as a precaution
+        try {
+          await this.attemptDatabaseRecovery();
+        } catch (error) {
+          console.error('[SessionSync] Failed to recover database after clearing stuck operations:', error);
+        }
       }
     }
     
@@ -163,9 +178,48 @@ class SessionSyncService {
         // Clear any active operations that might be stuck
         this.activeOperations.clear();
         
+        // Attempt database recovery
+        try {
+          await this.attemptDatabaseRecovery();
+        } catch (error) {
+          console.error('[SessionSync] Failed to recover database after clearing stuck queue:', error);
+        }
+        
         // Restart queue processing
         this.processQueue();
       }
+    }
+  }
+  
+  /**
+   * Attempt to recover the database by calling the fix-permissions API
+   */
+  private async attemptDatabaseRecovery(): Promise<boolean> {
+    console.log('[SessionSync] Attempting database recovery');
+    
+    try {
+      // Call the database maintenance API to fix permissions and handle readonly issues
+      const response = await fetch('/api/database-maintenance/fix-permissions', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        console.error('[SessionSync] Database recovery API returned error:', response.status, response.statusText);
+        return false;
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('[SessionSync] Database recovery successful:', result);
+        return true;
+      } else {
+        console.warn('[SessionSync] Database recovery failed:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('[SessionSync] Error calling database recovery API:', error);
+      return false;
     }
   }
   
@@ -673,15 +727,15 @@ class SessionSyncService {
    * @returns Promise that resolves when the operation completes
    */
   public async updateSessionState(sessionId: string, sessionData: Partial<Session>): Promise<void> {
+    // Check if we have a session ID
     if (!sessionId) {
-      throw new Error('Session ID is required for updating session state');
+      throw new Error('Session ID is required for updating');
     }
     
-    // First verify the session exists to avoid unnecessary API calls
+    // Try to check if the session exists first
     try {
       const sessionExists = await this.getSessionById(sessionId);
       if (!sessionExists) {
-        console.warn(`[SessionSync] Session ${sessionId} not found, cannot update state`);
         throw new Error(`Session not found: ${sessionId}`);
       }
     } catch (error) {
@@ -689,42 +743,115 @@ class SessionSyncService {
       console.warn(`[SessionSync] Error checking session ${sessionId}:`, error);
     }
     
+    // Maximum retries for database errors
+    const MAX_RETRIES = 5;
+    let attemptCount = 0;
+    
     return this.queueOperation(
       'save',
       sessionId,
       async () => {
-        try {
-          // Use the API route to update session state
-          const response = await fetch(`/api/session/${sessionId}/state`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(sessionData),
-          });
-          
-          if (!response.ok) {
-            let errorMsg = `Failed to update session state: ${response.statusText}`;
-            try {
-              const data = await response.json();
-              if (data.error) {
-                errorMsg = data.error;
-              } else if (data.message) {
-                errorMsg = data.message;
+        while (attemptCount < MAX_RETRIES) {
+          try {
+            // If we've already retried, try to fix database permissions before next attempt
+            if (attemptCount > 0) {
+              try {
+                // Call the API to fix permissions
+                const fixResponse = await fetch('/api/database-maintenance/fix-permissions', {
+                  method: 'POST',
+                });
+                
+                if (fixResponse.ok) {
+                  console.log(`[SessionSync] Database permissions fix attempted before retry ${attemptCount}`);
+                }
+              } catch (fixErr) {
+                console.warn(`[SessionSync] Error attempting to fix database permissions:`, fixErr);
               }
-            } catch (jsonErr) {
-              // Could not parse JSON response
-              console.error(`[SessionSync] Could not parse error response:`, jsonErr);
+              
+              // Add an exponential backoff delay before retrying
+              const delay = Math.min(500 * Math.pow(2, attemptCount - 1), 5000);
+              console.log(`[SessionSync] Retrying session update (${attemptCount}/${MAX_RETRIES}) after ${delay}ms delay`);
+              await new Promise(resolve => setTimeout(resolve, delay));
             }
             
-            // Log the detailed error
-            console.error(`[SessionSync] Error updating session ${sessionId}:`, errorMsg);
-            throw new Error(errorMsg);
+            // Use the API route to update session state
+            const response = await fetch(`/api/session/${sessionId}/state`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(sessionData),
+            });
+            
+            if (!response.ok) {
+              let errorMsg = `Failed to update session state: ${response.statusText}`;
+              let isRetryableError = false;
+              let errorCode = '';
+              
+              try {
+                const data = await response.json();
+                if (data.error) {
+                  errorMsg = data.error;
+                  if (data.code) {
+                    errorCode = data.code;
+                  }
+                  
+                  // Determine if this is a retryable error
+                  isRetryableError = 
+                    errorMsg.includes('SQLITE_READONLY') || 
+                    errorMsg.includes('readonly database') ||
+                    errorMsg.includes('database is locked') ||
+                    errorMsg.includes('SQLITE_BUSY') ||
+                    errorMsg.includes('Unknown database error') ||
+                    errorMsg.includes('disk I/O error') ||
+                    response.status === 503;
+                } else if (data.message) {
+                  errorMsg = data.message;
+                }
+              } catch (jsonErr) {
+                // Could not parse JSON response
+                console.error(`[SessionSync] Could not parse error response:`, jsonErr);
+                // Assume it's retryable if we can't parse the response
+                isRetryableError = true;
+              }
+              
+              // If this is a retryable error and we have retries left
+              if (isRetryableError && attemptCount < MAX_RETRIES - 1) {
+                attemptCount++;
+                console.warn(`[SessionSync] Database error detected, retrying (${attemptCount}/${MAX_RETRIES}): ${errorMsg} [${errorCode}]`);
+                continue;
+              }
+              
+              // Log the detailed error
+              console.error(`[SessionSync] Error updating session ${sessionId}:`, errorMsg);
+              throw new Error(errorMsg);
+            }
+            
+            // Success, exit the retry loop
+            console.log(`[SessionSync] Successfully updated session ${sessionId}`);
+            break;
+          } catch (error) {
+            // Check if this is a retryable database error
+            const errorStr = String(error);
+            const isRetryableError = 
+              errorStr.includes('SQLITE_READONLY') || 
+              errorStr.includes('readonly database') ||
+              errorStr.includes('database is locked') ||
+              errorStr.includes('SQLITE_BUSY') ||
+              errorStr.includes('Unknown database error') ||
+              errorStr.includes('disk I/O error') ||
+              errorStr.includes('network error');
+            
+            if (isRetryableError && attemptCount < MAX_RETRIES - 1) {
+              attemptCount++;
+              console.warn(`[SessionSync] Retryable error caught, retrying (${attemptCount}/${MAX_RETRIES}): ${errorStr}`);
+              continue;
+            }
+            
+            // If not a retryable error or we've exhausted retries, rethrow
+            console.error(`[SessionSync] Error in updateSessionState for ${sessionId}:`, error);
+            throw error;
           }
-        } catch (error) {
-          // Add retry logic for transient errors
-          console.error(`[SessionSync] Error in updateSessionState for ${sessionId}:`, error);
-          throw error;
         }
       },
       2 // Medium priority
