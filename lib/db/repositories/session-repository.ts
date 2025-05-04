@@ -1,0 +1,906 @@
+import connectionPool from "../connection-pool";
+import Database from 'better-sqlite3';
+import { Session, ApiType, TaskType, JobStatus, BackgroundJob } from '@/types';
+import { hashString } from '@/lib/hash';
+import { normalizePath } from '../../path-utils';
+
+/**
+ * Interface representing a row in the sessions table
+ */
+interface SessionRow {
+  id: string;
+  name: string;
+  project_directory: string;
+  project_hash: string;
+  task_description: string;
+  search_term: string;
+  pasted_paths: string;
+  title_regex: string;
+  content_regex: string;
+  is_regex_active: number; // Sqlite uses 0/1 for booleans
+  diff_temperature: number;
+  codebase_structure: string;
+  updated_at: number;
+  created_at: number;
+}
+
+/**
+ * Session Repository
+ * 
+ * Handles database operations for managing sessions and their associated files.
+ */
+class SessionRepository {
+  /**
+   * Save a session to the database
+   */
+  async saveSession(session: Session, signal?: AbortSignal): Promise<Session> {
+    console.log(`[Repo] Saving session ${session.id}`);
+    const startTime = Date.now();
+    
+    // Add validation for session.id
+    if (!session.id || typeof session.id !== 'string' || !session.id.trim()) {
+      throw new Error('Invalid session ID provided for saving session');
+    }
+    
+    // Add validation for session.projectDirectory
+    if (!session.projectDirectory || typeof session.projectDirectory !== 'string') {
+      throw new Error('Invalid project directory provided for saving session');
+    }
+    
+    // Check if operation was aborted
+    if (signal?.aborted) {
+      console.log(`[Repo] Save session operation aborted for session ${session.id}`);
+      throw new Error('Operation aborted');
+    }
+    
+    // Always use connectionPool.withConnection with readOnly=false for write operations
+    return connectionPool.withConnection(async (db) => {
+      try {
+        console.time(`[Perf] Session save ${session.id}`);
+        
+        // Check for abort again before database operations
+        if (signal?.aborted) {
+          console.log(`[Repo] Save session operation aborted before database operations for session ${session.id}`);
+          throw new Error('Operation aborted');
+        }
+        
+        // Generate a hash for the project directory
+        console.time(`[Perf] Project hash generation ${session.id}`);
+        const projectHash = hashString(session.projectDirectory);
+        console.timeEnd(`[Perf] Project hash generation ${session.id}`);
+        
+        // Prepare session values
+        const sessionValues = {
+          id: session.id,
+          name: session.name,
+          project_directory: session.projectDirectory,
+          project_hash: projectHash,
+          task_description: session.taskDescription,
+          search_term: session.searchTerm,
+          pasted_paths: session.pastedPaths,
+          title_regex: session.titleRegex,
+          content_regex: session.contentRegex,
+          is_regex_active: session.isRegexActive ? 1 : 0,
+          diff_temperature: session.diffTemperature || 1.0,
+          codebase_structure: session.codebaseStructure || "",
+          updated_at: Date.now()
+        };
+        
+        // Build SQL statement
+        const sql = `
+          INSERT OR REPLACE INTO sessions
+          (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
+           title_regex, content_regex, is_regex_active, diff_temperature, codebase_structure, updated_at)
+          VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term, @pasted_paths,
+           @title_regex, @content_regex, @is_regex_active, @diff_temperature, @codebase_structure, @updated_at)`;
+        
+        // Final abort check before executing the write operation
+        if (signal?.aborted) {
+          console.log(`[Repo] Save session operation aborted before database write for session ${session.id}`);
+          throw new Error('Operation aborted');
+        }
+        
+        // Insert or replace the session
+        console.time(`[Perf] Session row save ${session.id}`);
+        db.prepare(sql).run(sessionValues);
+        console.timeEnd(`[Perf] Session row save ${session.id}`);
+        
+        // Handle included files
+        if (Array.isArray(session.includedFiles)) {
+          console.time(`[Perf] Included files save ${session.id}`);
+          console.log(`[Perf] Included files count: ${session.includedFiles.length}`);
+          
+          // First delete all existing included files for this session
+          db.prepare(`DELETE FROM included_files WHERE session_id = ?`).run(session.id);
+          
+          // Then insert new files if there are any
+          if (session.includedFiles.length > 0) {
+            // Use a prepared statement for better performance
+            const insertStmt = db.prepare(`INSERT INTO included_files (session_id, path) VALUES (?, ?)`);
+            
+            // Insert each included file path
+            for (const filePath of session.includedFiles) {
+              insertStmt.run(session.id, filePath);
+            }
+          }
+          console.timeEnd(`[Perf] Included files save ${session.id}`);
+        }
+        
+        // Handle excluded files
+        if (Array.isArray(session.forceExcludedFiles)) {
+          console.time(`[Perf] Excluded files save ${session.id}`);
+          console.log(`[Perf] Excluded files count: ${session.forceExcludedFiles.length}`);
+          
+          // First delete all existing excluded files for this session
+          db.prepare(`DELETE FROM excluded_files WHERE session_id = ?`).run(session.id);
+          
+          // Then insert new files if there are any
+          if (session.forceExcludedFiles.length > 0) {
+            // Use a prepared statement for better performance
+            const insertStmt = db.prepare(`INSERT INTO excluded_files (session_id, path) VALUES (?, ?)`);
+            
+            // Insert each excluded file path
+            for (const filePath of session.forceExcludedFiles) {
+              insertStmt.run(session.id, filePath);
+            }
+          }
+          console.timeEnd(`[Perf] Excluded files save ${session.id}`);
+        }
+        
+        console.timeEnd(`[Perf] Session save ${session.id}`);
+        console.log(`[Perf] Total session save time: ${Date.now() - startTime}ms`);
+        
+        // Return the updated session
+        return {
+          ...session,
+          projectHash,
+          updatedAt: Date.now()
+        };
+      } catch (error) {
+        console.error("Error in saveSession:", error);
+        console.timeEnd(`[Perf] Session save ${session.id}`);
+        console.log(`[Perf] Failed session save time: ${Date.now() - startTime}ms`);
+        throw error;
+      }
+    }, false); // Explicitly use a writable connection
+  }
+  
+  /**
+   * Get a session by ID with optional repository caching
+   */
+  async getSession(sessionId: string, signal?: AbortSignal): Promise<Session | null> {
+    if (!sessionId) {
+      console.error("Invalid session ID provided to getSession");
+      return null;
+    }
+    
+    // Check if operation was aborted
+    if (signal?.aborted) {
+      console.log(`[Repo] Get session operation aborted for session ${sessionId}`);
+      throw new Error('Operation aborted');
+    }
+    
+    console.log(`[Repo] Getting session: ${sessionId}`);
+    console.time(`[Perf] Get session ${sessionId}`);
+    
+    return connectionPool.withConnection(async (db) => {
+      try {
+        // Check for abort again before database query
+        if (signal?.aborted) {
+          console.log(`[Repo] Get session operation aborted before database query for session ${sessionId}`);
+          throw new Error('Operation aborted');
+        }
+        
+        const sql = `SELECT * FROM sessions WHERE id = ?`;
+        const row = db.prepare(sql).get(sessionId) as SessionRow | undefined;
+        
+        if (!row) {
+          console.log(`[Repo] Session not found: ${sessionId}`);
+          console.timeEnd(`[Perf] Get session ${sessionId}`);
+          return null;
+        }
+        
+        // Fetch included files
+        const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
+        const includedFiles = includedStmt.all(sessionId).map((r: any) => r.path);
+
+        // Fetch excluded files
+        const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
+        const excludedFiles = excludedStmt.all(sessionId).map((r: any) => r.path);
+        
+        // Map DB row to Session object
+        const session: Session = {
+          id: row.id,
+          name: row.name,
+          projectDirectory: row.project_directory,
+          projectHash: row.project_hash,
+          taskDescription: row.task_description,
+          searchTerm: row.search_term,
+          pastedPaths: row.pasted_paths,
+          titleRegex: row.title_regex,
+          contentRegex: row.content_regex,
+          isRegexActive: row.is_regex_active === 1,
+          diffTemperature: row.diff_temperature,
+          codebaseStructure: row.codebase_structure,
+          updatedAt: row.updated_at,
+          createdAt: row.created_at,
+          includedFiles: includedFiles,
+          forceExcludedFiles: excludedFiles
+        };
+        
+        console.timeEnd(`[Perf] Get session ${sessionId}`);
+        return session;
+      } catch (error) {
+        console.error(`[Repo] Error getting session ${sessionId}:`, error);
+        console.timeEnd(`[Perf] Get session ${sessionId}`);
+        throw error;
+      }
+    }, true); // Read-only connection is sufficient
+  }
+  
+  /**
+   * Get all sessions
+   */
+  async getAllSessions(): Promise<Session[]> {
+    console.log(`[Repo] Getting all sessions`);
+    
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // Get all sessions
+        const stmt = db.prepare(`
+          SELECT * FROM sessions 
+          ORDER BY updated_at DESC
+        `);
+        
+        const rows = stmt.all() as Array<{
+          id: string;
+          name: string;
+          project_directory: string;
+          project_hash: string;
+          task_description: string;
+          search_term: string;
+          pasted_paths: string;
+          title_regex: string;
+          content_regex: string;
+          is_regex_active: number;
+          diff_temperature: number;
+          updated_at: number;
+          codebase_structure: string;
+          created_at: number;
+        }>;
+        
+        if (!rows || rows.length === 0) {
+          return [];
+        }
+        
+        // Map rows to Session objects
+        const sessions = rows.map((row) => {
+          const includedStmt = db.prepare(`
+            SELECT path FROM included_files 
+            WHERE session_id = ?
+          `);
+          const includedFiles = includedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
+          
+          const excludedStmt = db.prepare(`
+            SELECT path FROM excluded_files 
+            WHERE session_id = ?
+          `);
+          const excludedFiles = excludedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
+          
+          return {
+            id: row.id,
+            name: row.name,
+            projectDirectory: row.project_directory,
+            projectHash: row.project_hash,
+            includedFiles,
+            forceExcludedFiles: excludedFiles,
+            taskDescription: row.task_description,
+            searchTerm: row.search_term,
+            pastedPaths: row.pasted_paths,
+            titleRegex: row.title_regex,
+            contentRegex: row.content_regex,
+            isRegexActive: !!row.is_regex_active,
+            diffTemperature: row.diff_temperature,
+            updatedAt: row.updated_at,
+            codebaseStructure: row.codebase_structure,
+            createdAt: row.created_at || Date.now()
+          };
+        });
+        
+        return sessions;
+      } catch (error) {
+        console.error("Error in getAllSessions:", error);
+        throw error;
+      }
+    }, true); // true = readonly connection
+  }
+  
+  /**
+   * Get sessions for a specific project directory
+   */
+  async getSessionsForProject(projectDirectory: string): Promise<Session[]> {
+    console.log(`[Repo] Getting sessions for project: ${projectDirectory}`);
+    
+    // Generate hash for project directory
+    const projectHash = hashString(projectDirectory);
+    
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // Get sessions for the specified project
+        const stmt = db.prepare(`
+          SELECT * FROM sessions 
+          WHERE project_hash = ?
+          ORDER BY updated_at DESC
+        `);
+        
+        const rows = stmt.all(projectHash) as Array<{
+          id: string;
+          name: string;
+          project_directory: string;
+          project_hash: string;
+          task_description: string;
+          search_term: string;
+          pasted_paths: string;
+          title_regex: string;
+          content_regex: string;
+          is_regex_active: number;
+          diff_temperature: number;
+          updated_at: number;
+          codebase_structure: string;
+          created_at: number;
+        }>;
+        
+        if (!rows || rows.length === 0) {
+          return [];
+        }
+        
+        // Map rows to Session objects
+        const sessions = rows.map((row) => {
+          const includedStmt = db.prepare(`
+            SELECT path FROM included_files 
+            WHERE session_id = ?
+          `);
+          const includedFiles = includedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
+          
+          const excludedStmt = db.prepare(`
+            SELECT path FROM excluded_files 
+            WHERE session_id = ?
+          `);
+          const excludedFiles = excludedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
+          
+          return {
+            id: row.id,
+            name: row.name,
+            projectDirectory: row.project_directory,
+            projectHash: row.project_hash,
+            includedFiles,
+            forceExcludedFiles: excludedFiles,
+            taskDescription: row.task_description,
+            searchTerm: row.search_term,
+            pastedPaths: row.pasted_paths,
+            titleRegex: row.title_regex,
+            contentRegex: row.content_regex,
+            isRegexActive: !!row.is_regex_active,
+            diffTemperature: row.diff_temperature,
+            updatedAt: row.updated_at,
+            codebaseStructure: row.codebase_structure,
+            createdAt: row.created_at || Date.now()
+          };
+        });
+        
+        return sessions;
+      } catch (error) {
+        console.error("Error in getSessionsForProject:", error);
+        throw error;
+      }
+    }, true); // true = readonly connection
+  }
+  
+  /**
+   * Get a session with its associated background jobs
+   */
+  async getSessionWithBackgroundJobs(sessionId: string): Promise<Session | null> {
+    console.log(`[Repo] Getting session with background jobs, ID: ${sessionId}`);
+    
+    // Add validation for sessionId
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('Invalid session ID provided for retrieving session with background jobs');
+    }
+    
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // First, get the session
+        const sessionStmt = db.prepare(`SELECT * FROM sessions WHERE id = ?`);
+        const row = sessionStmt.get(sessionId) as SessionRow | undefined;
+        
+        if (!row) {
+          return null;
+        }
+        
+        // Fetch included files
+        const includedStmt = db.prepare(`
+          SELECT id, session_id, path 
+          FROM included_files 
+          WHERE session_id = ?
+        `);
+        const includedFiles = includedStmt.all(sessionId).map((value: unknown) => (value as { path: string }).path);
+        
+        // Fetch excluded files
+        const excludedStmt = db.prepare(`
+          SELECT id, session_id, path 
+          FROM excluded_files 
+          WHERE session_id = ?
+        `);
+        const excludedFiles = excludedStmt.all(sessionId).map((value: unknown) => (value as { path: string }).path);
+        
+        // Fetch background jobs
+        const jobsStmt = db.prepare(`
+          SELECT
+            id, 
+            session_id,
+            api_type,
+            task_type,
+            status,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            raw_input,
+            model_output,
+            error_message,
+            diff_patch,
+            created_at,
+            updated_at,
+            include_syntax,
+            temperature,
+            visible,
+            cleared
+          FROM background_jobs
+          WHERE session_id = ?
+          ORDER BY created_at DESC
+        `);
+        
+        const jobRows = jobsStmt.all(sessionId) as Array<{
+          id: string;
+          session_id: string;
+          api_type: string;
+          task_type: string;
+          status: string;
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+          raw_input: string;
+          model_output: string;
+          error_message: string;
+          diff_patch: string;
+          created_at: number;
+          updated_at: number;
+          include_syntax: number;
+          temperature: number;
+          visible: number;
+          cleared: number;
+        }>;
+        
+        const backgroundJobs = jobRows.map((jobRow) => ({
+          id: jobRow.id,
+          sessionId: jobRow.session_id,
+          apiType: jobRow.api_type as ApiType,
+          taskType: jobRow.task_type as TaskType,
+          status: jobRow.status as JobStatus,
+          promptTokens: jobRow.prompt_tokens,
+          completionTokens: jobRow.completion_tokens,
+          totalTokens: jobRow.total_tokens,
+          rawInput: jobRow.raw_input,
+          modelOutput: jobRow.model_output,
+          errorMessage: jobRow.error_message,
+          diffPatch: jobRow.diff_patch,
+          createdAt: jobRow.created_at,
+          updatedAt: jobRow.updated_at,
+          includeSyntax: !!jobRow.include_syntax,
+          temperature: jobRow.temperature,
+          visible: !!jobRow.visible,
+          cleared: !!jobRow.cleared
+        }));
+        
+        // Create and return the Session object with background jobs
+        const session: Session = {
+          id: row.id,
+          name: row.name,
+          projectDirectory: row.project_directory,
+          projectHash: row.project_hash,
+          includedFiles,
+          forceExcludedFiles: excludedFiles,
+          taskDescription: row.task_description,
+          searchTerm: row.search_term,
+          pastedPaths: row.pasted_paths,
+          titleRegex: row.title_regex,
+          contentRegex: row.content_regex,
+          isRegexActive: !!row.is_regex_active,
+          diffTemperature: row.diff_temperature,
+          updatedAt: row.updated_at,
+          codebaseStructure: row.codebase_structure,
+          createdAt: row.created_at || Date.now(),
+          backgroundJobs: backgroundJobs as unknown as BackgroundJob[]
+        };
+        
+        return session;
+      } catch (error) {
+        console.error("[Repo] Error in getSessionWithBackgroundJobs:", error);
+        throw error;
+      }
+    }, true); // true = readonly connection
+  }
+  
+  /**
+   * Delete a session by ID
+   */
+  async deleteSession(sessionId: string): Promise<boolean> {
+    console.log(`[Repo] Deleting session ${sessionId}`);
+    
+    // Add validation for sessionId
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('Invalid session ID provided for deleting session');
+    }
+    
+    // Always use connectionPool.withConnection with readOnly=false for write operations
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // Delete the session
+        const result = db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+        
+        // Delete associated included and excluded files
+        db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
+        db.prepare('DELETE FROM excluded_files WHERE session_id = ?').run(sessionId);
+        
+        return !!result && result.changes > 0;
+      } catch (error) {
+        console.error("Error in deleteSession:", error);
+        throw error;
+      }
+    }, false); // Explicitly use a writable connection
+  }
+  
+  /**
+   * Delete all sessions for a project directory
+   */
+  async deleteAllSessions(projectDirectory: string): Promise<number> {
+    console.log(`[Repo] Deleting all sessions for project: ${projectDirectory}`);
+    
+    // Generate hash for project directory
+    const projectHash = hashString(projectDirectory);
+    
+    // Always use connectionPool.withConnection with readOnly=false for write operations
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // First get all session IDs for this project
+        const sessionIds = db.prepare('SELECT id FROM sessions WHERE project_hash = ?')
+                          .all(projectHash)
+                          .map((row: any) => row.id);
+        
+        if (!sessionIds || sessionIds.length === 0) {
+          return 0;
+        }
+        
+        // Delete associated included and excluded files
+        for (const sessionId of sessionIds) {
+          db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
+          db.prepare('DELETE FROM excluded_files WHERE session_id = ?').run(sessionId);
+        }
+        
+        // Delete all sessions for this project
+        const result = db.prepare('DELETE FROM sessions WHERE project_hash = ?').run(projectHash);
+        
+        return result.changes || 0;
+      } catch (error) {
+        console.error("Error in deleteAllSessions:", error);
+        throw error;
+      }
+    }, false); // Explicitly use a writable connection
+  }
+  
+  /**
+   * Update specific fields of a session
+   */
+  async updateSessionFields(sessionId: string, sessionData: Partial<Session>): Promise<void> {
+    console.log(`[Repo] Updating session fields for ${sessionId}`, 
+      { fieldCount: Object.keys(sessionData).length, fieldNames: Object.keys(sessionData) });
+    
+    // Add validation for sessionId
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('Invalid session ID provided for updating session fields');
+    }
+    
+    // Detailed timing logs for database operations
+    const startTime = Date.now();
+    let queryStartTime = 0;
+    
+    // OPTIMIZATION: Get the current session OUTSIDE the transaction to reduce transaction duration
+    const loadSessionStartTime = Date.now();
+    const currentSession = await this.getSession(sessionId);
+    if (!currentSession) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    console.log(`[Repo] Found session to update: ${sessionId} (took ${Date.now() - loadSessionStartTime}ms)`);
+    
+    // Always use connectionPool.withTransaction for write operations that need to be atomic
+    await connectionPool.withTransaction(async (db) => {
+      try {
+        // Track if any updates are needed
+        let needsUpdate = false;
+        const updates: string[] = [];
+        const parameters: any = {
+          id: sessionId,
+          updated_at: Date.now()
+        };
+        
+        // Check each possible field for updates
+        
+        // Simple string fields
+        const stringFields = [
+          { clientKey: 'name', dbKey: 'name' },
+          { clientKey: 'projectDirectory', dbKey: 'project_directory' },
+          { clientKey: 'taskDescription', dbKey: 'task_description' },
+          { clientKey: 'searchTerm', dbKey: 'search_term' },
+          { clientKey: 'pastedPaths', dbKey: 'pasted_paths' },
+          { clientKey: 'titleRegex', dbKey: 'title_regex' },
+          { clientKey: 'contentRegex', dbKey: 'content_regex' },
+          { clientKey: 'codebaseStructure', dbKey: 'codebase_structure' }
+        ];
+        
+        // Update project hash if project directory is changing
+        if (sessionData.projectDirectory !== undefined && 
+            sessionData.projectDirectory !== currentSession.projectDirectory) {
+          const newProjectHash = hashString(sessionData.projectDirectory);
+          updates.push('project_hash = @project_hash');
+          parameters.project_hash = newProjectHash;
+          needsUpdate = true;
+        }
+        
+        // Update string fields
+        for (const field of stringFields) {
+          if (sessionData[field.clientKey as keyof Partial<Session>] !== undefined &&
+              sessionData[field.clientKey as keyof Partial<Session>] !== 
+              currentSession[field.clientKey as keyof Session]) {
+            updates.push(`${field.dbKey} = @${field.dbKey}`);
+            parameters[field.dbKey] = sessionData[field.clientKey as keyof Partial<Session>];
+            needsUpdate = true;
+            
+            if (field.clientKey === 'taskDescription') {
+              // Log size of task description for debugging (common source of performance issues)
+              const value = sessionData[field.clientKey] as string;
+              console.log(`[Repo] Updating ${field.dbKey} (${value ? value.length : 0} bytes)`);
+            }
+          }
+        }
+        
+        // Boolean fields need special handling
+        if (sessionData.isRegexActive !== undefined && 
+            sessionData.isRegexActive !== currentSession.isRegexActive) {
+          updates.push('is_regex_active = @is_regex_active');
+          parameters.is_regex_active = sessionData.isRegexActive ? 1 : 0;
+          needsUpdate = true;
+        }
+        
+        // Number fields
+        if (sessionData.diffTemperature !== undefined && 
+            sessionData.diffTemperature !== currentSession.diffTemperature) {
+          updates.push('diff_temperature = @diff_temperature');
+          parameters.diff_temperature = sessionData.diffTemperature;
+          needsUpdate = true;
+        }
+        
+        // OPTIMIZATION: Prepare both file operations in advance to minimize transaction time
+        const hasIncludedFilesChanges = Array.isArray(sessionData.includedFiles);
+        const hasExcludedFilesChanges = Array.isArray(sessionData.forceExcludedFiles);
+        
+        // Execute SQL update if needed - consolidated to a single query
+        if (needsUpdate) {
+          // Prepare and execute the update
+          const sql = `
+            UPDATE sessions
+            SET ${updates.join(', ')}, updated_at = @updated_at
+            WHERE id = @id
+          `;
+          
+          // Log query start time for performance tracking
+          queryStartTime = Date.now();
+          console.log(`[Repo] Executing UPDATE for session ${sessionId}`);
+          
+          // Execute the query
+          db.prepare(sql).run(parameters);
+          
+          console.log(`[Repo] Session ${sessionId} updated in ${Date.now() - queryStartTime}ms`);
+        } else {
+          console.log(`[Repo] No field updates needed for session ${sessionId}`);
+        }
+        
+        // OPTIMIZATION: Process included files and excluded files with better performance tracking
+        // Handle included files if provided
+        if (hasIncludedFilesChanges) {
+          queryStartTime = Date.now();
+          console.log(`[Repo] Updating included files for session ${sessionId} (${sessionData.includedFiles!.length} files)`);
+          
+          // Delete existing included files
+          const deleteStartTime = Date.now();
+          db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
+          console.log(`[Repo] Deleted existing included files in ${Date.now() - deleteStartTime}ms`);
+          
+          // Insert new included files if there are any
+          if (sessionData.includedFiles!.length > 0) {
+            const insertStartTime = Date.now();
+            // OPTIMIZATION: Use a transaction statement for bulk insert
+            const insertStmt = db.prepare('INSERT INTO included_files (session_id, path) VALUES (?, ?)');
+            
+            // Process each file to ensure path normalization
+            for (const filePath of sessionData.includedFiles!) {
+              // Normalize paths for consistent storage
+              const normalizedPath = normalizePath(filePath);
+              insertStmt.run(sessionId, normalizedPath);
+            }
+            console.log(`[Repo] Inserted ${sessionData.includedFiles!.length} included files in ${Date.now() - insertStartTime}ms`);
+          }
+          
+          console.log(`[Repo] Included files updated in ${Date.now() - queryStartTime}ms`);
+        }
+        
+        // Handle excluded files if provided
+        if (hasExcludedFilesChanges) {
+          queryStartTime = Date.now();
+          console.log(`[Repo] Updating excluded files for session ${sessionId} (${sessionData.forceExcludedFiles!.length} files)`);
+          
+          // Delete existing excluded files
+          const deleteStartTime = Date.now();
+          db.prepare('DELETE FROM excluded_files WHERE session_id = ?').run(sessionId);
+          console.log(`[Repo] Deleted existing excluded files in ${Date.now() - deleteStartTime}ms`);
+          
+          // Insert new excluded files if there are any
+          if (sessionData.forceExcludedFiles!.length > 0) {
+            const insertStartTime = Date.now();
+            const insertStmt = db.prepare('INSERT INTO excluded_files (session_id, path) VALUES (?, ?)');
+            
+            // Process each file to ensure path normalization
+            for (const filePath of sessionData.forceExcludedFiles!) {
+              // Normalize paths for consistent storage
+              const normalizedPath = normalizePath(filePath);
+              insertStmt.run(sessionId, normalizedPath);
+            }
+            console.log(`[Repo] Inserted ${sessionData.forceExcludedFiles!.length} excluded files in ${Date.now() - insertStartTime}ms`);
+          }
+          
+          console.log(`[Repo] Excluded files updated in ${Date.now() - queryStartTime}ms`);
+        }
+        
+        // Log total operation time
+        console.log(`[Repo] Session update completed in ${Date.now() - startTime}ms`);
+      } catch (error) {
+        console.error("[Repo] Error in updateSessionFields:", error);
+        throw error;
+      }
+    });
+  }
+  
+  /**
+   * Update a session's name
+   */
+  async updateSessionName(sessionId: string, name: string): Promise<void> {
+    console.log(`[Repo] Updating session name: ${sessionId} => "${name}"`);
+    
+    // Add validation for sessionId
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('Invalid session ID provided for updating session name');
+    }
+    
+    await connectionPool.withConnection((db: Database.Database) => {
+      const sql = `
+        UPDATE sessions
+        SET name = ?, updated_at = ?
+        WHERE id = ?
+      `;
+      
+      db.prepare(sql).run(name, Date.now(), sessionId);
+    }, false); // Writable connection
+  }
+  
+  /**
+   * Update a session's project directory
+   */
+  async updateSessionProjectDirectory(sessionId: string, projectDirectory: string): Promise<void> {
+    console.log(`[Repo] Updating session project directory: ${sessionId} => "${projectDirectory}"`);
+    
+    // Add validation for sessionId
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('Invalid session ID provided for updating project directory');
+    }
+    
+    // Generate a new hash for the project directory
+    const projectHash = hashString(projectDirectory);
+    
+    await connectionPool.withConnection((db: Database.Database) => {
+      const sql = `
+        UPDATE sessions
+        SET project_directory = ?, project_hash = ?, updated_at = ?
+        WHERE id = ?
+      `;
+      
+      db.prepare(sql).run(projectDirectory, projectHash, Date.now(), sessionId);
+    }, false); // Writable connection
+  }
+  
+  /**
+   * Get the count of sessions in the database
+   */
+  async getSessionCount(): Promise<number> {
+    console.log(`[Repo] Getting session count`);
+    
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // Check if the sessions table exists
+        const tableExists = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'
+        `).get();
+        
+        if (!tableExists) {
+          return 0;
+        }
+        
+        // Get the count of sessions
+        const result = db.prepare(`SELECT COUNT(*) as count FROM sessions`).get() as { count: number };
+        return result.count;
+      } catch (error) {
+        console.error("Error in getSessionCount:", error);
+        throw error;
+      }
+    }, true); // true = readonly connection
+  }
+  
+  /**
+   * Get information about the database
+   */
+  async getDatabaseInfo(): Promise<{ ok: boolean; message: string; fileSize: number }> {
+    console.log(`[Repo] Getting database info`);
+    
+    return connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // Get info about the database file
+        const dbInfo = db.pragma('database_list') as Array<{ file: string }>;
+        const fileName = dbInfo[0]?.file || 'unknown';
+        
+        // Get table info
+        const tables = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table'
+        `).all() as Array<{ name: string }>;
+        
+        // Get the size of each table
+        const tableSizes: Record<string, number> = {};
+        let totalRows = 0;
+        
+        for (const table of tables) {
+          const tableName = table.name;
+          if (!tableName.startsWith('sqlite_')) {
+            const countResult = db.prepare(`SELECT COUNT(*) as count FROM "${tableName}"`).get() as { count: number };
+            tableSizes[tableName] = countResult.count;
+            totalRows += countResult.count;
+          }
+        }
+        
+        return {
+          ok: true,
+          message: `Database OK. Found ${tables.length} tables with ${totalRows} total rows.`,
+          fileSize: -1 // File size requires fs access which we don't have here
+        };
+      } catch (error) {
+        console.error("Error in getDatabaseInfo:", error);
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : String(error),
+          fileSize: -1
+        };
+      }
+    }, true); // true = readonly connection
+  }
+}
+
+// Create and export the singleton instance
+export const sessionRepository = new SessionRepository();
+
+// Also export the class itself as the default export
+export default SessionRepository;

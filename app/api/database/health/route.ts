@@ -1,63 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { setupDatabase } from '@/lib/db';
+import { setupDatabase, DB_FILE } from '@/lib/db';
 import { checkDatabaseIntegrity } from '@/lib/db/integrity-check';
+import fs from 'fs';
+import { humanFileSize } from '@/lib/utils/file-size';
 
 /**
  * GET /api/database/health
- * Checks database connection and health
+ * 
+ * Check database health and return status information
+ * 
+ * @param request The incoming request object
+ * @returns JSON response with database health information
  */
 export async function GET(request: NextRequest) {
   try {
-    // First try to initialize the database with recovery mode enabled if needed
-    const setupResult = await setupDatabase(true);
-    
-    if (!setupResult.success) {
-      // If setup failed, return the error
-      return NextResponse.json({
-        status: 'error',
-        error: setupResult.message,
-        details: setupResult.error
-      }, { status: 500 });
-    }
-    
-    // Run a quick integrity check
-    let integrityResult;
-    try {
-      integrityResult = await checkDatabaseIntegrity();
-    } catch (integrityError) {
-      console.error('[API] Error checking database integrity:', integrityError);
-      
-      // Return warning with integrity check error
+    if (!fs.existsSync(DB_FILE)) {
       return NextResponse.json({
         status: 'warning',
-        error: 'Error checking database integrity',
-        details: integrityError instanceof Error ? integrityError.message : String(integrityError),
-        needsRepair: true
-      }, { status: 200 }); // Return 200 with warning status
+        success: false,
+        exists: false,
+        message: 'Database file does not exist',
+        dbPath: DB_FILE
+      });
     }
+
+    const dbStats = fs.statSync(DB_FILE);
+    const dbSize = humanFileSize(dbStats.size);
+    const dbModified = dbStats.mtime.toISOString();
     
-    if (!integrityResult.isValid) {
-      // Database has integrity issues
-      return NextResponse.json({
-        status: 'warning',
-        error: 'Database integrity issues detected',
-        details: integrityResult.errors,
-        needsRepair: true
-      }, { status: 200 }); // Return 200 with warning status
-    }
+    // Check for WAL and SHM files
+    const walFile = `${DB_FILE}-wal`;
+    const shmFile = `${DB_FILE}-shm`;
+    const walExists = fs.existsSync(walFile);
+    const shmExists = fs.existsSync(shmFile);
     
-    // All is well
+    const walSize = walExists ? humanFileSize(fs.statSync(walFile).size) : null;
+    const shmSize = shmExists ? humanFileSize(fs.statSync(shmFile).size) : null;
+    
+    const integrityResult = await checkDatabaseIntegrity();
+    
+    // Determine status based on integrity check
+    const status = integrityResult.isValid ? 'ok' : 'warning';
+    const needsRepair = !integrityResult.isValid;
+
     return NextResponse.json({
-      status: 'ok',
-      message: 'Database is healthy',
-      recoveryMode: setupResult.recoveryMode || false
+      status: status,
+      needsRepair: needsRepair,
+      success: true,
+      exists: true,
+      isValid: integrityResult.isValid,
+      errors: integrityResult.errors,
+      dbPath: DB_FILE,
+      dbSize,
+      dbModified,
+      walExists,
+      walSize,
+      shmExists,
+      shmSize
     });
   } catch (error) {
-    console.error('[API] Database health check failed:', error);
-    
-    return NextResponse.json({
-      status: 'error',
-      error: error instanceof Error ? error.message : 'Database health check failed',
-    }, { status: 500 });
+    console.error('Health check error:', error);
+    return NextResponse.json(
+      { success: false, error: String(error) },
+      { status: 500 }
+    );
   }
 } 

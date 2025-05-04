@@ -2,10 +2,10 @@
 
 import { ActionState } from '@/types';
 import { setupDatabase } from '@/lib/db';
-import { normalizePath } from '@/lib/path-utils';
 import geminiClient from '@/lib/api/gemini-client';
 import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@/lib/constants';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
+import { generateDirectoryTree } from '@/lib/directory-tree';
 
 /**
  * Generate guidance for specific file paths
@@ -24,6 +24,11 @@ export async function generateGuidanceForPathsAction(
   
   if (!paths.length) {
     return { isSuccess: false, message: "No paths provided" };
+  }
+  
+  // Add strict validation for sessionId
+  if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+    return { isSuccess: false, message: "Invalid or missing session ID for guidance generation" };
   }
   
   try {
@@ -80,6 +85,20 @@ Structure your guidance in a clear, step-by-step format.
       };
     }
     
+    // Check if this is a background job response
+    if (result.metadata?.jobId) {
+      return {
+        isSuccess: true,
+        message: "Guidance generation started in the background",
+        data: { guidance: "" },
+        metadata: {
+          isBackgroundJob: true,
+          jobId: result.metadata.jobId
+        }
+      };
+    }
+    
+    // Otherwise return the immediate result
     return {
       isSuccess: true,
       message: "Successfully generated guidance",
@@ -102,6 +121,18 @@ async function getSessionWithBackgroundJobs(sessionId: string) {
   return getSessionWithBackgroundJobs(sessionId);
 }
 
+// Helper function to get a project summary
+async function getProjectSummary(projectDirectory: string): Promise<string> {
+  try {
+    // Generate a directory tree representation of the project
+    const directoryTree = await generateDirectoryTree(projectDirectory);
+    return directoryTree;
+  } catch (error) {
+    console.error("[getProjectSummary]", error);
+    return "Failed to generate project summary";
+  }
+}
+
 export async function generateTaskGuidanceAction(
   taskDescription: string,
   projectDirectory: string,
@@ -118,12 +149,17 @@ export async function generateTaskGuidanceAction(
     return { isSuccess: false, message: "Task description cannot be empty" };
   }
   
+  // Validate sessionId if provided
+  if (sessionId !== undefined && (typeof sessionId !== 'string' || !sessionId.trim())) {
+    return { isSuccess: false, message: "Invalid session ID provided for task guidance" };
+  }
+  
   try {
     // Get project settings
     const projectSettings = await getModelSettingsForProject(projectDirectory);
     
     // Get settings for task guidance
-    const guidanceSettings = projectSettings?.task_guidance || {
+    const guidanceSettings = projectSettings?.['task_guidance'] || {
       model: GEMINI_FLASH_MODEL,
       maxTokens: 8192,
       temperature: 0.3 // Lower temperature for more predictable output
@@ -226,6 +262,20 @@ The guidance should be thorough and actionable, enabling a developer to complete
       };
     }
     
+    // Check if this is a background job response
+    if (result.metadata?.jobId) {
+      return {
+        isSuccess: true,
+        message: "Task guidance generation started in the background",
+        data: { guidance: "" },
+        metadata: {
+          isBackgroundJob: true,
+          jobId: result.metadata.jobId
+        }
+      };
+    }
+    
+    // Otherwise return the immediate result
     return {
       isSuccess: true,
       message: "Successfully generated task guidance",

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { setupDatabase, closeDatabase, connectionPool } from '../lib/db';
+import { setupDatabase, closeDatabase } from '../lib/db';
+import connectionPool from '../lib/db/connection-pool';
+import Database from 'better-sqlite3';
 
 /**
  * Script to dump database tables and their structure for diagnostic purposes
@@ -45,7 +47,7 @@ async function main() {
     console.log("\n========================================================");
     console.log("📊 DATABASE SCHEMA DIAGNOSTIC COMPLETE");
     console.log("========================================================");
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("❌ ERROR during database diagnostic:", error);
     process.exit(1);
   } finally {
@@ -55,23 +57,23 @@ async function main() {
 
 // Helper function to list all tables
 async function listTables(): Promise<string[]> {
-  return connectionPool.withConnection((db) => {
-    const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
-    return rows.map(row => row.name);
+  return connectionPool.withConnection((db: Database.Database) => {
+    const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{name: string}>;
+    return rows.map((row) => row.name);
   }, true);
 }
 
 // Helper function to get table column info
 async function getTableInfo(table: string): Promise<Array<{name: string, type: string, notnull: number, dflt_value: string|null, pk: number}>> {
-  return connectionPool.withConnection((db) => {
-    return db.prepare(`PRAGMA table_info(${table})`).all();
+  return connectionPool.withConnection((db: Database.Database) => {
+    return db.prepare(`PRAGMA table_info(${table})`).all() as Array<{name: string, type: string, notnull: number, dflt_value: string|null, pk: number}>;
   }, true);
 }
 
 // Helper function to get row count
 async function getRowCount(table: string): Promise<number> {
-  return connectionPool.withConnection((db) => {
-    const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get();
+  return connectionPool.withConnection((db: Database.Database) => {
+    const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as {count: number};
     return row.count;
   }, true);
 }
@@ -87,22 +89,24 @@ async function diagnoseProblem(table: string, schema: Array<{name: string, type:
   
   // Check the query that's failing
   try {
-    await connectionPool.withConnection((db) => {
+    await connectionPool.withConnection((db: Database.Database) => {
       try {
         const rows = db.prepare(`SELECT id, session_id, path FROM ${table} LIMIT 5`).all();
         console.log(`  - 'SELECT path' query test: Success ✅ - Found ${rows.length} rows`);
-      } catch (err) {
-        console.log(`  - 'SELECT path' query test: Failed ❌ - ${err.message}`);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.log(`  - 'SELECT path' query test: Failed ❌ - ${errorMessage}`);
       }
     }, true);
-  } catch (error) {
-    console.log(`  - 'SELECT path' query test: Error - ${error}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.log(`  - 'SELECT path' query test: Error - ${errorMessage}`);
   }
   
   // If both path and file_path queries fail, check the actual column names
   if (!hasPathColumn && !hasFilePathColumn) {
     try {
-      await connectionPool.withConnection((db) => {
+      await connectionPool.withConnection((db: Database.Database) => {
         try {
           // Get a single row to check column names
           const row = db.prepare(`SELECT * FROM ${table} LIMIT 1`).get();
@@ -113,15 +117,17 @@ async function diagnoseProblem(table: string, schema: Array<{name: string, type:
           } else {
             console.log(`  - 'SELECT *' query test: No rows found`);
           }
-        } catch (err) {
-          console.log(`  - 'SELECT *' query test: Failed ❌ - ${err.message}`);
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          console.log(`  - 'SELECT *' query test: Failed ❌ - ${errorMessage}`);
         }
       }, true);
-    } catch (error) {
-      console.log(`  - 'SELECT *' query test: Error - ${error}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log(`  - 'SELECT *' query test: Error - ${errorMessage}`);
     }
   }
 }
 
 // Run the function
-main(); 
+main();

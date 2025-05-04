@@ -3,14 +3,14 @@
 import dynamic from 'next/dynamic';
 
 export const BackgroundJobsSidebar = dynamic(
-  () => import("./_components/background-jobs-sidebar/background-jobs-sidebar").then(
+  () => import("@/app/components/background-jobs-sidebar/background-jobs-sidebar").then(
     mod => ({ default: mod.BackgroundJobsSidebar })
   ), 
   { ssr: false }
 );
 
 export const Navigation = dynamic(
-  () => import("./_components/navigation").then(
+  () => import("@/app/components/navigation").then(
     mod => ({ default: mod.Navigation })
   ), 
   { ssr: false }

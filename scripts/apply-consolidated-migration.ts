@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { setupDatabase, closeDatabase } from '../lib/db';
-import { db } from '../lib/db/index';
+import { setupDatabase, closeDatabase, db } from '../lib/db';
 import path from 'path';
 import fs from 'fs';
+import connectionPool from '../lib/db/connection-pool';
+import Database from 'better-sqlite3';
 
 /**
  * Script to apply the consolidated migration file directly
@@ -31,60 +32,38 @@ async function main() {
     const sql = fs.readFileSync(migrationFile, 'utf8').trim();
     
     // Create migrations table if it doesn't exist
-    await new Promise<void>((resolve, reject) => {
-      db.run(`CREATE TABLE IF NOT EXISTS migrations (
+    await connectionPool.withConnection((db: Database.Database) => {
+      db.prepare(`CREATE TABLE IF NOT EXISTS migrations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         applied_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-      )`, (err) => {
-        if (err) {
-          console.error("Error creating migrations table:", err);
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
+      )`).run();
+    }, false);
     
     // Split the SQL into individual statements to avoid errors with missing columns
     const statements = sql.split(';').filter(stmt => stmt.trim().length > 0);
     
     console.log(`Executing ${statements.length} SQL statements...`);
     
-    // Execute each statement individually
-    for (const statement of statements) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          db.run(statement.trim() + ';', (err) => {
-            if (err) {
-              // Just log the error but continue with other statements
-              console.warn(`Warning: Statement failed: ${err.message}`);
-              console.warn(`Statement: ${statement.trim().substring(0, 100)}...`);
-            }
-            resolve(); // Always resolve to continue with next statement
-          });
-        });
-      } catch (err) {
-        console.warn(`Error executing statement: ${err.message}`);
+    // Execute each statement individually in a transaction
+    await connectionPool.withTransaction(async (db) => {
+      for (const statement of statements) {
+        try {
+          db.prepare(statement.trim() + ';').run();
+        } catch (err) {
+          console.warn(`Warning: Statement failed: ${err instanceof Error ? err.message : String(err)}`);
+          console.warn(`Statement: ${statement.trim().substring(0, 100)}...`);
+        }
       }
-    }
-    
-    // Record that we applied this migration
-    await new Promise<void>((resolve, reject) => {
-      db.run('INSERT OR IGNORE INTO migrations (name) VALUES (?)', 
-        ['consolidated_migrations.sql'], 
-        (err) => {
-          if (err) {
-            console.warn("Failed to record migration, but schema changes were applied:", err);
-          }
-          resolve();
-      });
+      
+      // Record that we applied this migration
+      db.prepare('INSERT OR IGNORE INTO migrations (name) VALUES (?)').run('consolidated_migrations.sql');
     });
     
     console.log("✅ Consolidated migration applied successfully.");
     console.log("You can now start the application with: pnpm dev");
   } catch (error) {
-    console.error("❌ ERROR applying consolidated migration:", error);
+    console.error("❌ ERROR applying consolidated migration:", error instanceof Error ? error.message : String(error));
     process.exit(1);
   } finally {
     closeDatabase();

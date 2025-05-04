@@ -5,47 +5,125 @@
  */
 
 import { sessionSyncService } from '@/lib/services/session-sync-service';
+import { SessionOperation } from '@/lib/services/session-sync/types';
+
+// Import the OperationStateInfo interface from where it's defined
+interface OperationStateInfo {
+  state: 'idle' | 'loading' | 'saving' | 'deleting';
+  lastOperationId?: string;
+  lastOperationDuration?: number;
+  lastError?: Error;
+  lastComplete: number;
+  lastStartTime?: number;
+  lastOperationType?: string;
+}
 
 /**
  * Logs detailed information about the current session state
  * @param sessionId The session ID to check, or null for global state
+ * @returns Debug summary object or error information
  */
-export function debugSessionState(sessionId: string | null = null): void {
-  console.group(`[SessionDebug] Session State Check${sessionId ? ` for ${sessionId}` : ' (global)'}`);
+export function debugSessionState(sessionId: string | null = null): 
+  | { sessionId: string | 'global'; timestamp: string; activeOperationsCount: number; pendingOperationsCount: number; hasRelevantOperations: boolean; sessionState: any; isBusy: boolean | null; consecutiveErrors: number }
+  | { error: string; timestamp: string }
+  | undefined {
+  const debugTimestamp = new Date().toISOString();
+  console.group(`[SessionDebug][${debugTimestamp}] 🔎 SESSION STATE CHECK${sessionId ? ` for ${sessionId}` : ' (global)'}`);
   
   try {
     const queueStatus = sessionSyncService.getQueueStatus();
     
     // 1. Check active operations
-    console.log('Active Operations:');
+    console.log('🟢 Active Operations:');
     if (queueStatus.activeOperations.length === 0) {
       console.log('  None');
     } else {
-      queueStatus.activeOperations.forEach(([sid, state]) => {
+      queueStatus.activeOperations.forEach(([sid, state]: [string, OperationStateInfo]) => {
         const isRelevant = !sessionId || sid === sessionId;
-        console.log(`  ${sid}: ${state}${isRelevant ? ' (RELEVANT)' : ''}`);
+        let duration = 'unknown';
+        let runningTime = 0;
+        
+        if (state.lastStartTime) {
+          runningTime = Date.now() - state.lastStartTime;
+          duration = `${Math.floor(runningTime / 1000)}s (${runningTime}ms)`;
+        }
+        
+        console.log(`  ${sid}: ${state.state}, running for ${duration}${isRelevant ? ' 🔍 (RELEVANT)' : ''}`);
+        
+        if (isRelevant && runningTime > 5000) {
+          console.warn(`  ⚠️ LONG RUNNING OPERATION for session ${sid}: ${state.state} has been running for ${duration}`);
+          console.warn(`  ⚠️ Details: lastOperationId=${state.lastOperationId}, lastOperationType=${state.lastOperationType}`);
+        }
       });
     }
     
     // 2. Check pending operations
-    console.log('\nPending Operations:');
-    if (queueStatus.pendingOperations.length === 0) {
+    console.log('\n🟡 Pending Operations:');
+    if (queueStatus.queueStats.pendingOperations.length === 0) {
       console.log('  None');
     } else {
-      queueStatus.pendingOperations.forEach(op => {
+      queueStatus.queueStats.pendingOperations.forEach((op: SessionOperation) => {
         const isRelevant = !sessionId || op.sessionId === sessionId;
-        console.log(`  ${op.id}: ${op.operation} for ${op.sessionId || 'global'}, priority ${op.priority}, waiting for ${Math.floor(op.age / 1000)}s${isRelevant ? ' (RELEVANT)' : ''}`);
+        const age = Date.now() - op.addedAt;
+        const ageSeconds = Math.floor(age / 1000);
+        const ageFormatted = ageSeconds > 60 ? 
+          `${Math.floor(ageSeconds / 60)}m ${ageSeconds % 60}s` : 
+          `${ageSeconds}s`;
+        
+        console.log(`  ${op.id}: ${op.type} for ${op.sessionId || 'global'}, priority ${op.priority}, waiting for ${ageFormatted}${isRelevant ? ' 🔍 (RELEVANT)' : ''}`);
+        
+        if (isRelevant && age > 10000) {
+          console.warn(`  ⚠️ LONG WAITING OPERATION: ${op.type} operation for session ${op.sessionId || 'global'} has been waiting for ${ageFormatted}`);
+        }
       });
+      
+      // Add details about operation distribution by session
+      console.log('\n  Summary of pending operations by session:');
+      const sessionCounts = new Map<string, { total: number, load: number, save: number, delete: number }>();
+      
+      queueStatus.queueStats.pendingOperations.forEach((op: SessionOperation) => {
+        const key = op.sessionId || 'global';
+        if (!sessionCounts.has(key)) {
+          sessionCounts.set(key, { total: 0, load: 0, save: 0, delete: 0 });
+        }
+        const counts = sessionCounts.get(key)!;
+        counts.total++;
+        counts[op.type]++;
+      });
+      
+      sessionCounts.forEach((counts, sid) => {
+        const isRelevant = !sessionId || sid === sessionId;
+        console.log(`  ${sid}: ${counts.total} operations (load=${counts.load}, save=${counts.save}, delete=${counts.delete})${isRelevant ? ' 🔍 (RELEVANT)' : ''}`);
+      });
+      
+      // Add details about pending operation queue position
+      const relevantPendingOps = queueStatus.queueStats.pendingOperations
+        .filter((op: SessionOperation) => !sessionId || op.sessionId === sessionId)
+        .sort((a: SessionOperation, b: SessionOperation) => {
+          // First sort by priority
+          if (a.priority !== b.priority) return a.priority - b.priority;
+          // Then by age (oldest first)
+          return a.addedAt - b.addedAt;
+        });
+      
+      if (relevantPendingOps.length > 0) {
+        console.log('\n  Relevant pending operations by priority and age:');
+        relevantPendingOps.forEach((op: SessionOperation, index: number) => {
+          const age = Date.now() - op.addedAt;
+          const ageSeconds = Math.floor(age / 1000);
+          console.log(`    ${index + 1}. ${op.type} (priority ${op.priority}, age ${ageSeconds}s)`);
+        });
+      }
     }
     
     // 3. Check cooldowns
-    console.log('\nCooldowns:');
+    console.log('\n🔵 Cooldowns:');
     if (queueStatus.cooldowns.length === 0) {
       console.log('  None');
     } else {
-      queueStatus.cooldowns.forEach(cooldown => {
+      queueStatus.cooldowns.forEach((cooldown: any) => {
         const isRelevant = !sessionId || cooldown.sessionId === sessionId;
-        console.log(`  ${cooldown.sessionId}: ${cooldown.operation} for ${Math.floor(cooldown.remainingMs / 1000)}s remaining${isRelevant ? ' (RELEVANT)' : ''}`);
+        console.log(`  ${cooldown.sessionId}: ${cooldown.operation} for ${Math.floor(cooldown.remainingMs / 1000)}s remaining${isRelevant ? ' 🔍 (RELEVANT)' : ''}`);
       });
     }
     
@@ -53,12 +131,80 @@ export function debugSessionState(sessionId: string | null = null): void {
     if (sessionId) {
       const state = sessionSyncService.getSessionState(sessionId);
       const isBusy = sessionSyncService.isSessionBusy(sessionId);
-      console.log(`\nSession ${sessionId} state: ${state} (busy: ${isBusy})`);
+      console.log(`\n🔴 Session ${sessionId} state: ${state?.state || 'unknown'} (busy: ${isBusy})`);
+      
+      if (state) {
+        console.log('  Session operation details:');
+        console.log(`    Last operation ID: ${state.lastOperationId || 'none'}`);
+        console.log(`    Last operation type: ${state.lastOperationType || 'none'}`);
+        console.log(`    Last operation duration: ${state.lastOperationDuration ? `${state.lastOperationDuration}ms` : 'unknown'}`);
+        console.log(`    Last complete: ${state.lastComplete ? new Date(state.lastComplete).toISOString() : 'never'} (${state.lastComplete ? `${Math.floor((Date.now() - state.lastComplete) / 1000)}s ago` : 'n/a'})`);
+        
+        if (state.lastError) {
+          console.log(`    Last error: ${state.lastError.message}`);
+        }
+        
+        // Check for potential issues
+        if (state.state !== 'idle') {
+          const runningTime = state.lastStartTime ? Date.now() - state.lastStartTime : 0;
+          if (runningTime > 10000) { // 10 seconds
+            console.warn(`  ⚠️ POTENTIAL STUCK SESSION: ${sessionId} has been in ${state.state} state for ${Math.floor(runningTime / 1000)}s`);
+          }
+        }
+      }
     }
     
-    console.log('\nDebug complete.');
+    // 5. Error count
+    console.log(`\n⚠️ Consecutive errors: ${queueStatus.consecutiveErrors}`);
+    if (queueStatus.consecutiveErrors > 3) {
+      console.warn(`  ⚠️ HIGH ERROR COUNT: ${queueStatus.consecutiveErrors} consecutive errors detected`);
+    }
+    
+    // 6. Return summary for easier inspection
+    const summary = {
+      sessionId: sessionId || 'global',
+      timestamp: debugTimestamp,
+      activeOperationsCount: queueStatus.activeOperations.length,
+      pendingOperationsCount: queueStatus.queueStats.pendingOperations.length,
+      hasRelevantOperations: queueStatus.activeOperations.some(([sid, _]: [string, OperationStateInfo]) => !sessionId || sid === sessionId) ||
+                           queueStatus.queueStats.pendingOperations.some((op: SessionOperation) => !sessionId || op.sessionId === sessionId),
+      sessionState: sessionId ? sessionSyncService.getSessionState(sessionId) : null,
+      isBusy: sessionId ? sessionSyncService.isSessionBusy(sessionId) : null,
+      consecutiveErrors: queueStatus.consecutiveErrors
+    };
+    
+    console.log('\n📊 Debug Summary:', summary);
+    
+    // Check for potential deadlocks or queue contention
+    const loadingOps = queueStatus.activeOperations.filter(([_, state]) => state.state === 'loading');
+    const savingOps = queueStatus.activeOperations.filter(([_, state]) => state.state === 'saving');
+    
+    if (loadingOps.length > 0 && savingOps.length > 0) {
+      console.warn('⚠️ POTENTIAL SESSION SWITCHING SCENARIO: Both load and save operations active simultaneously');
+      console.warn(`  Loading sessions: ${loadingOps.map(([sid]) => sid).join(', ')}`);
+      console.warn(`  Saving sessions: ${savingOps.map(([sid]) => sid).join(', ')}`);
+    }
+    
+    // Detect operations waiting too long
+    const oldOperations = queueStatus.queueStats.pendingOperations.filter(op => (Date.now() - op.addedAt) > 15000);
+    if (oldOperations.length > 0) {
+      console.warn(`⚠️ OPERATIONS WAITING TOO LONG: ${oldOperations.length} operations waiting >15s`);
+      oldOperations.slice(0, 3).forEach(op => {
+        const waitTime = Math.floor((Date.now() - op.addedAt) / 1000);
+        console.warn(`  - ${op.type} for session ${op.sessionId || 'new'} waiting for ${waitTime}s (priority: ${op.priority})`);
+      });
+      if (oldOperations.length > 3) {
+        console.warn(`  - ... and ${oldOperations.length - 3} more operations waiting too long`);
+      }
+    }
+    
+    return summary;
   } catch (error) {
-    console.error('[SessionDebug] Error generating debug info:', error);
+    console.error('[SessionDebug] ❌ Error generating debug info:', error);
+    return {
+      error: String(error),
+      timestamp: debugTimestamp
+    };
   } finally {
     console.groupEnd();
   }
@@ -136,7 +282,7 @@ export function createSessionMonitor() {
 if (typeof window !== 'undefined') {
   // Add the session debug function
   (window as any).debugSession = (sessionId?: string) => {
-    debugSessionState(sessionId || null);
+    return debugSessionState(sessionId || null);
   };
   
   // Add the session monitor
@@ -151,34 +297,152 @@ if (typeof window !== 'undefined') {
   (window as any).clearStuckSession = (sessionId?: string) => {
     if (!sessionId) {
       console.error('Session ID is required');
-      return;
+      return {
+        success: false,
+        error: 'Session ID is required',
+        timestamp: new Date().toISOString()
+      };
     }
     console.log(`Clearing potentially stuck session: ${sessionId}`);
     sessionSyncService.clearStuckSession(sessionId);
-    return `Attempted to clear stuck session: ${sessionId}`;
+    return {
+      success: true,
+      message: `Attempted to clear stuck session: ${sessionId}`,
+      timestamp: new Date().toISOString()
+    };
   };
   
   // Add an improved force continue function
   (window as any).forceContinueSession = async (sessionId?: string) => {
     if (!sessionId) {
       console.error('Session ID is required');
-      return 'Error: Session ID required';
+      return {
+        success: false,
+        error: 'Session ID is required',
+        timestamp: new Date().toISOString()
+      };
     }
     
     console.log(`Force continuing session: ${sessionId}`);
     try {
+      // First clear any stuck operations
+      sessionSyncService.clearStuckSession(sessionId);
+      
+      // Wait a moment for clearing to take effect
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Then force load the session
       const session = await sessionSyncService.forceLoadSession(sessionId);
       
       if (!session) {
         console.error(`Failed to force load session: ${sessionId}`);
-        return 'Error: Failed to load session';
+        return {
+          success: false,
+          error: 'Failed to load session',
+          timestamp: new Date().toISOString()
+        };
       }
       
       console.log('Session loaded successfully:', session);
-      return `Successfully loaded session: ${sessionId}. UI may need manual refresh.`;
+      return {
+        success: true,
+        message: `Successfully loaded session: ${sessionId}`,
+        sessionId: session.id,
+        sessionName: session.name,
+        timestamp: new Date().toISOString()
+      };
     } catch (err) {
       console.error('Error forcing session continuation:', err);
-      return `Error: ${err?.message || 'Unknown error'}`;
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      };
+    }
+  };
+  
+  // Add a function to get the queue status
+  (window as any).getQueueStatus = () => {
+    const status = sessionSyncService.getQueueStatus();
+    console.log('[SessionDebug] Queue Status:', status);
+    return {
+      ...status,
+      timestamp: new Date().toISOString()
+    };
+  };
+  
+  // Add a function to attempt database recovery
+  (window as any).fixDatabase = async () => {
+    console.log('Attempting database recovery...');
+    try {
+      const response = await fetch('/api/database-maintenance/fix-permissions', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const error = `API returned error: ${response.status} ${response.statusText}`;
+        console.error(error);
+        return {
+          success: false,
+          error,
+          timestamp: new Date().toISOString()
+        };
+      }
+      
+      const result = await response.json();
+      console.log('Database recovery result:', result);
+      return {
+        ...result,
+        timestamp: new Date().toISOString()
+      };
+    } catch (err) {
+      console.error('Error during database recovery:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      };
+    }
+  };
+  
+  // Add a function to reset service state
+  (window as any).resetServiceState = () => {
+    console.log('Resetting session sync service state...');
+    try {
+      sessionSyncService.clearAllSessions();
+      console.log('Service state reset successfully');
+      return {
+        success: true,
+        message: 'Service state reset successfully',
+        timestamp: new Date().toISOString()
+      };
+    } catch (err) {
+      console.error('Error resetting service state:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      };
+    }
+  };
+  
+  // Add a function to run a health check
+  (window as any).runHealthCheck = async () => {
+    console.log('Running session service health check...');
+    try {
+      const result = await sessionSyncService.performHealthCheck();
+      console.log('Health check result:', result);
+      return {
+        ...(result || {}),
+        timestamp: new Date().toISOString()
+      };
+    } catch (err) {
+      console.error('Error running health check:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      };
     }
   };
 }

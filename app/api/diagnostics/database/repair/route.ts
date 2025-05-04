@@ -1,170 +1,90 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  backupDatabase, 
+import {
   checkDatabaseIntegrity,
   recreateDatabaseStructure,
   resetDatabase
 } from '@/lib/db/integrity-check';
-import { isServer } from '@/lib/db';
-import os from 'os';
-import path from 'path';
 import fs from 'fs';
-
-const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
-const DB_FILE = path.join(APP_DATA_DIR, 'ai-architect-studio.db');
+import { DB_FILE } from "@/lib/db/constants";
 
 // Only allow this in development mode for security
 const isDev = process.env.NODE_ENV === 'development';
 
 /**
- * Endpoint to repair the database when it gets into an unrecoverable state
- * GET /api/diagnostics/database/repair?action=ACTION
+ * GET /api/diagnostics/database/repair
+ * 
+ * API endpoint for database repair and diagnostics.
+ * This is only available in development mode for security reasons.
  */
 export async function GET(request: NextRequest) {
+  // Only allow this endpoint in development mode
   if (!isDev) {
     return NextResponse.json({ 
       error: 'This endpoint is only available in development mode' 
     }, { status: 403 });
   }
   
-  if (!isServer) {
-    return NextResponse.json({ 
-      error: 'This endpoint can only be called on the server' 
-    }, { status: 400 });
-  }
-  
   try {
     const url = new URL(request.url);
     const action = url.searchParams.get('action') || 'status';
     
+    // Check if database file exists
+    if (!fs.existsSync(DB_FILE)) {
+      return NextResponse.json({
+        exists: false,
+        message: 'Database file does not exist',
+        dbPath: DB_FILE
+      });
+    }
+    
+    // Handle different actions
     switch (action) {
-      case 'status': {
+      case 'status':
+        // Check database integrity
         const integrityResult = await checkDatabaseIntegrity();
-        const dbSize = fs.existsSync(DB_FILE) 
-          ? fs.statSync(DB_FILE).size 
-          : 0;
-        
-        const walFile = `${DB_FILE}-wal`;
-        const shmFile = `${DB_FILE}-shm`;
-        const hasWal = fs.existsSync(walFile);
-        const hasShm = fs.existsSync(shmFile);
         
         return NextResponse.json({
-          exists: fs.existsSync(DB_FILE),
-          size: dbSize,
-          sizeFormatted: formatBytes(dbSize),
-          location: DB_FILE,
-          walExists: hasWal,
-          shmExists: hasShm,
-          walSize: hasWal ? fs.statSync(walFile).size : 0,
-          shmSize: hasShm ? fs.statSync(shmFile).size : 0,
-          integrity: integrityResult
+          exists: true,
+          isValid: integrityResult.isValid,
+          errors: integrityResult.errors,
+          dbPath: DB_FILE
         });
-      }
-      
-      case 'backup': {
-        const backupPath = await backupDatabase();
-        if (!backupPath) {
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Failed to create backup' 
-          }, { status: 500 });
-        }
+        
+      case 'repair':
+        // Recreate database structure
+        const repairResult = await recreateDatabaseStructure();
         
         return NextResponse.json({
-          success: true,
-          backupPath,
-          message: `Database backed up to ${backupPath}`
+          success: repairResult,
+          message: repairResult ? 'Database structure recreated successfully' : 'Failed to recreate database structure'
         });
-      }
-      
-      case 'repair': {
-        // First create a backup
-        const backupPath = await backupDatabase();
-        if (!backupPath) {
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Failed to create backup before repair' 
-          }, { status: 500 });
-        }
         
-        // Then run the repair
-        const success = await recreateDatabaseStructure();
-        
-        if (success) {
-          return NextResponse.json({
-            success: true,
-            backupPath,
-            message: `Database structure repaired. Backup created at ${backupPath}`
-          });
-        } else {
-          return NextResponse.json({ 
-            success: false, 
-            backupPath,
-            error: 'Failed to repair database structure' 
-          }, { status: 500 });
-        }
-      }
-      
-      case 'reset': {
-        // Require confirmation token for destructive action
+      case 'reset':
+        // Reset database - DESTRUCTIVE ACTION!
         const token = url.searchParams.get('token');
         if (token !== 'confirm-reset') {
           return NextResponse.json({ 
-            success: false, 
             error: 'Reset requires confirmation token (token=confirm-reset)' 
           }, { status: 400 });
         }
         
-        // First create a backup
-        const backupPath = await backupDatabase();
-        if (!backupPath) {
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Failed to create backup before reset' 
-          }, { status: 500 });
-        }
+        await resetDatabase();
         
-        // Then reset the database
-        const success = await resetDatabase();
+        return NextResponse.json({
+          success: true,
+          message: 'Database has been reset'
+        });
         
-        if (success) {
-          return NextResponse.json({
-            success: true,
-            backupPath,
-            message: `Database has been reset. Backup created at ${backupPath}`
-          });
-        } else {
-          return NextResponse.json({ 
-            success: false, 
-            backupPath,
-            error: 'Failed to reset database' 
-          }, { status: 500 });
-        }
-      }
-      
       default:
-        return NextResponse.json({ 
-          error: `Unknown action: ${action}` 
+        return NextResponse.json({
+          error: `Unknown action: ${action}`
         }, { status: 400 });
     }
   } catch (error) {
-    console.error('Error in database diagnostics API:', error);
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : String(error) 
+    console.error('[API] Database repair error:', error);
+    
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Unknown error during database operation'
     }, { status: 500 });
   }
-}
-
-// Helper function to format bytes to human-readable size
-function formatBytes(bytes: number, decimals = 2): string {
-  if (bytes === 0) return '0 Bytes';
-  
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 } 
