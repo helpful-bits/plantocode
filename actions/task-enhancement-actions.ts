@@ -2,7 +2,7 @@
 
 import { ActionState } from "@/types";
 import geminiClient from '@/lib/api/gemini-client';
-import { GEMINI_PRO_PREVIEW_MODEL, MODEL_SETTINGS_KEY } from '@/lib/constants'; // Use Pro model for better analysis
+import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants'; // Use Pro model for better analysis
 import { generateDirectoryTree } from '@/lib/directory-tree';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 

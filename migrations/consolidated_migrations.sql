@@ -1,6 +1,8 @@
 -- Consolidated SQL Migrations
 -- This file combines all migrations from 0000 to 0020 into a single SQL file
 -- Original migration files are preserved in the migrations_backup directory
+-- Note: This consolidated migration standardizes on using 'path' column in included_files and excluded_files
+-- tables, replacing the older inconsistent use of both 'path' and 'file_path' columns.
 
 -- Enable foreign key support
 PRAGMA foreign_keys = ON;
@@ -46,6 +48,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   pasted_paths TEXT DEFAULT '',
   title_regex TEXT DEFAULT '',
   content_regex TEXT DEFAULT '',
+  negative_title_regex TEXT DEFAULT '',
+  negative_content_regex TEXT DEFAULT '',
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
   diff_temperature REAL DEFAULT 0.9,
   codebase_structure TEXT DEFAULT '',
@@ -122,14 +126,19 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   xml_path TEXT,
   status_message TEXT,
   tokens_received INTEGER DEFAULT 0,
+  tokens_sent INTEGER DEFAULT 0,
   chars_received INTEGER DEFAULT 0,
   last_update INTEGER,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  updated_at INTEGER DEFAULT (strftime('%s', 'now')),
   cleared INTEGER DEFAULT 0 CHECK(cleared IN (0, 1)),
   api_type TEXT DEFAULT 'gemini' NOT NULL,
   task_type TEXT DEFAULT 'xml_generation' NOT NULL,
   model_used TEXT,
   max_output_tokens INTEGER,
+  response TEXT,
+  error_message TEXT,
+  metadata TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -147,4 +156,12 @@ VALUES ('consolidated_migrations.sql', strftime('%s', 'now'));
 
 -- Record this consolidated migration in the meta table
 INSERT OR REPLACE INTO meta (key, value)
-VALUES ('consolidated_migration', datetime('now')); 
+VALUES ('consolidated_migration', datetime('now'));
+
+-- Add the tokens_sent column migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('add_tokens_sent_column', strftime('%s', 'now'));
+
+-- Add the updated_at column migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('add_updated_at_column', strftime('%s', 'now')); 

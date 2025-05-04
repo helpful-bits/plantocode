@@ -20,7 +20,8 @@
     "enforce-path-column": "tsx scripts/enforce-path-column.ts",
     "repair-db": "tsx scripts/repair-db.ts",
     "db:backup": "tsx scripts/backup-database.ts",
-    "db:dump": "tsx scripts/dump-tables.ts"
+    "db:dump": "tsx scripts/dump-tables.ts",
+    "db:fix-permissions": "tsx scripts/fix-database-permissions.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.11",
@@ -38,6 +39,7 @@
     "@radix-ui/react-tabs": "^1.1.9",
     "@radix-ui/react-toast": "^1.2.11",
     "@radix-ui/react-tooltip": "^1.2.4",
+    "@types/uuid": "^10.0.0",
     "better-sqlite3": "^11.9.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -53,22 +55,26 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "usehooks-ts": "^3.1.1",
+    "uuid": "^11.1.0",
     "xmldom": "^0.6.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/libxmljs": "^0.18.13",
-    "@types/node": "^20.17.31",
+    "@types/node": "^20.17.32",
     "@types/react": "^18.3.20",
-    "@types/react-dom": "^18.3.6",
-    "@types/ws": "^8.5.10",
+    "@types/react-dom": "^18.3.7",
+    "@types/whatwg-fetch": "^0.0.33",
+    "@types/ws": "^8.18.1",
     "@types/xmldom": "^0.1.34",
     "autoprefixer": "^10.4.21",
     "eslint": "^8.57.1",
     "eslint-config-next": "15.3.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.3"
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "whatwg-fetch": "^3.6.20"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

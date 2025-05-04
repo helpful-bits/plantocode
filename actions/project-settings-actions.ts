@@ -3,9 +3,8 @@
 import { setupDatabase } from "@/lib/db";
 import { getCachedState, saveCachedState } from "@/lib/db";
 import { ActionState, TaskSettings } from "@/types";
-import { MODEL_SETTINGS_KEY } from "@/lib/constants";
+import { MODEL_SETTINGS_KEY, DEFAULT_TASK_SETTINGS } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
-import { hashString } from "@/lib/utils";
 
 /**
  * Get model settings for a specific project
@@ -14,7 +13,7 @@ export async function getModelSettingsForProject(
   projectDirectory: string
 ): Promise<TaskSettings> {
   if (!projectDirectory) {
-    return {};
+    return DEFAULT_TASK_SETTINGS;
   }
 
   await setupDatabase();
@@ -28,7 +27,7 @@ export async function getModelSettingsForProject(
     
     if (!settingsJson) {
       console.log(`[getModelSettingsForProject] No settings found for project: ${safeProjectDirectory}`);
-      return {};
+      return DEFAULT_TASK_SETTINGS;
     }
     
     // Parse the JSON string into TaskSettings
@@ -37,11 +36,11 @@ export async function getModelSettingsForProject(
       return settings;
     } catch (error) {
       console.error("[getModelSettingsForProject] Error parsing settings JSON:", error);
-      return {};
+      return DEFAULT_TASK_SETTINGS;
     }
   } catch (error) {
     console.error("[getModelSettingsForProject]", error);
-    return {};
+    return DEFAULT_TASK_SETTINGS;
   }
 }
 
@@ -80,6 +79,73 @@ export async function saveModelSettingsForProject(
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Unknown error saving model settings",
+    };
+  }
+}
+
+/**
+ * Get a project setting by key
+ */
+export async function getProjectSetting(
+  projectDirectory: string,
+  key: string
+): Promise<string | null> {
+  if (!projectDirectory || !key) {
+    return null;
+  }
+
+  await setupDatabase();
+  
+  try {
+    // Use a normalized project directory
+    const safeProjectDirectory = projectDirectory.trim();
+    
+    // Get setting from cached_state
+    const value = await getCachedState(safeProjectDirectory, key);
+    return value;
+  } catch (error) {
+    console.error(`[getProjectSetting] Error getting setting ${key}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Save a project setting
+ */
+export async function saveProjectSetting(
+  projectDirectory: string,
+  key: string,
+  value: string
+): Promise<ActionState<null>> {
+  try {
+    if (!projectDirectory) {
+      return { isSuccess: false, message: "Project directory is required" };
+    }
+    
+    if (!key) {
+      return { isSuccess: false, message: "Setting key is required" };
+    }
+    
+    await setupDatabase();
+    
+    // Use a normalized project directory
+    const safeProjectDirectory = projectDirectory.trim();
+    
+    console.log(`[Action] Saving project setting ${key} for: ${safeProjectDirectory}`);
+    
+    // Save to cached_state table
+    await saveCachedState(safeProjectDirectory, key, value);
+    
+    revalidatePath('/settings');
+    return { 
+      isSuccess: true, 
+      message: "Setting saved successfully" 
+    };
+  } catch (error) {
+    console.error(`[saveProjectSetting] Error saving setting ${key}:`, error);
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Unknown error saving setting",
     };
   }
 } 

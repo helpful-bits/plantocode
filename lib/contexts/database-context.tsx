@@ -83,6 +83,8 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         // Update attempt counter
         setHealthCheckAttempts(prev => prev + 1);
         
+        console.log('[DatabaseContext] Checking database health, attempt #', healthCheckAttempts + 1);
+        
         // Make a simple API call to verify database connection
         const response = await fetch('/api/database/health', { 
           method: 'GET',
@@ -138,6 +140,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
           }
         } else if (data.status === 'ok') {
           // All good
+          console.log('[DatabaseContext] Database health check passed, status: ok');
           setIsInitialized(true);
           setError(null);
           
@@ -150,9 +153,10 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
           }
         } else {
           // Unexpected status
-          console.warn('Unexpected database health status:', data.status);
+          const statusMessage = data?.status ? String(data.status) : 'undefined';
+          console.warn('Unexpected database health status:', statusMessage);
           setIsInitialized(false);
-          triggerDatabaseErrorModal('Unexpected database health status: ' + data.status);
+          triggerDatabaseErrorModal('Unexpected database health status received from API: ' + statusMessage);
         }
       }
     } catch (err) {
@@ -176,13 +180,28 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
     
+    // Log current dependency values
+    console.log('[DatabaseContext] InitDatabase useEffect running with dependencies:',
+      {
+        checkDatabaseHealthFnChanged: !!checkDatabaseHealth,
+        initAttempted,
+        triggerDatabaseErrorModalFnChanged: !!triggerDatabaseErrorModal,
+      }
+    );
+    
     const initDatabase = async () => {
       try {
         // Only try to initialize once
-        if (initAttempted) return;
+        if (initAttempted) {
+          console.log('[DatabaseContext] Skipping database initialization because initAttempted is true');
+          return;
+        }
+        
+        console.log('[DatabaseContext] Starting database initialization');
         setInitAttempted(true);
         
         // First try to explicitly initialize the database
+        console.log('[DatabaseContext] Making POST request to /api/database/init');
         const initResponse = await fetch('/api/database/init', {
           method: 'POST',
           headers: {
@@ -195,11 +214,14 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         if (!initResponse.ok) {
           const data = await initResponse.json();
           if (isMounted) {
+            console.error('[DatabaseContext] Database initialization failed with status:', initResponse.status);
             triggerDatabaseErrorModal(data.error || 'Database initialization failed');
             setIsInitialized(false);
           }
           return;
         }
+        
+        console.log('[DatabaseContext] Database initialization successful, checking health');
         
         // Then check health
         await checkDatabaseHealth();
@@ -217,6 +239,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     
     return () => {
       isMounted = false;
+      console.log('[DatabaseContext] Init effect cleanup - component unmounting');
     };
   }, [checkDatabaseHealth, initAttempted, triggerDatabaseErrorModal]);
 

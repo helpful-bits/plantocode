@@ -1,12 +1,14 @@
 "use server";
 
-import { sessionRepository } from '@/lib/db/repository-factory';
+import { sessionRepository, backgroundJobRepository } from '@/lib/db/repositories';
 import { setupDatabase, setActiveSession } from '@/lib/db'; // Add setActiveSession
 import { ActionState } from '@/types';
 import { revalidatePath } from 'next/cache';
 import { type Session } from '@/types';
 import { handleActionError } from '@/lib/action-utils';
 import { normalizePath } from '@/lib/path-utils';
+import crypto from 'crypto';
+import { hashString } from '@/lib/hash';
 
 /**
  * Clears the xml path field for a given session.
@@ -30,14 +32,16 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
         const latestJobWithXml = session.backgroundJobs.find(job => job.xmlPath);
         
         if (latestJobWithXml) {
-            await sessionRepository.updateBackgroundJobStatus(
-                latestJobWithXml.id,
-                latestJobWithXml.status,
-                latestJobWithXml.startTime,
-                latestJobWithXml.endTime,
-                null, // Set xml path to null
-                "XML file not found"
-            );
+            await backgroundJobRepository.updateBackgroundJobStatus({
+                jobId: latestJobWithXml.id,
+                status: latestJobWithXml.status,
+                startTime: latestJobWithXml.startTime,
+                endTime: latestJobWithXml.endTime,
+                statusMessage: "XML file not found",
+                metadata: {
+                    xmlPath: null // Set XML path to null through metadata
+                }
+            });
         }
         
         return {
@@ -71,7 +75,7 @@ export async function resetSessionStateAction(sessionId: string): Promise<Action
         }
 
         // Cancel any running background jobs associated with the session
-        await sessionRepository.cancelAllSessionBackgroundJobs(sessionId);
+        await backgroundJobRepository.cancelAllSessionBackgroundJobs(sessionId);
         
         return { isSuccess: true, message: "Session state reset successfully." };
     } catch (error) {
@@ -97,7 +101,14 @@ export async function createSessionAction(
       };
     }
     
-    const session = await sessionRepository.saveSession(sessionData);
+    // Ensure session data has required fields for creation
+    const completeSessionData = {
+      ...sessionData,
+      id: sessionData.id || `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: sessionData.createdAt || Date.now(),
+    } as Session;
+    
+    const session = await sessionRepository.saveSession(completeSessionData);
     
     // If this is a new session, automatically set it as the active session for the project
     if (session) {
@@ -158,9 +169,13 @@ export async function getSessionsAction(projectDirectory: string): Promise<Actio
 /**
  * Get a single session by ID
  */
-export async function getSessionAction(sessionId: string): Promise<ActionState<Session>> {
+export async function getSessionAction(sessionId: string, signal?: AbortSignal): Promise<ActionState<Session>> {
   try {
     console.log(`[Action] Getting session: ${sessionId}`);
+    
+    // Don't check aborted status on the server directly
+    // The AbortController signal cannot be accessed this way in server components
+    
     await setupDatabase();
     const session = await sessionRepository.getSession(sessionId);
     
@@ -177,7 +192,17 @@ export async function getSessionAction(sessionId: string): Promise<ActionState<S
       message: "Session retrieved successfully"
     };
   } catch (error) {
+    // Check if it's an abort error by name
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log(`[Action] Get session operation aborted for session ${sessionId}`);
+      return {
+        isSuccess: false,
+        message: 'Operation aborted'
+      };
+    }
+    
     console.error(`[getSessionAction] Error:`, error);
+    
     return {
       isSuccess: false,
       message: `Failed to get session: ${error instanceof Error ? error.message : String(error)}`
@@ -230,14 +255,31 @@ export async function deleteSessionAction(sessionId: string): Promise<ActionStat
 /**
  * Clear all sessions
  */
-export async function clearSessionsAction(): Promise<void> {
+export async function clearSessionsAction(): Promise<ActionState<null>> {
   try {
     console.log('[Action] Clearing all sessions');
     await setupDatabase();
-    await sessionRepository.deleteAllSessions();
+    
+    // Get all sessions to find unique project directories
+    const allSessions = await sessionRepository.getAllSessions();
+    const projectDirectories = [...new Set(allSessions.map(session => session.projectDirectory))];
+    
+    // Delete sessions for each project directory
+    for (const projectDirectory of projectDirectories) {
+      await sessionRepository.deleteAllSessions(projectDirectory);
+    }
+    
     revalidatePath('/');
+    
+    return {
+      isSuccess: true,
+      message: "All sessions cleared successfully"
+    };
   } catch (error) {
-    throw new Error(`Failed to clear sessions: ${error instanceof Error ? error.message : String(error)}`);
+    return {
+      isSuccess: false,
+      message: `Failed to clear sessions: ${error instanceof Error ? error.message : String(error)}`
+    };
   }
 }
 
@@ -249,7 +291,9 @@ export async function renameSessionAction(sessionId: string, name: string): Prom
     console.log(`[Action] Renaming session ${sessionId} to: ${name}`);
     await setupDatabase();
     await sessionRepository.updateSessionName(sessionId, name);
-    revalidatePath('/');
+    
+    // Remove revalidatePath to prevent full page reloads
+    // The UI will be updated client-side in the session-manager component
     
     return {
       isSuccess: true,
@@ -313,6 +357,64 @@ export async function updateSessionProjectDirectoryAction(
     return {
       isSuccess: false,
       message: `Failed to update session project directory: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Save an existing session with the specified settings
+ */
+export async function saveSessionAction(
+  sessionData: Partial<Session>,
+  signal?: AbortSignal
+): Promise<ActionState<Session>> {
+  try {
+    console.log(`[Action] Saving session: ${sessionData.id}`);
+    
+    // Don't check aborted status on the server directly
+    // The AbortController signal cannot be accessed this way in server components
+    
+    await setupDatabase();
+    
+    if (!sessionData.id) {
+      return {
+        isSuccess: false,
+        message: "Session ID is required"
+      };
+    }
+    
+    if (!sessionData.projectDirectory) {
+      return {
+        isSuccess: false,
+        message: "Project directory is required"
+      };
+    }
+    
+    // Save the session
+    const session = await sessionRepository.saveSession(sessionData as Session);
+    
+    // No revalidatePath to avoid full page reload
+    
+    return {
+      isSuccess: true,
+      data: session,
+      message: "Session saved successfully"
+    };
+  } catch (error) {
+    // Check if it's an abort error by name
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log(`[Action] Save session operation aborted for session ${sessionData.id}`);
+      return {
+        isSuccess: false,
+        message: 'Operation aborted'
+      };
+    }
+    
+    console.error(`[saveSessionAction] Error:`, error);
+    
+    return {
+      isSuccess: false,
+      message: `Failed to save session: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }

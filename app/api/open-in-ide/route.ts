@@ -5,14 +5,23 @@ import path from 'path'; // Keep path import
 import os from 'os';
 import { existsSync } from 'fs';
 import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
+import { getProjectSetting } from '@/actions/project-settings-actions';
+import { XML_EDITOR_COMMAND_KEY } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {
-    const { filePath } = await request.json();
+    const { filePath, projectDirectory } = await request.json();
 
     if (!filePath || typeof filePath !== 'string') {
       return NextResponse.json({ error: 'File path is required and must be a string' }, { status: 400 });
     }
+
+    if (!projectDirectory || typeof projectDirectory !== 'string') {
+      return NextResponse.json({ error: 'Project directory is required and must be a string' }, { status: 400 });
+    }
+
+    // Get custom XML editor command from project settings
+    const customCommand = await getProjectSetting(projectDirectory, XML_EDITOR_COMMAND_KEY);
 
     // Resolve the path to handle potential relative paths
     const resolvedFilePath = path.resolve(filePath);
@@ -25,13 +34,13 @@ export async function POST(request: NextRequest) {
         
         if (existsSync(fallbackPath)) {
           // Use the fallback path instead
-          return openFileWithIDE(fallbackPath);
+          return openFileWithIDE(fallbackPath, customCommand);
         }
         
         return NextResponse.json({ error: 'File not found' }, { status: 404 });
       }
       
-      return openFileWithIDE(resolvedFilePath);
+      return openFileWithIDE(resolvedFilePath, customCommand);
     } catch (err) {
       console.error(`File access error for ${resolvedFilePath}:`, err);
       return NextResponse.json({ error: 'File not found or inaccessible' }, { status: 404 });
@@ -42,29 +51,39 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function openFileWithIDE(resolvedFilePath: string): NextResponse {
+function openFileWithIDE(resolvedFilePath: string, customCommand: string | null): NextResponse {
   let command: string;
   let args: string[] = [];
   
-  switch (os.platform()) {
-    case 'darwin': // macOS
-      // Use 'open' which should handle opening the file with the default app or IDE
-      command = 'idea' // '/usr/bin/open';
-      args = [resolvedFilePath];
-      break;
-    case 'win32': // Windows
-      // Use 'start' which is a built-in command
-      command = 'cmd.exe';
-      // Use /c to run the command and exit, start "" handles paths with spaces
-      args = ['/c', 'start', '""', resolvedFilePath];
-      break;
-    default: // Linux and others
-      command = 'xdg-open';
-      args = [resolvedFilePath];
-      break;
+  // If custom command is provided, use it
+  if (customCommand && customCommand.trim()) {
+    // For simplicity, assume the stored command is just the executable name
+    command = customCommand.trim();
+    args = [resolvedFilePath];
+    
+    console.log(`[OpenInIDE] Using custom command: ${command} ${args.join(' ')}`);
+  } else {
+    // Fall back to OS-specific defaults
+    switch (os.platform()) {
+      case 'darwin': // macOS
+        // Use 'open' which should handle opening the file with the default app or IDE
+        command = 'idea' // '/usr/bin/open';
+        args = [resolvedFilePath];
+        break;
+      case 'win32': // Windows
+        // Use 'start' which is a built-in command
+        command = 'cmd.exe';
+        // Use /c to run the command and exit, start "" handles paths with spaces
+        args = ['/c', 'start', '""', resolvedFilePath];
+        break;
+      default: // Linux and others
+        command = 'xdg-open';
+        args = [resolvedFilePath];
+        break;
+    }
+    
+    console.log(`[OpenInIDE] Using default command: ${command} ${args.join(' ')}`);
   }
-
-  console.log(`[OpenInIDE] Executing: ${command} ${args.join(' ')}`);
 
   // Execute the command
   // Use execFile for better security - avoids shell interpretation of the file path
@@ -78,5 +97,9 @@ function openFileWithIDE(resolvedFilePath: string): NextResponse {
   });
 
   // Assume success and return immediately - the OS handles opening the file
-  return NextResponse.json({ success: true, message: 'File opened in default editor' });
+  return NextResponse.json({ 
+    success: true, 
+    message: 'File opened in editor', 
+    customCommandUsed: !!customCommand 
+  });
 }

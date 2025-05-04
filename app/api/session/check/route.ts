@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setupDatabase } from '@/lib/db';
-import { sessionRepository } from '@/lib/db/repository-factory';
+import { sessionRepository } from '@/lib/db/repositories';
 
 /**
  * GET /api/session/check
@@ -30,6 +30,16 @@ export async function GET(request: NextRequest) {
     const sessionsByProject: Record<string, typeof allSessions> = {};
     
     for (const session of allSessions) {
+      // Validate session.id is a proper string
+      if (typeof session.id !== 'string' || !session.id.trim()) {
+        console.error(`[API session/check] Found session with invalid ID:`, {
+          id: session.id,
+          type: typeof session.id,
+          name: session.name || 'Unnamed'
+        });
+        continue; // Skip this session in the analysis
+      }
+      
       // Normalize project directory
       const projectDir = session.projectDirectory || 'unknown';
       
@@ -81,6 +91,15 @@ export async function GET(request: NextRequest) {
       let hasDuplicates = false;
       
       for (const session of sessions) {
+        // Skip if session ID isn't valid (double-check)
+        if (typeof session.id !== 'string' || !session.id.trim()) {
+          console.error(`[API session/check] Skipping session with invalid ID in duplicate detection:`, {
+            id: session.id,
+            type: typeof session.id
+          });
+          continue;
+        }
+        
         const taskDesc = session.taskDescription || '';
         if (!taskMap[taskDesc]) {
           taskMap[taskDesc] = [];

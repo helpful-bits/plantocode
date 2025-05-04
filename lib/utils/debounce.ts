@@ -9,7 +9,7 @@
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
-): (...args: Parameters<T>) => void & { cancel: () => void } {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let timeout: NodeJS.Timeout | null = null;
   
   const debounced = function(this: any, ...args: Parameters<T>): void {

@@ -20,6 +20,11 @@ export async function correctPathsAction(
     return { isSuccess: false, message: "No paths provided to correct" };
   }
   
+  // Validate sessionId if provided
+  if (sessionId !== undefined && (typeof sessionId !== 'string' || !sessionId.trim())) {
+    return { isSuccess: false, message: "Invalid session ID provided for path correction" };
+  }
+  
   try {
     // Parse input paths
     const pathsArray = paths
@@ -48,7 +53,8 @@ export async function correctPathsAction(
       
       model = pathSettings.model;
       maxTokens = pathSettings.maxTokens;
-      temperature = pathSettings.temperature;
+      // Ensure temperature is defined, falling back to default if not
+      temperature = pathSettings.temperature ?? 0.3;
     }
     
     // Prepare prompt for path correction

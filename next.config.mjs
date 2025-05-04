@@ -46,6 +46,12 @@ const nextConfig = {
       // Have more pages loaded at once
       pagesBufferLength: 5,
     },
+    
+    // Disable request logging to prevent log flood during development
+    logging: {
+      // Turn off all incoming request logs completely
+      incomingRequests: false,
+    },
 };
 
 export default nextConfig;

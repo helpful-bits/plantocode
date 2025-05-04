@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import SettingsForm from "@/app/_components/settings/settings-form";
+import SettingsForm from "@/app/components/settings/settings-form";
 import { RequireProjectDirectory } from "@/components/with-project-directory";
 
 export const metadata: Metadata = {

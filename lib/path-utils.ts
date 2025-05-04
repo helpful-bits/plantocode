@@ -91,6 +91,24 @@ export function getProjectPatchesDirectory(projectDirectory: string): string {
 }
 
 /**
+ * Directory name for implementation plans
+ */
+export const IMPLEMENTATION_PLANS_DIR_NAME = 'implementation_plans';
+
+/**
+ * Returns the path to the implementation plans directory in the project directory
+ * This directory is used for XML files containing implementation plans
+ * @param projectDirectory Path to the project directory
+ * @returns Path to the implementation plans directory within the project
+ */
+export function getProjectImplementationPlansDirectory(projectDirectory: string): string {
+  if (!projectDirectory) {
+    throw new Error('Project directory is required');
+  }
+  return path.join(projectDirectory, IMPLEMENTATION_PLANS_DIR_NAME);
+}
+
+/**
  * Returns the path to the fallback patches directory in the application directory
  * This directory is used for XML files when project directory is not accessible
  * @returns Path to the application's patches directory

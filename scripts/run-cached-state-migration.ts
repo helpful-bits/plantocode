@@ -1,7 +1,8 @@
-import { db } from '../lib/db'; // Keep db import
+import connectionPool from '../lib/db/connection-pool';
 import fs from 'fs'; // Keep fs import
-
 import path from 'path'; // Keep path import
+import Database from 'better-sqlite3'; // Add Database import
+
 async function runCachedStateMigration() { // Keep function signature
   console.log('Running migration to remove output_format from cached_state table...');
   
@@ -14,39 +15,32 @@ async function runCachedStateMigration() { // Keep function signature
   
   const sql = fs.readFileSync(migrationFile, 'utf8');
   
-  return new Promise<void>((resolve, reject) => {
+  try {
     // First check if the migration has already been applied
-    db.get("SELECT name FROM migrations WHERE name = '0005_remove_output_format_from_cached_state.sql'", (err, row) => {
-      if (err) {
-        console.error('Error checking migration status:', err);
-        return reject(err);
-      }
+    const migrationExists = await connectionPool.withConnection((db: Database.Database) => {
+      const row = db.prepare("SELECT name FROM migrations WHERE name = '0005_remove_output_format_from_cached_state.sql'").get();
+      return !!row;
+    }, true);
+    
+    if (migrationExists) {
+      console.log('Migration has already been applied. Skipping.');
+      return;
+    }
+    
+    // Run the migration as a transaction
+    await connectionPool.withTransaction((db: Database.Database) => {
+      // Execute the SQL
+      db.exec(sql);
       
-      if (row) {
-        console.log('Migration has already been applied. Skipping.');
-        return resolve();
-      }
+      // Record the migration
+      db.prepare('INSERT INTO migrations (name) VALUES (?)').run('0005_remove_output_format_from_cached_state.sql');
       
-      // Run the migration
-      db.exec(sql, (execErr) => {
-        if (execErr) {
-          console.error('Error executing migration:', execErr);
-          return reject(execErr);
-        }
-        
-        // Record the migration
-        db.run('INSERT INTO migrations (name) VALUES (?)', ['0005_remove_output_format_from_cached_state.sql'], (insertErr) => {
-          if (insertErr) {
-            console.error('Error recording migration:', insertErr);
-            return reject(insertErr);
-          }
-          
-          console.log('Migration completed successfully!');
-          resolve();
-        });
-      });
+      console.log('Migration completed successfully!');
     });
-  });
+  } catch (error) {
+    console.error('Error during migration:', error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 // Run the migration
@@ -56,6 +50,6 @@ runCachedStateMigration()
     process.exit(0);
   })
   .catch(error => {
-    console.error('Migration failed:', error);
+    console.error('Migration failed:', error instanceof Error ? error.message : String(error));
     process.exit(1);
   }); 

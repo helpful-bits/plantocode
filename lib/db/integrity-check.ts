@@ -1,14 +1,29 @@
 import fs from 'fs';
+import Database from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import { exec } from 'child_process';
-import { promisify } from 'util';
-import { connectionPool, DB_FILE, closeDatabase } from './index';
+import { connectionPool, closeDatabase } from './index';
+import { DB_FILE } from './constants';
 
-const execAsync = promisify(exec);
+// Create a simple exec wrapper without using promisify
+const execAsync = (command: string): Promise<{stdout: string, stderr: string}> => {
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        // Ensure stdout and stderr are strings
+        resolve({ 
+          stdout: stdout.toString(), 
+          stderr: stderr.toString() 
+        });
+      }
+    });
+  });
+};
 
-const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
-// DB_FILE is now imported from connection-pool
+const APP_DATA_DIR = path.join(os.homedir(), '.o1-pro-flow');
 const BACKUP_DIR = path.join(APP_DATA_DIR, 'backups');
 
 export interface IntegrityResult {
@@ -63,7 +78,7 @@ export async function backupDatabase(): Promise<string | null> {
  */
 export async function checkDatabaseIntegrity(): Promise<IntegrityResult> {
   try {
-    return connectionPool.withConnection((db) => {
+    return connectionPool.withConnection((db: Database.Database) => {
       const errors: string[] = [];
       
       // Run SQLite integrity check
@@ -128,7 +143,7 @@ export async function recreateDatabaseStructure(): Promise<boolean> {
       return false;
     }
     
-    return connectionPool.withTransaction((db) => {
+    return connectionPool.withTransaction((db: Database.Database) => {
       try {
         // Create temporary tables for data we want to preserve
         try {

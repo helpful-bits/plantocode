@@ -1,50 +1,15 @@
 "use server";
 
 import { ActionState } from '@/types';
-import { sessionRepository } from '@/lib/db/repository-factory';
+import { sessionRepository } from '@/lib/db/repositories';
 import { setupDatabase } from '@/lib/db'; // Use index export
-import { getProjectPatchesDirectory, getAppPatchesDirectory, normalizePath, getPatchFilename } from '@/lib/path-utils';
 import geminiClient from '@/lib/api/gemini-client';
 import { WriteStream } from 'fs';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { stripMarkdownCodeFences } from '@/lib/utils'; // Keep for potential other uses, but remove from processing logic here
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
 // Constants
-const GENERATE_CONTENT_API = "generateContent"; // Use generateContent endpoint
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_MODEL}:${GENERATE_CONTENT_API}?alt=sse`; // Add alt=sse for streaming
-const FALLBACK_PATCHES_DIR = getAppPatchesDirectory(); // Used as fallback if we can't write to project directory
 const MAX_OUTPUT_TOKENS = 65536; // Maximum output tokens for Gemini 2.5 Pro
-
-interface GeminiRequestPayload {
-    contents: {
-        role: string;
-        parts: { text: string }[];
-    }[];
-    generationConfig?: {
-        responseMimeType?: string;
-        maxOutputTokens?: number;
-        temperature?: number;
-        topP?: number;
-        topK?: number;
-    };
-}
-
-interface GeminiResponse {
-    candidates: {
-        content: {
-            parts: { text: string }[];
-            role: string;
-        };
-        // Other candidate fields (finishReason, safetyRatings, etc.) could be added here
-    }[];
-    // Add promptFeedback if needed
-}
-
-function sanitizeFilename(name: string): string {
-    if (!name) return 'untitled_session'; // Handle empty session names
-    return name.replace(/[^a-z0-9_\-\.]/gi, '_').substring(0, 60); // Keep it reasonably short
-}
 
 /**
  * Send a prompt to Gemini and receive streaming response
@@ -52,7 +17,6 @@ function sanitizeFilename(name: string): string {
 export async function sendPromptToGeminiAction(
   promptText: string,
   sessionId: string,
-  userTimezone?: string,
   options?: { temperature?: number; streamingUpdates?: any }
 ): Promise<ActionState<{ requestId: string, savedFilePath: string | null }>> {
   await setupDatabase();
@@ -61,8 +25,10 @@ export async function sendPromptToGeminiAction(
   if (!promptText) {
     return { isSuccess: false, message: "Prompt cannot be empty." };
   }
-  if (!sessionId) {
-    return { isSuccess: false, message: "Session ID is required." };
+  
+  // Add strict validation for sessionId
+  if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+    return { isSuccess: false, message: "Session ID is required and must be a string." };
   }
   
   try {
@@ -92,7 +58,7 @@ export async function sendPromptToGeminiAction(
         onStart: () => {
           console.log(`[Gemini Action] Started processing for session ${sessionId}`);
         },
-        onError: (error) => {
+        onError: (error: Error) => {
           console.error(`[Gemini Action] Error processing request:`, error);
         }
       },

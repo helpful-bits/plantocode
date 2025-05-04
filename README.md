@@ -25,7 +25,7 @@ Whether you're refactoring legacy code, planning new features, or designing enti
 - **Background Processing** - Complex generations run asynchronously while you continue working
 
 ### Superior Developer Experience
-- **Persistent Sessions** - All work saved automatically per project
+- **Persistent Sessions** - All work automatically saved in real-time with intelligent failure recovery and retry mechanisms
 - **Real-time Updates** - Track generation progress with live status indicators
 - **Multi-Model AI** - Optimized use of leading models for specific tasks:
   - **Google Gemini 2.5 Pro** for architecture generation
@@ -153,9 +153,9 @@ This safely moves data from the old location (`o1-pro-flow.db`) to the new locat
 - AI-assisted correction and refinement
 
 ### Persistent Processing
-- Sessions automatically saved and restored
+- Sessions automatically saved and restored with robust error handling
 - Background processing with cancelation support
-- Real-time status updates
+- Real-time status updates without intrusive notifications
 - Project settings customization for consistent workflows
 
 ## 📂 Project Structure
@@ -167,7 +167,14 @@ This safely moves data from the old location (`o1-pro-flow.db`) to the new locat
 │   └── settings        # Application settings UI
 ├── components          # Reusable UI components
 ├── lib                 # Utility functions and libraries
-│   └── db              # Database layer (SQLite)
+│   ├── db              # Database layer (SQLite)
+│   └── services        # Core services
+│       └── session-sync  # Session persistence and synchronization
+│           ├── api-handler.ts      # API interaction logic
+│           ├── health-checker.ts   # Service health monitoring
+│           ├── queue-manager.ts    # Operation queue management
+│           ├── types.ts            # Shared type definitions
+│           └── index.ts            # Service exports
 ├── actions             # Server actions for core functionality
 ├── migrations          # Database migrations
 ├── hooks               # React hooks

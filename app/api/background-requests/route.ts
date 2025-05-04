@@ -1,28 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionRepository } from '@/lib/db';
-import { setupDatabase } from '@/lib/db/setup';
+import { backgroundJobRepository } from '@/lib/db/repositories';
+import { setupDatabase } from '@/lib/db';
 
+/**
+ * GET /api/background-requests
+ * Returns all visible (non-cleared) background jobs 
+ * The response contains the 'response' field as the primary location for textual results,
+ * rather than legacy metadata.text.
+ * 
+ * Note: This route is maintained for backward compatibility.
+ * For new implementations, prefer using the /api/background-jobs endpoint
+ * which returns data in the ActionState format.
+ */
 export async function GET(request: NextRequest) {
   try {
+    console.log('[API] GET /api/background-requests');
+    
     // Make sure database is initialized
     await setupDatabase();
     
-    // Fetch all non-cleared requests
-    const visibleRequests = await sessionRepository.getAllVisibleGeminiRequests();
+    // Fetch all non-cleared requests using the repository's getAllVisibleBackgroundJobs method
+    console.time('[API] getAllVisibleBackgroundJobs');
+    const jobs = await backgroundJobRepository.getAllVisibleBackgroundJobs();
+    console.timeEnd('[API] getAllVisibleBackgroundJobs');
     
-    // Return visible requests as JSON response
+    console.log(`[API] Retrieved ${jobs.length} visible background jobs`);
+    
+    // Map requests to ensure backward compatibility for clients expecting modelOutput
+    const requests = jobs.map(job => ({
+      ...job,
+      // Ensure response exists (use modelOutput as fallback if needed)
+      response: job.response || job.modelOutput || null,
+      // Keep modelOutput for backward compatibility
+      modelOutput: job.modelOutput || job.response || null
+    }));
+    
+    // Log some basic info about the jobs for debugging
+    if (requests.length > 0) {
+      console.log('[API] Sample job fields:', 
+        requests.slice(0, 2).map(job => ({
+          id: job.id?.substring(0, 8),
+          status: job.status,
+          hasResponse: Boolean(job.response),
+          hasModelOutput: Boolean(job.modelOutput)
+        }))
+      );
+    }
+    
+    // Return visible requests in the expected format
     return NextResponse.json({ 
       success: true, 
-      requests: visibleRequests 
+      requests 
     });
   } catch (error) {
     console.error('[API] Error fetching background requests:', error);
     
-    // Return error response
+    // Return error response with empty requests array
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error fetching background requests' 
+        error: error instanceof Error ? error.message : 'Unknown error fetching background requests',
+        requests: [] // Always include an empty array for consistency
       }, 
       { status: 500 }
     );

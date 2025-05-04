@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/index';
+import Database from 'better-sqlite3';
+import { db, connectionPool } from '@/lib/db';
 import { resetDatabase } from '@/lib/db/setup'; // Keep resetDatabase import
 import { hashString } from '@/lib/hash';
 // GET /api/debug/database?action=...
@@ -10,16 +11,13 @@ export async function GET(request: NextRequest) {
   // Check database tables
   if (action === 'check') {
     try {
-      const tables = await new Promise<any[]>((resolve, reject) => {
-        db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
-          if (err) reject(err);
-          else resolve(tables);
-        });
-      });
+      const tables = await connectionPool.withConnection((db: Database.Database) => {
+        return db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
+      }, true); // Read-only operation
 
       return NextResponse.json({ 
         success: true, 
-        tables: tables.map(t => t.name),
+        tables: tables.map((t) => t.name),
         message: `Found ${tables.length} tables`
       });
     } catch (error: unknown) { // Use unknown type for catch block variable
@@ -69,12 +67,9 @@ export async function GET(request: NextRequest) {
       
       query += " ORDER BY project_hash, key";
       
-      const entries = await new Promise<any[]>((resolve, reject) => {
-        db.all(query, params, (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        });
-      });
+      const entries = await connectionPool.withConnection((db: Database.Database) => {
+        return db.prepare(query).all(...params);
+      }, true); // Read-only operation
       
       return NextResponse.json({ 
         success: true, 
@@ -110,12 +105,10 @@ export async function GET(request: NextRequest) {
         params.push(projectHash);
       }
       
-      const result = await new Promise<{changes: number}>((resolve, reject) => {
-        db.run(query, params, function(err) {
-          if (err) reject(err);
-          else resolve({changes: this.changes});
-        });
-      });
+      const result = await connectionPool.withConnection((db: Database.Database) => {
+        const result = db.prepare(query).run(...params);
+        return { changes: result.changes };
+      }, false); // Writable operation
       
       const rowsAffected = result.changes;
       const targetDescription = projectHash ? `for project hash ${projectHash}` : 'for all projects';
@@ -142,41 +135,34 @@ export async function GET(request: NextRequest) {
       const testProjectHash = hashString(testProject); // Hash the project dir
       
       // First, attempt to write a test value
-      await new Promise<void>((resolve, reject) => {
-        db.run(`
+      await connectionPool.withConnection((db: Database.Database) => {
+        db.prepare(`
           INSERT OR REPLACE INTO cached_state
           (project_hash, key, value, updated_at)
           VALUES (?, ?, ?, ?)
-        `, [testProjectHash, testKey, testValue, Date.now()], (err) => { // Use projectHash, remove outputFormat
-          if (err) reject(err); // Reject on error
-          else resolve();
-        });
-      });
+        `).run(testProjectHash, testKey, testValue, Date.now());
+      }, false); // Writable operation
       
       // Then, try to read it back
-      const readValue = await new Promise<string | null>((resolve, reject) => {
-        db.get(`
+      const readValue = await connectionPool.withConnection((db: Database.Database) => {
+        const row = db.prepare(`
           SELECT value FROM cached_state
           WHERE project_hash = ? AND key = ?
-        `, [testProjectHash, testKey], (err, row: any) => {
-          if (err) reject(err);
-          else resolve(row ? row.value : null);
-        });
-      });
+        `).get(testProjectHash, testKey);
+        
+        return row ? (row as { value: string | null }).value : null;
+      }, true); // Read-only operation
       
       // Check if the read value matches what we wrote
       const readMatchesWrite = readValue === testValue;
       
       // Clean up the test data
-      await new Promise<void>((resolve, reject) => {
-        db.run(`
+      await connectionPool.withConnection((db: Database.Database) => {
+        db.prepare(`
           DELETE FROM cached_state
           WHERE project_hash = ? AND key = ?
-        `, [testProjectHash, testKey], (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
+        `).run(testProjectHash, testKey);
+      }, false); // Writable operation
       
       return NextResponse.json({
         success: true,
@@ -212,27 +198,21 @@ export async function GET(request: NextRequest) {
       const projectHash = hashString(projectDirectory);
       
       // Get task description entries across all formats
-      const taskEntries = await new Promise<any[]>((resolve, reject) => {
-        db.all(`
+      const taskEntries = await connectionPool.withConnection((db: Database.Database) => {
+        return db.prepare(`
           SELECT * FROM cached_state 
           WHERE project_hash = ? AND key = 'task-description'
-        `, [projectHash], (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows || []);
-        });
-      });
+        `).all(projectHash);
+      }, true); // Read-only operation
       
       // Get all entries for this project
-      const allEntries = await new Promise<any[]>((resolve, reject) => {
-        db.all(`
+      const allEntries = await connectionPool.withConnection((db: Database.Database) => {
+        return db.prepare(`
           SELECT * FROM cached_state 
           WHERE project_hash = ?
           ORDER BY key
-        `, [projectHash], (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows || []);
-        });
-      });
+        `).all(projectHash);
+      }, true); // Read-only operation
       
       return NextResponse.json({ 
         success: true, 
@@ -251,9 +231,57 @@ export async function GET(request: NextRequest) {
     }
   }
   
-  // If no recognized action was provided
+  // Get info about a specific database table
+  if (action === 'table-info') {
+    const tableName = searchParams.get('table');
+    
+    if (!tableName) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Must provide table parameter' 
+      }, { status: 400 });
+    }
+    
+    try {
+      // Get table schema
+      const schema = await connectionPool.withConnection((db: Database.Database) => {
+        return db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{name: string, type: string, notnull: number, dflt_value: string|null, pk: number}>;
+      }, true); // Read-only operation
+      
+      // Get row count
+      const countResult = await connectionPool.withConnection((db: Database.Database) => {
+        return db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get();
+      }, true); // Read-only operation
+      
+      const rowCount = countResult ? (countResult as { count: number }).count : 0;
+      
+      // Get sample rows if the table has data
+      let sampleRows: unknown[] = [];
+      if (rowCount > 0) {
+        sampleRows = await connectionPool.withConnection((db: Database.Database) => {
+          return db.prepare(`SELECT * FROM ${tableName} LIMIT 5`).all();
+        }, true); // Read-only operation
+      }
+      
+      return NextResponse.json({ 
+        success: true, 
+        table: tableName,
+        schema,
+        rowCount,
+        sampleRows,
+        message: `Table ${tableName} has ${schema.length} columns and ${rowCount} rows` 
+      });
+    } catch (error: unknown) { // Use unknown type for catch block variable
+      return NextResponse.json({ 
+        success: false, 
+        error: `Failed to get table info: ${error}` 
+      }, { status: 500 });
+    }
+  }
+  
+  // Unknown action
   return NextResponse.json({ 
     success: false, 
-    error: 'Invalid or missing action parameter. Supported actions: check, reset, cached-state, clear-cache, test-db, task-state' 
+    error: `Unknown action: ${action}` 
   }, { status: 400 });
 }

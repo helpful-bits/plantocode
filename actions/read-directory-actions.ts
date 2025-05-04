@@ -2,7 +2,7 @@
 
 import { promises as fs } from "fs";
 import path from "path"; // Keep path import
-import { getAllNonIgnoredFiles, invalidateFileCache } from "@/lib/git-utils";
+import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 import { isBinaryFile, BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
 import streamingRequestPool, { RequestType } from "@/lib/api/streaming-request-pool";
@@ -158,9 +158,11 @@ export async function readDirectoryAction(projectDirectory: string): Promise<Act
       // Implementation of directory reading
       return await readDirectoryImplementation(projectDirectory);
     },
-    'file-system', // Use a constant session ID for file system operations
-    10, // High priority
-    RequestType.FILE_OPERATION // Mark as file operation to ensure it takes priority
+    {
+      sessionId: 'file-system', // Use a constant session ID for file system operations
+      priority: 10, // High priority
+      requestType: RequestType.FILE_OPERATION // Mark as file operation to ensure it takes priority
+    }
   );
 }
 
@@ -246,68 +248,53 @@ async function readDirectoryImplementation(projectDirectory: string): Promise<Ac
         };
       }
       
+      // Process each file with error handling around individual files
       const fileContents: { [key: string]: string } = {};
+      const skippedFiles = {
+        nonExistent: 0,
+        binaryExtension: 0,
+        binaryContent: 0,
+        permissionError: 0
+      };
       
-      // Process files in batches to avoid memory issues with large repositories
-      const BATCH_SIZE = 200;
-      let processedCount = 0; // Keep count
-      let binaryCount = 0;
-      let errorCount = 0;
-      let deletedCount = 0;
-
-      if (DEBUG_LOGS) console.log(`[Refresh] Processing ${files.length} files in batches of ${BATCH_SIZE}`);
-
-      for (let i = 0; i < files.length; i += BATCH_SIZE) {
-        const batch = files.slice(i, i + BATCH_SIZE);
-
-        for (const file of batch) {
-          const fullPath = path.join(finalDirectory, file);
+      for (const filePath of files) {
+        try {
+          if (DEBUG_LOGS) console.log(`[ReadDir] Processing: ${filePath}`);
+          const fullPath = path.join(finalDirectory, filePath);
           
-          // Skip binary files and known non-text extensions
-          const ext = path.extname(file).toLowerCase();
-          if (BINARY_EXTENSIONS.has(ext)) {
-            binaryCount++;
+          // Check if file exists
+          try {
+            await fs.access(fullPath);
+          } catch (fileError) {
+            if (DEBUG_LOGS) console.log(`[ReadDir] Skipping non-existent file: ${filePath}`);
+            skippedFiles.nonExistent++;
             continue;
           }
-
-          try {
-            // Check if file exists
-            try {
-              await fs.access(fullPath);
-            } catch (error) {
-              if (DEBUG_LOGS) console.warn(`[Refresh] File not found (likely deleted): ${fullPath}`);
-              deletedCount++;
-              continue;
-            }
-            
-            const buffer = await fs.readFile(fullPath);
-            
-            // Skip binary files based on content analysis
-            if (await isBinaryFile(buffer)) {
-              binaryCount++;
-              continue;
-            }
-            
-            // Store relative path as key
-            fileContents[file] = buffer.toString('utf-8');
-            processedCount++;
-          } catch (error: unknown) {
-            errorCount++;
-            const err = error as NodeJS.ErrnoException;
-            if (err.code === 'ENOENT') {
-              if (DEBUG_LOGS) console.warn(`[Refresh] File not found (definitely deleted or renamed): ${file}`);
-              deletedCount++;
-            } else if (err.code === 'EACCES') {
-              console.warn(`Permission denied when trying to read: ${file}`);
-            } else {
-              console.warn(`Failed to read file ${file}:`, err.message || err);
-            }
+          
+          const ext = path.extname(fullPath).toLowerCase();
+          if (BINARY_EXTENSIONS.has(ext)) {
+            if (DEBUG_LOGS) console.log(`[ReadDir] Skipping binary extension file: ${filePath}`);
+            skippedFiles.binaryExtension++;
+            continue;
           }
-        } // End for loop (file of batch)
-      } // End of batch processing loop
+          
+          const buffer = await fs.readFile(fullPath);
+          if (await isBinaryFile(buffer)) {
+            if (DEBUG_LOGS) console.log(`[ReadDir] Skipping detected binary file: ${filePath}`);
+            skippedFiles.binaryContent++;
+            continue;
+          }
+          
+          fileContents[filePath] = buffer.toString('utf-8'); // Read as UTF-8
+        } catch (fileError) {
+          if (DEBUG_LOGS) console.log(`[ReadDir] Skipping file due to permission error or other issue: ${filePath}`, fileError);
+          skippedFiles.permissionError++;
+        }
+      }
       
       const fileCount = Object.keys(fileContents).length;
-      if (DEBUG_LOGS) console.log(`[Refresh] Processed ${fileCount} files. Binary: ${binaryCount}, Errors: ${errorCount}, Deleted: ${deletedCount}`);
+      const totalSkipped = skippedFiles.nonExistent + skippedFiles.binaryExtension + skippedFiles.binaryContent + skippedFiles.permissionError;
+      if (DEBUG_LOGS) console.log(`[ReadDir] Processed ${fileCount} files. Skipped: ${totalSkipped} (Non-existent: ${skippedFiles.nonExistent}, Binary extension: ${skippedFiles.binaryExtension}, Binary content: ${skippedFiles.binaryContent}, Permission errors: ${skippedFiles.permissionError})`);
       
       if (fileCount === 0) {
         // If we have a cached version, use it when no files are found
