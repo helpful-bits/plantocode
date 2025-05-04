@@ -1,10 +1,17 @@
 "use client";
 
 import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback } from "react";
-import { useDatabase } from "./database-context";
+// TODO: Fix the missing database context module
+// import { useDatabase } from "./database-context";
 import { normalizePath } from "@/lib/path-utils";
 import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
 import { useNotification } from "./notification-context";
+import { useLocalStorage } from "@/lib/hooks/use-local-storage";
+import { debounce } from "@/lib/utils/debounce";
+
+// Helper function to get localStorage key for active session based on project directory
+const getLocalStorageKeyForActiveSession = (projectDirectory: string) => 
+  `activeSessionId-${projectDirectory}`;
 
 interface ProjectContextType {
   projectDirectory: string;
@@ -12,7 +19,7 @@ interface ProjectContextType {
   isLoading: boolean;
   error: string | null;
   activeSessionId: string | null;
-  setActiveSessionId: (id: string | null) => void;
+  setActiveSessionId: (id: string | null, currentProjectDirectory?: string) => void;
 }
 
 // Default context values
@@ -27,20 +34,89 @@ const defaultContextValue: ProjectContextType = {
 
 const ProjectContext = createContext<ProjectContextType>(defaultContextValue);
 
+// Track calls to project directory and session ID changes
+const projectDirChanges = new Map<string, { count: number, lastChange: number, stack: string }>();
+const sessionIdChanges = new Map<string, { count: number, lastChange: number, stack: string }>();
+
+// Function to track and log API call patterns
+const trackAPICall = (
+  callType: 'projectDir' | 'sessionId', 
+  key: string,
+  details: {stack?: string} = {}
+) => {
+  const trackerMap = callType === 'projectDir' ? projectDirChanges : sessionIdChanges;
+  const now = Date.now();
+  
+  if (!trackerMap.has(key)) {
+    trackerMap.set(key, { 
+      count: 1, 
+      lastChange: now, 
+      stack: details.stack || new Error().stack || 'unknown' 
+    });
+    return;
+  }
+  
+  const entry = trackerMap.get(key)!;
+  entry.count++;
+  
+  // Calculate time since last change
+  const timeSinceLastChange = now - entry.lastChange;
+  
+  // If calls are happening too quickly, log detailed info
+  if (timeSinceLastChange < 5000 && entry.count > 3) {
+    console.warn(`[ProjectContext] Frequent ${callType} changes detected for key "${key}":`);
+    console.warn(`  - ${entry.count} changes`);
+    console.warn(`  - Last change: ${timeSinceLastChange}ms ago`);
+    console.warn(`  - Current call stack: ${details.stack || new Error().stack}`);
+    console.warn(`  - Initial call stack: ${entry.stack}`);
+  }
+  
+  // Update last change time
+  entry.lastChange = now;
+  
+  // Reset count after 30 seconds of inactivity
+  if (timeSinceLastChange > 30000) {
+    entry.count = 1;
+    entry.stack = details.stack || new Error().stack || 'unknown';
+  }
+};
+
 export function ProjectProvider({ children }: { children: ReactNode }) {
-  // Keep the database reference for backward compatibility
-  const { repository } = useDatabase();
+  // TODO: Fix the database context issue
+  // const { repository } = useDatabase();
   const { showNotification } = useNotification();
   
   // Local state
   const [projectDirectory, setProjectDirectoryState] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
+  
+  // Track the storage key to ensure it updates when project directory changes
+  const storageKey = getLocalStorageKeyForActiveSession(projectDirectory || "none");
+  
+  // Use localStorage for activeSessionId with dynamic key based on project directory
+  const [activeSessionId, setActiveSessionIdLS] = useLocalStorage<string | null>(
+    storageKey, 
+    null
+  );
   
   // Refs
   const lastProjectDirChangeRef = useRef<number>(0);
   const PROJECT_DIR_CHANGE_COOLDOWN = 5000; // 5 second cooldown
+  
+  // Debounced localStorage setter to avoid rapid subsequent writes
+  const debouncedSetGlobalProjectDir = useRef(
+    debounce((dir: string) => {
+      try {
+        if (typeof window !== 'undefined') {
+          console.log(`[ProjectContext] Debounced localStorage update for project directory: ${dir}`);
+          localStorage.setItem(GLOBAL_PROJECT_DIR_KEY, dir);
+        }
+      } catch (err) {
+        console.error('[ProjectContext] Error in debounced localStorage update:', err);
+      }
+    }, 1000) // 1 second debounce
+  ).current;
   
   // Load initial project directory
   useEffect(() => {
@@ -65,29 +141,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             console.log(`[ProjectContext] Found cached project directory: ${normalizedDir}`);
             setProjectDirectoryState(normalizedDir);
             
-            // Fetch the active session ID from the API
-            try {
-              const response = await fetch(`/api/active-session?projectDirectory=${encodeURIComponent(normalizedDir)}`);
-              
-              if (response.ok) {
-                const data = await response.json();
-                if (isMounted) {
-                  if (data.rateLimited) {
-                    console.log(`[ProjectContext] Active session request was rate limited`);
-                  } else {
-                    console.log(`[ProjectContext] Fetched active session ID from API: ${data.sessionId || 'null'}`);
-                    setActiveSessionIdState(data.sessionId);
-                  }
-                }
-              } else {
-                const data = await response.json().catch(() => ({}));
-                console.error(`[ProjectContext] Error fetching active session from API: ${data.error || response.status}`);
-                // Don't show notification here, as this is just initialization
-              }
-            } catch (sessionErr) {
-              console.error(`[ProjectContext] Error fetching active session from API:`, sessionErr);
-              // Don't block initialization if API call fails
-            }
+            // The activeSessionId will be loaded automatically by the useLocalStorage hook
+            // based on the localStorage key for this project directory
           } catch (pathErr) {
             console.error(`[ProjectContext] Error normalizing path:`, pathErr);
             setError(`Invalid project directory format: ${cachedDir}`);
@@ -142,43 +197,24 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const normalizedDir = normalizePath(dir);
       console.log(`[ProjectContext] Setting project directory: ${normalizedDir}`);
       
-      // Update state first for immediate UI response
+      // Save current active session before switching projects
+      // Note: We rely on SessionManager to handle saving the session
+      // before initiating the project change, rather than doing it here
+      
+      // Before changing project, clear active session ID for the new directory
+      if (typeof window !== 'undefined') {
+        const newStorageKey = getLocalStorageKeyForActiveSession(normalizedDir);
+        // Explicitly set to null to avoid loading a potentially stale session
+        localStorage.removeItem(newStorageKey);
+        console.log(`[ProjectContext] Cleared localStorage active session for new project directory: ${normalizedDir}`);
+      }
+      
+      // Update state for immediate UI response
       setProjectDirectoryState(normalizedDir);
       
-      // Clear active session ID when changing project
-      setActiveSessionIdState(null);
+      // Use debounced function for localStorage update to prevent rapid writes
+      debouncedSetGlobalProjectDir(normalizedDir);
       
-      // Persist to localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(GLOBAL_PROJECT_DIR_KEY, normalizedDir);
-        console.log(`[ProjectContext] Saved project directory to localStorage`);
-      
-        // Explicitly clear the active session for this project via API
-        try {
-          const response = await fetch('/api/active-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              projectDirectory: normalizedDir, 
-              sessionId: null 
-            })
-          });
-          
-          const data = await response.json();
-          
-          if (response.ok) {
-            if (data.rateLimited) {
-              console.log(`[ProjectContext] Request to clear active session was rate limited, but accepted`);
-            } else {
-              console.log(`[ProjectContext] Cleared active session for new project directory via API`);
-            }
-          } else {
-            console.error(`[ProjectContext] Error clearing active session via API: ${data.error || response.status}`);
-          }
-        } catch (apiErr) {
-          console.error(`[ProjectContext] Error calling active-session API:`, apiErr);
-        }
-      }
     } catch (err) {
       console.error(`[ProjectContext] Error setting project directory:`, err);
       setError(`Failed to set project directory: ${err instanceof Error ? err.message : String(err)}`);
@@ -189,11 +225,28 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         type: "error"
       });
     }
-  }, [showNotification]);
+  }, [showNotification, debouncedSetGlobalProjectDir]);
   
   // Set active session ID with persistence
-  const setActiveSessionId = useCallback(async (id: string | null) => {
-    if (!projectDirectory) {
+  const setActiveSessionId = useCallback((id: string | null, currentProjectDirectory?: string) => {
+    // Add validation for id (allow null but reject objects)
+    if (id !== null && typeof id !== 'string') {
+      console.error('[ProjectContext] Invalid sessionId type:', typeof id, id);
+      showNotification({
+        title: "Error",
+        message: "Cannot set active session: invalid session ID type",
+        type: "error"
+      });
+      return;
+    }
+    
+    const effectiveProjectDir = currentProjectDirectory || projectDirectory;
+    const callStack = new Error().stack;
+    
+    // Track this API call
+    trackAPICall('sessionId', `${effectiveProjectDir}-${id}`, { stack: callStack });
+    
+    if (!effectiveProjectDir) {
       console.log(`[ProjectContext] Cannot set active session: no project directory`);
       showNotification({
         title: "Warning",
@@ -204,50 +257,24 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      console.log(`[ProjectContext] Setting active session ID: ${id || 'null'}`);
+      console.log(`[ProjectContext] Setting active session ID: ${id || 'null'} at ${new Date().toISOString()}`);
       
-      // Update local state immediately for UI responsiveness
-      setActiveSessionIdState(id);
-      
-      // Update the active session via API
-      try {
-        const response = await fetch('/api/active-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            projectDirectory, 
-            sessionId: id 
-          })
-        });
+      // If the current projectDirectory matches the effectiveProjectDir (most common case),
+      // just use the hook setter which handles the current project directory correctly
+      if (!currentProjectDirectory || currentProjectDirectory === projectDirectory) {
+        setActiveSessionIdLS(id);
+        console.log(`[ProjectContext] Updated active session via localStorage hook: ${id || 'null'}`);
+      } else {
+        // For a different project directory, we should use a more reliable method
+        // Consider using saveCachedState directly here if needed in the future
+        console.warn(`[ProjectContext] Setting active session for a different project directory is not recommended.`);
+        console.warn(`[ProjectContext] For proper session switching, change projectDirectory first with setProjectDirectory().`);
         
-        const data = await response.json();
-        
-        if (response.ok) {
-          if (data.rateLimited) {
-            console.log(`[ProjectContext] Request was rate limited, but accepted`);
-          } else {
-            console.log(`[ProjectContext] Updated active session via API: ${id || 'null'}`);
-          }
-        } else {
-          console.error(`[ProjectContext] API error: ${data.error || `Status ${response.status}`}`);
-          
-          showNotification({
-            title: "Warning",
-            message: `Failed to update active session in database: ${data.error || `API error ${response.status}`}`,
-            type: "warning"
-          });
-        }
-      } catch (apiErr) {
-        console.error(`[ProjectContext] Error updating active session via API:`, apiErr);
-        showNotification({
-          title: "Warning",
-          message: `Failed to update active session in database: ${apiErr instanceof Error ? apiErr.message : String(apiErr)}`,
-          type: "warning"
-        });
+        // Still use the hook setter which handles the current project's context
+        setActiveSessionIdLS(id); 
       }
     } catch (err) {
       console.error(`[ProjectContext] Error setting active session ID:`, err);
-      setError(`Failed to set active session: ${err instanceof Error ? err.message : String(err)}`);
       
       showNotification({
         title: "Error",
@@ -255,17 +282,17 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         type: "error"
       });
     }
-  }, [projectDirectory, showNotification]);
+  }, [projectDirectory, setActiveSessionIdLS, showNotification]);
   
   return (
-    <ProjectContext.Provider 
-      value={{ 
-        projectDirectory, 
-        setProjectDirectory, 
-        isLoading, 
-        error, 
-        activeSessionId, 
-        setActiveSessionId 
+    <ProjectContext.Provider
+      value={{
+        projectDirectory,
+        setProjectDirectory,
+        isLoading,
+        error,
+        activeSessionId,
+        setActiveSessionId
       }}
     >
       {children}
@@ -274,5 +301,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 }
 
 export function useProject() {
-  return useContext(ProjectContext);
+  const context = useContext(ProjectContext);
+  if (!context) {
+    throw new Error("useProject must be used within a ProjectProvider");
+  }
+  return context;
 }

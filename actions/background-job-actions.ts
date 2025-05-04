@@ -1,7 +1,7 @@
 'use server';
 
 import { ActionState, BackgroundJob } from '@/types';
-import { sessionRepository } from '@/lib/db/repository-factory';
+import { backgroundJobRepository } from '@/lib/db/repositories';
 import { setupDatabase } from '@/lib/db';
 import streamingRequestPool from '@/lib/api/streaming-request-pool';
 
@@ -48,7 +48,7 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
     try {
       await setupDatabase();
     } catch (dbError) {
-      console.error("Database initialization error:", dbError);
+      console.error("[getActiveJobsAction] Database initialization error:", dbError);
       return {
         isSuccess: false,
         message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
@@ -57,16 +57,27 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
       };
     }
 
-    // Try to get jobs from repository
-    const jobs = await sessionRepository.getAllVisibleBackgroundJobs();
-    
-    return {
-      isSuccess: true,
-      message: "Successfully retrieved active background jobs",
-      data: jobs
-    };
+    // Try to get jobs from repository with explicit error handling
+    try {
+      // Use the repository's getAllVisibleBackgroundJobs method to get properly mapped BackgroundJob objects
+      const jobs = await backgroundJobRepository.getAllVisibleBackgroundJobs();
+      
+      return {
+        isSuccess: true,
+        message: `Successfully retrieved ${jobs.length} active background jobs`,
+        data: jobs as BackgroundJob[]
+      };
+    } catch (repoError) {
+      console.error("[getActiveJobsAction] Repository error fetching background jobs:", repoError);
+      return {
+        isSuccess: false,
+        message: "Database error: " + (repoError instanceof Error ? repoError.message : "Unknown repository error"),
+        data: [], // Return empty array as fallback 
+        error: repoError instanceof Error ? repoError : new Error("Repository operation failed")
+      };
+    }
   } catch (error) {
-    console.error("Error fetching active background jobs:", error);
+    console.error("[getActiveJobsAction] Error fetching active background jobs:", error);
     
     // Ensure we return a valid response even on error
     return {
@@ -90,7 +101,8 @@ export async function cancelBackgroundJobAction(
     return {
       isSuccess: false,
       message: "Cannot cancel job: Invalid execution environment",
-      error: new Error("Invalid execution environment")
+      error: new Error("Invalid execution environment"),
+      data: null
     };
   }
   
@@ -99,7 +111,8 @@ export async function cancelBackgroundJobAction(
     return {
       isSuccess: false,
       message: "Invalid job ID provided",
-      error: new Error("Invalid job ID")
+      error: new Error("Invalid job ID"),
+      data: null
     };
   }
   
@@ -112,17 +125,19 @@ export async function cancelBackgroundJobAction(
       return {
         isSuccess: false,
         message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
-        error: dbError instanceof Error ? dbError : new Error("Database initialization failed")
+        error: dbError instanceof Error ? dbError : new Error("Database initialization failed"),
+        data: null
       };
     }
     
     // First get the job to check its status
-    const job = await sessionRepository.getBackgroundJob(jobId);
+    const job = await backgroundJobRepository.getBackgroundJob(jobId);
     
     if (!job) {
       return {
         isSuccess: false,
-        message: `Job with ID ${jobId} not found`
+        message: `Job with ID ${jobId} not found`,
+        data: null
       };
     }
     
@@ -130,19 +145,18 @@ export async function cancelBackgroundJobAction(
     if (['completed', 'failed', 'canceled'].includes(job.status)) {
       return {
         isSuccess: true,
-        message: `Job already in terminal state: ${job.status}`
+        message: `Job already in terminal state: ${job.status}`,
+        data: null
       };
     }
     
     // Update the job status to 'canceled'
-    await sessionRepository.updateBackgroundJobStatus(
-      jobId,
-      'canceled',
-      undefined,
-      Date.now(),
-      undefined,
-      'Canceled by user'
-    );
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId: jobId,
+      status: 'canceled',
+      endTime: Date.now(),
+      statusMessage: 'Canceled by user'
+    });
     
     // Additionally, if it's an API call, try to cancel it in the request pool
     if (['running', 'preparing'].includes(job.status) && 
@@ -157,7 +171,8 @@ export async function cancelBackgroundJobAction(
     
     return {
       isSuccess: true,
-      message: "Background job canceled successfully"
+      message: "Background job canceled successfully",
+      data: null
     };
   } catch (error) {
     console.error(`Error canceling background job ${jobId}:`, error);
@@ -165,7 +180,8 @@ export async function cancelBackgroundJobAction(
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Unknown error canceling job",
-      error: error instanceof Error ? error : new Error("Unknown error")
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: null
     };
   }
 }
@@ -180,7 +196,8 @@ export async function clearJobHistoryAction(): Promise<ActionState<null>> {
     return {
       isSuccess: false,
       message: "Cannot clear job history: Invalid execution environment",
-      error: new Error("Invalid execution environment")
+      error: new Error("Invalid execution environment"),
+      data: null
     };
   }
   
@@ -193,15 +210,17 @@ export async function clearJobHistoryAction(): Promise<ActionState<null>> {
       return {
         isSuccess: false,
         message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
-        error: dbError instanceof Error ? dbError : new Error("Database initialization failed")
+        error: dbError instanceof Error ? dbError : new Error("Database initialization failed"),
+        data: null
       };
     }
     
-    await sessionRepository.clearBackgroundJobHistory();
+    await backgroundJobRepository.clearBackgroundJobHistory();
     
     return {
       isSuccess: true,
-      message: "Job history cleared successfully"
+      message: "Job history cleared successfully",
+      data: null
     };
   } catch (error) {
     console.error("Error clearing job history:", error);
@@ -209,7 +228,8 @@ export async function clearJobHistoryAction(): Promise<ActionState<null>> {
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Unknown error clearing job history",
-      error: error instanceof Error ? error : new Error("Unknown error")
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: null
     };
   }
 }
@@ -227,7 +247,8 @@ export async function updateJobClearedStatusAction(
     return {
       isSuccess: false,
       message: "Cannot update job: Invalid execution environment",
-      error: new Error("Invalid execution environment")
+      error: new Error("Invalid execution environment"),
+      data: null
     };
   }
   
@@ -236,7 +257,8 @@ export async function updateJobClearedStatusAction(
     return {
       isSuccess: false,
       message: "Invalid job ID provided",
-      error: new Error("Invalid job ID")
+      error: new Error("Invalid job ID"),
+      data: null
     };
   }
   
@@ -245,7 +267,8 @@ export async function updateJobClearedStatusAction(
     return {
       isSuccess: false,
       message: "Invalid cleared status provided",
-      error: new Error("Invalid cleared status")
+      error: new Error("Invalid cleared status"),
+      data: null
     };
   }
   
@@ -258,15 +281,17 @@ export async function updateJobClearedStatusAction(
       return {
         isSuccess: false,
         message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
-        error: dbError instanceof Error ? dbError : new Error("Database initialization failed")
+        error: dbError instanceof Error ? dbError : new Error("Database initialization failed"),
+        data: null
       };
     }
     
-    await sessionRepository.updateBackgroundJobClearedStatus(jobId, cleared);
+    await backgroundJobRepository.updateBackgroundJobClearedStatus(jobId, cleared);
     
     return {
       isSuccess: true,
-      message: `Job ${cleared ? 'cleared' : 'restored'} successfully`
+      message: `Job ${cleared ? 'cleared' : 'restored'} successfully`,
+      data: null
     };
   } catch (error) {
     console.error(`Error updating job ${jobId} cleared status:`, error);
@@ -274,7 +299,8 @@ export async function updateJobClearedStatusAction(
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : `Unknown error updating job cleared status`,
-      error: error instanceof Error ? error : new Error("Unknown error")
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: null
     };
   }
 }
@@ -289,7 +315,8 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
     return {
       isSuccess: false,
       message: "Cannot cancel session jobs: Invalid execution environment",
-      error: new Error("Invalid execution environment")
+      error: new Error("Invalid execution environment"),
+      data: null
     };
   }
   
@@ -298,7 +325,8 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
     return {
       isSuccess: false,
       message: "Invalid session ID provided",
-      error: new Error("Invalid session ID")
+      error: new Error("Invalid session ID"),
+      data: null
     };
   }
   
@@ -311,15 +339,17 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
       return {
         isSuccess: false,
         message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
-        error: dbError instanceof Error ? dbError : new Error("Database initialization failed")
+        error: dbError instanceof Error ? dbError : new Error("Database initialization failed"),
+        data: null
       };
     }
     
-    await sessionRepository.cancelAllSessionBackgroundJobs(sessionId);
+    await backgroundJobRepository.cancelAllSessionBackgroundJobs(sessionId);
     
     return {
       isSuccess: true,
-      message: `All background jobs for session ${sessionId} cancelled successfully`
+      message: `All background jobs for session ${sessionId} cancelled successfully`,
+      data: null
     };
   } catch (error) {
     console.error(`Error canceling background jobs for session ${sessionId}:`, error);
@@ -327,7 +357,8 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Unknown error canceling session jobs",
-      error: error instanceof Error ? error : new Error("Unknown error")
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: null
     };
   }
 } 

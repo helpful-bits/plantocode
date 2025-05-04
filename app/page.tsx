@@ -3,11 +3,12 @@ import { Loader2 } from 'lucide-react';
 import { Suspense } from "react";
 import { useProject } from "@/lib/contexts/project-context";
 import { RequireProjectDirectory } from "@/components/with-project-directory";
-import GeneratePromptRoot from "./_components/generate-prompt/generate-prompt-root";
+import GeneratePromptRoot from "@/app/components/generate-prompt/generate-prompt-root";
+import { ImplementationPlansPanel } from "@/app/components/implementation-plans-panel";
 import { useNotification } from "@/lib/contexts/notification-context";
 
 export default function Home() {
-  const { projectDirectory, isLoading } = useProject();
+  const { projectDirectory, isLoading, activeSessionId } = useProject();
   const { showNotification } = useNotification();
   
   // If still loading, show a minimal loading UI
@@ -40,6 +41,15 @@ export default function Home() {
             </div>
           }>
             <GeneratePromptRoot />
+          </Suspense>
+          
+          {/* Implementation Plans Panel */}
+          <Suspense fallback={
+            <div className="flex justify-center items-center p-4">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          }>
+            <ImplementationPlansPanel sessionId={activeSessionId} />
           </Suspense>
         </div>
       </RequireProjectDirectory>

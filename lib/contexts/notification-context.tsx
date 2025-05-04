@@ -1,7 +1,11 @@
 "use client";
 
 import React, { createContext, useContext, ReactNode } from "react";
-import { toast, ToastOptions } from "@/components/ui/use-toast";
+import { toast } from "@/components/ui/use-toast";
+import type { ToastOptions } from "@/components/ui/use-toast";
+
+// Re-export ToastOptions for use elsewhere
+export type { ToastOptions };
 
 interface NotificationType {
   title: string;

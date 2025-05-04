@@ -1,42 +1,46 @@
 // Server-side only database connection
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
-import { setupDatabase, runMigrations } from './setup';
-import { sessionRepository } from './repository-factory'; // Import sessionRepository
+import { setupDatabase } from './setup';
+import { sessionRepository, backgroundJobRepository } from './repositories';
 import { Session } from '@/types';
-import { connectionPool, DB_FILE } from './connection-pool'; // Import DB_FILE and connectionPool
+import connectionPool from "./connection-pool";
+import { ensureDbPermissions } from './connection-manager';
+import crypto from 'crypto';
+import { closeDatabase } from './connection-close';
+import { getCachedState, saveCachedState } from './cache-state';
+import { runMigrations } from './setup/migrations';
+import { APP_DATA_DIR, DB_FILE } from './constants';
+import fs from 'fs';
+import Database from 'better-sqlite3';
 
-// Set up database file path
-const APP_DATA_DIR = path.join(os.homedir(), '.ai-architect-studio');
-// DB_FILE is now imported from connection-pool
+// Export to check if we're on the server vs browser
+export const isServer = typeof window === 'undefined';
 
 // Create the app directory if it doesn't exist
 if (!fs.existsSync(APP_DATA_DIR)) {
   fs.mkdirSync(APP_DATA_DIR, { recursive: true });
 }
 
+// Export the database instance directly
+export const db = connectionPool.getConnection();
+
 /**
- * Fix database file permissions to ensure it's writable
+ * Initialize the database with proper permissions and structure
  */
-async function fixDatabasePermissions(): Promise<void> {
+export async function initializeDatabase(forceRecovery: boolean = false): Promise<boolean> {
+  if (!isServer) return true; // No-op on client side
+  
   try {
-    // Fix directory permissions first to prevent readonly database errors
-    try {
-      fs.chmodSync(APP_DATA_DIR, 0o775);
-      console.log("App data directory permissions set to rwxrwxr-x");
-    } catch (err) {
-      console.warn("Failed to set app directory permissions:", err);
-    }
+    // Ensure database permissions
+    await ensureDbPermissions();
     
-    // Then fix database file permissions if it exists
-    if (fs.existsSync(DB_FILE)) {
-      // Set permissions to 0666 (rw-rw-rw-)
-      fs.chmodSync(DB_FILE, 0o666);
-      console.log("Database file permissions set to rw-rw-rw-");
-    }
-  } catch (err) {
-    console.warn("Failed to set database file permissions:", err);
+    // Initialize database structure
+    await setupDatabase(forceRecovery);
+    
+    console.log("[DB] Successfully initialized database");
+    return true;
+  } catch (error) {
+    console.error("[DB] Error initializing database:", error);
+    return false;
   }
 }
 
@@ -44,119 +48,60 @@ async function fixDatabasePermissions(): Promise<void> {
  * Ensures that a database connection is available
  * Used by integrity checks and other utilities
  */
-async function ensureConnection() {
+export async function ensureConnection() {
   try {
-    return connectionPool.getConnection();
+    // Return a writable connection
+    return connectionPool.getConnection(false);
   } catch (error) {
-    console.error("Error ensuring database connection:", error);
-    throw error;
-  }
-}
-
-/**
- * Close all open database connections
- */
-function closeDatabase() {
-  connectionPool.closeAll();
-}
-
-/**
- * Get a cached state entry by key
- */
-async function getCachedState(key1: string, key2: string): Promise<string | null> {
-  try {
-    // Use connection pool to get a connection
-    return await connectionPool.withConnection((db) => {
-      // Generate hash of key1 and key2 for a consistent lookup
-      const key1Hash = hashString(key1);
-      const key2Hash = hashString(key2);
-      
-      // Try to get cached state value
-      const row = db.prepare('SELECT value FROM cached_state WHERE key1_hash = ? AND key2_hash = ?')
-                    .get(key1Hash, key2Hash);
-      
-      return row ? row.value : null;
-    }, true); // Use readonly connection
-  } catch (error) {
-    console.error("Error getting cached state:", error);
-    return null;
-  }
-}
-
-/**
- * Save a value to the cached state
- */
-async function saveCachedState(key1: string, key2: string, value: string): Promise<void> {
-  try {
-    // Use connection pool to get a connection
-    await connectionPool.withConnection((db) => {
-      // Generate hash of key1 and key2 for a consistent lookup
-      const key1Hash = hashString(key1);
-      const key2Hash = hashString(key2);
-      
-      // Check if the table exists
-      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cached_state'")
-                            .get();
-      
-      // Create table if it doesn't exist
-      if (!tableExists) {
-        db.prepare(`
-          CREATE TABLE cached_state (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key1 TEXT NOT NULL,
-            key1_hash TEXT NOT NULL,
-            key2 TEXT NOT NULL,
-            key2_hash TEXT NOT NULL,
-            value TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            UNIQUE(key1_hash, key2_hash)
-          )
-        `).run();
-      }
-      
-      // Insert or replace value
-      db.prepare(`
-        INSERT OR REPLACE INTO cached_state (key1, key1_hash, key2, key2_hash, value, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        key1, 
-        key1Hash,
-        key2,
-        key2Hash,
-        value,
-        Date.now()
-      );
-      
-      return;
-    });
-  } catch (error) {
-    console.error("Error saving cached state:", error);
-    throw error;
+    console.error("[DB] Error ensuring database connection:", error);
+    
+    // Try fixing permissions
+    await ensureDbPermissions();
+    
+    // Retry after fixing permissions
+    try {
+      return connectionPool.getConnection(false);
+    } catch (retryError) {
+      console.error("[DB] Failed to get connection even after fixing permissions:", retryError);
+      throw retryError;
+    }
   }
 }
 
 /**
  * Get a session with its background jobs
  */
-async function getSessionWithRequests(sessionId: string): Promise<Session | null> {
+export async function getSessionWithRequests(sessionId: string): Promise<Session | null> {
+  return sessionRepository.getSessionWithBackgroundJobs(sessionId);
+}
+
+/**
+ * Get a session with its background jobs (alias for backward compatibility)
+ */
+export async function getSessionWithBackgroundJobs(sessionId: string): Promise<Session | null> {
   return sessionRepository.getSessionWithBackgroundJobs(sessionId);
 }
 
 /**
  * Get the active session ID for a project directory
  */
-async function getActiveSessionId(projectDirectory: string): Promise<string | null> {
+export async function getActiveSessionId(projectDirectory: string): Promise<string | null> {
   try {
+    if (!projectDirectory) {
+      console.error("[DB] Cannot get active session ID with empty project directory");
+      return null;
+    }
+    
     // Convert project directory to consistent format
     projectDirectory = projectDirectory.trim();
     
     // hash the project directory for lookup
     const projectHash = hashString(projectDirectory);
     
-    return await connectionPool.withConnection((db) => {
+    return await connectionPool.withConnection((db: Database.Database) => {
       // Check if table exists
       const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='active_sessions'")
-                            .get();
+                          .get();
       
       if (!tableExists) {
         return null;
@@ -164,12 +109,12 @@ async function getActiveSessionId(projectDirectory: string): Promise<string | nu
       
       // Get active session ID
       const row = db.prepare('SELECT session_id FROM active_sessions WHERE project_hash = ?')
-                    .get(projectHash);
+                  .get(projectHash) as { session_id: string | null } | undefined;
       
-      return row ? row.session_id : null;
+      return row && row.session_id ? row.session_id : null;
     }, true); // Read-only operation
   } catch (error) {
-    console.error("Error getting active session ID:", error);
+    console.error("[DB] Error getting active session ID:", error);
     return null;
   }
 }
@@ -177,15 +122,20 @@ async function getActiveSessionId(projectDirectory: string): Promise<string | nu
 /**
  * Set or clear the active session for a project directory
  */
-async function setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> {
+export async function setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> {
   try {
+    if (!projectDirectory) {
+      console.error("[DB] Cannot set active session with empty project directory");
+      return;
+    }
+    
     // Convert project directory to consistent format
     projectDirectory = projectDirectory.trim();
     
     // hash the project directory for storage
     const projectHash = hashString(projectDirectory);
     
-    await connectionPool.withConnection((db) => {
+    await connectionPool.withConnection((db: Database.Database) => {
       // Check if table exists
       const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='active_sessions'")
                             .get();
@@ -224,31 +174,41 @@ async function setActiveSession(projectDirectory: string, sessionId: string | nu
       return;
     });
   } catch (error) {
-    console.error("Error setting active session:", error);
+    console.error("[DB] Error setting active session:", error);
     throw error;
   }
 }
 
-/**
- * Hash a string using SHA-256 algorithm
- */
-function hashString(str: string): string {
-  const crypto = require('crypto');
+// Export the repositories for use in other modules
+export { 
+  sessionRepository,
+  backgroundJobRepository
+};
+
+// Initialize database on server startup
+if (isServer) {
+  initializeDatabase().catch(err => {
+    console.error("[DB] Failed to initialize database:", err);
+  });
+}
+
+// Create a hash of a string (for project directory hashing)
+export function hashString(str: string): string {
   return crypto.createHash('sha256').update(str).digest('hex');
 }
 
 // Export the necessary functions and objects
 export {
   DB_FILE,
+  APP_DATA_DIR,
   closeDatabase,
   connectionPool,
   getCachedState,
   saveCachedState,
-  getActiveSessionId,
-  setActiveSession,
-  getSessionWithRequests,
-  sessionRepository,
   setupDatabase,
-  runMigrations,
-  ensureConnection
+  ensureDbPermissions,
+  runMigrations
 };
+
+// Export any other database utilities
+export * from './repositories';

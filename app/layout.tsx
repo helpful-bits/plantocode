@@ -5,7 +5,7 @@ import { Suspense } from 'react';
 import { ThemeProvider } from "@/components/theme-provider"; // Keep ThemeProvider import
 import { Toaster } from "@/components/ui/toaster";
 import { BackgroundJobsSidebar, Navigation } from "./client-components";
-import { DatabaseErrorHandler } from "./_components/client-wrappers";
+import { DatabaseErrorHandler } from "@/app/components/client-wrappers";
 
 // Dynamically import providers to reduce initial bundle size
 const ProjectProvider = dynamic(() => import("@/lib/contexts/project-context").then(mod => ({ default: mod.ProjectProvider })), { ssr: true });

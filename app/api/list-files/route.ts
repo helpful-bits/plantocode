@@ -26,11 +26,11 @@ export async function POST(request: Request) {
         absolute: true
       });
       
-      let stats = [];
+      let stats: { size: number; mtimeMs: number; ctimeMs: number; birthtimeMs: number }[] = [];
       
       // Get file stats if requested
       if (includeStats) {
-        stats = await Promise.all(
+        const statsWithNulls = await Promise.all(
           files.map(async (file) => {
             try {
               const stat = await fs.stat(file);
@@ -42,10 +42,13 @@ export async function POST(request: Request) {
               };
             } catch (err) {
               console.error(`Error getting stats for ${file}:`, err);
-              return {};
+              return null;
             }
           })
         );
+        
+        // Filter out null values
+        stats = statsWithNulls.filter(stat => stat !== null) as { size: number; mtimeMs: number; ctimeMs: number; birthtimeMs: number }[];
       }
       
       return NextResponse.json({ 

@@ -1,10 +1,25 @@
 "use server";
 
 import { exec } from "child_process";
-import { promisify } from "util";
 import { promises as fs } from "fs";
 import path from "path";
-const execAsync = promisify(exec);
+
+// Custom exec function with promise interface instead of using promisify
+const execAsync = (command: string, options?: { cwd?: string }): Promise<{ stdout: string, stderr: string }> => {
+  return new Promise((resolve, reject) => {
+    exec(command, options, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        // Ensure stdout and stderr are strings
+        resolve({ 
+          stdout: stdout.toString(), 
+          stderr: stderr.toString() 
+        });
+      }
+    });
+  });
+};
 
 // File cache with TTL to prevent frequent scans
 const fileCache = new Map<string, { files: string[], timestamp: number, isGitRepo: boolean }>();

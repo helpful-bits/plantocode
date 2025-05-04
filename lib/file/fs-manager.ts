@@ -2,7 +2,7 @@ import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { getAppPatchesDirectory, getProjectPatchesDirectory } from '@/lib/path-utils';
+import { getAppPatchesDirectory, getProjectPatchesDirectory, getProjectImplementationPlansDirectory, IMPLEMENTATION_PLANS_DIR_NAME } from '@/lib/path-utils';
 
 // File operation lock map
 interface FileLock {
@@ -41,13 +41,31 @@ export class FileSystemManager {
   }
   
   /**
+   * Get the system's temporary directory path, ensuring it exists
+   */
+  async getTempDir(): Promise<string> {
+    const tempDir = path.join(os.tmpdir(), 'o1-pro-flow');
+    
+    try {
+      // Ensure the directory exists
+      await fs.mkdir(tempDir, { recursive: true });
+      return tempDir;
+    } catch (error) {
+      console.error(`Error creating temp directory: ${error}`);
+      // Fall back to system temp dir if we can't create our own
+      return os.tmpdir();
+    }
+  }
+  
+  /**
    * Creates a unique file path for an output file
    */
   async createUniqueFilePath(
     requestId: string,
     sessionName: string,
     projectDir?: string,
-    extension: string = 'xml'
+    extension: string = 'xml',
+    targetDirName?: string
   ): Promise<string> {
     const timestamp = new Date().toISOString()
       .replace(/:/g, '-')
@@ -66,12 +84,18 @@ export class FileSystemManager {
     let baseDir: string;
     
     if (projectDir) {
-      // Try to use project patches directory
+      // Try to use project directory
       try {
-        baseDir = getProjectPatchesDirectory(projectDir);
+        if (targetDirName === IMPLEMENTATION_PLANS_DIR_NAME) {
+          // Use implementation plans directory
+          baseDir = getProjectImplementationPlansDirectory(projectDir);
+        } else {
+          // Default to patches directory
+          baseDir = getProjectPatchesDirectory(projectDir);
+        }
         await fs.mkdir(baseDir, { recursive: true });
       } catch (error) {
-        console.warn(`Cannot use project patches directory, falling back to app directory: ${error}`);
+        console.warn(`Cannot use project directory, falling back to app directory: ${error}`);
         baseDir = getAppPatchesDirectory();
         await fs.mkdir(baseDir, { recursive: true });
       }

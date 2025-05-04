@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { FolderOpen } from "lucide-react";
 import { useProject } from "@/lib/contexts/project-context";
-import DirectoryBrowser from "@/app/_components/generate-prompt/_components/directory-browser";
+import DirectoryBrowser from "@/app/components/generate-prompt/_components/directory-browser";
 import ProjectNotFound from "@/components/project-not-found";
 
 interface RequireProjectDirectoryProps {
@@ -55,7 +55,7 @@ export function RequireProjectDirectory({
   return <>{children}</>;
 }
 
-export function ProjectNotFound({ onSelectProject }: ProjectNotFoundProps) {
+export function InlineProjectNotFound({ onSelectProject }: ProjectNotFoundProps) {
   return (
     <Card className="w-full">
       <CardHeader>

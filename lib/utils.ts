@@ -120,37 +120,3 @@ export function stripMarkdownCodeFences(content: string): string {
   }
   return content;
 }
-
-/**
- * Adds a debounce mechanism to a function, preventing it from being called
- * too frequently. The function will only be executed after the specified delay
- * has passed since the last call.
- * 
- * @param func The function to debounce
- * @param wait Delay in milliseconds
- * @returns A debounced version of the function
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null;
-  
-  return function(this: any, ...args: Parameters<T>) {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-    
-    timeout = setTimeout(() => {
-      timeout = null;
-      func.apply(this, args);
-    }, wait);
-  };
-}
-
-/**
- * Hash a string using SHA-256
- */
-export function hashString(input: string): string {
-  return createHash('sha256').update(input).digest('hex');
-}

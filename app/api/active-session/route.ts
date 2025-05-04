@@ -1,97 +1,123 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { getActiveSessionId, setActiveSession } from '@/lib/db';
 import { setupDatabase } from '@/lib/db';
+import { headers } from 'next/headers';
+import { rateLimitCheck } from '@/lib/rate-limit';
 
-await setupDatabase(); // Ensure DB is set up
-
-// Add rate limiting for active session requests
-const activeSessionRequests = new Map<string, number>();
-const REQUEST_COOLDOWN = 1000; // 1 second cooldown (reduced from 5 seconds)
-
-// Helper function to check rate limiting
-function isRateLimited(projectDirectory: string): boolean {
-  const now = Date.now();
-  const lastRequest = activeSessionRequests.get(projectDirectory) || 0;
-  const timeSinceLastRequest = now - lastRequest;
-  
-  if (timeSinceLastRequest < REQUEST_COOLDOWN) {
-    console.log(`[API active-session] Rate limiting request for project: ${projectDirectory} (${timeSinceLastRequest}ms since last request)`);
-    return true;
-  }
-  
-  // Update last request time
-  activeSessionRequests.set(projectDirectory, now);
-  
-  // Clean up old entries periodically
-  if (activeSessionRequests.size > 100) {
-    for (const [key, timestamp] of activeSessionRequests.entries()) {
-      if (now - timestamp > 60000) { // 1 minute
-        activeSessionRequests.delete(key);
-      }
-    }
-  }
-  
-  return false;
-}
+// Ensure DB is set up
+await setupDatabase();
 
 // GET /api/active-session?projectDirectory=...
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const projectDirectory = searchParams.get('projectDirectory');
-
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const projectDirectory = url.searchParams.get('projectDirectory');
+  
   if (!projectDirectory) {
-    return NextResponse.json({ error: 'Missing required parameter: projectDirectory' }, { status: 400 });
+    console.error('[API] /active-session GET: Missing projectDirectory parameter');
+    return Response.json({ error: 'Missing projectDirectory parameter' }, { status: 400 });
   }
   
-  // Check rate limiting
-  if (isRateLimited(projectDirectory)) {
-    // Return success instead of error with rate limit indicator
-    // This prevents errors in the UI while still enforcing rate limits
-    return NextResponse.json({ sessionId: null, rateLimited: true }, { status: 200 });
+  // Log request details
+  console.log(`[API] /active-session GET request for project: ${projectDirectory}`);
+  
+  // Rate limit check
+  const clientIp = (await headers()).get('x-forwarded-for') || 'unknown';
+  const rateLimitKey = `active-session:get:${clientIp}:${projectDirectory}`;
+  
+  // Check if rate limited
+  const isRateLimited = await rateLimitCheck(rateLimitKey, 5, 30); // 5 requests per 30 seconds
+  
+  if (isRateLimited) {
+    console.warn(`[API] /active-session GET: Rate limit exceeded for project: ${projectDirectory}, IP: ${clientIp}`);
+    return Response.json(
+      { 
+        error: 'Too many requests. Please try again later.',
+        rateLimited: true,
+        sessionId: null
+      }, 
+      { status: 429 }
+    );
   }
   
   try {
-    console.log(`[API GET /active-session] Fetching active session for: ${projectDirectory}`);
+    // Get active session from database
     const sessionId = await getActiveSessionId(projectDirectory);
-    return NextResponse.json({ sessionId });
-  } catch (error: unknown) {
-    console.error('Error fetching active session ID:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch active session ID';
-    return NextResponse.json({ error: errorMessage, sessionId: null }, { status: 500 });
+    console.log(`[API] /active-session GET: Active session for project ${projectDirectory}: ${sessionId || 'null'}`);
+    
+    return Response.json({ 
+      sessionId,
+      projectDirectory
+    });
+  } catch (error) {
+    console.error(`[API] /active-session GET: Error fetching active session for project: ${projectDirectory}:`, error);
+    return Response.json({ 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      sessionId: null
+    }, { status: 500 });
   }
 }
 
 // POST /api/active-session
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const data = await request.json();
-    const { projectDirectory, sessionId } = data;
-
+    const startTime = Date.now();
+    
+    const { projectDirectory, sessionId } = await req.json();
+    
     if (!projectDirectory) {
-      return NextResponse.json({ error: 'Missing required parameter: projectDirectory' }, { status: 400 });
+      console.error('[API] /active-session POST: Missing projectDirectory parameter');
+      return Response.json({ error: 'Missing projectDirectory parameter' }, { status: 400 });
     }
     
-    // Check rate limiting
-    if (isRateLimited(projectDirectory)) {
-      // Return success instead of error with rate limit indicator
-      // This prevents errors in the UI while still enforcing rate limits
-      return NextResponse.json({ success: true, rateLimited: true }, { status: 200 });
+    // Add validation for sessionId when present
+    if (sessionId !== null && (typeof sessionId !== 'string' || !sessionId.trim())) {
+      console.error('[API] /active-session POST: Invalid sessionId format or type:', {
+        value: sessionId,
+        type: typeof sessionId
+      });
+      return Response.json(
+        { error: 'Invalid session ID format', success: false },
+        { status: 400 }
+      );
     }
-
-    // Validate sessionId type if present
-    if (sessionId !== undefined && sessionId !== null && typeof sessionId !== 'string') {
-       return NextResponse.json({ error: 'Invalid sessionId type' }, { status: 400 });
+    
+    // Enhanced logging for debugging
+    console.log(`[API] /active-session POST: Setting active session for project: ${projectDirectory} to: ${sessionId || 'null'}`);
+    
+    // Rate limit check
+    const headersList = await headers();
+    const clientIp = headersList.get('x-forwarded-for') || 'unknown';
+    const rateLimitKey = `active-session:post:${clientIp}:${projectDirectory}`;
+    
+    // Check if rate limited (3 requests per 30 seconds is more strict for write operations)
+    const isRateLimited = await rateLimitCheck(rateLimitKey, 3, 30);
+    
+    if (isRateLimited) {
+      console.warn(`[API] /active-session POST: Rate limit exceeded for project: ${projectDirectory}, IP: ${clientIp}`);
+      
+      return Response.json(
+        { 
+          error: 'Too many requests. Please try again later.',
+          rateLimited: true
+        }, 
+        { status: 429 }
+      );
     }
-     
-    // Allow sessionId to be null to clear active session
-    const effectiveSessionId = (sessionId === undefined || sessionId === '') ? null : sessionId;
-    console.log(`[API POST /active-session] Setting active session for project '${projectDirectory}' to: ${effectiveSessionId === null ? 'null' : effectiveSessionId}`);
-    await setActiveSession(projectDirectory, effectiveSessionId);
-    return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    console.error('Error setting active session:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to set active session';
-    // Still return 200 to prevent UI errors
-    return NextResponse.json({ success: false, error: errorMessage }, { status: 200 });
+    
+    // Set active session in database
+    await setActiveSession(projectDirectory, sessionId);
+    
+    const totalDuration = Date.now() - startTime;
+    console.log(`[API] /active-session POST: Successfully set active session for project: ${projectDirectory} (${totalDuration}ms)`);
+    
+    return Response.json({ 
+      success: true,
+      projectDirectory,
+      sessionId
+    });
+  } catch (error) {
+    console.error('[API] /active-session POST: Error setting active session:', error);
+    return Response.json({ 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 } 

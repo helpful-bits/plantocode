@@ -1,10 +1,11 @@
 import { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-interface TypographyProps extends HTMLAttributes<HTMLElement> {
+interface TypographyProps {
   children: ReactNode;
   className?: string;
   as?: keyof JSX.IntrinsicElements;
+  [key: string]: any;
 }
 
 export function H1({ children, className, as = "h1", ...props }: TypographyProps) {
