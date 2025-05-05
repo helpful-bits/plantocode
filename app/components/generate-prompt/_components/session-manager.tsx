@@ -335,12 +335,19 @@ const SessionManager = ({
       // This ensures we don't have conflicts with the database primary key
       const sessionId = generateUUID();
       
+      // Normalize the project directory
+      const normalizedProjectDir = normalizePath(projectDirectory);
+      
+      console.log("[SessionManager] Creating new session with project directory:", normalizedProjectDir);
+      
       // Create session using server action
       const result = await createSessionAction({
         id: sessionId,
         name: sessionNameInput,
-        // Ensure current session state includes the project directory
+        // Use session state including the project directory (from our previous fix)
         ...sessionState,
+        // Ensure project directory is present (will override any value from sessionState if needed)
+        projectDirectory: normalizedProjectDir,
       });
       
       if (result.isSuccess && result.data) {
@@ -602,9 +609,8 @@ const SessionManager = ({
         currentLoadController.current = null;
       }
       
-      // Create a new controller for this load operation
+      // Create a new controller for this load operation just for client-side cancellation
       currentLoadController.current = new AbortController();
-      const loadSignal = currentLoadController.current.signal;
       
       // Step 1: Set switching state and syncing flags immediately
       setGlobalSwitchingState(true);
@@ -688,7 +694,7 @@ const SessionManager = ({
       if (!result || !result.isSuccess || !result.data) {
         // Try the regular getSessionAction as fallback
         console.log(`[SessionManager][${startTimestamp}][${operationId}] ForceLoadSession failed, falling back to getSessionAction`);
-        const fallbackResult = await getSessionAction(session.id, loadSignal);
+        const fallbackResult = await getSessionAction(session.id);
         
         if (!fallbackResult.isSuccess || !fallbackResult.data) {
           throw new Error(fallbackResult.message || "Failed to load session data");
@@ -729,7 +735,7 @@ const SessionManager = ({
         // Use startTransition to avoid UI blocking
         startTransition(() => {
           // Final abort check before applying session state
-          if (loadSignal.aborted) {
+          if (currentLoadController.current?.signal.aborted) {
             console.log(`[SessionManager][${startTimestamp}][${operationId}] Load operation was aborted during transition, canceling state update`);
             return;
           }

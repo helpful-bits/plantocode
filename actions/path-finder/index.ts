@@ -15,6 +15,7 @@ import { generateDirectoryTree } from '@/lib/directory-tree';
 import { ApiType, TaskType } from '@/types/session-types';
 import { handleActionError } from '@/lib/action-utils';
 import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
+import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@/lib/prompts/path-finder-prompts';
 
 // Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
@@ -381,27 +382,11 @@ export async function findRelevantFilesAction(
             return { isSuccess: false, message: `Failed to generate directory tree: ${errorMessage}` };
           }
           
-          // Create a system prompt that instructs the model
-          const systemPrompt = `You are a code path finder that helps identify the most relevant files for a given programming task.
-Given a project structure and a task description, analyze which files would be most important to understand or modify for the task.
-Return ONLY file paths and no other commentary, with one file path per line.
-Focus on the most critical files that would need to be understood or modified for the task.
-If the task involves multiple areas of the codebase, include files from all relevant areas.
-If multiple files are part of the same component or feature, include all of them.
-Prioritize files that contain core logic, data structures, and APIs directly related to the task.
-Ignore irrelevant configuration files, assets, or generated code unless they're directly involved in the task.
-Don't include node_modules or other dependency directories.
-Do not hallucinate or make up file paths.
-List one file path per line and focus on files needed to FULLY understand the dataflow and context.`;
+          // Use the centralized prompts
+          const systemPrompt = generatePathFinderSystemPrompt();
           
           // Create a prompt with project structure and task description
-          const prompt = `Project Structure:
-${dirTree}
-
-Task Description:
-${taskDescription}
-
-Please list the most relevant file paths for this task, one per line:`;
+          const prompt = generatePathFinderUserPrompt(dirTree, taskDescription);
           
           // Estimate tokens to ensure we're within limits
           let estimatedTokens;

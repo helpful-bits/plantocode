@@ -1,22 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 import { useBackgroundJobs, useBackgroundJob } from "@/lib/contexts/background-jobs-context";
 
-// Extend Window interface to include toast
-declare global {
-  interface Window {
-    toast?: (options: {
-      title: string;
-      description: string;
-      status: string;
-    }) => void;
-  }
-}
+import { useNotification } from '@/lib/contexts/notification-context';
 
 export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;
@@ -34,7 +25,7 @@ interface TaskDescriptionProps {
   onImproveSelection?: (selectedText: string) => Promise<void>;
 }
 
-export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function TaskDescriptionArea({
+export default React.memo(forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function TaskDescriptionArea({
   value,
   onChange,
   onInteraction,
@@ -45,15 +36,13 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
   // State related to "Improve Selection"
   const [selectionStart, setSelectionStart] = useState<number>(0);
   const [selectionEnd, setSelectionEnd] = useState<number>(0);
-  const [isImproving, setIsImproving] = useState(false);
-  const [improveJobId, setImproveJobId] = useState<string | null>(null);
-  const { refreshJobs } = useBackgroundJobs();
+  const { showNotification } = useNotification();
   
-  // Use either the component's internal job ID or the externally provided one
-  const effectiveImproveJobId = externalImproveJobId || improveJobId;
-  const effectiveIsImproving = externalIsImproving || isImproving;
+  // Use only the externally provided state
+  const effectiveIsImproving = externalIsImproving || false;
   
-  const improveJob = useBackgroundJob(effectiveImproveJobId);
+  // Only track the external job - handle undefined case
+  const improveJob = useBackgroundJob(externalImproveJobId || null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -82,10 +71,6 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     
     console.log("Inserting text at cursor:", newText.substring(0, 50) + (newText.length > 50 ? '...' : ''), 
       "position:", start, "to", end);
-    
-    const textarea = textareaRef.current;
-    textarea.focus();
-    const originalText = textarea.value;
 
     // Validate that text is not empty
     if (!newText || newText.trim() === '') {
@@ -93,38 +78,29 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
       return;
     }
 
-    textarea.setSelectionRange(start, end);
-
-    // Use document.execCommand for better undo support in browsers that support it
-    try {
-      document.execCommand('insertText', false, newText);
-      // Manually dispatch input event to ensure React state updates
-      const event = new InputEvent('input', { bubbles: true, cancelable: true });
-      textarea.dispatchEvent(event);
-    } catch (e) {
-      console.log("execCommand failed, falling back to direct value assignment:", e);
-      const before = originalText.slice(0, start);
-      const after = originalText.slice(end);
-      textarea.value = before + newText + after;
-      // Manually dispatch input event to ensure React state updates
-      const event = new InputEvent('input', { bubbles: true, cancelable: true });
-      textarea.dispatchEvent(event); // Re-dispatch for consistency
-    }
-
-    // Ensure state is updated even if execCommand worked
-    if (textarea.value !== originalText) {
-      console.log("Text inserted successfully, updating state");
-      onChange(textarea.value);
-      onInteraction(); // Notify parent
-    } else {
-      console.warn("Text insertion did not change textarea value");
-    }
-
+    // Calculate the new value directly 
+    const originalText = value;
+    const before = originalText.slice(0, start);
+    const after = originalText.slice(end);
+    const newValue = before + newText + after;
+    
+    // Update state via the onChange prop
+    onChange(newValue);
+    onInteraction(); // Notify parent
+    
+    // Update selection state
     const newPosition = start + newText.length;
-    textarea.setSelectionRange(newPosition, newPosition);
-    setSelectionStart(newPosition); // Update selection state
+    setSelectionStart(newPosition);
     setSelectionEnd(newPosition);
-  }, [onChange, onInteraction]);
+    
+    // Focus and set selection range after re-render
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newPosition, newPosition);
+      }
+    }, 0);
+  }, [onChange, onInteraction, value]);
   
   // Initialize from local storage on mount
   useEffect(() => {
@@ -161,7 +137,8 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
 
   // Monitor background job updates for text improvement
   useEffect(() => {
-    if (effectiveImproveJobId && improveJob) {
+    // Only proceed if we have a job ID and job data, and we're not using external handling
+    if (externalImproveJobId && improveJob) {
       if (improveJob.status === 'completed' && improveJob.response) {
         // Validate that the response is a valid string and not a UUID
         if (typeof improveJob.response === 'string' && 
@@ -174,48 +151,33 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
           // Insert the improved text from the response field
           insertTextAtCursor(improveJob.response, start, end);
           
-          // Show success toast if not handled by parent component
-          if (!externalImproveSelection && typeof window !== 'undefined' && window.toast) {
-            window.toast({
-              title: "Text improved",
-              description: "The selected text has been improved successfully.",
-              status: "success"
-            });
-          }
+          // Updated to use notification context
+          showNotification({
+            title: "Text improved",
+            message: "The selected text has been improved successfully.",
+            type: "success"
+          });
         } else {
           console.warn("Received invalid improved text:", improveJob.response);
-          if (!externalImproveSelection && typeof window !== 'undefined' && window.toast) {
-            window.toast({
-              title: "Text improvement failed",
-              description: "Received invalid improved text. Please try again.",
-              status: "error"
-            });
-          }
-        }
-        
-        // Reset state after handling the completed job (if using internal state)
-        if (!externalImproveSelection) {
-          setImproveJobId(null);
-          setIsImproving(false);
+          
+          showNotification({
+            title: "Text improvement failed",
+            message: "Received invalid improved text. Please try again.",
+            type: "error"
+          });
         }
       } else if (improveJob.status === 'failed' || improveJob.status === 'canceled') {
-        // Handle job failure (if using internal state)
-        if (!externalImproveSelection && typeof window !== 'undefined' && window.toast) {
-          window.toast({
-            title: "Text improvement failed",
-            description: improveJob.errorMessage || "An error occurred while improving the text.",
-            status: "error"
-          });
-          
-          // Reset state after handling the failed job
-          setImproveJobId(null);
-          setIsImproving(false);
-        }
+        // Handle job failure with notification context
+        showNotification({
+          title: "Text improvement failed",
+          message: improveJob.errorMessage || "An error occurred while improving the text.",
+          type: "error"
+        });
       }
     }
-  }, [improveJob, effectiveImproveJobId, selectionStart, selectionEnd, insertTextAtCursor, externalImproveSelection]);
+  }, [improveJob, externalImproveJobId, selectionStart, selectionEnd, insertTextAtCursor, showNotification]);
 
-  // Expose the insertTextAtCursor method via ref
+  // Expose methods via ref with simpler implementation that leverages state updates
   useImperativeHandle(ref, () => ({
     insertTextAtCursorPosition: (text: string) => {
       const currentSelectionStart = textareaRef.current?.selectionStart ?? value.length;
@@ -246,112 +208,57 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
     setSelectionEnd(e.currentTarget.selectionEnd);
   };
 
-  // Handler function to improve selected text
+  // Handler function to improve selected text - simplified to only use external handler
   const handleImproveSelection = async () => {
-    // If using external improvement handler, delegate to it
-    if (externalImproveSelection) {
-      const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
-      const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0;
-      
-      if (currentSelectionStart === currentSelectionEnd) return;
-      
-      const selectedText = value?.slice(currentSelectionStart, currentSelectionEnd) || "";
-      if (!selectedText.trim()) return;
-      
-      // Store selection positions for later use when the job completes
-      setSelectionStart(currentSelectionStart);
-      setSelectionEnd(currentSelectionEnd);
-      
-      // Call the parent-provided improvement function
-      await externalImproveSelection(selectedText);
+    // Only proceed if we have an external handler
+    if (!externalImproveSelection) {
+      showNotification({
+        title: "Not implemented",
+        message: "Text improvement is not configured",
+        type: "warning"
+      });
       return;
     }
     
-    // Otherwise use the internal implementation
-    const originalFocus = document.activeElement; // Remember focus
+    // Get the current selection
     const currentSelectionStart = textareaRef.current?.selectionStart ?? 0;
     const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0;
-
-    if (currentSelectionStart === currentSelectionEnd) return;
-
+    
+    // Make sure there's actually a selection
+    if (currentSelectionStart === currentSelectionEnd) {
+      showNotification({
+        title: "No text selected",
+        message: "Please select some text to improve",
+        type: "warning"
+      });
+      return;
+    }
+    
+    // Get the selected text
     const selectedText = value?.slice(currentSelectionStart, currentSelectionEnd) || "";
-    if (!selectedText.trim()) return;
-
+    if (!selectedText.trim()) {
+      showNotification({
+        title: "No text selected",
+        message: "Please select some non-empty text to improve",
+        type: "warning"
+      });
+      return;
+    }
+    
     // Store selection positions for later use when the job completes
     setSelectionStart(currentSelectionStart);
     setSelectionEnd(currentSelectionEnd);
-    setIsImproving(true);
     
     try {
-      // Use window.location.search to get the project parameter
-      const projectDir = typeof window !== 'undefined' ? 
-        new URLSearchParams(window.location.search).get('project') || undefined : undefined;
-        
-      // Call the server action with project directory if available
-      const result = await improveSelectedTextAction(selectedText, projectDir);
-      
-      // First, check if the result is a background job
-      if (result.isSuccess && result.data && typeof result.data === 'object' && 'isBackgroundJob' in result.data) {
-        // Store the job ID to monitor for completion
-        setImproveJobId(result.data.jobId);
-        
-        // Refresh jobs to ensure we get the latest status
-        await refreshJobs();
-        
-        // Show notification to user using toast if available
-        if (typeof window !== 'undefined' && window.toast) {
-          window.toast({
-            title: "Text improvement in progress",
-            description: "We're processing your request. The improved text will be available shortly.",
-            status: "info"
-          });
-        }
-      } else if (result.isSuccess && result.data) {
-        // Handle immediate result (less likely with the new implementation)
-        // Check if result.data is a valid string and not a UUID
-        if (typeof result.data === 'string' && 
-            !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.data)) {
-          insertTextAtCursor(result.data, currentSelectionStart, currentSelectionEnd);
-          setIsImproving(false);
-        } else {
-          console.warn("Received invalid data format for text improvement:", result.data);
-          setIsImproving(false);
-          if (typeof window !== 'undefined' && window.toast) {
-            window.toast({
-              title: "Text improvement failed",
-              description: "Received invalid improved text. Please try again.",
-              status: "error"
-            });
-          }
-        }
-      } else {
-        // Handle unsuccessful result
-        setIsImproving(false);
-        if (typeof window !== 'undefined' && window.toast) {
-          window.toast({
-            title: "Text improvement failed",
-            description: result.message || "Failed to improve text. Please try again.",
-            status: "error"
-          });
-        }
-      }
-      
-      // Reset selection after improving text
-      setSelectionStart(textareaRef.current?.selectionStart || 0);
-      setSelectionEnd(textareaRef.current?.selectionStart || 0);
+      // Call the parent-provided improvement function
+      await externalImproveSelection(selectedText);
     } catch (error) {
       console.error("Error improving text:", error);
-      setIsImproving(false);
-      if (typeof window !== 'undefined' && window.toast) {
-        window.toast({
-          title: "Text improvement failed",
-          description: error instanceof Error ? error.message : "An unexpected error occurred",
-          status: "error"
-        });
-      }
-    } finally {
-      // Restore focus if textarea had it
-      if (originalFocus === textareaRef.current) textareaRef.current?.focus();
+      showNotification({
+        title: "Error improving text",
+        message: error instanceof Error ? error.message : "An unexpected error occurred",
+        type: "error"
+      });
     }
   };
 
@@ -400,4 +307,4 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(function 
       />
     </div>
   );
-}); 
+}));

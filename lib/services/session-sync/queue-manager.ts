@@ -15,7 +15,8 @@ const DEFAULT_OPERATION_TIMEOUT = 60000;
 const OPERATION_TIMEOUTS = {
   load: 90000,    // 1.5 minutes for load operations (reduced from 2 minutes)
   save: 60000,    // 1 minute for save operations (reduced from 1.5 minutes)
-  delete: 30000   // 30 seconds for delete operations (reduced from 1 minute)
+  delete: 30000,  // 30 seconds for delete operations (reduced from 1 minute)
+  setActive: 30000 // 30 seconds for setActive operations
 };
 
 // Maximum time an operation can be in the "processing" state before considered stuck
@@ -61,12 +62,11 @@ export interface QueueManager {
   clear(): void;
   resetQueue(): void;
   queueOperation(
-    operation: 'load' | 'save' | 'delete',
+    operation: 'load' | 'save' | 'delete' | 'setActive',
     sessionId: string | null,
     callback: SessionCallback,
     priority?: number,
-    timeoutMs?: number,
-    signal?: AbortSignal
+    timeoutMs?: number
   ): Promise<any>;
   clearSessionOperations(sessionId: string | null): number;
   setServiceOptions(options: ServiceOptions): void;
@@ -418,12 +418,11 @@ export function createQueueManager(): QueueManager {
      * Queue an operation
      */
     async queueOperation(
-      operation: 'load' | 'save' | 'delete',
+      operation: 'load' | 'save' | 'delete' | 'setActive',
       sessionId: string | null,
       callback: SessionCallback,
       priority: number = 1,
-      timeoutMs?: number,
-      signal?: AbortSignal
+      timeoutMs?: number
     ): Promise<any> {
       // Validate sessionId
       if (sessionId !== null && typeof sessionId !== 'string') {
@@ -437,45 +436,6 @@ export function createQueueManager(): QueueManager {
           const timestamp = new Date().toISOString();
           
           console.log(`[QueueManager][${timestamp}] 🔄 QUEUEING: ${operation} operation for session ${sessionId || 'new'} (ID: ${operationId}, priority: ${priority})`);
-          
-          // Check if already aborted
-          if (signal?.aborted) {
-            console.log(`[QueueManager][${timestamp}] Operation ${operationId} (${operation}) was already aborted before queuing`);
-            return reject(new Error('Operation aborted'));
-          }
-          
-          // Add abort listener if signal provided
-          const abortHandler = () => {
-            const abortTime = new Date().toISOString();
-            // Remove from queue if still there
-            const index = queue.findIndex(op => op.id === operationId);
-            if (index !== -1) {
-              queue.splice(index, 1);
-              console.log(`[QueueManager][${abortTime}] ⚠️ Removed aborted operation ${operationId} from queue`);
-            }
-            
-            // Reject promise if still in promises map
-            if (operationPromises.has(operationId)) {
-              const promiseData = operationPromises.get(operationId)!;
-              if (promiseData.timeoutId) {
-                clearTimeout(promiseData.timeoutId);
-              }
-              operationPromises.delete(operationId);
-              reject(new Error('Operation aborted'));
-            }
-            
-            // Remove from processing if currently being processed
-            if (processingOperations.has(operationId)) {
-              processingOperations.delete(operationId);
-              activeOperationCount = Math.max(0, activeOperationCount - 1);
-              console.log(`[QueueManager][${abortTime}] ⚠️ Operation ${operationId} was being processed when aborted, adjusted activeOperationCount to ${activeOperationCount}`);
-            }
-          };
-          
-          if (signal) {
-            signal.addEventListener('abort', abortHandler);
-            console.log(`[QueueManager][${timestamp}] Added abort listener for operation ${operationId}`);
-          }
           
           // Set timeout for operation
           const timeout = timeoutMs || OPERATION_TIMEOUTS[operation] || DEFAULT_OPERATION_TIMEOUT;
@@ -524,12 +484,6 @@ export function createQueueManager(): QueueManager {
               console.log(`[QueueManager][${timeoutTime}] ⏱️ Operation ${operationId} was processing for ${Date.now() - (processingOperations.get(operationId)?.startTime || 0)}ms when it timed out`);
             }
             
-            // Remove abort listener if present
-            if (signal) {
-              signal.removeEventListener('abort', abortHandler);
-              console.log(`[QueueManager][${timeoutTime}] Removed abort listener for operation ${operationId} due to timeout`);
-            }
-            
             // Remove from promises map and reject
             operationPromises.delete(operationId);
             reject(new OperationTimeoutError(`Operation ${operation} timed out after ${timeout}ms`, operation as 'load' | 'save' | 'delete', sessionId));
@@ -544,8 +498,7 @@ export function createQueueManager(): QueueManager {
             sessionId,
             callback,
             priority,
-            addedAt: Date.now(),
-            signal
+            addedAt: Date.now()
           };
           
           // Add to queue
@@ -851,19 +804,6 @@ export function createQueueManager(): QueueManager {
         startTime: processStartTime
       });
       
-      // Check if the operation has been aborted
-      if (operation.signal?.aborted) {
-        console.log(`[QueueManager][${startTimestamp}] ⚠️ Operation ${operationId} (${type}) for session ${sessionId || 'new'} was aborted, skipping execution`);
-        
-        // Register completion with an error
-        const abortError = new Error('Operation aborted');
-        this.registerOperationCompletion(operationId, null, abortError);
-        
-        // Continue processing the queue
-        this.requestQueueRefresh();
-        return;
-      }
-      
       // Log processing start
       console.log(`[QueueManager][${startTimestamp}] 🔄 PROCESSING: Operation ${operationId} (${type}) for session ${sessionId || 'new'}`);
       
@@ -887,18 +827,12 @@ export function createQueueManager(): QueueManager {
           
           // Log proper error
           if (error instanceof Error) {
-            const isAborted = error.name === 'AbortError' || error.message.includes('aborted');
-            
-            if (isAborted) {
-              console.log(`[QueueManager][${endTimestamp}] ⚠️ Operation ${operationId} (${type}) was aborted after ${processingDuration}ms`);
-            } else {
-              console.error(`[QueueManager][${endTimestamp}] ❌ ERROR: Operation ${operationId} (${type}) failed after ${processingDuration}ms:`, {
-                errorName: error.name,
-                errorMessage: error.message,
-                operationType: type,
-                sessionId: sessionId || 'new'
-              });
-            }
+            console.error(`[QueueManager][${endTimestamp}] ❌ ERROR: Operation ${operationId} (${type}) failed after ${processingDuration}ms:`, {
+              errorName: error.name,
+              errorMessage: error.message,
+              operationType: type,
+              sessionId: sessionId || 'new'
+            });
           } else {
             console.error(`[QueueManager][${endTimestamp}] ❌ ERROR: Operation ${operationId} (${type}) failed after ${processingDuration}ms with non-Error object:`, String(error));
           }
@@ -1009,7 +943,7 @@ export function createQueueManager(): QueueManager {
               // Reject with a descriptive error
               promiseData.reject(new OperationTimeoutError(
                 `Operation ${oldestOp.type} aborted due to detected session switching conflict`,
-                oldestOp.type as 'load' | 'save' | 'delete',
+                oldestOp.type as 'load' | 'save' | 'delete' | 'setActive',
                 sessionKey
               ));
               

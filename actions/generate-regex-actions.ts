@@ -1,6 +1,7 @@
 "use server";
 import claudeClient from "@/lib/api/claude-client";
 import { ActionState } from "@/types";
+import { generateRegexPatternPrompt } from "@/lib/prompts/regex-prompts";
 
 function isValidRegex(pattern: string): boolean {
   try {
@@ -24,52 +25,13 @@ export async function generateRegexPatternsAction(
   try {
     console.log(`[generateRegexPatternsAction] Starting regex generation for task: "${taskDescription.substring(0, 50)}..."`);
     
-    let structureContext = "";
-    if (directoryTree && directoryTree.trim()) {
-      structureContext = `
-To help with generating more accurate regex patterns, here is the current project directory structure:
-\`\`\`
-${directoryTree}
-\`\`\`
-
-Consider this structure when creating patterns to match files in the appropriate directories.
-`;
-    }
+    const promptContent = generateRegexPatternPrompt(taskDescription, directoryTree);
 
     const payload: { messages: { role: string; content: string }[], max_tokens: number } = {
       max_tokens: 1024,
       messages: [{
           role: "user",
-          content: `Based on the following task description, identify the user's intent regarding file selection and generate appropriate JavaScript-compatible regular expressions for matching file paths (titles) and file content.${structureContext}
-
-Task Description: "${taskDescription}"
-
-IMPORTANT: The generated patterns will be used in an OR relationship - files matching EITHER the titleRegex OR the contentRegex will be included in the results. You don't need to combine both patterns into one; they will be applied separately.
-
-Provide the output *only* as a JSON object with these keys:
-- "titleRegex": Pattern to match file paths to INCLUDE
-- "contentRegex": Pattern to match file content to INCLUDE
-- "negativeTitleRegex": Pattern to match file paths to EXCLUDE
-- "negativeContentRegex": Pattern to match file content to EXCLUDE
-
-If a pattern is not applicable or cannot be generated for a category, omit the key or set its value to an empty string. Do not include any explanatory text outside the JSON object. Escaped backslashes are needed for JSON strings containing regex.
-Output *only* the raw JSON object, without any markdown formatting (like \`\`\`json).
-IMPORTANT: Do NOT use inline flags like (?i) or lookarounds within the regex patterns. Standard, widely compatible JavaScript RegExp syntax only.
-Example for "Find all TypeScript files in components folder, but exclude test files":
-{
-  "titleRegex": "^components\\/.*\\\\.tsx?$",
-  "contentRegex": "",
-  "negativeTitleRegex": "\\\\.(test|spec)\\\\."
-}
-
-Example for "Find files using 'useState' hook but exclude those with 'deprecated' comments":
-{
-  "titleRegex": "",
-  "contentRegex": "import\\s+.*?{\\s*.*?useState.*?\\s*}\\s*from\\s+['\\\"]react['\\\"]|React\\.useState",
-  "negativeContentRegex": "deprecated"
-}
-
-Now, generate the JSON for the provided task description.`,
+          content: promptContent,
         }, // Close user message
       ],
     };
