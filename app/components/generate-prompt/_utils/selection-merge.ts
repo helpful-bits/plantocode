@@ -65,20 +65,49 @@ export function applySessionSelections(
   excludedPaths?: string[]
 ): FilesMap {
   if (!includedPaths && !excludedPaths) return filesMap;
+  if (!filesMap || Object.keys(filesMap).length === 0) {
+    console.warn('[Selection Merge] Cannot apply selections to empty filesMap');
+    return filesMap;
+  }
   
   const result = { ...filesMap };
   const includedSet = new Set(includedPaths || []);
   const excludedSet = new Set(excludedPaths || []);
   
   // Log the input counts for debugging
-  console.log(`[Selection Merge] Applying selections: ${includedSet.size} included, ${excludedSet.size} excluded files`);
+  console.log(`[Selection Merge] Applying selections: ${includedSet.size} included, ${excludedSet.size} excluded files to ${Object.keys(result).length} total files`);
   
-  // Process each path in the input filesMap
+  // Count for validation statistics
   let defaultIncludedCount = 0;
   let defaultExcludedCount = 0;
   let explicitlyIncludedCount = 0;
   let explicitlyExcludedCount = 0;
+  let missingIncludedPaths = 0;
+  let missingExcludedPaths = 0;
   
+  // First, check which paths exist in the filesMap
+  if (includedSet.size > 0) {
+    for (const path of includedSet) {
+      if (!result[path]) {
+        missingIncludedPaths++;
+      }
+    }
+  }
+  
+  if (excludedSet.size > 0) {
+    for (const path of excludedSet) {
+      if (!result[path]) {
+        missingExcludedPaths++;
+      }
+    }
+  }
+  
+  // Log warning if paths are missing
+  if (missingIncludedPaths > 0 || missingExcludedPaths > 0) {
+    console.warn(`[Selection Merge] Warning: ${missingIncludedPaths} included paths and ${missingExcludedPaths} excluded paths are not present in the file map`);
+  }
+  
+  // Process each path in the input filesMap
   Object.keys(result).forEach(path => {
     if (excludedSet.has(path)) {
       // Path is explicitly excluded
@@ -116,8 +145,8 @@ export function applySessionSelections(
   
   // Log detailed information about how files were categorized
   console.log(`[Selection Merge] Applied selections:
-    - ${explicitlyIncludedCount} explicitly included files
-    - ${explicitlyExcludedCount} explicitly excluded files
+    - ${explicitlyIncludedCount} explicitly included files (${missingIncludedPaths} missing from file map)
+    - ${explicitlyExcludedCount} explicitly excluded files (${missingExcludedPaths} missing from file map)
     - ${defaultIncludedCount} files included by default
     - ${defaultExcludedCount} files excluded by default
     - ${Object.keys(result).length} total files

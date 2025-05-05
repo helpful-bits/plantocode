@@ -118,12 +118,10 @@ export async function transcribeVoiceAction(
       body: form
     });
 
-    // Log API request to background job
-    await backgroundJobRepository.updateBackgroundJobStatus({
-      jobId: runningJob.id,
-      status: 'running',
-      statusMessage: `Sent request to Groq Whisper API (${new Date().toISOString()})`
-    });
+    // Log API request progress to job status
+    // Using the helper function instead of direct repository call to avoid duplicate status updates
+    // and ensure consistent state management
+    await updateJobToRunning(runningJob.id, 'groq', `Sent request to Groq Whisper API (${new Date().toISOString()})`);
 
     if (!response.ok) {
       const errorText = await response.text();

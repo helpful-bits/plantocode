@@ -306,6 +306,7 @@ class ClaudeClient {
       max_tokens?: number;
       preserveFormatting?: boolean;
       model?: string;
+      targetField?: string;
     },
     projectDirectory?: string
   ): Promise<ActionState<string | { isBackgroundJob: true, jobId: string }>> {
@@ -418,7 +419,7 @@ Please correct and improve this text while maintaining its original meaning and 
 
     return this.sendRequest(
       {
-        model: model || "claude-3-haiku-20240307",
+        model: model || "claude-3-7-sonnet-20250219",
         messages: [
           { role: "user", content: userMessage }
         ],

@@ -12,126 +12,61 @@ interface UseTaskDescriptionStateProps {
   activeSessionId: string | null;
   onInteraction?: () => void;
   setHasUnsavedChanges?: (value: boolean) => void;
+  taskDescriptionRef: React.RefObject<HTMLTextAreaElement>;
 }
 
 export function useTaskDescriptionState({
   activeSessionId,
   onInteraction,
-  setHasUnsavedChanges
+  setHasUnsavedChanges,
+  taskDescriptionRef
 }: UseTaskDescriptionStateProps) {
-  // State
+  // Core state
   const [taskDescription, setTaskDescription] = useState("");
+  const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [isImprovingText, setIsImprovingText] = useState(false);
   const [textImprovementJobId, setTextImprovementJobId] = useState<string | null>(null);
-  const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   
   // Refs
-  const taskDescriptionRef = useRef<any>(null);
-  const saveTaskDebounceTimer = useRef<NodeJS.Timeout | null>(null);
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastContentRef = useRef<string>('');
   
   // External hooks
   const { showNotification } = useNotification();
+  // Fetch the background job
   const textImprovementJob = useBackgroundJob(textImprovementJobId);
-
-  // Reset function to clear all state
+  
+  // Reset function to clear state
   const reset = useCallback(() => {
     console.log('[TaskDescriptionState] Resetting task description state');
     setTaskDescription("");
+    setTaskCopySuccess(false);
     setIsImprovingText(false);
     setTextImprovementJobId(null);
-    setTaskCopySuccess(false);
-    
-    // Clear any pending timers
-    if (saveTaskDebounceTimer.current) {
-      clearTimeout(saveTaskDebounceTimer.current);
-      saveTaskDebounceTimer.current = null;
-    }
-    
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-      autoSaveTimeoutRef.current = null;
-    }
   }, []);
-
-  // Setup auto-save for task description
-  // Function to save task description to the session
-  const saveTaskDescription = useCallback(async (sessionId: string | null) => {
-    if (!sessionId || !taskDescription) return;
-    
-    // Reset the auto-save timer
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-      autoSaveTimeoutRef.current = null;
-    }
-    
-    try {
-      console.log(`[TaskDescriptionState] Saving task description for session: ${sessionId}, length: ${taskDescription.length}`);
-      
-      // Add timestamp tracking to identify rapid calls
-      const now = Date.now();
-      const lastCallTime = (saveTaskDescription as any).lastCallTime || 0;
-      const timeSinceLastCall = now - lastCallTime;
-      (saveTaskDescription as any).lastCallTime = now;
-      
-      // Prevent too frequent saves - minimum 8 seconds between saves
-      if (timeSinceLastCall < 1000) {
-        console.warn(`[TaskDescriptionState] Throttling: saveTaskDescription called again after only ${timeSinceLastCall}ms, deferring save`);
-        
-        // Schedule a delayed save instead of immediate save
-        autoSaveTimeoutRef.current = setTimeout(() => {
-          saveTaskDescription(sessionId);
-        }, 2000); // Retry after 2 seconds instead of 10 seconds
-        
-        return;
-      }
-      
-      await sessionSyncService.updateSessionState(
-        sessionId,
-        {
-          taskDescription
-        }
-      );
-      
-      // Reset unsaved changes flag if present
-      if (setHasUnsavedChanges) {
-        setHasUnsavedChanges(false);
-      }
-    } catch (error) {
-      console.error(`[TaskDescriptionState] Error saving task description:`, error);
-    } finally {
-      // Only set up the next auto-save if there isn't already one scheduled
-      if (!autoSaveTimeoutRef.current) {
-        autoSaveTimeoutRef.current = setTimeout(() => {
-          saveTaskDescription(sessionId);
-        }, AUTO_SAVE_INTERVAL * 2); // Double the regular interval for auto-save
-      }
-    }
-  }, [taskDescription, setHasUnsavedChanges]);
-
-  useEffect(() => {
-    if (activeSessionId) {
-      // Clear any existing timeout before setting a new one
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-      autoSaveTimeoutRef.current = setTimeout(() => {
-        saveTaskDescription(activeSessionId);
-      }, AUTO_SAVE_INTERVAL);
-    }
-    
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-        autoSaveTimeoutRef.current = null;
-      }
-    };
-  }, [activeSessionId, saveTaskDescription]);
   
+  // Function to update task description
+  const handleTaskDescriptionChange = useCallback((value: string) => {
+    // Set the task description state
+    setTaskDescription(value);
+    
+    // Update the last saved content reference
+    lastContentRef.current = value;
+    
+    // Notify of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+    
+    // Mark as having unsaved changes
+    if (setHasUnsavedChanges) {
+      setHasUnsavedChanges(true);
+    }
+  }, [onInteraction, setHasUnsavedChanges]);
+
   // Monitor background job for text improvement
   useEffect(() => {
     if (textImprovementJobId && textImprovementJob) {
-      if (textImprovementJob.status === 'completed' && textImprovementJob.response) {
+      if (textImprovementJob.job && textImprovementJob.job.status === 'completed' && textImprovementJob.job.response) {
         // Job completed successfully
         setIsImprovingText(false);
         
@@ -139,11 +74,11 @@ export function useTaskDescriptionState({
           // Parse the response if it's JSON, or use as-is if it's a string
           const improvedText = (() => {
             try {
-              const parsed = JSON.parse(textImprovementJob.response);
-              return parsed.text || parsed.improvedText || textImprovementJob.response;
+              const parsed = JSON.parse(textImprovementJob.job.response);
+              return parsed.text || parsed.improvedText || textImprovementJob.job.response;
             } catch (e) {
               // If not valid JSON, assume it's just a string
-              return textImprovementJob.response;
+              return textImprovementJob.job.response;
             }
           })();
           
@@ -151,11 +86,31 @@ export function useTaskDescriptionState({
           if (typeof improvedText === 'string' && improvedText.trim()) {
             // If we have a textarea ref, replace the selected text
             if (taskDescriptionRef.current) {
-              // Using replaceSelection function if available
-              if (typeof taskDescriptionRef.current.replaceSelection === 'function') {
-                taskDescriptionRef.current.replaceSelection(improvedText);
+              // Since HTMLTextAreaElement doesn't have a replaceSelection method, 
+              // we need to manually handle the text replacement
+              const textarea = taskDescriptionRef.current;
+              const start = textarea.selectionStart;
+              const end = textarea.selectionEnd;
+              
+              if (start !== null && end !== null) {
+                const currentValue = textarea.value || '';
+                const newValue = currentValue.substring(0, start) + improvedText + currentValue.substring(end);
+                
+                // Update the task description with the new value
+                setTaskDescription(newValue);
+                
+                // Restore selection after the update (focusing on the end of the newly inserted text)
+                setTimeout(() => {
+                  if (textarea && typeof textarea.focus === 'function') {
+                    textarea.focus();
+                    const newCursorPos = start + improvedText.length;
+                    if (typeof textarea.setSelectionRange === 'function') {
+                      textarea.setSelectionRange(newCursorPos, newCursorPos);
+                    }
+                  }
+                }, 0);
               } else {
-                console.log("[TaskDescriptionState] No replaceSelection method available on ref");
+                console.log("[TaskDescriptionState] Cannot determine selection range in textarea");
               }
             } else {
               console.log("[TaskDescriptionState] No textarea ref available to apply improved text");
@@ -185,13 +140,13 @@ export function useTaskDescriptionState({
         
         // Always reset the job ID after processing completed status
         setTextImprovementJobId(null);
-      } else if (textImprovementJob.status === 'failed' || textImprovementJob.status === 'canceled') {
+      } else if (textImprovementJob.job && (textImprovementJob.job.status === 'failed' || textImprovementJob.job.status === 'canceled')) {
         // Job failed
         setIsImprovingText(false);
         
         showNotification({
           title: "Text improvement failed",
-          message: textImprovementJob.errorMessage || "Failed to improve text.",
+          message: textImprovementJob.job.errorMessage || "Failed to improve text.",
           type: "error"
         });
         
@@ -200,53 +155,6 @@ export function useTaskDescriptionState({
       }
     }
   }, [textImprovementJob, textImprovementJobId, showNotification, taskDescriptionRef]);
-
-  // Create a memoized debounced version of saveTaskDescription
-  const debouncedSaveTaskDescription = useCallback((sessionId: string | null) => {
-    const debouncedFn = debounce((id: string | null) => {
-      console.log('[TaskDescriptionState] Debounced save triggered');
-      saveTaskDescription(id);
-    }, 1000);
-    
-    debouncedFn(sessionId);
-  }, [saveTaskDescription]);
-
-  // Track last saved content for comparison
-  const lastSavedContentRef = useRef<string>('');
-
-  // Handle task description change
-  const handleTaskDescriptionChange = useCallback((value: string) => {
-    setTaskDescription(value);
-    
-    if (onInteraction) {
-      onInteraction();
-    }
-    
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-    
-    // Skip debounced save if content hasn't changed significantly
-    if (activeSessionId && value !== lastSavedContentRef.current) {
-      // Only trigger save if:
-      // 1. Changed by at least 10 characters or
-      // 2. It's been at least 5 seconds since last save
-      const contentChangeMagnitude = Math.abs(value.length - lastSavedContentRef.current.length);
-      const timeSinceLastSave = Date.now() - ((debouncedSaveTaskDescription as any).lastSaveTime || 0);
-      
-      const shouldSaveContent = contentChangeMagnitude > 10;
-      const shouldSaveTime = timeSinceLastSave > 5000;
-      
-      if (shouldSaveContent || shouldSaveTime) {
-        console.log(`[TaskDescriptionState] Triggering save - content change: ${contentChangeMagnitude} chars, time since last: ${timeSinceLastSave}ms`);
-        debouncedSaveTaskDescription(activeSessionId);
-        (debouncedSaveTaskDescription as any).lastSaveTime = Date.now();
-        lastSavedContentRef.current = value;
-      } else {
-        console.log(`[TaskDescriptionState] Skipping save - insufficient changes (${contentChangeMagnitude} chars, ${timeSinceLastSave}ms)`);
-      }
-    }
-  }, [activeSessionId, debouncedSaveTaskDescription, onInteraction, setHasUnsavedChanges]);
 
   // Handle text improvement
   const handleImproveSelection = useCallback(async (selectedText: string): Promise<void> => {
@@ -331,13 +239,6 @@ export function useTaskDescriptionState({
     }
   }, [isImprovingText, showNotification, activeSessionId]);
 
-  // Function to save task description immediately
-  const saveTaskDescriptionImmediately = useCallback(async () => {
-    if (activeSessionId) {
-      await saveTaskDescription(activeSessionId);
-    }
-  }, [activeSessionId, saveTaskDescription]);
-
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
     try {
@@ -367,7 +268,6 @@ export function useTaskDescriptionState({
     // Actions
     setTaskDescription: handleTaskDescriptionChange,
     handleImproveSelection,
-    saveTaskDescription: saveTaskDescriptionImmediately,
     copyTaskDescription,
     reset
   }), [
@@ -377,8 +277,8 @@ export function useTaskDescriptionState({
     taskCopySuccess,
     handleTaskDescriptionChange,
     handleImproveSelection,
-    saveTaskDescriptionImmediately,
     copyTaskDescription,
-    reset
+    reset,
+    taskDescriptionRef
   ]);
 } 

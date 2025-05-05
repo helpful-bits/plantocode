@@ -2,6 +2,7 @@
 
 import claudeClient from "@/lib/api/claude-client";
 import { ActionState } from "@/types";
+import { JOB_STATUSES } from "@/types/session-types";
 import { setupDatabase } from "@/lib/db";
 import { sessionRepository, backgroundJobRepository } from "@/lib/db/repositories";
 
@@ -47,21 +48,47 @@ export async function correctTaskDescriptionAction(
           100
         );
         
-        // Filter by session ID manually since we've modified the parameters
+        // Filter by session ID manually
         const sessionActiveJobs = activeJobs.filter(job => job.sessionId === sessionId);
         
         if (sessionActiveJobs.length > 0) {
           console.log(`Found ${sessionActiveJobs.length} active voice correction jobs, skipping duplicate request`);
           
-          // Find the most recent preparing/running job
-          const runningJob = sessionActiveJobs.find(job => job.status === 'running' || job.status === 'preparing');
-          if (runningJob) {
+          // Find the most recent active job (running, preparing, queued, created, or idle)
+          const activeJob = sessionActiveJobs.find(job => 
+            job.status && JOB_STATUSES.ACTIVE.includes(job.status)
+          );
+          
+          if (activeJob) {
+            // Return the existing job ID instead of creating a new one
             return { 
               isSuccess: true, 
               message: "Another correction is already in progress",
-              data: { isBackgroundJob: true as const, jobId: runningJob.id || "" },
+              data: { isBackgroundJob: true as const, jobId: activeJob.id || "" },
               metadata: { 
-                operationId: runningJob.id || "",
+                operationId: activeJob.id || "",
+                status: "pending"
+              }
+            };
+          }
+          
+          // Add extra check for any jobs created in the last 5 seconds with the same input
+          // This prevents race conditions if multiple requests come in very quickly
+          const recentTime = Date.now() - 5000; // 5 seconds ago
+          const recentJob = sessionActiveJobs.find(job => 
+            job.createdAt && (job.createdAt > recentTime) && 
+            job.rawInput && 
+            job.rawInput.substring(0, 50) === rawText.substring(0, 50)
+          );
+          
+          if (recentJob) {
+            console.log(`Found recent voice correction job with similar input, using job ${recentJob.id}`);
+            return { 
+              isSuccess: true, 
+              message: "Similar correction request already in progress",
+              data: { isBackgroundJob: true as const, jobId: recentJob.id || "" },
+              metadata: { 
+                operationId: recentJob.id || "",
                 status: "pending"
               }
             };

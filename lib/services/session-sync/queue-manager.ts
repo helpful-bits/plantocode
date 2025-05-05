@@ -71,10 +71,11 @@ export interface QueueManager {
   clearSessionOperations(sessionId: string | null): number;
   setServiceOptions(options: ServiceOptions): void;
   registerOperationCompletion(operationId: string, result: any, error?: Error): void;
-  requestQueueRefresh(): void;
+  requestQueueRefresh(adjustPriorities?: boolean): void;
   _processQueue(): void;
   _processOperation(operation: SessionOperation): void;
   cleanupStuckOperations(): void;
+  adjustSessionOperationPriorities(): void;
 }
 
 /**
@@ -193,18 +194,109 @@ export function createQueueManager(): QueueManager {
         }
       });
       
-      // If we found a session with a potential deadlock, prioritize processing its load operations first
+      // IMPROVED SESSION HANDLING: Better deadlock detection and resolution
       if (potentialDeadlockSession) {
-        const loadOpIndex = queue.findIndex(op => 
-          op.sessionId === potentialDeadlockSession && op.type === 'load');
+        const sessionOps = sessionGroups.get(potentialDeadlockSession) || [];
+        console.log(`[QueueManager] Analyzing ${sessionOps.length} operations for deadlock-prone session ${potentialDeadlockSession}`);
         
-        if (loadOpIndex !== -1) {
-          console.log(`[QueueManager] Prioritizing load operation for session ${potentialDeadlockSession} to break potential deadlock`);
-          return queue.splice(loadOpIndex, 1)[0];
+        // Check the timing pattern of these operations
+        if (sessionOps.length >= 2) {
+          // Sort by timestamp (oldest first)
+          const sortedOps = [...sessionOps].sort((a, b) => a.addedAt - b.addedAt);
+          
+          // Look at the operation types in order of arrival to understand the sequence
+          const operationSequence = sortedOps.map(op => op.type);
+          console.log(`[QueueManager] Operation sequence for session ${potentialDeadlockSession}: ${operationSequence.join(' → ')}`);
+          
+          // Different strategies based on operation patterns:
+          
+          // Pattern 1: save → load → save
+          // In this case, we want to process a save first, then load, then remaining saves
+          if (operationSequence[0] === 'save' && operationSequence.includes('load')) {
+            // Find the first save operation
+            const firstSaveIndex = queue.findIndex(op => 
+              op.sessionId === potentialDeadlockSession && op.type === 'save' &&
+              op.addedAt === sortedOps[0].addedAt
+            );
+            
+            if (firstSaveIndex !== -1) {
+              console.log(`[QueueManager] Prioritizing initial save operation for session ${potentialDeadlockSession} to resolve deadlock pattern (save → load → save)`);
+              return queue.splice(firstSaveIndex, 1)[0];
+            }
+          }
+          
+          // Pattern 2: load → save → load
+          // In this case, we prefer to process the loads first before saves
+          if (operationSequence[0] === 'load') {
+            // Find the oldest load operation
+            const oldestLoadIndex = queue.findIndex(op => 
+              op.sessionId === potentialDeadlockSession && op.type === 'load' &&
+              op.addedAt === sortedOps[0].addedAt
+            );
+            
+            if (oldestLoadIndex !== -1) {
+              console.log(`[QueueManager] Prioritizing oldest load operation for session ${potentialDeadlockSession} to resolve deadlock pattern (load → save → load)`);
+              return queue.splice(oldestLoadIndex, 1)[0];
+            }
+          }
+          
+          // Default deadlock resolution: Process loads first, as they're likely to unblock the session
+          const loadOpIndex = queue.findIndex(op => 
+            op.sessionId === potentialDeadlockSession && op.type === 'load');
+          
+          if (loadOpIndex !== -1) {
+            console.log(`[QueueManager] Prioritizing load operation for session ${potentialDeadlockSession} to break potential deadlock`);
+            return queue.splice(loadOpIndex, 1)[0];
+          }
         }
       }
       
-      // NEW CODE: Check for session switching scenario (Session B load while Session A save)
+      // Check for sessions with multiple operations of the same type
+      // and process them in a more intelligent way
+      for (const [sessionId, operations] of sessionGroups.entries()) {
+        if (operations.length > 1) {
+          // Group by operation type
+          const loadOps = operations.filter(op => op.type === 'load');
+          const saveOps = operations.filter(op => op.type === 'save');
+          const deleteOps = operations.filter(op => op.type === 'delete');
+          
+          // For multiple save operations, prioritize them based on recency
+          if (saveOps.length > 1) {
+            // Sort saves by priority first, then by time (newest first for same priority)
+            saveOps.sort((a, b) => {
+              if (a.priority !== b.priority) return b.priority - a.priority;
+              return b.addedAt - a.addedAt;
+            });
+            
+            // Pick the highest priority, most recent save
+            const highestPrioritySave = saveOps[0];
+            
+            // Find this save in the actual queue
+            const saveOpIndex = queue.findIndex(op => op.id === highestPrioritySave.id);
+            
+            if (saveOpIndex !== -1) {
+              console.log(`[QueueManager] For session ${sessionId} with ${saveOps.length} pending saves, prioritizing highest priority save (${highestPrioritySave.priority}) from ${new Date(highestPrioritySave.addedAt).toISOString()}`);
+              return queue.splice(saveOpIndex, 1)[0];
+            }
+          }
+          
+          // For multiple load operations, just process the oldest one first
+          if (loadOps.length > 1) {
+            // Find the oldest load by time
+            const oldestLoad = loadOps.sort((a, b) => a.addedAt - b.addedAt)[0];
+            
+            // Find this load in the actual queue
+            const loadOpIndex = queue.findIndex(op => op.id === oldestLoad.id);
+            
+            if (loadOpIndex !== -1) {
+              console.log(`[QueueManager] For session ${sessionId} with ${loadOps.length} pending loads, prioritizing oldest load from ${new Date(oldestLoad.addedAt).toISOString()}`);
+              return queue.splice(loadOpIndex, 1)[0];
+            }
+          }
+        }
+      }
+      
+      // Check for session switching scenario (Session B load while Session A save)
       // Identify 'load' operations for new sessions when there are pending 'save' operations for other sessions
       const loadOps = queue.filter(op => op.type === 'load');
       if (loadOps.length > 0) {
@@ -232,7 +324,8 @@ export function createQueueManager(): QueueManager {
         }
       }
       
-      // Check for long-waiting operations
+      // Check for operations that have been waiting too long
+      // and prioritize them to prevent starvation
       const oldestOpIndex = queue.findIndex(op => (now - op.addedAt) > TIME_THRESHOLD);
       if (oldestOpIndex !== -1) {
         console.log(`[QueueManager] Prioritizing operation waiting for ${(now - queue[oldestOpIndex].addedAt) / 1000}s`);
@@ -520,15 +613,174 @@ export function createQueueManager(): QueueManager {
     
     /**
      * Request queue processing refresh
+     * Optionally performs priority adjustments for operations on the same session
      */
-    requestQueueRefresh() {
+    requestQueueRefresh(adjustPriorities: boolean = false) {
       if (processingTimer) {
         clearTimeout(processingTimer);
+      }
+      
+      // If requested, adjust priorities of operations for the same session
+      // to optimize processing order
+      if (adjustPriorities && queue.length > 1) {
+        this.adjustSessionOperationPriorities();
       }
       
       processingTimer = setTimeout(() => {
         this._processQueue();
       }, serviceOptions.processingIntervalMs || 100);
+    },
+    
+    /**
+     * Adjusts operation priorities for operations on the same session
+     * to help prevent state transition issues
+     */
+    adjustSessionOperationPriorities() {
+      // Group operations by session ID
+      const sessionGroups = new Map<string, SessionOperation[]>();
+      for (const op of queue) {
+        const key = op.sessionId || 'new';
+        if (!sessionGroups.has(key)) {
+          sessionGroups.set(key, []);
+        }
+        sessionGroups.get(key)!.push(op);
+      }
+      
+      // Only process sessions with multiple operations
+      sessionGroups.forEach((operations, sessionId) => {
+        if (operations.length > 1) {
+          console.log(`[QueueManager] Adjusting priorities for session ${sessionId} with ${operations.length} operations`);
+          
+          // Group by operation type
+          const loadOps = operations.filter(op => op.type === 'load');
+          const saveOps = operations.filter(op => op.type === 'save');
+          const deleteOps = operations.filter(op => op.type === 'delete');
+          
+          // When there are mixed operation types, we need to be careful about ordering
+          if (loadOps.length > 0 && saveOps.length > 0) {
+            console.log(`[QueueManager] Mixed operation types detected for session ${sessionId}: loads=${loadOps.length}, saves=${saveOps.length}`);
+            
+            // Sort operations by age (oldest first)
+            const sortedOps = [...operations].sort((a, b) => a.addedAt - b.addedAt);
+            
+            // Get the operation sequence (oldest to newest)
+            const sequence = sortedOps.map(op => op.type);
+            console.log(`[QueueManager] Operation sequence for session ${sessionId}: ${sequence.join(' → ')}`);
+            
+            // Check for patterns and apply appropriate priority adjustments
+            
+            // Pattern: save → load (common when switching sessions)
+            // Priority: Complete save before load
+            if (sequence[0] === 'save' && sequence.includes('load')) {
+              console.log(`[QueueManager] Applying save → load pattern priority adjustments for session ${sessionId}`);
+              
+              // Boost priority of the first save
+              const oldestSave = saveOps.sort((a, b) => a.addedAt - b.addedAt)[0];
+              oldestSave.priority = Math.max(oldestSave.priority, 8);
+              console.log(`[QueueManager] Boosted priority of oldest save (ID: ${oldestSave.id}) to ${oldestSave.priority}`);
+              
+              // Reduce priority of intermediate saves (if any)
+              if (saveOps.length > 1) {
+                // Sort by timestamp (oldest first)
+                const sortedSaves = [...saveOps].sort((a, b) => a.addedAt - b.addedAt);
+                
+                // Skip the first one (we already boosted it) and adjust intermediates
+                for (let i = 1; i < sortedSaves.length; i++) {
+                  const oldPriority = sortedSaves[i].priority;
+                  sortedSaves[i].priority = Math.min(oldPriority, 3);
+                  console.log(`[QueueManager] Reduced priority of intermediate save (ID: ${sortedSaves[i].id}) from ${oldPriority} to ${sortedSaves[i].priority}`);
+                }
+              }
+            }
+            
+            // Pattern: load → save (common during normal operation)
+            // Priority: Complete load before save to avoid data loss
+            else if (sequence[0] === 'load' && sequence.includes('save')) {
+              console.log(`[QueueManager] Applying load → save pattern priority adjustments for session ${sessionId}`);
+              
+              // Boost priority of the first load
+              const oldestLoad = loadOps.sort((a, b) => a.addedAt - b.addedAt)[0];
+              oldestLoad.priority = Math.max(oldestLoad.priority, 7);
+              console.log(`[QueueManager] Boosted priority of oldest load (ID: ${oldestLoad.id}) to ${oldestLoad.priority}`);
+              
+              // If there are multiple loads followed by saves, process the first load first
+              if (loadOps.length > 1) {
+                // Sort by timestamp (oldest first)
+                const sortedLoads = [...loadOps].sort((a, b) => a.addedAt - b.addedAt);
+                
+                // Skip the first one (we already boosted it) and adjust others
+                for (let i = 1; i < sortedLoads.length; i++) {
+                  const oldPriority = sortedLoads[i].priority;
+                  
+                  // See if this load is newer than any save, if so it should be lower priority
+                  const isNewerThanSave = saveOps.some(save => sortedLoads[i].addedAt > save.addedAt);
+                  
+                  if (isNewerThanSave) {
+                    sortedLoads[i].priority = Math.min(oldPriority, 2);
+                    console.log(`[QueueManager] Reducing priority of load (ID: ${sortedLoads[i].id}) that is newer than a save from ${oldPriority} to ${sortedLoads[i].priority}`);
+                  }
+                }
+              }
+            }
+          }
+          // For multiple operations of the same type, handle more simply
+          else if (saveOps.length > 1) {
+            console.log(`[QueueManager] Multiple saves detected for session ${sessionId}: saves=${saveOps.length}`);
+            
+            // For multiple saves, prioritize the newest ones (they have latest data)
+            // and lower the priority of older ones
+            
+            // Sort by timestamp (newest first)
+            const sortedSaves = [...saveOps].sort((a, b) => b.addedAt - a.addedAt);
+            
+            // Boost priority of the most recent save
+            const newestSave = sortedSaves[0];
+            newestSave.priority = Math.max(newestSave.priority, 6);
+            console.log(`[QueueManager] Boosted priority of newest save (ID: ${newestSave.id}) to ${newestSave.priority}`);
+            
+            // Lower priority of older saves (except the oldest which we might want to keep)
+            if (sortedSaves.length > 2) {
+              for (let i = 1; i < sortedSaves.length - 1; i++) {
+                const oldPriority = sortedSaves[i].priority;
+                sortedSaves[i].priority = Math.min(oldPriority, 2);
+                console.log(`[QueueManager] Reduced priority of intermediate save (ID: ${sortedSaves[i].id}) from ${oldPriority} to ${sortedSaves[i].priority}`);
+              }
+            }
+          }
+          else if (loadOps.length > 1) {
+            console.log(`[QueueManager] Multiple loads detected for session ${sessionId}: loads=${loadOps.length}`);
+            
+            // For multiple loads, typically we want the oldest one to complete first
+            
+            // Sort by timestamp (oldest first)
+            const sortedLoads = [...loadOps].sort((a, b) => a.addedAt - b.addedAt);
+            
+            // Boost priority of the oldest load
+            const oldestLoad = sortedLoads[0];
+            oldestLoad.priority = Math.max(oldestLoad.priority, 5);
+            console.log(`[QueueManager] Boosted priority of oldest load (ID: ${oldestLoad.id}) to ${oldestLoad.priority}`);
+            
+            // Lower priority of newer loads
+            if (sortedLoads.length > 1) {
+              for (let i = 1; i < sortedLoads.length; i++) {
+                const oldPriority = sortedLoads[i].priority;
+                sortedLoads[i].priority = Math.min(oldPriority, 2);
+                console.log(`[QueueManager] Reduced priority of newer load (ID: ${sortedLoads[i].id}) from ${oldPriority} to ${sortedLoads[i].priority}`);
+              }
+            }
+          }
+        }
+      });
+      
+      // Re-sort the queue by priority since we've adjusted priorities
+      queue.sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority; // Higher priority first
+        }
+        return a.addedAt - b.addedAt; // Earlier timestamp first
+      });
+      
+      console.log(`[QueueManager] Queue re-sorted after priority adjustments`);
     },
     
     /**

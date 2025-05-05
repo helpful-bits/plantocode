@@ -2,17 +2,22 @@
 
 import { ActionState } from "@/types";
 import claudeClient from "@/lib/api/claude-client";
-import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
-import { ApiType, TaskType } from "@/types";
+import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
+import { ApiType } from "@/types";
+import { backgroundJobRepository } from "@/lib/db/repositories";
 
 /**
  * Action to improve and correct transcribed text using Claude.
+ * 
+ * This action updates the existing transcription job instead of creating a new one.
+ * It may delegate to another Claude job if the client returns a background job ID.
  */
 export async function correctTextAction(
   text: string,
   language: string = "en",
-  sessionId: string | null = null
-): Promise<ActionState<string | { isBackgroundJob: true; jobId: string; }>> {
+  sessionId: string | null,
+  transcriptionJobId: string | null
+): Promise<ActionState<string>> {
   try {
     // Validate inputs
     if (!text || !text.trim()) {
@@ -22,35 +27,38 @@ export async function correctTextAction(
         data: text // Return original text on error
       };
     }
+    
+    if (!transcriptionJobId) {
+      console.warn("[TextCorrection] No transcription job ID provided for correction, proceeding with original text");
+      return {
+        isSuccess: true,
+        message: "No transcription job ID provided, returning original text.",
+        data: text
+      };
+    }
 
-    // Add strict session ID validation for background job creation
+    // Add strict session ID validation
     // Use a default session ID if none provided since the DB requires a non-null value
     const effectiveSessionId = sessionId || `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
     if (typeof effectiveSessionId !== 'string' || !effectiveSessionId.trim()) {
       return { 
         isSuccess: false, 
-        message: "Invalid session ID for background job creation.",
+        message: "Invalid session ID for background job processing.",
         data: text // Return original text on error
       };
     }
     
-    // Create a background job for tracking
-    const runningJob = await createBackgroundJob(
-      effectiveSessionId,
-      {
-        apiType: "claude" as ApiType,
-        taskType: "voice_correction" as TaskType,
-        model: "claude-3-sonnet-20240229",
-        rawInput: text.substring(0, 200) + (text.length > 200 ? '...' : ''), // Store preview of input
-        includeSyntax: false
-      }
-    );
+    // Update the existing transcription job to indicate correction is starting
+    if (transcriptionJobId) {
+      await backgroundJobRepository.updateBackgroundJobStatus({
+        jobId: transcriptionJobId,
+        status: 'running',
+        statusMessage: 'Correcting transcribed text...'
+      });
+    }
     
-    console.log(`[TextCorrection] Created background job: ${runningJob.id} for session: ${effectiveSessionId}`);
-    
-    // Update job to running
-    await updateJobToRunning(runningJob.id, "claude" as ApiType);
+    console.log(`[TextCorrection] Updating existing job: ${transcriptionJobId} for correction`);
 
     // Use Claude client to correct and improve the transcribed text
     try {
@@ -65,16 +73,22 @@ export async function correctTextAction(
       
       // Check if Claude client returned its own background job
       if (result.isSuccess && result.metadata?.isBackgroundJob && result.metadata?.jobId) {
-        // Link the Claude's job ID to our job for tracking
-        await updateJobToRunning(runningJob.id, "claude" as ApiType, `Delegated to Claude job: ${result.metadata.jobId}`);
+        // Update the original job with reference to the Claude job
+        if (transcriptionJobId) {
+          await backgroundJobRepository.updateBackgroundJobStatus({
+            jobId: transcriptionJobId,
+            status: 'running',
+            statusMessage: `Waiting for Claude correction job: ${result.metadata.jobId}`
+          });
+        }
         
         return {
           isSuccess: true,
           message: "Text correction is being processed in the background.",
-          data: { isBackgroundJob: true, jobId: runningJob.id },
+          data: text, // Return original text while waiting
           metadata: { 
             isBackgroundJob: true, 
-            jobId: runningJob.id,
+            jobId: transcriptionJobId,
             claudeJobId: result.metadata.jobId
           }
         };
@@ -82,25 +96,39 @@ export async function correctTextAction(
       
       // Handle background job response from data (alternate format)
       if (result.isSuccess && typeof result.data === 'object' && result.data && 'isBackgroundJob' in result.data && 'jobId' in result.data) {
-        // Link the Claude's job ID to our job for tracking
-        await updateJobToRunning(runningJob.id, "claude" as ApiType, `Delegated to Claude job: ${result.data.jobId}`);
+        // Update the original job with reference to the Claude job
+        if (transcriptionJobId) {
+          await backgroundJobRepository.updateBackgroundJobStatus({
+            jobId: transcriptionJobId,
+            status: 'running',
+            statusMessage: `Waiting for Claude correction job: ${result.data.jobId}`
+          });
+        }
         
         return {
           isSuccess: true,
           message: "Text correction is being processed in the background.",
-          data: { isBackgroundJob: true, jobId: runningJob.id },
+          data: text, // Return original text while waiting
           metadata: { 
             isBackgroundJob: true, 
-            jobId: runningJob.id,
+            jobId: transcriptionJobId,
             claudeJobId: result.data.jobId
           }
         };
       }
       
-      // Return the immediate result for synchronous response
+      // If we got an immediate response
       if (result.isSuccess && result.data && typeof result.data === 'string') {
-        // Update our job to completed with the corrected text
-        await updateJobToCompleted(runningJob.id, result.data);
+        // Update the original job to completed with the corrected text
+        if (transcriptionJobId) {
+          await backgroundJobRepository.updateBackgroundJobStatus({
+            jobId: transcriptionJobId,
+            status: 'completed',
+            response: result.data,
+            statusMessage: 'Transcription and correction completed',
+            endTime: Date.now()
+          });
+        }
         
         return {
           isSuccess: true,
@@ -108,31 +136,37 @@ export async function correctTextAction(
           data: result.data,
           metadata: { 
             ...result.metadata || {},
-            jobId: runningJob.id
+            jobId: transcriptionJobId
           }
         };
       }
       
       // Handle error cases
       if (!result.isSuccess) {
-        await updateJobToFailed(runningJob.id, result.message || "Unknown Claude API error");
+        if (transcriptionJobId) {
+          await updateJobToFailed(
+            transcriptionJobId, 
+            result.message || "Correction failed: Unknown Claude API error"
+          );
+        }
         
         return {
           isSuccess: false,
           message: result.message || "Failed to correct text",
           data: text, // Return original text on error
           metadata: {
-            jobId: runningJob.id
+            jobId: transcriptionJobId
           }
         };
       }
       
-      // Return any other type of result with our job ID attached
+      // Return any other type of result with the original job ID attached
       return {
         ...result,
+        data: typeof result.data === 'string' ? result.data : text,
         metadata: {
           ...result.metadata || {},
-          jobId: runningJob.id
+          jobId: transcriptionJobId
         }
       };
     } catch (claudeError) {
@@ -140,17 +174,19 @@ export async function correctTextAction(
       console.error("[TextCorrection] Claude client error:", claudeError);
       
       // Update job to failed
-      await updateJobToFailed(
-        runningJob.id, 
-        claudeError instanceof Error ? claudeError.message : "Claude client error"
-      );
+      if (transcriptionJobId) {
+        await updateJobToFailed(
+          transcriptionJobId, 
+          claudeError instanceof Error ? claudeError.message : "Correction failed: Claude client error"
+        );
+      }
       
       return {
         isSuccess: false,
         message: claudeError instanceof Error ? claudeError.message : "Error calling Claude API",
         data: text, // Return original text on error
         metadata: {
-          jobId: runningJob.id
+          jobId: transcriptionJobId
         }
       };
     }

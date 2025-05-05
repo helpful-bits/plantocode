@@ -1,5 +1,6 @@
 "use server";
 
-// Re-export both transcription action types
+// Re-export voice transcription related actions
 export { transcribeVoiceAction } from './transcribe-blob';
-export { transcribeAudioAction } from './transcribe-base64'; 
+export { transcribeAudioAction } from './transcribe-base64';
+export { correctTextAction } from './correct-text'; 

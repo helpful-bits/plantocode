@@ -11,10 +11,10 @@ import { validateSessionData } from './helpers';
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  context: { params: { sessionId: string } }
 ) {
   // Get the session ID from the params
-  const { sessionId } = await params;
+  const { sessionId } = context.params;
   
   // Log detailed information about the sessionId
   console.log(`[API session/state] SessionId parameter received:`, {

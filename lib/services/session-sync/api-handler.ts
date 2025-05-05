@@ -17,9 +17,9 @@ const RETRY_CONFIG = {
 
 // Track last updates for each session to prevent too frequent calls
 const lastSessionUpdates = new Map<string, { timestamp: number, fields: string[] }>();
-const UPDATE_COOLDOWN = 8000; // 8 seconds minimum between updates to the same session (increased from 5s)
+const UPDATE_COOLDOWN = 10000; // 10 seconds minimum between updates to the same session (increased from 8s)
 const FORCED_UPDATE_THROTTLE = 60000; // 1 minute period for tracking forced update counts
-const MAX_FORCED_UPDATES = 10; // Max number of forced updates per minute per session
+const MAX_FORCED_UPDATES = 8; // Max number of forced updates per minute per session (reduced from 10)
 
 // Track forced updates that bypass rate limiting
 const forcedUpdates = new Map<string, { count: number, firstUpdate: number }>();
@@ -136,9 +136,20 @@ function shouldRateLimitUpdate(
     
     // Even if different fields, limit overall update frequency
     if (timeSinceLastUpdate < 2000) { // Increased from 1000ms to 2000ms
-      console.log(`[ApiHandler] Rate limiting update to session ${sessionId}: updates too frequent (${timeSinceLastUpdate}ms)`);
-      console.log(`[ApiHandler] Update source: ${source}`);
-      return true;
+      // Special exception for active session changes - allow higher frequency
+      if (sessionId.startsWith('active-') && updateFields.includes('activeSession')) {
+        // Only rate limit active session updates if they happen less than 500ms apart
+        // This allows for more responsive session switching
+        if (timeSinceLastUpdate < 500) {
+          console.log(`[ApiHandler] Rate limiting active session update: extremely rapid calls (${timeSinceLastUpdate}ms)`);
+          console.log(`[ApiHandler] Update source: ${source}`);
+          return true;
+        }
+      } else {
+        console.log(`[ApiHandler] Rate limiting update to session ${sessionId}: updates too frequent (${timeSinceLastUpdate}ms)`);
+        console.log(`[ApiHandler] Update source: ${source}`);
+        return true;
+      }
     }
   }
   
@@ -160,11 +171,13 @@ function shouldRateLimitUpdate(
 
 /**
  * Set the active session for a project directory
+ * @param priority If true, this operation will bypass rate limiting
  */
 export async function setActiveSession(
   projectDirectory: string,
   sessionId: string | null,
-  operationId: string
+  operationId: string,
+  priority: boolean = false
 ): Promise<void> {
   try {
     const startTime = Date.now();
@@ -175,16 +188,20 @@ export async function setActiveSession(
     const source = extractSource(callStack);
     console.log(`[ApiHandler] setActiveSession call source: ${source}`);
     
-    // Apply rate limiting to setActiveSession calls as well
+    // Apply rate limiting to setActiveSession calls, except for priority operations
     const sessionKey = `active-${projectDirectory}`;
-    if (shouldRateLimitUpdate(sessionKey, ['activeSession'], source)) {
+    if (!priority && shouldRateLimitUpdate(sessionKey, ['activeSession'], source)) {
       console.log(`[ApiHandler] Rate limiting setActiveSession operation ${operationId} for project ${projectDirectory}`);
       return;
     }
     
+    if (priority) {
+      console.log(`[ApiHandler] Bypassing rate limiting for priority setActiveSession operation ${operationId}`);
+    }
+    
     console.time(`[Perf] setActiveSession API call ${operationId}`);
     
-    const response = await fetch('/api/session/active', {
+    const response = await fetch('/api/active-session', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

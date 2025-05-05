@@ -52,3 +52,5 @@ out/
 /.vscode/settings.json
 /patches/
 /pnpm-lock.yaml
+
+**/.claude/settings.local.json

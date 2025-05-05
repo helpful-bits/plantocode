@@ -20,7 +20,6 @@ interface FileSectionProps {
     pastedPaths: string;
     projectDirectory: string;
     isLoadingFiles: boolean;
-    loadingStatus: string;
     isFindingFiles: boolean;
     externalPathWarnings: string[];
     titleRegexError: string | null;
@@ -63,7 +62,6 @@ export default function FileSection({ state, actions }: FileSectionProps) {
     pastedPaths,
     projectDirectory,
     isLoadingFiles,
-    loadingStatus,
     isFindingFiles,
     externalPathWarnings,
     titleRegexError,
@@ -74,10 +72,24 @@ export default function FileSection({ state, actions }: FileSectionProps) {
     showOnlySelected
   } = state;
 
-  // Log pastedPaths for debugging
+  // Log state for debugging
   useEffect(() => {
     console.log("[FileSection] pastedPaths:", pastedPaths);
   }, [pastedPaths]);
+  
+  // Add logging for allFilesMap
+  useEffect(() => {
+    const fileCount = Object.keys(allFilesMap).length;
+    console.log(`[FileSection] allFilesMap has ${fileCount} entries, isLoadingFiles=${isLoadingFiles}`);
+    
+    if (fileCount > 0) {
+      const includedCount = Object.values(allFilesMap).filter(f => f.included && !f.forceExcluded).length;
+      console.log(`[FileSection] ${includedCount} of ${fileCount} files are included`);
+      // Log sample entries
+      const sampleKeys = Object.keys(allFilesMap).slice(0, 3);
+      console.log(`[FileSection] Sample files: ${sampleKeys.join(', ')}${fileCount > 3 ? '...' : ''}`);
+    }
+  }, [allFilesMap, isLoadingFiles]);
 
   const {
     handleFilesMapChange,
@@ -183,7 +195,13 @@ export default function FileSection({ state, actions }: FileSectionProps) {
         onInteraction={() => Promise.resolve(handleInteraction())}
         refreshFiles={refreshFiles || (() => Promise.resolve())}
         isLoading={isLoadingFiles || isFindingFiles}
-        loadingMessage={isFindingFiles ? "Finding relevant files..." : loadingStatus}
+        loadingMessage={
+          isFindingFiles 
+            ? "Finding relevant files..." 
+            : isLoadingFiles 
+              ? "Loading files..." 
+              : ""
+        }
         onAddPath={(path) => Promise.resolve(handleAddPathToPastedPaths(path))}
         showOnlySelected={showOnlySelected}
         onShowOnlySelectedChange={toggleShowOnlySelected}
