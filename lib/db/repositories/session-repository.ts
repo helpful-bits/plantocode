@@ -17,11 +17,14 @@ interface SessionRow {
   pasted_paths: string;
   title_regex: string;
   content_regex: string;
+  negative_title_regex: string;
+  negative_content_regex: string;
   is_regex_active: number; // Sqlite uses 0/1 for booleans
   diff_temperature: number;
   codebase_structure: string;
   updated_at: number;
   created_at: number;
+  search_selected_files_only: number;
 }
 
 /**
@@ -80,19 +83,24 @@ class SessionRepository {
           pasted_paths: session.pastedPaths,
           title_regex: session.titleRegex,
           content_regex: session.contentRegex,
+          negative_title_regex: session.negativeTitleRegex || '',
+          negative_content_regex: session.negativeContentRegex || '',
           is_regex_active: session.isRegexActive ? 1 : 0,
           diff_temperature: session.diffTemperature || 1.0,
           codebase_structure: session.codebaseStructure || "",
-          updated_at: Date.now()
+          updated_at: Date.now(),
+          search_selected_files_only: session.searchSelectedFilesOnly ? 1 : 0
         };
         
         // Build SQL statement
         const sql = `
           INSERT OR REPLACE INTO sessions
           (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
-           title_regex, content_regex, is_regex_active, diff_temperature, codebase_structure, updated_at)
+           title_regex, content_regex, negative_title_regex, negative_content_regex, is_regex_active, 
+           diff_temperature, codebase_structure, updated_at, search_selected_files_only)
           VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term, @pasted_paths,
-           @title_regex, @content_regex, @is_regex_active, @diff_temperature, @codebase_structure, @updated_at)`;
+           @title_regex, @content_regex, @negative_title_regex, @negative_content_regex, @is_regex_active, 
+           @diff_temperature, @codebase_structure, @updated_at, @search_selected_files_only)`;
         
         // Final abort check before executing the write operation
         if (signal?.aborted) {
@@ -166,76 +174,216 @@ class SessionRepository {
   }
   
   /**
-   * Get a session by ID with optional repository caching
+   * Get a session by ID with enhanced error handling and performance optimization for session switching
    */
-  async getSession(sessionId: string, signal?: AbortSignal): Promise<Session | null> {
+  async getSession(sessionId: string, signal?: AbortSignal, prioritized?: boolean): Promise<Session | null> {
+    const startTime = Date.now();
+    const timestamp = new Date(startTime).toISOString();
+    
     if (!sessionId) {
-      console.error("Invalid session ID provided to getSession");
+      console.error(`[Repo][${timestamp}] Invalid session ID provided to getSession`);
       return null;
     }
     
     // Check if operation was aborted
     if (signal?.aborted) {
-      console.log(`[Repo] Get session operation aborted for session ${sessionId}`);
+      console.log(`[Repo][${timestamp}] Get session operation aborted for session ${sessionId}`);
       throw new Error('Operation aborted');
     }
     
-    console.log(`[Repo] Getting session: ${sessionId}`);
-    console.time(`[Perf] Get session ${sessionId}`);
+    // For better diagnostics, create an operation ID
+    const operationId = `get_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     
-    return connectionPool.withConnection(async (db) => {
+    console.log(`[Repo][${timestamp}][${operationId}] Getting session: ${sessionId}${prioritized ? ' (prioritized)' : ''}`);
+    console.time(`[Perf] Get session ${sessionId}_${operationId}`);
+    
+    // Maximum retry attempts for transient errors
+    const maxRetries = prioritized ? 3 : 1; // Prioritized sessions get more retries
+    let attempts = 0;
+    let lastError: Error | null = null;
+    
+    while (attempts < maxRetries) {
+      attempts++;
+      
       try {
-        // Check for abort again before database query
-        if (signal?.aborted) {
-          console.log(`[Repo] Get session operation aborted before database query for session ${sessionId}`);
-          throw new Error('Operation aborted');
+        // If this is a retry, add a small delay to allow potential lock contention to resolve
+        if (attempts > 1) {
+          const delay = Math.min(50 * Math.pow(2, attempts - 1), 1000); // Exponential backoff
+          console.log(`[Repo][${timestamp}][${operationId}] Retry attempt ${attempts} for session ${sessionId} after ${delay}ms delay`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Check for abort before retry
+          if (signal?.aborted) {
+            console.log(`[Repo][${timestamp}][${operationId}] Operation aborted before retry attempt ${attempts}`);
+            throw new Error('Operation aborted');
+          }
         }
         
-        const sql = `SELECT * FROM sessions WHERE id = ?`;
-        const row = db.prepare(sql).get(sessionId) as SessionRow | undefined;
+        return await connectionPool.withConnection(async (db) => {
+          try {
+            // Check for abort again before database query
+            if (signal?.aborted) {
+              console.log(`[Repo][${timestamp}][${operationId}] Get session operation aborted before database query`);
+              throw new Error('Operation aborted');
+            }
+            
+            // Add a timeout to long-running queries if this is during session switching
+            const timeoutPromise = prioritized ? 
+              Promise.race([
+                new Promise(resolve => setTimeout(() => {
+                  resolve('timeout');
+                }, 10000)), // 10-second timeout for prioritized sessions
+                Promise.resolve('continue')
+              ]) :
+              Promise.resolve('continue');
+            
+            const timeoutResult = await timeoutPromise;
+            if (timeoutResult === 'timeout') {
+              console.warn(`[Repo][${timestamp}][${operationId}] Database operation timeout protection triggered for session ${sessionId}`);
+              throw new Error('Database operation timed out');
+            }
+            
+            // Perform database operations with better error handling
+            try {
+              // Start a transaction for consistent snapshot view
+              db.prepare('BEGIN IMMEDIATE TRANSACTION').run();
+              
+              const sql = `SELECT * FROM sessions WHERE id = ?`;
+              const queryStart = Date.now();
+              const row = db.prepare(sql).get(sessionId) as SessionRow | undefined;
+              const queryTime = Date.now() - queryStart;
+              
+              if (queryTime > 1000) {
+                console.warn(`[Repo][${timestamp}][${operationId}] Slow query detected: session lookup took ${queryTime}ms`);
+              }
+              
+              if (!row) {
+                console.log(`[Repo][${timestamp}][${operationId}] Session not found: ${sessionId}`);
+                console.timeEnd(`[Perf] Get session ${sessionId}_${operationId}`);
+                db.prepare('ROLLBACK').run();
+                return null;
+              }
+              
+              // Fetch included files
+              const includedFilesStart = Date.now();
+              const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
+              const includedFiles = includedStmt.all(sessionId).map((r: any) => r.path);
+              const includedFilesTime = Date.now() - includedFilesStart;
+              
+              if (includedFilesTime > 500) {
+                console.warn(`[Repo][${timestamp}][${operationId}] Slow query detected: included files lookup took ${includedFilesTime}ms (${includedFiles.length} files)`);
+              }
+              
+              // Fetch excluded files
+              const excludedFilesStart = Date.now();
+              const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
+              const excludedFiles = excludedStmt.all(sessionId).map((r: any) => r.path);
+              const excludedFilesTime = Date.now() - excludedFilesStart;
+              
+              if (excludedFilesTime > 500) {
+                console.warn(`[Repo][${timestamp}][${operationId}] Slow query detected: excluded files lookup took ${excludedFilesTime}ms (${excludedFiles.length} files)`);
+              }
+              
+              // Commit the transaction - these were all read operations
+              db.prepare('COMMIT').run();
+              
+              // Map DB row to Session object
+              const session: Session = {
+                id: row.id,
+                name: row.name,
+                projectDirectory: row.project_directory,
+                projectHash: row.project_hash,
+                taskDescription: row.task_description,
+                searchTerm: row.search_term,
+                pastedPaths: row.pasted_paths,
+                titleRegex: row.title_regex,
+                contentRegex: row.content_regex,
+                negativeTitleRegex: row.negative_title_regex,
+                negativeContentRegex: row.negative_content_regex,
+                isRegexActive: row.is_regex_active === 1,
+                diffTemperature: row.diff_temperature,
+                codebaseStructure: row.codebase_structure,
+                updatedAt: row.updated_at,
+                createdAt: row.created_at,
+                includedFiles: includedFiles,
+                forceExcludedFiles: excludedFiles,
+                searchSelectedFilesOnly: row.search_selected_files_only === 1
+              };
+              
+              const totalTime = Date.now() - startTime;
+              console.log(`[Repo][${timestamp}][${operationId}] Session ${sessionId} retrieved successfully in ${totalTime}ms (files: ${includedFiles.length} included, ${excludedFiles.length} excluded)`);
+              console.timeEnd(`[Perf] Get session ${sessionId}_${operationId}`);
+              return session;
+              
+            } catch (dbError) {
+              // Handle database errors gracefully
+              console.error(`[Repo][${timestamp}][${operationId}] Database error during session fetch:`, dbError);
+              
+              // Make sure to roll back any transaction
+              try {
+                db.prepare('ROLLBACK').run();
+              } catch (rollbackError) {
+                console.error(`[Repo][${timestamp}][${operationId}] Error during transaction rollback:`, rollbackError);
+              }
+              
+              // Check for specific error types that might be recoverable
+              const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
+              
+              if (errorMessage.includes('database is locked') || 
+                  errorMessage.includes('busy') ||
+                  errorMessage.includes('SQLITE_BUSY')) {
+                // These are likely transient locking errors that can be retried
+                console.warn(`[Repo][${timestamp}][${operationId}] Encountered database lock/busy error, can retry`);
+                throw dbError; // Rethrow to trigger retry logic
+              }
+              
+              // For other database errors, provide diagnostic info and rethrow
+              throw dbError;
+            }
+          } catch (error) {
+            console.error(`[Repo][${timestamp}][${operationId}] Error getting session ${sessionId}:`, error);
+            console.timeEnd(`[Perf] Get session ${sessionId}_${operationId}`);
+            lastError = error instanceof Error ? error : new Error(String(error));
+            throw error;
+          }
+        }, true); // Read-only connection is sufficient
         
-        if (!row) {
-          console.log(`[Repo] Session not found: ${sessionId}`);
-          console.timeEnd(`[Perf] Get session ${sessionId}`);
-          return null;
-        }
-        
-        // Fetch included files
-        const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
-        const includedFiles = includedStmt.all(sessionId).map((r: any) => r.path);
-
-        // Fetch excluded files
-        const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
-        const excludedFiles = excludedStmt.all(sessionId).map((r: any) => r.path);
-        
-        // Map DB row to Session object
-        const session: Session = {
-          id: row.id,
-          name: row.name,
-          projectDirectory: row.project_directory,
-          projectHash: row.project_hash,
-          taskDescription: row.task_description,
-          searchTerm: row.search_term,
-          pastedPaths: row.pasted_paths,
-          titleRegex: row.title_regex,
-          contentRegex: row.content_regex,
-          isRegexActive: row.is_regex_active === 1,
-          diffTemperature: row.diff_temperature,
-          codebaseStructure: row.codebase_structure,
-          updatedAt: row.updated_at,
-          createdAt: row.created_at,
-          includedFiles: includedFiles,
-          forceExcludedFiles: excludedFiles
-        };
-        
-        console.timeEnd(`[Perf] Get session ${sessionId}`);
-        return session;
       } catch (error) {
-        console.error(`[Repo] Error getting session ${sessionId}:`, error);
-        console.timeEnd(`[Perf] Get session ${sessionId}`);
-        throw error;
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Check if we should retry
+        const errorMessage = lastError.message;
+        
+        // Don't retry on abort signals
+        if (errorMessage === 'Operation aborted' || signal?.aborted) {
+          console.log(`[Repo][${timestamp}][${operationId}] Operation aborted, not retrying`);
+          throw lastError;
+        }
+        
+        // For retryable errors
+        const isRetryable = errorMessage.includes('database is locked') || 
+                            errorMessage.includes('busy') ||
+                            errorMessage.includes('SQLITE_BUSY');
+        
+        if (isRetryable && attempts < maxRetries) {
+          console.warn(`[Repo][${timestamp}][${operationId}] Retryable error encountered, attempt ${attempts}/${maxRetries}`);
+          // Will retry in the next loop iteration
+          continue;
+        }
+        
+        // If we're here, we've either exhausted retries or it's not a retryable error
+        break;
       }
-    }, true); // Read-only connection is sufficient
+    }
+    
+    // If we exhausted retries, throw the last error
+    if (lastError) {
+      console.error(`[Repo][${timestamp}][${operationId}] Failed to get session after ${attempts} attempts: ${lastError.message}`);
+      throw lastError;
+    }
+    
+    // Should never get here, but just in case
+    return null;
   }
   
   /**
@@ -248,68 +396,48 @@ class SessionRepository {
       try {
         // Get all sessions
         const stmt = db.prepare(`
-          SELECT * FROM sessions 
+          SELECT * FROM sessions
           ORDER BY updated_at DESC
         `);
         
-        const rows = stmt.all() as Array<{
-          id: string;
-          name: string;
-          project_directory: string;
-          project_hash: string;
-          task_description: string;
-          search_term: string;
-          pasted_paths: string;
-          title_regex: string;
-          content_regex: string;
-          is_regex_active: number;
-          diff_temperature: number;
-          updated_at: number;
-          codebase_structure: string;
-          created_at: number;
-        }>;
+        const rows = stmt.all() as SessionRow[];
         
-        if (!rows || rows.length === 0) {
-          return [];
-        }
-        
-        // Map rows to Session objects
-        const sessions = rows.map((row) => {
-          const includedStmt = db.prepare(`
-            SELECT path FROM included_files 
-            WHERE session_id = ?
-          `);
-          const includedFiles = includedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
+        // Process each session
+        const sessions: Session[] = rows.map(row => {
+          // Get included files for this session
+          const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
+          const includedFiles = includedStmt.all(row.id).map((r: any) => r.path);
           
-          const excludedStmt = db.prepare(`
-            SELECT path FROM excluded_files 
-            WHERE session_id = ?
-          `);
-          const excludedFiles = excludedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
+          // Get excluded files for this session
+          const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
+          const excludedFiles = excludedStmt.all(row.id).map((r: any) => r.path);
           
+          // Map DB row to Session object
           return {
             id: row.id,
             name: row.name,
             projectDirectory: row.project_directory,
             projectHash: row.project_hash,
-            includedFiles,
-            forceExcludedFiles: excludedFiles,
             taskDescription: row.task_description,
             searchTerm: row.search_term,
             pastedPaths: row.pasted_paths,
             titleRegex: row.title_regex,
             contentRegex: row.content_regex,
-            isRegexActive: !!row.is_regex_active,
+            negativeTitleRegex: row.negative_title_regex,
+            negativeContentRegex: row.negative_content_regex,
+            isRegexActive: row.is_regex_active === 1,
             diffTemperature: row.diff_temperature,
-            updatedAt: row.updated_at,
             codebaseStructure: row.codebase_structure,
-            createdAt: row.created_at || Date.now()
+            updatedAt: row.updated_at,
+            createdAt: row.created_at,
+            includedFiles,
+            forceExcludedFiles: excludedFiles
           };
         });
         
         return sessions;
       } catch (error) {
-        console.error("Error in getAllSessions:", error);
+        console.error("[Repo] Error in getAllSessions:", error);
         throw error;
       }
     }, true); // true = readonly connection
@@ -321,38 +449,19 @@ class SessionRepository {
   async getSessionsForProject(projectDirectory: string): Promise<Session[]> {
     console.log(`[Repo] Getting sessions for project: ${projectDirectory}`);
     
-    // Generate hash for project directory
+    // Hash the project directory for faster lookup
     const projectHash = hashString(projectDirectory);
     
     return connectionPool.withConnection((db: Database.Database) => {
       try {
-        // Get sessions for the specified project
+        // Get all sessions for this project
         const stmt = db.prepare(`
-          SELECT * FROM sessions 
+          SELECT * FROM sessions
           WHERE project_hash = ?
           ORDER BY updated_at DESC
         `);
         
-        const rows = stmt.all(projectHash) as Array<{
-          id: string;
-          name: string;
-          project_directory: string;
-          project_hash: string;
-          task_description: string;
-          search_term: string;
-          pasted_paths: string;
-          title_regex: string;
-          content_regex: string;
-          is_regex_active: number;
-          diff_temperature: number;
-          updated_at: number;
-          codebase_structure: string;
-          created_at: number;
-        }>;
-        
-        if (!rows || rows.length === 0) {
-          return [];
-        }
+        const rows = stmt.all(projectHash) as SessionRow[];
         
         // Map rows to Session objects
         const sessions = rows.map((row) => {
@@ -380,6 +489,8 @@ class SessionRepository {
             pastedPaths: row.pasted_paths,
             titleRegex: row.title_regex,
             contentRegex: row.content_regex,
+            negativeTitleRegex: row.negative_title_regex,
+            negativeContentRegex: row.negative_content_regex,
             isRegexActive: !!row.is_regex_active,
             diffTemperature: row.diff_temperature,
             updatedAt: row.updated_at,
@@ -393,141 +504,102 @@ class SessionRepository {
         console.error("Error in getSessionsForProject:", error);
         throw error;
       }
-    }, true); // true = readonly connection
+    }, true); // readonly connection
   }
   
   /**
    * Get a session with its associated background jobs
    */
   async getSessionWithBackgroundJobs(sessionId: string): Promise<Session | null> {
-    console.log(`[Repo] Getting session with background jobs, ID: ${sessionId}`);
-    
-    // Add validation for sessionId
-    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
-      throw new Error('Invalid session ID provided for retrieving session with background jobs');
-    }
+    console.log(`[Repo] Getting session with jobs: ${sessionId}`);
     
     return connectionPool.withConnection((db: Database.Database) => {
       try {
-        // First, get the session
+        // Get session
         const sessionStmt = db.prepare(`SELECT * FROM sessions WHERE id = ?`);
-        const row = sessionStmt.get(sessionId) as SessionRow | undefined;
+        const sessionRow = sessionStmt.get(sessionId) as SessionRow | undefined;
         
-        if (!row) {
+        if (!sessionRow) {
           return null;
         }
         
-        // Fetch included files
+        // Get background jobs
+        const jobsStmt = db.prepare(`
+          SELECT * FROM background_jobs 
+          WHERE session_id = ? 
+          ORDER BY created_at DESC
+        `);
+        const jobRows = jobsStmt.all(sessionId) as any[];
+        
+        // Get included files
         const includedStmt = db.prepare(`
-          SELECT id, session_id, path 
-          FROM included_files 
+          SELECT path FROM included_files 
           WHERE session_id = ?
         `);
         const includedFiles = includedStmt.all(sessionId).map((value: unknown) => (value as { path: string }).path);
         
-        // Fetch excluded files
+        // Get excluded files
         const excludedStmt = db.prepare(`
-          SELECT id, session_id, path 
-          FROM excluded_files 
+          SELECT path FROM excluded_files 
           WHERE session_id = ?
         `);
         const excludedFiles = excludedStmt.all(sessionId).map((value: unknown) => (value as { path: string }).path);
         
-        // Fetch background jobs
-        const jobsStmt = db.prepare(`
-          SELECT
-            id, 
-            session_id,
-            api_type,
-            task_type,
-            status,
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            raw_input,
-            model_output,
-            error_message,
-            diff_patch,
-            created_at,
-            updated_at,
-            include_syntax,
-            temperature,
-            visible,
-            cleared
-          FROM background_jobs
-          WHERE session_id = ?
-          ORDER BY created_at DESC
-        `);
-        
-        const jobRows = jobsStmt.all(sessionId) as Array<{
-          id: string;
-          session_id: string;
-          api_type: string;
-          task_type: string;
-          status: string;
-          prompt_tokens: number;
-          completion_tokens: number;
-          total_tokens: number;
-          raw_input: string;
-          model_output: string;
-          error_message: string;
-          diff_patch: string;
-          created_at: number;
-          updated_at: number;
-          include_syntax: number;
-          temperature: number;
-          visible: number;
-          cleared: number;
-        }>;
-        
-        const backgroundJobs = jobRows.map((jobRow) => ({
-          id: jobRow.id,
-          sessionId: jobRow.session_id,
-          apiType: jobRow.api_type as ApiType,
-          taskType: jobRow.task_type as TaskType,
-          status: jobRow.status as JobStatus,
-          promptTokens: jobRow.prompt_tokens,
-          completionTokens: jobRow.completion_tokens,
-          totalTokens: jobRow.total_tokens,
-          rawInput: jobRow.raw_input,
-          modelOutput: jobRow.model_output,
-          errorMessage: jobRow.error_message,
-          diffPatch: jobRow.diff_patch,
-          createdAt: jobRow.created_at,
-          updatedAt: jobRow.updated_at,
-          includeSyntax: !!jobRow.include_syntax,
-          temperature: jobRow.temperature,
-          visible: !!jobRow.visible,
-          cleared: !!jobRow.cleared
+        // Map background jobs
+        const backgroundJobs: BackgroundJob[] = jobRows.map(row => ({
+          id: row.id,
+          sessionId: row.session_id,
+          prompt: row.prompt,
+          status: row.status as JobStatus,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          xmlPath: row.xml_path,
+          statusMessage: row.status_message,
+          tokensReceived: row.tokens_received,
+          tokensSent: row.tokens_sent,
+          charsReceived: row.chars_received,
+          lastUpdate: row.last_update,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          cleared: row.cleared === 1,
+          apiType: row.api_type as ApiType,
+          taskType: row.task_type as TaskType,
+          modelUsed: row.model_used,
+          maxOutputTokens: row.max_output_tokens,
+          response: row.response,
+          errorMessage: row.error_message,
+          metadata: row.metadata ? JSON.parse(row.metadata) : null
         }));
         
-        // Create and return the Session object with background jobs
+        // Construct and return the session with background jobs
         const session: Session = {
-          id: row.id,
-          name: row.name,
-          projectDirectory: row.project_directory,
-          projectHash: row.project_hash,
+          id: sessionRow.id,
+          name: sessionRow.name,
+          projectDirectory: sessionRow.project_directory,
+          projectHash: sessionRow.project_hash,
+          taskDescription: sessionRow.task_description,
+          searchTerm: sessionRow.search_term,
+          pastedPaths: sessionRow.pasted_paths,
+          titleRegex: sessionRow.title_regex,
+          contentRegex: sessionRow.content_regex,
+          negativeTitleRegex: sessionRow.negative_title_regex,
+          negativeContentRegex: sessionRow.negative_content_regex,
+          isRegexActive: sessionRow.is_regex_active === 1,
+          diffTemperature: sessionRow.diff_temperature,
+          codebaseStructure: sessionRow.codebase_structure,
+          updatedAt: sessionRow.updated_at,
+          createdAt: sessionRow.created_at,
           includedFiles,
           forceExcludedFiles: excludedFiles,
-          taskDescription: row.task_description,
-          searchTerm: row.search_term,
-          pastedPaths: row.pasted_paths,
-          titleRegex: row.title_regex,
-          contentRegex: row.content_regex,
-          isRegexActive: !!row.is_regex_active,
-          diffTemperature: row.diff_temperature,
-          updatedAt: row.updated_at,
-          codebaseStructure: row.codebase_structure,
-          createdAt: row.created_at || Date.now(),
-          backgroundJobs: backgroundJobs as unknown as BackgroundJob[]
+          backgroundJobs
         };
         
         return session;
       } catch (error) {
-        console.error("[Repo] Error in getSessionWithBackgroundJobs:", error);
+        console.error("Error in getSessionWithBackgroundJobs:", error);
         throw error;
       }
-    }, true); // true = readonly connection
+    }, true); // readonly connection
   }
   
   /**
@@ -643,6 +715,8 @@ class SessionRepository {
           { clientKey: 'pastedPaths', dbKey: 'pasted_paths' },
           { clientKey: 'titleRegex', dbKey: 'title_regex' },
           { clientKey: 'contentRegex', dbKey: 'content_regex' },
+          { clientKey: 'negativeTitleRegex', dbKey: 'negative_title_regex' },
+          { clientKey: 'negativeContentRegex', dbKey: 'negative_content_regex' },
           { clientKey: 'codebaseStructure', dbKey: 'codebase_structure' }
         ];
         
@@ -677,6 +751,14 @@ class SessionRepository {
             sessionData.isRegexActive !== currentSession.isRegexActive) {
           updates.push('is_regex_active = @is_regex_active');
           parameters.is_regex_active = sessionData.isRegexActive ? 1 : 0;
+          needsUpdate = true;
+        }
+        
+        // Add searchSelectedFilesOnly boolean field handling
+        if (sessionData.searchSelectedFilesOnly !== undefined && 
+            sessionData.searchSelectedFilesOnly !== currentSession.searchSelectedFilesOnly) {
+          updates.push('search_selected_files_only = @search_selected_files_only');
+          parameters.search_selected_files_only = sessionData.searchSelectedFilesOnly ? 1 : 0;
           needsUpdate = true;
         }
         

@@ -52,17 +52,11 @@ function isInHotReloadCooldown(): boolean {
  * @returns Object containing array of file paths and whether it's a git repo
  */
 export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: string[], isGitRepo: boolean }> {
-  // Check cache first
-  const cacheKey = dir;
-  const cachedResult = fileCache.get(cacheKey);
-  const now = Date.now();
-  
-  // Return from cache if valid - extend TTL during hot reload to avoid thrashing
-  const effectiveTTL = isInHotReloadCooldown() ? CACHE_TTL * 3 : CACHE_TTL;
-  if (cachedResult && (now - cachedResult.timestamp < effectiveTTL)) {
-    if (DEBUG_LOGS) console.log(`[Git Utils] Using cached file list for ${dir} (${cachedResult.files.length} files)`);
-    return { files: [...cachedResult.files], isGitRepo: cachedResult.isGitRepo };
-  }
+  // Cache disabled - always get fresh files
+if (DEBUG_LOGS) console.log(`[Git Utils] Cache disabled, always getting fresh files for ${dir}`);
+// Clear any existing cache
+fileCache.delete(dir);
+const now = Date.now();
   
   // If cache expired or not found, proceed with file scan
   // Add retry logic
@@ -107,12 +101,8 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
         console.log(`[Refresh] Filtered out ${gitFiles.length - existingFiles.length} deleted files`);
       }
       
-      // Store result in cache
-      fileCache.set(cacheKey, {
-        files: existingFiles,
-        timestamp: now,
-        isGitRepo
-      });
+      // Cache disabled - not storing result
+      if (DEBUG_LOGS) console.log(`[Git Utils] Not caching results - cache disabled`);
       
       return { files: existingFiles, isGitRepo };
     } catch (error: any) {
@@ -136,11 +126,8 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
   const errorMsg = `Failed to list files using git after ${MAX_RETRIES} attempts`;
   console.error(`[Git Utils] ${errorMsg}:`, lastError);
   
-  // During hot reload, return cached results even if they're expired rather than failing
-  if (isInHotReloadCooldown() && cachedResult) {
-    console.log(`[Git Utils] Hot reload detected - using expired cache for ${dir} to avoid failure`);
-    return { files: [...cachedResult.files], isGitRepo: cachedResult.isGitRepo };
-  }
+  // Cache completely disabled
+  if (DEBUG_LOGS) console.log(`[Git Utils] Not using expired cache, cache is disabled`);
   
   throw new Error(`Failed to list files using both git and filesystem'}`);
 }

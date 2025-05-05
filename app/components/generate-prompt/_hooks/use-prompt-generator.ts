@@ -56,6 +56,8 @@ export function usePromptGenerator({
 
     try {
       // Refresh file contents from the file system for project files
+      // TODO: Implement on-demand content loading - readDirectoryAction now returns just file paths, not content
+      // This will need to be updated to fetch content only for the files that are going to be used
       let currentFileContents: { [key: string]: string } = {};
       
       if (!projectDirectory) {
@@ -64,11 +66,15 @@ export function usePromptGenerator({
         return;
       }
 
-      const freshResult = await readDirectoryAction(projectDirectory);
+      // Current implementation - we're temporarily going to need another server action to load file contents
+      // Note: When updating this code, add a content loading action that can load content for specific files on demand
+      const freshResult = await readDirectoryAction(projectDirectory); 
       if (freshResult.isSuccess && freshResult.data) {
-        currentFileContents = { ...freshResult.data };
+        // This will be an empty object or contain old file contents
+        // TODO: Add implementation to load contents for all selected files
+        currentFileContents = fileContentsMap; // Use the existing content map for now
       } else {
-        setError("Failed to read current file contents: " + freshResult.message);
+        setError("Failed to get file list: " + freshResult.message);
         setIsGenerating(false);
         return;
       }
@@ -222,7 +228,8 @@ ${taskDescription}
     projectDirectory,
     taskDescription,
     pastedPaths,
-    allFilesMap
+    allFilesMap,
+    fileContentsMap
   ]);
 
   // Copy prompt to clipboard
@@ -283,7 +290,7 @@ ${taskDescription}
         // Copy the enhanced prompt to clipboard
         await navigator.clipboard.writeText(enhancedPrompt);
         
-        // Set copy success state if clipboardFeedback property exists or by default
+        // Set copy success state
         setTaskCopySuccess(true);
         
         // Reset after a short delay

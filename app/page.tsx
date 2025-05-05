@@ -6,9 +6,10 @@ import { RequireProjectDirectory } from "@/components/with-project-directory";
 import GeneratePromptRoot from "@/app/components/generate-prompt/generate-prompt-root";
 import { ImplementationPlansPanel } from "@/app/components/implementation-plans-panel";
 import { useNotification } from "@/lib/contexts/notification-context";
+import SessionSwitchOverlay from '@/app/components/session-switch-overlay';
 
 export default function Home() {
-  const { projectDirectory, isLoading, activeSessionId } = useProject();
+  const { projectDirectory, isLoading, activeSessionId, isSwitchingSession } = useProject();
   const { showNotification } = useNotification();
   
   // If still loading, show a minimal loading UI
@@ -27,7 +28,7 @@ export default function Home() {
       {/* RequireProjectDirectory will handle the case when no project is selected */}
       <RequireProjectDirectory>
         {/* Show main app content when a project directory is selected */}
-        <div className="w-full">
+        <div className="relative w-full">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">
               Project: {projectDirectory?.split('/').pop()}
@@ -51,6 +52,9 @@ export default function Home() {
           }>
             <ImplementationPlansPanel sessionId={activeSessionId} />
           </Suspense>
+
+          {/* Render overlay conditionally */}
+          <SessionSwitchOverlay isLoading={isSwitchingSession} />
         </div>
       </RequireProjectDirectory>
     </main>

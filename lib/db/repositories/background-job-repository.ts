@@ -1,4 +1,4 @@
-import { BackgroundJob, ApiType, TaskType, JobStatus, Session } from '@/types';
+import { BackgroundJob, ApiType, TaskType, JobStatus, Session, JOB_STATUSES } from '@/types';
 import Database from 'better-sqlite3';
 import connectionPool from "../connection-pool";
 import crypto from 'crypto';
@@ -22,7 +22,8 @@ export class BackgroundJobRepository {
     rawInput: string,
     includeSyntax: boolean = true,
     temperature: number = 1.0,
-    visible: boolean = true
+    visible: boolean = true,
+    metadata: { [key: string]: any } = {}
   ): Promise<BackgroundJob> {
     // Add strict session ID validation
     if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -66,7 +67,7 @@ export class BackgroundJobRepository {
       lastUpdate: now * 1000, // Store as milliseconds in memory
       modelUsed: null,
       maxOutputTokens: null,
-      metadata: {}
+      metadata: metadata // Use provided metadata
     };
     
     // Save to database
@@ -285,6 +286,11 @@ export class BackgroundJobRepository {
   private rowToBackgroundJob(row: any): BackgroundJob | null {
     if (!row) return null;
     
+    const jobId = row.id;
+    
+    // Enable debug logging for stuck jobs
+    const DEBUG_JOB_MAPPING = false;
+    
     // Helper to convert SQLite timestamps (seconds) to JS timestamps (milliseconds)
     const convertTimestamp = (timestamp: number | null | undefined): number | null => {
       if (timestamp === null || timestamp === undefined) return null;
@@ -297,58 +303,230 @@ export class BackgroundJobRepository {
     try {
       if (row.metadata) {
         metadataObj = JSON.parse(row.metadata);
+        
+        if (DEBUG_JOB_MAPPING) {
+          console.debug(`[Repo] Job ${jobId}: Successfully parsed metadata:`, metadataObj);
+        }
       }
     } catch (e) {
-      console.warn(`[Repo] Could not parse metadata for job ${row.id}`, e);
+      console.warn(`[Repo] Could not parse metadata for job ${jobId}:`, e);
+      // Continue with empty metadata rather than failing
     }
     
-    // Map DB row to BackgroundJob object, converting timestamps from seconds to milliseconds
-    return {
-      id: row.id,
+    // For debugging stuck "Processing" jobs
+    if (DEBUG_JOB_MAPPING || row.status === 'running') {
+      console.debug(`[Repo] Mapping job ${jobId}:`, {
+        status: row.status,
+        response: row.response ? `${row.response.substring(0, 20)}...` : null,
+        error_message: row.error_message,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        updated_at: row.updated_at,
+        tokens_received: row.tokens_received
+      });
+    }
+    
+    // Convert timestamps using helper function
+    const createdAt = convertTimestamp(row.created_at) || 0;
+    const updatedAt = convertTimestamp(row.updated_at) || 0;
+    const startTime = convertTimestamp(row.start_time);
+    const endTime = convertTimestamp(row.end_time);
+    const lastUpdate = convertTimestamp(row.last_update);
+    
+    // Special handling for status field - ensure valid JobStatus
+    // This helps prevent UI issues from invalid status values
+    const statusValue = row.status ?? 'unknown';
+    let status = statusValue as JobStatus;
+    
+    // Validate status is a valid JobStatus enum value using the constants
+    const validStatuses = JOB_STATUSES.ALL;
+    if (!validStatuses.includes(status)) {
+      console.warn(`[Repo] Invalid status '${status}' for job ${jobId}, defaulting to 'idle'`);
+      status = 'idle';
+    }
+    
+    // Handle response and error fields based on status
+    let responseText = '';
+    let errorMessageText = '';
+    
+    // First, extract the raw values from the database
+    const rawResponse = row.response;
+    const rawErrorMessage = row.error_message;
+    
+    // Normalize response field - We want consistent string values, never null/undefined
+    if (typeof rawResponse === 'string') {
+      responseText = rawResponse;
+    } else if (rawResponse) {
+      // If it's not a string but has a truthy value, convert to string
+      try {
+        responseText = String(rawResponse);
+      } catch (e) {
+        responseText = '';
+        console.warn(`[Repo] Could not convert response to string for job ${jobId}`);
+      }
+    }
+    
+    // Normalize error message field - We want consistent string values, never null/undefined
+    if (typeof rawErrorMessage === 'string') {
+      errorMessageText = rawErrorMessage;
+    } else if (rawErrorMessage) {
+      // If it's not a string but has a truthy value, convert to string
+      try {
+        errorMessageText = String(rawErrorMessage);
+      } catch (e) {
+        errorMessageText = '';
+        console.warn(`[Repo] Could not convert error_message to string for job ${jobId}`);
+      }
+    }
+    
+    // Detect and correct potentially stuck jobs - if a job is marked as running but has an end_time, 
+    // it should actually be in a terminal state - likely 'completed' if there's a response
+    if (status === 'running' && row.end_time) {
+      if (responseText) {
+        console.warn(`[Repo] Found stuck running job ${jobId} with response and end_time (${row.end_time}), correcting to 'completed'`);
+        status = 'completed';
+      } else if (errorMessageText) {
+        console.warn(`[Repo] Found stuck running job ${jobId} with error and end_time (${row.end_time}), correcting to 'failed'`);
+        status = 'failed';
+      } else {
+        // If there's an end_time but no response or error, set to failed with a generic message
+        console.warn(`[Repo] Found stuck running job ${jobId} with end_time (${row.end_time}) but no response or error, correcting to 'failed'`);
+        status = 'failed';
+        errorMessageText = 'Job failed (recovered from inconsistent state)';
+      }
+    }
+    
+    // Ensure terminal states have appropriate content
+    if (JOB_STATUSES.TERMINAL.includes(status)) {
+      if (status === 'completed' && !responseText) {
+        responseText = '[Job completed with no response]';
+        console.warn(`[Repo] Completed job ${jobId} has no response, adding placeholder`);
+      } else if ((status === 'failed' || status === 'canceled') && !errorMessageText) {
+        errorMessageText = status === 'failed' 
+          ? 'Job failed with no error message' 
+          : 'Job canceled with no reason provided';
+        console.warn(`[Repo] ${status.charAt(0).toUpperCase() + status.slice(1)} job ${jobId} has no error message, adding placeholder`);
+      }
+    }
+    
+    // Map DB row to BackgroundJob object, with careful handling of all fields
+    const job: BackgroundJob = {
+      id: jobId,
       sessionId: row.session_id,
       apiType: row.api_type as ApiType,
       taskType: row.task_type as TaskType,
-      status: row.status as JobStatus,
-      // Standardize token handling - consistent field names
-      tokensSent: row.tokens_sent || 0,
-      tokensReceived: row.tokens_received || 0,
-      // Keep compatibility with existing code that uses these names
-      promptTokens: row.tokens_sent || 0, 
-      completionTokens: row.tokens_received || 0,
-      totalTokens: (row.tokens_sent || 0) + (row.tokens_received || 0),
-      charsReceived: row.chars_received || 0,
-      // Ensure prompt/response fields are consistently mapped
-      // For input field, prefer consistency with rawInput as the original field name
+      status: status,
+      
+      // Handle token counts with fallbacks
+      tokensSent: typeof row.tokens_sent === 'number' ? row.tokens_sent : 0,
+      tokensReceived: typeof row.tokens_received === 'number' ? row.tokens_received : 0,
+      
+      // Compatibility fields - ensure consistent values
+      promptTokens: typeof row.tokens_sent === 'number' ? row.tokens_sent : 0, 
+      completionTokens: typeof row.tokens_received === 'number' ? row.tokens_received : 0,
+      totalTokens: (typeof row.tokens_sent === 'number' ? row.tokens_sent : 0) + 
+                   (typeof row.tokens_received === 'number' ? row.tokens_received : 0),
+      
+      // Character count with fallback
+      charsReceived: typeof row.chars_received === 'number' ? row.chars_received : 0,
+      
+      // Input field handling
       prompt: row.prompt || '',
       rawInput: row.prompt || '',
-      // For output field, prioritize 'response' but maintain backward compatibility with 'modelOutput'
-      response: row.response || '',
-      modelOutput: row.response || '', // Backward compatibility: set modelOutput to same value as response
-      // Handle error messages
-      errorMessage: row.error_message || '',
+      
+      // Use our normalized strings for response and error
+      response: responseText,
+      modelOutput: responseText, // For backward compatibility
+      errorMessage: errorMessageText,
+      
+      // Status message handling
       statusMessage: row.status_message || null,
-      // Timestamps converted to milliseconds
-      createdAt: convertTimestamp(row.created_at) || 0,
-      updatedAt: convertTimestamp(row.updated_at) || 0,
-      startTime: convertTimestamp(row.start_time),
-      endTime: convertTimestamp(row.end_time),
-      lastUpdate: convertTimestamp(row.last_update),
+      
+      // Timestamps handling
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      startTime: startTime,
+      endTime: endTime,
+      lastUpdate: lastUpdate,
+      
       // Other fields
       xmlPath: row.xml_path || null,
       modelUsed: row.model_used || null,
       maxOutputTokens: row.max_output_tokens || null,
       cleared: Boolean(row.cleared),
+      
+      // Metadata derived fields with sensible defaults
       includeSyntax: (metadataObj as any)?.includeSyntax ?? false,
       temperature: (metadataObj as any)?.temperature ?? 0.7,
-      visible: true,  // Default to true, will be overridden by metadata if present
+      visible: true,
+      
+      // Store the full metadata object for access by other components
       metadata: metadataObj
     };
+    
+    // Final validation - ensure timestamps are consistent with status
+    if (JOB_STATUSES.TERMINAL.includes(job.status) && !job.endTime) {
+      // Terminal status without endTime - set to the most recent timestamp
+      const latestTimestamp = Math.max(
+        job.updatedAt || 0, 
+        job.lastUpdate || 0,
+        job.createdAt || 0
+      );
+      job.endTime = latestTimestamp || Date.now();
+      console.warn(`[Repo] Terminal job ${jobId} with status '${job.status}' is missing endTime, setting to ${job.endTime}`);
+    }
+    
+    if (JOB_STATUSES.ACTIVE.includes(job.status) && !job.startTime) {
+      // Running status without startTime - set to the earliest relevant timestamp
+      const earliestTimestamp = Math.min(
+        job.updatedAt || Number.MAX_SAFE_INTEGER, 
+        job.lastUpdate || Number.MAX_SAFE_INTEGER,
+        job.createdAt || Number.MAX_SAFE_INTEGER
+      );
+      job.startTime = earliestTimestamp === Number.MAX_SAFE_INTEGER ? Date.now() : earliestTimestamp;
+      console.warn(`[Repo] Running job ${jobId} is missing startTime, setting to ${job.startTime}`);
+    }
+    
+    // Check for additional inconsistent states and correct them
+    if (JOB_STATUSES.ACTIVE.includes(job.status) && job.endTime !== null) {
+      // Active job should not have an endTime set
+      console.warn(`[Repo] Found active job ${jobId} with status '${job.status}' but endTime is set (${job.endTime}), clearing endTime`);
+      job.endTime = null;
+    }
+    
+    // Ensure completed jobs have response, failed/canceled jobs have errorMessage
+    if (job.status === 'completed' && !job.response) {
+      job.response = '[Job completed with no response]';
+      job.modelOutput = '[Job completed with no response]';
+      console.warn(`[Repo] Completed job ${jobId} has no response after mapping, adding placeholder`);
+    } else if ((job.status === 'failed' || job.status === 'canceled') && !job.errorMessage) {
+      job.errorMessage = job.status === 'failed' 
+        ? 'Job failed with no error message' 
+        : 'Job canceled with no reason provided';
+      console.warn(`[Repo] ${job.status.charAt(0).toUpperCase() + job.status.slice(1)} job ${jobId} has no error message after mapping, adding placeholder`);
+    }
+    
+    if (DEBUG_JOB_MAPPING || row.status === 'running') {
+      console.debug(`[Repo] Mapped job ${jobId} to:`, {
+        status: job.status,
+        response: job.response ? `${job.response.substring(0, 20)}...` : null,
+        errorMessage: job.errorMessage,
+        startTime: job.startTime,
+        endTime: job.endTime,
+        updatedAt: job.updatedAt
+      });
+    }
+    
+    return job;
   }
   
   /**
    * Get all visible (non-cleared) background jobs
    */
   async getAllVisibleBackgroundJobs(): Promise<Partial<BackgroundJob>[]> {
+    // Track performance for monitoring
+    const startTime = performance.now();
+    
     // Always use connectionPool.withConnection with readOnly=true for read operations
     return connectionPool.withConnection((db: Database.Database) => {
       try {
@@ -358,36 +536,72 @@ export class BackgroundJobRepository {
         `).get();
         
         if (!tableExists) {
+          console.debug(`[Repo] background_jobs table does not exist, returning empty array`);
           return [];
         }
         
-        // Get all non-cleared jobs
-        const rows = db.prepare(`
+        // Get the count of non-cleared jobs for monitoring
+        const countQuery = db.prepare(`
+          SELECT COUNT(*) as count FROM background_jobs WHERE cleared = 0
+        `).get();
+        
+        const totalJobCount = (countQuery as any)?.count || 0;
+        
+        // Get all non-cleared jobs with optimized query
+        const query = `
           SELECT *
           FROM background_jobs
           WHERE cleared = 0
           ORDER BY 
+            -- Order priority: First active jobs, then recently completed/failed
+            CASE 
+              -- Active jobs first, sorted by status priority
+              WHEN status IN ('running', 'preparing', 'queued', 'created', 'idle') THEN 0
+              -- Then completed/failed/canceled jobs
+              ELSE 1
+            END ASC,
+            -- Within each group, sort by priority of status
             CASE status
-              WHEN 'running' THEN 1
+              WHEN 'running' THEN 1  -- Running jobs first
               WHEN 'preparing' THEN 2
               WHEN 'queued' THEN 3
               WHEN 'created' THEN 4
               WHEN 'idle' THEN 5
-              WHEN 'completed' THEN 6
-              WHEN 'failed' THEN 7
-              WHEN 'canceled' THEN 8
-              ELSE 9
+              WHEN 'completed' THEN 6 -- Then completed jobs
+              WHEN 'failed' THEN 7    -- Then failed jobs
+              WHEN 'canceled' THEN 8  -- Then canceled jobs
+              ELSE 9                  -- Then any other status
             END ASC,
+            -- Within each status, sort by most recently updated
             updated_at DESC
-          LIMIT 100
-        `).all();
+          LIMIT 100 -- Limit to 100 most relevant jobs
+        `;
         
-        // Map rows to BackgroundJob objects with timestamp conversion
-        const jobs = rows.map(row => this.rowToBackgroundJob(row)).filter(Boolean) as Partial<BackgroundJob>[];
+        const rows = db.prepare(query).all();
+        
+        console.debug(`[Repo] Found ${rows.length} background jobs from ${totalJobCount} total non-cleared jobs`);
+        
+        // Map rows to BackgroundJob objects with timestamp conversion and integrity correction
+        const jobs = rows
+          .map(row => this.rowToBackgroundJob(row))
+          .filter(Boolean) as Partial<BackgroundJob>[];
+        
+        // Log execution time for monitoring
+        const duration = performance.now() - startTime;
+        console.debug(`[Repo] getAllVisibleBackgroundJobs completed in ${Math.round(duration)}ms, returned ${jobs.length} jobs`);
+        
+        // Summarize jobs by status for debugging
+        const statusSummary = jobs.reduce((acc, job) => {
+          acc[job.status || 'unknown'] = (acc[job.status || 'unknown'] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.debug(`[Repo] Jobs by status:`, statusSummary);
         
         return jobs;
       } catch (error) {
-        console.error(`Error getting background jobs:`, error);
+        console.error(`[Repo] Error getting background jobs:`, error);
+        // Return empty array instead of throwing to ensure UI doesn't break
         return [];
       }
     }, true); // readOnly=true for better performance
@@ -423,12 +637,15 @@ export class BackgroundJobRepository {
           return [];
         }
         
+        // Build the list of active statuses as string for SQL query, using the constants
+        const activeStatusesSQL = JOB_STATUSES.ACTIVE.map(status => `'${status}'`).join(', ');
+        
         // Build query based on filters
         let query = `
           SELECT *
           FROM background_jobs
           WHERE cleared = 0
-          AND (status = 'running' OR status = 'preparing' OR status = 'queued' OR status = 'created' OR status = 'idle')
+          AND status IN (${activeStatusesSQL})
         `;
         
         const params = [];
@@ -521,21 +738,40 @@ export class BackgroundJobRepository {
         charsReceived?: number;
         tokensTotal?: number;
         tokensSent?: number;
+        targetField?: string;
         [key: string]: any;
       } | null;
     }
   ): Promise<BackgroundJob | null> {
+    const startTime = performance.now();
+    
     const { 
       jobId, 
       status, 
-      startTime, 
-      endTime, 
+      startTime: jobStartTime, 
+      endTime: jobEndTime, 
       response, 
       statusMessage, 
       errorMessage, 
       error_message,
       metadata 
     } = params;
+    
+    // Debug logging for "stuck" jobs
+    const DEBUG_JOB_UPDATES = false; // Set to true for extensive logging
+    
+    // Always log updates to terminal statuses for debugging
+    const isTerminalStatusUpdate = JOB_STATUSES.TERMINAL.includes(status);
+    
+    if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+      console.debug(`[Repo] Updating job ${jobId} to status '${status}'`, {
+        response: response ? `${response.substring(0, 30)}...` : undefined,
+        errorMessage: errorMessage || error_message,
+        jobStartTime,
+        jobEndTime,
+        metadata: metadata ? {...metadata} : undefined
+      });
+    }
     
     // Validate job ID
     if (!jobId) {
@@ -546,43 +782,158 @@ export class BackgroundJobRepository {
     const job = await this.getBackgroundJob(jobId);
     
     if (!job) {
+      console.error(`[Repo] Cannot update job status: Job with ID ${jobId} not found`);
       throw new Error(`Cannot update job status: Job with ID ${jobId} not found`);
     }
     
-    // Create a copy of the job to update
-    const updatedJob: BackgroundJob = { ...job };
-    
-    // Update fields
-    updatedJob.status = status;
-    updatedJob.statusMessage = statusMessage || job.statusMessage;
-    updatedJob.updatedAt = Date.now();
-    updatedJob.lastUpdate = Date.now();
-    
-    // For terminal statuses, auto-set endTime if not provided
-    if (['completed', 'failed', 'canceled'].includes(status) && !endTime && !job.endTime) {
-      updatedJob.endTime = updatedJob.updatedAt;
-    } else if (endTime) {
-      updatedJob.endTime = endTime;
+    // Check for invalid transition - terminal to non-terminal
+    if (job.status !== status && 
+        JOB_STATUSES.TERMINAL.includes(job.status) && 
+        !JOB_STATUSES.TERMINAL.includes(status)) {
+      // This is an invalid transition from a terminal state to a non-terminal state
+      console.warn(`[Repo] Preventing invalid status transition for job ${jobId}: ${job.status} -> ${status}`);
+      
+      // Return the original job without changes
+      return job;
     }
     
-    // For starting statuses, set startTime if provided or not already set
-    if (startTime || (status === 'running' && !job.startTime)) {
-      updatedJob.startTime = startTime || updatedJob.updatedAt;
+    // Create a deep copy of the job to update
+    const updatedJob: BackgroundJob = JSON.parse(JSON.stringify(job));
+    
+    // Set update timestamp first - critically important for UI updates
+    const updateTimestamp = Date.now();
+    updatedJob.updatedAt = updateTimestamp;
+    updatedJob.lastUpdate = updateTimestamp;
+    
+    // Update status if changed
+    if (status !== job.status) {
+      updatedJob.status = status;
+      
+      // Add status transition message to help debug
+      if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+        console.debug(`[Repo] Job ${jobId} status transition: ${job.status} -> ${status}`);
+      }
     }
     
-    // Update response if provided
+    // Update status message if provided
+    if (statusMessage !== undefined) {
+      updatedJob.statusMessage = statusMessage;
+    }
+    
+    // Handle time tracking logic for various job states
+    
+    // ------------- TERMINAL STATUS HANDLING -------------
+    if (JOB_STATUSES.TERMINAL.includes(status)) {
+      // 1. Always ensure endTime is set for terminal statuses
+      // Priority: 1) explicitly provided endTime, 2) existing endTime, 3) current timestamp
+      if (jobEndTime) {
+        // Use explicitly provided endTime
+        updatedJob.endTime = jobEndTime;
+      } 
+      else if (!updatedJob.endTime) {
+        // Auto-set endTime if not already set
+        updatedJob.endTime = updateTimestamp;
+        
+        if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+          console.debug(`[Repo] Auto-setting endTime for job ${jobId} to ${new Date(updateTimestamp).toISOString()}`);
+        }
+      }
+      
+      // 2. Ensure relevant fields are set based on terminal status type
+      if (status === 'completed') {
+        // For completed jobs, ensure response is set
+        const hasExistingResponse = Boolean(updatedJob.response && updatedJob.response.trim());
+        const hasNewResponse = Boolean(response && response.trim());
+        
+        if (!hasExistingResponse && !hasNewResponse) {
+          // Set placeholder response if no response content exists
+          updatedJob.response = '[Job completed with no response]';
+          updatedJob.modelOutput = '[Job completed with no response]'; // For backward compatibility
+          
+          console.warn(`[Repo] Job ${jobId} marked as 'completed' but has no response, adding placeholder`);
+        } 
+        else if (hasNewResponse) {
+          // Update both response fields for consistency (if new response provided)
+          updatedJob.response = response;
+          updatedJob.modelOutput = response; // For backward compatibility
+        }
+        
+        // Clear error message for completed jobs
+        updatedJob.errorMessage = '';
+      }
+      else if (JOB_STATUSES.FAILED.includes(status)) {
+        // For failed/canceled jobs, ensure errorMessage is set
+        const hasExistingError = Boolean(updatedJob.errorMessage && updatedJob.errorMessage.trim());
+        const hasNewError = Boolean((errorMessage || error_message) && (errorMessage || error_message || '').trim());
+        
+        if (!hasExistingError && !hasNewError) {
+          // Set specific placeholder based on status
+          const errorPlaceholder = status === 'failed' 
+            ? 'Job failed with no error message' 
+            : 'Job canceled with no reason provided';
+          
+          updatedJob.errorMessage = errorPlaceholder;
+          
+          console.warn(`[Repo] Job ${jobId} marked as '${status}' but has no error message, adding placeholder`);
+        }
+        else if (hasNewError) {
+          // Update error message with the provided value
+          updatedJob.errorMessage = errorMessage || error_message || '';
+        }
+        
+        // Clear response for failed/canceled jobs
+        updatedJob.response = '';
+        updatedJob.modelOutput = '';
+      }
+    }
+    // ------------- END TERMINAL STATUS HANDLING -------------
+    
+    // ------------- ACTIVE STATUS HANDLING -------------
+    else if (JOB_STATUSES.ACTIVE.includes(status)) {
+      // Set startTime if provided explicitly
+      if (jobStartTime) {
+        updatedJob.startTime = jobStartTime;
+      } 
+      // Auto-set startTime if not already set and not provided
+      else if (!updatedJob.startTime) {
+        updatedJob.startTime = updateTimestamp;
+        
+        if (DEBUG_JOB_UPDATES) {
+          console.debug(`[Repo] Auto-setting startTime for job ${jobId} to ${new Date(updateTimestamp).toISOString()}`);
+        }
+      }
+      
+      // Clear endTime if it was somehow set (correcting invalid state)
+      if (updatedJob.endTime !== null) {
+        console.warn(`[Repo] Found '${status}' job ${jobId} with endTime set (${updatedJob.endTime}), clearing endTime`);
+        updatedJob.endTime = null;
+      }
+    }
+    // ------------- END ACTIVE STATUS HANDLING -------------
+    
+    // Update response if provided (now separate from terminal status handling)
     if (response !== undefined) {
+      if (DEBUG_JOB_UPDATES) {
+        console.debug(`[Repo] Updating response for job ${jobId}: ${response?.substring(0, 50)}...`);
+      }
+      
       updatedJob.response = response;
       // For backward compatibility until migration is complete
       updatedJob.modelOutput = response;
     }
     
-    // Update error message if provided (handle both property names)
+    // Update error message if provided (now separate from terminal status handling)
     if (errorMessage !== undefined || error_message !== undefined) {
-      updatedJob.errorMessage = errorMessage || error_message || '';
+      const errorMsg = errorMessage || error_message || '';
+      
+      if (DEBUG_JOB_UPDATES) {
+        console.debug(`[Repo] Updating error message for job ${jobId}: ${errorMsg.substring(0, 50)}...`);
+      }
+      
+      updatedJob.errorMessage = errorMsg;
     }
     
-    // Merge metadata if provided
+    // Merge metadata if provided and preserve existing fields
     if (metadata) {
       // Get existing metadata object
       const existingMetadata = updatedJob.metadata || {};
@@ -591,6 +942,10 @@ export class BackgroundJobRepository {
       if (metadata.tokensReceived !== undefined) {
         updatedJob.tokensReceived = metadata.tokensReceived;
         updatedJob.completionTokens = metadata.tokensReceived; // Update both for compatibility
+        
+        if (DEBUG_JOB_UPDATES) {
+          console.debug(`[Repo] Updating tokensReceived for job ${jobId} to ${metadata.tokensReceived}`);
+        }
       }
       
       if (metadata.charsReceived !== undefined) {
@@ -606,7 +961,14 @@ export class BackgroundJobRepository {
         updatedJob.totalTokens = metadata.tokensTotal;
       }
       
-      // Merge metadata objects
+      // Special handling for targetField in metadata (critical for form updates)
+      if (metadata.targetField !== undefined) {
+        if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+          console.debug(`[Repo] Job ${jobId} has targetField '${metadata.targetField}' in metadata`);
+        }
+      }
+      
+      // Merge metadata objects with new values taking precedence
       updatedJob.metadata = {
         ...existingMetadata,
         ...metadata
@@ -614,9 +976,20 @@ export class BackgroundJobRepository {
     }
     
     // Save the updated job
-    await this.saveBackgroundJob(updatedJob);
-    
-    return updatedJob;
+    try {
+      await this.saveBackgroundJob(updatedJob);
+      
+      const duration = performance.now() - startTime;
+      
+      if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+        console.debug(`[Repo] Successfully updated job ${jobId} to status '${status}' in ${Math.round(duration)}ms`);
+      }
+      
+      return updatedJob;
+    } catch (error) {
+      console.error(`[Repo] Error updating job ${jobId} to status '${status}':`, error);
+      throw error;
+    }
   }
   
   /**

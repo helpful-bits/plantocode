@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useMemo, memo, useEffect, useCallback } from 'react';
 import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
-import { BackgroundJob, ApiType, TaskType } from '@/types/session-types';
+import { BackgroundJob, ApiType, TaskType, JOB_STATUSES } from '@/types/session-types';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertCircle, CheckCircle, Clock, RefreshCw, X, Trash2, XCircle, Loader2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,17 +32,77 @@ const JobCard = memo(({
   formatTimeAgo: (timestamp: number) => string,
   onSelect: (job: BackgroundJob) => void
 }) => {
-  const displayTime = job.startTime || job.createdAt;
-  const timeAgo = (displayTime && displayTime > 0) ? formatTimeAgo(displayTime) : 'Invalid date';
+  // For debugging - enable to log all rerenders of JobCard
+  const DEBUG_JOBCARD = false;
+  
+  // Add logging for tracking JobCard re-renders
+  useEffect(() => {
+    if (DEBUG_JOBCARD) {
+      console.debug(`JobCard [${job.id}] rendering, status=${job.status}, response=${Boolean(job.response)}, error=${Boolean(job.errorMessage)}`);
+    }
+  }, [job.id, job.status, job.response, job.errorMessage, DEBUG_JOBCARD]);
+  
+  // Choose best timestamp for display
+  // Priority: startTime > lastUpdate > createdAt
+  const displayTime = job.startTime || job.lastUpdate || job.createdAt;
+  
+  // Format relative time with fallback for invalid date
+  const timeAgo = (displayTime && displayTime > 0) 
+    ? formatTimeAgo(displayTime) 
+    : 'Unknown time';
 
-  // Determine if job can be canceled (only active jobs)
-  const canCancel = ['running', 'preparing', 'queued', 'created', 'idle'].includes(job.status);
+  // Determine if job can be canceled (only active/non-terminal jobs)
+  const canCancel = JOB_STATUSES.ACTIVE.includes(job.status);
 
+  // Format response text for preview
+  const getResponsePreview = () => {
+    if (job.response) {
+      return job.response.substring(0, 100) + (job.response.length > 100 ? '...' : '');
+    } else if (job.modelOutput) {
+      return job.modelOutput.substring(0, 100) + (job.modelOutput.length > 100 ? '...' : '');
+    }
+    return '';
+  };
+  
+  // Format error text for preview
+  const getErrorPreview = () => {
+    if (!job.errorMessage) return '';
+    return job.errorMessage.substring(0, 100) + (job.errorMessage.length > 100 ? '...' : '');
+  };
+  
+  // Get formatted token counts
+  const formatTokenCount = (count?: number) => {
+    if (!count) return '0';
+    return count >= 1000 ? `${(count / 1000).toFixed(1)}K` : count.toString();
+  };
+  
+  // Get user-friendly status display
+  const getStatusDisplay = () => {
+    // Use constants for all status checks
+    if (job.status === 'running') {
+      return 'Processing';
+    } else if (job.status === 'preparing' || job.status === 'created' || job.status === 'queued') {
+      return 'Preparing';
+    } else if (JOB_STATUSES.COMPLETED.includes(job.status)) {
+      return 'Completed';
+    } else if (job.status === 'failed') {
+      return 'Failed';
+    } else if (job.status === 'canceled') {
+      return 'Canceled';
+    } else {
+      // Capitalize the first letter for any other status
+      return job.status.charAt(0).toUpperCase() + job.status.slice(1);
+    }
+  };
+  
+  // Render card content each time job changes
   return (
     <div 
       className="border bg-card p-2 rounded-md text-xs cursor-pointer" 
       style={{ minHeight: '70px', height: 'auto', maxHeight: '160px', overflow: 'hidden' }}
       onClick={() => onSelect(job)}
+      data-testid={`job-card-${job.id}`}
+      data-status={job.status}
     >
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1 font-medium">
@@ -50,11 +110,7 @@ const JobCard = memo(({
             {getStatusIcon(job.status)}
           </span>
           <span>
-            {job.status === 'running' 
-              ? 'Processing' 
-              : job.status === 'preparing' || job.status === 'created' || job.status === 'queued'
-                ? 'Preparing' 
-                : job.status}
+            {getStatusDisplay()}
           </span>
         </div>
         
@@ -69,6 +125,7 @@ const JobCard = memo(({
                 handleCancel(job.id);
               }}
               disabled={isCancelling[job.id]}
+              aria-label="Cancel job"
             >
               <X className="h-3 w-3" />
             </Button>
@@ -89,33 +146,108 @@ const JobCard = memo(({
       {(job.tokensSent || job.tokensReceived) && (
         <div className="text-muted-foreground text-[10px] mt-1 flex items-center justify-between">
           <span>
-            Tokens: {job.tokensSent ? `~${job.tokensSent >= 1000 ? `${(job.tokensSent / 1000).toFixed(1)}K` : job.tokensSent}` : '0'} 
+            Tokens: {formatTokenCount(job.tokensSent)} 
             {' / '}
-            {job.tokensReceived ? `~${job.tokensReceived >= 1000 ? `${(job.tokensReceived / 1000).toFixed(1)}K` : job.tokensReceived}` : '0'}
+            {formatTokenCount(job.tokensReceived)}
           </span>
         </div>
       )}
 
-      {/* Preview response if available (prioritize response field over modelOutput) */}
+      {/* Preview response if available */}
       {(job.response || job.modelOutput) && (
-        <div className="text-[10px] mt-1 border-t pt-1 text-muted-foreground line-clamp-2 overflow-hidden">
-          {job.response 
-            ? job.response.substring(0, 100) + (job.response.length > 100 ? '...' : '')
-            : job.modelOutput 
-              ? job.modelOutput.substring(0, 100) + (job.modelOutput.length > 100 ? '...' : '')
-              : ''}
+        <div className="text-[10px] mt-1 border-t pt-1 text-muted-foreground line-clamp-2 overflow-hidden break-words">
+          {getResponsePreview()}
         </div>
       )}
       
-      {/* Show error message if job failed */}
-      {job.status === 'failed' && job.errorMessage && (
-        <div className="text-[10px] mt-1 border-t pt-1 text-red-500 line-clamp-2 overflow-hidden">
-          {job.errorMessage.substring(0, 100)}
-          {job.errorMessage.length > 100 && '...'}
+      {/* Show error message if job failed or canceled */}
+      {(job.status === 'failed' || job.status === 'canceled') && job.errorMessage && (
+        <div className="text-[10px] mt-1 border-t pt-1 text-red-500 line-clamp-2 overflow-hidden break-words">
+          {getErrorPreview()}
         </div>
       )}
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison function to determine when to re-render
+  // Only re-render when important properties change
+  
+  // Helper function to safely compare string fields (handling null/undefined values safely)
+  const safeStringCompare = (a: string | null | undefined, b: string | null | undefined): boolean => {
+    // Convert null/undefined to empty strings for comparison
+    const safeA = a === null || a === undefined ? '' : String(a);
+    const safeB = b === null || b === undefined ? '' : String(b);
+    return safeA === safeB;
+  };
+  
+  // Helper function to safely compare timestamp fields (handling null values safely)
+  const safeTimestampCompare = (a: number | null | undefined, b: number | null | undefined): boolean => {
+    if (a === null && b === null) return true;
+    if (a === undefined && b === undefined) return true;
+    if (a === null || a === undefined) return false;
+    if (b === null || b === undefined) return false;
+    return a === b;
+  };
+  
+  // Helper to compare numeric values safely with fallbacks
+  const safeNumberCompare = (a: number | null | undefined, b: number | null | undefined): boolean => {
+    const numA = typeof a === 'number' ? a : 0;
+    const numB = typeof b === 'number' ? b : 0;
+    return numA === numB;
+  };
+  
+  // The card should re-render when ANY of these fields change:
+  const shouldUpdate = 
+    // Job status affects styling and controls
+    prevProps.job.status !== nextProps.job.status ||
+    // Status message affects display
+    !safeStringCompare(prevProps.job.statusMessage, nextProps.job.statusMessage) ||
+    // Job response affects preview text
+    !safeStringCompare(prevProps.job.response, nextProps.job.response) ||
+    // Error message affects error display
+    !safeStringCompare(prevProps.job.errorMessage, nextProps.job.errorMessage) ||
+    // Cancellation state affects button state  
+    prevProps.isCancelling[prevProps.job.id] !== nextProps.isCancelling[nextProps.job.id] ||
+    // Token counts affect display
+    !safeNumberCompare(prevProps.job.tokensReceived, nextProps.job.tokensReceived) ||
+    !safeNumberCompare(prevProps.job.tokensSent, nextProps.job.tokensSent) ||
+    // Character counts might affect UI display
+    !safeNumberCompare(prevProps.job.charsReceived, nextProps.job.charsReceived) ||
+    // Timestamps affect relative time display
+    !safeTimestampCompare(prevProps.job.startTime, nextProps.job.startTime) ||
+    !safeTimestampCompare(prevProps.job.lastUpdate, nextProps.job.lastUpdate) ||
+    !safeTimestampCompare(prevProps.job.endTime, nextProps.job.endTime) ||
+    !safeTimestampCompare(prevProps.job.updatedAt, nextProps.job.updatedAt) ||
+    // Path display
+    !safeStringCompare(prevProps.job.xmlPath, nextProps.job.xmlPath) ||
+    // Task type affects display
+    prevProps.job.taskType !== nextProps.job.taskType ||
+    // API type affects badge
+    prevProps.job.apiType !== nextProps.job.apiType ||
+    // Check metadata differences that affect UI
+    !areMetadataEqual(prevProps.job.metadata, nextProps.job.metadata);
+  
+  // Helper to compare metadata fields that are important for UI
+  function areMetadataEqual(metaA: any, metaB: any): boolean {
+    // If both are null or undefined, they're equal
+    if (!metaA && !metaB) return true;
+    
+    // If only one is null/undefined, they differ
+    if (!metaA || !metaB) return false;
+    
+    // Check fields that might affect the UI
+    const importantFields = ['targetField', 'responseFormat', 'contentType', 'progress'];
+    
+    for (const field of importantFields) {
+      if (metaA[field] !== metaB[field]) return false;
+    }
+    
+    return true;
+  }
+  
+  // Return true to prevent re-render (props are equal)
+  // Return false to trigger re-render (props are different)
+  return !shouldUpdate;
 });
 
 // Memoized empty state component
@@ -172,23 +304,79 @@ export const BackgroundJobsSidebar: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshClickedRef = useRef(false);
   
+  // Enable this for extensive logging of job filtering and sorting
+  const DEBUG_JOB_FILTERING = false;
+  
   // Memoize job filtering to prevent unnecessary recalculations on render
   const { activeJobsToShow, completedJobs, failedJobs, hasJobs } = useMemo(() => {
-    // Use cached jobs during loading to prevent flicker
+    // Track start time for performance measurement
+    const startTime = DEBUG_JOB_FILTERING ? performance.now() : 0;
+    
+    // Use cached jobs during loading to prevent UI flicker
     const jobsToUse = isLoading && cachedJobs.length > 0 ? cachedJobs : jobs;
     
-    // Active = running, preparing, queued, created, idle
+    if (DEBUG_JOB_FILTERING) {
+      console.debug(`[BackgroundJobsSidebar] Filtering ${jobsToUse.length} jobs (cached=${isLoading && cachedJobs.length > 0})`);
+      
+      // Log job status distribution for debugging
+      const statusCounts = jobsToUse.reduce((acc, job) => {
+        acc[job.status] = (acc[job.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      console.debug(`[BackgroundJobsSidebar] Jobs status distribution:`, statusCounts);
+    }
+    
+    // Use the centralized constants for status categories to ensure consistency
+    const ACTIVE_STATUSES = JOB_STATUSES.ACTIVE;
+    const COMPLETED_STATUSES = JOB_STATUSES.COMPLETED;
+    const FAILED_STATUSES = JOB_STATUSES.FAILED;
+    
+    // Create a safe compare function for timestamps that handles undefined/null values
+    const safeCompare = (
+      a: BackgroundJob,
+      b: BackgroundJob,
+      // Array of property names to check in order of preference
+      props: Array<keyof BackgroundJob>
+    ) => {
+      // Find the first valid property to compare
+      for (const prop of props) {
+        const aVal = a[prop] as number | undefined | null;
+        const bVal = b[prop] as number | undefined | null;
+        
+        // Only use this property if both values are valid numbers
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return bVal - aVal; // Descending order (newest first)
+        }
+      }
+      // Fallback to creation time - every job should have this
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    };
+    
+    // Active jobs - filter for status and sort by most recently updated
     const activeList = jobsToUse.filter(job => 
-      ['running', 'preparing', 'queued', 'created', 'idle'].includes(job.status)
-    ).sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+      ACTIVE_STATUSES.includes(job.status)
+    ).sort((a, b) => safeCompare(a, b, ['updatedAt', 'startTime', 'lastUpdate']));
     
-    // Completed = only completed jobs
-    const completedList = jobsToUse.filter(job => job.status === 'completed')
-      .sort((a, b) => (b.endTime || b.updatedAt || b.createdAt) - (a.endTime || a.updatedAt || a.createdAt));
+    // Completed jobs - filter for status and sort by most recently completed 
+    const completedList = jobsToUse.filter(job => 
+      COMPLETED_STATUSES.includes(job.status)
+    ).sort((a, b) => safeCompare(a, b, ['endTime', 'updatedAt', 'lastUpdate']));
     
-    // Failed or canceled = failed or canceled status
-    const failedList = jobsToUse.filter(job => ['failed', 'canceled'].includes(job.status))
-      .sort((a, b) => (b.endTime || b.updatedAt || b.createdAt) - (a.endTime || a.updatedAt || a.createdAt));
+    // Failed or canceled jobs - filter for status and sort by most recent
+    const failedList = jobsToUse.filter(job => 
+      FAILED_STATUSES.includes(job.status)
+    ).sort((a, b) => safeCompare(a, b, ['endTime', 'updatedAt', 'lastUpdate']));
+    
+    if (DEBUG_JOB_FILTERING) {
+      const duration = performance.now() - startTime;
+      console.debug(`[BackgroundJobsSidebar] Filtered jobs in ${Math.round(duration)}ms:`, {
+        active: activeList.length,
+        completed: completedList.length,
+        failed: failedList.length,
+        total: jobsToUse.length,
+      });
+    }
     
     return {
       activeJobsToShow: activeList,
@@ -196,7 +384,7 @@ export const BackgroundJobsSidebar: React.FC = () => {
       failedJobs: failedList,
       hasJobs: jobsToUse.length > 0
     };
-  }, [jobs, cachedJobs, isLoading]);
+  }, [jobs, cachedJobs, isLoading, DEBUG_JOB_FILTERING]);
   
   // Handle manual refresh of jobs
   const handleRefresh = async () => {
@@ -304,6 +492,9 @@ export const BackgroundJobsSidebar: React.FC = () => {
   
   // Helper to get task type display name
   const formatTaskType = useCallback((taskType: TaskType): string => {
+    // If taskType is undefined or null, return 'Unknown Task'
+    if (!taskType) return 'Unknown Task';
+    
     // Convert enum values to human readable format
     switch (taskType) {
       case 'xml_generation':
@@ -334,7 +525,13 @@ export const BackgroundJobsSidebar: React.FC = () => {
       case 'message' as any:
         return 'Message';
       default:
-        return taskType?.toString() || 'Unknown';
+        // Return the raw value if it doesn't match any known type
+        // Convert to title case for better readability
+        const rawValue = taskType.toString();
+        return rawValue
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
     }
   }, []);
   
