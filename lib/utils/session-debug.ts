@@ -383,12 +383,12 @@ export function debugSessionState(sessionId: string | null = null):
       
       // Add details about operation distribution by session
       console.log('\n  Summary of pending operations by session:');
-      const sessionCounts = new Map<string, { total: number, load: number, save: number, delete: number }>();
+      const sessionCounts = new Map<string, { total: number, load: number, save: number, delete: number, setActive: number }>();
       
       queueStatus.queueStats.pendingOperations.forEach((op: SessionOperation) => {
         const key = op.sessionId || 'global';
         if (!sessionCounts.has(key)) {
-          sessionCounts.set(key, { total: 0, load: 0, save: 0, delete: 0 });
+          sessionCounts.set(key, { total: 0, load: 0, save: 0, delete: 0, setActive: 0 });
         }
         const counts = sessionCounts.get(key)!;
         counts.total++;
@@ -397,7 +397,7 @@ export function debugSessionState(sessionId: string | null = null):
       
       sessionCounts.forEach((counts, sid) => {
         const isRelevant = !sessionId || sid === sessionId;
-        console.log(`  ${sid}: ${counts.total} operations (load=${counts.load}, save=${counts.save}, delete=${counts.delete})${isRelevant ? ' 🔍 (RELEVANT)' : ''}`);
+        console.log(`  ${sid}: ${counts.total} operations (load=${counts.load}, save=${counts.save}, delete=${counts.delete}, setActive=${counts.setActive})${isRelevant ? ' 🔍 (RELEVANT)' : ''}`);
       });
       
       // Add details about pending operation queue position

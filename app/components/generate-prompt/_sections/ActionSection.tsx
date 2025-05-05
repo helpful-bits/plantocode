@@ -4,114 +4,134 @@ import React from "react";
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { FilesMap } from "../_hooks/use-file-selection-state";
+import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
+import { useFileManagement } from "../_contexts/file-management-context";
 
-interface ActionSectionProps {
-  state: {
-    isLoading: boolean;
-    isLoadingFiles: boolean;
-    hasUnsavedChanges: boolean;
-    diffTemperature: number;
-    tokenCount: number;
-    taskDescription: string;
-    projectDirectory: string | null;
-    prompt: string;
-    isGenerating: boolean;
-    isCustomPromptMode: boolean;
-    allFilesMap: FilesMap;
-    isFormSaving?: boolean;
-  };
-  actions: {
-    generatePrompt: () => Promise<void>;
-    setDiffTemperature: (value: number) => void;
-    handleInteraction: () => void;
-    handleSetDiffTemperature: (value: number) => void;
-    copyPrompt: () => Promise<void>;
-    handleSaveSessionState: () => Promise<void>;
-    handleToggleCustomPromptMode: () => void;
-    handleGenerateGuidance: () => Promise<void>;
-    handleGenerateCodebase: () => Promise<void>;
-  };
-}
+const ActionSection = React.memo(function ActionSection() {
+  const context = useGeneratePrompt();
+  const fileState = useFileManagement();
+  
+  // Extract values from context
+  const {
+    taskState,
+    projectDirectory,
+    isFormSaving,
+    hasUnsavedChanges,
+    diffTemperature,
+    setDiffTemperature,
+    saveSessionState,
+    activeSessionId,
+    handleGenerateGuidance,
+    handleGenerateCodebase
+  } = context;
 
-export default function ActionSection({ state, actions }: ActionSectionProps) {
-  const { isLoading, isLoadingFiles, hasUnsavedChanges, diffTemperature, tokenCount, isFormSaving } = state;
-  const { generatePrompt, setDiffTemperature, handleSaveSessionState } = actions;
+  // Compute whether we can generate guidance
+  const canGenerateGuidance = Boolean(
+    projectDirectory && 
+    taskState.taskDescription.trim() && 
+    fileState.includedPaths.length > 0
+  );
+  
+  // Handler for saving session
+  const handleSave = () => {
+    if (activeSessionId) {
+      // Get current file state for saving with the session
+      const currentFileState = fileState.getFileStateForSession();
+      saveSessionState(activeSessionId, undefined, currentFileState);
+    }
+  };
 
   return (
-    <div className="flex flex-col pt-4">
-      <div className="flex flex-col space-y-2 mb-2">
-        <div className="flex items-center justify-between">
-          <div className="text-sm">Plan Generation Temperature: {diffTemperature.toFixed(2)}</div>
-          <div className="w-64">
-            <Slider 
-              value={[diffTemperature]} 
-              min={0} 
-              max={1.0} 
-              step={0.05}
-              onValueChange={(values: number[]) => setDiffTemperature(values[0])}
-            />
-          </div>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          Controls the creativity/randomness of the generated plan. Lower values (e.g., 0.2) are more deterministic, higher values (e.g., 0.9) are more creative.
-        </div>
-
-        <div className="flex justify-between items-center">
-          <div className="text-sm text-muted-foreground flex items-center gap-2">
-            {hasUnsavedChanges && (
-              <span className="italic">Changes will be saved automatically</span>
-            )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleSaveSessionState}
-              disabled={isFormSaving || !hasUnsavedChanges}
-              className="h-7"
-            >
-              {isFormSaving ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-3 w-3 mr-1" />
-                  Save Session
-                </>
-              )}
-            </Button>
-          </div>
-          
-          <div className="flex flex-col">
-            <Button
-              type="button"
-              variant="default"
-              onClick={generatePrompt}
-              disabled={isLoading || isLoadingFiles}
-              className="px-6"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                  Generating...
-                </>
-              ) : (
-                "Generate Plan"
-              )}
-            </Button>
-            <div className="text-xs text-muted-foreground mt-1">
-              Generates the structured plan based on the task description and selected file context. This plan can then be processed by Gemini or copied.
+    <div className="space-y-3 bg-card p-4 rounded-lg border shadow-sm">
+      <div>
+        <h2 className="font-bold">Model Options</h2>
+        <div className="flex items-center gap-4 mt-2">
+          <div className="flex-1">
+            <label className="text-sm font-medium mb-2 block">
+              Temperature: {diffTemperature.toFixed(1)}
+            </label>
+            <div className="flex gap-2 items-center">
+              <span className="text-xs">0.1</span>
+              <Slider
+                value={[diffTemperature]}
+                min={0.1}
+                max={1.0}
+                step={0.1}
+                onValueChange={(vals) => {
+                  if (vals[0] !== undefined) {
+                    setDiffTemperature(vals[0]);
+                  }
+                }}
+                className="flex-1"
+                aria-label="Temperature"
+              />
+              <span className="text-xs">1.0</span>
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Lower values (0.1-0.3) for more consistent, deterministic results.
+              Higher values (0.7-1.0) for more creative, varied outputs.
+            </p>
           </div>
         </div>
       </div>
 
-      {tokenCount > 0 && (
-        <div className="text-xs text-muted-foreground text-right">
-          Estimated token count: {tokenCount.toLocaleString()}
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-between items-center gap-2">
+          <Button
+            variant="default"
+            onClick={handleSave}
+            disabled={isFormSaving || !hasUnsavedChanges || !activeSessionId}
+            className="flex-1"
+          >
+            {isFormSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save {hasUnsavedChanges ? "(Unsaved Changes)" : ""}
+              </>
+            )}
+          </Button>
         </div>
-      )}
+
+        <div className="flex flex-col items-start gap-2 mt-4">
+          <Button
+            variant="outline"
+            className="flex-1 w-full"
+            onClick={handleGenerateGuidance}
+            disabled={!canGenerateGuidance}
+            title={
+              !projectDirectory
+                ? "Please select a project directory first"
+                : !taskState.taskDescription.trim()
+                ? "Please provide a task description first"
+                : fileState.includedPaths.length === 0
+                ? "Please select at least one file first"
+                : "Generate guidance for solving the task based on selected files"
+            }
+          >
+            Generate Implementation Guidance
+          </Button>
+
+          <Button
+            variant="outline"
+            className="flex-1 w-full"
+            onClick={handleGenerateCodebase}
+            disabled={!projectDirectory}
+          >
+            Generate Codebase
+          </Button>
+
+          <p className="text-xs text-muted-foreground mt-1">
+            These actions use AI to generate guidance or a codebase for your task.
+          </p>
+        </div>
+      </div>
     </div>
   );
-} 
+});
+
+export default ActionSection;

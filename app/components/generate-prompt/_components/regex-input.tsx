@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Textarea } from "@/components/ui/textarea"; // Keep Textarea import
 import { X, ToggleLeft, ToggleRight } from "lucide-react";
 
@@ -22,7 +23,7 @@ interface RegexInputProps {
   onRegexActiveChange: (value: boolean) => void;
 }
 
-export default function RegexInput({
+const RegexInput = React.memo(function RegexInput({
   titleRegex,
   contentRegex,
   negativeTitleRegex,
@@ -160,4 +161,6 @@ export default function RegexInput({
       </div>
     </div>
   );
-}
+});
+
+export default RegexInput;

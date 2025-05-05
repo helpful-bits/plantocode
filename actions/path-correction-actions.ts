@@ -5,6 +5,7 @@ import { setupDatabase } from '@/lib/db';
 import geminiClient from '@/lib/api/gemini-client';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
+import { generatePathCorrectionPrompt } from '@/lib/prompts/path-correction-prompts';
 
 /**
  * Correct paths based on task description and project structure
@@ -57,18 +58,8 @@ export async function correctPathsAction(
       temperature = pathSettings.temperature ?? 0.3;
     }
     
-    // Prepare prompt for path correction
-    const promptText = `
-I have the following file paths that may contain errors or may not exist:
-${pathsArray.map(p => `- ${p}`).join('\n')}
-
-Please correct these paths based on:
-1. Most likely real paths in typical project structures
-2. Usual naming conventions for files
-3. What files would typically be needed
-
-Return ONLY a list of corrected file paths, one per line.
-`;
+    // Use centralized prompt for path correction
+    const promptText = generatePathCorrectionPrompt(pathsArray);
     
     // Call the Gemini client
     const result = await geminiClient.sendRequest(promptText, {

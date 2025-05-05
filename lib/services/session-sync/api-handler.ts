@@ -201,6 +201,7 @@ export async function setActiveSession(
     
     console.time(`[Perf] setActiveSession API call ${operationId}`);
     
+    // Use the actual API endpoint which is /api/active-session
     const response = await fetch('/api/active-session', {
       method: 'POST',
       headers: {
@@ -365,8 +366,7 @@ export async function getSessionById(
 export async function patchSessionStateFields(
   sessionId: string,
   sessionData: Partial<Session>,
-  operationId: string,
-  signal?: AbortSignal
+  operationId: string
 ): Promise<void> {
   let retryCount = 0;
   const startTime = Date.now();
@@ -431,20 +431,13 @@ export async function patchSessionStateFields(
   
   while (retryCount <= RETRY_CONFIG.maxRetries) {
     try {
-      // Check if operation was aborted before making fetch call
-      if (signal?.aborted) {
-        console.log(`[ApiHandler] Update operation aborted for session ${sessionId} before fetch`);
-        throw new Error('Operation aborted');
-      }
-      
       const response = await fetch(`/api/session/${sessionId}/state`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'X-Operation-ID': operationId,
         },
-        body: JSON.stringify(sessionData),
-        signal // Pass the signal to the fetch call
+        body: JSON.stringify(sessionData)
       });
 
       if (!response.ok) {
@@ -459,12 +452,6 @@ export async function patchSessionStateFields(
       
       return;
     } catch (error) {
-      // Don't retry if the operation was aborted
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log(`[ApiHandler] Update operation for session ${sessionId} was aborted`);
-        throw error;
-      }
-      
       retryCount++;
       console.error(`[ApiHandler] Error updating session state (attempt ${retryCount}):`, error);
       

@@ -137,7 +137,7 @@ export class SessionSyncService {
    * Process a dequeued operation
    */
   private async processOperation(operation: SessionOperation): Promise<any> {
-    const { type, sessionId, callback, id: operationId, signal } = operation;
+    const { type, sessionId, callback, id: operationId } = operation;
     const sessionKey = sessionId || 'new';
     
     // Log the beginning of the operation
@@ -146,12 +146,6 @@ export class SessionSyncService {
     console.log(`[SessionSyncService][${startDateTime}] 🔄 OPERATION STARTED: ${type} operation ${operationId} for session ${sessionKey}`);
     
     try {
-      // Check if the operation is already aborted
-      if (signal?.aborted) {
-        console.log(`[SessionSyncService] Operation ${operationId} for session ${sessionKey} was already aborted, skipping`);
-        throw new Error('Operation aborted');
-      }
-      
       // Get the current state for this session
       const prevState = this.activeOperations.get(sessionKey)?.state || 'idle';
       
@@ -332,34 +326,13 @@ export class SessionSyncService {
       // Log transition
       console.log(`[SessionSyncService][${startDateTime}] State transition for session ${sessionKey}: ${prevState} → ${this.activeOperations.get(sessionKey)?.state}`);
       
-      // Add an abort signal listener if signal is provided
-      let abortListener: (() => void) | undefined;
-      if (signal) {
-        abortListener = () => {
-          const abortTime = new Date().toISOString();
-          console.log(`[SessionSyncService][${abortTime}] ⚠️ Operation ${operationId} for session ${sessionKey} was aborted during execution after ${Date.now() - startTime}ms`);
-        };
-        signal.addEventListener('abort', abortListener);
-      }
-      
       // Execute the callback with timing
       console.time(`[SessionSyncService] Operation ${operationId} callback execution time`);
       const callbackStartTime = Date.now();
       
-      // Check again before executing the callback
-      if (signal?.aborted) {
-        console.log(`[SessionSyncService] Operation ${operationId} for session ${sessionKey} was aborted before callback execution`);
-        throw new Error('Operation aborted');
-      }
-      
       const result = await callback();
       const callbackDuration = Date.now() - callbackStartTime;
       console.timeEnd(`[SessionSyncService] Operation ${operationId} callback execution time`);
-      
-      // Remove abort listener if it was added
-      if (signal && abortListener) {
-        signal.removeEventListener('abort', abortListener);
-      }
       
       // Calculate operation duration
       const endTime = Date.now();
@@ -868,12 +841,11 @@ export class SessionSyncService {
    * Queue an operation
    */
   public async queueOperation(
-    operation: 'load' | 'save' | 'delete',
+    operation: 'load' | 'save' | 'delete' | 'setActive',
     sessionId: string | null,
     callback: SessionCallback,
     priority: number = 1,
-    timeoutMs?: number,
-    signal?: AbortSignal
+    timeoutMs?: number
   ): Promise<any> {
     // Validate sessionId format
     if (sessionId !== null && typeof sessionId !== 'string') {
@@ -892,12 +864,6 @@ export class SessionSyncService {
       const remainingMs = cooldown.until - Date.now();
       console.log(`[SessionSyncService][${timestamp}] Operation ${operation} for session ${sessionKey} is on cooldown for ${remainingMs}ms, skipping`);
       throw new SessionOperationError(`Operation ${operation} is on cooldown for ${remainingMs}ms`);
-    }
-    
-    // Check for aborted signal
-    if (signal?.aborted) {
-      console.log(`[SessionSyncService][${timestamp}] Operation ${operation} for session ${sessionKey} was aborted before queueing`);
-      throw new Error('Operation aborted');
     }
     
     try {
@@ -926,18 +892,6 @@ export class SessionSyncService {
             
             if (toCancel.length > 0) {
               console.log(`[SessionSyncService][${timestamp}] 🔄 Coalescing saves: canceling ${toCancel.length} older save operations for session ${sessionKey}`);
-              
-              // Abort the older operations
-              toCancel.forEach(op => {
-                if (op.signal && !op.signal.aborted && 'abort' in op.signal) {
-                  try {
-                    (op.signal as any).abort?.();
-                    console.log(`[SessionSyncService][${timestamp}] 🔄 Aborted older save operation ${op.id} during save coalescing`);
-                  } catch (error) {
-                    console.error(`[SessionSyncService][${timestamp}] Error aborting operation ${op.id}:`, error);
-                  }
-                }
-              });
               
               // Raise priority of this new save since it now contains more changes
               const originalPriority = priority;
@@ -1004,37 +958,12 @@ export class SessionSyncService {
         if (switchInfo?.previousSessionId) {
           const saveOpsForPreviousSession = queueStats.pendingOperations.filter(op => 
             op.type === 'save' && 
-            op.sessionId === switchInfo.previousSessionId &&
-            op.signal // Only consider operations with abort signals
+            op.sessionId === switchInfo.previousSessionId
           );
           
           // If there are pending saves for the previous session, cancel all but the most recent
           if (saveOpsForPreviousSession.length > 0) {
             console.log(`[SessionSyncService][${timestamp}] 🔄 Found ${saveOpsForPreviousSession.length} pending save operations for previous session ${switchInfo.previousSessionId}`);
-            
-            if (saveOpsForPreviousSession.length > 1) {
-              // Sort by timestamp (newest first)
-              const sortedSaves = [...saveOpsForPreviousSession].sort((a, b) => b.addedAt - a.addedAt);
-              
-              // Keep the newest save, cancel all others
-              const toCancel = sortedSaves.slice(1);
-              
-              if (toCancel.length > 0) {
-                console.log(`[SessionSyncService][${timestamp}] 🔄 Canceling ${toCancel.length} older save operations for previous session ${switchInfo.previousSessionId}`);
-                
-                // Abort the older operations
-                toCancel.forEach(op => {
-                  if (op.signal && !op.signal.aborted && 'abort' in op.signal) {
-                    try {
-                      (op.signal as any).abort?.();
-                      console.log(`[SessionSyncService][${timestamp}] 🔄 Aborted older save operation ${op.id} for previous session ${switchInfo.previousSessionId}`);
-                    } catch (error) {
-                      console.error(`[SessionSyncService][${timestamp}] Error aborting operation ${op.id}:`, error);
-                    }
-                  }
-                });
-              }
-            }
           }
         }
       } else if (operation === 'save') {
@@ -1070,8 +999,7 @@ export class SessionSyncService {
         sessionId,
         callback,
         priority,
-        timeoutMs,
-        signal
+        timeoutMs
       );
     } catch (error) {
       this.consecutiveErrors++;
@@ -1104,12 +1032,11 @@ export class SessionSyncService {
       // Find 'save' operations in queue for OTHER sessions
       const saveOpsForOtherSessions = queueStats.pendingOperations.filter(op => 
         op.type === 'save' && 
-        (op.sessionId || 'new') !== sessionKey &&
-        op.signal // Only consider operations with abort signals
+        (op.sessionId || 'new') !== sessionKey
       );
       
       // If we're switching sessions and there are pending saves for other sessions,
-      // we might want to cancel some of those saves to prioritize the loading
+      // we might want to prioritize loading
       if (saveOpsForOtherSessions.length > 0) {
         const processingMessage = otherSessionsSaving.length > 0 
           ? `and ${otherSessionsSaving.length} save operations actively processing` 
@@ -1118,42 +1045,17 @@ export class SessionSyncService {
         console.log(`[SessionSyncService][${timestamp}] 🔄 Session switching optimization: Found ${saveOpsForOtherSessions.length} pending save operations ${processingMessage} for other sessions while loading ${sessionKey}`);
         
         // Group pending saves by session
-        const sessionSaveCounts = new Map<string, Array<SessionOperation>>();
+        const sessionSaveCounts = new Map<string, number>();
         
         saveOpsForOtherSessions.forEach(op => {
           const opSessionKey = op.sessionId || 'new';
-          if (!sessionSaveCounts.has(opSessionKey)) {
-            sessionSaveCounts.set(opSessionKey, []);
-          }
-          sessionSaveCounts.get(opSessionKey)!.push(op);
+          sessionSaveCounts.set(opSessionKey, (sessionSaveCounts.get(opSessionKey) || 0) + 1);
         });
         
-        // For each session with multiple pending saves, cancel all but the last one
-        sessionSaveCounts.forEach((operations, otherSessionKey) => {
-          if (operations.length > 1) {
-            // Sort by timestamp (newest first)
-            operations.sort((a, b) => b.addedAt - a.addedAt);
-            
-            // Keep the newest save, cancel older ones
-            const toCancel = operations.slice(1);
-            
-            if (toCancel.length > 0) {
-              console.log(`[SessionSyncService][${timestamp}] 🔄 Session switching optimization: Canceling ${toCancel.length} older save operations for session ${otherSessionKey} to prioritize loading ${sessionKey}`);
-              
-              // Abort the older operations
-              toCancel.forEach(op => {
-                if (op.signal && !op.signal.aborted && 'abort' in op.signal) {
-                  try {
-                    // Use any as a workaround for the fact that AbortSignal doesn't have an abort method directly
-                    // In practice, this is likely an AbortController's signal
-                    (op.signal as any).abort?.();
-                    console.log(`[SessionSyncService][${timestamp}] 🔄 Aborted older save operation ${op.id} for session ${otherSessionKey}`);
-                  } catch (error) {
-                    console.error(`[SessionSyncService][${timestamp}] Error aborting operation ${op.id}:`, error);
-                  }
-                }
-              });
-            }
+        // Log statistics for sessions with multiple pending saves
+        sessionSaveCounts.forEach((count, otherSessionKey) => {
+          if (count > 1) {
+            console.log(`[SessionSyncService][${timestamp}] Session ${otherSessionKey} has ${count} pending save operations`);
           }
         });
       }
@@ -1241,7 +1143,7 @@ export class SessionSyncService {
   /**
    * Get a session by ID
    */
-  public async getSessionById(sessionId: string, signal?: AbortSignal): Promise<Session | null> {
+  public async getSessionById(sessionId: string): Promise<Session | null> {
     try {
       // Add validation for sessionId
       if (typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -1256,12 +1158,6 @@ export class SessionSyncService {
         'load',
         sessionIdStr,
         async () => {
-          // Check if the operation was aborted before making the database call
-          if (signal?.aborted) {
-            console.log(`[SessionSyncService] Operation aborted before database query for session ${sessionIdStr}`);
-            throw new Error('Operation aborted');
-          }
-          
           const sessionRepo = await getSessionRepository();
           
           // Handle browser environment where repository is null
@@ -1271,10 +1167,7 @@ export class SessionSyncService {
           }
           
           return sessionRepo.getSession(sessionIdStr);
-        },
-        undefined,
-        undefined,
-        signal
+        }
       );
     } catch (error) {
       console.error(`[SessionSyncService] Error getting session by ID ${sessionId}:`, error);
@@ -1308,16 +1201,6 @@ export class SessionSyncService {
       const clearedCount = queueManager.clearSessionOperations(sessionIdStr);
       console.log(`[SessionSyncService][${timestamp}][${operationId}] Cleared ${clearedCount} pending operations for session ${sessionIdStr}`);
       
-      // Create a new AbortController for this operation
-      const controller = new AbortController();
-      const signal = controller.signal;
-      
-      // Set up a timeout to automatically abort the operation if it takes too long
-      const timeoutId = setTimeout(() => {
-        console.warn(`[SessionSyncService][${timestamp}][${operationId}] Force load operation for session ${sessionIdStr} timed out after 120 seconds`);
-        controller.abort();
-      }, 120000); // 2-minute timeout
-      
       try {
         // Queue a load operation with highest priority (10)
         return await new Promise<any>((resolve, reject) => {
@@ -1338,14 +1221,8 @@ export class SessionSyncService {
                   };
                 }
                 
-                // Check if the operation is already aborted before proceeding
-                if (signal.aborted) {
-                  console.log(`[SessionSyncService][${timestamp}][${operationId}] Operation was aborted before database query`);
-                  throw new Error('Operation aborted');
-                }
-                
-                // Use the enhanced getSession method with the prioritized flag and signal
-                const session = await sessionRepo.getSession(sessionIdStr, signal, true);
+                // Use the enhanced getSession method with the prioritized flag
+                const session = await sessionRepo.getSession(sessionIdStr, true);
                 
                 if (!session) {
                   console.warn(`[SessionSyncService][${timestamp}][${operationId}] Session not found: ${sessionIdStr}`);
@@ -1372,17 +1249,7 @@ export class SessionSyncService {
                   }
                 };
               } catch (error) {
-                // Check if this was an abort error
-                if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Operation aborted')) {
-                  console.log(`[SessionSyncService][${timestamp}][${operationId}] Operation was aborted during execution`);
-                  return {
-                    isSuccess: false,
-                    message: 'Operation was aborted',
-                    data: null
-                  };
-                }
-                
-                // For other errors, log and return as failure
+                // For errors, log and return as failure
                 console.error(`[SessionSyncService][${timestamp}][${operationId}] Error force-loading session:`, error);
                 return {
                   isSuccess: false,
@@ -1394,8 +1261,6 @@ export class SessionSyncService {
             10, // Highest priority
             120000 // 2-minute timeout for priority loads
           ).then(result => {
-            // Clear the timeout as we've successfully completed
-            clearTimeout(timeoutId);
             resolve(result);
           }).catch((error) => {
             console.error(`[SessionSyncService][${timestamp}][${operationId}] Error force loading session:`, error);
@@ -1414,9 +1279,9 @@ export class SessionSyncService {
             reject(errorResponse);
           });
         });
-      } finally {
-        // Ensure we clean up our timeout and abort controller
-        clearTimeout(timeoutId);
+      } catch (error) {
+        console.error(`[SessionSyncService][${timestamp}][${operationId}] Unhandled error in force load operation:`, error);
+        throw error;
       }
     } catch (error) {
       console.error('[SessionSyncService] Error in forceLoadSession:', error);
@@ -1433,7 +1298,7 @@ export class SessionSyncService {
   /**
    * Updates session state via the API handler
    */
-  public async updateSessionState(sessionId: string, sessionData: Partial<Session>, signal?: AbortSignal): Promise<void> {
+  public async updateSessionState(sessionId: string, sessionData: Partial<Session>): Promise<void> {
     if (!sessionId) {
       console.error("[SessionSyncService] Cannot update session state: Session ID is missing");
       return;
@@ -1446,10 +1311,9 @@ export class SessionSyncService {
     await this.queueOperation(
       'save',
       sessionId,
-      () => apiHandler.patchSessionStateFields(sessionId, sessionData, operationId, signal),
+      () => apiHandler.patchSessionStateFields(sessionId, sessionData, operationId),
       3, // Higher priority for state updates
-      undefined,
-      signal // Pass the abort signal
+      undefined
     );
   }
 
@@ -1498,33 +1362,26 @@ export class SessionSyncService {
       // If there is a previous session, try to cancel any pending save operations
       if (previousSessionId) {
         const pendingSavesForPreviousSession = queueStats.pendingOperations.filter(
-          op => op.sessionId === previousSessionId && op.type === 'save' && op.signal
+          op => op.sessionId === previousSessionId && op.type === 'save'
         );
         
         if (pendingSavesForPreviousSession.length > 0) {
-          console.log(`[SessionSyncService][${timestamp}] Found ${pendingSavesForPreviousSession.length} pending save operations for previous session ${previousSessionId}, considering abort`);
+          console.log(`[SessionSyncService][${timestamp}] Found ${pendingSavesForPreviousSession.length} pending save operations for previous session ${previousSessionId}, considering cleanup`);
           
-          // If there are multiple saves pending, abort all but the most recent one
+          // If there are multiple saves pending, clean up all but the most recent one
           if (pendingSavesForPreviousSession.length > 1) {
             // Sort by timestamp (newest first)
             const sortedSaves = [...pendingSavesForPreviousSession].sort((a, b) => b.addedAt - a.addedAt);
             
-            // Keep the newest one, abort the rest
-            const savesToAbort = sortedSaves.slice(1);
+            // Keep the newest one, clean up the rest
+            const savesToCleanup = sortedSaves.slice(1);
             
-            console.log(`[SessionSyncService][${timestamp}] Aborting ${savesToAbort.length} older save operations for previous session ${previousSessionId}`);
+            console.log(`[SessionSyncService][${timestamp}] Cleaning up ${savesToCleanup.length} older save operations for previous session ${previousSessionId}`);
             
-            // Abort older save operations
-            savesToAbort.forEach(op => {
-              if (op.signal && 'abort' in op.signal) {
-                try {
-                  // Use any as a workaround for type issues
-                  (op.signal as any).abort();
-                  console.log(`[SessionSyncService][${timestamp}] Aborted older save operation ${op.id} for previous session ${previousSessionId}`);
-                } catch (error) {
-                  console.error(`[SessionSyncService][${timestamp}] Error aborting operation ${op.id}:`, error);
-                }
-              }
+            // Remove older save operations from processing
+            savesToCleanup.forEach(op => {
+              console.log(`[SessionSyncService][${timestamp}] Cleaning up older save operation ${op.id} for previous session ${previousSessionId}`);
+              // We could implement a cancellation method in queue manager for more complete handling
             });
           }
         }
@@ -1619,22 +1476,16 @@ export class SessionSyncService {
           console.log(`[SessionSyncService] Oldest pending operation: ${oldestOp.type} (ID: ${oldestOp.id}) waiting for ${Math.round(waitTime/1000)}s`);
         }
         
-        // Create an AbortController to abort pending operations
-        const controller = new AbortController();
+        // Log any operations that would have been aborted
+        const pendingOperations = queueStatsBefore.pendingOperations
+          .filter(op => op.sessionId === sessionId);
         
-        // Abort any operations with signals
-        const operationsWithSignals = queueStatsBefore.pendingOperations
-          .filter(op => op.sessionId === sessionId && op.signal);
-        
-        if (operationsWithSignals.length > 0) {
-          console.log(`[SessionSyncService] Aborting ${operationsWithSignals.length} operations with AbortSignals for session ${sessionKey}`);
+        if (pendingOperations.length > 0) {
+          console.log(`[SessionSyncService] Found ${pendingOperations.length} pending operations for session ${sessionKey} that need to be cleaned up`);
           
-          // Trigger abort on all operations with signals
-          controller.abort();
-          
-          // Log each aborted operation
-          operationsWithSignals.forEach(op => {
-            console.log(`[SessionSyncService] Aborted operation ${op.id} (${op.type}) for session ${sessionKey}`);
+          // Log each operation that would have been aborted
+          pendingOperations.forEach(op => {
+            console.log(`[SessionSyncService] Will clean up operation ${op.id} (${op.type}) for session ${sessionKey}`);
           });
         }
       } else {
@@ -1707,7 +1558,7 @@ export class SessionSyncService {
   }
 
   /**
-   * Update session project directory
+   * Update session project directory and ensure active session handling is coordinated
    */
   public async updateSessionProjectDirectory(sessionId: string, projectDirectory: string): Promise<void> {
     // Add validation for sessionId
@@ -1716,32 +1567,57 @@ export class SessionSyncService {
     }
     
     // Queue a save operation
-    return new Promise<void>((resolve, reject) => {
-      this.queueOperation(
-        'save',
-        sessionId,
-        async () => {
-          try {
-            const sessionRepo = await getSessionRepository();
-            
-            // Handle browser environment where repository is null
-            if (!sessionRepo) {
-              console.log(`[SessionSyncService] Session repository not available in this environment for session ${sessionId}`);
-              resolve(); // No-op in browser environment
-              return;
-            }
-            
-            await sessionRepo.updateSessionProjectDirectory(sessionId, projectDirectory);
-            resolve();
-          } catch (error) {
-            reject(error);
+    return this.queueOperation(
+      'save',
+      sessionId,
+      async () => {
+        try {
+          const sessionRepo = await getSessionRepository();
+          
+          // Handle browser environment where repository is null
+          if (!sessionRepo) {
+            console.log(`[SessionSyncService] Session repository not available in this environment for session ${sessionId}`);
+            return;
           }
+          
+          // Get current session to check the old project directory
+          const currentSession = await sessionRepo.getSession(sessionId);
+          if (!currentSession) {
+            throw new Error(`Session ${sessionId} not found when updating project directory`);
+          }
+          
+          const oldProjectDirectory = currentSession.projectDirectory;
+          
+          // Only proceed with active session changes if the directory actually changed
+          if (oldProjectDirectory !== projectDirectory) {
+            console.log(`[SessionSyncService] Changing project directory for session ${sessionId}: 
+              - From: ${oldProjectDirectory}
+              - To: ${projectDirectory}
+              - Will update active session references after DB update
+            `);
+            
+            // Update the project directory in the repository
+            await sessionRepo.updateSessionProjectDirectory(sessionId, projectDirectory);
+            
+            // Clear this session as active for the old project directory
+            await this.setActiveSession(oldProjectDirectory, null);
+            
+            // Set this session as active for the new project directory
+            await this.setActiveSession(projectDirectory, sessionId);
+            
+            console.log(`[SessionSyncService] Successfully updated project directory and active session references for session ${sessionId}`);
+          } else {
+            // Directory didn't change, just update the session
+            console.log(`[SessionSyncService] Project directory for session ${sessionId} unchanged (${projectDirectory}), skipping active session updates`);
+            await sessionRepo.updateSessionProjectDirectory(sessionId, projectDirectory);
+          }
+        } catch (error) {
+          console.error(`[SessionSyncService] Error updating project directory for ${sessionId}:`, error);
+          throw error;
         }
-      ).catch((error) => {
-        console.error(`[SessionSync] Error updating project directory for ${sessionId}:`, error);
-        reject(error);
-      });
-    });
+      },
+      5 // Higher priority for directory changes
+    );
   }
 
   /**
@@ -1795,8 +1671,16 @@ export class SessionSyncService {
         value: sessionId
       });
       
-      // Use the API handler to set the active session
-      return await apiHandler.setActiveSession(projectDirectory, sessionId, operationId);
+      // Queue the operation to set the active session
+      return await this.queueOperation(
+        'setActive',
+        null, // No specific session ID for this operation
+        async () => {
+          return await apiHandler.setActiveSession(projectDirectory, sessionId, operationId);
+        },
+        5, // Medium-high priority for active session changes
+        10000 // 10 second timeout
+      );
     } catch (error) {
       console.error(`[SessionSync] Error setting active session:`, error);
       throw error;

@@ -1,10 +1,8 @@
 "use client";
 
 import React, { Suspense } from "react";
-import { Wand2, Sparkles, Copy, FileCheck, Files, Check } from "lucide-react";
+import { Wand2, Sparkles, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import VoiceTranscription from "../_components/voice-transcription";
 import { P, Subtle } from "@/components/ui/typography";
 
@@ -15,12 +13,9 @@ interface TaskSectionProps {
     taskDescription: string;
     isFindingFiles: boolean;
     isGeneratingGuidance: boolean;
-    taskCopySuccess: boolean;
-    isCopyingPrompt: boolean;
     projectDirectory: string;
     pastedPaths: string;
     taskDescriptionRef: React.RefObject<any>;
-    searchSelectedFilesOnly: boolean;
     isImprovingText?: boolean;
     textImprovementJobId?: string | null;
   };
@@ -30,22 +25,19 @@ interface TaskSectionProps {
     handleInteraction: () => void;
     handleFindRelevantFiles?: () => void;
     copyArchPrompt: () => void;
-    toggleSearchSelectedFilesOnly: () => void;
     handleImproveSelection?: (selectedText: string) => Promise<void>;
   };
 }
 
-export default function TaskSection({ state, actions }: TaskSectionProps) {
+const TaskSection = React.memo(function TaskSection({ state, actions }: TaskSectionProps) {
+  
   const {
     taskDescription,
     isFindingFiles,
     isGeneratingGuidance,
-    taskCopySuccess,
-    isCopyingPrompt,
     projectDirectory,
     pastedPaths,
     taskDescriptionRef,
-    searchSelectedFilesOnly,
     isImprovingText,
     textImprovementJobId
   } = state;
@@ -56,7 +48,6 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
     handleInteraction,
     handleFindRelevantFiles,
     copyArchPrompt,
-    toggleSearchSelectedFilesOnly,
     handleImproveSelection
   } = actions;
 
@@ -98,17 +89,16 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
           <div className="flex flex-col">
             <Button
               type="button"
-              variant={taskCopySuccess ? "default" : "secondary"}
+              variant="secondary"
               size="sm"
               onClick={copyArchPrompt}
               disabled={isGeneratingGuidance || !taskDescription.trim() || !pastedPaths.trim()}
               title={!taskDescription.trim() ? "Enter a task description first" : 
                      !pastedPaths.trim() ? "Add file paths first" :
                      "Analyze selected files to generate architectural guidance"}
-              className={taskCopySuccess ? "bg-green-500 hover:bg-green-600 text-white" : ""}
             >
               <Sparkles className="h-4 w-4 mr-2" />
-              {isGeneratingGuidance ? "Generating Guidance..." : taskCopySuccess ? "Copied to Clipboard!" : "Get Architectural Guidance"}
+              {isGeneratingGuidance ? "Generating Guidance..." : "Get Architectural Guidance"}
             </Button>
             <p className="text-xs text-muted-foreground mt-1">
               Uses AI to analyze selected files and provide high-level implementation guidance or architectural insights.
@@ -118,29 +108,6 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
             </Subtle>
           </div>
 
-          {toggleSearchSelectedFilesOnly && (
-            <div className="flex flex-col">
-              <div className="flex items-center space-x-2 border rounded-md px-3 py-1.5 bg-background">
-                <div className="flex items-center gap-1.5">
-                  {searchSelectedFilesOnly ? (
-                    <FileCheck className="h-4 w-4 text-primary" />
-                  ) : (
-                    <Files className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Label htmlFor="search-files-toggle" className="text-sm font-medium cursor-pointer">
-                    {searchSelectedFilesOnly ? "Selected Files" : "All Files"}
-                  </Label>
-                </div>
-                <Switch
-                  id="search-files-toggle"
-                  checked={searchSelectedFilesOnly}
-                  onCheckedChange={() => toggleSearchSelectedFilesOnly()}
-                  title={searchSelectedFilesOnly ? "Search in selected files only" : "Search in all files"}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Toggle between viewing all project files or only the ones selected for inclusion.</p>
-            </div>
-          )}
         </div>
         
         <div className="ml-4">
@@ -153,4 +120,6 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
       </div>
     </div>
   );
-}
+});
+
+export default TaskSection;

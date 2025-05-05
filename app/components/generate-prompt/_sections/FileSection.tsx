@@ -3,146 +3,97 @@
 import React, { useEffect } from "react";
 import PastePaths from "../paste-paths";
 import FileBrowser from "../file-browser";
-import { FilesMap } from "../_hooks/use-file-selection-state";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, FileCheck, Files } from "lucide-react";
+import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
+import { useFileManagement } from "../_contexts/file-management-context";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
-interface FileSectionProps {
-  state: {
-    allFilesMap: FilesMap;
-    fileContentsMap: Record<string, string>;
-    searchTerm: string;
-    titleRegex: string;
-    contentRegex: string;
-    negativeTitleRegex: string;
-    negativeContentRegex: string;
-    isRegexActive: boolean;
-    pastedPaths: string;
-    projectDirectory: string;
-    isLoadingFiles: boolean;
-    isFindingFiles: boolean;
-    externalPathWarnings: string[];
-    titleRegexError: string | null;
-    contentRegexError: string | null;
-    negativeTitleRegexError: string | null;
-    negativeContentRegexError: string | null;
-    taskDescription: string;
-    showOnlySelected: boolean;
-  };
-  actions: {
-    handleFilesMapChange: (filesMap: FilesMap) => void;
-    handleSearchChange: (value: string) => void;
-    handlePastedPathsChange: (value: string) => void;
-    handlePathsPreview: (paths: string[]) => void;
-    handleAddPathToPastedPaths: (path: string) => Promise<void>;
-    handleFindRelevantFiles?: () => Promise<void>;
-    copyArchPrompt: () => Promise<void>;
-    handleInteraction: () => Promise<void>;
-    setTitleRegexError?: (error: string | null) => void;
-    setContentRegexError?: (error: string | null) => void;
-    setNegativeTitleRegexError?: (error: string | null) => void;
-    setNegativeContentRegexError?: (error: string | null) => void;
-    toggleShowOnlySelected: () => void;
-    refreshFiles?: () => Promise<void>;
-    saveFileSelections: () => Promise<void>;
-    toggleFileSelection: (path: string) => void;
-  };
-}
-
-export default function FileSection({ state, actions }: FileSectionProps) {
-  const {
-    allFilesMap,
-    fileContentsMap,
-    searchTerm,
-    titleRegex,
-    contentRegex,
-    negativeTitleRegex,
-    negativeContentRegex,
-    isRegexActive,
-    pastedPaths,
-    projectDirectory,
-    isLoadingFiles,
-    isFindingFiles,
-    externalPathWarnings,
-    titleRegexError,
-    contentRegexError,
-    negativeTitleRegexError,
-    negativeContentRegexError,
-    taskDescription,
-    showOnlySelected
-  } = state;
-
+const FileSection = React.memo(function FileSection() {
+  // Get state and actions from contexts
+  const context = useGeneratePrompt();
+  const fileState = useFileManagement();
+  const regexState = context.regexState;
+  
   // Log state for debugging
   useEffect(() => {
-    console.log("[FileSection] pastedPaths:", pastedPaths);
-  }, [pastedPaths]);
+    console.log("[FileSection] pastedPaths:", fileState.pastedPaths);
+  }, [fileState.pastedPaths]);
   
-  // Add logging for allFilesMap
+  // Add logging for managed files map
   useEffect(() => {
-    const fileCount = Object.keys(allFilesMap).length;
-    console.log(`[FileSection] allFilesMap has ${fileCount} entries, isLoadingFiles=${isLoadingFiles}`);
+    const fileCount = Object.keys(fileState.managedFilesMap).length;
+    console.log(`[FileSection] managedFilesMap has ${fileCount} entries, isLoadingFiles=${fileState.isLoadingFiles}`);
     
     if (fileCount > 0) {
-      const includedCount = Object.values(allFilesMap).filter(f => f.included && !f.forceExcluded).length;
+      const includedCount = Object.values(fileState.managedFilesMap).filter(f => f.included && !f.forceExcluded).length;
       console.log(`[FileSection] ${includedCount} of ${fileCount} files are included`);
       // Log sample entries
-      const sampleKeys = Object.keys(allFilesMap).slice(0, 3);
+      const sampleKeys = Object.keys(fileState.managedFilesMap).slice(0, 3);
       console.log(`[FileSection] Sample files: ${sampleKeys.join(', ')}${fileCount > 3 ? '...' : ''}`);
     }
-  }, [allFilesMap, isLoadingFiles]);
-
-  const {
-    handleFilesMapChange,
-    handleSearchChange,
-    handlePastedPathsChange,
-    handlePathsPreview,
-    handleAddPathToPastedPaths,
-    handleFindRelevantFiles,
-    copyArchPrompt,
-    handleInteraction,
-    setTitleRegexError,
-    setContentRegexError,
-    setNegativeTitleRegexError,
-    setNegativeContentRegexError,
-    toggleShowOnlySelected,
-    refreshFiles,
-    saveFileSelections,
-    toggleFileSelection
-  } = actions;
+  }, [fileState.managedFilesMap, fileState.isLoadingFiles]);
 
   return (
     <>
+      <div className="flex items-end justify-between mb-2">
+        <div>
+          <div className="flex items-center space-x-2 border rounded-md px-3 py-1.5 bg-background">
+            <div className="flex items-center gap-1.5">
+              {fileState.searchSelectedFilesOnly ? (
+                <FileCheck className="h-4 w-4 text-primary" />
+              ) : (
+                <Files className="h-4 w-4 text-muted-foreground" />
+              )}
+              <Label htmlFor="search-files-toggle" className="text-sm font-medium cursor-pointer">
+                {fileState.searchSelectedFilesOnly ? "Selected Files Only" : "All Files"}
+              </Label>
+            </div>
+            <Switch
+              id="search-files-toggle"
+              checked={fileState.searchSelectedFilesOnly}
+              onCheckedChange={fileState.toggleSearchSelectedFilesOnly}
+              title={fileState.searchSelectedFilesOnly ? "Search in selected files only" : "Search in all files"}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Toggle between searching in all files or only the selected ones.</p>
+        </div>
+      </div>
+
       <PastePaths
-        onChange={handlePastedPathsChange}
-        value={pastedPaths}
-        projectDirectory={projectDirectory}
-        onInteraction={handleInteraction}
-        onParsePaths={handlePathsPreview}
-        warnings={externalPathWarnings}
-        canCorrectPaths={!!projectDirectory}
-        isFindingFiles={isFindingFiles}
-        canFindFiles={!!taskDescription.trim() && !!projectDirectory}
-        onFindRelevantFiles={handleFindRelevantFiles}
-        onGenerateGuidance={copyArchPrompt}
+        onChange={fileState.setPastedPaths}
+        value={fileState.pastedPaths}
+        projectDirectory={context.projectDirectory || ''}
+        onInteraction={() => context.handleInteraction(() => fileState.getFileStateForSession())}
+        onParsePaths={(paths) => {
+          fileState.applySelectionsFromPaths(paths);
+        }}
+        warnings={fileState.externalPathWarnings}
+        canCorrectPaths={!!context.projectDirectory}
+        isFindingFiles={fileState.isFindingFiles}
+        canFindFiles={!!context.taskState.taskDescription.trim() && !!context.projectDirectory}
+        onFindRelevantFiles={fileState.findRelevantFiles}
+        onGenerateGuidance={context.handleGenerateGuidance}
       >
         <div className="flex justify-between items-center gap-2 mt-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={handleFindRelevantFiles}
-            disabled={!taskDescription.trim() || !projectDirectory || isFindingFiles}
+            onClick={fileState.findRelevantFiles}
+            disabled={!context.taskState.taskDescription.trim() || !context.projectDirectory || fileState.isFindingFiles}
             className="w-1/2"
-            title={!taskDescription.trim() ? "Please enter a task description first" : 
-                  !projectDirectory ? "Please select a project directory first" : 
+            title={!context.taskState.taskDescription.trim() ? "Please enter a task description first" : 
+                  !context.projectDirectory ? "Please select a project directory first" : 
                   "Find files relevant to your task using AI"}
           >
-            {isFindingFiles ? (
+            {fileState.isFindingFiles ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Finding Files...
               </>
-            ) : pastedPaths.trim() ? (
+            ) : fileState.pastedPaths.trim() ? (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
                 Find More Files
@@ -159,8 +110,8 @@ export default function FileSection({ state, actions }: FileSectionProps) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={copyArchPrompt}
-            disabled={!projectDirectory}
+            onClick={context.handleGenerateGuidance}
+            disabled={!context.projectDirectory}
             className="w-1/2"
             title="Generate architectural guidance to help understand and solve the task"
           >
@@ -174,40 +125,42 @@ export default function FileSection({ state, actions }: FileSectionProps) {
       </PastePaths>
 
       <FileBrowser
-        allFilesMap={allFilesMap}
-        fileContentsMap={fileContentsMap}
-        onFilesMapChange={handleFilesMapChange}
-        searchTerm={searchTerm}
-        onSearchChange={handleSearchChange}
-        titleRegexError={titleRegexError}
-        contentRegexError={contentRegexError}
-        negativeTitleRegexError={negativeTitleRegexError}
-        negativeContentRegexError={negativeContentRegexError}
-        onTitleRegexErrorChange={setTitleRegexError || (() => {})}
-        onContentRegexErrorChange={setContentRegexError || (() => {})}
-        onNegativeTitleRegexErrorChange={setNegativeTitleRegexError || (() => {})}
-        onNegativeContentRegexErrorChange={setNegativeContentRegexError || (() => {})}
-        titleRegex={titleRegex}
-        contentRegex={contentRegex}
-        negativeTitleRegex={negativeTitleRegex}
-        negativeContentRegex={negativeContentRegex}
-        isRegexActive={isRegexActive}
-        onInteraction={() => Promise.resolve(handleInteraction())}
-        refreshFiles={refreshFiles || (() => Promise.resolve())}
-        isLoading={isLoadingFiles || isFindingFiles}
+        managedFilesMap={fileState.managedFilesMap}
+        fileContentsMap={fileState.fileContentsMap || {}} // Use fileContentsMap from context or empty object as fallback
+        searchTerm={fileState.searchTerm}
+        onSearchChange={fileState.setSearchTerm}
+        onToggleSelection={fileState.toggleFileSelection}
+        onToggleExclusion={fileState.toggleFileExclusion}
+        onBulkToggle={(shouldInclude, targetFiles) => fileState.handleBulkToggle(targetFiles, shouldInclude)}
+        showOnlySelected={fileState.showOnlySelected}
+        onShowOnlySelectedChange={() => fileState.setShowOnlySelected(!fileState.showOnlySelected)}
+        onInteraction={() => context.handleInteraction(() => fileState.getFileStateForSession())}
+        refreshFiles={async (preserveState?: boolean) => {
+          await fileState.refreshFiles();
+        }}
+        isLoading={fileState.isLoadingFiles || fileState.isFindingFiles}
         loadingMessage={
-          isFindingFiles 
+          fileState.isFindingFiles 
             ? "Finding relevant files..." 
-            : isLoadingFiles 
+            : fileState.isLoadingFiles 
               ? "Loading files..." 
               : ""
         }
-        onAddPath={(path) => Promise.resolve(handleAddPathToPastedPaths(path))}
-        showOnlySelected={showOnlySelected}
-        onShowOnlySelectedChange={toggleShowOnlySelected}
-        saveFileSelections={saveFileSelections}
-        onToggleSelection={toggleFileSelection}
+        onAddPath={(path) => {
+          fileState.setPastedPaths(
+            fileState.pastedPaths 
+              ? `${fileState.pastedPaths}\n${path}` 
+              : path
+          );
+        }}
+        titleRegex={regexState.titleRegex}
+        contentRegex={regexState.contentRegex}
+        negativeTitleRegex={regexState.negativeTitleRegex}
+        negativeContentRegex={regexState.negativeContentRegex}
+        isRegexActive={regexState.isRegexActive}
       />
     </>
   );
-} 
+});
+
+export default FileSection;

@@ -109,12 +109,12 @@ export function checkServiceHealth({
   });
   
   // Look for sessions with excessive queued load operations (potential code issue)
-  const sessionOperationCounts = new Map<string, { load: number, save: number, delete: number }>();
+  const sessionOperationCounts = new Map<string, { load: number, save: number, delete: number, setActive: number }>();
   
   for (const op of operationQueue) {
     if (op.sessionId) {
       if (!sessionOperationCounts.has(op.sessionId)) {
-        sessionOperationCounts.set(op.sessionId, { load: 0, save: 0, delete: 0 });
+        sessionOperationCounts.set(op.sessionId, { load: 0, save: 0, delete: 0, setActive: 0 });
       }
       const counts = sessionOperationCounts.get(op.sessionId)!;
       counts[op.type as keyof typeof counts]++;
@@ -126,10 +126,10 @@ export function checkServiceHealth({
   
   // Log and flag sessions with excessive operations or suspicious patterns
   sessionOperationCounts.forEach((counts, sessionId) => {
-    const { load, save, delete: deleteCount } = counts;
-    const totalOps = load + save + deleteCount;
+    const { load, save, delete: deleteCount, setActive } = counts;
+    const totalOps = load + save + deleteCount + setActive;
     
-    console.log(`[HealthChecker] Session ${sessionId} queue: load=${load}, save=${save}, delete=${deleteCount}, total=${totalOps}`);
+    console.log(`[HealthChecker] Session ${sessionId} queue: load=${load}, save=${save}, delete=${deleteCount}, setActive=${setActive}, total=${totalOps}`);
     
     // Check for excessive load operations
     if (load > HEALTH_CHECK_THRESHOLDS.maxLoadOperationsPerSession) {
@@ -221,10 +221,11 @@ export function clearStuckSession(
   const removedTypes = {
     load: removedOps.filter(op => op.type === 'load').length,
     save: removedOps.filter(op => op.type === 'save').length,
-    delete: removedOps.filter(op => op.type === 'delete').length
+    delete: removedOps.filter(op => op.type === 'delete').length,
+    setActive: removedOps.filter(op => op.type === 'setActive').length
   };
   
-  console.log(`[HealthChecker] Removed operation breakdown: load=${removedTypes.load}, save=${removedTypes.save}, delete=${removedTypes.delete}`);
+  console.log(`[HealthChecker] Removed operation breakdown: load=${removedTypes.load}, save=${removedTypes.save}, delete=${removedTypes.delete}, setActive=${removedTypes.setActive}`);
   console.log(`[HealthChecker] ========== STUCK SESSION CLEARED ==========`);
   
   return operationQueue;

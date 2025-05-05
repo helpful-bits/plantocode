@@ -14,7 +14,41 @@ interface FileStats {
 
 export async function POST(request: Request) {
   try {
-    const { directory, pattern = '**/*', includeStats = false, exclude = DEFAULT_EXCLUDED_DIRS } = await request.json();
+    // Check if request has content before parsing
+    const contentType = request.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('[list-files] Invalid content type:', contentType);
+      return NextResponse.json(
+        { error: 'Content-Type must be application/json' },
+        { status: 400 }
+      );
+    }
+    
+    // Clone the request to read its body as text for better error handling
+    const requestClone = request.clone();
+    const bodyText = await requestClone.text();
+    
+    if (!bodyText || bodyText.trim() === '') {
+      console.error('[list-files] Empty request body');
+      return NextResponse.json(
+        { error: 'Request body cannot be empty' },
+        { status: 400 }
+      );
+    }
+    
+    // Parse the JSON safely
+    let requestData;
+    try {
+      requestData = JSON.parse(bodyText);
+    } catch (jsonError) {
+      console.error('[list-files] JSON parse error:', jsonError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+    
+    const { directory, pattern = '**/*', includeStats = false, exclude = DEFAULT_EXCLUDED_DIRS } = requestData;
     
     // Validate directory parameter
     if (!directory) {

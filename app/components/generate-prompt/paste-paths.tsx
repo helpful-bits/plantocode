@@ -1,23 +1,25 @@
 "use client";
+
 import { useEffect, useState, ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Info, CheckSquare, Sparkles, Loader2, X } from "lucide-react"; // Import more icons
-import { correctPathsAction } from "@/actions/path-correction-actions"; // Import the new action
-import { Button } from "@/components/ui/button"; // Import Button
+import { Info, CheckSquare, Sparkles, Loader2, X } from "lucide-react";
+import { correctPathsAction } from "@/actions/path-correction-actions";
+import { Button } from "@/components/ui/button";
+import { useGeneratePrompt } from "./_contexts/generate-prompt-context";
+
 interface PastePathsProps {
   value: string;
   onChange: (value: string) => void;
   projectDirectory?: string;
   onInteraction?: () => void;
-  onParsePaths?: (paths: string[]) => void; // Callback after parsing paths
+  onParsePaths?: (paths: string[]) => void;
   warnings?: string[];
-  children?: ReactNode; // Allow passing children, e.g., the Find Files button
-  onFindRelevantFiles?: () => Promise<void>; // For finding relevant files
-  onGenerateGuidance?: () => Promise<void>; // Add new prop for generating guidance
-  // New props for correction button
+  children?: ReactNode;
+  onFindRelevantFiles?: () => Promise<void>;
+  onGenerateGuidance?: () => Promise<void>;
   canCorrectPaths?: boolean;
-  isFindingFiles?: boolean; // Add prop for loading state
-  canFindFiles?: boolean; // Add prop for button enablement condition
+  isFindingFiles?: boolean;
+  canFindFiles?: boolean;
 }
 
 export default function PastePaths({
@@ -35,9 +37,9 @@ export default function PastePaths({
   canFindFiles,
 }: PastePathsProps) {
   const [foundCount, setFoundCount] = useState(0);
-  const [isCorrectingPaths, setIsCorrectingPaths] = useState(false); // State for correction loading
-  const [correctionError, setCorrectionError] = useState<string | null>(null); // State for correction errors
-  const [correctionSuccess, setCorrectionSuccess] = useState<string | null>(null); // State for correction success messages
+  const [isCorrectingPaths, setIsCorrectingPaths] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [correctionSuccess, setCorrectionSuccess] = useState<string | null>(null);
   
   // Log value changes for debugging
   useEffect(() => {
@@ -177,6 +179,6 @@ path/to/file2.ts
         <p>• External paths will be read from the file system directly</p>
         <p>• If this field is empty, checked files from the file browser below will be used</p>
       </div>
-    </div> // Close main div
+    </div>
   );
 }

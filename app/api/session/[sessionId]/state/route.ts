@@ -11,10 +11,10 @@ import { validateSessionData } from './helpers';
  */
 export async function PATCH(
   request: NextRequest,
-  context: { params: { sessionId: string } }
+  { params }: { params: { sessionId: string } }
 ) {
-  // Get the session ID from the params
-  const { sessionId } = context.params;
+  // Get the session ID from the params - ensuring it's awaited properly
+  const { sessionId } = await Promise.resolve(params);
   
   // Log detailed information about the sessionId
   console.log(`[API session/state] SessionId parameter received:`, {
@@ -40,21 +40,68 @@ export async function PATCH(
   const timestamp = new Date(requestStartTime).toISOString();
   console.log(`[API session/state] Request started at ${timestamp} for session ${sessionId}`);
   
+  // Check Content-Type and Content-Length before parsing
+  const contentType = request.headers.get('content-type') || '';
+  const contentLength = request.headers.get('content-length') || '';
+  
+  // Verify Content-Type header is application/json
+  if (!contentType.startsWith('application/json')) {
+    console.error(`[API session/state] Unsupported media type: ${contentType}`);
+    return NextResponse.json(
+      { error: 'Unsupported Media Type. Expected application/json', retryable: false },
+      { status: 415 }
+    );
+  }
+  
+  // Verify the body isn't empty when Content-Type is application/json
+  if (contentLength === '0' || contentLength === '') {
+    console.error(`[API session/state] Empty request body with Content-Length: ${contentLength}`);
+    return NextResponse.json(
+      { error: 'Request body is empty or missing. PATCH operation requires a body', retryable: false },
+      { status: 400 }
+    );
+  }
+  
   // Get request body and log detailed info about the updates
   let sessionData: Partial<Session>;
   try {
-    sessionData = await request.json();
+    // Clone the request to ensure it's not consumed yet
+    const requestClone = request.clone();
+    
+    // Get the raw text first to validate it's not empty
+    const rawText = await requestClone.text();
+    
+    if (!rawText || rawText.trim() === '') {
+      console.error(`[API session/state] Empty request body received`);
+      return NextResponse.json(
+        { error: 'Request body is empty. PATCH operation requires a valid JSON body', retryable: false },
+        { status: 400 }
+      );
+    }
+    
+    // Now we know we have content, parse it as JSON
+    try {
+      sessionData = JSON.parse(rawText);
+    } catch (jsonError) {
+      console.error(`[API session/state] JSON parse error:`, jsonError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body', retryable: false },
+        { status: 400 }
+      );
+    }
+    
     console.log(`[API session/state] PATCH details at ${timestamp}:
       - Session ID: ${sessionId}
       - Fields being updated: ${Object.keys(sessionData).join(', ')}
       - Referrer: ${request.headers.get('referer')}
       - User-Agent: ${request.headers.get('user-agent')}
-      - Content-Length: ${request.headers.get('content-length')}
+      - Content-Length: ${contentLength}
+      - Body length: ${rawText.length} characters
     `);
   } catch (error) {
-    console.error(`[API session/state] Error parsing request body:`, error);
+    console.error(`[API session/state] Error handling request body:`, error);
     return NextResponse.json(
-      { error: 'Invalid request body', retryable: false },
+      { error: 'Failed to process request body', retryable: false },
       { status: 400 }
     );
   }

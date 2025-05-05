@@ -7,18 +7,17 @@ import { useNotification } from '@/lib/contexts/notification-context';
 import { AUTO_SAVE_INTERVAL } from "@/lib/constants";
 import debounce from '@/lib/utils/debounce';
 import { sessionSyncService } from '@/lib/services/session-sync-service';
+import { useAsyncAction } from "./use-async-state";
 
 interface UseTaskDescriptionStateProps {
   activeSessionId: string | null;
   onInteraction?: () => void;
-  setHasUnsavedChanges?: (value: boolean) => void;
   taskDescriptionRef: React.RefObject<HTMLTextAreaElement>;
 }
 
 export function useTaskDescriptionState({
   activeSessionId,
   onInteraction,
-  setHasUnsavedChanges,
   taskDescriptionRef
 }: UseTaskDescriptionStateProps) {
   // Core state
@@ -35,14 +34,26 @@ export function useTaskDescriptionState({
   // Fetch the background job
   const textImprovementJob = useBackgroundJob(textImprovementJobId);
   
-  // Reset function to clear state
+  // Reset function to clear state - wrapped in useCallback for stability
   const reset = useCallback(() => {
     console.log('[TaskDescriptionState] Resetting task description state');
     setTaskDescription("");
     setTaskCopySuccess(false);
     setIsImprovingText(false);
     setTextImprovementJobId(null);
-  }, []);
+  }, [setTaskDescription, setTaskCopySuccess, setIsImprovingText, setTextImprovementJobId]);
+  
+  // Add useEffect to monitor activeSessionId changes for automatic reset
+  useEffect(() => {
+    // When activeSessionId changes to null, reset the state
+    if (activeSessionId === null) {
+      console.log('[TaskDescriptionState] Session ID set to null, resetting task description state');
+      reset();
+    }
+    
+    // No need to do anything when activeSessionId changes to a non-null value
+    // as data will be loaded by the session loading handler
+  }, [activeSessionId, reset]);
   
   // Function to update task description
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -56,13 +67,11 @@ export function useTaskDescriptionState({
     if (onInteraction) {
       onInteraction();
     }
-    
-    // Mark as having unsaved changes
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [onInteraction, setHasUnsavedChanges]);
+  }, [onInteraction]);
 
+  // Store selection range for text improvement
+  const selectionRangeRef = useRef<{start: number; end: number; text: string} | null>(null);
+  
   // Monitor background job for text improvement
   useEffect(() => {
     if (textImprovementJobId && textImprovementJob) {
@@ -82,39 +91,19 @@ export function useTaskDescriptionState({
             }
           })();
           
-          // If we have a valid text response
-          if (typeof improvedText === 'string' && improvedText.trim()) {
-            // If we have a textarea ref, replace the selected text
-            if (taskDescriptionRef.current) {
-              // Since HTMLTextAreaElement doesn't have a replaceSelection method, 
-              // we need to manually handle the text replacement
-              const textarea = taskDescriptionRef.current;
-              const start = textarea.selectionStart;
-              const end = textarea.selectionEnd;
-              
-              if (start !== null && end !== null) {
-                const currentValue = textarea.value || '';
-                const newValue = currentValue.substring(0, start) + improvedText + currentValue.substring(end);
-                
-                // Update the task description with the new value
-                setTaskDescription(newValue);
-                
-                // Restore selection after the update (focusing on the end of the newly inserted text)
-                setTimeout(() => {
-                  if (textarea && typeof textarea.focus === 'function') {
-                    textarea.focus();
-                    const newCursorPos = start + improvedText.length;
-                    if (typeof textarea.setSelectionRange === 'function') {
-                      textarea.setSelectionRange(newCursorPos, newCursorPos);
-                    }
-                  }
-                }, 0);
-              } else {
-                console.log("[TaskDescriptionState] Cannot determine selection range in textarea");
-              }
-            } else {
-              console.log("[TaskDescriptionState] No textarea ref available to apply improved text");
-            }
+          // If we have a valid text response and selection range
+          if (typeof improvedText === 'string' && improvedText.trim() && selectionRangeRef.current) {
+            const { start, end } = selectionRangeRef.current;
+            
+            // Directly update the state with the new value by replacing the selected portion
+            const currentValue = taskDescription;
+            const newValue = currentValue.substring(0, start) + improvedText + currentValue.substring(end);
+            
+            // Update the task description with the new value
+            setTaskDescription(newValue);
+            
+            // Clear the selection range reference
+            selectionRangeRef.current = null;
             
             showNotification({
               title: "Text improved",
@@ -125,7 +114,7 @@ export function useTaskDescriptionState({
             console.error("[TaskDescriptionState] Invalid improved text format:", improvedText);
             showNotification({
               title: "Text improvement error",
-              message: "Received invalid format for improved text.",
+              message: "Received invalid format for improved text or missing selection range.",
               type: "error"
             });
           }
@@ -152,12 +141,15 @@ export function useTaskDescriptionState({
         
         // Always reset the job ID after processing failed or canceled status
         setTextImprovementJobId(null);
+        
+        // Clear the selection range reference
+        selectionRangeRef.current = null;
       }
     }
-  }, [textImprovementJob, textImprovementJobId, showNotification, taskDescriptionRef]);
+  }, [textImprovementJob, textImprovementJobId, showNotification, taskDescription]);
 
   // Handle text improvement
-  const handleImproveSelection = useCallback(async (selectedText: string): Promise<void> => {
+  const handleImproveSelection = useCallback(async (selectedText: string, selectionStart?: number, selectionEnd?: number): Promise<void> => {
     if (!selectedText || selectedText.trim() === '') {
       showNotification({
         title: "No text selected",
@@ -192,6 +184,43 @@ export function useTaskDescriptionState({
     try {
       console.log("[TaskDescriptionState] Improving selected text:", selectedText.substring(0, 50) + "...");
       
+      // If we have selection start and end positions, store them for later use
+      if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+        console.log(`[TaskDescriptionState] Storing selection range: ${selectionStart}-${selectionEnd}`);
+        selectionRangeRef.current = {
+          start: selectionStart,
+          end: selectionEnd,
+          text: selectedText
+        };
+      } else if (taskDescriptionRef.current) {
+        // Try to get selection from the textarea element
+        const start = taskDescriptionRef.current.selectionStart;
+        const end = taskDescriptionRef.current.selectionEnd;
+        
+        if (typeof start === 'number' && typeof end === 'number') {
+          console.log(`[TaskDescriptionState] Getting selection range from textarea: ${start}-${end}`);
+          selectionRangeRef.current = {
+            start,
+            end,
+            text: selectedText
+          };
+        } else {
+          // Fallback: try to find the text in the task description
+          console.log(`[TaskDescriptionState] No selection range provided, searching for text in task description`);
+          const index = taskDescription.indexOf(selectedText);
+          if (index >= 0) {
+            selectionRangeRef.current = {
+              start: index,
+              end: index + selectedText.length,
+              text: selectedText
+            };
+          } else {
+            console.warn("[TaskDescriptionState] Couldn't determine selection range for text improvement");
+            selectionRangeRef.current = null;
+          }
+        }
+      }
+      
       // Ensure we pass the text correctly to the action
       const result = await improveSelectedTextAction({
         text: selectedText,
@@ -206,17 +235,31 @@ export function useTaskDescriptionState({
         } else if (typeof result.data === 'string') {
           // Handle immediate text improvement result
           console.log("[TaskDescriptionState] Text improvement completed immediately");
+          
+          // Check if we have a valid selection range and apply the improved text
+          if (selectionRangeRef.current) {
+            const { start, end } = selectionRangeRef.current;
+            const currentValue = taskDescription;
+            const newValue = currentValue.substring(0, start) + result.data + currentValue.substring(end);
+            
+            // Update the task description with the new value
+            setTaskDescription(newValue);
+            selectionRangeRef.current = null;
+          }
+          
           showNotification({
             title: "Text improved",
             message: "The selected text has been improved.",
             type: "success"
           });
-          // The parent component will handle replacing the text
+          
           setIsImprovingText(false);
         } else {
           // Unexpected data format but still success
           console.warn("[TaskDescriptionState] Unexpected success data format:", result.data);
           setIsImprovingText(false);
+          selectionRangeRef.current = null;
+          
           showNotification({
             title: "Text improvement result",
             message: "Received unexpected result format.",
@@ -230,6 +273,7 @@ export function useTaskDescriptionState({
     } catch (error) {
       console.error("[TaskDescriptionState] Error improving text:", error);
       setIsImprovingText(false);
+      selectionRangeRef.current = null;
       
       showNotification({
         title: "Error improving text",
@@ -237,7 +281,7 @@ export function useTaskDescriptionState({
         type: "error"
       });
     }
-  }, [isImprovingText, showNotification, activeSessionId]);
+  }, [isImprovingText, showNotification, activeSessionId, taskDescription, taskDescriptionRef]);
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
@@ -271,14 +315,17 @@ export function useTaskDescriptionState({
     copyTaskDescription,
     reset
   }), [
+    // State values
     taskDescription,
     isImprovingText,
     textImprovementJobId,
     taskCopySuccess,
+    taskDescriptionRef,
+    
+    // Stable callback functions
     handleTaskDescriptionChange,
     handleImproveSelection,
     copyTaskDescription,
-    reset,
-    taskDescriptionRef
+    reset
   ]);
 } 

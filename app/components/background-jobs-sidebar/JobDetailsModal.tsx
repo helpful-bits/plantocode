@@ -9,9 +9,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatTimestamp } from '@/lib/utils/date-utils';
+import { formatTimestamp, formatJobDuration } from '@/lib/utils/date-utils';
 import { BackgroundJob } from '@/types/session-types';
-import { formatJobDuration } from '@/lib/utils/date-utils';
+import { formatTokenCount } from './utils';
 
 interface JobDetailsModalProps {
   job: BackgroundJob | null;
@@ -20,11 +20,6 @@ interface JobDetailsModalProps {
 
 export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   if (!job) return null;
-
-  const formatTokens = (tokens?: number) => {
-    if (!tokens) return '0';
-    return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K` : tokens.toString();
-  };
   
   // Format JSON data for display
   const formatMetadata = (metadata: any) => {
@@ -141,7 +136,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           <div className="col-span-2 md:col-span-1">
             <h4 className="font-semibold mb-1">Tokens</h4>
             <p className="text-sm">
-              Input: ~{formatTokens(job.tokensSent)} / Output: ~{formatTokens(job.tokensReceived)}
+              Input: ~{formatTokenCount(job.tokensSent)} / Output: ~{formatTokenCount(job.tokensReceived)}
             </p>
           </div>
           
@@ -204,4 +199,4 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       </DialogContent>
     </Dialog>
   );
-} 
+}

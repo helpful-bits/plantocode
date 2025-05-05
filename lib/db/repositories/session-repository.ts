@@ -36,7 +36,7 @@ class SessionRepository {
   /**
    * Save a session to the database
    */
-  async saveSession(session: Session, signal?: AbortSignal): Promise<Session> {
+  async saveSession(session: Session): Promise<Session> {
     console.log(`[Repo] Saving session ${session.id}`);
     const startTime = Date.now();
     
@@ -50,22 +50,10 @@ class SessionRepository {
       throw new Error('Invalid project directory provided for saving session');
     }
     
-    // Check if operation was aborted
-    if (signal?.aborted) {
-      console.log(`[Repo] Save session operation aborted for session ${session.id}`);
-      throw new Error('Operation aborted');
-    }
-    
     // Always use connectionPool.withConnection with readOnly=false for write operations
     return connectionPool.withConnection(async (db) => {
       try {
         console.time(`[Perf] Session save ${session.id}`);
-        
-        // Check for abort again before database operations
-        if (signal?.aborted) {
-          console.log(`[Repo] Save session operation aborted before database operations for session ${session.id}`);
-          throw new Error('Operation aborted');
-        }
         
         // Generate a hash for the project directory
         console.time(`[Perf] Project hash generation ${session.id}`);
@@ -101,12 +89,6 @@ class SessionRepository {
           VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term, @pasted_paths,
            @title_regex, @content_regex, @negative_title_regex, @negative_content_regex, @is_regex_active, 
            @diff_temperature, @codebase_structure, @updated_at, @search_selected_files_only)`;
-        
-        // Final abort check before executing the write operation
-        if (signal?.aborted) {
-          console.log(`[Repo] Save session operation aborted before database write for session ${session.id}`);
-          throw new Error('Operation aborted');
-        }
         
         // Insert or replace the session
         console.time(`[Perf] Session row save ${session.id}`);
@@ -176,19 +158,13 @@ class SessionRepository {
   /**
    * Get a session by ID with enhanced error handling and performance optimization for session switching
    */
-  async getSession(sessionId: string, signal?: AbortSignal, prioritized?: boolean): Promise<Session | null> {
+  async getSession(sessionId: string, prioritized?: boolean): Promise<Session | null> {
     const startTime = Date.now();
     const timestamp = new Date(startTime).toISOString();
     
     if (!sessionId) {
       console.error(`[Repo][${timestamp}] Invalid session ID provided to getSession`);
       return null;
-    }
-    
-    // Check if operation was aborted
-    if (signal?.aborted) {
-      console.log(`[Repo][${timestamp}] Get session operation aborted for session ${sessionId}`);
-      throw new Error('Operation aborted');
     }
     
     // For better diagnostics, create an operation ID
@@ -211,22 +187,10 @@ class SessionRepository {
           const delay = Math.min(50 * Math.pow(2, attempts - 1), 1000); // Exponential backoff
           console.log(`[Repo][${timestamp}][${operationId}] Retry attempt ${attempts} for session ${sessionId} after ${delay}ms delay`);
           await new Promise(resolve => setTimeout(resolve, delay));
-          
-          // Check for abort before retry
-          if (signal?.aborted) {
-            console.log(`[Repo][${timestamp}][${operationId}] Operation aborted before retry attempt ${attempts}`);
-            throw new Error('Operation aborted');
-          }
         }
         
         return await connectionPool.withConnection(async (db) => {
           try {
-            // Check for abort again before database query
-            if (signal?.aborted) {
-              console.log(`[Repo][${timestamp}][${operationId}] Get session operation aborted before database query`);
-              throw new Error('Operation aborted');
-            }
-            
             // Add a timeout to long-running queries if this is during session switching
             const timeoutPromise = prioritized ? 
               Promise.race([
@@ -246,7 +210,7 @@ class SessionRepository {
             // Perform database operations with better error handling
             try {
               // Start a transaction for consistent snapshot view
-              db.prepare('BEGIN IMMEDIATE TRANSACTION').run();
+              db.prepare('BEGIN TRANSACTION').run();
               
               const sql = `SELECT * FROM sessions WHERE id = ?`;
               const queryStart = Date.now();
@@ -354,8 +318,8 @@ class SessionRepository {
         // Check if we should retry
         const errorMessage = lastError.message;
         
-        // Don't retry on abort signals
-        if (errorMessage === 'Operation aborted' || signal?.aborted) {
+        // Don't retry on operation aborted errors
+        if (errorMessage === 'Operation aborted') {
           console.log(`[Repo][${timestamp}][${operationId}] Operation aborted, not retrying`);
           throw lastError;
         }

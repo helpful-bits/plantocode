@@ -4,46 +4,30 @@ import React, { Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import ProjectDirectorySelector from "../_components/project-directory-selector";
 import SessionManager from "../_components/session-manager";
-import { Session } from '@/types';
+import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
+import { useFileManagement } from "../_contexts/file-management-context";
 
-interface ProjectSectionProps {
-  state: {
-    projectDirectory: string;
-    activeSessionId: string | null;
-    sessionInitialized: boolean;
-    isRefreshingFiles: boolean;
-    isRestoringSession: boolean;
-    projectDataLoading: boolean;
-    isLoadingFiles: boolean;
-    showLoadingOverlay: boolean;
-    currentSessionName: string;
-  };
-  actions: {
-    refreshFiles: () => Promise<boolean>;
-    handleSetActiveSessionId: (id: string | null) => void;
-    handleLoadSession: (sessionOrId: Session | string) => void;
-    getCurrentSessionState: () => any;
-    setSessionInitialized: (initialized: boolean) => void;
-  };
-}
-
-export default function ProjectSection({ state, actions }: ProjectSectionProps) {
+const ProjectSection = React.memo(function ProjectSection() {
+  const context = useGeneratePrompt();
+  const fileState = useFileManagement();
+  
   const { 
     projectDirectory, 
     activeSessionId, 
     sessionInitialized, 
-    isRefreshingFiles,
-    showLoadingOverlay,
-    currentSessionName
-  } = state;
-  
-  const { 
-    refreshFiles, 
-    handleSetActiveSessionId, 
-    handleLoadSession,
+    isRestoringSession,
     getCurrentSessionState,
+    handleLoadSession,
     setSessionInitialized
-  } = actions;
+  } = context;
+  
+  // Show loading overlay when loading files or restoring session
+  const showLoadingOverlay = fileState.isLoadingFiles || isRestoringSession;
+  
+  // Get the current file state to include in session state
+  const getFullSessionState = () => {
+    return getCurrentSessionState(fileState.getFileStateForSession());
+  };
 
   return (
     <>
@@ -56,14 +40,14 @@ export default function ProjectSection({ state, actions }: ProjectSectionProps) 
         </div>
       }>
         <SessionManager 
-          projectDirectory={projectDirectory}
-          getCurrentSessionState={getCurrentSessionState}
+          projectDirectory={projectDirectory || ''}
+          getCurrentSessionState={getFullSessionState}
           onLoadSession={handleLoadSession}
           activeSessionId={activeSessionId}
           sessionInitialized={sessionInitialized}
           onSessionStatusChange={(hasSession: boolean) => setSessionInitialized(hasSession)}
           onSessionNameChange={(name: string) => {}} // No need to handle name changes at this level
-          onActiveSessionIdChange={handleSetActiveSessionId}
+          onActiveSessionIdChange={() => {}} // ActiveSessionId is now controlled by context
         />
       </Suspense>
       
@@ -72,13 +56,14 @@ export default function ProjectSection({ state, actions }: ProjectSectionProps) 
         <div className="flex items-center justify-center p-6 bg-card border rounded-lg shadow-sm text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin mr-3" />
           <span>
-            {isRefreshingFiles ? "Refreshing files..." : 
-             state.isRestoringSession ? "Restoring session..." : 
-             state.isLoadingFiles ? "Loading project files..." : 
+            {isRestoringSession ? "Restoring session..." : 
+             fileState.isLoadingFiles ? "Loading project files..." : 
              "Initializing..."}
           </span>
         </div>
       )}
     </>
   );
-} 
+});
+
+export default ProjectSection;

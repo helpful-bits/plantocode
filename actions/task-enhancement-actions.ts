@@ -12,8 +12,8 @@ import {
 
 const TASK_ENHANCER_MODEL_ID = GEMINI_PRO_PREVIEW_MODEL; // Use Pro model
 
-// New function to generate just the prompt template without API call
-export async function generateTaskPromptTemplateAction({
+// Private helper function to prepare the task enhancement prompt
+async function _prepareTaskEnhancementPrompt({
   originalDescription, 
   relevantFiles,
   fileContents,
@@ -23,7 +23,7 @@ export async function generateTaskPromptTemplateAction({
   relevantFiles: string[];
   fileContents: Record<string, string>;
   projectDirectory: string;
-}): Promise<ActionState<string>> {
+}): Promise<ActionState<{systemPrompt: string; userPromptContent: string}>> {
   if (!originalDescription.trim()) {
     return { isSuccess: false, message: "Original task description cannot be empty." };
   }
@@ -47,21 +47,54 @@ export async function generateTaskPromptTemplateAction({
       fileContents
     });
 
-    // Combine the prompts
-    const fullPrompt = `${systemPrompt}\n\n${userPromptContent}`;
-
     return {
       isSuccess: true,
-      message: "Successfully generated task prompt template.",
-      data: fullPrompt
+      message: "Successfully prepared task enhancement prompt.",
+      data: { systemPrompt, userPromptContent }
     };
   } catch (error: unknown) {
-    console.error("Error generating task prompt template:", error);
+    console.error("Error preparing task enhancement prompt:", error);
     return {
       isSuccess: false,
-      message: error instanceof Error ? error.message : "Failed to generate task prompt template",
+      message: error instanceof Error ? error.message : "Failed to prepare task enhancement prompt",
     };
   }
+}
+
+// Generate just the prompt template without API call
+export async function generateTaskPromptTemplateAction({
+  originalDescription, 
+  relevantFiles,
+  fileContents,
+  projectDirectory
+}: {
+  originalDescription: string;
+  relevantFiles: string[];
+  fileContents: Record<string, string>;
+  projectDirectory: string;
+}): Promise<ActionState<string>> {
+  // Use the helper function to prepare the prompts
+  const promptResult = await _prepareTaskEnhancementPrompt({
+    originalDescription,
+    relevantFiles,
+    fileContents,
+    projectDirectory
+  });
+
+  // If the helper returned an error, return it directly
+  if (!promptResult.isSuccess || !promptResult.data) {
+    return promptResult as ActionState<any>;
+  }
+
+  // Combine the prompts
+  const { systemPrompt, userPromptContent } = promptResult.data;
+  const fullPrompt = `${systemPrompt}\n\n${userPromptContent}`;
+
+  return {
+    isSuccess: true,
+    message: "Successfully generated task prompt template.",
+    data: fullPrompt
+  };
 }
 
 export async function enhanceTaskDescriptionAction({
@@ -75,13 +108,20 @@ export async function enhanceTaskDescriptionAction({
   fileContents: Record<string, string>;
   projectDirectory: string;
 }): Promise<ActionState<string>> {
-  if (!originalDescription.trim()) {
-    return { isSuccess: false, message: "Original task description cannot be empty." };
+  // Use the helper function to prepare the prompts
+  const promptResult = await _prepareTaskEnhancementPrompt({
+    originalDescription,
+    relevantFiles,
+    fileContents,
+    projectDirectory
+  });
+
+  // If the helper returned an error, return it directly
+  if (!promptResult.isSuccess || !promptResult.data) {
+    return promptResult as ActionState<any>;
   }
 
-  if (relevantFiles.length === 0 || Object.keys(fileContents).length === 0) {
-    return { isSuccess: false, message: "No relevant files or file contents provided." };
-  }
+  const { systemPrompt, userPromptContent } = promptResult.data;
 
   try {
     // Get model settings for the project
@@ -93,20 +133,6 @@ export async function enhanceTaskDescriptionAction({
       maxTokens: 16384,
       temperature: 0.9
     };
-    
-    // Generate project structure tree
-    const projectStructure = await generateDirectoryTree(projectDirectory);
-    
-    // Get the system prompt
-    const systemPrompt = generateImplementationPlanSystemPrompt();
-    
-    // Get the user prompt
-    const userPromptContent = generateImplementationPlanUserPrompt({
-      originalDescription,
-      projectStructure,
-      relevantFiles,
-      fileContents
-    });
 
     // Call the Gemini API
     const result = await geminiClient.sendRequest(

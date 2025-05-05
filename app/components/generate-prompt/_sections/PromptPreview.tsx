@@ -19,11 +19,10 @@ interface PromptPreviewProps {
   actions: {
     copyPrompt: () => Promise<void>;
     togglePromptView: () => void;
-    handleSetCustomPrompt?: (prompt: string) => void;
   };
 }
 
-export default function PromptPreview({ state, actions }: PromptPreviewProps) {
+const PromptPreview = React.memo(function PromptPreview({ state, actions }: PromptPreviewProps) {
   const { prompt, error, isLoading, copySuccess, showPrompt } = state;
   const { copyPrompt, togglePromptView } = actions;
 
@@ -78,4 +77,6 @@ export default function PromptPreview({ state, actions }: PromptPreviewProps) {
       )}
     </>
   );
-} 
+});
+
+export default PromptPreview;

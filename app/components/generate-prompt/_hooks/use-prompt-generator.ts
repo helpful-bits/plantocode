@@ -5,7 +5,7 @@ import { readDirectoryAction, readExternalFileAction } from "@/actions/read-dire
 import { enhanceTaskDescriptionAction, generateTaskPromptTemplateAction } from "@/actions/task-enhancement-actions";
 import { estimateTokens } from "@/lib/token-estimator";
 import { normalizePath } from "@/lib/path-utils";
-import { FilesMap, FileInfo } from "./use-file-selection-state";
+import { FilesMap, FileInfo } from "./file-management/use-project-file-list";
 
 interface UsePromptGeneratorProps {
   taskDescription: string;
@@ -24,12 +24,8 @@ export function usePromptGenerator({
   projectDirectory}: UsePromptGeneratorProps) {
   const [prompt, setPrompt] = useState("");
   const [tokenCount, setTokenCount] = useState<number>(0);
-  const [architecturalPrompt, setArchitecturalPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [taskCopySuccess, setTaskCopySuccess] = useState(false);
-  const [isCopyingPrompt, setIsCopyingPrompt] = useState(false);
-  const [isGeneratingGuidance, setIsGeneratingGuidance] = useState(false);
   const [error, setError] = useState("");
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
 
@@ -176,18 +172,7 @@ export function usePromptGenerator({
         setExternalPathWarnings(warnings);
       }
 
-      // Generate file contents markup
-      const fileContentMarkup = Object.entries(currentFileContents)
-        .filter(([filePath]) => filesToUse.includes(filePath))
-        .map(([path, content]) => `<file>
-<file_path>${path}</file_path>
-<file_content>
-${content}
-</file_content>
-</file>`)
-        .join("\n\n");
-
-      // Get template instructions instead of diff prompt
+      // Get the complete prompt template with formatted file contents
       const templateResult = await generateTaskPromptTemplateAction({
         originalDescription: taskDescription,
         relevantFiles: filesToUse,
@@ -201,22 +186,11 @@ ${content}
         return;
       }
       
-      const instructions = templateResult.data;
-
-      const fullPrompt = `${instructions}
-
-<project_files>
-${fileContentMarkup}
-</project_files>
-
-<task>
-${taskDescription}
-</task>`;
-
-      setPrompt(fullPrompt);
+      // Set the prompt directly from the template result
+      setPrompt(templateResult.data);
       
       // Estimate tokens
-      const tokenEstimate = await estimateTokens(fullPrompt);
+      const tokenEstimate = await estimateTokens(templateResult.data);
       setTokenCount(tokenEstimate);
     } catch (error) {
       setError("Failed to generate prompt");
@@ -242,89 +216,19 @@ ${taskDescription}
     }
   }, [prompt]);
 
-  // Generate and copy architectural prompt
-  const copyArchPrompt = useCallback(async () => {
-    // Get file paths from either pasted paths or selected files in browser
-    let relevantFiles: string[] = [];
-    
-    if (pastedPaths.trim()) {
-      // If pasted paths exist, use those (override browser selections)
-      relevantFiles = pastedPaths.split('\n')
-        .map(path => path.trim())
-        .filter(p => !!p && !p.startsWith('#'));
-    } else {
-      // Otherwise, use files selected in the browser
-      const isAnyFileIncludedFromBrowser = Object.values(allFilesMap || {})
-        .some((f: FileInfo) => f.included && !f.forceExcluded);
-        
-      if (isAnyFileIncludedFromBrowser) {
-        relevantFiles = Object.values(allFilesMap)
-          .filter((f: FileInfo) => f.included && !f.forceExcluded)
-          .map((f: FileInfo) => f.path);
-      }
-    }
-    
-    // Check if we have a task description and files
-    if (!taskDescription.trim() || relevantFiles.length === 0) {
-      const errorMsg = !taskDescription.trim() 
-        ? "Please enter a task description."
-        : "Please select files in the browser or paste file paths.";
-      setError(errorMsg);
-      return;
-    }
-    
-    setIsGeneratingGuidance(true);
-    
-    try {
-      const enhancedTaskResult = await enhanceTaskDescriptionAction({
-        originalDescription: taskDescription,
-        relevantFiles,
-        fileContents: fileContentsMap,
-        projectDirectory
-      });
-      
-      if (enhancedTaskResult.isSuccess && enhancedTaskResult.data) {
-        const enhancedPrompt = enhancedTaskResult.data;
-        setArchitecturalPrompt(enhancedPrompt);
-        
-        // Copy the enhanced prompt to clipboard
-        await navigator.clipboard.writeText(enhancedPrompt);
-        
-        // Set copy success state
-        setTaskCopySuccess(true);
-        
-        // Reset after a short delay
-        setTimeout(() => {
-          setTaskCopySuccess(false);
-        }, 3000);
-      } else {
-        setError(`Failed to generate architectural guidance: ${enhancedTaskResult.message}`);
-      }
-    } catch (error) {
-      console.error("Error generating architectural guidance:", error);
-      setError("Failed to generate architectural guidance");
-    } finally {
-      setIsGeneratingGuidance(false);
-    }
-  }, [taskDescription, pastedPaths, allFilesMap, fileContentsMap, projectDirectory]);
+  // Generate and copy architectural prompt function removed
 
   // Return values and functions
   return {
     prompt,
     tokenCount,
-    architecturalPrompt,
     isGenerating,
-    isGeneratingGuidance,
     copySuccess,
-    taskCopySuccess,
-    isCopyingPrompt,
     error,
     externalPathWarnings,
     generatePrompt,
     copyPrompt,
-    copyArchPrompt,
     setError,
-    setExternalPathWarnings,
-    setTaskCopySuccess
+    setExternalPathWarnings
   };
 } 

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback, useMemo } from "react";
 // TODO: Fix the missing database context module
 // import { useDatabase } from "./database-context";
 import { normalizePath } from "@/lib/path-utils";
@@ -351,19 +351,29 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
   }, [projectDirectory, activeSessionId]);
   
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    projectDirectory,
+    setProjectDirectory,
+    isLoading,
+    error,
+    activeSessionId,
+    setActiveSessionId,
+    isSwitchingSession,
+    setIsSwitchingSession
+  }), [
+    projectDirectory,
+    setProjectDirectory,
+    isLoading,
+    error,
+    activeSessionId,
+    setActiveSessionId,
+    isSwitchingSession,
+    setIsSwitchingSession
+  ]);
+
   return (
-    <ProjectContext.Provider
-      value={{
-        projectDirectory,
-        setProjectDirectory,
-        isLoading,
-        error,
-        activeSessionId,
-        setActiveSessionId,
-        isSwitchingSession,
-        setIsSwitchingSession
-      }}
-    >
+    <ProjectContext.Provider value={contextValue}>
       {children}
     </ProjectContext.Provider>
   );
