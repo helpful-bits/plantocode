@@ -11,6 +11,7 @@ declare global {
       start?: () => void;
       stop?: () => any[];
     };
+    debugSessionState?: (sessionId: string) => void;
   }
 }
 
@@ -20,27 +21,16 @@ import { usePromptGenerator } from "./use-prompt-generator";
 import { sessionSyncService } from '@/lib/services/session-sync-service';
 import { useNotification } from '@/lib/contexts/notification-context';
 import { useBackgroundJobs, useBackgroundJob } from '@/lib/contexts/background-jobs-context';
-import {
-  generateGuidanceForPathsAction
-} from '@/actions/guidance-generation-actions';
 import { Session } from '@/types/session-types';
 import debounce from '@/lib/utils/debounce';
 
-// Import the new hooks
+// Import the hooks
 import { useTaskDescriptionState } from "./use-task-description-state";
-import { useFileSelectionState } from "./use-file-selection-state";
 import { useRegexState } from "./use-regex-state";
+import { useGuidanceGeneration } from "./use-guidance-generation";
+import { useSessionMetadata } from "./use-session-metadata";
 
-// Constants
-
-// Types
-export interface FileInfo {
-  path: string;
-  size: number;
-  included: boolean;
-  forceExcluded: boolean;
-}
-
+// File management is now handled separately in useFileManagementState
 export function useGeneratePromptState() {
   const { projectDirectory, setProjectDirectory, activeSessionId: contextActiveSessionId } = useProject();
   const { showNotification } = useNotification();
@@ -53,21 +43,12 @@ export function useGeneratePromptState() {
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(false);
   const [isFormSaving, setIsFormSaving] = useState(false);
-  const [isGeneratingGuidance, setIsGeneratingGuidance] = useState(false);
   const [isCopyingPrompt, setIsCopyingPrompt] = useState(false);
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
-  const [diffTemperature, setDiffTemperature] = useState<number>(0.9);
-  const [sessionName, setSessionName] = useState<string>("Untitled Session");
   const [projectDataLoading, setProjectDataLoading] = useState(false);
-  
-  // State for custom prompt mode and Gemini
-  const [isCustomPromptMode, setIsCustomPromptMode] = useState(false);
   const [showPrompt, setShowPrompt] = useState(true);
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
-  const [geminiResponse, setGeminiResponse] = useState("");
-  const [isSubmittingToGemini, setIsSubmittingToGemini] = useState(false);
-  const [geminiErrorMessage, setGeminiErrorMessage] = useState("");
+  
+  // Gemini integration hook removed
   
   // State for background job IDs not in sub-hooks
   const [isStateLoaded, setIsStateLoaded] = useState(false);
@@ -78,42 +59,43 @@ export function useGeneratePromptState() {
   // Create ref for task description textarea
   const taskDescriptionRef = useRef<HTMLTextAreaElement>(null);
   
-  // Enhanced ref to store current state for saving
+  // Enhanced ref to store current state for saving - removed file-related properties
   const currentStateRef = useRef<{
     taskDescription: string;
-    searchTerm: string;
-    pastedPaths: string;
     titleRegex: string;
     contentRegex: string;
     negativeTitleRegex: string;
     negativeContentRegex: string;
     isRegexActive: boolean;
     diffTemperature: number;
-    includedFiles: string[];
-    forceExcludedFiles: string[];
-    searchSelectedFilesOnly: boolean;
   }>({
     taskDescription: "",
-    searchTerm: "",
-    pastedPaths: "",
     titleRegex: "",
     contentRegex: "",
     negativeTitleRegex: "",
     negativeContentRegex: "",
     isRegexActive: true,
-    diffTemperature: 0.9,
-    includedFiles: [],
-    forceExcludedFiles: [],
-    searchSelectedFilesOnly: false
+    diffTemperature: 0.9
   });
 
   // Add state for session switching
   const [isSwitchingSession, setIsSwitchingSession] = useState(false);
 
-  // Function to save all state at once
-  const handleSaveSessionState = useCallback(async (sessionId: string, stateToSave?: typeof currentStateRef.current) => {
+  // Function to save all state at once, but now it needs to get file state from outside
+  const handleSaveSessionState = useCallback(async (
+    sessionId: string, 
+    stateToSave?: typeof currentStateRef.current,
+    fileState?: {
+      searchTerm: string;
+      pastedPaths: string;
+      includedFiles: string[];
+      forceExcludedFiles: string[];
+      searchSelectedFilesOnly: boolean;
+    }
+  ) => {
     if (!sessionId) return;
     
+    // Set form saving state at the beginning of the save process
     setIsFormSaving(true);
     
     try {
@@ -127,36 +109,52 @@ export function useGeneratePromptState() {
       console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 💾 SAVING SESSION STATE: ${sessionId}`);
       console.log(`[useGeneratePromptState][${sequence}] State summary:`, {
         taskDescriptionLength: state.taskDescription?.length || 0,
-        includedFilesCount: state.includedFiles?.length || 0,
-        excludedFilesCount: state.forceExcludedFiles?.length || 0,
         hasRegexPatterns: !!(state.titleRegex || state.contentRegex),
         isRegexActive: state.isRegexActive,
         diffTemperature: state.diffTemperature,
-        hasSearchTerm: !!state.searchTerm,
-        hasPastedPaths: !!state.pastedPaths,
-        searchSelectedFilesOnly: state.searchSelectedFilesOnly
+        fileState: fileState ? {
+          includedFilesCount: fileState.includedFiles?.length || 0,
+          excludedFilesCount: fileState.forceExcludedFiles?.length || 0,
+          hasSearchTerm: !!fileState.searchTerm,
+          hasPastedPaths: !!fileState.pastedPaths,
+          searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
+        } : 'not provided'
       });
       
       // Save all state in one operation with explicit session ID
       await sessionSyncService.updateSessionState(
         sessionId,
         {
+          // Always include project directory if available
+          ...(projectDirectory && { projectDirectory }),
           taskDescription: state.taskDescription,
-          searchTerm: state.searchTerm,
-          pastedPaths: state.pastedPaths,
           titleRegex: state.titleRegex,
           contentRegex: state.contentRegex,
           negativeTitleRegex: state.negativeTitleRegex,
           negativeContentRegex: state.negativeContentRegex,
           isRegexActive: state.isRegexActive,
           diffTemperature: state.diffTemperature,
-          includedFiles: state.includedFiles,
-          forceExcludedFiles: state.forceExcludedFiles,
-          searchSelectedFilesOnly: state.searchSelectedFilesOnly
+          // Include file state if provided
+          ...(fileState && {
+            searchTerm: fileState.searchTerm,
+            pastedPaths: fileState.pastedPaths,
+            includedFiles: fileState.includedFiles,
+            forceExcludedFiles: fileState.forceExcludedFiles,
+            searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
+          })
         }
       );
       
-      setHasUnsavedChanges(false);
+      // Use a slight delay before updating UI state to ensure
+      // any in-progress interactions complete first
+      setTimeout(() => {
+        // Only reset unsaved changes if there haven't been new interactions since save started
+        if (sessionId === contextActiveSessionId) {
+          setHasUnsavedChanges(false);
+          setIsFormSaving(false);
+        }
+      }, 0);
+      
       console.log(`[useGeneratePromptState][${sequence}] ✅ Successfully saved session state for ${sessionId}`);
     } catch (error) {
       console.error(`[useGeneratePromptState] Error saving session state:`, error);
@@ -166,14 +164,23 @@ export function useGeneratePromptState() {
         message: "Failed to save the session state. Please try again.",
         type: "error"
       });
-    } finally {
+      
       setIsFormSaving(false);
     }
-  }, [showNotification, setHasUnsavedChanges, setIsFormSaving]);
+  }, [showNotification, setHasUnsavedChanges, setIsFormSaving, contextActiveSessionId, projectDirectory]);
 
   // Create a debounced function for saving all state
   const debouncedSaveAllState = useMemo(
-    () => debounce((sessionId: string) => {
+    () => debounce((
+      sessionId: string,
+      fileStateGetter?: () => {
+        searchTerm: string;
+        pastedPaths: string;
+        includedFiles: string[];
+        forceExcludedFiles: string[];
+        searchSelectedFilesOnly: boolean;
+      }
+    ) => {
       if (!sessionId) return;
       
       console.log(`[useGeneratePromptState] Triggering debounced save for session ${sessionId}`);
@@ -182,19 +189,35 @@ export function useGeneratePromptState() {
       // This ensures we save the state as it was when the save was triggered, not when it executes
       const stateAtTriggerTime = { ...currentStateRef.current };
       
+      // Get file state if a getter was provided
+      const fileState = fileStateGetter ? fileStateGetter() : undefined;
+      
       // Pass the captured state to handleSaveSessionState along with the sessionId
-      handleSaveSessionState(sessionId, stateAtTriggerTime);
+      handleSaveSessionState(sessionId, stateAtTriggerTime, fileState);
     }, 1500), // 1.5 second debounce
     [handleSaveSessionState]
   );
 
-  // Define common interaction handler
-  const handleInteraction = useCallback(() => {
-    setHasUnsavedChanges(true);
-    
+  // Define common interaction handler - updated to allow passing in a file state getter
+  const handleInteraction = useCallback((
+    fileStateGetter?: () => {
+      searchTerm: string;
+      pastedPaths: string;
+      includedFiles: string[];
+      forceExcludedFiles: string[];
+      searchSelectedFilesOnly: boolean;
+    }
+  ) => {
     // Trigger debounced save when interaction happens
     if (contextActiveSessionId) {
-      debouncedSaveAllState(contextActiveSessionId);
+      // Set hasUnsavedChanges once outside the debounce to show saving indicator immediately
+      // but avoid additional re-renders within the component lifecycle
+      if (!hasUnsavedChanges) {
+        setHasUnsavedChanges(true);
+      }
+      
+      // Trigger the debounced save
+      debouncedSaveAllState(contextActiveSessionId, fileStateGetter);
     }
     
     // Optionally, reset interaction timeout
@@ -202,405 +225,83 @@ export function useGeneratePromptState() {
       clearTimeout(interactionTimeoutRef.current);
       interactionTimeoutRef.current = null;
     }
-  }, [contextActiveSessionId, debouncedSaveAllState]);
+  }, [contextActiveSessionId, debouncedSaveAllState, hasUnsavedChanges]);
+  
+  // Initialize session metadata hook
+  const sessionMetadata = useSessionMetadata({
+    onInteraction: () => handleInteraction(),
+    initialDiffTemperature: 0.7,
+    initialSessionName: "Untitled Session"
+  });
+  
+  // Custom prompt mode hook removed
 
   // Initialize specialized state hooks
   const taskState = useTaskDescriptionState({
     activeSessionId: contextActiveSessionId,
-    onInteraction: handleInteraction,
-    setHasUnsavedChanges,
+    onInteraction: () => handleInteraction(),
     taskDescriptionRef
-  });
-  
-  const fileState = useFileSelectionState({
-    projectDirectory,
-    activeSessionId: contextActiveSessionId,
-    taskDescription: taskState.taskDescription,
-    onInteraction: handleInteraction,
-    setHasUnsavedChanges,
-    debugMode
   });
   
   const regexState = useRegexState({
     activeSessionId: contextActiveSessionId,
     taskDescription: taskState.taskDescription,
-    onInteraction: handleInteraction,
-    setHasUnsavedChanges
+    onInteraction: () => handleInteraction()
   });
 
-  // Initialize prompt generator hook
+  // Initialize prompt generator hook - updated to get file info from props
   const {
     prompt,
     tokenCount,
-    architecturalPrompt,
     isGenerating,
     copySuccess,
+    error: promptError,
+    externalPathWarnings,
     generatePrompt,
     copyPrompt,
-    copyArchPrompt,
+    setError: setPromptError,
   } = usePromptGenerator({
     taskDescription: taskState.taskDescription,
-    allFilesMap: fileState.allFilesMap,
-    fileContentsMap: fileState.fileContentsMap,
-    pastedPaths: fileState.pastedPaths,
+    allFilesMap: {}, // This will now come from the separate file management context
+    fileContentsMap: {}, // This will now come from the separate file management context
+    pastedPaths: "", // This will now come from the separate file management context
     projectDirectory,
-    diffTemperature
+    diffTemperature: sessionMetadata.diffTemperature
+  });
+  
+  // Initialize guidance generation hook
+  const guidanceGeneration = useGuidanceGeneration({
+    projectDirectory,
+    taskDescription: taskState.taskDescription,
+    includedPaths: [], // This will now come from the separate file management context
+    activeSessionId: contextActiveSessionId,
+    onInteraction: () => handleInteraction(),
+    taskDescriptionRef,
+    setTaskDescription: taskState.setTaskDescription
   });
 
-  // Monitor background jobs
-  const findingFilesJob = useBackgroundJob(fileState.findingFilesJobId);
-  const regexJob = useBackgroundJob(regexState.generatingRegexJobId);
-
-  // This function has been removed as file selection application is now handled
-  // directly in useFileSelectionState when the file list is loaded
-  // This prevents the race condition where file selections were being applied
-  // before the file list was fully loaded
-
-  // Monitor background job status changes and process them
-  const checkForBackgroundUpdates = useCallback(async () => {
-    // Check for file finder job updates
-    if (fileState.findingFilesJobId && findingFilesJob) {
-      if (findingFilesJob.status === 'completed' && findingFilesJob.response) {
-        // Reset finding files state
-        fileState.setIsFindingFiles(false);
-        
-        try {
-          // Parse the response as a newline-separated string of paths
-          const paths = findingFilesJob.response
-            .split('\n')
-            .map(path => path.trim())
-            .filter(path => path.length > 0);
-          
-          console.log(`[useGeneratePromptState] Processing ${paths.length} paths from completed job:`, paths);
-          
-          // Apply the found paths to file selections
-          if (paths.length > 0) {
-            // Use the consolidated method to update paths and file selections
-            fileState.updatePathsAfterJobCompletion(paths);
-            
-            showNotification({
-              title: "Relevant files found",
-              message: `Found ${paths.length} relevant files for your task.`,
-              type: "success"
-            });
-            
-            // Mark changes as unsaved
-            setHasUnsavedChanges(true);
-          } else {
-            showNotification({
-              title: "No relevant files found",
-              message: "No files matched the search criteria. Try a different task description.",
-              type: "warning"
-            });
-          }
-          
-          // Clear the job ID to prevent reprocessing
-          fileState.setFindingFilesJobId(null);
-        } catch (error) {
-          console.error("[useGeneratePromptState] Error processing found paths:", error);
-          
-          showNotification({
-            title: "Error processing files",
-            message: "Failed to process found files. Please try again.",
-            type: "error"
-          });
-          
-          // Clear the job ID to prevent reprocessing
-          fileState.setFindingFilesJobId(null);
-        }
-      } else if (findingFilesJob.status === 'failed') {
-        fileState.setIsFindingFiles(false);
-        fileState.setFindingFilesJobId(null);
-        
-        showNotification({
-          title: "File search failed",
-          message: findingFilesJob.errorMessage || "Failed to search for relevant files. Please try again.",
-          type: "error"
-        });
-      }
-    }
-  
-    // Check for regex job updates
-    if (regexState.generatingRegexJobId && regexJob) {
-      if (regexJob.status === 'completed' && regexJob.response) {
-        // Reset generating regex state
-        regexState.setIsGeneratingTaskRegex(false);
-        
-        try {
-          // Parse the response regex patterns
-          const response = JSON.parse(regexJob.response);
-          
-          // Apply the regex patterns
-          if (response) {
-            regexState.applyRegexPatterns({
-              titlePattern: response.titlePattern || '',
-              contentPattern: response.contentPattern || '',
-              negativeTitlePattern: response.negativeTitlePattern || '',
-              negativeContentPattern: response.negativeContentPattern || ''
-            });
-            
-            // Set regex active if we got valid patterns
-            if (response.titlePattern || response.contentPattern) {
-              regexState.setIsRegexActive(true);
-              
-              showNotification({
-                title: "Regex patterns generated",
-                message: "Generated regex patterns for your task description.",
-                type: "success"
-              });
-            } else {
-              regexState.setIsGeneratingTaskRegex(false);
-              setError("Failed to generate regex patterns.");
-              
-              showNotification({
-                title: "Error generating regex",
-                message: "Failed to generate regex patterns for your task description.",
-                type: "error"
-              });
-            }
-          } else {
-            regexState.setIsGeneratingTaskRegex(false);
-            setError("Failed to generate regex patterns.");
-            
-            showNotification({
-              title: "Error generating regex",
-              message: "Failed to generate regex patterns for your task description.",
-              type: "error"
-            });
-          }
-        } catch (error) {
-          console.error("[useGeneratePromptState] Error parsing regex patterns:", error);
-          regexState.setIsGeneratingTaskRegex(false); 
-          setError("Error parsing regex patterns.");
-          
-          showNotification({
-            title: "Error generating regex",
-            message: "Failed to parse the generated regex patterns.",
-            type: "error"
-          });
-        }
-        
-        // Always reset the generatingRegexJobId to null after processing completed status
-        regexState.setIsGeneratingTaskRegex(false);
-      } else if (regexJob.status === 'failed' || regexJob.status === 'canceled') {
-        // Job failed
-        regexState.setIsGeneratingTaskRegex(false);
-        
-        showNotification({
-          title: "Error generating regex",
-          message: regexJob.errorMessage || "Failed to generate regex patterns for your task description.",
-          type: "error"
-        });
-        
-        // Reset the generatingRegexJobId to null after processing failed or canceled status
-        regexState.setIsGeneratingTaskRegex(false);
-      }
-    }
-  }, [findingFilesJob, regexJob, fileState, regexState, showNotification, setError]);
-
-  // Ensure the background updates are checked whenever job status changes
-  useEffect(() => {
-    checkForBackgroundUpdates();
-  }, [checkForBackgroundUpdates, findingFilesJob]);
-  
-  // Track processed job IDs to prevent duplicate updates 
-  // This ref persists between renders to prevent processing jobs multiple times
-  const processedJobIdsRef = useRef<Set<string>>(new Set());
-  
-  // Add a debug flag to control the additional logging
-  const DEBUG_FORM_UPDATES = false;
-  
-  // Get jobs using the hook at the component level
-  const { jobs, activeJobs } = useBackgroundJobs();
-  
-  // Track attempts to process form updates to detect and resolve issues
-  const formUpdateAttemptsRef = useRef(0);
-  
-  // Monitor for completed background jobs and update form fields
-  useEffect(() => {
-    // Skip processing if we don't have an active session or jobs
-    if (!contextActiveSessionId || !jobs || jobs.length === 0) {
-      if (DEBUG_FORM_UPDATES) {
-        console.debug(`[useGeneratePromptState] Skipping job processing - no active session or no jobs`);
-      }
-      return;
-    }
-    
-    const updateAttempt = ++formUpdateAttemptsRef.current;
-    
-    if (DEBUG_FORM_UPDATES) {
-      console.debug(`[useGeneratePromptState] Form update check #${updateAttempt}: Checking ${jobs.length} jobs for session ${contextActiveSessionId.substring(0, 8)}...`);
-      
-      // Analyze job status distribution
-      const statusCounts = jobs.reduce((acc, job) => {
-        acc[job.status] = (acc[job.status] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      
-      console.debug(`[useGeneratePromptState] Jobs by status:`, statusCounts);
-      
-      // Count potentially relevant jobs that weren't processed yet
-      const potentiallyRelevant = jobs.filter(job => 
-        job.sessionId === contextActiveSessionId && 
-        job.metadata?.targetField && 
-        !processedJobIdsRef.current.has(job.id)
-      );
-      
-      if (potentiallyRelevant.length > 0) {
-        console.debug(`[useGeneratePromptState] Found ${potentiallyRelevant.length} potentially relevant unprocessed jobs`);
-      }
-    }
-    
-    // Filter for jobs that are:
-    // 1. Completed (status is 'completed')
-    // 2. Belong to the current session
-    // 3. Have a targetField in metadata (indicating they should update a form field)
-    // 4. Have a response (the content to update the field with)
-    // 5. Haven't been processed before (not in processedJobIdsRef)
-    const relevantJobs = jobs.filter(job => 
-      job.status === 'completed' && 
-      job.sessionId === contextActiveSessionId && 
-      job.response && 
-      job.metadata?.targetField && 
-      !processedJobIdsRef.current.has(job.id)
-    );
-    
-    // If no relevant jobs were found, skip processing
-    if (relevantJobs.length === 0) {
-      if (DEBUG_FORM_UPDATES && updateAttempt % 10 === 0) { // Only log occasionally to avoid spam
-        console.debug(`[useGeneratePromptState] No relevant jobs found for form update`);
-      }
-      return;
-    }
-    
-    // Log relevant jobs for debugging
-    if (DEBUG_FORM_UPDATES) {
-      console.debug(`[useGeneratePromptState] Found ${relevantJobs.length} jobs that need field updates:`, 
-        relevantJobs.map(job => ({
-          id: job.id,
-          targetField: job.metadata?.targetField,
-          responseLength: job.response?.length || 0
-        }))
-      );
-    }
-    
-    // Process each relevant job to update the appropriate form field
-    relevantJobs.forEach(job => {
-      const targetField = job.metadata?.targetField as string;
-      const response = job.response || '';
-      
-      console.log(`[useGeneratePromptState] Processing job ${job.id} to update field: ${targetField}`);
-      
-      // Skip empty responses that would clear fields
-      if (!response.trim()) {
-        console.warn(`[useGeneratePromptState] Skipping job ${job.id} - empty response for field: ${targetField}`);
-        processedJobIdsRef.current.add(job.id); // Mark as processed anyway
-        return;
-      }
-      
-      try {
-        // Update the appropriate field based on targetField
-        switch (targetField) {
-          case 'taskDescription':
-            taskState.setTaskDescription(response);
-            break;
-          case 'pastedPaths':
-            fileState.setPastedPaths(response);
-            break;
-          case 'searchTerm':
-            fileState.setSearchTerm(response);
-            break;
-          case 'titleRegex':
-            regexState.setTitleRegex(response);
-            break;
-          case 'contentRegex':
-            regexState.setContentRegex(response);
-            break;
-          case 'negativeTitleRegex':
-            regexState.setNegativeTitleRegex(response);
-            break;
-          case 'negativeContentRegex':
-            regexState.setNegativeContentRegex(response);
-            break;
-          default:
-            console.warn(`[useGeneratePromptState] Unknown target field: ${targetField}`);
-            processedJobIdsRef.current.add(job.id); // Mark as processed to avoid trying again
-            return; // Skip further processing for this job
-        }
-        
-        // Track unsaved changes when form is updated from job
-        setHasUnsavedChanges(true);
-        
-        // Mark this job as processed to prevent reprocessing
-        processedJobIdsRef.current.add(job.id);
-        
-        console.log(`[useGeneratePromptState] Successfully updated ${targetField} from job ${job.id}`);
-        
-        // Show a notification about the successful update
-        showNotification({
-          title: "Form updated",
-          message: `The ${targetField} field has been updated with AI-generated content.`,
-          type: "success"
-        });
-      } catch (error) {
-        console.error(`[useGeneratePromptState] Error processing job ${job.id} for field ${targetField}:`, error);
-        
-        // Show error notification
-        showNotification({
-          title: "Error updating form",
-          message: `Failed to update ${targetField} field: ${error instanceof Error ? error.message : String(error)}`,
-          type: "error"
-        });
-        
-        // Still mark as processed to avoid infinite retries
-        processedJobIdsRef.current.add(job.id);
-      }
-    });
-  }, [
-    contextActiveSessionId, 
-    jobs, 
-    taskState, 
-    fileState, 
-    regexState, 
-    showNotification, 
-    setHasUnsavedChanges,
-    DEBUG_FORM_UPDATES
-  ]);
-
-  // Use effect to update the currentStateRef
+  // Use effect to update the currentStateRef - removed file-related properties
   useEffect(() => {
     currentStateRef.current = {
       taskDescription: taskState.taskDescription,
-      searchTerm: fileState.searchTerm,
-      pastedPaths: fileState.pastedPaths,
       titleRegex: regexState.titleRegex,
       contentRegex: regexState.contentRegex,
       negativeTitleRegex: regexState.negativeTitleRegex,
       negativeContentRegex: regexState.negativeContentRegex,
       isRegexActive: regexState.isRegexActive,
-      diffTemperature,
-      includedFiles: fileState.includedPaths,
-      forceExcludedFiles: fileState.excludedPaths,
-      searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
+      diffTemperature: sessionMetadata.diffTemperature
     };
   }, [
     taskState.taskDescription,
-    fileState.searchTerm,
-    fileState.pastedPaths,
     regexState.titleRegex,
     regexState.contentRegex,
     regexState.negativeTitleRegex,
     regexState.negativeContentRegex,
     regexState.isRegexActive,
-    diffTemperature,
-    fileState.includedPaths,
-    fileState.excludedPaths,
-    fileState.searchSelectedFilesOnly
+    sessionMetadata.diffTemperature
   ]);
 
-  // We no longer need to synchronize activeSessionId since we're using contextActiveSessionId directly
-
-  // Simplified useEffect hook to handle state flags when contextActiveSessionId changes
+  // Basic session ID and project directory change monitoring
   useEffect(() => {
     // Log the current state
     console.log(`[useGeneratePromptState] useEffect triggered for contextActiveSessionId=${contextActiveSessionId || 'null'}, projectDirectory=${projectDirectory || 'null'}`);
@@ -629,28 +330,9 @@ export function useGeneratePromptState() {
       abortController.abort();
     };
   }, [contextActiveSessionId, projectDirectory]);
-  /* The boolean state flags (isRestoringSession, isStateLoaded, isSwitchingSession) are intentionally omitted
-   * from the dependency array because:
-   * 1. They're used as control flags within the effect itself and including them would cause recursive reruns
-   * 2. These flags are SET by this effect and then READ by it to control flow, not as actual dependencies
-   */
 
-  // We no longer need handleSetActiveSessionId since the active session ID is now controlled by the context
-
-  // Handle session name change
-  const handleSessionNameChange = (name: string) => {
-    setSessionName(name);
-    handleInteraction();
-  };
-
-  // Handle diffTemperature change
-  const handleSetDiffTemperature = (value: number) => {
-    setDiffTemperature(value);
-    handleInteraction();
-  };
-
-  // Handle loading a session
-  const handleLoadSession = async (sessionData: Session | null) => {
+  // Handle loading a session - simplified to remove file handling
+  const handleLoadSession = useCallback(async (sessionData: Session | null) => {
     const timestamp = new Date().toISOString();
     const sequence = Math.random().toString(36).substring(2, 8);
     
@@ -672,19 +354,12 @@ export function useGeneratePromptState() {
       id: sessionData.id,
       name: sessionData.name,
       taskDescriptionLength: sessionData.taskDescription?.length || 0,
-      includedFilesCount: sessionData.includedFiles?.length || 0,
-      excludedFilesCount: sessionData.forceExcludedFiles?.length || 0,
       hasRegexPatterns: !!(sessionData.titleRegex || sessionData.contentRegex || sessionData.negativeTitleRegex || sessionData.negativeContentRegex),
       isRegexActive: sessionData.isRegexActive,
-      hasSearchTerm: !!sessionData.searchTerm,
-      hasPastedPaths: !!sessionData.pastedPaths,
-      hasSearchSelectedFilesOnly: typeof sessionData.searchSelectedFilesOnly === 'boolean'
+      // File state is now logged elsewhere in the file management hooks
     });
     
     try {
-      // No need to verify that incoming session ID matches context's active session ID
-      // The SessionManager will have updated the context before calling handleLoadSession
-      
       // Step 1: Set switching session flag immediately to prevent other operations
       console.log(`[useGeneratePromptState][${sequence}] Step 1: Setting isSwitchingSession=true`);
       setIsSwitchingSession(true);
@@ -712,15 +387,11 @@ export function useGeneratePromptState() {
       console.log(`[useGeneratePromptState][${sequence}] Step 3.1: Resetting taskState`);
       taskState.reset();
       
-      console.log(`[useGeneratePromptState][${sequence}] Step 3.2: Resetting fileState`);
-      fileState.reset();
-      
       console.log(`[useGeneratePromptState][${sequence}] Step 3.3: Resetting regexState`);
       regexState.reset();
       
       console.log(`[useGeneratePromptState][${sequence}] Step 3.4: Resetting other state variables`);
-      setDiffTemperature(0.7);
-      setSessionName("Untitled Session");
+      sessionMetadata.reset();
       setHasUnsavedChanges(false);
       
       // Step 4: Apply all session data in a consistent order
@@ -729,7 +400,7 @@ export function useGeneratePromptState() {
       // Update session name if available
       if (sessionData.name) {
         console.log(`[useGeneratePromptState][${sequence}] Step 4.1: Setting session name: "${sessionData.name}"`);
-        setSessionName(sessionData.name);
+        sessionMetadata.setSessionName(sessionData.name);
       }
       
       // Update task description if available
@@ -746,28 +417,13 @@ export function useGeneratePromptState() {
       regexState.setNegativeContentRegex(sessionData.negativeContentRegex || '');
       regexState.setIsRegexActive(sessionData.isRegexActive === true);
       
-      // Apply file-related settings
-      console.log(`[useGeneratePromptState][${sequence}] Step 4.4: Setting file-related fields`);
-      fileState.setSearchTerm(sessionData.searchTerm || '');
-      fileState.setPastedPaths(sessionData.pastedPaths || '');
-      fileState.setSearchSelectedFilesOnly(sessionData.searchSelectedFilesOnly || false);
-      
       // Apply diff temperature if available
       if (typeof sessionData.diffTemperature === 'number') {
         console.log(`[useGeneratePromptState][${sequence}] Step 4.5: Setting diffTemperature: ${sessionData.diffTemperature}`);
-        setDiffTemperature(sessionData.diffTemperature);
+        sessionMetadata.setDiffTemperature(sessionData.diffTemperature);
       }
       
-      // Step 5: File selections are now handled automatically by useFileSelectionState
-      // when files are loaded after a session change. We no longer need to manually apply file selections
-      console.log(`[useGeneratePromptState][${sequence}] Step 5: File selections will be applied by useFileSelectionState after file loading`);
-      
-      // We can still log the expected selections for debugging purposes
-      if (sessionData.includedFiles?.length || sessionData.forceExcludedFiles?.length) {
-        console.log(`[useGeneratePromptState][${sequence}] Found ${sessionData.includedFiles?.length || 0} included and ${sessionData.forceExcludedFiles?.length || 0} excluded file paths in session data`);
-      } else {
-        console.log(`[useGeneratePromptState][${sequence}] No file selections found in session data`);
-      }
+      // NOTE: File selections are now handled by the FileManagementProvider
       
       // Step 6: Set core state flags after all session data has been applied
       console.log(`[useGeneratePromptState][${sequence}] Step 6: Setting final state flags`);
@@ -800,142 +456,58 @@ export function useGeneratePromptState() {
       // Show error
       setError(`Failed to load session: ${error instanceof Error ? error.message : String(error)}`);
     }
-  };
+  }, [
+    contextActiveSessionId, 
+    setError, 
+    setIsSwitchingSession, 
+    setIsRestoringSession, 
+    taskState, 
+    regexState, 
+    sessionMetadata,
+    setHasUnsavedChanges, 
+    setSessionInitialized, 
+    setIsStateLoaded
+  ]);
 
-  // Handle generating guidance for selected paths
-  const handleGenerateGuidance = async () => {
-    if (!projectDirectory) {
-      showNotification({
-        title: "Cannot generate guidance",
-        message: "Please select a project directory first.",
-        type: "warning"
-      });
-      return;
+  // Get current session state (for creating a new session) - simplified to remove file handling
+  const getCurrentSessionState = useCallback((
+    fileState?: {
+      searchTerm: string;
+      pastedPaths: string;
+      includedFiles: string[];
+      forceExcludedFiles: string[];
+      searchSelectedFilesOnly: boolean;
     }
-    
-    if (!taskState.taskDescription.trim()) {
-      showNotification({
-        title: "Cannot generate guidance",
-        message: "Please provide a task description first.",
-        type: "warning"
-      });
-      return;
-    }
-    
-    if (fileState.includedPaths.length === 0) {
-      showNotification({
-        title: "Cannot generate guidance",
-        message: "Please select at least one file to generate guidance for.",
-        type: "warning"
-      });
-      return;
-    }
-    
-    if (isGeneratingGuidance) {
-      showNotification({
-        title: "Already generating guidance",
-        message: "Please wait for the current generation to complete.",
-        type: "warning"
-      });
-      return;
-    }
-    
-    setIsGeneratingGuidance(true);
-    
-    try {
-      showNotification({
-        title: "Generating guidance",
-        message: "This may take a moment...",
-        type: "info"
-      });
-      
-      // Get file contents for the selected paths
-      const fileContents: Record<string, string> = {};
-      fileState.includedPaths.forEach(path => {
-        if (fileState.fileContentsMap[path]) {
-          fileContents[path] = fileState.fileContentsMap[path];
-        }
-      });
-      
-      // Create a wrapper function that handles the type mismatch
-      const generateGuidance = async () => {
-        if (!projectDirectory || !contextActiveSessionId) {
-          throw new Error("Project directory or active session not set");
-        }
-        
-        // Call the function with the correct parameters
-        const result = await generateGuidanceForPathsAction(
-          taskState.taskDescription,
-          fileState.includedPaths,
-          contextActiveSessionId,
-          { modelOverride: undefined }  // Optional parameter
-        );
-        return result;
-      };
-      
-      const result = await generateGuidance();
-      
-      if (result.isSuccess && result.data) {
-        // Append the guidance to the task description
-        if (taskState.taskDescriptionRef.current) {
-          const textarea = taskState.taskDescriptionRef.current;
-          const currentValue = textarea.value;
-          
-          // Add a newline if needed, then append the guidance
-          const newValue = currentValue + 
-            (currentValue && !currentValue.endsWith('\n') ? '\n\n' : '') + 
-            result.data.guidance;
-          
-          // Update the task description
-          taskState.setTaskDescription(newValue);
-          
-          // Set cursor at the end of the text
-          setTimeout(() => {
-            if (textarea) {
-              textarea.focus();
-              textarea.setSelectionRange(newValue.length, newValue.length);
-            }
-          }, 0);
-        }
-        
-        showNotification({
-          title: "Guidance generated",
-          message: "Guidance has been added to your task description.",
-          type: "success"
-        });
-      } else {
-        throw new Error(result.message || "Failed to generate guidance.");
-      }
-    } catch (error) {
-      console.error("[useGeneratePromptState] Error generating guidance:", error);
-      
-      showNotification({
-        title: "Error generating guidance",
-        message: error instanceof Error ? error.message : "An unknown error occurred.",
-        type: "error"
-      });
-    } finally {
-      setIsGeneratingGuidance(false);
-    }
-  };
-
-  // Get current session state (for creating a new session)
-  const getCurrentSessionState = () => {
+  ) => {
     return {
+      // Always include project directory if available
+      ...(projectDirectory && { projectDirectory }),
       taskDescription: taskState.taskDescription,
-      searchTerm: fileState.searchTerm,
-      pastedPaths: fileState.pastedPaths,
       titleRegex: regexState.titleRegex,
       contentRegex: regexState.contentRegex,
       negativeTitleRegex: regexState.negativeTitleRegex,
       negativeContentRegex: regexState.negativeContentRegex,
       isRegexActive: regexState.isRegexActive,
-      diffTemperature,
-      includedFiles: fileState.includedPaths,
-      forceExcludedFiles: fileState.excludedPaths,
-      searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
+      diffTemperature: sessionMetadata.diffTemperature,
+      // Include file state if provided
+      ...(fileState && {
+        searchTerm: fileState.searchTerm,
+        pastedPaths: fileState.pastedPaths,
+        includedFiles: fileState.includedFiles,
+        forceExcludedFiles: fileState.forceExcludedFiles,
+        searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
+      })
     };
-  };
+  }, [
+    projectDirectory,
+    taskState.taskDescription,
+    regexState.titleRegex,
+    regexState.contentRegex,
+    regexState.negativeTitleRegex,
+    regexState.negativeContentRegex,
+    regexState.isRegexActive,
+    sessionMetadata.diffTemperature
+  ]);
 
   const resetAllState = useCallback(() => {
     const timestamp = new Date().toISOString();
@@ -947,16 +519,12 @@ export function useGeneratePromptState() {
     console.log(`[useGeneratePromptState][${sequence}] Step 1: Resetting taskState`);
     taskState.reset();
     
-    console.log(`[useGeneratePromptState][${sequence}] Step 2: Resetting fileState`);
-    fileState.reset();
-    
     console.log(`[useGeneratePromptState][${sequence}] Step 3: Resetting regexState`);
     regexState.reset();
     
     // Reset main state
     console.log(`[useGeneratePromptState][${sequence}] Step 4: Resetting main state variables`);
-    setDiffTemperature(0.7);
-    setSessionName("Untitled Session");
+    sessionMetadata.reset();
     setError("");
     setIsStateLoaded(false);
     setHasUnsavedChanges(false);
@@ -968,102 +536,88 @@ export function useGeneratePromptState() {
     console.log(`[useGeneratePromptState][${sequence}] Step 5: Active session ID is now controlled by the context`);
     
     console.log(`[useGeneratePromptState][${sequence}][${timestamp}] COMPLETED complete state reset`);
-  }, [fileState, regexState, taskState]);
-
-  // Handler for setting Gemini API key
-  const handleSetGeminiApiKey = (key: string) => {
-    setGeminiApiKey(key);
-  };
-
-  // Handler for submitting to Gemini
-  const handleSubmitToGemini = async (prompt: string) => {
-    if (!prompt || !geminiApiKey) {
-      setGeminiErrorMessage("Missing prompt or API key");
-      return;
-    }
-
-    setIsSubmittingToGemini(true);
-    setGeminiErrorMessage("");
-
-    try {
-      // This is a placeholder - in a real implementation this would call an API
-      // For now, we'll just simulate a response after a delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setGeminiResponse("This is a simulated response from Gemini API. In a real implementation, this would be the actual response from the Gemini API.");
-    } catch (error) {
-      console.error("[useGeneratePromptState] Error submitting to Gemini:", error);
-      setGeminiErrorMessage(error instanceof Error ? error.message : "An unknown error occurred");
-    } finally {
-      setIsSubmittingToGemini(false);
-    }
-  };
-
-  // Handler for clearing Gemini response
-  const handleClearGeminiResponse = () => {
-    setGeminiResponse("");
-  };
+  }, [taskState, regexState, sessionMetadata]);
 
   // Handler for generating codebase (placeholder function)
-  const handleGenerateCodebase = async () => {
+  const handleGenerateCodebase = useCallback(async () => {
     showNotification({
       title: "Generate Codebase",
       message: "This feature is not yet implemented",
       type: "info"
     });
     return Promise.resolve();
-  };
+  }, [showNotification]);
 
-  return {
+  return useMemo(() => ({
     // Session state
     activeSessionId: contextActiveSessionId,
     isStateLoaded,
     isSwitchingSession,
     isRestoringSession, 
     sessionInitialized,
-    sessionName,
+    sessionName: sessionMetadata.sessionName,
     hasUnsavedChanges,
-    isGeneratingGuidance,
+    isGeneratingGuidance: guidanceGeneration.isGeneratingGuidance,
     isFormSaving,
     error,
     
     // Form state
     taskState,
-    fileState,
     regexState,
-    diffTemperature,
+    diffTemperature: sessionMetadata.diffTemperature,
     
     // Project data
     projectDirectory,
     projectDataLoading,
     
-    // Custom prompt and Gemini state
-    isCustomPromptMode,
+    // Prompt state
+    prompt,
+    tokenCount,
+    copySuccess,
     showPrompt,
-    customPrompt,
-    geminiApiKey,
-    geminiResponse,
-    isSubmittingToGemini,
-    geminiErrorMessage,
-    
     
     // Action methods
     resetAllState,
-    setSessionName: handleSessionNameChange,
-    setDiffTemperature: handleSetDiffTemperature,
+    setSessionName: sessionMetadata.setSessionName,
+    setDiffTemperature: sessionMetadata.setDiffTemperature,
     handleLoadSession,
-    handleGenerateGuidance,
+    handleGenerateGuidance: guidanceGeneration.handleGenerateGuidance,
     saveSessionState: handleSaveSessionState,
     getCurrentSessionState,
     setSessionInitialized,
     setHasUnsavedChanges,
-    
-    // Custom prompt and Gemini methods
-    setIsCustomPromptMode,
+    handleInteraction,
+    copyPrompt,
     setShowPrompt,
-    setCustomPrompt,
-    handleSetGeminiApiKey,
-    handleSubmitToGemini,
-    handleClearGeminiResponse,
     handleGenerateCodebase
-  };
+  }), [
+    contextActiveSessionId,
+    isStateLoaded,
+    isSwitchingSession,
+    isRestoringSession,
+    sessionInitialized,
+    sessionMetadata,
+    hasUnsavedChanges,
+    guidanceGeneration,
+    isFormSaving,
+    error,
+    taskState,
+    regexState,
+    projectDirectory,
+    projectDataLoading,
+    prompt,
+    tokenCount, 
+    copySuccess,
+    showPrompt,
+    resetAllState,
+    handleLoadSession,
+    handleSaveSessionState,
+    getCurrentSessionState,
+    setSessionInitialized,
+    setHasUnsavedChanges,
+    handleInteraction,
+    copyPrompt,
+    setShowPrompt,
+    handleGenerateCodebase
+  ]);
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useVoiceRecording } from "@/hooks/useVoiceRecording/index"; // Use the new import path
 import { Mic, MicOff, Loader2, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProject } from "@/lib/contexts/project-context"; // Add useProject context
 import { TaskDescriptionHandle } from "./task-description";
 import { toast } from "@/components/ui/use-toast";
+
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
@@ -370,17 +371,19 @@ export default function VoiceTranscription({
         </div>
         <div className="flex flex-col">
           <div className="h-9">
-            <Select value={languageCode} onValueChange={setLanguageCode} disabled={isRecording || isProcessing}>
-              <SelectTrigger className="w-[100px] h-9" aria-label="Select transcription language">
-                <SelectValue placeholder="Language" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="es">Spanish</SelectItem>
-                <SelectItem value="fr">French</SelectItem>
-                {/* Add more languages as needed */}
-              </SelectContent>
-            </Select>
+            <div className="inline-block">
+              <select
+                value={languageCode}
+                onChange={(e) => setLanguageCode(e.target.value)}
+                disabled={isRecording || isProcessing}
+                className="h-9 w-[100px] rounded-md border border-input bg-background px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Select transcription language"
+              >
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+              </select>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground mt-1">Select the language you will be speaking.</p>
         </div>

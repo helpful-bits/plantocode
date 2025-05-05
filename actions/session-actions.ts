@@ -1,7 +1,7 @@
 "use server";
 
 import { sessionRepository, backgroundJobRepository } from '@/lib/db/repositories';
-import { setupDatabase, setActiveSession } from '@/lib/db'; // Add setActiveSession
+import { setupDatabase } from '@/lib/db';
 import { ActionState } from '@/types';
 import { revalidatePath } from 'next/cache';
 import { type Session } from '@/types';
@@ -9,6 +9,7 @@ import { handleActionError } from '@/lib/action-utils';
 import { normalizePath } from '@/lib/path-utils';
 import crypto from 'crypto';
 import { hashString } from '@/lib/hash';
+import { sessionSyncService } from '@/lib/services/session-sync-service';
 
 /**
  * Clears the xml path field for a given session.
@@ -108,12 +109,19 @@ export async function createSessionAction(
       createdAt: sessionData.createdAt || Date.now(),
     } as Session;
     
-    const session = await sessionRepository.saveSession(completeSessionData);
+    // Use sessionSyncService to save the session
+    const priority = 5; // Higher priority for creating a new session
+    const session = await sessionSyncService.queueOperation(
+      'save', 
+      completeSessionData.id, 
+      () => sessionRepository.saveSession(completeSessionData),
+      priority
+    );
     
     // If this is a new session, automatically set it as the active session for the project
     if (session) {
       console.log(`[Action] Setting new session ${session.id} as active for project: ${session.projectDirectory}`);
-      await setActiveSession(session.projectDirectory, session.id);
+      await sessionSyncService.setActiveSession(session.projectDirectory, session.id);
     }
     
     revalidatePath('/');
@@ -169,15 +177,12 @@ export async function getSessionsAction(projectDirectory: string): Promise<Actio
 /**
  * Get a single session by ID
  */
-export async function getSessionAction(sessionId: string, signal?: AbortSignal): Promise<ActionState<Session>> {
+export async function getSessionAction(sessionId: string): Promise<ActionState<Session>> {
   try {
     console.log(`[Action] Getting session: ${sessionId}`);
     
-    // Don't check aborted status on the server directly
-    // The AbortController signal cannot be accessed this way in server components
-    
     await setupDatabase();
-    const session = await sessionRepository.getSession(sessionId);
+    const session = await sessionSyncService.getSessionById(sessionId);
     
     if (!session) {
       return {
@@ -192,15 +197,6 @@ export async function getSessionAction(sessionId: string, signal?: AbortSignal):
       message: "Session retrieved successfully"
     };
   } catch (error) {
-    // Check if it's an abort error by name
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log(`[Action] Get session operation aborted for session ${sessionId}`);
-      return {
-        isSuccess: false,
-        message: 'Operation aborted'
-      };
-    }
-    
     console.error(`[getSessionAction] Error:`, error);
     
     return {
@@ -219,7 +215,7 @@ export async function deleteSessionAction(sessionId: string): Promise<ActionStat
     await setupDatabase();
     
     // First, get the session to obtain the project directory
-    const session = await sessionRepository.getSession(sessionId);
+    const session = await sessionSyncService.getSessionById(sessionId);
     
     if (!session) {
       return {
@@ -228,13 +224,19 @@ export async function deleteSessionAction(sessionId: string): Promise<ActionStat
       };
     }
     
-    // Delete the session
-    await sessionRepository.deleteSession(sessionId);
+    // Delete the session using the queue
+    const priority = 3; // Medium priority for deletion
+    await sessionSyncService.queueOperation(
+      'delete', 
+      sessionId, 
+      () => sessionRepository.deleteSession(sessionId),
+      priority
+    );
     
     // If the deleted session was the active one for its project, clear the active session
     if (session.projectDirectory) {
       console.log(`[Action] Checking if deleted session was active for project: ${session.projectDirectory}`);
-      await setActiveSession(session.projectDirectory, null);
+      await sessionSyncService.setActiveSession(session.projectDirectory, null);
     }
     
     revalidatePath('/');
@@ -290,7 +292,15 @@ export async function renameSessionAction(sessionId: string, name: string): Prom
   try {
     console.log(`[Action] Renaming session ${sessionId} to: ${name}`);
     await setupDatabase();
-    await sessionRepository.updateSessionName(sessionId, name);
+    
+    // Use the queue to update the session name
+    const priority = 2; // Lower priority for renaming
+    await sessionSyncService.queueOperation(
+      'save', 
+      sessionId, 
+      () => sessionRepository.updateSessionName(sessionId, name),
+      priority
+    );
     
     // Remove revalidatePath to prevent full page reloads
     // The UI will be updated client-side in the session-manager component
@@ -319,32 +329,8 @@ export async function updateSessionProjectDirectoryAction(
     console.log(`[Action] Updating project directory for session ${sessionId} to: ${projectDirectory}`);
     await setupDatabase();
     
-    // Get the current session to check its project directory
-    const session = await sessionRepository.getSession(sessionId);
-    
-    if (!session) {
-      return {
-        isSuccess: false,
-        message: `Session with ID ${sessionId} not found`
-      };
-    }
-    
-    // If project directory is changing, we need to handle active sessions
-    if (session.projectDirectory !== projectDirectory) {
-      // Clear this session as active from the old project directory
-      if (session.projectDirectory) {
-        await setActiveSession(session.projectDirectory, null);
-      }
-      
-      // Update the project directory
-      await sessionRepository.updateSessionProjectDirectory(sessionId, projectDirectory);
-      
-      // Set this session as active for the new project directory
-      await setActiveSession(projectDirectory, sessionId);
-    } else {
-      // Just update the project directory (no change to active sessions needed)
-      await sessionRepository.updateSessionProjectDirectory(sessionId, projectDirectory);
-    }
+    // Use the new coordinated method to update project directory
+    await sessionSyncService.updateSessionProjectDirectory(sessionId, projectDirectory);
     
     revalidatePath('/');
     
@@ -365,14 +351,10 @@ export async function updateSessionProjectDirectoryAction(
  * Save an existing session with the specified settings
  */
 export async function saveSessionAction(
-  sessionData: Partial<Session>,
-  signal?: AbortSignal
+  sessionData: Partial<Session>
 ): Promise<ActionState<Session>> {
   try {
     console.log(`[Action] Saving session: ${sessionData.id}`);
-    
-    // Don't check aborted status on the server directly
-    // The AbortController signal cannot be accessed this way in server components
     
     await setupDatabase();
     
@@ -390,8 +372,14 @@ export async function saveSessionAction(
       };
     }
     
-    // Save the session
-    const session = await sessionRepository.saveSession(sessionData as Session);
+    // Save the session using the sync service
+    const priority = 3; // Medium priority for regular saves
+    const session = await sessionSyncService.queueOperation(
+      'save', 
+      sessionData.id, 
+      () => sessionRepository.saveSession(sessionData as Session), 
+      priority
+    );
     
     // No revalidatePath to avoid full page reload
     
@@ -401,15 +389,6 @@ export async function saveSessionAction(
       message: "Session saved successfully"
     };
   } catch (error) {
-    // Check if it's an abort error by name
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.log(`[Action] Save session operation aborted for session ${sessionData.id}`);
-      return {
-        isSuccess: false,
-        message: 'Operation aborted'
-      };
-    }
-    
     console.error(`[saveSessionAction] Error:`, error);
     
     return {

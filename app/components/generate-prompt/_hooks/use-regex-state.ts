@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { useNotification } from '@/lib/contexts/notification-context';
 import { sessionSyncService } from '@/lib/services/session-sync-service';
@@ -10,14 +10,12 @@ interface UseRegexStateProps {
   activeSessionId: string | null;
   taskDescription: string;
   onInteraction?: () => void;
-  setHasUnsavedChanges?: (value: boolean) => void;
 }
 
 export function useRegexState({
   activeSessionId,
   taskDescription,
-  onInteraction,
-  setHasUnsavedChanges
+  onInteraction
 }: UseRegexStateProps) {
   // Constants
   const REGEX_MAX_LENGTH = 500;
@@ -58,7 +56,28 @@ export function useRegexState({
     setContentRegexError(null);
     setNegativeTitleRegexError(null);
     setNegativeContentRegexError(null);
+    
+    // Reset regex generation state
+    setIsGeneratingTaskRegex(false);
+    setGeneratingRegexJobId(null);
+    setRegexGenerationError(null);
+    
+    // Reset regex active state to default (true)
+    setIsRegexActive(true);
   }, []);
+  
+  // Add useEffect to monitor activeSessionId changes for automatic reset
+  useEffect(() => {
+    // When activeSessionId changes to null, reset the state
+    if (activeSessionId === null) {
+      console.log('[RegexState] Session ID set to null, resetting regex state');
+      reset();
+    }
+    
+    // No need to do anything when activeSessionId changes to a non-null value
+    // as data will be loaded by the session loading handler
+  }, [activeSessionId, reset]);
+  
   
   // Utility function to validate regex without crashing
   const validateRegex = useCallback((pattern: string): string | null => {
@@ -108,10 +127,8 @@ export function useRegexState({
       onInteraction();
     }
     
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
+    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
+  }, [validateRegex, onInteraction]);
 
   // Handler for content regex changes
   const handleContentRegexChange = useCallback((value: string) => {
@@ -124,10 +141,8 @@ export function useRegexState({
       onInteraction();
     }
     
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
+    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
+  }, [validateRegex, onInteraction]);
 
   // Handler for negative title regex changes
   const handleNegativeTitleRegexChange = useCallback((value: string) => {
@@ -140,10 +155,8 @@ export function useRegexState({
       onInteraction();
     }
     
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
+    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
+  }, [validateRegex, onInteraction]);
 
   // Handler for negative content regex changes
   const handleNegativeContentRegexChange = useCallback((value: string) => {
@@ -156,10 +169,8 @@ export function useRegexState({
       onInteraction();
     }
     
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
+    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
+  }, [validateRegex, onInteraction]);
 
   // Toggle regex active state
   const handleToggleRegexActive = useCallback((newValue?: boolean) => {
@@ -170,12 +181,10 @@ export function useRegexState({
       onInteraction();
     }
     
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [onInteraction, setHasUnsavedChanges]);
+    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
+  }, [onInteraction]);
 
-  // Generate regex from task description
+  // Generate regex from task description - stabilized with useCallback
   const handleGenerateRegexFromTask = useCallback(async () => {
     if (!taskDescription.trim()) {
       showNotification({
@@ -236,9 +245,17 @@ export function useRegexState({
         type: "error"
       });
     }
-  }, [taskDescription, isGeneratingTaskRegex, showNotification, activeSessionId]);
+  }, [
+    taskDescription, 
+    isGeneratingTaskRegex, 
+    activeSessionId, 
+    showNotification,
+    setIsGeneratingTaskRegex,
+    setRegexGenerationError,
+    setGeneratingRegexJobId
+  ]);
 
-  // Clear all patterns
+  // Clear all patterns - stabilized with useCallback
   const handleClearPatterns = useCallback(() => {
     setTitleRegex("");
     setContentRegex("");
@@ -253,13 +270,19 @@ export function useRegexState({
     if (onInteraction) {
       onInteraction();
     }
-    
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
-    }
-  }, [onInteraction, setHasUnsavedChanges]);
+  }, [
+    onInteraction,
+    setTitleRegex,
+    setContentRegex,
+    setNegativeTitleRegex,
+    setNegativeContentRegex,
+    setTitleRegexError,
+    setContentRegexError,
+    setNegativeTitleRegexError,
+    setNegativeContentRegexError
+  ]);
 
-  // Apply regex patterns to state
+  // Apply regex patterns to state - stabilized with useCallback
   const applyRegexPatterns = useCallback(({
     titlePattern,
     contentPattern,
@@ -280,15 +303,17 @@ export function useRegexState({
     // Ensure regex is active
     setIsRegexActive(true);
     
-    if (setHasUnsavedChanges) {
-      setHasUnsavedChanges(true);
+    // Trigger the interaction callback, which will handle saving
+    if (onInteraction) {
+      onInteraction();
     }
   }, [
     handleTitleRegexChange,
     handleContentRegexChange,
     handleNegativeTitleRegexChange,
     handleNegativeContentRegexChange,
-    setHasUnsavedChanges
+    setIsRegexActive,
+    onInteraction
   ]);
 
   return useMemo(() => ({

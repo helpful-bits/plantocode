@@ -1,6 +1,6 @@
 "use client";
 
-import { FilesMap } from "../_hooks/use-file-selection-state";
+import { FilesMap } from "../_hooks/file-management/use-project-file-list";
 import { shouldIncludeByDefault } from './file-selection';
 
 /**

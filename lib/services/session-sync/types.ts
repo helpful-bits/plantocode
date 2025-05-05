@@ -21,13 +21,12 @@ export type SessionCallback = () => Promise<any>;
  */
 export interface SessionOperation {
   id: string;
-  type: 'load' | 'save' | 'delete';
+  type: 'load' | 'save' | 'delete' | 'setActive';
   sessionId: string | null;
   callback: SessionCallback;
   priority: number;
   addedAt: number;
   timeoutMs?: number;
-  signal?: AbortSignal;
 }
 
 /**
@@ -58,12 +57,12 @@ export class SessionOperationError extends Error {
  * Error thrown when an operation times out
  */
 export class OperationTimeoutError extends Error {
-  operationType: 'load' | 'save' | 'delete';
+  operationType: 'load' | 'save' | 'delete' | 'setActive';
   sessionId: string | null;
 
   constructor(
     message: string,
-    operationType: 'load' | 'save' | 'delete',
+    operationType: 'load' | 'save' | 'delete' | 'setActive',
     sessionId: string | null
   ) {
     super(message);
@@ -77,12 +76,11 @@ export class OperationTimeoutError extends Error {
  * Interface for operations that are queue-based
  */
 export interface QueuedOperation {
-  operation: 'load' | 'save' | 'delete';
+  operation: 'load' | 'save' | 'delete' | 'setActive';
   sessionId: string | null;
   callback: SessionCallback;
   priority?: number;
   timeoutMs?: number;
-  signal?: AbortSignal;
 }
 
 /**
@@ -96,6 +94,7 @@ export interface QueueStats {
     load: number;
     save: number;
     delete: number;
+    setActive: number;
   };
   operationsByStatus: {
     pending: number;
@@ -151,5 +150,5 @@ export interface OperationStateInfo {
   lastError?: Error;
   lastComplete: number;
   lastStartTime?: number;
-  lastOperationType?: 'load' | 'save' | 'delete';
+  lastOperationType?: 'load' | 'save' | 'delete' | 'setActive';
 } 

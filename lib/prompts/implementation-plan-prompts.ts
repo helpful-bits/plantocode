@@ -92,7 +92,13 @@ export function generateImplementationPlanUserPrompt({
   const codeContext = relevantFiles
     .map(filePath => {
       const content = fileContents[filePath];
-      return content ? `<file path="${filePath}">\n\`\`\`\n${content}\n\`\`\`\n</file>` : null;
+      return content ? 
+        `<file>
+<file_path>${filePath}</file_path>
+<file_content>
+${content}
+</file_content>
+</file>` : null;
     })
     .filter(Boolean)
     .join("\n\n");
