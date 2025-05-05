@@ -1,6 +1,19 @@
 // Define the possible statuses for background jobs processing
 export type JobStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'canceled' | 'created' | 'queued';
 
+// Constants for job status groups - use these instead of hardcoded arrays
+export const JOB_STATUSES = {
+  // Active job statuses (non-terminal)
+  ACTIVE: ['idle', 'preparing', 'running', 'queued', 'created'] as JobStatus[],
+  // Terminal job statuses
+  TERMINAL: ['completed', 'failed', 'canceled'] as JobStatus[],
+  // Specific status groups
+  COMPLETED: ['completed'] as JobStatus[],
+  FAILED: ['failed', 'canceled'] as JobStatus[],
+  // All valid statuses
+  ALL: ['idle', 'preparing', 'running', 'queued', 'created', 'completed', 'failed', 'canceled'] as JobStatus[]
+};
+
 // Type for API types
 export type ApiType = 'gemini' | 'claude' | 'whisper' | 'groq';
 
@@ -52,12 +65,16 @@ export type BackgroundJob = {
      * Structured supplementary data for the job, such as token counts, 
      * file paths, or other structured information.
      * 
+     * This can include information like the target form field to update,
+     * indicated by 'targetField' (e.g., 'taskDescription', 'pastedPaths').
+     * 
      * NOTE: This field is for auxiliary structured data only.
      * The primary textual output should always be stored in the 'response' field.
      */
     metadata?: {
         tokensReceived?: number;
         charsReceived?: number;
+        targetField?: string; // Field in the form that should be updated with response
         [key: string]: any;
     } | null;
     /**
@@ -100,16 +117,15 @@ export type Session = {
     pastedPaths: string;
     titleRegex: string;
     contentRegex: string;
-    negativeTitleRegex?: string;
-    negativeContentRegex?: string;
+    negativeTitleRegex: string;
+    negativeContentRegex: string;
     isRegexActive: boolean;
     diffTemperature?: number; // Temperature setting for diff generation
     updatedAt?: number; // Timestamp of last update (managed by repository)
     createdAt: number; // Timestamp when the session was created
     includedFiles: string[]; // Paths relative to projectDirectory
     forceExcludedFiles: string[]; // Paths forced excluded
-    // outputFormat is now handled via local storage
-    // taskSettings field removed - now stored globally per project
     backgroundJobs?: BackgroundJob[];
     codebaseStructure?: string; // ASCII structure of codebase
+    searchSelectedFilesOnly?: boolean; // Whether to search only in selected files
 };

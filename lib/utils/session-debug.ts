@@ -1,11 +1,40 @@
 /**
  * Session Debug Utilities
  * 
- * Helper functions for debugging session synchronization issues
+ * Comprehensive tools for debugging session synchronization issues and monitoring session switching
+ * 
+ * Features:
+ * - Detailed logging of session state and operations
+ * - Session switching monitoring and statistics
+ * - Enhanced console debug tools
+ * - Visualizing session operation timelines and identifying potential race conditions
  */
+
+// Define global properties for window object
+declare global {
+  interface Window {
+    sessionDebugLog?: SessionDebugInfo[];
+    sessionMonitor?: {
+      log?: any[];
+      record: (sessionId: string | null, operation?: string, source?: string) => void;
+      getSessionHistory?: (sessionId: string) => any[];
+      getStats?: () => any;
+      start?: () => void;
+      stop?: () => any[];
+    };
+    debugSession?: (sessionId?: string) => any;
+    clearStuckSession?: (sessionId: string) => any;
+    forceContinueSession?: (sessionId: string) => Promise<any>;
+    getQueueStatus?: () => any;
+    fixDatabase?: () => Promise<any>;
+    resetServiceState?: () => any;
+    runHealthCheck?: () => Promise<any>;
+  }
+}
 
 import { sessionSyncService } from '@/lib/services/session-sync-service';
 import { SessionOperation } from '@/lib/services/session-sync/types';
+import { Session } from '@/types';
 
 // Import the OperationStateInfo interface from where it's defined
 interface OperationStateInfo {
@@ -17,6 +46,281 @@ interface OperationStateInfo {
   lastStartTime?: number;
   lastOperationType?: string;
 }
+
+// Define a more structured format for debugging information
+export interface SessionDebugInfo {
+  // Session identification
+  sessionId: string | null;
+  timestamp: string;
+  operation: string;
+  
+  // Contextual information
+  source: string;
+  operationId?: string;
+  previousSessionId?: string | null;
+  
+  // Timing information
+  startTime: number;
+  duration?: number;
+  
+  // Operation details
+  result?: 'success' | 'error' | 'canceled' | 'in_progress';
+  error?: string;
+  
+  // Session state information
+  sessionState?: {
+    taskDescriptionLength?: number;
+    includedFilesCount?: number;
+    excludedFilesCount?: number;
+    searchTerm?: string;
+    isRegexActive?: boolean;
+  };
+  
+  // Additional metadata
+  metadata?: Record<string, any>;
+}
+
+// Keep a limited in-memory log of recent session debugging information
+const MAX_DEBUG_ENTRIES = 100;
+const sessionDebugLog: SessionDebugInfo[] = [];
+
+/**
+ * Record a session debug entry
+ */
+export function recordSessionDebug(info: SessionDebugInfo): void {
+  // Set timestamp if not provided
+  if (!info.timestamp) {
+    info.timestamp = new Date().toISOString();
+  }
+  
+  // Add the entry to the log
+  sessionDebugLog.unshift(info);
+  
+  // Trim the log if it exceeds the maximum size
+  if (sessionDebugLog.length > MAX_DEBUG_ENTRIES) {
+    sessionDebugLog.length = MAX_DEBUG_ENTRIES;
+  }
+  
+  // Also log to console for immediate visibility
+  console.log(`[SessionDebug][${info.timestamp}] ${info.operation.toUpperCase()} ${info.sessionId || 'null'} from ${info.source}`);
+  
+  // If there's detailed session state, log it
+  if (info.sessionState) {
+    console.log(`[SessionDebug][${info.timestamp}] Session state:`, 
+      Object.entries(info.sessionState)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(', ')
+    );
+  }
+  
+  // Expose to window for browser debugging
+  if (typeof window !== 'undefined') {
+    window.sessionDebugLog = sessionDebugLog;
+    
+    // Initialize global session monitor if not already done
+    if (!window.sessionMonitor) {
+      window.sessionMonitor = {
+        log: sessionDebugLog,
+        record: recordSessionDebugViaId,
+        getSessionHistory: getSessionDebugHistory,
+        getStats: getSessionSwitchingStats
+      };
+    }
+  }
+}
+
+/**
+ * Record a session debug entry using just the session ID and operation
+ * Convenient shorthand for quick logging in component code
+ */
+export function recordSessionDebugViaId(
+  sessionId: string | null, 
+  operation: string = 'load',
+  source: string = 'unknown'
+): void {
+  recordSessionDebug({
+    sessionId,
+    timestamp: new Date().toISOString(),
+    operation,
+    source,
+    startTime: Date.now()
+  });
+}
+
+/**
+ * Create a debug entry for session switching
+ */
+export function recordSessionSwitch(
+  fromSessionId: string | null,
+  toSessionId: string | null,
+  source: string,
+  metadata?: Record<string, any>
+): void {
+  recordSessionDebug({
+    sessionId: toSessionId,
+    previousSessionId: fromSessionId,
+    timestamp: new Date().toISOString(),
+    operation: 'switch',
+    source,
+    startTime: Date.now(),
+    metadata
+  });
+}
+
+/**
+ * Get debug history for a specific session
+ */
+export function getSessionDebugHistory(sessionId: string): SessionDebugInfo[] {
+  return sessionDebugLog.filter(entry => entry.sessionId === sessionId);
+}
+
+/**
+ * Get session switching statistics
+ */
+export function getSessionSwitchingStats(): {
+  sessionSwitchCount: number;
+  averageSwitchTime?: number;
+  successRate: number;
+  mostFrequentSources: Array<{source: string; count: number}>;
+  recentFailures: SessionDebugInfo[];
+} {
+  // Filter to just switch operations
+  const switchOperations = sessionDebugLog.filter(entry => entry.operation === 'switch');
+  
+  // Count total switches
+  const switchCount = switchOperations.length;
+  
+  // Calculate average switch time for completed switches with timing info
+  const completedSwitches = switchOperations.filter(entry => 
+    entry.result === 'success' && entry.duration !== undefined
+  );
+  
+  let averageSwitchTime;
+  if (completedSwitches.length > 0) {
+    const totalSwitchTime = completedSwitches.reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    averageSwitchTime = totalSwitchTime / completedSwitches.length;
+  }
+  
+  // Calculate success rate
+  const successfulSwitches = switchOperations.filter(entry => entry.result === 'success').length;
+  const successRate = switchCount > 0 ? (successfulSwitches / switchCount) * 100 : 100;
+  
+  // Find most frequent sources of switches
+  const sourceCounts: Record<string, number> = {};
+  switchOperations.forEach(entry => {
+    sourceCounts[entry.source] = (sourceCounts[entry.source] || 0) + 1;
+  });
+  
+  const mostFrequentSources = Object.entries(sourceCounts)
+    .map(([source, count]) => ({source, count}))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  
+  // Get recent failures
+  const recentFailures = switchOperations
+    .filter(entry => entry.result === 'error')
+    .slice(0, 5);
+  
+  return {
+    sessionSwitchCount: switchCount,
+    averageSwitchTime,
+    successRate,
+    mostFrequentSources,
+    recentFailures
+  };
+}
+
+// Create a logger that specifically focuses on session switching
+export const sessionSwitchLogger = {
+  startSwitch: (fromSessionId: string | null, toSessionId: string | null, source: string, operationId?: string) => {
+    const startTime = Date.now();
+    const timestamp = new Date(startTime).toISOString();
+    
+    // Log the start of a switch operation
+    console.log(`[SessionSwitch][${timestamp}] 🔄 SWITCH STARTED: ${fromSessionId || 'null'} → ${toSessionId || 'null'} from ${source}`);
+    
+    if (operationId) {
+      console.log(`[SessionSwitch][${timestamp}] Operation ID: ${operationId}`);
+    }
+    
+    // Record in debug history
+    recordSessionDebug({
+      sessionId: toSessionId,
+      previousSessionId: fromSessionId,
+      timestamp,
+      operation: 'switch',
+      source,
+      startTime,
+      operationId,
+      result: 'in_progress'
+    });
+    
+    // Return a function to complete the logging
+    return {
+      complete: (success: boolean, error?: Error, sessionState?: SessionDebugInfo['sessionState']) => {
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const endTimestamp = new Date(endTime).toISOString();
+        
+        // Log the completion
+        if (success) {
+          console.log(`[SessionSwitch][${endTimestamp}] ✅ SWITCH COMPLETED: ${fromSessionId || 'null'} → ${toSessionId || 'null'} in ${duration}ms`);
+          
+          if (sessionState) {
+            console.log(`[SessionSwitch][${endTimestamp}] Session state:`, 
+              Object.entries(sessionState)
+                .map(([key, value]) => `${key}=${value}`)
+                .join(', ')
+            );
+          }
+        } else {
+          console.error(`[SessionSwitch][${endTimestamp}] ❌ SWITCH FAILED: ${fromSessionId || 'null'} → ${toSessionId || 'null'} after ${duration}ms`);
+          
+          if (error) {
+            console.error(`[SessionSwitch][${endTimestamp}] Error:`, error);
+          }
+        }
+        
+        // Record in debug history
+        recordSessionDebug({
+          sessionId: toSessionId,
+          previousSessionId: fromSessionId,
+          timestamp: endTimestamp,
+          operation: 'switch',
+          source,
+          startTime,
+          duration,
+          operationId,
+          result: success ? 'success' : 'error',
+          error: error ? (error instanceof Error ? error.message : String(error)) : undefined,
+          sessionState
+        });
+      },
+      
+      cancel: (reason?: string) => {
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const endTimestamp = new Date(endTime).toISOString();
+        
+        console.log(`[SessionSwitch][${endTimestamp}] ⚠️ SWITCH CANCELED: ${fromSessionId || 'null'} → ${toSessionId || 'null'} after ${duration}ms${reason ? ` - Reason: ${reason}` : ''}`);
+        
+        // Record in debug history
+        recordSessionDebug({
+          sessionId: toSessionId,
+          previousSessionId: fromSessionId,
+          timestamp: endTimestamp,
+          operation: 'switch',
+          source,
+          startTime,
+          duration,
+          operationId,
+          result: 'canceled',
+          error: reason
+        });
+      }
+    };
+  }
+};
 
 /**
  * Logs detailed information about the current session state

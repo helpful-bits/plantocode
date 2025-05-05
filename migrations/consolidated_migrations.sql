@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   diff_temperature REAL DEFAULT 0.9,
   codebase_structure TEXT DEFAULT '',
   updated_at INTEGER NOT NULL,
-  model_used TEXT DEFAULT 'gemini-2.5-flash-preview-04-17'
+  model_used TEXT DEFAULT 'gemini-2.5-flash-preview-04-17',
+  search_selected_files_only INTEGER DEFAULT 0 CHECK(search_selected_files_only IN (0, 1))
 );
 
 -- Create indexes for sessions table
@@ -164,4 +165,8 @@ VALUES ('add_tokens_sent_column', strftime('%s', 'now'));
 
 -- Add the updated_at column migration record
 INSERT INTO migrations (name, applied_at) 
-VALUES ('add_updated_at_column', strftime('%s', 'now')); 
+VALUES ('add_updated_at_column', strftime('%s', 'now'));
+
+-- Add the search_selected_files_only column migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('add_search_selected_files_only_column', strftime('%s', 'now')); 

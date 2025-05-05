@@ -11,6 +11,26 @@ export function validateSessionData(sessionData: Partial<Session>): string | und
     return 'Task description must be a string';
   }
   
+  // Check if searchTerm is provided and is a string
+  if (sessionData.searchTerm !== undefined && typeof sessionData.searchTerm !== 'string') {
+    return 'Search term must be a string';
+  }
+  
+  // Check if pastedPaths is provided and is a string
+  if (sessionData.pastedPaths !== undefined && typeof sessionData.pastedPaths !== 'string') {
+    return 'Pasted paths must be a string';
+  }
+  
+  // Check if titleRegex is provided and is a string
+  if (sessionData.titleRegex !== undefined && typeof sessionData.titleRegex !== 'string') {
+    return 'Title regex must be a string';
+  }
+  
+  // Check if contentRegex is provided and is a string
+  if (sessionData.contentRegex !== undefined && typeof sessionData.contentRegex !== 'string') {
+    return 'Content regex must be a string';
+  }
+  
   // Check if includedFiles is provided and is an array of strings
   if (sessionData.includedFiles !== undefined) {
     if (!Array.isArray(sessionData.includedFiles)) {
@@ -43,6 +63,31 @@ export function validateSessionData(sessionData: Partial<Session>): string | und
   // Check projectDirectory if provided
   if (sessionData.projectDirectory !== undefined && typeof sessionData.projectDirectory !== 'string') {
     return 'Project directory must be a string';
+  }
+  
+  // Check negativeTitleRegex if provided
+  if (sessionData.negativeTitleRegex !== undefined && typeof sessionData.negativeTitleRegex !== 'string') {
+    return 'Negative title regex must be a string';
+  }
+  
+  // Check negativeContentRegex if provided
+  if (sessionData.negativeContentRegex !== undefined && typeof sessionData.negativeContentRegex !== 'string') {
+    return 'Negative content regex must be a string';
+  }
+  
+  // Check isRegexActive if provided
+  if (sessionData.isRegexActive !== undefined && typeof sessionData.isRegexActive !== 'boolean') {
+    return 'Is regex active must be a boolean';
+  }
+  
+  // Check searchSelectedFilesOnly if provided
+  if (sessionData.searchSelectedFilesOnly !== undefined && typeof sessionData.searchSelectedFilesOnly !== 'boolean') {
+    return 'Search selected files only must be a boolean';
+  }
+  
+  // Check diffTemperature if provided
+  if (sessionData.diffTemperature !== undefined && typeof sessionData.diffTemperature !== 'number') {
+    return 'Diff temperature must be a number';
   }
   
   // All validations passed

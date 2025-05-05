@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionState } from "@/types";
-import { BackgroundJob } from "@/types/session-types";
+import { BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 
 // Validation function to check if transcription text is valid
 export function validateTranscriptionText(text: string | null): { isValid: boolean, reason?: string } {
@@ -140,10 +140,12 @@ export async function handleTranscription(
 /**
  * Handles text correction using the correctTextAction server action.
  * Sends the transcribed text to the API for correction and improvement.
+ * Uses the original transcription job ID to update the same job instead of creating a new one.
  */
 export async function handleCorrection(
   text: string,
-  sessionId?: string | null
+  sessionId: string | null | undefined,
+  transcriptionJobId: string | null
 ): Promise<ActionState<string | { isBackgroundJob: true; jobId: string }>> {
   try {
     if (!text) {
@@ -158,8 +160,8 @@ export async function handleCorrection(
       // Try to import the module
       const { correctTextAction } = await import('@/actions/voice-transcription/correct-text');
       
-      // Call the server action with sessionId
-      const result = await correctTextAction(text, "en", sessionId);
+      // Call the server action with sessionId and transcriptionJobId
+      const result = await correctTextAction(text, "en", sessionId || null, transcriptionJobId);
       
       // Process the response to ensure consistent format
       if (result.isSuccess) {
@@ -215,12 +217,33 @@ export function processBackgroundJob(
   }
   
   // Job is completed
-  if (job.status === "completed") {
+  if (JOB_STATUSES.COMPLETED.includes(job.status)) {
     // Mark as processed
     processedJobs.add(job.id);
     
     // Get the text from the response field (source of truth)
-    const text = job.response || null;
+    let text = job.response || null;
+    
+    // Process text if it looks like JSON to extract the actual content
+    if (text && ((text.startsWith('{') && text.endsWith('}')) || 
+              text.includes('"text":') || 
+              text.includes('"response":'))) {
+      try {
+        const parsed = JSON.parse(text);
+        // Extract text from common response formats
+        if (parsed.text && typeof parsed.text === 'string') {
+          text = parsed.text;
+        } else if (parsed.response && typeof parsed.response === 'string') {
+          text = parsed.response;
+        } else if (parsed.content && typeof parsed.content === 'string') {
+          text = parsed.content;
+        }
+        // If we couldn't extract, we'll use the original response
+      } catch (e) {
+        console.warn("[VoiceRecording] Response looks like JSON but couldn't parse:", e);
+        // Continue with original text
+      }
+    }
     
     return {
       processed: true,
@@ -231,14 +254,18 @@ export function processBackgroundJob(
   }
   
   // Job failed
-  if (job.status === "failed" || job.status === "canceled") {
+  if (JOB_STATUSES.FAILED.includes(job.status)) {
     // Mark as processed
     processedJobs.add(job.id);
+    
+    // Try to extract error message - provide fallbacks
+    const errorMessage = job.errorMessage || job.statusMessage || 
+                         (job.status === 'canceled' ? "Operation was canceled" : "Operation failed");
     
     return {
       processed: true,
       text: null,
-      error: job.errorMessage || job.statusMessage || "Operation failed",
+      error: errorMessage,
       status: "failed"
     };
   }

@@ -2,7 +2,7 @@
 
 import React, { Suspense, useRef } from "react";
 import { Loader2 } from "lucide-react";
-import { useGeneratePromptState, OutputFormat } from "./_hooks/use-generate-prompt-state";
+import { useGeneratePromptState } from "./_hooks/use-generate-prompt-state";
 import ProjectSection from "./_sections/ProjectSection";
 import TaskSection from "./_sections/TaskSection";
 import FileSection from "./_sections/FileSection";
@@ -40,11 +40,6 @@ export default function GeneratePromptForm() {
     return Promise.resolve();
   };
 
-  // Create a wrapper for setOutputFormat to handle type differences
-  const handleSetOutputFormatWrapper = (value: string) => { 
-    hookResult.setOutputFormat(value as OutputFormat); 
-  };
-
   // Create a wrapper function for saveSessionState that doesn't require parameters
   const handleSaveSessionStateWrapper = async () => { 
     if (hookResult.activeSessionId) { 
@@ -54,8 +49,8 @@ export default function GeneratePromptForm() {
     } 
   };
 
-  // Create a stable ref for the task description textarea
-  const taskDescriptionRef = useRef<any>(null);
+  // Extract ref from the hook
+  const taskDescriptionRef = hookResult.taskState.taskDescriptionRef;
 
   // Create computed state for ProjectSection
   const projectSectionState = {
@@ -73,7 +68,12 @@ export default function GeneratePromptForm() {
   // Create actions for ProjectSection
   const projectSectionActions = {
     refreshFiles: hookResult.fileState.refreshFiles,
-    handleSetActiveSessionId: hookResult.setActiveSessionId,
+    // Use the setActiveSessionId function from the context directly
+    handleSetActiveSessionId: (id: string | null) => {
+      // No need to use setActiveSessionId directly since it's controlled by the context
+      // But we still need to provide the function for ProjectSection's interface
+      console.log('[GeneratePromptForm] activeSessionId change requested via context:', id);
+    },
     handleLoadSession: (sessionOrId: any) => {
       console.log('[GeneratePromptForm] handleLoadSession received:', typeof sessionOrId, sessionOrId);
       // Pass the full session object to the handler
@@ -132,7 +132,7 @@ export default function GeneratePromptForm() {
                   handleInteraction,
                   handleFindRelevantFiles: hookResult.fileState.findRelevantFiles,
                   copyArchPrompt: promptState.copyArchPrompt,
-                  toggleSearchSelectedFilesOnly: () => hookResult.fileState.setSearchSelectedFilesOnly(!hookResult.fileState.searchSelectedFilesOnly),
+                  toggleSearchSelectedFilesOnly: hookResult.fileState.toggleSearchSelectedFilesOnly,
                   handleImproveSelection: hookResult.taskState.handleImproveSelection
                 }} 
               />
@@ -188,6 +188,15 @@ export default function GeneratePromptForm() {
 
             {/* File Selection Section */}
             <div>
+              {/* Debug output for allFilesMap */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="text-xs bg-gray-100 p-2 mb-2 rounded font-mono">
+                  allFilesMap: {Object.keys(hookResult.fileState.allFilesMap).length} entries
+                </div>
+              )}
+              
+              {/* Log for debugging purposes - using a comment to avoid React node issues */}
+              
               <FileSection 
                 state={{
                   allFilesMap: hookResult.fileState.allFilesMap,
@@ -205,7 +214,6 @@ export default function GeneratePromptForm() {
                   showOnlySelected: hookResult.fileState.showOnlySelected,
                   taskDescription: hookResult.taskState.taskDescription,
                   projectDirectory: hookResult.projectDirectory,
-                  loadingStatus: hookResult.fileState.loadingStatus,
                   titleRegexError: hookResult.regexState.titleRegexError,
                   contentRegexError: hookResult.regexState.contentRegexError,
                   negativeTitleRegexError: hookResult.regexState.negativeTitleRegexError,
@@ -245,7 +253,6 @@ export default function GeneratePromptForm() {
               <ActionSection 
                 state={{
                   taskDescription: hookResult.taskState.taskDescription,
-                  outputFormat: hookResult.outputFormat,
                   projectDirectory: hookResult.projectDirectory,
                   prompt: promptState.prompt,
                   hasUnsavedChanges: hookResult.hasUnsavedChanges,
@@ -261,7 +268,6 @@ export default function GeneratePromptForm() {
                   generatePrompt: promptState.generatePrompt,
                   setDiffTemperature: hookResult.setDiffTemperature,
                   handleSetDiffTemperature: hookResult.setDiffTemperature,
-                  handleSetOutputFormat: handleSetOutputFormatWrapper,
                   copyPrompt: promptState.copyPrompt,
                   handleSaveSessionState: handleSaveSessionStateWrapper,
                   handleToggleCustomPromptMode: () => hookResult.setIsCustomPromptMode(!hookResult.isCustomPromptMode),

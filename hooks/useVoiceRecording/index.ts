@@ -3,6 +3,7 @@ import { setupMedia, cleanupMedia } from './media-handler';
 import { handleTranscription, handleCorrection, validateTranscriptionText, processBackgroundJob } from './transcription-handler';
 import { useBackgroundJob } from '@/lib/contexts/background-jobs-context';
 import { ActionState } from "@/types";
+import { JOB_STATUSES } from "@/types/session-types";
 
 interface UseVoiceRecordingProps {
   sessionId?: string | null;
@@ -56,16 +57,14 @@ export function useVoiceRecording({
   // Save the last blob for retry capability
   const lastAudioBlobRef = useRef<Blob | null>(null);
   
-  // Track background job IDs
+  // Track background job ID - we now use a single job for both transcription and correction
   const [transcriptionJobId, setTranscriptionJobId] = useState<string | null>(null);
-  const [correctionJobId, setCorrectionJobId] = useState<string | null>(null);
   
   // Keep track of already processed jobs to prevent duplicate processing
   const processedJobsRef = useRef<Set<string>>(new Set());
   
-  // Get the background jobs from context
+  // Get the background job from context
   const transcriptionJob = useBackgroundJob(transcriptionJobId);
-  const textCorrectionJob = useBackgroundJob(correctionJobId);
   
   // Updates the state and calls the onStateChange callback
   const updateState = useCallback((newState: Partial<{
@@ -246,17 +245,16 @@ export function useVoiceRecording({
               
               // If auto-correct is enabled, send for correction
               if (autoCorrect) {
-                const correctionResult = await handleCorrection(transcriptionText, sessionId);
+                const correctionResult = await handleCorrection(transcriptionText, sessionId, transcriptionJobId);
                 
                 if (correctionResult.isSuccess && correctionResult.data) {
                   if (typeof correctionResult.data === 'object' && 'isBackgroundJob' in correctionResult.data && correctionResult.data.jobId) {
                     // Correction is running in the background, store the job ID
                     console.log(`[VoiceRecording] Correction submitted as background job: ${correctionResult.data.jobId}`);
-                    setCorrectionJobId(correctionResult.data.jobId);
+                    // Job ID is now tracked in transcriptionJobId only
                   } else if (typeof correctionResult.metadata === 'object' && correctionResult.metadata && 'jobId' in correctionResult.metadata) {
                     // jobId in metadata
                     console.log(`[VoiceRecording] Correction job ID found in metadata: ${correctionResult.metadata.jobId}`);
-                    setCorrectionJobId(correctionResult.metadata.jobId);
                     
                     if (typeof correctionResult.data === 'string') {
                       // Got immediate text result with job ID in metadata
@@ -296,17 +294,16 @@ export function useVoiceRecording({
             
             // If auto-correct is enabled, send for correction
             if (autoCorrect) {
-              const correctionResult = await handleCorrection(transcriptionText, sessionId);
+              const correctionResult = await handleCorrection(transcriptionText, sessionId, transcriptionJobId);
               
               if (correctionResult.isSuccess && correctionResult.data) {
                 if (typeof correctionResult.data === 'object' && 'isBackgroundJob' in correctionResult.data && correctionResult.data.jobId) {
                   // Correction is running in the background, store the job ID
                   console.log(`[VoiceRecording] Correction submitted as background job: ${correctionResult.data.jobId}`);
-                  setCorrectionJobId(correctionResult.data.jobId);
+                  // Job ID is now tracked in transcriptionJobId only
                 } else if (typeof correctionResult.metadata === 'object' && correctionResult.metadata && 'jobId' in correctionResult.metadata) {
                   // jobId in metadata
                   console.log(`[VoiceRecording] Correction job ID found in metadata: ${correctionResult.metadata.jobId}`);
-                  setCorrectionJobId(correctionResult.metadata.jobId);
                   
                   if (typeof correctionResult.data === 'string') {
                     setCorrectedText(correctionResult.data);
@@ -459,9 +456,8 @@ export function useVoiceRecording({
       updateState({ error: null, isProcessing: true });
       setTextStatus('loading');
       
-      // Reset job IDs to ensure we create new jobs
+      // Reset job ID to ensure we create a new job
       setTranscriptionJobId(null);
-      setCorrectionJobId(null);
       
       const audioBlob = lastAudioBlobRef.current;
       console.log(`[VoiceRecording] Retrying with saved audio blob: ${audioBlob.size} bytes`);
@@ -508,7 +504,7 @@ export function useVoiceRecording({
             
             // Process correction if auto-correct is enabled
             if (autoCorrect) {
-              const correctionResult = await handleCorrection(transcriptionText, sessionId);
+              const correctionResult = await handleCorrection(transcriptionText, sessionId, transcriptionJobId);
               handleCorrectionResult(correctionResult);
             }
             
@@ -533,15 +529,14 @@ export function useVoiceRecording({
           
           // Process correction if auto-correct is enabled
           if (autoCorrect) {
-            const correctionResult = await handleCorrection(transcriptionText, sessionId);
+            const correctionResult = await handleCorrection(transcriptionText, sessionId, transcriptionJobId);
             
             if (correctionResult.isSuccess && correctionResult.data) {
               if (typeof correctionResult.data === 'object' && 'isBackgroundJob' in correctionResult.data && correctionResult.data.jobId) {
                 console.log(`[VoiceRecording] Correction submitted as background job: ${correctionResult.data.jobId}`);
-                setCorrectionJobId(correctionResult.data.jobId);
+                // Job ID is now tracked in transcriptionJobId only
               } else if (typeof correctionResult.metadata === 'object' && correctionResult.metadata && 'jobId' in correctionResult.metadata) {
                 console.log(`[VoiceRecording] Correction job ID found in metadata: ${correctionResult.metadata.jobId}`);
-                setCorrectionJobId(correctionResult.metadata.jobId);
                 
                 if (typeof correctionResult.data === 'string') {
                   setCorrectedText(correctionResult.data);
@@ -575,25 +570,25 @@ export function useVoiceRecording({
   // Helper function to handle correction results (reused in multiple places)
   const handleCorrectionResult = useCallback((correctionResult: ActionState<string | { isBackgroundJob: true; jobId: string }>) => {
     if (correctionResult.isSuccess && correctionResult.data) {
-      if (typeof correctionResult.data === 'object' && 'isBackgroundJob' in correctionResult.data && correctionResult.data.jobId) {
-        console.log(`[VoiceRecording] Correction submitted as background job: ${correctionResult.data.jobId}`);
-        setCorrectionJobId(correctionResult.data.jobId);
-      } else if (typeof correctionResult.metadata === 'object' && correctionResult.metadata && 'jobId' in correctionResult.metadata) {
-        console.log(`[VoiceRecording] Correction job ID found in metadata: ${correctionResult.metadata.jobId}`);
-        setCorrectionJobId(correctionResult.metadata.jobId);
-        
-        if (typeof correctionResult.data === 'string') {
-          setCorrectedText(correctionResult.data);
-        }
-      } else if (typeof correctionResult.data === 'string') {
+      if (typeof correctionResult.data === 'string') {
         setCorrectedText(correctionResult.data);
+        
+        // Notify listeners if we have both raw and corrected text
+        if (onCorrectionComplete && rawText) {
+          onCorrectionComplete(rawText, correctionResult.data);
+        }
+        
+        // Update form with corrected text
+        if (onTranscribed) {
+          onTranscribed(correctionResult.data);
+        }
       }
     } else if (correctionResult.message) {
       console.warn(`[VoiceRecording] Correction warning: ${correctionResult.message}`);
     }
-  }, []);
+  }, [onCorrectionComplete, onTranscribed, rawText]);
   
-  // Monitor transcription job
+  // Monitor transcription job - now handles both transcription and correction phases
   useEffect(() => {
     if (transcriptionJobId && transcriptionJob) {
       // Skip if we've already processed this job
@@ -601,101 +596,141 @@ export function useVoiceRecording({
         return;
       }
       
-      if (transcriptionJob.status === 'completed' && transcriptionJob.response) {
+      const statusMsg = transcriptionJob.job?.statusMessage || '';
+      const isCorrectionPhase = statusMsg.includes('Correcting') || statusMsg.includes('correction');
+      
+      // Check if job has completed
+      if (transcriptionJob.status && JOB_STATUSES.COMPLETED.includes(transcriptionJob.status) && transcriptionJob.response) {
         console.log(`[VoiceRecording] Transcription job completed: ${transcriptionJobId}`);
         
         try {
           // Mark job as processed
           processedJobsRef.current.add(transcriptionJobId);
           
-          // Get the transcription text
-          const transcriptionText = transcriptionJob.response;
+          // Get the text from the response and process it in case it needs extraction
+          let responseText = transcriptionJob.response;
           
-          // Set the transcribed text
-          setRawText(transcriptionText);
+          // Check if the text needs to be extracted from JSON
+          if (responseText.startsWith('{') && responseText.endsWith('}')) {
+            try {
+              const parsed = JSON.parse(responseText);
+              if (parsed.text && typeof parsed.text === 'string') {
+                responseText = parsed.text;
+              } else if (parsed.response && typeof parsed.response === 'string') {
+                responseText = parsed.response;
+              }
+            } catch (parseError) {
+              console.warn('[VoiceRecording] Error parsing response JSON:', parseError);
+              // Continue with original text
+            }
+          }
+          
+          // Determine if this was a transcription or a completed correction
+          if (isCorrectionPhase) {
+            // This job already went through correction
+            setCorrectedText(responseText);
+            
+            // If we don't already have raw text, use this as both
+            if (!rawText) {
+              setRawText(responseText);
+            }
+            
+            // Notify listeners about the correction completion
+            if (onCorrectionComplete && rawText) {
+              onCorrectionComplete(rawText, responseText);
+            }
+            
+            // Also update via onTranscribed for form fields
+            if (onTranscribed) {
+              onTranscribed(responseText);
+            }
+          } else {
+            // This is just transcription without correction
+            setRawText(responseText);
+            
+            // Notify listeners
+            if (onTranscribed) {
+              onTranscribed(responseText);
+            }
+            
+            // If auto-correct is enabled, initiate correction (which will update the same job)
+            if (autoCorrect && responseText.trim()) {
+              console.log(`[VoiceRecording] Auto-correcting text using same job: ${transcriptionJobId}`);
+              handleCorrection(responseText, sessionId, transcriptionJobId).then(correctionResult => {
+                if (correctionResult.isSuccess && typeof correctionResult.data === 'string') {
+                  // If we got an immediate response, update the corrected text
+                  setCorrectedText(correctionResult.data);
+                  
+                  // Notify listeners
+                  if (onCorrectionComplete && typeof correctionResult.data === 'string') {
+                    onCorrectionComplete(responseText, correctionResult.data);
+                  }
+                  
+                  // Update form with corrected text if needed
+                  if (onTranscribed) {
+                    onTranscribed(correctionResult.data);
+                  }
+                }
+                // If it's a background job, we'll catch it on the next update of this useEffect
+              });
+            }
+          }
+          
+          // Check metadata to see if we should apply to a specific form field
+          if (transcriptionJob.job?.metadata?.targetField) {
+            console.log(`[VoiceRecording] Job has targetField: ${transcriptionJob.job.metadata.targetField}`);
+            // The callback should handle this based on the field specified
+          }
+          
           setTextStatus('done');
-          
-          // Notify listeners
-          if (onTranscribed && typeof transcriptionText === 'string') {
-            onTranscribed(transcriptionText);
-          }
-          
-          // If auto-correct is enabled, start correction
-          if (autoCorrect && typeof transcriptionText === 'string' && transcriptionText.trim()) {
-            handleCorrection(transcriptionText, sessionId).then(correctionResult => {
-              handleCorrectionResult(correctionResult);
-            });
-          }
         } catch (error) {
           console.error('[VoiceRecording] Error processing transcription job:', error);
           updateState({ error: error instanceof Error ? error.message : 'Error processing transcription' });
         } finally {
-          // Always reset the job ID
-          setTranscriptionJobId(null);
+          // Reset the job ID when completely done (no correction needed or correction completed)
+          if (!autoCorrect || isCorrectionPhase) {
+            setTranscriptionJobId(null);
+          }
         }
-      } else if (transcriptionJob.status === 'failed' || transcriptionJob.status === 'canceled') {
-        console.log(`[VoiceRecording] Transcription job failed/canceled: ${transcriptionJobId}`);
+      } 
+      // Handle running jobs with correction in progress
+      else if (transcriptionJob.status === 'running' && isCorrectionPhase) {
+        // The job is in correction phase, we keep tracking it
+        // If we have raw text but no status message about correction yet, we're just starting correction
+        if (rawText && !correctedText && 
+            (statusMsg.includes('Correcting') || statusMsg.includes('Waiting for Claude correction'))) {
+          console.log(`[VoiceRecording] Job ${transcriptionJobId} is now in correction phase`);
+          // We don't mark as processed yet - we'll wait for completion
+        }
+      }
+      // Handle failed jobs 
+      else if (transcriptionJob.status && JOB_STATUSES.FAILED.includes(transcriptionJob.status)) {
+        console.log(`[VoiceRecording] Transcription job ${transcriptionJob.status}: ${transcriptionJobId}`);
         
         // Mark job as processed
         processedJobsRef.current.add(transcriptionJobId);
         
-        // Update state
-        updateState({ error: transcriptionJob.errorMessage || 'Transcription failed' });
-        setTextStatus('error');
+        // Update state with appropriate error message based on status
+        const errorMessage = transcriptionJob.errorMessage || 
+                            (transcriptionJob.status === 'canceled' 
+                              ? 'Voice processing was canceled' 
+                              : 'Voice processing failed');
+        
+        // Only update error state if we don't have raw text already
+        // (if we're in correction phase but it failed, we still have usable transcription)
+        if (!rawText || !isCorrectionPhase) {
+          updateState({ error: errorMessage });
+          setTextStatus('error');
+        } else if (isCorrectionPhase) {
+          console.warn(`[VoiceRecording] Correction failed but using raw transcription`);
+        }
         
         // Reset the job ID
         setTranscriptionJobId(null);
       }
     }
-  }, [transcriptionJobId, transcriptionJob, autoCorrect, onTranscribed, updateState, sessionId, handleCorrectionResult]);
+  }, [transcriptionJobId, transcriptionJob, autoCorrect, onTranscribed, onCorrectionComplete, updateState, sessionId, handleCorrection, rawText, correctedText]);
   
-  // Monitor correction job
-  useEffect(() => {
-    if (correctionJobId && textCorrectionJob) {
-      // Skip if we've already processed this job
-      if (processedJobsRef.current.has(correctionJobId)) {
-        return;
-      }
-      
-      if (textCorrectionJob.status === 'completed' && textCorrectionJob.response) {
-        console.log(`[VoiceRecording] Text correction job completed: ${correctionJobId}`);
-        
-        try {
-          // Mark job as processed
-          processedJobsRef.current.add(correctionJobId);
-          
-          // Get the corrected text
-          const correctedTextContent = textCorrectionJob.response;
-          
-          // Set the corrected text
-          setCorrectedText(correctedTextContent);
-          
-          // Notify listeners
-          if (onCorrectionComplete && typeof correctedTextContent === 'string' && rawText) {
-            onCorrectionComplete(rawText, correctedTextContent);
-          }
-        } catch (error) {
-          console.error('[VoiceRecording] Error processing correction job:', error);
-          // Don't update error state here since we still have valid raw text
-          console.warn('[VoiceRecording] Using raw transcription since correction failed');
-        } finally {
-          // Always reset the job ID
-          setCorrectionJobId(null);
-        }
-      } else if (textCorrectionJob.status === 'failed' || textCorrectionJob.status === 'canceled') {
-        console.log(`[VoiceRecording] Text correction job failed/canceled: ${correctionJobId}`);
-        
-        // Mark job as processed
-        processedJobsRef.current.add(correctionJobId);
-        
-        // Log the error but don't update state - we still have valid raw text
-        console.warn(`[VoiceRecording] Text correction failed: ${textCorrectionJob.errorMessage || 'unknown error'}`);
-        
-        // Reset the job ID
-        setCorrectionJobId(null);
-      }
-    }
-  }, [correctionJobId, textCorrectionJob, rawText, onCorrectionComplete]);
   
   // Clean up on unmount
   useEffect(() => {

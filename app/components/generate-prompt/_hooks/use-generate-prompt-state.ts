@@ -4,22 +4,27 @@
 declare global {
   interface Window {
     sessionMonitor?: {
-      record: (sessionId: string) => void;
+      record: (sessionId: string | null, operation?: string, source?: string) => void;
+      log?: any[];
+      getSessionHistory?: (sessionId: string) => any[];
+      getStats?: () => any;
+      start?: () => void;
+      stop?: () => any[];
     };
   }
 }
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useProject } from "@/lib/contexts/project-context";
 import { usePromptGenerator } from "./use-prompt-generator";
 import { sessionSyncService } from '@/lib/services/session-sync-service';
-import { useLocalStorage } from '@/lib/hooks/use-local-storage';
 import { useNotification } from '@/lib/contexts/notification-context';
 import { useBackgroundJobs, useBackgroundJob } from '@/lib/contexts/background-jobs-context';
 import {
   generateGuidanceForPathsAction
 } from '@/actions/guidance-generation-actions';
 import { Session } from '@/types/session-types';
+import debounce from '@/lib/utils/debounce';
 
 // Import the new hooks
 import { useTaskDescriptionState } from "./use-task-description-state";
@@ -36,11 +41,8 @@ export interface FileInfo {
   forceExcluded: boolean;
 }
 
-export type OutputFormat = "markdown" | "xml" | "plain";
-
 export function useGeneratePromptState() {
-  const { projectDirectory, setProjectDirectory } = useProject();
-  const { setActiveSessionId: setSavedSessionId } = useProject();
+  const { projectDirectory, setProjectDirectory, activeSessionId: contextActiveSessionId } = useProject();
   const { showNotification } = useNotification();
   useBackgroundJobs();
 
@@ -54,8 +56,6 @@ export function useGeneratePromptState() {
   const [isGeneratingGuidance, setIsGeneratingGuidance] = useState(false);
   const [isCopyingPrompt, setIsCopyingPrompt] = useState(false);
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
-  const OUTPUT_FORMAT_PROJECT_KEY = `generate-prompt-output-format-${projectDirectory || 'global'}`;
-  const [outputFormat, setOutputFormat] = useLocalStorage<OutputFormat>(OUTPUT_FORMAT_PROJECT_KEY, "markdown");
   const [diffTemperature, setDiffTemperature] = useState<number>(0.9);
   const [sessionName, setSessionName] = useState<string>("Untitled Session");
   const [projectDataLoading, setProjectDataLoading] = useState(false);
@@ -70,13 +70,13 @@ export function useGeneratePromptState() {
   const [geminiErrorMessage, setGeminiErrorMessage] = useState("");
   
   // State for background job IDs not in sub-hooks
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isStateLoaded, setIsStateLoaded] = useState(false);
-  const [isFileSelectionsApplied, setIsFileSelectionsApplied] = useState(false);
 
   // Refs not in sub-hooks
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevSessionId = useRef<string | null>(null);
+  // Create ref for task description textarea
+  const taskDescriptionRef = useRef<HTMLTextAreaElement>(null);
   
   // Enhanced ref to store current state for saving
   const currentStateRef = useRef<{
@@ -91,6 +91,7 @@ export function useGeneratePromptState() {
     diffTemperature: number;
     includedFiles: string[];
     forceExcludedFiles: string[];
+    searchSelectedFilesOnly: boolean;
   }>({
     taskDescription: "",
     searchTerm: "",
@@ -102,33 +103,118 @@ export function useGeneratePromptState() {
     isRegexActive: true,
     diffTemperature: 0.9,
     includedFiles: [],
-    forceExcludedFiles: []
+    forceExcludedFiles: [],
+    searchSelectedFilesOnly: false
   });
 
   // Add state for session switching
   const [isSwitchingSession, setIsSwitchingSession] = useState(false);
 
+  // Function to save all state at once
+  const handleSaveSessionState = useCallback(async (sessionId: string, stateToSave?: typeof currentStateRef.current) => {
+    if (!sessionId) return;
+    
+    setIsFormSaving(true);
+    
+    try {
+      // Get state from parameter or from the ref if not provided
+      // This allows capturing the state at the exact moment when the save is triggered
+      const state = stateToSave || currentStateRef.current;
+
+      const sequence = Math.random().toString(36).substring(2, 8);
+      const timestamp = new Date().toISOString();
+      
+      console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 💾 SAVING SESSION STATE: ${sessionId}`);
+      console.log(`[useGeneratePromptState][${sequence}] State summary:`, {
+        taskDescriptionLength: state.taskDescription?.length || 0,
+        includedFilesCount: state.includedFiles?.length || 0,
+        excludedFilesCount: state.forceExcludedFiles?.length || 0,
+        hasRegexPatterns: !!(state.titleRegex || state.contentRegex),
+        isRegexActive: state.isRegexActive,
+        diffTemperature: state.diffTemperature,
+        hasSearchTerm: !!state.searchTerm,
+        hasPastedPaths: !!state.pastedPaths,
+        searchSelectedFilesOnly: state.searchSelectedFilesOnly
+      });
+      
+      // Save all state in one operation with explicit session ID
+      await sessionSyncService.updateSessionState(
+        sessionId,
+        {
+          taskDescription: state.taskDescription,
+          searchTerm: state.searchTerm,
+          pastedPaths: state.pastedPaths,
+          titleRegex: state.titleRegex,
+          contentRegex: state.contentRegex,
+          negativeTitleRegex: state.negativeTitleRegex,
+          negativeContentRegex: state.negativeContentRegex,
+          isRegexActive: state.isRegexActive,
+          diffTemperature: state.diffTemperature,
+          includedFiles: state.includedFiles,
+          forceExcludedFiles: state.forceExcludedFiles,
+          searchSelectedFilesOnly: state.searchSelectedFilesOnly
+        }
+      );
+      
+      setHasUnsavedChanges(false);
+      console.log(`[useGeneratePromptState][${sequence}] ✅ Successfully saved session state for ${sessionId}`);
+    } catch (error) {
+      console.error(`[useGeneratePromptState] Error saving session state:`, error);
+      
+      showNotification({
+        title: "Error saving session",
+        message: "Failed to save the session state. Please try again.",
+        type: "error"
+      });
+    } finally {
+      setIsFormSaving(false);
+    }
+  }, [showNotification, setHasUnsavedChanges, setIsFormSaving]);
+
+  // Create a debounced function for saving all state
+  const debouncedSaveAllState = useMemo(
+    () => debounce((sessionId: string) => {
+      if (!sessionId) return;
+      
+      console.log(`[useGeneratePromptState] Triggering debounced save for session ${sessionId}`);
+      
+      // Capture the current state at the moment the debounced function is called
+      // This ensures we save the state as it was when the save was triggered, not when it executes
+      const stateAtTriggerTime = { ...currentStateRef.current };
+      
+      // Pass the captured state to handleSaveSessionState along with the sessionId
+      handleSaveSessionState(sessionId, stateAtTriggerTime);
+    }, 1500), // 1.5 second debounce
+    [handleSaveSessionState]
+  );
+
   // Define common interaction handler
   const handleInteraction = useCallback(() => {
     setHasUnsavedChanges(true);
+    
+    // Trigger debounced save when interaction happens
+    if (contextActiveSessionId) {
+      debouncedSaveAllState(contextActiveSessionId);
+    }
     
     // Optionally, reset interaction timeout
     if (interactionTimeoutRef.current) {
       clearTimeout(interactionTimeoutRef.current);
       interactionTimeoutRef.current = null;
     }
-  }, []);
+  }, [contextActiveSessionId, debouncedSaveAllState]);
 
   // Initialize specialized state hooks
   const taskState = useTaskDescriptionState({
-    activeSessionId,
+    activeSessionId: contextActiveSessionId,
     onInteraction: handleInteraction,
-    setHasUnsavedChanges
+    setHasUnsavedChanges,
+    taskDescriptionRef
   });
   
   const fileState = useFileSelectionState({
     projectDirectory,
-    activeSessionId,
+    activeSessionId: contextActiveSessionId,
     taskDescription: taskState.taskDescription,
     onInteraction: handleInteraction,
     setHasUnsavedChanges,
@@ -136,7 +222,7 @@ export function useGeneratePromptState() {
   });
   
   const regexState = useRegexState({
-    activeSessionId,
+    activeSessionId: contextActiveSessionId,
     taskDescription: taskState.taskDescription,
     onInteraction: handleInteraction,
     setHasUnsavedChanges
@@ -165,65 +251,10 @@ export function useGeneratePromptState() {
   const findingFilesJob = useBackgroundJob(fileState.findingFilesJobId);
   const regexJob = useBackgroundJob(regexState.generatingRegexJobId);
 
-  // Create reusable methods for component
-  const applyFilePaths = useCallback(async (includedPaths: string[], excludedPaths: string[] = []) => {
-    if (!includedPaths || includedPaths.length === 0) {
-      console.log("[useGeneratePromptState] No paths to apply");
-      return { success: false, message: "No paths to apply" };
-    }
-    
-    // Get the allFilesMap from fileState
-    const { allFilesMap } = fileState;
-    
-    // Filter paths to only include ones that exist in the file map
-    const validPaths = includedPaths.filter(path => {
-      return allFilesMap[path] !== undefined;
-    });
-    
-    if (validPaths.length === 0) {
-      console.log("[useGeneratePromptState] No valid paths to apply");
-      return { success: false, message: "No valid paths found in the current file map" };
-    }
-    
-    console.log(`[useGeneratePromptState] Applying ${validPaths.length} valid paths`);
-    
-    // Update file selections in the file map
-    const updatedMap = { ...allFilesMap };
-    
-    // Mark all files as not included first
-    Object.keys(updatedMap).forEach(path => {
-      updatedMap[path] = {
-        ...updatedMap[path],
-        included: false
-      };
-    });
-    
-    // Then mark only the selected paths as included
-    validPaths.forEach(path => {
-      if (updatedMap[path]) {
-        updatedMap[path] = {
-          ...updatedMap[path],
-          included: true
-        };
-      }
-    });
-    
-    // Update the file state - no need to directly set the state since we will call other methods
-    try {
-      // Update the fileState
-      fileState.setFileSelections(updatedMap, validPaths);
-      return { 
-        success: true, 
-        message: `Successfully applied ${validPaths.length} paths out of ${includedPaths.length} total`
-      };
-    } catch (error) {
-      console.error("[useGeneratePromptState] Error applying file paths:", error);
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : "Unknown error applying file paths" 
-      };
-    }
-  }, [fileState]);
+  // This function has been removed as file selection application is now handled
+  // directly in useFileSelectionState when the file list is loaded
+  // This prevents the race condition where file selections were being applied
+  // before the file list was fully loaded
 
   // Monitor background job status changes and process them
   const checkForBackgroundUpdates = useCallback(async () => {
@@ -371,6 +402,170 @@ export function useGeneratePromptState() {
   useEffect(() => {
     checkForBackgroundUpdates();
   }, [checkForBackgroundUpdates, findingFilesJob]);
+  
+  // Track processed job IDs to prevent duplicate updates 
+  // This ref persists between renders to prevent processing jobs multiple times
+  const processedJobIdsRef = useRef<Set<string>>(new Set());
+  
+  // Add a debug flag to control the additional logging
+  const DEBUG_FORM_UPDATES = false;
+  
+  // Get jobs using the hook at the component level
+  const { jobs, activeJobs } = useBackgroundJobs();
+  
+  // Track attempts to process form updates to detect and resolve issues
+  const formUpdateAttemptsRef = useRef(0);
+  
+  // Monitor for completed background jobs and update form fields
+  useEffect(() => {
+    // Skip processing if we don't have an active session or jobs
+    if (!contextActiveSessionId || !jobs || jobs.length === 0) {
+      if (DEBUG_FORM_UPDATES) {
+        console.debug(`[useGeneratePromptState] Skipping job processing - no active session or no jobs`);
+      }
+      return;
+    }
+    
+    const updateAttempt = ++formUpdateAttemptsRef.current;
+    
+    if (DEBUG_FORM_UPDATES) {
+      console.debug(`[useGeneratePromptState] Form update check #${updateAttempt}: Checking ${jobs.length} jobs for session ${contextActiveSessionId.substring(0, 8)}...`);
+      
+      // Analyze job status distribution
+      const statusCounts = jobs.reduce((acc, job) => {
+        acc[job.status] = (acc[job.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      console.debug(`[useGeneratePromptState] Jobs by status:`, statusCounts);
+      
+      // Count potentially relevant jobs that weren't processed yet
+      const potentiallyRelevant = jobs.filter(job => 
+        job.sessionId === contextActiveSessionId && 
+        job.metadata?.targetField && 
+        !processedJobIdsRef.current.has(job.id)
+      );
+      
+      if (potentiallyRelevant.length > 0) {
+        console.debug(`[useGeneratePromptState] Found ${potentiallyRelevant.length} potentially relevant unprocessed jobs`);
+      }
+    }
+    
+    // Filter for jobs that are:
+    // 1. Completed (status is 'completed')
+    // 2. Belong to the current session
+    // 3. Have a targetField in metadata (indicating they should update a form field)
+    // 4. Have a response (the content to update the field with)
+    // 5. Haven't been processed before (not in processedJobIdsRef)
+    const relevantJobs = jobs.filter(job => 
+      job.status === 'completed' && 
+      job.sessionId === contextActiveSessionId && 
+      job.response && 
+      job.metadata?.targetField && 
+      !processedJobIdsRef.current.has(job.id)
+    );
+    
+    // If no relevant jobs were found, skip processing
+    if (relevantJobs.length === 0) {
+      if (DEBUG_FORM_UPDATES && updateAttempt % 10 === 0) { // Only log occasionally to avoid spam
+        console.debug(`[useGeneratePromptState] No relevant jobs found for form update`);
+      }
+      return;
+    }
+    
+    // Log relevant jobs for debugging
+    if (DEBUG_FORM_UPDATES) {
+      console.debug(`[useGeneratePromptState] Found ${relevantJobs.length} jobs that need field updates:`, 
+        relevantJobs.map(job => ({
+          id: job.id,
+          targetField: job.metadata?.targetField,
+          responseLength: job.response?.length || 0
+        }))
+      );
+    }
+    
+    // Process each relevant job to update the appropriate form field
+    relevantJobs.forEach(job => {
+      const targetField = job.metadata?.targetField as string;
+      const response = job.response || '';
+      
+      console.log(`[useGeneratePromptState] Processing job ${job.id} to update field: ${targetField}`);
+      
+      // Skip empty responses that would clear fields
+      if (!response.trim()) {
+        console.warn(`[useGeneratePromptState] Skipping job ${job.id} - empty response for field: ${targetField}`);
+        processedJobIdsRef.current.add(job.id); // Mark as processed anyway
+        return;
+      }
+      
+      try {
+        // Update the appropriate field based on targetField
+        switch (targetField) {
+          case 'taskDescription':
+            taskState.setTaskDescription(response);
+            break;
+          case 'pastedPaths':
+            fileState.setPastedPaths(response);
+            break;
+          case 'searchTerm':
+            fileState.setSearchTerm(response);
+            break;
+          case 'titleRegex':
+            regexState.setTitleRegex(response);
+            break;
+          case 'contentRegex':
+            regexState.setContentRegex(response);
+            break;
+          case 'negativeTitleRegex':
+            regexState.setNegativeTitleRegex(response);
+            break;
+          case 'negativeContentRegex':
+            regexState.setNegativeContentRegex(response);
+            break;
+          default:
+            console.warn(`[useGeneratePromptState] Unknown target field: ${targetField}`);
+            processedJobIdsRef.current.add(job.id); // Mark as processed to avoid trying again
+            return; // Skip further processing for this job
+        }
+        
+        // Track unsaved changes when form is updated from job
+        setHasUnsavedChanges(true);
+        
+        // Mark this job as processed to prevent reprocessing
+        processedJobIdsRef.current.add(job.id);
+        
+        console.log(`[useGeneratePromptState] Successfully updated ${targetField} from job ${job.id}`);
+        
+        // Show a notification about the successful update
+        showNotification({
+          title: "Form updated",
+          message: `The ${targetField} field has been updated with AI-generated content.`,
+          type: "success"
+        });
+      } catch (error) {
+        console.error(`[useGeneratePromptState] Error processing job ${job.id} for field ${targetField}:`, error);
+        
+        // Show error notification
+        showNotification({
+          title: "Error updating form",
+          message: `Failed to update ${targetField} field: ${error instanceof Error ? error.message : String(error)}`,
+          type: "error"
+        });
+        
+        // Still mark as processed to avoid infinite retries
+        processedJobIdsRef.current.add(job.id);
+      }
+    });
+  }, [
+    contextActiveSessionId, 
+    jobs, 
+    taskState, 
+    fileState, 
+    regexState, 
+    showNotification, 
+    setHasUnsavedChanges,
+    DEBUG_FORM_UPDATES
+  ]);
 
   // Use effect to update the currentStateRef
   useEffect(() => {
@@ -385,7 +580,8 @@ export function useGeneratePromptState() {
       isRegexActive: regexState.isRegexActive,
       diffTemperature,
       includedFiles: fileState.includedPaths,
-      forceExcludedFiles: fileState.excludedPaths
+      forceExcludedFiles: fileState.excludedPaths,
+      searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
     };
   }, [
     taskState.taskDescription,
@@ -398,171 +594,48 @@ export function useGeneratePromptState() {
     regexState.isRegexActive,
     diffTemperature,
     fileState.includedPaths,
-    fileState.excludedPaths
+    fileState.excludedPaths,
+    fileState.searchSelectedFilesOnly
   ]);
 
-  // Enhanced useEffect hook to load session state on initialization or when activeSessionId changes
+  // We no longer need to synchronize activeSessionId since we're using contextActiveSessionId directly
+
+  // Simplified useEffect hook to handle state flags when contextActiveSessionId changes
   useEffect(() => {
-    // Only proceed if we have a valid activeSessionId
-    if (!activeSessionId) {
-      console.log(`[useGeneratePromptState] No activeSessionId, resetting state flags. isStateLoaded=${isStateLoaded}, isRestoringSession=${isRestoringSession}, projectDirectory=${projectDirectory}`);
+    // Log the current state
+    console.log(`[useGeneratePromptState] useEffect triggered for contextActiveSessionId=${contextActiveSessionId || 'null'}, projectDirectory=${projectDirectory || 'null'}`);
+    
+    // Only proceed if we have a valid contextActiveSessionId
+    if (!contextActiveSessionId) {
+      console.log(`[useGeneratePromptState] No contextActiveSessionId, resetting state flags`);
       // Reset the state loaded flag when we don't have an active session
       setIsStateLoaded(false);
       setIsRestoringSession(false);
       return;
     }
-
-    // Explicitly check if this session is the same as previously loaded and if state is already loaded
-    // This prevents reloading the same session unnecessarily
-    if (isStateLoaded && activeSessionId === prevSessionId.current) {
-      console.log(`[useGeneratePromptState] State already loaded for current session: ${activeSessionId}, skipping load`);
-      // Ensure restoration flag is reset
-      setIsRestoringSession(false);
-      return;
-    }
-
-    // If we're actively switching sessions, we may want additional handling
-    if (isSwitchingSession) {
-      console.log(`[useGeneratePromptState] Currently switching to session: ${activeSessionId}`);
-      // We don't actually need to do anything here since session data will be loaded via handleLoadSession
-    }
-
-    console.log(`[useGeneratePromptState] useEffect for activeSessionId=${activeSessionId}, isStateLoaded=${isStateLoaded}, isRestoringSession=${isRestoringSession}`);
     
-    // Note: Session data is now loaded directly by handleLoadSession which is called by SessionManager,
-    // so we no longer need to fetch the session data here
-
+    // Update the previous session ID reference for future comparisons
+    if (contextActiveSessionId !== prevSessionId.current) {
+      console.log(`[useGeneratePromptState] Session ID changed from ${prevSessionId.current || 'null'} to ${contextActiveSessionId}`);
+      prevSessionId.current = contextActiveSessionId;
+    }
+    
     // Create an AbortController for potential cleanup
     const abortController = new AbortController();
     
     // Cleanup function to handle component unmount or session ID changes
     return () => {
-      console.log(`[useGeneratePromptState] Cleanup function called for session: ${activeSessionId}`);
+      console.log(`[useGeneratePromptState] Cleanup function called for session: ${contextActiveSessionId}`);
       abortController.abort();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId, projectDirectory, taskState, fileState, regexState]);
+  }, [contextActiveSessionId, projectDirectory]);
   /* The boolean state flags (isRestoringSession, isStateLoaded, isSwitchingSession) are intentionally omitted
    * from the dependency array because:
    * 1. They're used as control flags within the effect itself and including them would cause recursive reruns
    * 2. These flags are SET by this effect and then READ by it to control flow, not as actual dependencies
    */
 
-  // Handle setting active session ID
-  const handleSetActiveSessionId = (id: string | null) => {
-    const timestamp = new Date().toISOString();
-    const sequence = Math.random().toString(36).substring(2, 8);
-    
-    console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 🔄 SET SESSION ID: Changing from ${activeSessionId || 'null'} to ${id || 'null'}`);
-    console.log(`[useGeneratePromptState][${sequence}] Current state flags: isStateLoaded=${isStateLoaded}, isRestoringSession=${isRestoringSession}, isSwitchingSession=${isSwitchingSession}, hasUnsavedChanges=${hasUnsavedChanges}`);
-    
-    // Validate the ID parameter
-    if (id !== null && typeof id !== 'string') {
-      console.error(`[useGeneratePromptState][${sequence}] ❌ Invalid sessionId type: ${typeof id}, value:`, id);
-      return;
-    }
-    
-    // If this is the same session ID and state is already loaded, do nothing
-    if (activeSessionId === id && isStateLoaded) {
-      console.log(`[useGeneratePromptState][${sequence}] Session ID unchanged (${id}) and state already loaded, no action needed`);
-      return;
-    }
-    
-    // Only reset state if the ID actually changed
-    if (activeSessionId !== id) {
-      console.log(`[useGeneratePromptState][${sequence}] Session ID changed from ${activeSessionId || 'null'} to ${id || 'null'}, preparing for switch`);
-      
-      // Track the previous session ID before changing
-      prevSessionId.current = activeSessionId;
-      console.log(`[useGeneratePromptState][${sequence}] Stored previous session ID in ref: ${prevSessionId.current || 'null'}`);
-      
-      // Reset state flags in a specific order to avoid race conditions
-      
-      // 1. First set isSwitchingSession to true - this will help the useEffect know we're
-      // intentionally changing sessions and not to cancel mid-load
-      console.log(`[useGeneratePromptState][${sequence}] Step 1: Setting isSwitchingSession=true`);
-      setIsSwitchingSession(true);
-      
-      // 2. Reset isRestoringSession flag (if active) before any other state changes
-      if (isRestoringSession) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 2: Resetting isRestoringSession flag before changing session ID`);
-        setIsRestoringSession(false);
-      } else {
-        console.log(`[useGeneratePromptState][${sequence}] Step 2: isRestoringSession already false, no change needed`);
-      }
-      
-      // 3. Reset any error state before new session load
-      console.log(`[useGeneratePromptState][${sequence}] Step 3: Clearing error state`);
-      setError("");
-      
-      // 4. IMPORTANT: Reset all form-related state SYNCHRONOUSLY before anything else
-      // Use the dedicated reset functions from each sub-hook for complete and consistent reset
-      console.log(`[useGeneratePromptState][${sequence}] Step 4: Performing complete state reset with dedicated reset functions`);
-      
-      // Reset task description state
-      console.log(`[useGeneratePromptState][${sequence}] Step 4.1: Resetting taskState`);
-      taskState.reset();
-      
-      // Reset file selection state 
-      console.log(`[useGeneratePromptState][${sequence}] Step 4.2: Resetting fileState`);
-      fileState.reset();
-      
-      // Reset regex state
-      console.log(`[useGeneratePromptState][${sequence}] Step 4.3: Resetting regexState`);
-      regexState.reset();
-      
-      // Reset other main state variables
-      console.log(`[useGeneratePromptState][${sequence}] Step 4.4: Resetting diffTemperature and sessionName`);
-      setDiffTemperature(0.7);
-      setSessionName("Untitled Session");
-      setIsFileSelectionsApplied(false);
-      
-      // 5. Update the active session ID - this will be a dependency of the useEffect
-      console.log(`[useGeneratePromptState][${sequence}] Step 5: Updating activeSessionId=${id || 'null'} and persisting to project context`);
-      
-      // Update both local state and project context's state in synchronous sequence
-      setActiveSessionId(id);
-      
-      // Update the project context to ensure consistency across the app
-      // This ensures the session ID is properly persisted in localStorage via the project context
-      setSavedSessionId(id);
-      
-      // 6. Only AFTER setting the new sessionId, set isStateLoaded to false
-      // This ordering helps prevent races where isStateLoaded=false triggers a load
-      // before activeSessionId is updated
-      console.log(`[useGeneratePromptState][${sequence}] Step 6: Setting isStateLoaded=false to trigger reload`);
-      setIsStateLoaded(false);
-      
-      // 7. Reset unsaved changes after switching
-      console.log(`[useGeneratePromptState][${sequence}] Step 7: Resetting hasUnsavedChanges=false`);
-      setHasUnsavedChanges(false);
-      
-      // If we're clearing the session ID, reset form state and isSwitchingSession
-      if (!id) {
-        console.log(`[useGeneratePromptState][${sequence}] No new session ID, setting sessionInitialized=false and isSwitchingSession=false`);
-        setSessionInitialized(false);
-        setIsSwitchingSession(false);
-      }
-      
-      console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 🔄 SESSION ID CHANGE COMPLETED`);
-    } else {
-      // Same session ID, but we want to force a reload
-      console.log(`[useGeneratePromptState][${sequence}] Session ID unchanged (${id}), but forcing state reload by setting isStateLoaded=false`);
-      
-      // If we're reloading the same session, ensure we're in a clean state
-      if (isRestoringSession) {
-        console.log(`[useGeneratePromptState][${sequence}] Resetting isRestoringSession flag before reloading the same session ID`);
-        setIsRestoringSession(false);
-      }
-      
-      // Set switching flag to indicate an intentional reload
-      setIsSwitchingSession(true);
-      
-      // Always set isStateLoaded to false to trigger reload, ensuring clean state
-      console.log(`[useGeneratePromptState][${sequence}] Setting isStateLoaded=false to trigger reload`);
-      setIsStateLoaded(false);
-    }
-  };
+  // We no longer need handleSetActiveSessionId since the active session ID is now controlled by the context
 
   // Handle session name change
   const handleSessionNameChange = (name: string) => {
@@ -583,8 +656,7 @@ export function useGeneratePromptState() {
     
     if (!sessionData) {
       // Handle reset logic when null is passed
-      console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 🔄 LOAD SESSION: Received null session, resetting session`);
-      handleSetActiveSessionId(null);
+      console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 🔄 LOAD SESSION: Received null session, no action needed`);
       return;
     }
     
@@ -603,110 +675,124 @@ export function useGeneratePromptState() {
       includedFilesCount: sessionData.includedFiles?.length || 0,
       excludedFilesCount: sessionData.forceExcludedFiles?.length || 0,
       hasRegexPatterns: !!(sessionData.titleRegex || sessionData.contentRegex || sessionData.negativeTitleRegex || sessionData.negativeContentRegex),
-      isRegexActive: sessionData.isRegexActive
+      isRegexActive: sessionData.isRegexActive,
+      hasSearchTerm: !!sessionData.searchTerm,
+      hasPastedPaths: !!sessionData.pastedPaths,
+      hasSearchSelectedFilesOnly: typeof sessionData.searchSelectedFilesOnly === 'boolean'
     });
     
     try {
-      // Set restoration flag to indicate we're loading a session
-      console.log(`[useGeneratePromptState][${sequence}] Step 1: Setting isRestoringSession=true`);
+      // No need to verify that incoming session ID matches context's active session ID
+      // The SessionManager will have updated the context before calling handleLoadSession
+      
+      // Step 1: Set switching session flag immediately to prevent other operations
+      console.log(`[useGeneratePromptState][${sequence}] Step 1: Setting isSwitchingSession=true`);
+      setIsSwitchingSession(true);
+      
+      // Collect and log debug information about current state
+      if (typeof window !== 'undefined' && window.debugSessionState) {
+        window.debugSessionState(contextActiveSessionId || 'null');
+        console.log(`[useGeneratePromptState][${sequence}] Recorded debug state for current session before switching`);
+      }
+      
+      // Handle record in session monitor if available
+      if (typeof window !== 'undefined' && window.sessionMonitor) {
+        window.sessionMonitor.record(sessionData.id);
+        console.log(`[useGeneratePromptState][${sequence}] Recorded session transition in sessionMonitor`);
+      }
+      
+      // Step 2: Set restoration flag to indicate we're loading a session
+      console.log(`[useGeneratePromptState][${sequence}] Step 2: Setting isRestoringSession=true`);
       setIsRestoringSession(true);
       
-      // First update active session ID - this will trigger a complete state reset
-      // The reset is performed synchronously via the sub-hook reset functions
-      console.log(`[useGeneratePromptState][${sequence}] Step 2: Setting active session ID to ${sessionData.id} (this will reset state)`);
-      handleSetActiveSessionId(sessionData.id);
+      // Step 3: First perform a complete reset of all state before applying new state
+      console.log(`[useGeneratePromptState][${sequence}] Step 3: Performing complete state reset before session load`);
       
-      // Now apply the session data directly
-      console.log(`[useGeneratePromptState][${sequence}] Step 3: Applying session data for ${sessionData.id}`);
+      // Reset all state in a predictable order - this ensures a clean slate for the new session
+      console.log(`[useGeneratePromptState][${sequence}] Step 3.1: Resetting taskState`);
+      taskState.reset();
+      
+      console.log(`[useGeneratePromptState][${sequence}] Step 3.2: Resetting fileState`);
+      fileState.reset();
+      
+      console.log(`[useGeneratePromptState][${sequence}] Step 3.3: Resetting regexState`);
+      regexState.reset();
+      
+      console.log(`[useGeneratePromptState][${sequence}] Step 3.4: Resetting other state variables`);
+      setDiffTemperature(0.7);
+      setSessionName("Untitled Session");
+      setHasUnsavedChanges(false);
+      
+      // Step 4: Apply all session data in a consistent order
+      console.log(`[useGeneratePromptState][${sequence}] Step 4: Applying session data for ${sessionData.id}`);
       
       // Update session name if available
       if (sessionData.name) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 3.1: Setting session name: "${sessionData.name}"`);
+        console.log(`[useGeneratePromptState][${sequence}] Step 4.1: Setting session name: "${sessionData.name}"`);
         setSessionName(sessionData.name);
-      } else {
-        console.log(`[useGeneratePromptState][${sequence}] Session has no name, using default`);
       }
       
       // Update task description if available
       if (sessionData.taskDescription) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 3.2: Setting task description (${sessionData.taskDescription.length} chars)`);
+        console.log(`[useGeneratePromptState][${sequence}] Step 4.2: Setting task description (${sessionData.taskDescription.length} chars)`);
         taskState.setTaskDescription(sessionData.taskDescription);
-      } else {
-        console.log(`[useGeneratePromptState][${sequence}] Session has no task description`);
       }
       
       // Apply regex patterns if available
-      const hasRegexPatterns = !!(sessionData.titleRegex || sessionData.contentRegex || sessionData.negativeTitleRegex || sessionData.negativeContentRegex);
-      console.log(`[useGeneratePromptState][${sequence}] Step 3.3: Applying regex patterns: title=${!!sessionData.titleRegex}, content=${!!sessionData.contentRegex}, negTitle=${!!sessionData.negativeTitleRegex}, negContent=${!!sessionData.negativeContentRegex}`);
+      console.log(`[useGeneratePromptState][${sequence}] Step 4.3: Applying regex patterns`);
+      regexState.setTitleRegex(sessionData.titleRegex || '');
+      regexState.setContentRegex(sessionData.contentRegex || '');
+      regexState.setNegativeTitleRegex(sessionData.negativeTitleRegex || '');
+      regexState.setNegativeContentRegex(sessionData.negativeContentRegex || '');
+      regexState.setIsRegexActive(sessionData.isRegexActive === true);
       
-      if (hasRegexPatterns) {
-        regexState.setTitleRegex(sessionData.titleRegex || '');
-        regexState.setContentRegex(sessionData.contentRegex || '');
-        regexState.setNegativeTitleRegex(sessionData.negativeTitleRegex || '');
-        regexState.setNegativeContentRegex(sessionData.negativeContentRegex || '');
-        
-        // Set active flag based on session data
-        console.log(`[useGeneratePromptState][${sequence}] Step 3.3.1: Setting isRegexActive: ${sessionData.isRegexActive}`);
-        regexState.setIsRegexActive(sessionData.isRegexActive === true);
-      } else {
-        console.log(`[useGeneratePromptState][${sequence}] Session has no regex patterns`);
-      }
+      // Apply file-related settings
+      console.log(`[useGeneratePromptState][${sequence}] Step 4.4: Setting file-related fields`);
+      fileState.setSearchTerm(sessionData.searchTerm || '');
+      fileState.setPastedPaths(sessionData.pastedPaths || '');
+      fileState.setSearchSelectedFilesOnly(sessionData.searchSelectedFilesOnly || false);
       
-      // Search term
-      if (sessionData.searchTerm) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 3.4: Setting searchTerm: "${sessionData.searchTerm}"`);
-        fileState.setSearchTerm(sessionData.searchTerm);
-      }
-      
-      // Pasted paths
-      if (sessionData.pastedPaths) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 3.5: Setting pastedPaths (${sessionData.pastedPaths.length} chars)`);
-        fileState.setPastedPaths(sessionData.pastedPaths);
-      }
-      
-      // Diff temperature
+      // Apply diff temperature if available
       if (typeof sessionData.diffTemperature === 'number') {
-        console.log(`[useGeneratePromptState][${sequence}] Step 3.6: Setting diffTemperature: ${sessionData.diffTemperature}`);
+        console.log(`[useGeneratePromptState][${sequence}] Step 4.5: Setting diffTemperature: ${sessionData.diffTemperature}`);
         setDiffTemperature(sessionData.diffTemperature);
       }
       
-      // Set core state flags
-      console.log(`[useGeneratePromptState][${sequence}] Step 4: Setting core state flags: sessionInitialized=true, isStateLoaded=true, hasUnsavedChanges=false`);
+      // Step 5: File selections are now handled automatically by useFileSelectionState
+      // when files are loaded after a session change. We no longer need to manually apply file selections
+      console.log(`[useGeneratePromptState][${sequence}] Step 5: File selections will be applied by useFileSelectionState after file loading`);
+      
+      // We can still log the expected selections for debugging purposes
+      if (sessionData.includedFiles?.length || sessionData.forceExcludedFiles?.length) {
+        console.log(`[useGeneratePromptState][${sequence}] Found ${sessionData.includedFiles?.length || 0} included and ${sessionData.forceExcludedFiles?.length || 0} excluded file paths in session data`);
+      } else {
+        console.log(`[useGeneratePromptState][${sequence}] No file selections found in session data`);
+      }
+      
+      // Step 6: Set core state flags after all session data has been applied
+      console.log(`[useGeneratePromptState][${sequence}] Step 6: Setting final state flags`);
       setSessionInitialized(true);
       setIsStateLoaded(true);
       setHasUnsavedChanges(false);
       
-      // Load files - but only if we have valid file selections and a project directory
-      if (projectDirectory && (sessionData.includedFiles?.length || sessionData.forceExcludedFiles?.length)) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 5: Loading files for projectDirectory=${projectDirectory} with ${sessionData.includedFiles?.length || 0} included files and ${sessionData.forceExcludedFiles?.length || 0} excluded files`);
-        
-        const loadedFilesResult = await applyFilePaths(sessionData.includedFiles || [], sessionData.forceExcludedFiles || []);
-        if (loadedFilesResult.success) {
-          console.log(`[useGeneratePromptState][${sequence}] Step 5.1: Successfully loaded files, setting isFileSelectionsApplied=true`);
-          setIsFileSelectionsApplied(true);
-        } else {
-          console.warn(`[useGeneratePromptState][${sequence}] ⚠️ Warning: Not all file paths could be applied:`, loadedFilesResult.message);
-          
-          // Still mark the file selections as applied, we did the best we could
-          setIsFileSelectionsApplied(true);
-        }
-      } else {
-        console.log(`[useGeneratePromptState][${sequence}] Step 5: No file selections to apply or missing project directory`);
-        setIsFileSelectionsApplied(true); // Mark as complete even if there's nothing to do
+      // Collect debug info after switch to see if any issues
+      if (typeof window !== 'undefined' && window.debugSessionState) {
+        window.debugSessionState(sessionData.id);
+        console.log(`[useGeneratePromptState][${sequence}] Recorded debug state for new session after switching`);
       }
       
       const endTimestamp = new Date().toISOString();
       console.log(`[useGeneratePromptState][${sequence}][${endTimestamp}] 🔄 LOAD SESSION COMPLETED: ${sessionData.id}`);
       
-      // Finally, reset the restoration and switching flags once everything is loaded
-      console.log(`[useGeneratePromptState][${sequence}] Step 6: Finalizing session load, setting isRestoringSession=false, isSwitchingSession=false`);
+      // Step 7: Finally, reset the restoration and switching flags
+      console.log(`[useGeneratePromptState][${sequence}] Step 7: Resetting operation flags`);
       setIsRestoringSession(false);
       setIsSwitchingSession(false);
     } catch (error) {
       const errorTimestamp = new Date().toISOString();
       console.error(`[useGeneratePromptState][${sequence}][${errorTimestamp}] ❌ Error loading session:`, error);
       
-      // Reset flags
+      // Reset flags - always ensure we exit the loading state
       setIsRestoringSession(false);
       setIsSwitchingSession(false);
       setIsStateLoaded(true); // Mark as loaded even if there was an error
@@ -773,7 +859,7 @@ export function useGeneratePromptState() {
       
       // Create a wrapper function that handles the type mismatch
       const generateGuidance = async () => {
-        if (!projectDirectory || !activeSessionId) {
+        if (!projectDirectory || !contextActiveSessionId) {
           throw new Error("Project directory or active session not set");
         }
         
@@ -781,7 +867,7 @@ export function useGeneratePromptState() {
         const result = await generateGuidanceForPathsAction(
           taskState.taskDescription,
           fileState.includedPaths,
-          activeSessionId,
+          contextActiveSessionId,
           { modelOverride: undefined }  // Optional parameter
         );
         return result;
@@ -791,7 +877,26 @@ export function useGeneratePromptState() {
       
       if (result.isSuccess && result.data) {
         // Append the guidance to the task description
-        taskState.taskDescriptionRef.current?.appendText(result.data.guidance);
+        if (taskState.taskDescriptionRef.current) {
+          const textarea = taskState.taskDescriptionRef.current;
+          const currentValue = textarea.value;
+          
+          // Add a newline if needed, then append the guidance
+          const newValue = currentValue + 
+            (currentValue && !currentValue.endsWith('\n') ? '\n\n' : '') + 
+            result.data.guidance;
+          
+          // Update the task description
+          taskState.setTaskDescription(newValue);
+          
+          // Set cursor at the end of the text
+          setTimeout(() => {
+            if (textarea) {
+              textarea.focus();
+              textarea.setSelectionRange(newValue.length, newValue.length);
+            }
+          }, 0);
+        }
         
         showNotification({
           title: "Guidance generated",
@@ -814,49 +919,6 @@ export function useGeneratePromptState() {
     }
   };
 
-  // Function to save all state at once
-  const handleSaveSessionState = async (sessionId: string) => {
-    if (!sessionId) return;
-    
-    setIsFormSaving(true);
-    
-    try {
-      // Get current state from the ref
-      const state = currentStateRef.current;
-      
-      // Save all state in one operation
-      await sessionSyncService.updateSessionState(
-        sessionId,
-        {
-          taskDescription: state.taskDescription,
-          searchTerm: state.searchTerm,
-          pastedPaths: state.pastedPaths,
-          titleRegex: state.titleRegex,
-          contentRegex: state.contentRegex,
-          negativeTitleRegex: state.negativeTitleRegex,
-          negativeContentRegex: state.negativeContentRegex,
-          isRegexActive: state.isRegexActive,
-          diffTemperature: state.diffTemperature,
-          includedFiles: state.includedFiles,
-          forceExcludedFiles: state.forceExcludedFiles
-        }
-      );
-      
-      setHasUnsavedChanges(false);
-      console.log(`[useGeneratePromptState] Saved all session state for ${sessionId}`);
-    } catch (error) {
-      console.error(`[useGeneratePromptState] Error saving session state:`, error);
-      
-      showNotification({
-        title: "Error saving session",
-        message: "Failed to save the session state. Please try again.",
-        type: "error"
-      });
-    } finally {
-      setIsFormSaving(false);
-    }
-  };
-
   // Get current session state (for creating a new session)
   const getCurrentSessionState = () => {
     return {
@@ -870,7 +932,8 @@ export function useGeneratePromptState() {
       isRegexActive: regexState.isRegexActive,
       diffTemperature,
       includedFiles: fileState.includedPaths,
-      forceExcludedFiles: fileState.excludedPaths
+      forceExcludedFiles: fileState.excludedPaths,
+      searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
     };
   };
 
@@ -894,7 +957,6 @@ export function useGeneratePromptState() {
     console.log(`[useGeneratePromptState][${sequence}] Step 4: Resetting main state variables`);
     setDiffTemperature(0.7);
     setSessionName("Untitled Session");
-    setIsFileSelectionsApplied(false);
     setError("");
     setIsStateLoaded(false);
     setHasUnsavedChanges(false);
@@ -902,13 +964,11 @@ export function useGeneratePromptState() {
     setIsRestoringSession(false);
     setIsSwitchingSession(false);
     
-    // Clear active session ID last
-    console.log(`[useGeneratePromptState][${sequence}] Step 5: Clearing session IDs`);
-    setActiveSessionId(null);
-    setSavedSessionId(null);
+    // No need to clear activeSessionId as it's now controlled by the context
+    console.log(`[useGeneratePromptState][${sequence}] Step 5: Active session ID is now controlled by the context`);
     
     console.log(`[useGeneratePromptState][${sequence}][${timestamp}] COMPLETED complete state reset`);
-  }, [fileState, regexState, taskState, setSavedSessionId]);
+  }, [fileState, regexState, taskState]);
 
   // Handler for setting Gemini API key
   const handleSetGeminiApiKey = (key: string) => {
@@ -955,7 +1015,7 @@ export function useGeneratePromptState() {
 
   return {
     // Session state
-    activeSessionId,
+    activeSessionId: contextActiveSessionId,
     isStateLoaded,
     isSwitchingSession,
     isRestoringSession, 
@@ -971,7 +1031,6 @@ export function useGeneratePromptState() {
     fileState,
     regexState,
     diffTemperature,
-    outputFormat,
     
     // Project data
     projectDirectory,
@@ -986,15 +1045,11 @@ export function useGeneratePromptState() {
     isSubmittingToGemini,
     geminiErrorMessage,
     
-    // File selections applied
-    isFileSelectionsApplied,
     
     // Action methods
-    setActiveSessionId: handleSetActiveSessionId,
     resetAllState,
     setSessionName: handleSessionNameChange,
     setDiffTemperature: handleSetDiffTemperature,
-    setOutputFormat,
     handleLoadSession,
     handleGenerateGuidance,
     saveSessionState: handleSaveSessionState,

@@ -19,184 +19,91 @@ export function useRegexState({
   onInteraction,
   setHasUnsavedChanges
 }: UseRegexStateProps) {
-  // State
+  // Constants
+  const REGEX_MAX_LENGTH = 500;
+
+  // State variables
   const [titleRegex, setTitleRegex] = useState("");
   const [contentRegex, setContentRegex] = useState("");
   const [negativeTitleRegex, setNegativeTitleRegex] = useState("");
   const [negativeContentRegex, setNegativeContentRegex] = useState("");
   const [isRegexActive, setIsRegexActive] = useState(true);
-  const [isGeneratingTaskRegex, setIsGeneratingTaskRegex] = useState(false);
-  const [regexGenerationError, setRegexGenerationError] = useState("");
+  
+  // Error states for regex validation
   const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
   const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [negativeTitleRegexError, setNegativeTitleRegexError] = useState<string | null>(null);
   const [negativeContentRegexError, setNegativeContentRegexError] = useState<string | null>(null);
+  
+  // State for regex generation via AI
+  const [isGeneratingTaskRegex, setIsGeneratingTaskRegex] = useState(false);
   const [generatingRegexJobId, setGeneratingRegexJobId] = useState<string | null>(null);
+  const [regexGenerationError, setRegexGenerationError] = useState<string | null>(null);
   
   // External hooks
   const { showNotification } = useNotification();
 
-  // Reset function to clear all regex state
+  // Reset function to clear state
   const reset = useCallback(() => {
     console.log('[RegexState] Resetting regex state');
     
-    // Reset pattern values
+    // Reset patterns
     setTitleRegex("");
     setContentRegex("");
     setNegativeTitleRegex("");
     setNegativeContentRegex("");
     
-    // Reset active state
-    setIsRegexActive(false);
-    
-    // Reset generation state
-    setIsGeneratingTaskRegex(false);
-    setGeneratingRegexJobId(null);
-    
-    // Reset errors
-    setRegexGenerationError("");
+    // Reset validation errors
     setTitleRegexError(null);
     setContentRegexError(null);
     setNegativeTitleRegexError(null);
     setNegativeContentRegexError(null);
-    
-    // Reset saved state reference
-    prevSavedStateRef.current = {
-      titleRegex: '',
-      contentRegex: '', 
-      negativeTitleRegex: '',
-      negativeContentRegex: '',
-      isRegexActive: false
-    };
   }, []);
-
-  // Validate regex pattern
-  const validateRegex = useCallback((pattern: string): boolean => {
-    if (!pattern.trim()) return true; // Empty patterns are valid
-    
-    try {
-      // Test if the pattern is valid by creating a RegExp object
-      new RegExp(pattern);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }, []);
-
-  // Save regex state
-  const saveRegexState = useCallback(async (sessionId: string | null) => {
-    if (!sessionId) return;
-    
-    try {
-      console.log(`[RegexState] Saving regex state for session: ${sessionId}`);
-      
-      // Add timestamp tracking to identify rapid calls
-      const now = Date.now();
-      const lastCallTime = (saveRegexState as any).lastCallTime || 0;
-      const timeSinceLastCall = now - lastCallTime;
-      (saveRegexState as any).lastCallTime = now;
-      
-      if (timeSinceLastCall < 5000) { // Check if less than 5 seconds since last call
-        console.warn(`[RegexState] Warning: saveRegexState called again after only ${timeSinceLastCall}ms`);
-      }
-      
-      await sessionSyncService.updateSessionState(
-        sessionId,
-        {
-          titleRegex,
-          contentRegex,
-          negativeTitleRegex,
-          negativeContentRegex,
-          isRegexActive
-        }
-      );
-    } catch (error) {
-      console.error(`[RegexState] Error saving regex state:`, error);
-    }
-  }, [titleRegex, contentRegex, negativeTitleRegex, negativeContentRegex, isRegexActive]);
   
-  // Create a debounced version of saveRegexState
-  const debouncedSaveRegexState = useCallback((sessionId: string | null) => {
-    const debouncedFn = debounce((id: string | null) => {
-      console.log('[RegexState] Debounced save regex state triggered');
-      saveRegexState(id);
-    }, 3500); // Increased from 2500ms to 3500ms to reduce frequency
-    
-    debouncedFn(sessionId);
-  }, [saveRegexState]);
-
-  // Track previous saved state to avoid unnecessary updates
-  const prevSavedStateRef = useRef({
-    titleRegex: '',
-    contentRegex: '', 
-    negativeTitleRegex: '',
-    negativeContentRegex: '',
-    isRegexActive: true
-  });
-
-  // Last save timestamp
-  const lastSaveTimeRef = useRef<number>(0);
-
-  // Helper to determine if regex state has meaningfully changed
-  const hasSignificantChanges = useCallback(() => {
-    // Only save if there are actual changes from what was last saved
-    const prevState = prevSavedStateRef.current;
-    
-    // Check if any field has actually changed
-    const titleChanged = titleRegex !== prevState.titleRegex;
-    const contentChanged = contentRegex !== prevState.contentRegex;
-    const negTitleChanged = negativeTitleRegex !== prevState.negativeTitleRegex;
-    const negContentChanged = negativeContentRegex !== prevState.negativeContentRegex;
-    const activeChanged = isRegexActive !== prevState.isRegexActive;
-    
-    // Very small changes (e.g., adding a single character) can wait longer
-    // Only trigger save if there's a significant change or enough time passed
-    const hasSubstantialChange = 
-      (titleChanged && Math.abs(titleRegex.length - prevState.titleRegex.length) > 5) ||
-      (contentChanged && Math.abs(contentRegex.length - prevState.contentRegex.length) > 5) ||
-      (negTitleChanged && Math.abs(negativeTitleRegex.length - prevState.negativeTitleRegex.length) > 5) ||
-      (negContentChanged && Math.abs(negativeContentRegex.length - prevState.negativeContentRegex.length) > 5) ||
-      activeChanged;
-      
-    const timeSinceLastSave = Date.now() - lastSaveTimeRef.current;
-    const enoughTimePassedForMinorChange = timeSinceLastSave > 10000; // 10 seconds
-    
-    return hasSubstantialChange || enoughTimePassedForMinorChange;
-  }, [contentRegex, isRegexActive, negativeTitleRegex, negativeContentRegex, titleRegex]);
-
-  // Queue save with optimizations
-  const queueSaveRegexState = useCallback((sessionId: string | null) => {
-    if (!sessionId) return;
-    
-    // Only trigger save if there are significant changes
-    if (hasSignificantChanges()) {
-      debouncedSaveRegexState(sessionId);
-      
-      // Update saved state reference and timestamp
-      prevSavedStateRef.current = {
-        titleRegex,
-        contentRegex,
-        negativeTitleRegex,
-        negativeContentRegex,
-        isRegexActive
-      };
-      lastSaveTimeRef.current = Date.now();
-    } else {
-      console.log('[RegexState] Skipping save - no significant changes detected');
+  // Utility function to validate regex without crashing
+  const validateRegex = useCallback((pattern: string): string | null => {
+    if (!pattern || pattern.trim() === "") {
+      return null;
     }
-  }, [debouncedSaveRegexState, hasSignificantChanges, titleRegex, contentRegex, negativeTitleRegex, negativeContentRegex, isRegexActive]);
+    
+    if (pattern.length > REGEX_MAX_LENGTH) {
+      return `Regex pattern is too long (max ${REGEX_MAX_LENGTH} characters)`;
+    }
+    
+    try {
+      // Check if regex is valid by creating it
+      new RegExp(pattern, 'i');
+      return null;
+    } catch (e) {
+      return `Invalid regex: ${(e as Error).message}`;
+    }
+  }, []);
 
-  // Handle title regex change
+  // Set API for accessing regex patterns from outside
+  // All setter functions include validation
+  const setTitleRegexWithValidation = (value: string) => {
+    handleTitleRegexChange(value);
+  };
+  
+  const setContentRegexWithValidation = (value: string) => {
+    handleContentRegexChange(value);
+  };
+  
+  const setNegativeTitleRegexWithValidation = (value: string) => {
+    handleNegativeTitleRegexChange(value);
+  };
+  
+  const setNegativeContentRegexWithValidation = (value: string) => {
+    handleNegativeContentRegexChange(value);
+  };
+
+  // Handler for title regex changes
   const handleTitleRegexChange = useCallback((value: string) => {
     setTitleRegex(value);
-    
-    // Validate the regex pattern
-    if (!validateRegex(value)) {
-      setTitleRegexError("Invalid regex pattern");
-    } else {
-      setTitleRegexError(null);
-    }
-    
+    const error = validateRegex(value);
+    setTitleRegexError(error);
+
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
@@ -204,24 +111,15 @@ export function useRegexState({
     if (setHasUnsavedChanges) {
       setHasUnsavedChanges(true);
     }
-    
-    // Use optimized save queue instead of debounced save
-    if (activeSessionId) {
-      queueSaveRegexState(activeSessionId);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges, activeSessionId, queueSaveRegexState]);
+  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
 
-  // Handle content regex change
+  // Handler for content regex changes
   const handleContentRegexChange = useCallback((value: string) => {
     setContentRegex(value);
-    
-    // Validate the regex pattern
-    if (!validateRegex(value)) {
-      setContentRegexError("Invalid regex pattern");
-    } else {
-      setContentRegexError(null);
-    }
-    
+    const error = validateRegex(value);
+    setContentRegexError(error);
+
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
@@ -229,24 +127,15 @@ export function useRegexState({
     if (setHasUnsavedChanges) {
       setHasUnsavedChanges(true);
     }
-    
-    // Use optimized save queue instead of debounced save
-    if (activeSessionId) {
-      queueSaveRegexState(activeSessionId);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges, activeSessionId, queueSaveRegexState]);
+  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
 
-  // Handle negative title regex change
+  // Handler for negative title regex changes
   const handleNegativeTitleRegexChange = useCallback((value: string) => {
     setNegativeTitleRegex(value);
-    
-    // Validate the regex pattern
-    if (!validateRegex(value)) {
-      setNegativeTitleRegexError("Invalid regex pattern");
-    } else {
-      setNegativeTitleRegexError(null);
-    }
-    
+    const error = validateRegex(value);
+    setNegativeTitleRegexError(error);
+
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
@@ -254,24 +143,15 @@ export function useRegexState({
     if (setHasUnsavedChanges) {
       setHasUnsavedChanges(true);
     }
-    
-    // Use optimized save queue instead of debounced save
-    if (activeSessionId) {
-      queueSaveRegexState(activeSessionId);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges, activeSessionId, queueSaveRegexState]);
+  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
 
-  // Handle negative content regex change
+  // Handler for negative content regex changes
   const handleNegativeContentRegexChange = useCallback((value: string) => {
     setNegativeContentRegex(value);
-    
-    // Validate the regex pattern
-    if (!validateRegex(value)) {
-      setNegativeContentRegexError("Invalid regex pattern");
-    } else {
-      setNegativeContentRegexError(null);
-    }
-    
+    const error = validateRegex(value);
+    setNegativeContentRegexError(error);
+
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
@@ -279,17 +159,13 @@ export function useRegexState({
     if (setHasUnsavedChanges) {
       setHasUnsavedChanges(true);
     }
-    
-    // Use optimized save queue instead of debounced save
-    if (activeSessionId) {
-      queueSaveRegexState(activeSessionId);
-    }
-  }, [validateRegex, onInteraction, setHasUnsavedChanges, activeSessionId, queueSaveRegexState]);
+  }, [validateRegex, onInteraction, setHasUnsavedChanges]);
 
   // Toggle regex active state
-  const handleToggleRegexActive = useCallback((value: boolean) => {
-    setIsRegexActive(value);
+  const handleToggleRegexActive = useCallback((newValue?: boolean) => {
+    setIsRegexActive(prev => typeof newValue === 'boolean' ? newValue : !prev);
     
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
@@ -297,19 +173,7 @@ export function useRegexState({
     if (setHasUnsavedChanges) {
       setHasUnsavedChanges(true);
     }
-    
-    // This is a boolean toggle, always save immediately  
-    if (activeSessionId) {
-      saveRegexState(activeSessionId);
-      
-      // Update saved state reference
-      prevSavedStateRef.current = {
-        ...prevSavedStateRef.current,
-        isRegexActive: value
-      };
-      lastSaveTimeRef.current = Date.now();
-    }
-  }, [onInteraction, setHasUnsavedChanges, activeSessionId, saveRegexState]);
+  }, [onInteraction, setHasUnsavedChanges]);
 
   // Generate regex from task description
   const handleGenerateRegexFromTask = useCallback(async () => {
@@ -374,17 +238,18 @@ export function useRegexState({
     }
   }, [taskDescription, isGeneratingTaskRegex, showNotification, activeSessionId]);
 
-  // Clear all regex patterns
+  // Clear all patterns
   const handleClearPatterns = useCallback(() => {
     setTitleRegex("");
     setContentRegex("");
     setNegativeTitleRegex("");
     setNegativeContentRegex("");
-    setTitleRegexError(null);
-    setContentRegexError(null);
-    setNegativeTitleRegexError(null);
-    setNegativeContentRegexError(null);
+    setTitleRegexError("");
+    setContentRegexError("");
+    setNegativeTitleRegexError("");
+    setNegativeContentRegexError("");
     
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
@@ -392,13 +257,7 @@ export function useRegexState({
     if (setHasUnsavedChanges) {
       setHasUnsavedChanges(true);
     }
-    
-    showNotification({
-      title: "Regex patterns cleared",
-      message: "All regex patterns have been cleared.",
-      type: "success"
-    });
-  }, [onInteraction, setHasUnsavedChanges, showNotification]);
+  }, [onInteraction, setHasUnsavedChanges]);
 
   // Apply regex patterns to state
   const applyRegexPatterns = useCallback(({
@@ -457,7 +316,6 @@ export function useRegexState({
     handleGenerateRegexFromTask,
     handleClearPatterns,
     applyRegexPatterns,
-    saveRegexState,
     validateRegex,
     reset
   }), [
@@ -481,7 +339,6 @@ export function useRegexState({
     handleGenerateRegexFromTask,
     handleClearPatterns,
     applyRegexPatterns,
-    saveRegexState,
     validateRegex,
     reset
   ]);

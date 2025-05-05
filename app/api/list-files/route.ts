@@ -3,77 +3,185 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { glob } from 'glob';
 
+const DEFAULT_EXCLUDED_DIRS = ['node_modules', '.git', '.next', 'dist', 'build'];
+
+interface FileStats {
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+  birthtimeMs: number;
+}
+
 export async function POST(request: Request) {
   try {
-    const { directory, pattern = '**/*', includeStats = false } = await request.json();
+    const { directory, pattern = '**/*', includeStats = false, exclude = DEFAULT_EXCLUDED_DIRS } = await request.json();
     
+    // Validate directory parameter
     if (!directory) {
+      console.warn('Missing directory parameter in request');
       return NextResponse.json(
         { error: 'Directory is required' },
         { status: 400 }
       );
     }
 
+    // Validate pattern
+    if (typeof pattern !== 'string') {
+      console.warn('Invalid pattern parameter in request:', pattern);
+      return NextResponse.json(
+        { error: 'Pattern must be a string' },
+        { status: 400 }
+      );
+    }
+    
+    // Normalize directory path to prevent directory traversal attacks
+    const normalizedDir = path.normalize(directory);
+    
+    // Basic validation: ensure directory is absolute and doesn't contain suspicious patterns
+    if (!path.isAbsolute(normalizedDir)) {
+      console.warn(`Directory must be an absolute path: ${normalizedDir}`);
+      return NextResponse.json(
+        { error: 'Directory must be an absolute path' },
+        { status: 400 }
+      );
+    }
+    
+    // Extra check for directory traversal attempts
+    if (normalizedDir.includes('..')) {
+      console.warn(`Possible directory traversal attempt detected: ${normalizedDir}`);
+      return NextResponse.json(
+        { error: 'Invalid directory path' },
+        { status: 400 }
+      );
+    }
+
     try {
-      // Make sure directory exists
-      await fs.access(directory);
+      console.log(`[list-files] Checking directory access: ${normalizedDir}`);
+      // Make sure directory exists and is accessible
+      await fs.access(normalizedDir, fs.constants.R_OK);
+      
+      // Get directory stats to ensure it's actually a directory
+      const dirStats = await fs.stat(normalizedDir);
+      if (!dirStats.isDirectory()) {
+        console.error(`[list-files] Path exists but is not a directory: ${normalizedDir}`);
+        return NextResponse.json(
+          { error: 'Path exists but is not a directory' },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[list-files] Finding files in ${normalizedDir} with pattern "${pattern}"`);
+      
+      // Prepare glob options
+      const globOptions = { 
+        cwd: normalizedDir,
+        dot: false,     // Skip dotfiles by default
+        nodir: true,    // Only include files, not directories
+        absolute: true, // Return absolute paths
+        ignore: Array.isArray(exclude) ? exclude.map(dir => `**/${dir}/**`) : undefined
+      };
       
       // Use glob to find files matching the pattern - glob v11 returns promises directly
-      const files = await glob(pattern, { 
-        cwd: directory,
-        dot: false,
-        nodir: true,
-        absolute: true
-      });
+      const files = await glob(pattern, globOptions);
       
-      let stats: { size: number; mtimeMs: number; ctimeMs: number; birthtimeMs: number }[] = [];
+      console.log(`[list-files] Found ${files.length} files in ${normalizedDir}`);
       
       // Get file stats if requested
-      if (includeStats) {
+      let stats: FileStats[] = [];
+      let validFiles: string[] = files;
+      
+      if (includeStats && files.length > 0) {
+        console.log(`[list-files] Getting stats for ${files.length} files`);
+        
+        // Create a map to maintain the relationship between files and their stats
+        const fileStatsMap = new Map<string, FileStats | null>();
+        
+        // Get stats for all files
         const statsWithNulls = await Promise.all(
           files.map(async (file) => {
             try {
               const stat = await fs.stat(file);
-              return {
+              const fileStats = {
                 size: stat.size,
                 mtimeMs: stat.mtimeMs,
                 ctimeMs: stat.ctimeMs,
                 birthtimeMs: stat.birthtimeMs
               };
+              fileStatsMap.set(file, fileStats);
+              return fileStats;
             } catch (err) {
-              console.error(`Error getting stats for ${file}:`, err);
+              console.error(`[list-files] Error getting stats for ${file}:`, err);
+              fileStatsMap.set(file, null);
               return null;
             }
           })
         );
         
-        // Filter out null values
-        stats = statsWithNulls.filter(stat => stat !== null) as { size: number; mtimeMs: number; ctimeMs: number; birthtimeMs: number }[];
+        // Filter out files with failed stats if includeStats is true
+        validFiles = files.filter(file => fileStatsMap.get(file) !== null);
+        
+        // Get the stats in the same order as validFiles
+        stats = validFiles.map(file => fileStatsMap.get(file)).filter(Boolean) as FileStats[];
+        
+        console.log(`[list-files] Successfully got stats for ${stats.length} of ${files.length} files`);
+        
+        // If the number of valid files is significantly less than the original count, log a warning
+        if (validFiles.length < files.length * 0.9) { // Less than 90% success rate
+          console.warn(`[list-files] Warning: Only ${validFiles.length} of ${files.length} files (${((validFiles.length / files.length) * 100).toFixed(1)}%) have valid stats. Some files may be unreadable.`);
+        }
       }
       
+      // Return success response with valid files and stats
       return NextResponse.json({ 
-        files,
-        ...(includeStats ? { stats } : {})
+        files: includeStats ? validFiles : files, // If includeStats is true, only return files that have valid stats
+        ...(includeStats ? { stats } : {}),
+        ...(includeStats && validFiles.length < files.length 
+            ? { 
+                warning: `${files.length - validFiles.length} files were excluded due to stat errors`,
+                totalFoundBeforeFiltering: files.length 
+              } 
+            : {})
       });
     } catch (error) {
-      console.error('Error listing files:', error);
+      console.error('[list-files] Error listing files:', error);
       
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      // Handle specific error cases with appropriate status codes
+      const errObj = error as NodeJS.ErrnoException;
+      
+      if (errObj.code === 'ENOENT') {
+        console.error(`[list-files] Directory not found: ${directory}`);
         return NextResponse.json(
           { error: 'Directory not found' },
           { status: 404 }
         );
       }
       
+      if (errObj.code === 'EACCES') {
+        console.error(`[list-files] Permission denied accessing directory: ${directory}`);
+        return NextResponse.json(
+          { error: 'Permission denied accessing directory' },
+          { status: 403 }
+        );
+      }
+      
+      if (errObj.code === 'ETIMEDOUT' || errObj.code === 'ECONNREFUSED' || errObj.code === 'EHOSTUNREACH') {
+        console.error(`[list-files] Network error: ${errObj.code}`);
+        return NextResponse.json(
+          { error: `Network error: ${errObj.code}` },
+          { status: 503 }
+        );
+      }
+      
+      // Generic error case
       return NextResponse.json(
-        { error: `Failed to list files: ${(error as Error).message}` },
+        { error: `Failed to list files: ${errObj.message || 'Unknown error'}` },
         { status: 500 }
       );
     }
   } catch (error) {
-    console.error('Error in list-files API route:', error);
+    console.error('[list-files] Error parsing request:', error);
     return NextResponse.json(
-      { error: 'Invalid request' },
+      { error: 'Invalid request format' },
       { status: 400 }
     );
   }

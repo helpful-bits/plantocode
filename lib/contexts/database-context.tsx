@@ -57,6 +57,9 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(false);
   const [initAttempted, setInitAttempted] = useState<boolean>(false);
   const [healthCheckAttempts, setHealthCheckAttempts] = useState<number>(0);
+  
+  // Use a ref to track if initialization has been started, regardless of component re-renders
+  const initStartedRef = React.useRef<boolean>(false);
 
   // Function to trigger the database error modal - wrapped in useCallback
   const triggerDatabaseErrorModal = useCallback((message: string) => {
@@ -186,17 +189,22 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         checkDatabaseHealthFnChanged: !!checkDatabaseHealth,
         initAttempted,
         triggerDatabaseErrorModalFnChanged: !!triggerDatabaseErrorModal,
+        initStarted: initStartedRef.current
       }
     );
     
+    // Check the ref to see if initialization has already started
+    if (initStartedRef.current) {
+      console.log('[DatabaseContext] Skipping database initialization because initStartedRef.current is true');
+      return;
+    }
+    
+    // Immediately mark initialization as started to prevent duplicate calls
+    // This happens even before the async initialization begins
+    initStartedRef.current = true;
+    
     const initDatabase = async () => {
       try {
-        // Only try to initialize once
-        if (initAttempted) {
-          console.log('[DatabaseContext] Skipping database initialization because initAttempted is true');
-          return;
-        }
-        
         console.log('[DatabaseContext] Starting database initialization');
         setInitAttempted(true);
         
@@ -240,8 +248,10 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
       console.log('[DatabaseContext] Init effect cleanup - component unmounting');
+      // We intentionally do NOT reset initStartedRef here because we want to
+      // prevent re-initialization even after unmount/remount cycles
     };
-  }, [checkDatabaseHealth, initAttempted, triggerDatabaseErrorModal]);
+  }, [checkDatabaseHealth, triggerDatabaseErrorModal, initAttempted]);
 
   // Create context value
   const contextValue: DatabaseContextType = {

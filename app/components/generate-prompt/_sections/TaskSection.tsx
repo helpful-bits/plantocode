@@ -134,7 +134,7 @@ export default function TaskSection({ state, actions }: TaskSectionProps) {
                 <Switch
                   id="search-files-toggle"
                   checked={searchSelectedFilesOnly}
-                  onCheckedChange={toggleSearchSelectedFilesOnly}
+                  onCheckedChange={() => toggleSearchSelectedFilesOnly()}
                   title={searchSelectedFilesOnly ? "Search in selected files only" : "Search in all files"}
                 />
               </div>

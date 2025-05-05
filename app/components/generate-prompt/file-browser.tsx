@@ -43,10 +43,6 @@ interface FileBrowserProps {
   loadingMessage?: string; // Add loading message prop
   onAddPath?: (path: string) => void; // New prop for adding path to textarea
   saveFileSelections?: () => Promise<void>; // Update return type
-  // Legacy prop names
-  files?: FilesMap; // Keep for backward compatibility
-  onFilesChange?: (newMap: FilesMap) => void; // Keep for backward compatibility
-  searchFilter?: string;
   // New props for showOnlySelected state synchronization
   showOnlySelected?: boolean;
   onShowOnlySelectedChange?: () => void;
@@ -54,45 +50,64 @@ interface FileBrowserProps {
 }
 
 const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
+const DEBUG_LOGS = process.env.NODE_ENV === 'development';
 
 export default function FileBrowser({
   allFilesMap: propsAllFilesMap,
   fileContentsMap = {}, // Default to empty object
-  files: propsFiles,
-  onFilesMapChange, // Use this preferred prop name
-  onFilesChange,
+  onFilesMapChange,
   searchTerm: propSearchTerm,
-  searchFilter,
   onSearchChange = () => {},
   titleRegexError,
-  contentRegexError, // Keep contentRegexError prop
+  contentRegexError,
   negativeTitleRegexError,
   negativeContentRegexError,
-  onTitleRegexErrorChange = () => {}, // Add default no-op function
-  onContentRegexErrorChange = () => {}, // Add default no-op function
+  onTitleRegexErrorChange = () => {},
+  onContentRegexErrorChange = () => {},
   onNegativeTitleRegexErrorChange = () => {},
   onNegativeContentRegexErrorChange = () => {},
-  titleRegex, // Keep titleRegex prop
+  titleRegex,
   contentRegex,
   negativeTitleRegex,
   negativeContentRegex,
   isRegexActive,
   onInteraction,
-  refreshFiles, // Add the refreshFiles prop
+  refreshFiles,
   isLoading,
-  loadingMessage = "", // Add default empty string for loadingMessage
-  onAddPath, // Add new prop
+  loadingMessage = "",
+  onAddPath,
   showOnlySelected: propShowOnlySelected,
   onShowOnlySelectedChange,
-  saveFileSelections, // Add saveFileSelections prop
+  saveFileSelections,
   onToggleSelection,
-}: FileBrowserProps) { // Keep FileBrowserProps type
+}: FileBrowserProps) {
   const { projectDirectory } = useProject();
   
-  // Normalize props to use both naming conventions
-  const allFilesMap = useMemo(() => propsAllFilesMap || propsFiles || {}, [propsAllFilesMap, propsFiles]);
-  // Handle legacy search prop name
-  const searchTerm = propSearchTerm || searchFilter || "";
+  // Only log in development mode
+  if (DEBUG_LOGS) {
+    console.log(`[FileBrowser] Component rendered with:
+      - projectDirectory: ${projectDirectory || 'not set'}
+      - allFilesMap size: ${propsAllFilesMap ? Object.keys(propsAllFilesMap).length : 0}
+      - isLoading: ${isLoading}
+    `);
+  }
+  
+  // Get file map
+  const allFilesMap = useMemo(() => {
+    const result = propsAllFilesMap || {};
+    return result;
+  }, [propsAllFilesMap]);
+  
+  // Log file map details separately (outside of memo)
+  useEffect(() => {
+    if (DEBUG_LOGS) {
+      const fileCount = Object.keys(allFilesMap).length;
+      console.log(`[FileBrowser] FilesMap has ${fileCount} entries, isLoading=${isLoading}`);
+    }
+  }, [allFilesMap, isLoading]);
+  
+  // Get search term
+  const searchTerm = propSearchTerm || "";
 
   const [localShowOnlySelected, setLocalShowOnlySelected] = useState<boolean>(false);
   
@@ -181,13 +196,10 @@ export default function FileBrowser({
     if (onFilesMapChange) {
       onFilesMapChange(newMap);
     }
-    if (onFilesChange) {
-      onFilesChange(newMap);
-    }
     if (onInteraction) {
       onInteraction();
     }
-  }, [onFilesMapChange, onFilesChange, onInteraction]);
+  }, [onFilesMapChange, onInteraction]);
   
   // Define handleSearchChangeInternal before it's used
   const handleSearchChangeInternal = (value: string) => {
@@ -285,11 +297,12 @@ export default function FileBrowser({
 
   // Filter files based on search and showOnlySelected
   const filteredDisplayFiles = useMemo(() => {
-    if (!allFilesMap || Object.keys(allFilesMap).length === 0) return []; // Guard against empty/null map
+    // Skip filtering if files are empty. However, if we're loading but already have files,
+    // we still want to show those with a loading indicator rather than an empty state
+    if (!allFilesMap || Object.keys(allFilesMap).length === 0) return []; 
+    
     let filesToFilter = Object.values(allFilesMap);
     let filteredFiles: FileInfo[] = [];
-
-    // console.log(`[FileBrowser Memo] Initial filesToFilter count: ${filesToFilter.length}`); // Debug log
 
     // --- 1. Filter by Search Term ---
     const lowerSearchTerm = searchTerm.toLowerCase();
@@ -481,7 +494,10 @@ export default function FileBrowser({
 
   // Sort files for display - group by directories first then alphabetically
   const displayedFiles = useMemo(() => {
-    return filteredDisplayFiles.sort((a, b) => {
+    // Only skip if no files to display
+    if (filteredDisplayFiles.length === 0) return [];
+    
+    return [...filteredDisplayFiles].sort((a, b) => {
       // Get directory parts
       const aDirParts = a.path.split('/'); // Split path into parts
       const bDirParts = b.path.split('/');
@@ -497,37 +513,38 @@ export default function FileBrowser({
       
       // If directories are the same, compare by filename
       return a.path.localeCompare(b.path);
-    }); // Close sort function
+    });
   }, [filteredDisplayFiles]);
 
   const includedCount = useMemo(() => 
-    allFilesMap 
-      ? Object.values(allFilesMap).filter((f) => f.included && !f.forceExcluded).length // Correct calculation
-      : 0, 
+    !allFilesMap 
+      ? 0 
+      : Object.values(allFilesMap).filter((f) => f.included && !f.forceExcluded).length,
     [allFilesMap]
   );
   
   const totalFilesCount = useMemo(() => 
-    allFilesMap ? Object.keys(allFilesMap).length : 0, // Correct calculation
+    !allFilesMap 
+      ? 0 
+      : Object.keys(allFilesMap).length,
     [allFilesMap]
   );
 
-  // Log the allFilesMap for debugging
+  // Track file changes for debugging (only in development mode)
   useEffect(() => {
+    if (!DEBUG_LOGS) return;
+    
     const fileCount = Object.keys(allFilesMap).length;
     const selectedCount = Object.values(allFilesMap).filter(f => f.included && !f.forceExcluded).length;
-    
-    console.log(`[FileBrowser] Files updated: ${fileCount} total files, ${selectedCount} selected files`);
     
     // Create a unique hash of the file state for change detection
     const mapHash = JSON.stringify({
       count: fileCount,
-      selected: selectedCount,
-      paths: Object.keys(allFilesMap).slice(0, 5) // Just log first 5 paths for brevity
+      selected: selectedCount
     });
     
     if (lastRenderedMapRef.current !== mapHash) {
-      console.log(`[FileBrowser] File list changed from previous render`);
+      console.log(`[FileBrowser] Files updated: ${fileCount} total files, ${selectedCount} selected files`);
       lastRenderedMapRef.current = mapHash;
     }
   }, [allFilesMap]);
@@ -556,7 +573,16 @@ export default function FileBrowser({
 
   return (
     // Use key to force re-render when projectDirectory changes, ensuring cache state is reset
-    <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm"> {/* Added padding and border */}
+    <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm"> 
+      {/* Debug data to help troubleshoot issues */}
+      {DEBUG_LOGS && (
+        <div className="bg-gray-100 text-xs font-mono p-2 rounded mb-2 text-gray-700">
+          allFilesMap: {Object.keys(allFilesMap).length} files | 
+          filtered: {filteredDisplayFiles.length} | 
+          displayed: {displayedFiles.length} | 
+          loading: {isLoading ? 'yes' : 'no'}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <div className="relative flex-1"> {/* Added relative positioning */}
           <Input
@@ -659,17 +685,72 @@ export default function FileBrowser({
       )}
 
       {/* File list display */}
-      {isLoading ? (
-        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <div className="text-center"> {/* Center text */}
-            <p className="font-medium">Loading files...</p>
-            {loadingMessage && <p className="text-sm">{loadingMessage}</p>}
+      <div className="border rounded bg-background/50 p-2 h-[450px] overflow-auto relative">
+        {/* Loading overlay that appears on top of the file list */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-3 text-muted-foreground z-10">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <div className="text-center">
+              <p className="font-medium">Loading files...</p>
+              {loadingMessage && <p className="text-sm">{loadingMessage}</p>}
+            </div>
           </div>
-        </div>
-      ) : displayedFiles.length > 0 ? (
-        <div className="border rounded bg-background/50 p-2 h-[450px] overflow-auto">
-          {displayedFiles.map((file) => {
+        )}
+        
+        {/* Debug info */}
+        {DEBUG_LOGS && (
+          <div className="text-xs bg-gray-100 p-2 mb-2 rounded font-mono">
+            displayedFiles: {displayedFiles.length},
+            filteredDisplayFiles: {filteredDisplayFiles.length},
+            totalFilesCount: {totalFilesCount},
+            isLoading: {isLoading ? 'true' : 'false'}
+          </div>
+        )}
+        
+        {/* Empty state message */}
+        {displayedFiles.length === 0 && !isLoading && (
+          <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
+            {!projectDirectory ? (
+              <>
+                <FolderClosed className="h-8 w-8" />
+                <p>Please select a project directory first</p>
+              </>
+            ) : searchTerm || (isRegexActive && (titleRegex || contentRegex || negativeTitleRegex || negativeContentRegex)) ? (
+              <>
+                <Info className="h-8 w-8" />
+                <p>No files match your search criteria</p>
+              </>
+            ) : totalFilesCount === 0 ? (
+              <div className="text-center">
+                <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
+                <p className="font-medium text-amber-500">No files found in the selected directory</p>
+                <p className="text-xs mt-2 text-muted-foreground">Project directory: {projectDirectory || "none"}</p>
+                
+                <Button 
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={handleManualRefresh}
+                  className="w-full mt-4"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh Files
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Info className="h-8 w-8" />
+                <p>No files to display</p>
+                <p className="text-xs text-muted-foreground">This is an unexpected state. Please try refreshing.</p>
+              </>
+            )}
+          </div>
+        )}
+        
+        {/* File list */}
+        {displayedFiles.length > 0 && (
+          <>
+            {displayedFiles.map((file) => {
             // Extract directory part for grouping
             const pathParts = file.path.split('/');
             const fileName = pathParts.pop() || '';
@@ -723,7 +804,7 @@ export default function FileBrowser({
                       file.forceExcluded && "line-through text-muted-foreground/80"
                     )}
                     onClick={() => file.forceExcluded ? handleToggleForceExcludeOffAndInclude(file.path) : handleToggleFile(file.path)}
-                    title={`${file.path}${file.forceExcluded ? ' (force excluded)' : file.included ? ' (included)' : ' (not included)'}`}
+                    title={`${file.path}${file.forceExcluded ? " (force excluded)" : file.included ? " (included)" : " (not included)"}`}
                   >
                     {dirPath ? (
                       <> {/* Show directory path if it exists */}
@@ -750,44 +831,9 @@ export default function FileBrowser({
               </div>
             );
           })}
-        </div>
-      ) : (searchTerm || (isRegexActive && (titleRegex || contentRegex))) ? ( // Condition for no matches
-        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-          <Info className="h-8 w-8" />
-          <p>No files match your search criteria</p>
-        </div>
-      ) : !projectDirectory ? (
-        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-          <FolderClosed className="h-8 w-8" />
-          <p>Please select a project directory first</p>
-        </div>
-      ) : totalFilesCount === 0 ? ( 
-        // Modified UI for when no files are found - simplified without auto-retry references
-        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3">
-          <AlertCircle className="h-8 w-8 text-amber-500" />
-          <div className="text-center">
-            <p className="font-medium text-amber-500">No files loaded in the selected directory</p>
-            <p className="text-sm mt-1">This might happen during hot module reloading</p>
-            <p className="text-xs mt-2 text-muted-foreground">Project directory: {projectDirectory || "none"}</p>
-            
-            <Button 
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleManualRefresh}
-              className="mt-3"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh Files
-            </Button>
-          </div>
-        </div>
-      ) : ( // Fallback case
-        <div className="border rounded bg-background p-6 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-          <Info className="h-8 w-8" />
-          <p>No files match the current filters</p>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

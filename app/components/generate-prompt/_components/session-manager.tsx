@@ -4,7 +4,12 @@ declare global {
   interface Window {
     debugSessionState?: (sessionId: string) => void;
     sessionMonitor?: {
-      record: (sessionId: string) => void;
+      record: (sessionId: string | null, operation?: string, source?: string) => void;
+      log?: any[];
+      getSessionHistory?: (sessionId: string) => any[];
+      getStats?: () => any;
+      start?: () => void;
+      stop?: () => any[];
     };
   }
 }
@@ -44,7 +49,6 @@ export interface SessionManagerProps {
   getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
   onLoadSession: (session: Session) => void;
   activeSessionId: string | null;
-  setActiveSessionIdExternally: (id: string | null) => void;
   onSessionNameChange: (name: string) => void;
   sessionInitialized: boolean;
   onSessionStatusChange?: (hasActiveSession: boolean) => void;
@@ -91,13 +95,17 @@ const SessionManager = ({
   getCurrentSessionState,
   onLoadSession,
   activeSessionId: externalActiveSessionId,
-  setActiveSessionIdExternally,
   onSessionNameChange,
   sessionInitialized: externalSessionInitialized,
   onSessionStatusChange,
   onActiveSessionIdChange,
 }: SessionManagerProps) => {
-  const { activeSessionId: projectActiveSessionId, setActiveSessionId: setProjectActiveSessionId } = useProject();
+  const { 
+  activeSessionId: projectActiveSessionId, 
+  setActiveSessionId: setProjectActiveSessionId,
+  isSwitchingSession: globalIsSwitching,
+  setIsSwitchingSession: setGlobalSwitchingState
+} = useProject();
   const { showNotification } = useNotification();
   
   const [isPending, startTransition] = useTransition();
@@ -106,7 +114,6 @@ const SessionManager = ({
   const [sessionNameInput, setSessionNameInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncingState, setIsSyncingState] = useState(false);
-  const [isSwitchingSession, setIsSwitchingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editSessionNameInput, setEditSessionNameInput] = useState("");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -137,16 +144,15 @@ const SessionManager = ({
     
     console.log(`[SessionManager] Updating active session ID in context: ${sessionId || 'null'}`);
     
-    // Pass both the session ID and project directory to make sure we update the correct localStorage key
-    // This ensures we're setting the active session for the current project context
-    setProjectActiveSessionId(sessionId, projectDirectory);
-    
-    // Also update the active session in the generate prompt state
-    setActiveSessionIdExternally(sessionId);
+    // Update the active session ID in the project context
+    setProjectActiveSessionId(sessionId);
     
     // Keep internal state synchronized
     setActiveSessionIdInternal(sessionId);
-  }, [projectDirectory, setProjectActiveSessionId, setActiveSessionIdExternally]);
+    
+    // Notify parent components about the session ID change
+    onActiveSessionIdChange(sessionId);
+  }, [projectDirectory, setProjectActiveSessionId, onActiveSessionIdChange]);
   
   // Handle project directory changes specifically
   useEffect(() => {
@@ -532,20 +538,54 @@ const SessionManager = ({
 
   // Handle loading a session
   const currentSaveController = useRef<AbortController | null>(null);
+  const currentLoadController = useRef<AbortController | null>(null);
 
   const handleLoadSession = async (session: Session) => {
     const startTime = Date.now();
     const startTimestamp = new Date(startTime).toISOString();
-    console.log(`[SessionManager][${startTimestamp}] 🔄 SESSION SWITCH STARTED: Changing from ${activeSessionId || 'null'} to ${session.id} (${session.name})`);
+    const operationId = `load_${Math.random().toString(36).substring(2, 10)}`;
+    
+    // Import the session debug utilities - using dynamic import to avoid circular dependencies
+    let sessionSwitchLogger: any = null;
+    try {
+      const { sessionSwitchLogger: importedLogger } = await import('@/lib/utils/session-debug');
+      sessionSwitchLogger = importedLogger;
+    } catch (error) {
+      console.warn(`[SessionManager] Could not import sessionSwitchLogger, will use fallback logging`);
+    }
+    
+    // Create a logger for this specific session switch
+    const switchLogger = sessionSwitchLogger ? 
+      sessionSwitchLogger.startSwitch(activeSessionId, session.id, 'SessionManager', operationId) :
+      null;
+    
+    console.log(`[SessionManager][${startTimestamp}][${operationId}] 🔄 SESSION SWITCH STARTED: Changing from ${activeSessionId || 'null'} to ${session.id} (${session.name})`);
+    
+    // Collect and log debug information about current state if available
+    if (typeof window !== 'undefined' && window.debugSessionState) {
+      window.debugSessionState(activeSessionId || 'null');
+      console.log(`[SessionManager][${startTimestamp}][${operationId}] Recorded debug state for current session before switching`);
+    }
     
     if (session.id === activeSessionId) {
-      console.log(`[SessionManager] Session ${session.id} is already active, skipping load`);
+      console.log(`[SessionManager][${operationId}] Session ${session.id} is already active, skipping load`);
+      
+      // Log the canceled switch
+      if (switchLogger) {
+        switchLogger.cancel('Session already active');
+      }
       return;
     }
     
     // Validate that session.id is a string
     if (!session.id || typeof session.id !== 'string') {
-      console.error(`[SessionManager] Invalid session ID type: ${typeof session.id}, value:`, session.id);
+      console.error(`[SessionManager][${operationId}] Invalid session ID type: ${typeof session.id}, value:`, session.id);
+      
+      // Log the error in session switching
+      if (switchLogger) {
+        switchLogger.complete(false, new Error(`Invalid session ID type: ${typeof session.id}`));
+      }
+      
       showNotification({
         title: "Error",
         message: "Invalid session ID format",
@@ -555,32 +595,38 @@ const SessionManager = ({
     }
     
     try {
-      // Set switching state immediately
-      setIsSwitchingSession(true);
-      console.log(`[SessionManager][${startTimestamp}] Step 1: Setting isSwitchingSession=true`);
+      // If there's a previous load request in progress, abort it
+      if (currentLoadController.current) {
+        console.log(`[SessionManager][${operationId}] Aborting previous load operation before starting new one`);
+        currentLoadController.current.abort();
+        currentLoadController.current = null;
+      }
       
-      // Set syncing state to show loading indicator
+      // Create a new controller for this load operation
+      currentLoadController.current = new AbortController();
+      const loadSignal = currentLoadController.current.signal;
+      
+      // Step 1: Set switching state and syncing flags immediately
+      setGlobalSwitchingState(true);
       setIsSyncingState(true);
-      console.log(`[SessionManager][${startTimestamp}] Step 2: Setting isSyncingState=true to display loading indicator`);
+      console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 1: Setting globalIsSwitching=true, isSyncingState=true`);
       
-      // Cancel any previous session
+      // Inform sync service that we're starting a session switch for prioritization
+      try {
+        sessionSyncService.markSessionSwitching(session.id, activeSessionId);
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] Marked session ${session.id} as switching target (previous: ${activeSessionId || 'null'})`);
+      } catch (error) {
+        // Ignore errors here, the method might not exist in older versions
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] sessionSyncService.markSessionSwitching not available, continuing without prioritization`);
+      }
+      
+      // Step 2: Save the current session (optional)
       if (activeSessionId) {
         try {
-          console.log(`[SessionManager][${startTimestamp}] Step 3: Saving and clearing previous active session: ${activeSessionId}`);
+          console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 2: Saving previous active session: ${activeSessionId}`);
           
           // Simply use String for type safety
           const sessionIdStr = String(activeSessionId);
-          
-          // Abort any previous save operation that might still be in progress
-          if (currentSaveController.current) {
-            console.log(`[SessionManager][${startTimestamp}] Step 3.1: Aborting previous save operation for session ${sessionIdStr}`);
-            currentSaveController.current.abort();
-          }
-          
-          // Create a new controller for this save operation
-          currentSaveController.current = new AbortController();
-          const signal = currentSaveController.current.signal;
-          console.log(`[SessionManager][${startTimestamp}] Step 3.2: Created new AbortController for save operation of session ${sessionIdStr}`);
           
           // Get current state from parent component
           const currentSessionState = getCurrentSessionState();
@@ -589,20 +635,12 @@ const SessionManager = ({
           const currentSession = sessions.find(s => s.id === sessionIdStr);
           const currentSessionName = currentSession?.name || "Untitled Session";
           
-          // Save the current session state immediately
-          console.log(`[SessionManager][${startTimestamp}] Step 3.3: Immediately saving state of current session ${sessionIdStr} before switching`);
-          console.log(`[SessionManager][${startTimestamp}] Session state summary:`, {
-            name: currentSessionName,
-            taskDescriptionLength: currentSessionState.taskDescription?.length || 0,
-            hasIncludedFiles: !!currentSessionState.includedFiles?.length,
-            includedFilesCount: currentSessionState.includedFiles?.length || 0
-          });
+          // Save the current session state
+          console.log(`[SessionManager][${startTimestamp}][${operationId}] Saving state of current session ${sessionIdStr}`);
           
           try {
             // Use saveSessionAction to save the current session state
             const saveStartTime = Date.now();
-            console.log(`[SessionManager][${startTimestamp}] Step 3.4: Starting saveSessionAction at ${new Date(saveStartTime).toISOString()}`);
-            
             const saveResult = await saveSessionAction({
               id: sessionIdStr,
               name: currentSessionName,
@@ -614,86 +652,124 @@ const SessionManager = ({
               titleRegex: currentSessionState.titleRegex,
               contentRegex: currentSessionState.contentRegex,
               isRegexActive: currentSessionState.isRegexActive,
-              diffTemperature: currentSessionState.diffTemperature
-            }, signal);
+              diffTemperature: currentSessionState.diffTemperature,
+              pastedPaths: currentSessionState.pastedPaths,
+              negativeTitleRegex: currentSessionState.negativeTitleRegex,
+              negativeContentRegex: currentSessionState.negativeContentRegex,
+              searchSelectedFilesOnly: currentSessionState.searchSelectedFilesOnly
+            });
             
             const saveDuration = Date.now() - saveStartTime;
             
             if (!saveResult.isSuccess) {
-              console.warn(`[SessionManager][${startTimestamp}] ⚠️ Warning: Failed to save previous session state after ${saveDuration}ms: ${saveResult.message}`);
+              console.warn(`[SessionManager][${startTimestamp}][${operationId}] ⚠️ Warning: Failed to save previous session state after ${saveDuration}ms: ${saveResult.message}`);
             } else {
-              console.log(`[SessionManager][${startTimestamp}] Step 3.5: Successfully saved state of session ${sessionIdStr} in ${saveDuration}ms`);
+              console.log(`[SessionManager][${startTimestamp}][${operationId}] Successfully saved state of session ${sessionIdStr} in ${saveDuration}ms`);
             }
           } catch (saveError) {
-            if (signal.aborted) {
-              console.log(`[SessionManager][${startTimestamp}] Save operation for session ${sessionIdStr} was aborted`);
-            } else {
-              console.error(`[SessionManager][${startTimestamp}] ❌ Error saving previous session state:`, saveError);
-            }
+            console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Error saving previous session state:`, saveError);
+            // Continue with the load operation even if save fails
           }
-          
-          // Clear the previous active session ID in the context
-          // This will trigger state reset in consumer components
-          console.log(`[SessionManager][${startTimestamp}] Step 4: Updating context to clear previous session ID: ${sessionIdStr}`);
-          updateActiveSessionInContext(null);
         } catch (error) {
-          console.error(`[SessionManager][${startTimestamp}] ❌ Error clearing session context:`, error);
+          console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Error during session save:`, error);
+          // Continue with load operation despite save error
         }
       } else {
-        console.log(`[SessionManager][${startTimestamp}] No active session to save before switching`);
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] No active session to save before switching`);
       }
       
-      // Get the latest session state from the database using a new AbortController
-      const loadController = new AbortController();
-      console.log(`[SessionManager][${startTimestamp}] Step 5: Fetching session data for: ${session.id}`);
+      // Step 3: Fetch the session data
+      console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 3: Fetching session data for: ${session.id}`);
       const fetchStartTime = Date.now();
-      const result = await getSessionAction(session.id, loadController.signal);
+      
+      // Use the forceLoadSession method to prioritize this load operation
+      let result = await sessionSyncService.forceLoadSession(session.id);
+      
+      if (!result || !result.isSuccess || !result.data) {
+        // Try the regular getSessionAction as fallback
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] ForceLoadSession failed, falling back to getSessionAction`);
+        const fallbackResult = await getSessionAction(session.id, loadSignal);
+        
+        if (!fallbackResult.isSuccess || !fallbackResult.data) {
+          throw new Error(fallbackResult.message || "Failed to load session data");
+        }
+        
+        result = fallbackResult;
+      }
+      
       const fetchDuration = Date.now() - fetchStartTime;
       
       if (result.isSuccess && result.data) {
-        const currentSession = result.data;
+        const newSession = result.data;
         
-        // Validate that we have a valid session ID
-        if (!currentSession || !currentSession.id) {
+        // Validate that we have a valid session
+        if (!newSession || !newSession.id) {
           throw new Error("Invalid session data returned from database");
         }
         
-        console.log(`[SessionManager][${startTimestamp}] Step 6: Fetched session data successfully in ${fetchDuration}ms:`, {
-          id: currentSession.id,
-          name: currentSession.name,
-          hasTaskDescription: !!currentSession.taskDescription,
-          taskDescriptionLength: currentSession.taskDescription?.length || 0,
-          includedFilesCount: currentSession.includedFiles?.length || 0,
-          excludedFilesCount: currentSession.forceExcludedFiles?.length || 0
-        });
+        // Create session state summary for debugging
+        const sessionStateSummary = {
+          id: newSession.id,
+          name: newSession.name,
+          hasTaskDescription: !!newSession.taskDescription,
+          taskDescriptionLength: newSession.taskDescription?.length || 0,
+          includedFilesCount: newSession.includedFiles?.length || 0,
+          excludedFilesCount: newSession.forceExcludedFiles?.length || 0
+        };
         
-        // Update the active session ID in the context so other components can react
-        if (currentSession && currentSession.id) {
-          console.log(`[SessionManager][${startTimestamp}] Step 7: Updating context with new active session ID: ${currentSession.id}`);
-          updateActiveSessionInContext(currentSession.id);
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] Fetched session data successfully in ${fetchDuration}ms:`, sessionStateSummary);
+        
+        // Step 4: Update the active session ID in the context
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 4: Updating context with new session ID: ${newSession.id}`);
+        updateActiveSessionInContext(newSession.id);
+        
+        // Step 5: Apply the session data and inform parent components
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 5: Applying session state to UI components`);
+        
+        // Use startTransition to avoid UI blocking
+        startTransition(() => {
+          // Final abort check before applying session state
+          if (loadSignal.aborted) {
+            console.log(`[SessionManager][${startTimestamp}][${operationId}] Load operation was aborted during transition, canceling state update`);
+            return;
+          }
           
-          // Use startTransition for a smoother UI update when loading the new session
-          startTransition(() => {
-            // Load the session data into the form
-            console.log(`[SessionManager][${startTimestamp}] Step 8: Applying session state to UI components via startTransition`);
-            onLoadSession(currentSession);
-            
-            // Update the session name in the parent component
-            onSessionNameChange(currentSession.name);
-            
-            console.log(`[SessionManager][${startTimestamp}] Step 9: Successfully loaded session: ${currentSession.id}`);
-            
-            // Track session loading via global function if available
-            if (typeof window !== 'undefined' && window.sessionMonitor) {
-              window.sessionMonitor.record(currentSession.id);
-              console.log(`[SessionManager][${startTimestamp}] Session transition recorded in sessionMonitor`);
-            }
-          });
-        } else {
-          throw new Error("Session data is missing required ID");
-        }
+          // Pass the session data to the parent component
+          onLoadSession(newSession);
+          
+          // Update the session name in the parent component
+          onSessionNameChange(newSession.name);
+          
+          console.log(`[SessionManager][${startTimestamp}][${operationId}] Successfully loaded session: ${newSession.id}`);
+          
+          // Track session loading via global function if available
+          if (typeof window !== 'undefined' && window.sessionMonitor) {
+            window.sessionMonitor.record(newSession.id);
+          }
+          
+          // Debug session state after loading
+          if (typeof window !== 'undefined' && window.debugSessionState) {
+            window.debugSessionState(newSession.id);
+          }
+          
+          // Mark the switch as successful in our enhanced logging
+          if (switchLogger) {
+            switchLogger.complete(true, undefined, {
+              taskDescriptionLength: newSession.taskDescription?.length || 0,
+              includedFilesCount: newSession.includedFiles?.length || 0,
+              excludedFilesCount: newSession.forceExcludedFiles?.length || 0,
+              searchTerm: newSession.searchTerm || ''
+            });
+          }
+        });
       } else {
-        console.error(`[SessionManager][${startTimestamp}] ❌ Failed to load session: ${result.message}`);
+        console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Failed to load session: ${result.message}`);
+        
+        // Log the failure with the enhanced logger
+        if (switchLogger) {
+          switchLogger.complete(false, new Error(result.message || "Failed to load session"));
+        }
+        
         showNotification({
           title: "Error",
           message: result.message || "Failed to load session",
@@ -704,22 +780,34 @@ const SessionManager = ({
         updateActiveSessionInContext(null);
       }
     } catch (error) {
-      console.error(`[SessionManager][${startTimestamp}] ❌ Error loading session: ${error}`);
+      console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Error loading session: ${error}`);
       
       // Provide more informative error message for timeouts
       let errorMessage = 'Failed to load session';
       
       if (error && typeof error === 'object' && 'name' in error) {
         if (error.name === 'OperationTimeoutError') {
-          errorMessage = 'Session loading timed out. This could be due to large session data or temporary system load. Please try again later.';
+          errorMessage = 'Session loading timed out. This could be due to large session data or temporary system load.';
           
-          // Immediately trigger a health check to clean up any stuck operations
+          // Trigger cleanup for stuck operations
           try {
-            console.log(`[SessionManager][${startTimestamp}] Triggering stuck session cleanup for timed out session: ${session.id}`);
             sessionSyncService.clearStuckSession(session.id);
           } catch (cleanupError) {
-            console.error(`[SessionManager][${startTimestamp}] ❌ Error during cleanup after timeout:`, cleanupError);
+            console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Error during cleanup after timeout:`, cleanupError);
           }
+        } else if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Load operation aborted')) {
+          errorMessage = 'Session loading was canceled due to a new request.';
+          // Suppress notification for aborts
+          console.log(`[SessionManager][${startTimestamp}][${operationId}] Operation was aborted, suppressing error notification`);
+          
+          if (switchLogger) {
+            switchLogger.cancel('Operation was aborted due to a new session switch request');
+          }
+          
+          // Reset states and exit without showing notification
+          setIsSyncingState(false);
+          setGlobalSwitchingState(false);
+          return;
         } else {
           errorMessage = error instanceof Error ? error.message : String(error);
         }
@@ -727,11 +815,14 @@ const SessionManager = ({
         errorMessage = error instanceof Error ? error.message : String(error);
       }
       
-      // Check for abort errors (don't show notifications for these as they are expected)
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log(`[SessionManager][${startTimestamp}] Operation was aborted, suppressing error notification`);
-      } else {
-        // Show notification for other errors
+      // Log the error with our enhanced logger
+      if (switchLogger) {
+        switchLogger.complete(false, error instanceof Error ? error : new Error(errorMessage));
+      }
+      
+      // Show notification for non-abort errors
+      if (!(error instanceof Error && error.name === 'AbortError') && 
+          !(error instanceof Error && error.message === 'Load operation aborted')) {
         showNotification({
           title: "Error",
           message: errorMessage,
@@ -746,11 +837,14 @@ const SessionManager = ({
       const duration = endTime - startTime;
       const endTimestamp = new Date(endTime).toISOString();
       
-      setIsSyncingState(false);
-      setIsSwitchingSession(false);
+      // Clear the current load controller
+      currentLoadController.current = null;
       
-      console.log(`[SessionManager][${endTimestamp}] 🔄 SESSION SWITCH COMPLETED: Changed from ${activeSessionId || 'null'} to ${session.id} in ${duration}ms`);
-      console.log(`[SessionManager][${endTimestamp}] Final state: isSyncingState=false, isSwitchingSession=false`);
+      // Reset UI state indicators
+      setIsSyncingState(false);
+      setGlobalSwitchingState(false);
+      
+      console.log(`[SessionManager][${endTimestamp}][${operationId}] 🔄 SESSION SWITCH COMPLETED: Changed from ${activeSessionId || 'null'} to ${session.id} in ${duration}ms`);
     }
   };
 
@@ -840,17 +934,17 @@ const SessionManager = ({
               value={sessionNameInput}
               onChange={(e) => setSessionNameInput(e.target.value)}
               placeholder="Session name"
-              disabled={isLoading || isSwitchingSession}
+              disabled={isLoading || globalIsSwitching}
               className="w-full"
             />
           </div>
           <div className="flex space-x-2">
             <Button
               onClick={handleSave}
-              disabled={isLoading || !sessionNameInput.trim() || isSwitchingSession}
+              disabled={isLoading || !sessionNameInput.trim() || globalIsSwitching}
               className="flex items-center gap-1 flex-1"
             >
-              {isLoading || isSwitchingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isLoading || globalIsSwitching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save
             </Button>
           </div>
@@ -860,12 +954,6 @@ const SessionManager = ({
       <div className="border rounded-md">
         <div className="p-2 bg-muted/50 border-b flex justify-between items-center">
           <h3 className="text-sm font-medium">Sessions</h3>
-          {isSwitchingSession && (
-            <div className="flex items-center text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              Switching...
-            </div>
-          )}
         </div>
         
         {isLoading && sessions.length === 0 ? (
@@ -885,9 +973,9 @@ const SessionManager = ({
                 className={`
                   flex items-center justify-between p-2 border-b last:border-0 
                   ${activeSessionId === session.id ? "bg-accent" : "hover:bg-muted"}
-                  ${isSwitchingSession ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}
+                  ${globalIsSwitching ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}
                 `}
-                onClick={() => !isSwitchingSession && handleLoadSession(session)}
+                onClick={() => !globalIsSwitching && handleLoadSession(session)}
               >
                 {editingSessionId === session.id ? (
                   <div className="flex-1 flex items-center mr-2">
@@ -904,14 +992,14 @@ const SessionManager = ({
                       }}
                       autoFocus
                       className="h-8"
-                      disabled={isSwitchingSession}
+                      disabled={globalIsSwitching}
                     />
                     <div className="flex items-center gap-1 ml-2">
                       <Button
                         size="icon"
                         variant="ghost"
                         className="h-6 w-6"
-                        disabled={isSwitchingSession}
+                        disabled={globalIsSwitching}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleUpdateSessionName(session.id);
@@ -923,7 +1011,7 @@ const SessionManager = ({
                         size="icon"
                         variant="ghost"
                         className="h-6 w-6"
-                        disabled={isSwitchingSession}
+                        disabled={globalIsSwitching}
                         onClick={cancelEditing}
                       >
                         <X className="h-3 w-3" />
@@ -949,7 +1037,7 @@ const SessionManager = ({
                       className="h-7 w-7"
                       onClick={(e) => handleClone(session, e)}
                       title="Clone session"
-                      disabled={isSwitchingSession}
+                      disabled={globalIsSwitching}
                     >
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
@@ -959,7 +1047,7 @@ const SessionManager = ({
                       className="h-7 w-7"
                       onClick={(e) => startEditingSession(session, e)}
                       title="Rename session"
-                      disabled={isSwitchingSession}
+                      disabled={globalIsSwitching}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -972,7 +1060,7 @@ const SessionManager = ({
                           className="h-7 w-7 text-destructive"
                           onClick={(e) => e.stopPropagation()}
                           title="Delete session"
-                          disabled={isSwitchingSession}
+                          disabled={globalIsSwitching}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -1014,16 +1102,16 @@ const SessionManager = ({
           variant="outline"
           className="text-xs"
           onClick={() => {
-            if (!pendingLoadRef.current && !isLoading && !isSwitchingSession) {
+            if (!pendingLoadRef.current && !isLoading && !globalIsSwitching) {
               console.log('[SessionManager] Manual refresh triggered');
               loadSessions();
             } else {
               console.log('[SessionManager] Ignoring manual refresh - operation already in progress');
             }
           }}
-          disabled={isLoading || pendingLoadRef.current || isSwitchingSession}
+          disabled={isLoading || pendingLoadRef.current || globalIsSwitching}
         >
-          <RefreshCw className={`h-3 w-3 mr-1 ${isLoading || isSwitchingSession ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3 w-3 mr-1 ${isLoading || globalIsSwitching ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>

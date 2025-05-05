@@ -1,9 +1,10 @@
 'use server';
 
-import { ActionState, BackgroundJob } from '@/types';
-import { backgroundJobRepository } from '@/lib/db/repositories';
+import { ActionState } from "@/types";
+import { BackgroundJob, JobStatus, JOB_STATUSES } from "@/types/session-types";
 import { setupDatabase } from '@/lib/db';
 import streamingRequestPool from '@/lib/api/streaming-request-pool';
+import { backgroundJobRepository } from '@/lib/db/repositories';
 
 // Enhanced validation for server-side execution environment
 const isValidExecutionEnvironment = (): boolean => {
@@ -32,9 +33,22 @@ const isValidExecutionEnvironment = (): boolean => {
  * Get all active (non-cleared) background jobs
  */
 export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]>> {
+  // Track timing for performance monitoring
+  const startTime = performance.now();
+  
+  // Enable debug logging for troubleshooting
+  const DEBUG_JOBS_ACTION = false;
+  
+  // Generate request ID for tracing
+  const requestId = Math.random().toString(36).substring(2, 10);
+  
+  if (DEBUG_JOBS_ACTION) {
+    console.debug(`[getActiveJobsAction][${requestId}] Starting background jobs fetch`);
+  }
+  
   // Immediately check if we're in a valid execution context
   if (!isValidExecutionEnvironment()) {
-    console.warn("[getActiveJobsAction] Invalid execution environment");
+    console.warn(`[getActiveJobsAction][${requestId}] Invalid execution environment`);
     return {
       isSuccess: false,
       message: "Cannot fetch jobs: Invalid execution environment",
@@ -46,9 +60,13 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
   try {
     // Initialize database with error handling
     try {
+      if (DEBUG_JOBS_ACTION) {
+        console.debug(`[getActiveJobsAction][${requestId}] Setting up database connection`);
+      }
+      
       await setupDatabase();
     } catch (dbError) {
-      console.error("[getActiveJobsAction] Database initialization error:", dbError);
+      console.error(`[getActiveJobsAction][${requestId}] Database initialization error:`, dbError);
       return {
         isSuccess: false,
         message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
@@ -59,16 +77,46 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
 
     // Try to get jobs from repository with explicit error handling
     try {
+      if (DEBUG_JOBS_ACTION) {
+        console.debug(`[getActiveJobsAction][${requestId}] Fetching jobs from repository`);
+      }
+      
       // Use the repository's getAllVisibleBackgroundJobs method to get properly mapped BackgroundJob objects
       const jobs = await backgroundJobRepository.getAllVisibleBackgroundJobs();
       
+      const duration = performance.now() - startTime;
+      
+      // Check jobs for data integrity issues
+      const incompleteJobs = jobs.filter(job => 
+        job.status === JOB_STATUSES.COMPLETED[0] && !job.response && !job.errorMessage
+      ).length;
+      
+      if (incompleteJobs > 0) {
+        console.warn(`[getActiveJobsAction][${requestId}] Found ${incompleteJobs} completed jobs with no response or error message`);
+      }
+      
+      // Log status distribution for monitoring
+      if (DEBUG_JOBS_ACTION) {
+        const statusCounts = jobs.reduce((acc, job) => {
+          if (job.status && typeof job.status === 'string') {
+            acc[job.status] = (acc[job.status] || 0) + 1;
+          }
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.debug(`[getActiveJobsAction][${requestId}] Job status distribution:`, statusCounts);
+      }
+      
+      // Log success metrics
+      console.debug(`[getActiveJobsAction][${requestId}] Successfully retrieved ${jobs.length} jobs in ${Math.round(duration)}ms`);
+      
       return {
         isSuccess: true,
-        message: `Successfully retrieved ${jobs.length} active background jobs`,
+        message: `Successfully retrieved ${jobs.length} background jobs`,
         data: jobs as BackgroundJob[]
       };
     } catch (repoError) {
-      console.error("[getActiveJobsAction] Repository error fetching background jobs:", repoError);
+      console.error(`[getActiveJobsAction][${requestId}] Repository error fetching background jobs:`, repoError);
       return {
         isSuccess: false,
         message: "Database error: " + (repoError instanceof Error ? repoError.message : "Unknown repository error"),
@@ -77,7 +125,8 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
       };
     }
   } catch (error) {
-    console.error("[getActiveJobsAction] Error fetching active background jobs:", error);
+    const duration = performance.now() - startTime;
+    console.error(`[getActiveJobsAction][${requestId}] Error fetching active background jobs after ${Math.round(duration)}ms:`, error);
     
     // Ensure we return a valid response even on error
     return {
@@ -142,7 +191,7 @@ export async function cancelBackgroundJobAction(
     }
     
     // If job is already completed, failed, or canceled, we don't need to do anything
-    if (['completed', 'failed', 'canceled'].includes(job.status)) {
+    if (JOB_STATUSES.TERMINAL.includes(job.status)) {
       return {
         isSuccess: true,
         message: `Job already in terminal state: ${job.status}`,
@@ -151,15 +200,16 @@ export async function cancelBackgroundJobAction(
     }
     
     // Update the job status to 'canceled'
+    const cancellationReason = 'User requested cancellation';
     await backgroundJobRepository.updateBackgroundJobStatus({
       jobId: jobId,
-      status: 'canceled',
+      status: 'canceled', // Use canceled status
       endTime: Date.now(),
-      statusMessage: 'Canceled by user'
+      statusMessage: cancellationReason
     });
     
     // Additionally, if it's an API call, try to cancel it in the request pool
-    if (['running', 'preparing'].includes(job.status) && 
+    if ((job.status === 'running' || job.status === 'preparing') && 
         typeof streamingRequestPool.cancelRequest === 'function') {
       try {
         streamingRequestPool.cancelRequest(jobId);

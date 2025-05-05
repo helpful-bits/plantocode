@@ -15,7 +15,7 @@ const storageSetters = new Map<string, {
 const GLOBAL_STORAGE_RATE_LIMIT = {
   lastUpdates: [] as number[],
   windowSize: 60000, // 1 minute window
-  maxUpdatesPerWindow: 15 // Maximum 15 localStorage updates per minute globally across all keys (reduced from 30)
+  maxUpdatesPerWindow: 12 // Maximum 12 localStorage updates per minute globally across all keys (reduced from 15)
 };
 
 /**
@@ -65,7 +65,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   
   // Track the last setValue call time to prevent too frequent updates
   const lastSetTimeRef = useRef<number>(0);
-  const MIN_UPDATE_INTERVAL = 8000; // Increased from 3000ms to 8000ms
+  const MIN_UPDATE_INTERVAL = 10000; // Increased from 8000ms to 10000ms to reduce rate limiting
   
   // Maintain a record of pending values to avoid setting the same value twice
   const pendingValueRef = useRef<string | null>(null);
@@ -100,7 +100,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
                   console.log(`[useLocalStorage] Delayed update for key "${key}" after rate limiting`);
                   pendingValueRef.current = null; // Clear pending value after successful update
                 }
-              }, 8000); // Increased delay from 5000ms to 8000ms
+              }, 10000); // Increased delay from 8000ms to 10000ms
             }
             return;
           }
@@ -122,16 +122,24 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       } catch (error) {
         console.error(`[useLocalStorage] Error setting debounced localStorage key "${key}":`, error);
       }
-    }, 2000) // Increased from 1000ms to 2000ms debounce delay
+    }, 3000) // Increased from 2000ms to 3000ms debounce delay to further reduce updates
   ).current;
   
   // Return a wrapped version of useState's setter function that 
   // persists the new value to localStorage.
-  const setValue = (value: T | ((val: T) => T)) => {
+  // Now accepts a priority flag to bypass rate limiting for important operations
+  const setValue = (value: T | ((val: T) => T), _option?: any, highPriority: boolean = false) => {
     try {
       // Allow value to be a function so we have same API as useState
       const valueToStore =
         value instanceof Function ? value(storedValue) : value;
+      
+      // Check for deep equality with current stored value before updating state
+      const areEqual = JSON.stringify(valueToStore) === JSON.stringify(storedValue);
+      if (areEqual) {
+        console.log(`[useLocalStorage] Skipping identical state update for key "${key}"`);
+        return;
+      }
       
       // Save to state
       setStoredValue(valueToStore);
@@ -177,6 +185,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
             - Time since last: ${timeDiff}ms
             - Time since last actual update: ${timeSinceLastUpdate}ms
             - Same value as previous: ${isSameAsPrevious}
+            - High priority: ${highPriority}
           `);
           
           // Reset counter every 30 seconds
@@ -185,28 +194,53 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
           }
         }
         
-        // Enhanced rate limiting logic
-        // Don't update localStorage if:
-        // 1. Value is the same as what was just set AND less than MIN_UPDATE_INTERVAL has passed
-        // 2. OR we've had more than 3 calls in under 20 seconds
-        // 3. OR it's been less than 5 seconds since the last update for any value
-        const isRapidFireCalls = entry.calls > 3 && timeSinceLastUpdate < 20000;
-        const isTooSoonAfterLastUpdate = now - lastSetTimeRef.current < 5000;
-        
-        if ((isSameAsPrevious && timeDiff < MIN_UPDATE_INTERVAL) || isRapidFireCalls || isTooSoonAfterLastUpdate) {
-          if (isRapidFireCalls) {
-            console.warn(`[useLocalStorage] Rate limiting key "${key}" due to rapid-fire calls (${entry.calls} calls in ${timeSinceLastUpdate}ms)`);
-          } else if (isTooSoonAfterLastUpdate) {
-            console.log(`[useLocalStorage] Throttling update for "${key}" (only ${now - lastSetTimeRef.current}ms since last update)`);
-          } else {
-            console.log(`[useLocalStorage] Ignoring redundant setValue for key "${key}" (${timeDiff}ms since last call)`);
+        // Skip rate limiting for high priority operations (like session switching)
+        if (!highPriority) {
+          // Enhanced rate limiting logic
+          // Don't update localStorage if:
+          // 1. Value is the same as what was just set AND less than MIN_UPDATE_INTERVAL has passed
+          // 2. OR we've had more than 3 calls in under 20 seconds
+          // 3. OR it's been less than 5 seconds since the last update for any value
+          const isRapidFireCalls = entry.calls > 3 && timeSinceLastUpdate < 20000;
+          const isTooSoonAfterLastUpdate = now - lastSetTimeRef.current < 5000;
+          
+          if ((isSameAsPrevious && timeDiff < MIN_UPDATE_INTERVAL) || isRapidFireCalls || isTooSoonAfterLastUpdate) {
+            if (isRapidFireCalls) {
+              console.warn(`[useLocalStorage] Rate limiting key "${key}" due to rapid-fire calls (${entry.calls} calls in ${timeSinceLastUpdate}ms)`);
+            } else if (isTooSoonAfterLastUpdate) {
+              console.log(`[useLocalStorage] Throttling update for "${key}" (only ${now - lastSetTimeRef.current}ms since last update)`);
+            } else {
+              console.log(`[useLocalStorage] Ignoring redundant setValue for key "${key}" (${timeDiff}ms since last call)`);
+            }
+            return;
           }
-          return;
+        } else {
+          console.log(`[useLocalStorage] Bypassing rate limiting for high priority operation on key "${key}"`);
         }
       }
       
-      // Use debounced localStorage update
-      debouncedSetItem(key, valueString);
+      // For high priority operations, update localStorage immediately instead of debouncing
+      if (highPriority) {
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(key, valueString);
+            console.log(`[useLocalStorage] Immediate update for high priority operation on key "${key}"`);
+            pendingValueRef.current = null; // Clear pending value after immediate update
+            
+            // Track when this key was last updated in localStorage
+            if (storageSetters.has(key)) {
+              storageSetters.get(key)!.lastUpdate = now;
+            }
+          }
+        } catch (error) {
+          console.error(`[useLocalStorage] Error during immediate localStorage update:`, error);
+          // Fall back to debounced update if immediate update fails
+          debouncedSetItem(key, valueString);
+        }
+      } else {
+        // Use debounced localStorage update for normal priority operations
+        debouncedSetItem(key, valueString);
+      }
       
       // Record last set time
       lastSetTimeRef.current = now;

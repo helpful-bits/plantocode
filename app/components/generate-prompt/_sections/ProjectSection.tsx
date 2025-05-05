@@ -19,7 +19,7 @@ interface ProjectSectionProps {
     currentSessionName: string;
   };
   actions: {
-    refreshFiles: () => Promise<void>;
+    refreshFiles: () => Promise<boolean>;
     handleSetActiveSessionId: (id: string | null) => void;
     handleLoadSession: (sessionOrId: Session | string) => void;
     getCurrentSessionState: () => any;
@@ -60,7 +60,6 @@ export default function ProjectSection({ state, actions }: ProjectSectionProps) 
           getCurrentSessionState={getCurrentSessionState}
           onLoadSession={handleLoadSession}
           activeSessionId={activeSessionId}
-          setActiveSessionIdExternally={handleSetActiveSessionId}
           sessionInitialized={sessionInitialized}
           onSessionStatusChange={(hasSession: boolean) => setSessionInitialized(hasSession)}
           onSessionNameChange={(name: string) => {}} // No need to handle name changes at this level

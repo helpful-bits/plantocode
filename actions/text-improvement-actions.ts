@@ -13,13 +13,15 @@ export interface ImproveTextOptions {
 export async function improveSelectedTextAction(
   options: ImproveTextOptions | string,
   projectDirectory?: string,
-  sessionId?: string
+  sessionId?: string,
+  targetField?: string // Add target field parameter
 ): Promise<ActionState<string | { isBackgroundJob: true; jobId: string; }>> {
   try {
     // Handle both new object-style and legacy string parameters
     let text: string;
     let actualSessionId: string | undefined | null;
     let actualProjectDirectory: string | undefined;
+    let mode: string | undefined;
     
     if (typeof options === 'string') {
       // Legacy format
@@ -31,6 +33,7 @@ export async function improveSelectedTextAction(
       text = options.text;
       actualSessionId = options.sessionId ?? sessionId;
       actualProjectDirectory = options.projectDirectory ?? projectDirectory;
+      mode = options.mode;
     }
     
     if (!text || !text.trim()) {
@@ -46,7 +49,10 @@ export async function improveSelectedTextAction(
     const result = await claudeClient.improveText(
       text, 
       actualSessionId || undefined,
-      { preserveFormatting: true },
+      { 
+        preserveFormatting: true,
+        targetField: targetField // Pass target field to the Claude client
+      },
       actualProjectDirectory
     );
 
@@ -59,7 +65,8 @@ export async function improveSelectedTextAction(
         metadata: { 
           isBackgroundJob: true, 
           jobId: result.metadata.jobId,
-          operationId: result.metadata.jobId // Used by some UI components
+          operationId: result.metadata.jobId, // Used by some UI components
+          targetField: targetField // Include the target field in response metadata
         }
       };
     }

@@ -43,18 +43,54 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     }
   };
   
-  // Get job duration if possible
+  // Get job duration if possible, using startTime and endTime if available
   const jobDuration = job.startTime ? formatJobDuration(
     job.startTime, 
     job.endTime, 
     job.status
   ) : 'N/A';
 
-  // Determine which content to show as the prompt
+  // Determine which content to show as the prompt - prioritize prompt field
   const promptContent = job.prompt || job.rawInput || 'No prompt data available';
 
-  // Determine which content to show as the response (prioritize response over modelOutput)
-  const responseContent = job.response || job.modelOutput || 'No response data available';
+  // Get response based on status and available data
+  // For completed jobs, expect a response
+  // For failed jobs, expect an error message
+  // For other statuses, show a status-appropriate message
+  const getResponseContent = () => {
+    // If we have a response, use it
+    if (job.response) {
+      return job.response;
+    }
+    
+    // For backward compatibility, check modelOutput as well
+    if (job.modelOutput) {
+      return job.modelOutput;
+    }
+    
+    // Customize the fallback based on job status
+    switch (job.status) {
+      case 'completed':
+        return 'Job completed but no response data is available.';
+      case 'failed':
+        return job.errorMessage || 'Job failed but no error details are available.';
+      case 'canceled':
+        return 'Job was canceled by the user.';
+      case 'running':
+        return 'Job is currently processing...';
+      case 'preparing':
+      case 'queued':
+      case 'created':
+        return 'Job is preparing to run...';
+      case 'idle':
+        return 'Job is waiting to start...';
+      default:
+        return 'No response data available';
+    }
+  };
+  
+  // Get response content using the helper function
+  const responseContent = getResponseContent();
 
   return (
     <Dialog open={!!job} onOpenChange={(open) => !open && onClose()}>

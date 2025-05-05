@@ -37,10 +37,89 @@ export default function VoiceTranscription({
   }, []);
 
   // Create a wrapper for onTranscribed that inserts at cursor position if ref is available
-  const handleTranscriptionComplete = useCallback((text: string) => {
-    // Strict validation before proceeding
-    if (!text) {
-      console.warn("Received empty text in handleTranscriptionComplete");
+  const handleTranscriptionComplete = useCallback((text: string | any) => {
+    // Handle the case where text is an object (background job response)
+    let processedText = '';
+    
+    // First, handle potentially complex input types
+    if (text === null || text === undefined) {
+      console.error("Received null or undefined text in handleTranscriptionComplete");
+      toast({
+        title: "Transcription Error",
+        description: "No transcription result received.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // If text is an object, try to extract the actual text content
+    if (typeof text === 'object') {
+      console.log("Received object instead of string, attempting to extract text:", text);
+      
+      // Handle background job object directly passed
+      if (text.isBackgroundJob && text.jobId) {
+        console.error("Received background job object directly, should be handled by useBackgroundJob hook:", text);
+        toast({
+          title: "Processing Error",
+          description: "Background job data was passed directly. Please wait for the job to complete.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Try to extract text from common API response formats
+      if (text.response && typeof text.response === 'string') {
+        processedText = text.response;
+      } else if (text.data && typeof text.data === 'string') {
+        processedText = text.data;
+      } else if (text.text && typeof text.text === 'string') {
+        processedText = text.text;
+      } else if (text.content && typeof text.content === 'string') {
+        processedText = text.content;
+      } else {
+        // Last resort - try to stringify the whole object
+        try {
+          const jsonStr = JSON.stringify(text);
+          console.warn("Received object with no recognizable text property, stringified:", jsonStr);
+          toast({
+            title: "Transcription Warning",
+            description: "Received unexpected data format. Attempting to use as-is.",
+            variant: "default"
+          });
+          processedText = jsonStr;
+        } catch (e) {
+          console.error("Failed to process object data:", e);
+          toast({
+            title: "Transcription Error",
+            description: "Received invalid data that couldn't be processed.",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+    } else if (typeof text === 'string') {
+      // Process the string input
+      processedText = text;
+    } else {
+      // For any other type, try to convert to string
+      try {
+        processedText = String(text);
+        console.warn(`Converted ${typeof text} to string:`, processedText);
+      } catch (e) {
+        console.error(`Failed to convert ${typeof text} to string:`, e);
+        toast({
+          title: "Transcription Error", 
+          description: "Received invalid data type that couldn't be converted to text.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+    
+    // At this point, we should have a string in processedText
+    // Validate it's not empty
+    if (!processedText || processedText.trim() === '') {
+      console.warn("Processed text is empty or whitespace");
       toast({
         title: "Transcription Error",
         description: "Received empty transcription result.",
@@ -49,37 +128,29 @@ export default function VoiceTranscription({
       return;
     }
     
-    // Ensure text is a string and not just whitespace
-    if (typeof text !== 'string' || text.trim() === '') {
-      console.warn("Received invalid text type or empty string in handleTranscriptionComplete");
-      toast({
-        title: "Transcription Error",
-        description: "Received invalid or empty transcription result.",
-        variant: "destructive"
-      });
-      return;
-    }
-    
     // Check if text appears to be a UUID (should be caught upstream, but double-check)
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(text.trim())) {
-      console.error("Text appears to be a UUID, not inserting:", text);
+    if (uuidPattern.test(processedText.trim())) {
+      console.error("Text appears to be a UUID, not inserting:", processedText);
       toast({
         title: "Transcription Error",
-        description: "Received invalid transcription format.",
+        description: "Received invalid transcription format (appears to be an ID).",
         variant: "destructive"
       });
       return;
     }
     
     // Check if text is JSON or contains suspicious format identifiers that should have been parsed
-    if ((text.startsWith('{') && text.endsWith('}')) || (text.includes('"text":') && text.includes('}'))) {
+    if ((processedText.startsWith('{') && processedText.endsWith('}')) || (processedText.includes('"text":') && processedText.includes('}'))) {
       try {
         // Attempt to parse as JSON to extract 'text' field if present
-        const parsed = JSON.parse(text);
+        const parsed = JSON.parse(processedText);
         if (parsed.text && typeof parsed.text === 'string') {
           console.warn("Text appears to be JSON with a text field, extracting text value");
-          text = parsed.text;
+          processedText = parsed.text;
+        } else if (parsed.response && typeof parsed.response === 'string') {
+          console.warn("Text appears to be JSON with a response field, extracting value");
+          processedText = parsed.response;
         }
       } catch (e) {
         // If parsing fails, continue with original text
@@ -88,8 +159,8 @@ export default function VoiceTranscription({
     }
 
     // Additional check for extremely short text that might indicate an error
-    if (text.trim().length < 3) {
-      console.warn("Suspiciously short text received:", text);
+    if (processedText.trim().length < 3) {
+      console.warn("Suspiciously short text received:", processedText);
       toast({
         title: "Transcription Warning",
         description: "The transcription result is unusually short. You may want to try recording again.",
@@ -98,12 +169,12 @@ export default function VoiceTranscription({
       // Still proceed with the short text, but warn the user
     }
     
-    console.log("Handling transcription complete, text:", text.substring(0, 50) + (text.length > 50 ? '...' : ''), "length:", text.length);
+    console.log("Handling transcription complete, text:", processedText.substring(0, 50) + (processedText.length > 50 ? '...' : ''), "length:", processedText.length);
     
     if (textareaRef?.current) {
       console.log("Using textareaRef to insert at cursor position");
       try {
-        textareaRef.current.insertTextAtCursorPosition(text);
+        textareaRef.current.insertTextAtCursorPosition(processedText);
         console.log("Successfully inserted text at cursor position");
         
         // Call onInteraction to signal the text was inserted
@@ -113,7 +184,7 @@ export default function VoiceTranscription({
       } catch (error) {
         console.error("Error inserting text at cursor position:", error);
         // Fall back to the original method if insertion fails
-        onTranscribed(text);
+        onTranscribed(processedText);
         toast({
           title: "Insertion Error",
           description: "Couldn't insert at cursor position. Text has been appended instead.",
@@ -123,7 +194,7 @@ export default function VoiceTranscription({
     } else {
       console.log("No textareaRef available, using onTranscribed callback");
       // Otherwise, call the original onTranscribed function
-      onTranscribed(text);
+      onTranscribed(processedText);
     }
   }, [textareaRef, onTranscribed, onInteraction]);
   
@@ -165,10 +236,10 @@ export default function VoiceTranscription({
     }
   };
 
-  // Modified revert handler to use cursor position
-  const handleRevertToRaw = () => {
-    if (!rawText) {
-      console.warn("No raw text available to revert to");
+  // Modified revert handler to use cursor position - using the same processing logic as handleTranscriptionComplete
+  const handleRevertToRaw = useCallback(() => {
+    if (!rawText || typeof rawText !== 'string' || rawText.trim() === '') {
+      console.warn("No valid raw text available to revert to");
       toast({
         title: "Revert Error",
         description: "No raw transcription text available to revert to.",
@@ -177,12 +248,15 @@ export default function VoiceTranscription({
       return;
     }
     
-    // Ensure the raw text is valid
-    if (typeof rawText !== 'string' || rawText.trim() === '') {
-      console.warn("Raw text is invalid or empty, cannot revert");
+    // Process the raw text as a string
+    let processedText = rawText;
+    
+    // Validate the processed text
+    if (!processedText || processedText.trim() === '') {
+      console.warn("Processed raw text is empty or whitespace");
       toast({
         title: "Revert Error",
-        description: "Raw transcription text is invalid or empty.",
+        description: "Raw transcription text is empty.",
         variant: "destructive"
       });
       return;
@@ -190,25 +264,27 @@ export default function VoiceTranscription({
     
     // Check if text appears to be a UUID
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(rawText.trim())) {
-      console.error("Raw text appears to be a UUID, not inserting:", rawText);
+    if (uuidPattern.test(processedText.trim())) {
+      console.error("Raw text appears to be a UUID, not inserting:", processedText);
       toast({
         title: "Revert Error",
-        description: "Raw transcription has invalid format.",
+        description: "Raw transcription has invalid format (appears to be an ID).",
         variant: "destructive"
       });
       return;
     }
     
     // Check if text is JSON or contains suspicious format identifiers that should have been parsed
-    let processedText = rawText;
-    if ((rawText.startsWith('{') && rawText.endsWith('}')) || (rawText.includes('"text":') && rawText.includes('}'))) {
+    if ((processedText.startsWith('{') && processedText.endsWith('}')) || (processedText.includes('"text":') && processedText.includes('}'))) {
       try {
         // Attempt to parse as JSON to extract 'text' field if present
-        const parsed = JSON.parse(rawText);
+        const parsed = JSON.parse(processedText);
         if (parsed.text && typeof parsed.text === 'string') {
           console.warn("Raw text appears to be JSON with a text field, extracting text value");
           processedText = parsed.text;
+        } else if (parsed.response && typeof parsed.response === 'string') {
+          console.warn("Raw text appears to be JSON with a response field, extracting value");
+          processedText = parsed.response;
         }
       } catch (e) {
         // If parsing fails, continue with original text
@@ -227,10 +303,13 @@ export default function VoiceTranscription({
       // Still proceed with the short text, but warn the user
     }
     
+    console.log("Handling revert to raw text, processed text:", processedText.substring(0, 50) + (processedText.length > 50 ? '...' : ''));
+    
     if (textareaRef?.current) {
       console.log("Using textareaRef to insert raw text at cursor position");
       try {
         textareaRef.current.insertTextAtCursorPosition(processedText);
+        console.log("Successfully inserted raw text at cursor position");
         // Call onInteraction to signal the text was inserted
         if (onInteraction) {
           onInteraction();
@@ -255,7 +334,7 @@ export default function VoiceTranscription({
         onInteraction();
       }
     }
-  };
+  }, [rawText, textareaRef, onInteraction, onTranscribed]);
 
   return (
     <div className="flex flex-col gap-2 border rounded-lg p-4 bg-card shadow-sm">
