@@ -34,8 +34,7 @@ export async function GET(request: NextRequest) {
           result.data.slice(0, 2).map(job => ({
             id: job.id?.substring(0, 8),
             status: job.status,
-            hasResponse: Boolean(job.response),
-            hasModelOutput: Boolean(job.modelOutput)
+            hasResponse: Boolean(job.response)
           }))
         );
       }

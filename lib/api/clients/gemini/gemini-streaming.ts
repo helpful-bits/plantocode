@@ -64,6 +64,7 @@ export interface GeminiRequestOptions {
   taskType?: string;
   projectDirectory?: string;
   includeSyntax?: boolean;
+  metadata?: { [key: string]: any; };
 }
 
 // Helper for the SSE event processing
@@ -220,12 +221,17 @@ export async function sendStreamingRequest(
       statusMessage: 'Setting up Gemini API request'
     });
     
-    // If the task type is for implementation plans, save to a special directory
+    // If the task type is for implementation plans, save to the appropriate directory
     if (options.taskType === 'implementation_plan') {
-      // Create the implementation plans directory if it doesn't exist
+      // Determine the output directory based on task type
+      const outputType = IMPLEMENTATION_PLANS_DIR_NAME;
+      
       try {
-        const implementationPlansDir = path.join(projectDirectory!, IMPLEMENTATION_PLANS_DIR_NAME);
-        await fsPromises.mkdir(implementationPlansDir, { recursive: true });
+        // Get the implementation plans directory
+        const outputDir = path.join(projectDirectory!, IMPLEMENTATION_PLANS_DIR_NAME);
+        
+        // Ensure the directory exists
+        await fsPromises.mkdir(outputDir, { recursive: true });
         
         // Define the output file path (include timestamp for uniqueness)
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -234,13 +240,38 @@ export async function sendStreamingRequest(
           .replace(/\s+/g, '-')
           .toLowerCase();
         
-        outputPath = path.join(
-          implementationPlansDir,
-          `plan_${timestamp}_${sanitizedPrompt}.md`
-        );
+        // Get session name from metadata if available
+        const sessionName = options.metadata?.sessionName || '';
+        const sanitizedSessionName = sessionName
+          ? sessionName.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').toLowerCase()
+          : '';
+        
+        // Create appropriate filename with extension based on task type
+        const fileExtension = options.taskType === 'implementation_plan' ? '.md' : '.xml';
+        const filePrefix = options.taskType === 'implementation_plan' ? 'plan_' : 'output_';
+        
+        // Include session name in the filename if available
+        const fileName = sanitizedSessionName
+          ? `${filePrefix}${sanitizedSessionName}_${timestamp}${fileExtension}`
+          : `${filePrefix}${timestamp}_${sanitizedPrompt}${fileExtension}`;
+        
+        outputPath = path.join(outputDir, fileName);
+        
+        console.log(`Creating implementation plan file: ${outputPath}`);
         
         // Create the write stream
         writeStream = createWriteStream(outputPath);
+        
+        // Update the job with the output file path
+        if (job && job.id) {
+          await backgroundJobRepository.updateBackgroundJobStatus({
+            jobId: job.id,
+            status: job.status,
+            metadata: {
+              outputFilePath: outputPath
+            }
+          });
+        }
       } catch (error) {
         console.error(`[Gemini Streaming] Error setting up file output:`, error);
         // Continue without file output if there's an issue
@@ -248,45 +279,48 @@ export async function sendStreamingRequest(
       }
     }
     
-    // Use the streaming request pool for execution
-    return streamingRequestPool.execute(
-      async (): Promise<ActionState<{ requestId: string; savedFilePath: string | null }>> => {
-        try {
-          // Update job status to running when it starts executing
-          if (job && job.id) {
-            await backgroundJobRepository.updateBackgroundJobStatus({
-              jobId: job.id, 
-              status: 'running' as JobStatus,
-              startTime: Date.now(),
-              statusMessage: 'Processing stream...'
-            });
+    // Track this request in the streaming pool but without using execute
+    if (requestId) {
+      streamingRequestPool.trackRequest(requestId, sessionId, RequestType.GEMINI_CHAT);
+    }
+    
+    // Run the request directly
+    try {
+      // Update job status to running when it starts executing
+      if (job && job.id) {
+        await backgroundJobRepository.updateBackgroundJobStatus({
+          jobId: job.id, 
+          status: 'running' as JobStatus,
+          startTime: Date.now(),
+          statusMessage: 'Processing stream...'
+        });
+      }
+      
+      // Signal the start of streaming if a callback is provided
+      if (streamingUpdates?.onStart) {
+        streamingUpdates.onStart();
+      }
+      
+      // Build the API URL
+      const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?key=${apiKey}&alt=sse`;
+      
+      // Build request payload
+      const payload: GeminiRequestPayload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: promptText }
+            ]
           }
-          
-          // Signal the start of streaming if a callback is provided
-          if (streamingUpdates?.onStart) {
-            streamingUpdates.onStart();
-          }
-          
-          // Build the API URL
-          const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?key=${apiKey}&alt=sse`;
-          
-          // Build request payload
-          const payload: GeminiRequestPayload = {
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: promptText }
-                ]
-              }
-            ],
-            generationConfig: {
-              maxOutputTokens,
-              temperature,
-              topP,
-              topK,
-            },
-          };
+        ],
+        generationConfig: {
+          maxOutputTokens,
+          temperature,
+          topP,
+          topK,
+        },
+      };
           
           // Add system instruction if provided
           if (options.systemPrompt) {
@@ -483,7 +517,11 @@ export async function sendStreamingRequest(
               statusMessage: 'Successfully completed',
               metadata: {
                 tokensReceived: totalTokens,
-                charsReceived: totalChars
+                tokensSent: job.tokensSent || 0,
+                charsReceived: totalChars,
+                outputFilePath: outputPath,
+                modelUsed: job.modelUsed || modelId,
+                maxOutputTokens: job.maxOutputTokens || maxOutputTokens
               }
             });
           }
@@ -532,15 +570,17 @@ export async function sendStreamingRequest(
             }
           };
         }
-      },
-      {
-        id: requestId,
-        type: options.requestType || RequestType.PROCESSING,
-        timeout: 120000, // 2 minutes timeout for streaming requests
-        priority: 1, // High priority for streaming requests
-        sessionId,
+      
+      // Don't forget to untrack the request when it's done
+      if (requestId) {
+        streamingRequestPool.untrackRequest(requestId);
       }
-    );
+      
+      return {
+        isSuccess: false,
+        message: "Placeholder for success or failure",
+        data: { requestId, savedFilePath: null }
+      };
   } catch (error) {
     console.error(`[Gemini Streaming] Error setting up streaming request:`, error);
     
@@ -583,15 +623,21 @@ export async function sendStreamingRequest(
 async function completeJob(job: BackgroundJob | null, finalContent: string = '', stats: {
   tokens: number;
   chars: number;
-  promptTokens?: number;
+  tokensSent?: number;
   totalTokens?: number;
+  modelUsed?: string;
+  maxOutputTokens?: number;
+  outputFilePath?: string;
 } = {tokens: 0, chars: 0}) {
   if (job) {
     // Use centralized helper for updating job to completed
     await updateJobToCompleted(job.id, finalContent, {
-      completionTokens: stats.tokens,
-      promptTokens: stats.promptTokens || 0,
-      totalTokens: (stats.tokens || 0) + (stats.promptTokens || 0)
+      tokensReceived: stats.tokens,
+      tokensSent: stats.tokensSent || job.tokensSent || 0,
+      totalTokens: stats.totalTokens || ((stats.tokens || 0) + (stats.tokensSent || job.tokensSent || 0)),
+      modelUsed: (stats.modelUsed || job.modelUsed) ?? undefined,
+      maxOutputTokens: (stats.maxOutputTokens || job.maxOutputTokens) ?? undefined,
+      outputFilePath: (stats.outputFilePath || job.outputFilePath) ?? undefined
     });
   }
 }

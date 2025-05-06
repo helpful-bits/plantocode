@@ -42,30 +42,8 @@ const RegexInput = React.memo(function RegexInput({
   onRegexActiveChange // Changed to use the prop
 }: RegexInputProps) {
   return (
-    <div className="flex flex-col gap-4 bg-card p-4 rounded-lg shadow-sm border">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <label className="font-bold text-foreground">File Filtering (Regex):</label>
-          <button
-            type="button"
-            onClick={() => {
-              onRegexActiveChange(!isRegexActive);
-              onInteraction();
-            }}
-            className={`p-1 h-auto ${isRegexActive ? "text-primary" : "text-muted-foreground"}`}
-            title={isRegexActive ? "Deactivate regex patterns" : "Activate regex patterns"}
-          >
-            {isRegexActive ? (
-              <ToggleRight className="h-5 w-5" /> // Keep ToggleRight icon
-            ) : (
-              <ToggleLeft className="h-5 w-5" />
-            )}
-          </button>
-          <span className="text-xs text-muted-foreground">
-            {isRegexActive ? "Active" : "Inactive"}
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">Enable or disable regex filtering for file selection.</p>
+    <div className="flex flex-col gap-4 bg-card rounded-lg">
+      <div className="flex items-end justify-end">
         {(titleRegex.trim() || contentRegex.trim() || negativeTitleRegex.trim() || negativeContentRegex.trim()) && (
             <button
             type="button"
@@ -74,7 +52,7 @@ const RegexInput = React.memo(function RegexInput({
               onInteraction();
             }}
             className="text-destructive hover:text-destructive/80 flex items-center gap-1 h-7 text-xs px-2 rounded hover:bg-destructive/10"
-            title="Clear both regex patterns"
+            title="Clear regex patterns"
           >
             <X className="h-3.5 w-3.5" />
             <span>Clear Patterns</span>

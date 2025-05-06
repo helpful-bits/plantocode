@@ -19,14 +19,22 @@ You are an expert software architect tasked with providing a detailed implementa
 - Clear organization of the implementation steps in logical order
 - Rationale for architectural decisions made in the plan
 - Follow the existing naming conventions and folder-file organization patterns
-- Include bash commands only when necessary for a step (file operations, exploration, API testing)
-- Omit command sections entirely when they add no value to the step
 - Prioritize simple, straightforward solutions without overengineering
 - Choose the most maintainable and pragmatic approach over complex solutions
 - Identify and eliminate any code duplication in the solution
 - Refactor overly large files into smaller, focused modules with clear responsibilities
 - Thoroughly analyze and understand data structures, data flow, and function interactions
 </implementation_plan_requirements>
+
+<bash_commands_guidelines>
+- Include only when essential for implementing a step or understanding complex code
+- Omit completely when they add no value to a step
+- Structure exploration commands to be highly targeted with precise patterns to avoid excessive output
+- Prefer specific directory targets and file patterns over broad searches
+- Use grep with exact pattern matching and context limits (e.g., -A/-B/-C flags with small numbers)
+- Include curl commands when API endpoint analysis would be beneficial
+- Only use mkdir, cp, mv, rm commands when necessary; avoid touch commands
+</bash_commands_guidelines>
 
 <response_format>
 Your response MUST use structured XML tags as follows:
@@ -45,7 +53,7 @@ Your response MUST use structured XML tags as follows:
       </file_operations>
       <!-- The following elements are optional and should only be included when necessary -->
       <bash_commands>mkdir -p path/to/dir && touch path/to/file.js && mv old/file.js new/location.js</bash_commands>
-      <exploration_commands>grep -n "exactFunctionName" --include="*.js" src/specific-directory/ -A 2 -B 2 && find src/components -name "*Button.tsx" -type f | xargs wc -l | sort -n | head -5</exploration_commands>
+      <exploration_commands>grep -n "exactFunctionName" --include="*.js" src/specific-directory/ -A 2 -B 2</exploration_commands>
       <api_tests>curl -X GET "http://localhost:3000/api/endpoint" -H "Content-Type: application/json" | jq</api_tests>
     </step>
     <!-- Additional steps as needed -->
@@ -54,25 +62,12 @@ Your response MUST use structured XML tags as follows:
 
 DO NOT include actual code implementations, only describe what code changes are needed.
 DO NOT include any instructions about git branches, version control, or tests.
-DO NOT include any touch bash commands, only use mkdir, cp, mv, rm, etc. that are necessary.
 
-For bash commands:
-- Only include when essential for implementing a step or understanding complex code
-- Omit completely when they add no value to a step
-- Structure exploration commands to be highly targeted with precise patterns to avoid excessive output
-- Prefer specific directory targets and file patterns over broad searches
-- Use grep with exact pattern matching and context limits (e.g., -A/-B/-C flags with small numbers)
-- Include curl commands when API endpoint analysis would be beneficial
-- Frame commands as tools for AI agents to understand the codebase deeply
-
-Focus on providing an actionable plan that an AI agent can follow precisely.
-Be specific about file paths, component names, and function names to be modified.
-Always follow existing project conventions for naming and file organization.
-Keep solutions simple and straightforward without overengineering.
-Eliminate any code duplication to improve maintainability.
-Split large, complex files into smaller modules with single responsibilities.
-Ensure a deep understanding of data structures and how data flows through the application.
-Take time to think through all implications and provide the best possible solution.
+Focus on providing an actionable plan that an AI agent can follow precisely:
+- Be specific about file paths, component names, and function names to be modified
+- Always follow existing project conventions for naming and file organization
+- Ensure a deep understanding of data structures and how data flows through the application
+- Take time to think through all implications and provide the best possible solution
 </response_format>`;
 }
 
@@ -88,16 +83,15 @@ export function generateImplementationPlanUserPrompt({
   relevantFiles: string[];
   fileContents: Record<string, string>;
 }): string {
-  // Prepare file content for the prompt context
+  // Prepare file content for the prompt context, with specific highlighting of the most relevant files
   const codeContext = relevantFiles
     .map(filePath => {
       const content = fileContents[filePath];
       return content ? 
-        `<file>
-<file_path>${filePath}</file_path>
-<file_content>
+        `<file path="${filePath}">
+\`\`\`
 ${content}
-</file_content>
+\`\`\`
 </file>` : null;
     })
     .filter(Boolean)
@@ -122,6 +116,25 @@ ${codeContext}
 </codebase_info>
 
 <request>
-Provide a detailed, step-by-step implementation plan for this task using the required XML structure. Include specific file paths, component names, and describe exactly what changes are needed for each file. Only include bash commands (file operations, exploration, API tests) when they add significant value to implementing or understanding a step—otherwise omit these sections entirely. When including exploration commands, make them highly targeted with precise patterns, specific directory targets, and limited output to avoid excessive token usage. Before implementing changes, thoroughly analyze data structures, data flow, and function interactions to understand how components work together. Make sure the solution is simple and straightforward WITHOUT overengineering. If you see any code duplication - eliminate it. When encountering overly large files, refactor them into smaller, focused modules with clear responsibilities. Take your time to think everything through and provide truly the BEST solution possible. THINK HARD, HARD, HARD! Go over the solution multiple times and make sure it is the best possible solution, explore alternative solutions, and make sure it is the best possible solution. Clearly identify any files, functions, or code sections that need to be deleted or removed. DO NOT include actual code implementations or any instructions about git branches, version control, or tests. Follow existing naming conventions and folder structure patterns.
+Provide a detailed, step-by-step implementation plan for this task using the required XML structure.
+
+Focus on:
+- Specific file paths, component names, and exact changes needed for each file
+- Analyzing data structures, data flow, and function interactions before implementing changes
+- Creating simple, straightforward solutions WITHOUT overengineering
+- Eliminating any code duplication you identify
+- Refactoring large files into smaller modules with clear responsibilities
+- Including bash commands only when they provide significant value
+- Using targeted patterns and specific directories in exploration commands
+
+THINK DEEPLY about the solution:
+- Carefully analyze the existing architecture and code patterns
+- Explore multiple alternative approaches
+- Take time to think through all implications of your plan
+- Iterate on your plan to ensure it's truly the BEST solution possible
+
+DO NOT include:
+- Actual code implementations (only describe what changes are needed)
+- Git branch instructions, version control commands, or test directives
 </request>`;
 }

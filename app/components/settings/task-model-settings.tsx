@@ -47,12 +47,6 @@ const taskTypeDefinitions: Record<TaskType, {
   defaultModel: string;
   defaultMaxTokens: number;
 }> = {
-  xml_generation: { 
-    label: "XML Generation", 
-    defaultApiType: 'gemini',
-    defaultModel: GEMINI_PRO_PREVIEW_MODEL, 
-    defaultMaxTokens: 65536 
-  },
   pathfinder: { 
     label: "Path Finder", 
     defaultApiType: 'gemini',
@@ -106,6 +100,12 @@ const taskTypeDefinitions: Record<TaskType, {
     defaultApiType: 'gemini',
     defaultModel: GEMINI_PRO_PREVIEW_MODEL, 
     defaultMaxTokens: 16384 
+  },
+  implementation_plan: {
+    label: "Implementation Plan",
+    defaultApiType: 'gemini',
+    defaultModel: GEMINI_PRO_PREVIEW_MODEL,
+    defaultMaxTokens: 65536
   },
   unknown: { 
     label: "Unknown Task", 
@@ -200,13 +200,14 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Model Settings</CardTitle>
+        <CardTitle className="text-lg">AI Model Settings</CardTitle>
         <CardDescription>
-          Configure model settings for each task type
+          Configure model settings for each task type in this project. These settings will be used when 
+          running AI tasks like path finding, code generation, and text improvement.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="xml_generation">
+        <Tabs defaultValue="implementation_plan">
           <TabsList className="mb-4 flex flex-wrap gap-1">
             {Object.entries(taskTypeDefinitions).map(([type, config]) => (
               type !== 'unknown' && (
@@ -253,6 +254,7 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                       </Select>
                       <p className="text-xs text-muted-foreground mt-1">
                         {models.find(m => m.value === settings.model)?.description || "Select a model"}
+                        {settings.model && <span className="block text-[10px] text-gray-500 mt-0.5">{settings.model}</span>}
                       </p>
                     </div>
                   </div>
@@ -276,8 +278,14 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                         <Input
                           type="number"
                           value={settings.maxTokens}
-                          onChange={(e) => handleMaxTokensChange(taskType, [parseInt(e.target.value)])}
-                          className="w-20"
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            // Validate the input
+                            if (!isNaN(value) && value >= 1000 && value <= 100000) {
+                              handleMaxTokensChange(taskType, [value]);
+                            }
+                          }}
+                          className="w-24"
                           min={1000}
                           max={100000}
                         />
@@ -288,7 +296,7 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                     </div>
                   </div>
                   
-                  {/* Temperature Slider - not used by all tasks */}
+                  {/* Temperature Slider - not used by whisper transcription */}
                   {taskType !== 'transcription' && (
                     <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor={`temperature-${type}`} className="text-right">
@@ -308,7 +316,13 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                           <Input
                             type="number"
                             value={settings.temperature || 0.7}
-                            onChange={(e) => handleTemperatureChange(taskType, [parseFloat(e.target.value)])}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value);
+                              // Validate the input range
+                              if (!isNaN(value) && value >= 0 && value <= 1) {
+                                handleTemperatureChange(taskType, [value]);
+                              }
+                            }}
                             className="w-20"
                             min={0}
                             max={1}
@@ -316,7 +330,10 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                           />
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Lower values produce more predictable outputs, higher values more creative
+                          {taskType === 'path_correction' || taskType === 'regex_generation' ? 
+                            "Lower values produce more accurate results for this task" :
+                            "Lower values (0.0-0.3): Predictable outputs, Higher values (0.7-1.0): More creative"
+                          }
                         </p>
                       </div>
                     </div>

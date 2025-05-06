@@ -5,6 +5,8 @@ import { useProjectFileList, FileInfo } from "./file-management/use-project-file
 import { useFileSelectionManager } from "./file-management/use-file-selection-manager";
 import { useRelevantFilesFinder } from "./file-management/use-relevant-files-finder";
 import { FileManagementContextValue } from "../_contexts/file-management-context";
+import { normalizePathForComparison } from "@/lib/path-utils";
+import { JOB_STATUSES } from "@/types/session-types";
 
 interface UseFileManagementStateProps {
   projectDirectory: string;
@@ -88,24 +90,23 @@ export function useFileManagementState({
     toggleSearchSelectedFilesOnly,
     handleBulkToggle,
     applySelectionsFromPaths,
+    replaceAllSelectionsWithPaths,
   } = fileSelectionManager;
 
-  // AI relevant file finding
-  const relevantFilesFinder = useRelevantFilesFinder({
-    activeSessionId,
-    projectDirectory, 
-    taskDescription,
-    includedPaths,
-    searchSelectedFilesOnly
-  });
-
+  // AI relevant file finding - simplified
   const {
     isFindingFiles,
     findingFilesJobId,
     error: findFilesError,
     findingFilesJobResult,
     executeFindRelevantFiles,
-  } = relevantFilesFinder;
+  } = useRelevantFilesFinder({
+    activeSessionId,
+    projectDirectory, 
+    taskDescription,
+    includedPaths,
+    searchSelectedFilesOnly
+  });
 
   // Update session data when changes occur
   useEffect(() => {
@@ -120,19 +121,24 @@ export function useFileManagementState({
     }
   }, [sessionData?.pastedPaths, pastedPaths, setPastedPaths]);
 
+  // Track if we've loaded the initial searchSelectedFilesOnly state
+  const hasLoadedSearchSelectedRef = useRef(false);
+  
   // Load searchSelectedFilesOnly from session data (only once)
   useEffect(() => {
     if (
+      !hasLoadedSearchSelectedRef.current &&
       sessionData?.searchSelectedFilesOnly !== undefined && 
       sessionData.searchSelectedFilesOnly !== searchSelectedFilesOnly
     ) {
+      // Mark as loaded so we don't trigger this again
+      hasLoadedSearchSelectedRef.current = true;
+      
       // Need to handle this specially since it's a toggle
       // Use the value overload rather than the toggle function to avoid infinite loops
       toggleSearchSelectedFilesOnly(sessionData.searchSelectedFilesOnly);
     }
   }, [
-    // Only include sessionData?.searchSelectedFilesOnly to prevent re-running
-    // This effect should only run when the session data changes, not when the toggle state changes
     sessionData?.searchSelectedFilesOnly,
     toggleSearchSelectedFilesOnly,
     searchSelectedFilesOnly
@@ -149,20 +155,48 @@ export function useFileManagementState({
     };
   }, [searchTerm, pastedPaths, includedPaths, excludedPaths, searchSelectedFilesOnly]);
 
-  // Wrapper for findRelevantFiles that handles errors
-  const findRelevantFiles = useCallback(async () => {
-    console.log("Find relevant files requested");
-    if (!taskDescription) {
-      console.log("No task description provided for finding files");
+  
+  // Function to execute find relevant files
+  const findRelevantFilesCallback = useCallback(async (): Promise<void> => {
+    if (!taskDescription.trim() || isFindingFiles) {
       return;
     }
+    
     try {
       await executeFindRelevantFiles();
     } catch (error) {
-      console.log("Error finding relevant files:", error);
-      // Error is already captured in the hook
+      console.error("[FileManagement] Error finding relevant files:", error);
     }
-  }, [taskDescription, executeFindRelevantFiles]);
+  }, [executeFindRelevantFiles, taskDescription, isFindingFiles]);
+  
+  // React to completed find relevant files jobs
+  useEffect(() => {
+    // Check if we have a valid job result
+    if (findingFilesJobResult?.status === JOB_STATUSES.COMPLETED[0] && 
+        typeof findingFilesJobResult.response === 'string') {
+      
+      console.log('[FileManagementState] Processing completed find relevant files job');
+      
+      // Parse paths from the response
+      const pathsFromResponse = findingFilesJobResult.response
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+      
+      // Normalize paths for consistent comparison
+      const normalizedPaths = pathsFromResponse.map(p => normalizePathForComparison(p));
+      
+      if (normalizedPaths.length > 0) {
+        console.log(`[FileManagementState] Adding ${normalizedPaths.length} paths from Gemini to selection`);
+        
+        // Apply the paths to the current selection (merging on UI side)
+        applySelectionsFromPaths(normalizedPaths);
+        
+        // Trigger interaction to save state
+        handleInteraction();
+      }
+    }
+  }, [findingFilesJobResult, applySelectionsFromPaths, handleInteraction]);
 
   // Function to get current file state for session saving
   const getFileStateForSession = useCallback(() => {
@@ -187,7 +221,7 @@ export function useFileManagementState({
       excludedPaths,
       searchSelectedFilesOnly,
       isLoadingFiles,
-      isFindingFiles,
+      isFindingFiles: Boolean(isFindingFiles), // Ensure it's a boolean
       findingFilesJobId,
       fileContentsMap: {},
 
@@ -200,7 +234,7 @@ export function useFileManagementState({
       toggleSearchSelectedFilesOnly,
       handleBulkToggle: adaptedHandleBulkToggle,
       applySelectionsFromPaths,
-      findRelevantFiles,
+      findRelevantFiles: findRelevantFilesCallback,
       refreshFiles,
       
       // Session state extraction
@@ -226,7 +260,7 @@ export function useFileManagementState({
       toggleSearchSelectedFilesOnly,
       adaptedHandleBulkToggle,
       applySelectionsFromPaths,
-      findRelevantFiles,
+      findRelevantFilesCallback,
       refreshFiles,
       getFileStateForSession,
     ]

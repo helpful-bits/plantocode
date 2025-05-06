@@ -12,6 +12,7 @@ interface NotificationType {
   message: string;
   type?: "default" | "success" | "error" | "warning" | "info";
   duration?: number;
+  clipboardFeedback?: boolean;
 }
 
 interface NotificationContextType {
@@ -23,7 +24,7 @@ const NotificationContext = createContext<NotificationContextType>({
 });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const showNotification = ({ title, message, type = "default", duration = 5000 }: NotificationType) => {
+  const showNotification = ({ title, message, type = "default", duration = 5000, clipboardFeedback = false }: NotificationType) => {
     const options: ToastOptions = {
       title,
       description: message,
@@ -37,6 +38,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       options.variant = "default";
     } else if (type === "warning" || type === "info") {
       options.variant = "default";
+    }
+
+    // If clipboard feedback is enabled, add a custom class or style
+    if (clipboardFeedback) {
+      // You can either add a custom class or modify the options to indicate clipboard feedback
+      // For now, we'll just pass the property through
+      (options as any).clipboardFeedback = true;
     }
 
     toast(options);

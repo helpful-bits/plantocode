@@ -10,7 +10,6 @@ import TaskSection from "./_sections/TaskSection";
 import FileSection from "./_sections/FileSection";
 import ActionSection from "./_sections/ActionSection";
 import PromptPreview from "./_sections/PromptPreview";
-import { default as RegexInputComponent } from "./_components/regex-input";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -31,27 +30,25 @@ export default function GeneratePromptForm() {
     isGeneratingGuidance: contextValue.isGeneratingGuidance,
     projectDirectory: contextValue.projectDirectory || '',
     taskDescriptionRef: contextValue.taskState.taskDescriptionRef,
-    // Add these props to satisfy the type requirements
-    isFindingFiles: false,
-    pastedPaths: ""
+    isImprovingText: contextValue.taskState.isImprovingText,
+    textImprovementJobId: contextValue.taskState.textImprovementJobId
   }), [
     contextValue.taskState.taskDescription,
     contextValue.isGeneratingGuidance,
     contextValue.projectDirectory,
-    contextValue.taskState.taskDescriptionRef
+    contextValue.taskState.taskDescriptionRef,
+    contextValue.taskState.isImprovingText,
+    contextValue.taskState.textImprovementJobId
   ]);
 
   const taskSectionActions = useMemo(() => ({
     handleTaskChange: contextValue.taskState.setTaskDescription,
     handleTranscribedText: contextValue.taskState.setTaskDescription,
     handleInteraction: contextValue.handleInteraction,
-    copyArchPrompt: contextValue.handleGenerateGuidance,
-    // Add this prop to satisfy the type requirements
-    handleFindRelevantFiles: () => Promise.resolve()
+    copyArchPrompt: (selectedPaths: string[]) => contextValue.handleGenerateGuidance(selectedPaths),
+    handleImproveSelection: contextValue.taskState.handleImproveSelection
   }), [
-    contextValue.taskState.setTaskDescription,
-    contextValue.handleInteraction,
-    contextValue.handleGenerateGuidance
+    contextValue
   ]);
 
   return (
@@ -92,56 +89,6 @@ export default function GeneratePromptForm() {
                   actions={taskSectionActions}
                 />
               </div>
-
-              {/* Pattern & Regex Section */}
-              <Suspense fallback={<div>Loading pattern input...</div>}>
-                <div className="flex flex-col gap-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={contextValue.regexState.handleGenerateRegexFromTask}
-                      disabled={!contextValue.taskState.taskDescription.trim() || contextValue.regexState.isGeneratingTaskRegex}
-                      className="h-8"
-                    >
-                      {contextValue.regexState.isGeneratingTaskRegex ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        "Generate Regex from Task"
-                      )}
-                    </Button>
-                    {contextValue.regexState.regexGenerationError && (
-                      <p className="text-xs text-destructive">{contextValue.regexState.regexGenerationError}</p>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Uses AI to suggest regex patterns based on the task description.</p>
-
-                  <Suspense fallback={<div>Loading regex input...</div>}>
-                    <RegexInputComponent
-                      titleRegex={contextValue.regexState.titleRegex}
-                      contentRegex={contextValue.regexState.contentRegex}
-                      negativeTitleRegex={contextValue.regexState.negativeTitleRegex}
-                      negativeContentRegex={contextValue.regexState.negativeContentRegex}
-                      onTitleRegexChange={contextValue.regexState.setTitleRegex}
-                      onContentRegexChange={contextValue.regexState.setContentRegex}
-                      onNegativeTitleRegexChange={contextValue.regexState.setNegativeTitleRegex}
-                      onNegativeContentRegexChange={contextValue.regexState.setNegativeContentRegex}
-                      titleRegexError={contextValue.regexState.titleRegexError}
-                      contentRegexError={contextValue.regexState.contentRegexError}
-                      negativeTitleRegexError={contextValue.regexState.negativeTitleRegexError}
-                      negativeContentRegexError={contextValue.regexState.negativeContentRegexError}
-                      isRegexActive={contextValue.regexState.isRegexActive}
-                      onRegexActiveChange={contextValue.regexState.setIsRegexActive}
-                      onInteraction={contextValue.handleInteraction}
-                      onClearPatterns={contextValue.regexState.handleClearPatterns}
-                    />
-                  </Suspense>
-                </div>
-              </Suspense>
 
               {/* File Selection Section */}
               <div>

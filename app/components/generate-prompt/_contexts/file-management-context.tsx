@@ -24,7 +24,7 @@ export interface FileManagementContextValue {
   setPastedPaths: (pastedPaths: string) => void;
   toggleFileSelection: (filePath: string) => void;
   toggleFileExclusion: (filePath: string) => void;
-  toggleSearchSelectedFilesOnly: () => void;
+  toggleSearchSelectedFilesOnly: (value?: boolean) => void;
   handleBulkToggle: (files: FileInfo[], include: boolean) => void;
   applySelectionsFromPaths: (paths: string[]) => void;
   findRelevantFiles: () => Promise<void>;

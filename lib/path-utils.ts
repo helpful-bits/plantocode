@@ -14,6 +14,44 @@ export function formatPathForDisplay(filePath: string, baseDir?: string): string
 }
 
 /**
+ * Normalizes a file path for consistent comparison across the application.
+ * This creates a canonical string format for comparing paths:
+ * - Uses forward slashes
+ * - Removes leading ./ or /
+ * - Removes redundant slashes
+ * - Trims whitespace
+ * 
+ * @param filePath The file path to normalize
+ * @returns A normalized path in canonical format for consistent comparison
+ */
+export function normalizePathForComparison(filePath: string): string {
+  if (!filePath) return '';
+  
+  let normalizedPath = filePath;
+  
+  // Trim whitespace
+  normalizedPath = normalizedPath.trim();
+  
+  // Convert backslashes to forward slashes
+  normalizedPath = normalizedPath.replace(/\\/g, '/');
+  
+  // Replace multiple consecutive slashes with a single one
+  normalizedPath = normalizedPath.replace(/\/\/+/g, '/');
+  
+  // Remove leading ./ if present
+  if (normalizedPath.startsWith('./')) {
+    normalizedPath = normalizedPath.substring(2);
+  }
+  
+  // Remove leading / if present (assuming paths are relative to project root)
+  if (normalizedPath.startsWith('/')) {
+    normalizedPath = normalizedPath.substring(1);
+  }
+  
+  return normalizedPath;
+}
+
+/**
  * Normalizes file paths to ensure consistent handling throughout the application
  * using forward slashes and handling relative paths against a base directory.
  *
@@ -78,16 +116,16 @@ export function getDirectoryName(filePath: string): string {
 }
 
 /**
- * Returns the path to the patches directory in the project directory
- * This directory is used for XML files that contain changes to be applied
+ * Returns the path to the output files directory in the project directory
+ * This directory is used for generated output files like patches, implementation plans, etc.
  * @param projectDirectory Path to the project directory
- * @returns Path to the patches directory within the project
+ * @returns Path to the output files directory within the project
  */
-export function getProjectPatchesDirectory(projectDirectory: string): string {
+export function getProjectOutputFilesDirectory(projectDirectory: string): string {
   if (!projectDirectory) {
     throw new Error('Project directory is required');
   }
-  return path.join(projectDirectory, 'patches');
+  return path.join(projectDirectory, 'generated_outputs');
 }
 
 /**
@@ -97,7 +135,7 @@ export const IMPLEMENTATION_PLANS_DIR_NAME = 'implementation_plans';
 
 /**
  * Returns the path to the implementation plans directory in the project directory
- * This directory is used for XML files containing implementation plans
+ * This directory is used for generated implementation plans
  * @param projectDirectory Path to the project directory
  * @returns Path to the implementation plans directory within the project
  */
@@ -109,28 +147,28 @@ export function getProjectImplementationPlansDirectory(projectDirectory: string)
 }
 
 /**
- * Returns the path to the fallback patches directory in the application directory
- * This directory is used for XML files when project directory is not accessible
- * @returns Path to the application's patches directory
+ * Returns the path to the fallback outputs directory in the application directory
+ * @returns Path to the application's output files directory
  */
-export function getAppPatchesDirectory(): string {
-  return path.join(process.cwd(), 'patches');
+export function getAppOutputFilesDirectory(): string {
+  return path.join(process.cwd(), 'generated_outputs');
 }
 
 /**
- * Resolves a patch or XML filename to a full path in either project directory or app directory
- * @param filename The XML filename
+ * Resolves an output filename to a full path in the output files directory
+ * @param filename The output filename
+ * @param outputType Type of output (e.g., 'patches', 'implementation_plans')
  * @param projectDirectory Optional project directory
- * @returns The full path to the XML file
+ * @returns The full path to the output file
  */
-export function resolvePatchPath(filename: string, projectDirectory?: string): string {
+export function resolveOutputFilePath(filename: string, outputType: string, projectDirectory?: string): string {
   if (projectDirectory) {
-    const projectPath = path.join(projectDirectory, 'patches', filename);
+    const projectPath = path.join(projectDirectory, 'generated_outputs', outputType, filename);
     // Note: This doesn't check existence, just creates the path
     return projectPath;
   }
   
-  return path.join(process.cwd(), 'patches', filename);
+  return path.join(process.cwd(), 'generated_outputs', outputType, filename);
 }
 
 /**
@@ -138,17 +176,19 @@ export function resolvePatchPath(filename: string, projectDirectory?: string): s
  * @param filePath Full path to a file
  * @returns Just the filename
  */
-export function getPatchFilename(filePath: string): string {
+export function getFilename(filePath: string): string {
   return path.basename(filePath);
 }
 
 /**
- * Checks if a filename has an XML extension
+ * Checks if a filename has a specific extension
  * @param filename The filename to check
- * @returns True if the file has an XML extension
+ * @param extension The extension to check for (default is XML)
+ * @returns True if the file has the specified extension
  */
-export function isXmlFile(filename: string): boolean {
-  return /\.xml$/i.test(filename);
+export function hasFileExtension(filename: string, extension: string = 'xml'): boolean {
+  const regex = new RegExp(`\\.${extension}$`, 'i');
+  return regex.test(filename);
 }
 
 /**

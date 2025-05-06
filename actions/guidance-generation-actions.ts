@@ -63,7 +63,13 @@ export async function generateGuidanceForPathsAction(
       apiType: 'gemini',
       taskType: 'guidance_generation',
       sessionId,
-      projectDirectory: session.projectDirectory
+      projectDirectory: session.projectDirectory,
+      // Force using a background job for architectural guidance
+      forceBackgroundJob: true,
+      metadata: {
+        targetField: 'taskDescription',
+        isVisible: true
+      }
     });
     
     if (!result.isSuccess) {
@@ -170,7 +176,13 @@ export async function generateTaskGuidanceAction(
       apiType: 'gemini',
       taskType: 'task_guidance',
       projectDirectory,
-      sessionId
+      sessionId,
+      // Force using a background job for task guidance
+      forceBackgroundJob: true,
+      metadata: {
+        targetField: 'taskDescription',
+        isVisible: true
+      }
     });
     
     if (!result.isSuccess) {
