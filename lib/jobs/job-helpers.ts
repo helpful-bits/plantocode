@@ -1,9 +1,13 @@
 import { backgroundJobRepository } from '@/lib/db/repositories';
 import { BackgroundJob, ApiType, TaskType, JobStatus, JOB_STATUSES } from '@/types/session-types';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { BaseJobPayload, JobType } from './job-types';
+import { globalJobQueue } from './global-job-queue';
 
 /**
- * Creates a background job for an API request
+ * Creates a background job in the database
+ * This function creates the job record with an initial status of 'created'.
+ * Unlike the previous version, it does not update status to 'preparing'.
  */
 export async function createBackgroundJob(
   sessionId: string,
@@ -33,31 +37,69 @@ export async function createBackgroundJob(
     metadata = {}
   } = options;
 
-  // Create the job
+  // Create the job with status 'created' (not 'preparing')
   const job = await backgroundJobRepository.createBackgroundJob(
     sessionId,
     apiType,
     taskType,
-    rawInput,  // This is correctly passed to be stored as both prompt and rawInput
+    rawInput,
     includeSyntax,
     temperature,
     true, // visible
-    metadata // Pass the custom metadata
-  );
-  
-  // Update to preparing status
-  await backgroundJobRepository.updateBackgroundJobStatus({
-    jobId: job.id,
-    status: 'preparing' as JobStatus,
-    statusMessage: `Setting up ${apiType.toUpperCase()} API request`,
-    metadata: {
+    {
+      ...metadata,
       modelUsed: model,
       maxOutputTokens: options.maxOutputTokens,
-      ...metadata // Include custom metadata in the status update
+    }
+  );
+  
+  return job;
+}
+
+/**
+ * Enqueues a job into the global job queue
+ * This function adds a job to the queue and updates the background job status to 'queued'.
+ * 
+ * @param jobType The type of job to enqueue
+ * @param payload The job payload (must include backgroundJobId)
+ * @param priority The job priority (default: 1)
+ * @returns The queue job ID
+ */
+export async function enqueueJob(
+  jobType: JobType, 
+  payload: BaseJobPayload & any, 
+  priority: number = 1
+): Promise<string> {
+  // Validate payload
+  if (!payload || !payload.backgroundJobId) {
+    throw new Error('Job payload must include backgroundJobId');
+  }
+
+  // Validate session ID
+  if (!payload.sessionId || typeof payload.sessionId !== 'string' || !payload.sessionId.trim()) {
+    throw new Error('Job payload must include a valid sessionId');
+  }
+
+  // Add job to the queue
+  const queueJobId = await globalJobQueue.enqueue({
+    type: jobType,
+    payload,
+    priority
+  });
+  
+  // Update background job status to 'queued'
+  await backgroundJobRepository.updateBackgroundJobStatus({
+    jobId: payload.backgroundJobId,
+    status: 'queued',
+    statusMessage: `Queued for processing (${jobType})`,
+    metadata: {
+      queueJobId, // Store the queue job ID for reference
+      queuedAt: Date.now(),
+      priority
     }
   });
   
-  return job;
+  return queueJobId;
 }
 
 /**
@@ -110,9 +152,12 @@ export async function updateJobToCompleted(
   jobId: string,
   responseText: string,
   tokens: {
-    promptTokens?: number;
-    completionTokens?: number;
+    tokensSent?: number;
+    tokensReceived?: number;
     totalTokens?: number;
+    modelUsed?: string;
+    maxOutputTokens?: number;
+    outputFilePath?: string;
   } = {}
 ): Promise<void> {
   // Validate jobId
@@ -136,11 +181,14 @@ export async function updateJobToCompleted(
     // Clear any error messages that might have been set earlier
     errorMessage: '',
     metadata: {
-      promptTokens: tokens.promptTokens || 0,
-      completionTokens: tokens.completionTokens || 0,
-      totalTokens: tokens.totalTokens || 0,
+      tokensSent: tokens.tokensSent || 0,
+      tokensReceived: tokens.tokensReceived || 0,
+      totalTokens: tokens.totalTokens || ((tokens.tokensSent || 0) + (tokens.tokensReceived || 0)),
       lastUpdateTime: now,
-      completedAt: now
+      completedAt: now,
+      modelUsed: tokens.modelUsed,
+      maxOutputTokens: tokens.maxOutputTokens,
+      outputFilePath: tokens.outputFilePath
     }
   });
 }
@@ -291,4 +339,4 @@ export async function cancelAllSessionJobs(
     console.error(`[${apiType.toUpperCase()} Client] Error cancelling session jobs:`, error);
     throw error;
   }
-} 
+}

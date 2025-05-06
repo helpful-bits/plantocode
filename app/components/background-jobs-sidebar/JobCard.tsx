@@ -59,8 +59,6 @@ export const JobCard = React.memo(({
   const getResponsePreview = () => {
     if (job.response) {
       return job.response.substring(0, 100) + (job.response.length > 100 ? '...' : '');
-    } else if (job.modelOutput) {
-      return job.modelOutput.substring(0, 100) + (job.modelOutput.length > 100 ? '...' : '');
     }
     return '';
   };
@@ -166,19 +164,38 @@ export const JobCard = React.memo(({
         {timeAgo}
       </div>
       
-      {/* Add token count display */}
-      {(job.tokensSent || job.tokensReceived) && (
-        <div className="text-muted-foreground text-[10px] mt-1 flex items-center justify-between">
-          <span>
-            Tokens: {formatTokenCount(job.tokensSent)} 
-            {' / '}
-            {formatTokenCount(job.tokensReceived)}
-          </span>
+      {/* Token count and model display */}
+      <div className="text-muted-foreground text-[10px] mt-1 flex items-center justify-between">
+        <div className="flex flex-col">
+          {(job.tokensSent || job.tokensReceived) && (
+            <span className="flex items-center gap-1">
+              <span className="text-[9px] text-muted-foreground">Tokens:</span>
+              <span className="font-mono">{formatTokenCount(job.tokensSent || 0)}</span>
+              <span className="text-[9px]">→</span>
+              <span className="font-mono">{formatTokenCount(job.tokensReceived || 0)}</span>
+            </span>
+          )}
+          {job.modelUsed && (
+            <span className="text-[9px] text-gray-500 truncate max-w-[180px]" title={job.modelUsed}>
+              {job.modelUsed.includes("gemini") 
+                ? job.modelUsed.replace("gemini-", "Gemini ") 
+                : job.modelUsed.includes("claude") 
+                  ? job.modelUsed.replace(/-\d{8}$/, "") 
+                  : job.modelUsed}
+            </span>
+          )}
         </div>
-      )}
+        
+        {/* Show duration for completed jobs */}
+        {job.endTime && job.startTime && (
+          <span className="text-[9px] text-gray-500">
+            {Math.round((job.endTime - job.startTime) / 1000)}s
+          </span>
+        )}
+      </div>
 
       {/* Preview response if available */}
-      {(job.response || job.modelOutput) && (
+      {job.response && (
         <div className="text-[10px] mt-1 border-t pt-1 text-muted-foreground line-clamp-2 overflow-hidden break-words">
           {getResponsePreview()}
         </div>

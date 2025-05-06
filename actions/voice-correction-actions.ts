@@ -77,8 +77,8 @@ export async function correctTaskDescriptionAction(
           const recentTime = Date.now() - 5000; // 5 seconds ago
           const recentJob = sessionActiveJobs.find(job => 
             job.createdAt && (job.createdAt > recentTime) && 
-            job.rawInput && 
-            job.rawInput.substring(0, 50) === rawText.substring(0, 50)
+            job.prompt && 
+            job.prompt.substring(0, 50) === rawText.substring(0, 50)
           );
           
           if (recentJob) {

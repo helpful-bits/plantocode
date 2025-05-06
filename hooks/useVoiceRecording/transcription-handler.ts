@@ -201,6 +201,12 @@ export async function handleCorrection(
 
 /**
  * Process background jobs by their ID and return relevant information
+ * This function handles extracting text from various job response formats
+ * with robust error handling and validation.
+ * 
+ * @param job The background job object to process
+ * @param processedJobs Set of already processed job IDs to prevent duplicate processing
+ * @returns Object with processing status, text content, error message, and status
  */
 export function processBackgroundJob(
   job: BackgroundJob | undefined,
@@ -216,33 +222,69 @@ export function processBackgroundJob(
     return { processed: false, text: null, error: null, status: "processing" };
   }
   
+  // Log for debugging
+  console.debug(`[processBackgroundJob] Processing job ${job.id} with status ${job.status}`);
+  
   // Job is completed
   if (JOB_STATUSES.COMPLETED.includes(job.status)) {
-    // Mark as processed
+    // Mark as processed to prevent duplicate processing
     processedJobs.add(job.id);
     
     // Get the text from the response field (source of truth)
     let text = job.response || null;
+    console.debug(`[processBackgroundJob] Job ${job.id} has ${text ? 'response of length ' + text.length : 'no response'}`);
     
     // Process text if it looks like JSON to extract the actual content
-    if (text && ((text.startsWith('{') && text.endsWith('}')) || 
-              text.includes('"text":') || 
-              text.includes('"response":'))) {
-      try {
-        const parsed = JSON.parse(text);
-        // Extract text from common response formats
-        if (parsed.text && typeof parsed.text === 'string') {
-          text = parsed.text;
-        } else if (parsed.response && typeof parsed.response === 'string') {
-          text = parsed.response;
-        } else if (parsed.content && typeof parsed.content === 'string') {
-          text = parsed.content;
+    if (text) {
+      // Try to extract content if it looks like JSON
+      if ((text.startsWith('{') && text.endsWith('}')) || 
+          text.includes('"text":') || 
+          text.includes('"response":') ||
+          text.includes('"content":')) {
+        try {
+          const parsed = JSON.parse(text);
+          console.debug(`[processBackgroundJob] Successfully parsed JSON response for job ${job.id}`);
+          
+          // Extract text from common response formats, looking through all possible field names
+          const possibleFields = ['text', 'response', 'content', 'transcription', 'result', 'output', 'data'];
+          
+          for (const field of possibleFields) {
+            if (parsed[field] && typeof parsed[field] === 'string') {
+              console.debug(`[processBackgroundJob] Found content in field "${field}"`);
+              text = parsed[field];
+              break;
+            }
+          }
+          
+          // Special handling for Claude API response format
+          if (parsed.content && Array.isArray(parsed.content)) {
+            for (const item of parsed.content) {
+              if (item && item.type === 'text' && item.text) {
+                console.debug(`[processBackgroundJob] Found content in Claude API format`);
+                text = item.text;
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[processBackgroundJob] Response looks like JSON but couldn't parse:`, e);
+          // Continue with original text
         }
-        // If we couldn't extract, we'll use the original response
-      } catch (e) {
-        console.warn("[VoiceRecording] Response looks like JSON but couldn't parse:", e);
-        // Continue with original text
       }
+      
+      // Validate the text after extraction
+      const validation = validateTranscriptionText(text);
+      if (!validation.isValid) {
+        console.warn(`[processBackgroundJob] Invalid text content in job ${job.id}: ${validation.reason}`);
+        return {
+          processed: true,
+          text: null,
+          error: `Invalid content: ${validation.reason}`,
+          status: "failed"
+        };
+      }
+    } else {
+      console.warn(`[processBackgroundJob] Completed job ${job.id} has no response content`);
     }
     
     return {
@@ -253,14 +295,16 @@ export function processBackgroundJob(
     };
   }
   
-  // Job failed
+  // Job failed or was canceled
   if (JOB_STATUSES.FAILED.includes(job.status)) {
     // Mark as processed
     processedJobs.add(job.id);
     
-    // Try to extract error message - provide fallbacks
+    // Try to extract error message with fallbacks
     const errorMessage = job.errorMessage || job.statusMessage || 
                          (job.status === 'canceled' ? "Operation was canceled" : "Operation failed");
+    
+    console.debug(`[processBackgroundJob] Job ${job.id} failed with error: ${errorMessage}`);
     
     return {
       processed: true,
@@ -268,6 +312,23 @@ export function processBackgroundJob(
       error: errorMessage,
       status: "failed"
     };
+  }
+  
+  // Check for jobs that seem stuck
+  if (job.status === 'running' && job.startTime) {
+    const runningTimeMs = Date.now() - job.startTime;
+    const MAX_RUNNING_TIME = 5 * 60 * 1000; // 5 minutes
+    
+    if (runningTimeMs > MAX_RUNNING_TIME) {
+      console.warn(`[processBackgroundJob] Job ${job.id} has been running for ${Math.round(runningTimeMs/1000)}s, may be stuck`);
+      // We don't mark it as processed yet, but we do return a warning
+      return {
+        processed: false,
+        text: null,
+        error: "Job is taking longer than expected",
+        status: "processing"
+      };
+    }
   }
   
   // Job is still processing

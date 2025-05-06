@@ -37,11 +37,5 @@ export interface PoolStats {
   };
 }
 
-// Options for request execution
-export interface ExecuteOptions {
-  sessionId: string;
-  requestId?: string;
-  requestType?: RequestType;
-  priority?: number;
-  [key: string]: any;
-} 
+// Note: Execute functionality has been removed and replaced with the job system.
+// This interface remains here for reference only and should not be used. 

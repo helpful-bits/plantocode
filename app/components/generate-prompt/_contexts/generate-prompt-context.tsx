@@ -60,11 +60,16 @@ export interface GeneratePromptContextValue {
   copySuccess?: boolean;
   showPrompt: boolean;
   
+  // Implementation plan state
+  isCreatingPlan: boolean;
+  planPromptCopySuccess: boolean;
+  isCopyingPlanPrompt: boolean;
+  
   // Session actions
   resetAllState: () => void;
   setSessionName: (name: string) => void;
   handleLoadSession: (sessionData: Session | null) => Promise<void>;
-  handleGenerateGuidance: () => Promise<void>;
+  handleGenerateGuidance: (selectedPaths?: string[]) => Promise<void>;
   saveSessionState: (
     sessionId: string, 
     stateToSave?: any,
@@ -101,6 +106,10 @@ export interface GeneratePromptContextValue {
   setShowPrompt: (value: boolean) => void;
   copyPrompt?: () => Promise<void>;
   handleGenerateCodebase: () => Promise<void>;
+  
+  // Implementation plan methods
+  handleCreateImplementationPlan: (includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
+  handleCopyImplementationPlanPrompt: (includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
 }
 
 // Create the context with a default undefined value

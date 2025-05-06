@@ -8,6 +8,7 @@ export interface ImproveTextOptions {
   sessionId?: string | null;
   mode?: string;
   projectDirectory?: string;
+  targetField?: string;
 }
  
 export async function improveSelectedTextAction(
@@ -23,17 +24,21 @@ export async function improveSelectedTextAction(
     let actualProjectDirectory: string | undefined;
     let mode: string | undefined;
     
+    let targetFieldParam: string | undefined;
+    
     if (typeof options === 'string') {
       // Legacy format
       text = options;
       actualSessionId = sessionId;
       actualProjectDirectory = projectDirectory;
+      targetFieldParam = targetField;
     } else {
       // New object format
       text = options.text;
       actualSessionId = options.sessionId ?? sessionId;
       actualProjectDirectory = options.projectDirectory ?? projectDirectory;
       mode = options.mode;
+      targetFieldParam = options.targetField ?? targetField;
     }
     
     if (!text || !text.trim()) {
@@ -51,7 +56,7 @@ export async function improveSelectedTextAction(
       actualSessionId || undefined,
       { 
         preserveFormatting: true,
-        targetField: targetField // Pass target field to the Claude client
+        targetField: targetFieldParam // Pass target field to the Claude client
       },
       actualProjectDirectory
     );
@@ -66,7 +71,7 @@ export async function improveSelectedTextAction(
           isBackgroundJob: true, 
           jobId: result.metadata.jobId,
           operationId: result.metadata.jobId, // Used by some UI components
-          targetField: targetField // Include the target field in response metadata
+          targetField: targetFieldParam // Include the target field in response metadata
         }
       };
     }

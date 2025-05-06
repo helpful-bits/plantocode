@@ -1,3 +1,15 @@
+/**
+ * Claude API Client
+ * 
+ * This client provides access to the Anthropic Claude API, handling:
+ * - Background job management compatible with Gemini client
+ * - Request prioritization via streaming request pool
+ * - Token usage tracking
+ * - Comprehensive job metadata
+ * - Error handling and reporting 
+ * - Specialized methods for text improvement and voice correction
+ */
+
 import { ActionState, BackgroundJob } from "@/types";
 import crypto from 'crypto';
 import { setupDatabase } from "@/lib/db";
@@ -92,6 +104,21 @@ class ClaudeClient {
         // Extract the prompt text from the messages
         const promptText = payload.messages.map(m => `${m.role}: ${m.content}`).join('\n');
         
+        // Create a comprehensive metadata object
+        const combinedMetadata = {
+          // Model configuration
+          modelUsed: payload.model || DEFAULT_MODEL,
+          maxOutputTokens: payload.max_tokens || 2048,
+          temperature: payload.temperature || 0.7,
+          
+          // Project context
+          projectDirectory: projectDirectory,
+          
+          // Request context
+          requestType: RequestType.CLAUDE_REQUEST,
+          requestId: crypto.randomUUID(),
+        };
+        
         // Create the job using the centralized helper
         job = await createBackgroundJob(
           sessionId,
@@ -101,14 +128,20 @@ class ClaudeClient {
             model: payload.model || DEFAULT_MODEL,
             rawInput: promptText,
             includeSyntax: !!payload.messages,
-            temperature: payload.temperature || 0.7
+            temperature: payload.temperature || 0.7,
+            maxOutputTokens: payload.max_tokens || 2048,
+            metadata: combinedMetadata
           }
         );
       } catch (err) {
         console.error("Error creating background job:", err);
         return { 
           isSuccess: false, 
-          message: `Error creating background job: ${err instanceof Error ? err.message : String(err)}`
+          message: `Error creating background job: ${err instanceof Error ? err.message : String(err)}`,
+          metadata: {
+            errorType: "JOB_CREATION_ERROR",
+            statusCode: 0,
+          }
         };
       }
     }
@@ -163,19 +196,34 @@ class ClaudeClient {
             return {
               isSuccess: false,
               message: `Anthropic API is currently overloaded. Please try again in a few moments.`,
-              error: new Error(`RATE_LIMIT:${response.status}:Anthropic API is currently overloaded.`)
+              error: new Error(`RATE_LIMIT:${response.status}:Anthropic API is currently overloaded.`),
+              metadata: {
+                errorType: "RATE_LIMIT_ERROR",
+                statusCode: response.status,
+                modelUsed: payload.model || DEFAULT_MODEL
+              }
             };
           } else if (response.status >= 500) {
             return {
               isSuccess: false,
               message: `Anthropic API server error.`,
-              error: new Error(`SERVER_ERROR:${response.status}:Anthropic API server error.`)
+              error: new Error(`SERVER_ERROR:${response.status}:Anthropic API server error.`),
+              metadata: {
+                errorType: "SERVER_ERROR",
+                statusCode: response.status,
+                modelUsed: payload.model || DEFAULT_MODEL
+              }
             };
           } else {
             return {
               isSuccess: false,
               message: `API error: ${errText.slice(0, 150)}`,
-              error: new Error(`API_ERROR:${response.status}:${errText.slice(0, 150)}`)
+              error: new Error(`API_ERROR:${response.status}:${errText.slice(0, 150)}`),
+              metadata: {
+                errorType: "API_ERROR",
+                statusCode: response.status,
+                modelUsed: payload.model || DEFAULT_MODEL
+              }
             };
           }
         }
@@ -194,14 +242,36 @@ class ClaudeClient {
           return {
             isSuccess: false,
             message: "Anthropic returned an invalid response structure.",
-            error: new Error("Anthropic returned an invalid response structure.")
+            error: new Error("Anthropic returned an invalid response structure."),
+            metadata: {
+              errorType: "RESPONSE_FORMAT_ERROR",
+              statusCode: 200,
+              modelUsed: payload.model || DEFAULT_MODEL
+            }
           };
         }
         
         // Update job status to completed
         if (job) {
           const responseText = data.content[0].text.trim();
-          await updateJobToCompleted(job.id, responseText);
+          
+          // Extract token counts from the response usage metadata
+          const tokensSent = data.usage?.input_tokens || 0;
+          const tokensReceived = data.usage?.output_tokens || 0;
+          const totalTokens = tokensSent + tokensReceived;
+          
+          // Ensure we have valid values
+          const validTokensSent = isNaN(tokensSent) ? 0 : tokensSent;
+          const validTokensReceived = isNaN(tokensReceived) ? 0 : tokensReceived;
+          
+          // Update the background job with complete information
+          await updateJobToCompleted(job.id, responseText, {
+            tokensSent: validTokensSent,
+            tokensReceived: validTokensReceived,
+            totalTokens: validTokensSent + validTokensReceived,
+            modelUsed: payload.model || DEFAULT_MODEL,
+            maxOutputTokens: payload.max_tokens || 2048
+          });
         }
         
         return {
@@ -230,16 +300,14 @@ class ClaudeClient {
     const requestId = crypto.randomUUID();
     
     try {
-      // Execute the request through the streaming request pool
-      const result = await streamingRequestPool.execute(
-        executeRequest,
-        {
-          sessionId: sessionId || 'anonymous',
-          requestId,
-          requestType: RequestType.CLAUDE_REQUEST,
-          priority: 0
-        }
-      );
+      // Track this request in the streaming pool but execute directly
+      streamingRequestPool.trackRequest(requestId, sessionId || 'anonymous', RequestType.CLAUDE_REQUEST);
+      
+      // Execute the request directly
+      const result = await executeRequest();
+      
+      // Untrack the request when done
+      streamingRequestPool.untrackRequest(requestId);
       
       if (!result.isSuccess) {
         return {
@@ -261,16 +329,31 @@ class ClaudeClient {
           metadata: {
             isBackgroundJob: true,
             jobId: job.id,
-            requestId: requestId
+            requestId: requestId,
+            modelUsed: payload.model || DEFAULT_MODEL,
+            maxOutputTokens: payload.max_tokens || 2048,
+            temperature: payload.temperature || 0.7,
+            projectDirectory: projectDirectory
           }
         };
       } else {
+        // Extract token counts if available
+        const tokensSent = data.usage?.input_tokens || 0;
+        const tokensReceived = data.usage?.output_tokens || 0;
+        
         return { 
           isSuccess: true, 
           message: "Claude request processed successfully.",
           data: responseText,
           metadata: {
-            requestId: requestId
+            requestId: requestId,
+            modelUsed: payload.model || DEFAULT_MODEL,
+            maxOutputTokens: payload.max_tokens || 2048,
+            temperature: payload.temperature || 0.7,
+            tokensSent,
+            tokensReceived,
+            totalTokens: tokensSent + tokensReceived,
+            chars: responseText.length
           }
         };
       }
@@ -288,7 +371,13 @@ class ClaudeClient {
           error: error instanceof Error ? error : new Error(errorMessage),
           metadata: {
             isBackgroundJob: true,
-            jobId: job.id
+            jobId: job.id,
+            errorType: "RUNTIME_ERROR",
+            statusCode: 0,
+            modelUsed: payload.model || DEFAULT_MODEL,
+            maxOutputTokens: payload.max_tokens || 2048,
+            temperature: payload.temperature || 0.7,
+            projectDirectory: projectDirectory
           }
         };
       }
@@ -296,7 +385,12 @@ class ClaudeClient {
       return {
         isSuccess: false,
         message: `Error executing Claude request: ${error instanceof Error ? error.message : String(error)}`,
-        error: error instanceof Error ? error : new Error(String(error))
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: {
+          errorType: "RUNTIME_ERROR",
+          statusCode: 0,
+          modelUsed: payload.model || DEFAULT_MODEL
+        }
       };
     }
   }
@@ -339,7 +433,7 @@ class ClaudeClient {
       const result = await this.sendRequest(payload, sessionId, 'text_improvement', projectDirectory);
       
       // If this is a background job, return the jobId with a clear metadata structure
-      if (result.isSuccess && result.metadata?.jobId) {
+      if (result.isSuccess && result.metadata?.isBackgroundJob) {
         return {
           isSuccess: true,
           message: "Text improvement is being processed in the background.",
@@ -347,7 +441,11 @@ class ClaudeClient {
           metadata: { 
             isBackgroundJob: true, 
             jobId: result.metadata.jobId,
-            operationId: result.metadata.jobId // Include operationId for backward compatibility
+            operationId: result.metadata.jobId, // Include operationId for backward compatibility
+            modelUsed: result.metadata.modelUsed || options?.model || "claude-3-7-sonnet-20250219",
+            maxOutputTokens: result.metadata.maxOutputTokens || options?.max_tokens || 2048,
+            temperature: result.metadata.temperature || 0.7,
+            projectDirectory: projectDirectory
           }
         };
       }
@@ -386,7 +484,7 @@ class ClaudeClient {
       };
     }
     
-    const { sessionId, language = 'en', max_tokens = 2048, model, projectDirectory } = options || {};
+    const { sessionId, language = 'en', max_tokens = 2048, model = "claude-3-7-sonnet-20250219", projectDirectory } = options || {};
     
     // Use centralized prompts
     const systemPrompt = generateVoiceCorrectionSystemPrompt(language);
@@ -394,7 +492,7 @@ class ClaudeClient {
 
     return this.sendRequest(
       {
-        model: model || "claude-3-7-sonnet-20250219",
+        model: model,
         messages: [
           { role: "user", content: userMessage }
         ],

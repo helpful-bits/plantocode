@@ -1,5 +1,9 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { normalizePathForComparison } from './path-utils';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { readFile, stat } from 'fs/promises';
 
 /**
  * Checks if a buffer likely represents a binary file.
@@ -36,6 +40,122 @@ export const BINARY_EXTENSIONS = new Set([ // Keep BINARY_EXTENSIONS
 ]);
 
 /**
+ * Load file contents for a list of files with batching, timeouts, and size limits
+ * @param projectDirectory The base directory for the files
+ * @param filePaths Array of file paths to load
+ * @param existingContents Optional existing file contents map to use as a base
+ * @returns A record mapping file paths to their contents
+ */
+export async function loadFileContents(
+  projectDirectory: string,
+  filePaths: string[],
+  existingContents: Record<string, string> = {}
+): Promise<Record<string, string>> {
+  if (!filePaths.length) {
+    return existingContents;
+  }
+
+  console.log(`Loading contents for ${filePaths.length} files`);
+  
+  // Start with the existing contents
+  const contents: Record<string, string> = { ...existingContents };
+  
+  // Configuration to prevent reading extremely large files
+  const MAX_FILE_SIZE = 100 * 1024; // 100KB max per file
+  const FILE_READ_TIMEOUT = 2000;   // 2 seconds timeout per file
+  
+  // Function to read file with timeout
+  const readFileWithTimeout = async (path: string, timeoutMs: number): Promise<string> => {
+    // Create a promise that rejects after the timeout
+    const timeoutPromise = new Promise<string>((_, reject) => {
+      setTimeout(() => reject(new Error(`File read timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+    
+    // Create the file read promise
+    const readPromise = readFile(path, 'utf-8');
+    
+    // Race the promises - whichever resolves/rejects first wins
+    return Promise.race([readPromise, timeoutPromise]);
+  };
+  
+  // Process files concurrently in batches
+  const BATCH_SIZE = 5; // Process up to 5 files at once
+  const filePathBatches = [];
+  
+  // Create batches of file paths
+  for (let i = 0; i < filePaths.length; i += BATCH_SIZE) {
+    filePathBatches.push(filePaths.slice(i, i + BATCH_SIZE));
+  }
+  
+  // Process each batch sequentially
+  for (let batchIndex = 0; batchIndex < filePathBatches.length; batchIndex++) {
+    const batch = filePathBatches[batchIndex];
+    console.log(`Processing batch ${batchIndex + 1}/${filePathBatches.length} (${batch.length} files)`);
+    
+    // Process files in the current batch concurrently
+    const batchPromises = batch.map(async (filePath) => {
+      try {
+        // Check if the path already starts with the project directory
+        const normalizedProjectDir = projectDirectory.replace(/\\/g, '/').replace(/\/+$/, '');
+        const normalizedFilePath = filePath.replace(/\\/g, '/');
+        
+        // Determine the full path carefully
+        let fullPath;
+        
+        if (normalizedFilePath.startsWith(normalizedProjectDir)) {
+          // If the path already includes the project directory, use it directly
+          fullPath = filePath;
+        } else if (normalizedFilePath.startsWith('/')) {
+          // If the path is absolute but doesn't include project directory
+          fullPath = join(normalizedProjectDir, normalizedFilePath.slice(1));
+        } else {
+          // Path is relative to project directory
+          fullPath = join(projectDirectory, filePath);
+        }
+        
+        // Verify the file exists before trying to read it
+        if (existsSync(fullPath)) {
+          console.log(`Processing file: ${filePath}`);
+          
+          // Check file size first
+          try {
+            const fileStats = await stat(fullPath);
+            if (fileStats.size > MAX_FILE_SIZE) {
+              console.log(`File too large (${Math.round(fileStats.size / 1024)}KB), truncating: ${filePath}`);
+              // Read just the first part of large files
+              const fileContent = await readFileWithTimeout(fullPath, FILE_READ_TIMEOUT);
+              contents[filePath] = fileContent.substring(0, MAX_FILE_SIZE) + 
+                `\n\n... [File truncated, ${Math.round(fileStats.size / 1024)}KB total] ...`;
+            } else {
+              // File is within size limits
+              const fileContent = await readFileWithTimeout(fullPath, FILE_READ_TIMEOUT);
+              contents[filePath] = fileContent;
+            }
+          } catch (timeoutError) {
+            console.error(`Timeout reading file ${filePath}:`, timeoutError);
+            contents[filePath] = "[File read timed out - too large or locked by another process]";
+          }
+        } else {
+          console.error(`File does not exist: ${fullPath}`);
+          contents[filePath] = `[File not found: ${fullPath}]`;
+        }
+      } catch (error) {
+        console.error(`Error reading file ${filePath}:`, error);
+        // Add a placeholder indicating the file couldn't be read
+        contents[filePath] = `[Error reading file: ${error instanceof Error ? error.message : String(error)}]`;
+      }
+    });
+    
+    // Wait for all files in this batch to be processed
+    await Promise.all(batchPromises);
+  }
+  
+  console.log(`Successfully loaded ${Object.keys(contents).length - Object.keys(existingContents).length} of ${filePaths.length} files`);
+  
+  return contents;
+}
+
+/**
  * Helper function to validate a file path, checking for existence, size, and binary content
  */
 export async function validateFilePath(
@@ -51,8 +171,8 @@ export async function validateFilePath(
       return false;
     }
     
-    // Normalize path to handle different formats
-    const normalizedPath = filePath.replace(/\\/g, '/').trim();
+    // Normalize path using the canonical path normalization function
+    const normalizedPath = normalizePathForComparison(filePath);
     
     // First check if we already have the content in our map
     if (fileContents[normalizedPath]) {

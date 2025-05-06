@@ -218,6 +218,59 @@ export class RequestHandler {
   }
   
   /**
+   * Track a request without using fetch
+   * This is used by the job system
+   */
+  public trackRequest(id: string, sessionId: string, requestType: RequestType): void {
+    // Create an abort controller for this request
+    const controller = new AbortController();
+    
+    // Register the active request
+    this.activeRequests.set(id, { 
+      controller, 
+      createdAt: Date.now(),
+      sessionId,
+      requestType
+    });
+    
+    // Increment counters
+    this.activeGlobal++;
+    
+    // Increment session counter
+    const sessionActive = this.activeSessions.get(sessionId) || 0;
+    this.activeSessions.set(sessionId, sessionActive + 1);
+    
+    // Increment request type counter
+    const typeActive = this.activeByType.get(requestType) || 0;
+    this.activeByType.set(requestType, typeActive + 1);
+  }
+  
+  /**
+   * Untrack a request without using fetch
+   * This is used by the job system
+   */
+  public untrackRequest(id: string): void {
+    const request = this.activeRequests.get(id);
+    if (!request) return;
+    
+    const { sessionId, requestType } = request;
+    
+    // Remove the request
+    this.activeRequests.delete(id);
+    
+    // Decrement counters
+    this.activeGlobal = Math.max(0, this.activeGlobal - 1);
+    
+    // Decrement session counter
+    const currentSessionActive = this.activeSessions.get(sessionId) || 1;
+    this.activeSessions.set(sessionId, Math.max(0, currentSessionActive - 1));
+    
+    // Decrement request type counter
+    const currentTypeActive = this.activeByType.get(requestType) || 1;
+    this.activeByType.set(requestType, Math.max(0, currentTypeActive - 1));
+  }
+  
+  /**
    * Get the number of active requests
    */
   public getActiveCount(): number {

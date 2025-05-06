@@ -36,38 +36,53 @@ export class BackgroundJobRepository {
     const jobId = `job_${uuid()}`;
     const now = Math.floor(Date.now() / 1000);
     
-    // Create new job object
+    // Create new job object with defaults based on BackgroundJob type
     const job: BackgroundJob = {
+      // Core identifying fields
       id: jobId,
       sessionId,
       apiType,
       taskType,
       status: 'idle',
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-      tokensSent: 0,
-      tokensReceived: 0,
-      rawInput,
-      modelOutput: '',
-      errorMessage: '',
+      
+      // Timestamps
       createdAt: now * 1000, // Store as milliseconds in memory
       updatedAt: now * 1000, // Store as milliseconds in memory
-      includeSyntax,
-      temperature,
-      visible: true,
-      cleared: false,
-      prompt: rawInput,
-      response: '',
       startTime: null,
       endTime: null,
-      xmlPath: null,
-      statusMessage: null,
-      charsReceived: 0,
       lastUpdate: now * 1000, // Store as milliseconds in memory
+      
+      // Input content
+      prompt: rawInput,
+      
+      // Output content
+      response: '',
+      
+      // Token and performance tracking
+      tokensSent: 0,
+      tokensReceived: 0,
+      totalTokens: 0,
+      charsReceived: 0,
+      
+      // Status and error information
+      statusMessage: null,
+      errorMessage: '',
+      
+      // Model configuration
       modelUsed: null,
       maxOutputTokens: null,
-      metadata: metadata // Use provided metadata
+      temperature,
+      includeSyntax,
+      
+      // Output file paths
+      outputFilePath: null,
+      
+      // Visibility/management flags
+      cleared: false,
+      visible: true,
+      
+      // Structured metadata
+      metadata: metadata || {}
     };
     
     // Save to database
@@ -112,11 +127,9 @@ export class BackgroundJobRepository {
     jobCopy.lastUpdate = normalizeTimestamp(jobCopy.lastUpdate || Date.now()); // Add lastUpdate if not set
     
     // Ensure numeric fields have default values
-    jobCopy.promptTokens = jobCopy.promptTokens || jobCopy.tokensSent || 0;
-    jobCopy.completionTokens = jobCopy.completionTokens || jobCopy.tokensReceived || 0;
+    jobCopy.tokensSent = jobCopy.tokensSent || 0;
+    jobCopy.tokensReceived = jobCopy.tokensReceived || 0;
     jobCopy.totalTokens = jobCopy.totalTokens || 0;
-    jobCopy.tokensReceived = jobCopy.tokensReceived || jobCopy.completionTokens || 0;
-    jobCopy.tokensSent = jobCopy.tokensSent || jobCopy.promptTokens || 0;
     jobCopy.charsReceived = jobCopy.charsReceived || 0;
     
     // Prepare metadata JSON
@@ -135,7 +148,7 @@ export class BackgroundJobRepository {
             status TEXT DEFAULT 'idle' NOT NULL,
             start_time INTEGER,
             end_time INTEGER,
-            xml_path TEXT,
+            output_file_path TEXT,
             status_message TEXT,
             tokens_received INTEGER DEFAULT 0,
             tokens_sent INTEGER DEFAULT 0,
@@ -169,43 +182,56 @@ export class BackgroundJobRepository {
             id, session_id, api_type, task_type, status, tokens_sent, tokens_received,
             chars_received, prompt, response, error_message, metadata, created_at,
             updated_at, cleared, start_time, end_time,
-            xml_path, status_message, last_update, model_used, max_output_tokens
+            output_file_path, status_message, last_update, model_used, max_output_tokens
           )
           VALUES (
             @id, @session_id, @api_type, @task_type, @status, @tokens_sent, @tokens_received,
             @chars_received, @prompt, @response, @error_message, @metadata, @created_at,
             @updated_at, @cleared, @start_time, @end_time,
-            @xml_path, @status_message, @last_update, @model_used, @max_output_tokens
+            @output_file_path, @status_message, @last_update, @model_used, @max_output_tokens
           )
         `);
         
-        stmt.run({
+        // Create a modified parameter object for the SQL statement with consistent field mapping
+        const sqlParams = {
           id: jobCopy.id,
           session_id: jobCopy.sessionId,
           api_type: jobCopy.apiType,
           task_type: jobCopy.taskType,
           status: jobCopy.status,
-          // Use consistent token counting fields - prefer the standard fields and fall back to the legacy ones
-          tokens_sent: jobCopy.tokensSent || jobCopy.promptTokens || 0,
-          tokens_received: jobCopy.tokensReceived || jobCopy.completionTokens || 0,
-          chars_received: jobCopy.charsReceived || 0,
-          // For input field, prefer rawInput with prompt as the fallback
-          prompt: jobCopy.rawInput || jobCopy.prompt || '',
-          // For output field, prefer response with modelOutput as the fallback
-          response: jobCopy.response || jobCopy.modelOutput || '',
+          
+          // Token counts
+          tokens_sent: typeof jobCopy.tokensSent === 'number' ? jobCopy.tokensSent : 0,
+          tokens_received: typeof jobCopy.tokensReceived === 'number' ? jobCopy.tokensReceived : 0,
+                          
+          chars_received: typeof jobCopy.charsReceived === 'number' ? jobCopy.charsReceived : 0,
+          
+          // Input field
+          prompt: jobCopy.prompt || '',
+          
+          // Output field - consistently normalize null/undefined to empty string
+          response: jobCopy.response || '',
+          
+          // For error messages, consistently normalize null/undefined to empty string
           error_message: jobCopy.errorMessage || '',
+          
+          // Metadata and timestamps
           metadata: metadataJson,
           created_at: jobCopy.createdAt,
           updated_at: jobCopy.updatedAt,
           cleared: jobCopy.cleared ? 1 : 0,
           start_time: jobCopy.startTime,
           end_time: jobCopy.endTime,
-          xml_path: jobCopy.xmlPath,
+          output_file_path: jobCopy.outputFilePath,
           status_message: jobCopy.statusMessage,
           last_update: jobCopy.lastUpdate,
+          
+          // Model configuration
           model_used: jobCopy.modelUsed,
           max_output_tokens: jobCopy.maxOutputTokens
-        });
+        };
+        
+        stmt.run(sqlParams);
         
         return jobCopy;
       } catch (error) {
@@ -256,7 +282,7 @@ export class BackgroundJobRepository {
             cleared,
             start_time,
             end_time,
-            xml_path,
+            output_file_path,
             status_message,
             last_update,
             model_used,
@@ -398,10 +424,9 @@ export class BackgroundJobRepository {
     
     // Ensure terminal states have appropriate content
     if (JOB_STATUSES.TERMINAL.includes(status)) {
-      if (status === 'completed' && !responseText) {
-        responseText = '[Job completed with no response]';
-        console.warn(`[Repo] Completed job ${jobId} has no response, adding placeholder`);
-      } else if ((status === 'failed' || status === 'canceled') && !errorMessageText) {
+      // For completed jobs, we respect empty string responses as valid
+      // Only add placeholder for failed or canceled jobs without error messages
+      if ((status === 'failed' || status === 'canceled') && !errorMessageText) {
         errorMessageText = status === 'failed' 
           ? 'Job failed with no error message' 
           : 'Job canceled with no reason provided';
@@ -409,56 +434,56 @@ export class BackgroundJobRepository {
       }
     }
     
-    // Map DB row to BackgroundJob object, with careful handling of all fields
+    // Map DB row to BackgroundJob object with consistent field mapping
+    // This follows the structure defined in the BackgroundJob type
     const job: BackgroundJob = {
+      // Core identifying fields
       id: jobId,
       sessionId: row.session_id,
       apiType: row.api_type as ApiType,
       taskType: row.task_type as TaskType,
       status: status,
       
-      // Handle token counts with fallbacks
-      tokensSent: typeof row.tokens_sent === 'number' ? row.tokens_sent : 0,
-      tokensReceived: typeof row.tokens_received === 'number' ? row.tokens_received : 0,
-      
-      // Compatibility fields - ensure consistent values
-      promptTokens: typeof row.tokens_sent === 'number' ? row.tokens_sent : 0, 
-      completionTokens: typeof row.tokens_received === 'number' ? row.tokens_received : 0,
-      totalTokens: (typeof row.tokens_sent === 'number' ? row.tokens_sent : 0) + 
-                   (typeof row.tokens_received === 'number' ? row.tokens_received : 0),
-      
-      // Character count with fallback
-      charsReceived: typeof row.chars_received === 'number' ? row.chars_received : 0,
-      
-      // Input field handling
-      prompt: row.prompt || '',
-      rawInput: row.prompt || '',
-      
-      // Use our normalized strings for response and error
-      response: responseText,
-      modelOutput: responseText, // For backward compatibility
-      errorMessage: errorMessageText,
-      
-      // Status message handling
-      statusMessage: row.status_message || null,
-      
-      // Timestamps handling
+      // Timestamps with proper conversion and validation
       createdAt: createdAt,
       updatedAt: updatedAt,
       startTime: startTime,
       endTime: endTime,
       lastUpdate: lastUpdate,
       
-      // Other fields
-      xmlPath: row.xml_path || null,
+      // Input content with validation
+      prompt: row.prompt || '',
+      // Output content - always use the normalized values
+      response: responseText,
+      
+      // Token and performance tracking with validation
+      tokensSent: typeof row.tokens_sent === 'number' ? row.tokens_sent : 0,
+      tokensReceived: typeof row.tokens_received === 'number' ? row.tokens_received : 0,
+      charsReceived: typeof row.chars_received === 'number' ? row.chars_received : 0,
+      
+      
+      // Derived total tokens (sum of tokens sent and received)
+      totalTokens: (typeof row.tokens_sent === 'number' ? row.tokens_sent : 0) + 
+                   (typeof row.tokens_received === 'number' ? row.tokens_received : 0),
+      
+      // Status and error information
+      statusMessage: row.status_message || null,
+      errorMessage: errorMessageText,
+      
+      // Model configuration
       modelUsed: row.model_used || null,
       maxOutputTokens: row.max_output_tokens || null,
-      cleared: Boolean(row.cleared),
       
-      // Metadata derived fields with sensible defaults
+      // Extract configuration from metadata with defaults
       includeSyntax: (metadataObj as any)?.includeSyntax ?? false,
       temperature: (metadataObj as any)?.temperature ?? 0.7,
-      visible: true,
+      
+      // Output file paths
+      outputFilePath: row.output_file_path || null,
+      
+      // Visibility/management flags
+      cleared: Boolean(row.cleared),
+      visible: true, // All database records are visible by default
       
       // Store the full metadata object for access by other components
       metadata: metadataObj
@@ -494,12 +519,9 @@ export class BackgroundJobRepository {
       job.endTime = null;
     }
     
-    // Ensure completed jobs have response, failed/canceled jobs have errorMessage
-    if (job.status === 'completed' && !job.response) {
-      job.response = '[Job completed with no response]';
-      job.modelOutput = '[Job completed with no response]';
-      console.warn(`[Repo] Completed job ${jobId} has no response after mapping, adding placeholder`);
-    } else if ((job.status === 'failed' || job.status === 'canceled') && !job.errorMessage) {
+    // Ensure failed/canceled jobs have errorMessage
+    // For completed jobs, we respect empty string responses as valid
+    if ((job.status === 'failed' || job.status === 'canceled') && !job.errorMessage) {
       job.errorMessage = job.status === 'failed' 
         ? 'Job failed with no error message' 
         : 'Job canceled with no reason provided';
@@ -721,7 +743,16 @@ export class BackgroundJobRepository {
   }
   
   /**
-   * Update the status of a background job
+   * Update the status and related fields of a background job
+   * 
+   * This method ensures consistent handling of job status changes, including:
+   * - Setting appropriate timestamps based on the status
+   * - Properly handling terminal statuses (completed, failed, canceled)
+   * - Ensuring that completed jobs have a response and failed/canceled jobs have an errorMessage
+   * - Merging metadata values with existing metadata
+   * 
+   * @param params Object containing the job fields to update
+   * @returns The updated BackgroundJob object or null if the job was not found
    */
   async updateBackgroundJobStatus(
     params: {
@@ -732,13 +763,15 @@ export class BackgroundJobRepository {
       response?: string;
       statusMessage?: string;
       errorMessage?: string;
-      error_message?: string;
+      error_message?: string; // Legacy parameter name (alias for errorMessage)
       metadata?: {
         tokensReceived?: number;
         charsReceived?: number;
         tokensTotal?: number;
         tokensSent?: number;
         targetField?: string;
+        modelUsed?: string;       // The model actually used for the request
+        maxOutputTokens?: number; // The max tokens setting used
         [key: string]: any;
       } | null;
     }
@@ -752,10 +785,14 @@ export class BackgroundJobRepository {
       endTime: jobEndTime, 
       response, 
       statusMessage, 
-      errorMessage, 
-      error_message,
+      // Use errorMessage with error_message as fallback for backwards compatibility
+      errorMessage: rawErrorMessage, 
+      error_message: legacyErrorMessage,
       metadata 
     } = params;
+    
+    // Normalize error message (handle both parameter names)
+    const errorMessage = rawErrorMessage || legacyErrorMessage;
     
     // Debug logging for "stuck" jobs
     const DEBUG_JOB_UPDATES = false; // Set to true for extensive logging
@@ -766,7 +803,7 @@ export class BackgroundJobRepository {
     if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
       console.debug(`[Repo] Updating job ${jobId} to status '${status}'`, {
         response: response ? `${response.substring(0, 30)}...` : undefined,
-        errorMessage: errorMessage || error_message,
+        errorMessage: errorMessage,
         jobStartTime,
         jobEndTime,
         metadata: metadata ? {...metadata} : undefined
@@ -848,14 +885,12 @@ export class BackgroundJobRepository {
         if (!hasExistingResponse && !hasNewResponse) {
           // Set placeholder response if no response content exists
           updatedJob.response = '[Job completed with no response]';
-          updatedJob.modelOutput = '[Job completed with no response]'; // For backward compatibility
           
           console.warn(`[Repo] Job ${jobId} marked as 'completed' but has no response, adding placeholder`);
         } 
         else if (hasNewResponse) {
-          // Update both response fields for consistency (if new response provided)
-          updatedJob.response = response;
-          updatedJob.modelOutput = response; // For backward compatibility
+          // Update response field
+          updatedJob.response = response === undefined ? null : response;
         }
         
         // Clear error message for completed jobs
@@ -864,7 +899,7 @@ export class BackgroundJobRepository {
       else if (JOB_STATUSES.FAILED.includes(status)) {
         // For failed/canceled jobs, ensure errorMessage is set
         const hasExistingError = Boolean(updatedJob.errorMessage && updatedJob.errorMessage.trim());
-        const hasNewError = Boolean((errorMessage || error_message) && (errorMessage || error_message || '').trim());
+        const hasNewError = Boolean(errorMessage && errorMessage.trim());
         
         if (!hasExistingError && !hasNewError) {
           // Set specific placeholder based on status
@@ -878,12 +913,11 @@ export class BackgroundJobRepository {
         }
         else if (hasNewError) {
           // Update error message with the provided value
-          updatedJob.errorMessage = errorMessage || error_message || '';
+          updatedJob.errorMessage = errorMessage || '';
         }
         
         // Clear response for failed/canceled jobs
         updatedJob.response = '';
-        updatedJob.modelOutput = '';
       }
     }
     // ------------- END TERMINAL STATUS HANDLING -------------
@@ -917,14 +951,14 @@ export class BackgroundJobRepository {
         console.debug(`[Repo] Updating response for job ${jobId}: ${response?.substring(0, 50)}...`);
       }
       
-      updatedJob.response = response;
-      // For backward compatibility until migration is complete
-      updatedJob.modelOutput = response;
+      // Ensure null/undefined responses are converted to empty strings
+      // This is especially important for completed jobs
+      updatedJob.response = response ?? '';
     }
     
     // Update error message if provided (now separate from terminal status handling)
-    if (errorMessage !== undefined || error_message !== undefined) {
-      const errorMsg = errorMessage || error_message || '';
+    if (errorMessage !== undefined) {
+      const errorMsg = errorMessage || '';
       
       if (DEBUG_JOB_UPDATES) {
         console.debug(`[Repo] Updating error message for job ${jobId}: ${errorMsg.substring(0, 50)}...`);
@@ -941,7 +975,6 @@ export class BackgroundJobRepository {
       // Update tokens and other counts if provided
       if (metadata.tokensReceived !== undefined) {
         updatedJob.tokensReceived = metadata.tokensReceived;
-        updatedJob.completionTokens = metadata.tokensReceived; // Update both for compatibility
         
         if (DEBUG_JOB_UPDATES) {
           console.debug(`[Repo] Updating tokensReceived for job ${jobId} to ${metadata.tokensReceived}`);
@@ -954,7 +987,6 @@ export class BackgroundJobRepository {
       
       if (metadata.tokensSent !== undefined) {
         updatedJob.tokensSent = metadata.tokensSent;
-        updatedJob.promptTokens = metadata.tokensSent; // Update both for compatibility
       }
       
       if (metadata.tokensTotal !== undefined) {

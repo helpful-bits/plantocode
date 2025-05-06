@@ -2,6 +2,7 @@
 
 import { FilesMap } from "../_hooks/file-management/use-project-file-list";
 import { shouldIncludeByDefault } from './file-selection';
+import { normalizePathForComparison } from '@/lib/path-utils';
 
 /**
  * Merges the selection state (included/forceExcluded flags) from an old files map to a new one
@@ -71,8 +72,22 @@ export function applySessionSelections(
   }
   
   const result = { ...filesMap };
-  const includedSet = new Set(includedPaths || []);
-  const excludedSet = new Set(excludedPaths || []);
+  // Normalize all paths in the includes/excludes sets for consistent comparison
+  const includedSet = new Set((includedPaths || []).map(p => normalizePathForComparison(p)));
+  const excludedSet = new Set((excludedPaths || []).map(p => normalizePathForComparison(p)));
+  
+  // Create lookup maps for faster comparison
+  const filePathCompMap = new Map<string, string>(); // Maps comparablePath to actual path
+  const fileComparablePathMap = new Map<string, string>(); // Maps actual path to comparablePath
+  
+  // Build path maps for faster lookups
+  Object.keys(result).forEach(path => {
+    const fileInfo = result[path];
+    const comparablePath = fileInfo.comparablePath || normalizePathForComparison(path);
+    
+    filePathCompMap.set(comparablePath, path);
+    fileComparablePathMap.set(path, comparablePath);
+  });
   
   // Log the input counts for debugging
   console.log(`[Selection Merge] Applying selections: ${includedSet.size} included, ${excludedSet.size} excluded files to ${Object.keys(result).length} total files`);
@@ -85,18 +100,53 @@ export function applySessionSelections(
   let missingIncludedPaths = 0;
   let missingExcludedPaths = 0;
   
-  // First, check which paths exist in the filesMap
+  // Helper function to find file by comparable path (supporting the various matching strategies)
+  const findPathInMap = (normalizedPath: string): string | null => {
+    // Direct match using comparable path
+    if (filePathCompMap.has(normalizedPath)) {
+      return filePathCompMap.get(normalizedPath) || null;
+    }
+    
+    // Try path ending match (handles project-relative paths)
+    for (const [compPath, actualPath] of filePathCompMap.entries()) {
+      if (normalizedPath && compPath.endsWith('/' + normalizedPath)) {
+        return actualPath;
+      }
+    }
+    
+    // Try input path contains map path (for full absolute paths)
+    for (const [compPath, actualPath] of filePathCompMap.entries()) {
+      if (normalizedPath.includes(compPath)) {
+        return actualPath;
+      }
+    }
+    
+    return null;
+  };
+  
+  // First, create maps of included and excluded paths that match files in our current map
+  const matchedIncludedPaths = new Map<string, string>(); // Maps actual path to normalized session path
+  const matchedExcludedPaths = new Map<string, string>(); // Maps actual path to normalized session path
+  
+  // Find matches for included paths
   if (includedSet.size > 0) {
-    for (const path of includedSet) {
-      if (!result[path]) {
+    for (const normalizedPath of includedSet) {
+      const matchedPath = findPathInMap(normalizedPath);
+      if (matchedPath) {
+        matchedIncludedPaths.set(matchedPath, normalizedPath);
+      } else {
         missingIncludedPaths++;
       }
     }
   }
   
+  // Find matches for excluded paths
   if (excludedSet.size > 0) {
-    for (const path of excludedSet) {
-      if (!result[path]) {
+    for (const normalizedPath of excludedSet) {
+      const matchedPath = findPathInMap(normalizedPath);
+      if (matchedPath) {
+        matchedExcludedPaths.set(matchedPath, normalizedPath);
+      } else {
         missingExcludedPaths++;
       }
     }
@@ -109,7 +159,7 @@ export function applySessionSelections(
   
   // Process each path in the input filesMap
   Object.keys(result).forEach(path => {
-    if (excludedSet.has(path)) {
+    if (matchedExcludedPaths.has(path)) {
       // Path is explicitly excluded
       result[path] = {
         ...result[path],
@@ -117,7 +167,7 @@ export function applySessionSelections(
         forceExcluded: true
       };
       explicitlyExcludedCount++;
-    } else if (includedSet.has(path)) {
+    } else if (matchedIncludedPaths.has(path)) {
       // Path is explicitly included
       result[path] = {
         ...result[path],

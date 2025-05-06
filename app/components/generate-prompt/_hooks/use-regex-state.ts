@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { useNotification } from '@/lib/contexts/notification-context';
+import { useBackgroundJob } from '@/lib/contexts/background-jobs-context';
 import { sessionSyncService } from '@/lib/services/session-sync-service';
 import debounce from '@/lib/utils/debounce';
 
@@ -17,6 +18,9 @@ export function useRegexState({
   taskDescription,
   onInteraction
 }: UseRegexStateProps) {
+  // Get notification context
+  const { showNotification } = useNotification();
+  
   // Constants
   const REGEX_MAX_LENGTH = 500;
 
@@ -37,9 +41,206 @@ export function useRegexState({
   const [isGeneratingTaskRegex, setIsGeneratingTaskRegex] = useState(false);
   const [generatingRegexJobId, setGeneratingRegexJobId] = useState<string | null>(null);
   const [regexGenerationError, setRegexGenerationError] = useState<string | null>(null);
-  
-  // External hooks
-  const { showNotification } = useNotification();
+
+  // Utility function to validate regex without crashing
+  const validateRegex = useCallback((pattern: string): string | null => {
+    if (!pattern || pattern.trim() === "") {
+      return null;
+    }
+    
+    if (pattern.length > REGEX_MAX_LENGTH) {
+      return `Regex pattern is too long (max ${REGEX_MAX_LENGTH} characters)`;
+    }
+    
+    try {
+      // Check if regex is valid by creating it
+      new RegExp(pattern, 'i');
+      return null;
+    } catch (e) {
+      return `Invalid regex: ${(e as Error).message}`;
+    }
+  }, []);
+
+  // Handler for title regex changes
+  const handleTitleRegexChange = useCallback((value: string) => {
+    setTitleRegex(value);
+    const error = validateRegex(value);
+    setTitleRegexError(error);
+
+    // Notify parent component of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [validateRegex, onInteraction]);
+
+  // Handler for content regex changes
+  const handleContentRegexChange = useCallback((value: string) => {
+    setContentRegex(value);
+    const error = validateRegex(value);
+    setContentRegexError(error);
+
+    // Notify parent component of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [validateRegex, onInteraction]);
+
+  // Handler for negative title regex changes
+  const handleNegativeTitleRegexChange = useCallback((value: string) => {
+    setNegativeTitleRegex(value);
+    const error = validateRegex(value);
+    setNegativeTitleRegexError(error);
+
+    // Notify parent component of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [validateRegex, onInteraction]);
+
+  // Handler for negative content regex changes
+  const handleNegativeContentRegexChange = useCallback((value: string) => {
+    setNegativeContentRegex(value);
+    const error = validateRegex(value);
+    setNegativeContentRegexError(error);
+
+    // Notify parent component of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [validateRegex, onInteraction]);
+
+  // Toggle regex active state
+  const handleToggleRegexActive = useCallback((newValue?: boolean) => {
+    setIsRegexActive(prev => typeof newValue === 'boolean' ? newValue : !prev);
+    
+    // Notify parent component of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [onInteraction]);
+
+  // Apply regex patterns to state - stabilized with useCallback
+  const applyRegexPatterns = useCallback(({
+    titlePattern,
+    contentPattern,
+    negativeTitlePattern,
+    negativeContentPattern
+  }: {
+    titlePattern?: string;
+    contentPattern?: string;
+    negativeTitlePattern?: string;
+    negativeContentPattern?: string;
+  }) => {
+    // Count of non-empty patterns
+    let patternsCount = 0;
+    
+    // Only update non-empty patterns
+    if (titlePattern) {
+      handleTitleRegexChange(titlePattern);
+      patternsCount++;
+    }
+    if (contentPattern) {
+      handleContentRegexChange(contentPattern);
+      patternsCount++;
+    }
+    if (negativeTitlePattern) {
+      handleNegativeTitleRegexChange(negativeTitlePattern);
+      patternsCount++;
+    }
+    if (negativeContentPattern) {
+      handleNegativeContentRegexChange(negativeContentPattern);
+      patternsCount++;
+    }
+    
+    // Ensure regex is active if at least one pattern was provided
+    if (patternsCount > 0) {
+      setIsRegexActive(true);
+      console.log('[RegexState] Applied regex patterns, activating regex mode');
+    }
+    
+    // Reset the generating state
+    setIsGeneratingTaskRegex(false);
+    setGeneratingRegexJobId(null);
+    
+    // Trigger the interaction callback, which will handle saving
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [
+    handleTitleRegexChange,
+    handleContentRegexChange,
+    handleNegativeTitleRegexChange,
+    handleNegativeContentRegexChange,
+    onInteraction
+  ]);
+
+  // Clear all patterns - stabilized with useCallback
+  const handleClearPatterns = useCallback(() => {
+    setTitleRegex("");
+    setContentRegex("");
+    setNegativeTitleRegex("");
+    setNegativeContentRegex("");
+    setTitleRegexError("");
+    setContentRegexError("");
+    setNegativeTitleRegexError("");
+    setNegativeContentRegexError("");
+    
+    // Notify parent component of changes
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [
+    onInteraction
+  ]);
+
+  // Helper function to extract regex patterns using regex
+  const extractAndApplyPatterns = useCallback((response: string) => {
+    const patterns: Record<string, string> = {};
+    
+    // Extract title regex
+    const titleMatch = response.match(/title(?:\s+regex)?:\s*`([^`]+)`|title(?:\s+regex)?:\s*"([^"]+)"|title(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    if (titleMatch) {
+      patterns.titlePattern = titleMatch[1] || titleMatch[2] || titleMatch[3];
+    }
+    
+    // Extract content regex
+    const contentMatch = response.match(/content(?:\s+regex)?:\s*`([^`]+)`|content(?:\s+regex)?:\s*"([^"]+)"|content(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    if (contentMatch) {
+      patterns.contentPattern = contentMatch[1] || contentMatch[2] || contentMatch[3];
+    }
+    
+    // Extract negative title regex
+    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?:\s*`([^`]+)`|negative(?:\s+title)?(?:\s+regex)?:\s*"([^"]+)"|negative(?:\s+title)?(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    if (negTitleMatch) {
+      patterns.negativeTitlePattern = negTitleMatch[1] || negTitleMatch[2] || negTitleMatch[3];
+    }
+    
+    // Extract negative content regex
+    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?:\s*`([^`]+)`|negative(?:\s+content)?(?:\s+regex)?:\s*"([^"]+)"|negative(?:\s+content)?(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    if (negContentMatch) {
+      patterns.negativeContentPattern = negContentMatch[1] || negContentMatch[2] || negContentMatch[3];
+    }
+    
+    // Apply the extracted patterns
+    if (Object.keys(patterns).length > 0) {
+      applyRegexPatterns(patterns);
+      
+      // Show success notification
+      showNotification({
+        title: "Regex patterns extracted",
+        message: "Patterns applied and regex filtering activated.",
+        type: "success"
+      });
+    } else {
+      setIsGeneratingTaskRegex(false);
+      setRegexGenerationError("Could not extract regex patterns from AI response");
+    }
+  }, [
+    applyRegexPatterns,
+    setIsGeneratingTaskRegex,
+    setRegexGenerationError,
+    showNotification
+  ]);
 
   // Reset function to clear state
   const reset = useCallback(() => {
@@ -78,111 +279,79 @@ export function useRegexState({
     // as data will be loaded by the session loading handler
   }, [activeSessionId, reset]);
   
+  // Use the useBackgroundJob hook to monitor the regex generation job
+  const regexJob = useBackgroundJob(generatingRegexJobId);
   
-  // Utility function to validate regex without crashing
-  const validateRegex = useCallback((pattern: string): string | null => {
-    if (!pattern || pattern.trim() === "") {
-      return null;
+  // Effect to handle job status changes
+  useEffect(() => {
+    // Skip if no job ID or not in generating state
+    if (!generatingRegexJobId || !isGeneratingTaskRegex) {
+      return;
     }
     
-    if (pattern.length > REGEX_MAX_LENGTH) {
-      return `Regex pattern is too long (max ${REGEX_MAX_LENGTH} characters)`;
+    // If job is completed, process the result
+    if (regexJob && regexJob.status === 'completed' && regexJob.response) {
+      console.log('[RegexState] Regex generation job completed, processing results');
+      
+      try {
+        // Try to parse the response as JSON if it's a string
+        if (typeof regexJob.response === 'string') {
+          // Try to extract the JSON if it's in a code block
+          const jsonMatch = regexJob.response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+          const jsonText = jsonMatch ? jsonMatch[1] : regexJob.response;
+          
+          try {
+            // Parse the JSON
+            const patterns = JSON.parse(jsonText);
+            
+            // Apply the patterns
+            applyRegexPatterns({
+              titlePattern: patterns.titleRegex || patterns.title_regex,
+              contentPattern: patterns.contentRegex || patterns.content_regex,
+              negativeTitlePattern: patterns.negativeTitleRegex || patterns.negative_title_regex,
+              negativeContentPattern: patterns.negativeContentRegex || patterns.negative_content_regex
+            });
+            
+            // Show success notification
+            showNotification({
+              title: "Regex patterns generated",
+              message: "Patterns applied and regex filtering activated.",
+              type: "success"
+            });
+          } catch (parseError) {
+            console.error('[RegexState] Failed to parse regex job response JSON:', parseError);
+            // Try regex extraction as fallback
+            extractAndApplyPatterns(regexJob.response);
+          }
+        } else {
+          console.warn('[RegexState] Unexpected response type from regex job:', typeof regexJob.response);
+          setIsGeneratingTaskRegex(false);
+          setRegexGenerationError("Unexpected response from AI");
+        }
+      } catch (error) {
+        console.error('[RegexState] Error processing regex job response:', error);
+        setIsGeneratingTaskRegex(false);
+        setRegexGenerationError(error instanceof Error ? error.message : "Failed to process regex patterns");
+      }
     }
     
-    try {
-      // Check if regex is valid by creating it
-      new RegExp(pattern, 'i');
-      return null;
-    } catch (e) {
-      return `Invalid regex: ${(e as Error).message}`;
+    // If job failed, show error
+    if (regexJob && (regexJob.status === 'failed' || regexJob.status === 'canceled')) {
+      console.error('[RegexState] Regex generation job failed:', regexJob.errorMessage);
+      setIsGeneratingTaskRegex(false);
+      setRegexGenerationError(regexJob.errorMessage || "Failed to generate regex patterns");
     }
-  }, []);
-
-  // Set API for accessing regex patterns from outside
-  // All setter functions include validation
-  const setTitleRegexWithValidation = (value: string) => {
-    handleTitleRegexChange(value);
-  };
-  
-  const setContentRegexWithValidation = (value: string) => {
-    handleContentRegexChange(value);
-  };
-  
-  const setNegativeTitleRegexWithValidation = (value: string) => {
-    handleNegativeTitleRegexChange(value);
-  };
-  
-  const setNegativeContentRegexWithValidation = (value: string) => {
-    handleNegativeContentRegexChange(value);
-  };
-
-  // Handler for title regex changes
-  const handleTitleRegexChange = useCallback((value: string) => {
-    setTitleRegex(value);
-    const error = validateRegex(value);
-    setTitleRegexError(error);
-
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-    
-    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
-  }, [validateRegex, onInteraction]);
-
-  // Handler for content regex changes
-  const handleContentRegexChange = useCallback((value: string) => {
-    setContentRegex(value);
-    const error = validateRegex(value);
-    setContentRegexError(error);
-
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-    
-    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
-  }, [validateRegex, onInteraction]);
-
-  // Handler for negative title regex changes
-  const handleNegativeTitleRegexChange = useCallback((value: string) => {
-    setNegativeTitleRegex(value);
-    const error = validateRegex(value);
-    setNegativeTitleRegexError(error);
-
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-    
-    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
-  }, [validateRegex, onInteraction]);
-
-  // Handler for negative content regex changes
-  const handleNegativeContentRegexChange = useCallback((value: string) => {
-    setNegativeContentRegex(value);
-    const error = validateRegex(value);
-    setNegativeContentRegexError(error);
-
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-    
-    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
-  }, [validateRegex, onInteraction]);
-
-  // Toggle regex active state
-  const handleToggleRegexActive = useCallback((newValue?: boolean) => {
-    setIsRegexActive(prev => typeof newValue === 'boolean' ? newValue : !prev);
-    
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-    
-    // The setHasUnsavedChanges logic has been centralized in the onInteraction callback
-  }, [onInteraction]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    regexJob, 
+    generatingRegexJobId, 
+    isGeneratingTaskRegex, 
+    applyRegexPatterns, 
+    setIsGeneratingTaskRegex, 
+    setRegexGenerationError, 
+    showNotification,
+    extractAndApplyPatterns
+  ]);
 
   // Generate regex from task description - stabilized with useCallback
   const handleGenerateRegexFromTask = useCallback(async () => {
@@ -219,7 +388,12 @@ export function useRegexState({
     setRegexGenerationError("");
     
     try {
-      const result = await generateRegexPatternsAction(taskDescription);
+      // Check if we have an active session ID
+      if (!activeSessionId) {
+        throw new Error("Active session required to generate regex patterns.");
+      }
+      
+      const result = await generateRegexPatternsAction(taskDescription, undefined, undefined, activeSessionId);
       
       if (result.isSuccess && result.data) {
         if (typeof result.data === 'object' && 'jobId' in result.data) {
@@ -249,71 +423,7 @@ export function useRegexState({
     taskDescription, 
     isGeneratingTaskRegex, 
     activeSessionId, 
-    showNotification,
-    setIsGeneratingTaskRegex,
-    setRegexGenerationError,
-    setGeneratingRegexJobId
-  ]);
-
-  // Clear all patterns - stabilized with useCallback
-  const handleClearPatterns = useCallback(() => {
-    setTitleRegex("");
-    setContentRegex("");
-    setNegativeTitleRegex("");
-    setNegativeContentRegex("");
-    setTitleRegexError("");
-    setContentRegexError("");
-    setNegativeTitleRegexError("");
-    setNegativeContentRegexError("");
-    
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [
-    onInteraction,
-    setTitleRegex,
-    setContentRegex,
-    setNegativeTitleRegex,
-    setNegativeContentRegex,
-    setTitleRegexError,
-    setContentRegexError,
-    setNegativeTitleRegexError,
-    setNegativeContentRegexError
-  ]);
-
-  // Apply regex patterns to state - stabilized with useCallback
-  const applyRegexPatterns = useCallback(({
-    titlePattern,
-    contentPattern,
-    negativeTitlePattern,
-    negativeContentPattern
-  }: {
-    titlePattern?: string;
-    contentPattern?: string;
-    negativeTitlePattern?: string;
-    negativeContentPattern?: string;
-  }) => {
-    // Only update non-empty patterns
-    if (titlePattern) handleTitleRegexChange(titlePattern);
-    if (contentPattern) handleContentRegexChange(contentPattern);
-    if (negativeTitlePattern) handleNegativeTitleRegexChange(negativeTitlePattern);
-    if (negativeContentPattern) handleNegativeContentRegexChange(negativeContentPattern);
-    
-    // Ensure regex is active
-    setIsRegexActive(true);
-    
-    // Trigger the interaction callback, which will handle saving
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [
-    handleTitleRegexChange,
-    handleContentRegexChange,
-    handleNegativeTitleRegexChange,
-    handleNegativeContentRegexChange,
-    setIsRegexActive,
-    onInteraction
+    showNotification
   ]);
 
   return useMemo(() => ({
@@ -367,4 +477,4 @@ export function useRegexState({
     validateRegex,
     reset
   ]);
-} 
+}

@@ -1197,9 +1197,21 @@ export class SessionSyncService {
       // Mark this as a session being switched to for queue prioritization
       this.markSessionSwitching(sessionIdStr);
       
-      // Clear any pending operations for this session
-      const clearedCount = queueManager.clearSessionOperations(sessionIdStr);
-      console.log(`[SessionSyncService][${timestamp}][${operationId}] Cleared ${clearedCount} pending operations for session ${sessionIdStr}`);
+      // Clear only 'save' and 'delete' operations for this session
+      // but preserve 'load' operations to prevent race conditions
+      // Also preserve any in-progress operations to avoid abrupt cancellations
+      // Call with correct parameters based on the function definition
+      const clearedCount = queueManager.clearSessionOperations(
+        sessionIdStr
+      );
+      console.log(`[SessionSyncService][${timestamp}][${operationId}] Cleared ${clearedCount} non-essential pending operations for session ${sessionIdStr}`);
+      
+      // Add a small delay to ensure cleanup is fully processed before we queue a new operation
+      // This helps prevent race conditions where the new load operation gets cleared
+      if (clearedCount > 0) {
+        console.log(`[SessionSyncService][${timestamp}][${operationId}] Adding small delay after clearing operations...`);
+        await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay
+      }
       
       try {
         // Queue a load operation with highest priority (10)

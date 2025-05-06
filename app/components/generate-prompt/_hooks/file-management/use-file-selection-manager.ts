@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { FileInfo } from "@/types";
 import { mergeFileMaps, applySessionSelections } from "../../_utils/selection-merge";
 import { FilesMap } from "./use-project-file-list";
+import { normalizePathForComparison } from "@/lib/path-utils";
 
 interface UseFileSelectionManagerProps {
   rawFilesMap: FilesMap;
@@ -28,71 +29,86 @@ export function useFileSelectionManager({
   const [pastedPaths, setPastedPathsInternal] = useState<string>("");
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
   const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(false);
-
-  // Effect to initialize/update managedFilesMap when rawFilesMap changes
-  useEffect(() => {
-    if (Object.keys(rawFilesMap).length > 0) {
-      console.log(`[FileSelectionManager] Raw files map updated with ${Object.keys(rawFilesMap).length} files, merging with current state...`);
-      
-      setManagedFilesMap(currentMap => {
-        // If we don't have an existing state with selections, just use the raw file map
-        if (Object.keys(currentMap).length === 0) {
-          return rawFilesMap;
-        }
-        
-        // Otherwise merge to preserve selections
-        const updatedMap = mergeFileMaps(currentMap, rawFilesMap);
-        console.log(`[FileSelectionManager] Merged file maps, preserved selections for ${Object.keys(updatedMap).length} files`);
-        return updatedMap;
-      });
+  
+  // Function to clear external path warnings
+  const clearExternalPathWarnings = useCallback(() => {
+    if (externalPathWarnings.length > 0) {
+      console.log('[FileSelectionManager] Clearing external path warnings');
+      setExternalPathWarnings([]);
     }
-  }, [rawFilesMap]);
+  }, [externalPathWarnings]);
 
-  // Effect to apply session selections when either map or session data changes
+  // Combined effect to initialize/update managedFilesMap when rawFilesMap or session selections change
   useEffect(() => {
-    // Only proceed if we have files and session data
-    if (
-      Object.keys(managedFilesMap).length === 0 ||
-      (!sessionIncludedFiles?.length && !sessionExcludedFiles?.length)
-    ) {
+    // Skip if there are no files to process
+    if (Object.keys(rawFilesMap).length === 0) {
       return;
     }
 
-    console.log(
-      `[FileSelectionManager] Applying session selections: ${
-        sessionIncludedFiles?.length || 0
-      } included, ${sessionExcludedFiles?.length || 0} excluded`
-    );
+    console.log(`[FileSelectionManager] Files or selections changed: ${Object.keys(rawFilesMap).length} files, ${
+      sessionIncludedFiles?.length || 0
+    } included, ${sessionExcludedFiles?.length || 0} excluded`);
 
-    setManagedFilesMap((currentMap) => {
-      const updatedMap = applySessionSelections(
-        currentMap,
-        sessionIncludedFiles,
-        sessionExcludedFiles
-      );
-
-      // Perform a shallow equality check on the inclusion / exclusion flags
+    setManagedFilesMap(currentMap => {
+      // Step 1: Create a pristine initial map based on rawFilesMap
+      // Start with a fresh map instead of merging with current to ensure proper restoration
+      const baseMap = { ...rawFilesMap };
+      
+      // Step 2: Apply session selections to this pristine map if they exist
+      let resultMap = baseMap;
+      
+      if (sessionIncludedFiles?.length || sessionExcludedFiles?.length) {
+        console.log(
+          `[FileSelectionManager] Applying session selections to pristine map: ${
+            sessionIncludedFiles?.length || 0
+          } included, ${sessionExcludedFiles?.length || 0} excluded`
+        );
+        
+        // Apply session selections to the pristine map
+        resultMap = applySessionSelections(
+          baseMap,
+          sessionIncludedFiles,
+          sessionExcludedFiles
+        );
+      } else if (Object.keys(currentMap).length > 0) {
+        // If no session data but we have an existing map with selections,
+        // try to preserve those selections by merging
+        resultMap = mergeFileMaps(currentMap, baseMap);
+        console.log(`[FileSelectionManager] No session selections, preserving current selections for ${Object.keys(resultMap).length} files`);
+      }
+      
+      // Step 3: Perform a semantic equality check
       let hasDifference = false;
-      for (const path of Object.keys(updatedMap)) {
-        const prev = currentMap[path];
-        const next = updatedMap[path];
-        if (
-          !prev ||
-          prev.included !== next.included ||
-          prev.forceExcluded !== next.forceExcluded
-        ) {
-          hasDifference = true;
-          break;
+      
+      // First check if the maps have the same files
+      if (Object.keys(currentMap).length !== Object.keys(resultMap).length) {
+        hasDifference = true;
+      } else {
+        // Then check if any file has different selection state
+        for (const path of Object.keys(resultMap)) {
+          const prev = currentMap[path];
+          const next = resultMap[path];
+          if (
+            !prev ||
+            prev.included !== next.included ||
+            prev.forceExcluded !== next.forceExcluded
+          ) {
+            hasDifference = true;
+            break;
+          }
         }
       }
 
       // Only update state if something actually changed to avoid unnecessary re-renders
-      return hasDifference ? updatedMap : currentMap;
+      if (hasDifference) {
+        console.log(`[FileSelectionManager] File map has changed, updating state`);
+        return resultMap;
+      } else {
+        console.log(`[FileSelectionManager] No changes detected in file map, keeping current state`);
+        return currentMap;
+      }
     });
-    // We purposely omit managedFilesMap from dependencies to avoid an infinite loop.
-    // The shallow equality check above makes sure state is only updated when necessary.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionIncludedFiles, sessionExcludedFiles]);
+  }, [rawFilesMap, sessionIncludedFiles, sessionExcludedFiles]);
 
   // Wrapper handlers that call onInteraction
   const setSearchTerm = useCallback((value: string) => {
@@ -107,20 +123,27 @@ export function useFileSelectionManager({
 
   const setPastedPaths = useCallback((value: string) => {
     setPastedPathsInternal(value);
+    // Clear any existing warnings when paths are updated
+    if (externalPathWarnings.length > 0) {
+      console.log('[FileSelectionManager] Clearing external path warnings due to path update');
+      setExternalPathWarnings([]);
+    }
     if (onInteraction) onInteraction();
-  }, [onInteraction]);
+  }, [onInteraction, externalPathWarnings]);
 
+  // Simplified toggle function to avoid comparison issues
   const toggleSearchSelectedFilesOnly = useCallback((value?: boolean) => {
-    // If the value is explicitly provided, use it
-    // Otherwise toggle the current value
     if (typeof value === 'boolean') {
+      // Directly set to the specified value
       setSearchSelectedFilesOnly(value);
     } else {
+      // Toggle current value
       setSearchSelectedFilesOnly(prev => !prev);
     }
     
+    // Call interaction handler regardless
     if (onInteraction) onInteraction();
-  }, [onInteraction]); // searchSelectedFilesOnly is intentionally omitted from dependencies
+  }, [onInteraction]); // Remove searchSelectedFilesOnly from deps to avoid recreating function
 
   // File selection handlers
   const toggleFileSelection = useCallback((path: string) => {
@@ -191,9 +214,15 @@ export function useFileSelectionManager({
   }, [onInteraction]);
 
   const applySelectionsFromPaths = useCallback((paths: string[]) => {
-    if (!paths || paths.length === 0) return;
+    if (!paths || paths.length === 0) {
+      console.log(`[FileSelectionManager] No paths provided to applySelectionsFromPaths`);
+      return;
+    }
     
     console.log(`[FileSelectionManager] Applying selections from ${paths.length} external paths`);
+    if (paths.length > 0) {
+      console.log(`[FileSelectionManager] Sample paths: ${paths.slice(0, 3).join(', ')}${paths.length > 3 ? '...' : ''}`);
+    }
     
     // Update the file map to mark these paths as included
     setManagedFilesMap(prevMap => {
@@ -201,8 +230,17 @@ export function useFileSelectionManager({
       const warnings: string[] = [];
       let includedCount = 0;
       
+      console.log(`[FileSelectionManager] Current file map has ${Object.keys(prevMap).length} entries`);
+      
+      // Debug: Print first few entries from the file map to see structure
+      const samplePaths = Object.keys(prevMap).slice(0, 3);
+      console.log("[FileSelectionManager] Sample file map entries:", samplePaths);
+      
       // Mark each path as included
       paths.forEach((path: string) => {
+        // path is already normalized by normalizePathForComparison in PastePaths component
+        const normalizedInputPath = path; // Already normalized
+        
         if (updatedMap[path]) {
           updatedMap[path] = {
             ...updatedMap[path],
@@ -211,7 +249,70 @@ export function useFileSelectionManager({
           };
           includedCount++;
         } else {
-          warnings.push(`Path not found: ${path}`);
+          // Try to find a matching file using the comparablePath property
+          let found = false;
+          
+          console.log(`[FileSelectionManager] Looking for match for: ${path} (normalized: ${normalizedInputPath})`);
+          
+          // First try: Direct match using comparablePath
+          for (const mapPath of Object.keys(updatedMap)) {
+            const fileInfo = updatedMap[mapPath];
+            
+            if (fileInfo.comparablePath === normalizedInputPath) {
+              console.log(`[FileSelectionManager] Found exact comparablePath match: ${mapPath}`);
+              updatedMap[mapPath] = {
+                ...updatedMap[mapPath],
+                included: true,
+                forceExcluded: false
+              };
+              includedCount++;
+              found = true;
+              break;
+            }
+          }
+          
+          // Second try: Path ends with the input path (handles project-relative paths)
+          if (!found) {
+            for (const mapPath of Object.keys(updatedMap)) {
+              const fileInfo = updatedMap[mapPath];
+              
+              if (normalizedInputPath && fileInfo.comparablePath.endsWith('/' + normalizedInputPath)) {
+                console.log(`[FileSelectionManager] Found path ending match: ${mapPath} for ${path}`);
+                updatedMap[mapPath] = {
+                  ...updatedMap[mapPath],
+                  included: true,
+                  forceExcluded: false
+                };
+                includedCount++;
+                found = true;
+                break;
+              }
+            }
+          }
+          
+          // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
+          if (!found) {
+            for (const mapPath of Object.keys(updatedMap)) {
+              const fileInfo = updatedMap[mapPath];
+              
+              if (normalizedInputPath.includes(fileInfo.comparablePath)) {
+                console.log(`[FileSelectionManager] Found input-contains-mappath match: ${mapPath} for ${path}`);
+                updatedMap[mapPath] = {
+                  ...updatedMap[mapPath],
+                  included: true,
+                  forceExcluded: false
+                };
+                includedCount++;
+                found = true;
+                break;
+              }
+            }
+          }
+          
+          if (!found) {
+            console.warn(`[FileSelectionManager] Path not found in file map: ${path}`);
+            warnings.push(`Path not found: ${path}`);
+          }
         }
       });
       
@@ -220,10 +321,105 @@ export function useFileSelectionManager({
         setExternalPathWarnings(warnings);
       }
       
-      console.log(`[FileSelectionManager] Applied selections to ${includedCount} paths`);
+      console.log(`[FileSelectionManager] Applied selections to ${includedCount} of ${paths.length} paths`);
       
-      // Update the pastedPaths field with the new paths
-      setPastedPathsInternal(paths.join('\n'));
+      // Removed setPastedPathsInternal call to prevent maximum update depth exceeded error
+      // The PastePaths component already calls setPastedPaths, which triggers this function
+      
+      return updatedMap;
+    });
+    
+    if (onInteraction) onInteraction();
+  }, [onInteraction]);
+
+  const replaceAllSelectionsWithPaths = useCallback((newPaths: string[]) => {
+    if (!newPaths || newPaths.length === 0) {
+      return;
+    }
+    
+    setManagedFilesMap(prevMap => {
+      // Create a mutable copy of the prevMap
+      const updatedMap = { ...prevMap };
+      const warnings: string[] = [];
+      let includedCount = 0;
+      
+      // Normalize all paths in newPaths and store them in a Set for quick lookup
+      const normalizedPaths = new Set(newPaths.map(path => normalizePathForComparison(path)));
+      
+      // First, set all files to not included (except force excluded ones)
+      for (const path of Object.keys(updatedMap)) {
+        if (!updatedMap[path].forceExcluded) {
+          updatedMap[path] = {
+            ...updatedMap[path],
+            included: false
+          };
+        }
+      }
+      
+      // Then iterate over the normalized paths and set those that exist in the map to included
+      for (const normalizedPath of normalizedPaths) {
+        let found = false;
+        
+        // First try: Direct match using comparablePath
+        for (const mapPath of Object.keys(updatedMap)) {
+          const fileInfo = updatedMap[mapPath];
+          
+          if (fileInfo.comparablePath === normalizedPath) {
+            updatedMap[mapPath] = {
+              ...updatedMap[mapPath],
+              included: true,
+              forceExcluded: false
+            };
+            includedCount++;
+            found = true;
+            break;
+          }
+        }
+        
+        // Second try: Path ends with the input path (handles project-relative paths)
+        if (!found) {
+          for (const mapPath of Object.keys(updatedMap)) {
+            const fileInfo = updatedMap[mapPath];
+            
+            if (normalizedPath && fileInfo.comparablePath.endsWith('/' + normalizedPath)) {
+              updatedMap[mapPath] = {
+                ...updatedMap[mapPath],
+                included: true,
+                forceExcluded: false
+              };
+              includedCount++;
+              found = true;
+              break;
+            }
+          }
+        }
+        
+        // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
+        if (!found) {
+          for (const mapPath of Object.keys(updatedMap)) {
+            const fileInfo = updatedMap[mapPath];
+            
+            if (normalizedPath.includes(fileInfo.comparablePath)) {
+              updatedMap[mapPath] = {
+                ...updatedMap[mapPath],
+                included: true,
+                forceExcluded: false
+              };
+              includedCount++;
+              found = true;
+              break;
+            }
+          }
+        }
+        
+        if (!found) {
+          warnings.push(`Path not found: ${normalizedPath}`);
+        }
+      }
+      
+      if (warnings.length > 0) {
+        setExternalPathWarnings(warnings);
+      }
       
       return updatedMap;
     });
@@ -268,6 +464,7 @@ export function useFileSelectionManager({
     
     // Actions
     handleBulkToggle,
-    applySelectionsFromPaths
+    applySelectionsFromPaths,
+    replaceAllSelectionsWithPaths
   };
 }

@@ -23,6 +23,10 @@ import { useNotification } from '@/lib/contexts/notification-context';
 import { useBackgroundJobs, useBackgroundJob } from '@/lib/contexts/background-jobs-context';
 import { Session } from '@/types/session-types';
 import debounce from '@/lib/utils/debounce';
+import { 
+  createImplementationPlanAction, 
+  getImplementationPlanPromptAction 
+} from '@/actions/implementation-plan-actions';
 
 // Import the hooks
 import { useTaskDescriptionState } from "./use-task-description-state";
@@ -47,6 +51,11 @@ export function useGeneratePromptState() {
   const [isRebuildingIndex, setIsRebuildingIndex] = useState(false);
   const [projectDataLoading, setProjectDataLoading] = useState(false);
   const [showPrompt, setShowPrompt] = useState(true);
+  
+  // Implementation plan state
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [planPromptCopySuccess, setPlanPromptCopySuccess] = useState(false);
+  const [isCopyingPlanPrompt, setIsCopyingPlanPrompt] = useState(false);
   
   // Gemini integration hook removed
   
@@ -538,6 +547,138 @@ export function useGeneratePromptState() {
     console.log(`[useGeneratePromptState][${sequence}][${timestamp}] COMPLETED complete state reset`);
   }, [taskState, regexState, sessionMetadata]);
 
+  // Handler for creating implementation plan
+  const handleCreateImplementationPlan = useCallback(async (includedPaths: string[], fileContentsMap: Record<string, string>) => {
+    console.log("[handleCreateImplementationPlan] Starting implementation plan creation");
+    setIsCreatingPlan(true);
+    
+    try {
+      const projectDir = projectDirectory;
+      const desc = taskState.taskDescription;
+      const sessionId = contextActiveSessionId;
+      const temp = sessionMetadata.diffTemperature;
+      
+      if (!projectDir || !desc.trim() || !sessionId || includedPaths.length === 0) {
+        showNotification({
+          title: "Cannot Create Implementation Plan",
+          message: "Please ensure you have a project directory, task description, and at least one file selected.",
+          type: "error"
+        });
+        setIsCreatingPlan(false); // Make sure to reset state on error
+        return;
+      }
+      
+      console.log("[handleCreateImplementationPlan] Calling API with:", {
+        projectDir,
+        taskDescLength: desc.length,
+        sessionId,
+        includedPathsCount: includedPaths.length
+      });
+      
+      const result = await createImplementationPlanAction({
+        projectDirectory: projectDir,
+        taskDescription: desc,
+        relevantFiles: includedPaths,
+        fileContentsMap,
+        sessionId,
+        diffTemperature: temp
+      });
+      
+      // Ensure we reset state BEFORE showing notifications
+      setIsCreatingPlan(false);
+      
+      if (result.isSuccess) {
+        console.log("[handleCreateImplementationPlan] Success response:", {
+          isBackgroundJob: !!result.metadata?.isBackgroundJob,
+          jobId: result.metadata?.jobId
+        });
+        
+        // Check if this is a background job
+        if (result.metadata?.isBackgroundJob) {
+          showNotification({
+            title: "Implementation Plan Creation Started",
+            message: "Your implementation plan is being generated in the background. Check the Background Jobs panel for progress and the Implementation Plans panel for results.",
+            type: "success"
+          });
+        } else {
+          showNotification({
+            title: "Implementation Plan Creation Started",
+            message: "Your implementation plan is being generated. Check the Implementation Plans panel for results.",
+            type: "success"
+          });
+        }
+      } else {
+        console.error("[handleCreateImplementationPlan] Error response:", result.message);
+        showNotification({
+          title: "Implementation Plan Creation Failed",
+          message: result.message || "An error occurred while creating the implementation plan.",
+          type: "error"
+        });
+      }
+    } catch (error) {
+      console.error("[handleCreateImplementationPlan] Exception:", error);
+      showNotification({
+        title: "Implementation Plan Creation Failed",
+        message: error instanceof Error ? error.message : "An unknown error occurred.",
+        type: "error"
+      });
+      setIsCreatingPlan(false); // Make sure to reset state on error
+    }
+  }, [projectDirectory, taskState.taskDescription, contextActiveSessionId, sessionMetadata.diffTemperature, showNotification]);
+  
+  // Handler for copying implementation plan prompt
+  const handleCopyImplementationPlanPrompt = useCallback(async (includedPaths: string[], fileContentsMap: Record<string, string>) => {
+    setIsCopyingPlanPrompt(true);
+    
+    try {
+      const projectDir = projectDirectory;
+      const desc = taskState.taskDescription;
+      
+      if (!projectDir || !desc.trim() || includedPaths.length === 0) {
+        showNotification({
+          title: "Cannot Copy Plan Prompt",
+          message: "Please ensure you have a project directory, task description, and at least one file selected.",
+          type: "error"
+        });
+        return;
+      }
+      
+      const result = await getImplementationPlanPromptAction({
+        projectDirectory: projectDir,
+        taskDescription: desc,
+        relevantFiles: includedPaths,
+        fileContentsMap
+      });
+      
+      if (result.isSuccess && result.data?.prompt) {
+        await navigator.clipboard.writeText(result.data.prompt);
+        setPlanPromptCopySuccess(true);
+        showNotification({
+          title: "Prompt Copied",
+          message: "Implementation plan prompt copied to clipboard.",
+          type: "success",
+          clipboardFeedback: true
+        });
+        setTimeout(() => setPlanPromptCopySuccess(false), 2000);
+      } else {
+        showNotification({
+          title: "Copy Failed",
+          message: result.message || "An error occurred while copying the implementation plan prompt.",
+          type: "error"
+        });
+      }
+    } catch (error) {
+      console.error("[handleCopyImplementationPlanPrompt]", error);
+      showNotification({
+        title: "Copy Failed",
+        message: error instanceof Error ? error.message : "An unknown error occurred.",
+        type: "error"
+      });
+    } finally {
+      setIsCopyingPlanPrompt(false);
+    }
+  }, [projectDirectory, taskState.taskDescription, showNotification]);
+
   // Handler for generating codebase (placeholder function)
   const handleGenerateCodebase = useCallback(async () => {
     showNotification({
@@ -576,6 +717,11 @@ export function useGeneratePromptState() {
     copySuccess,
     showPrompt,
     
+    // Implementation plan state
+    isCreatingPlan,
+    planPromptCopySuccess,
+    isCopyingPlanPrompt,
+    
     // Action methods
     resetAllState,
     setSessionName: sessionMetadata.setSessionName,
@@ -589,7 +735,9 @@ export function useGeneratePromptState() {
     handleInteraction,
     copyPrompt,
     setShowPrompt,
-    handleGenerateCodebase
+    handleGenerateCodebase,
+    handleCreateImplementationPlan,
+    handleCopyImplementationPlanPrompt
   }), [
     contextActiveSessionId,
     isStateLoaded,
@@ -609,6 +757,9 @@ export function useGeneratePromptState() {
     tokenCount, 
     copySuccess,
     showPrompt,
+    isCreatingPlan,
+    planPromptCopySuccess,
+    isCopyingPlanPrompt,
     resetAllState,
     handleLoadSession,
     handleSaveSessionState,
@@ -618,6 +769,8 @@ export function useGeneratePromptState() {
     handleInteraction,
     copyPrompt,
     setShowPrompt,
-    handleGenerateCodebase
+    handleGenerateCodebase,
+    handleCreateImplementationPlan,
+    handleCopyImplementationPlanPrompt
   ]);
 }

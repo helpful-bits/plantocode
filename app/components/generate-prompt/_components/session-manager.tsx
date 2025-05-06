@@ -609,8 +609,23 @@ const SessionManager = ({
         currentLoadController.current = null;
       }
       
+      // Add tracking for retry attempts
+      const maxRetries = 2; // Maximum number of retries for session load
+      let retryCount = 0;
+      
       // Create a new controller for this load operation just for client-side cancellation
       currentLoadController.current = new AbortController();
+      
+      // Function to detect if an error is related to session clearing
+      const isSessionClearError = (err: any): boolean => {
+        if (!err) return false;
+        const errorMessage = typeof err === 'string' 
+          ? err 
+          : (err.message || String(err));
+        
+        return errorMessage.includes('Operation canceled due to session clear') || 
+               errorMessage.includes('canceled during session clear');
+      };
       
       // Step 1: Set switching state and syncing flags immediately
       setGlobalSwitchingState(true);
@@ -788,8 +803,85 @@ const SessionManager = ({
     } catch (error) {
       console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Error loading session: ${error}`);
       
-      // Provide more informative error message for timeouts
+      // Provide more informative error message for errors
       let errorMessage = 'Failed to load session';
+      
+      // Initialize retry counter and max retries for this specific error handling path
+      let retryAttempt = 0;
+      const maxRetryAttempts = 3;
+      
+      // Helper function to check if an error is related to session clearing
+      const checkSessionClearError = (err: any): boolean => {
+        return err && 
+               typeof err === 'object' && 
+               err.message && 
+               (typeof err.message === 'string') &&
+               (err.message.includes('session sync conflict') || 
+                err.message.includes('session clearing'));
+      };
+      
+      // Check if this is a session clear error that we should retry
+      if (checkSessionClearError(error) && retryAttempt < maxRetryAttempts) {
+        retryAttempt++;
+        // This is a session clear error, we'll retry after a short delay
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] ⚠️ Detected session clear error, will retry (attempt ${retryAttempt}/${maxRetryAttempts})...`);
+        
+        // Add a delay before retrying to allow system to stabilize
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // After delaying, retry the session loading with same parameters
+        console.log(`[SessionManager][${startTimestamp}][${operationId}] 🔄 Retrying session load after session clear error...`);
+        
+        try {
+          // Retry the load operation
+          const retryResult = await sessionSyncService.forceLoadSession(session.id);
+          
+          if (retryResult && retryResult.isSuccess && retryResult.data) {
+            console.log(`[SessionManager][${startTimestamp}][${operationId}] ✅ Retry successful, processing session data`);
+            
+            // Use the same data processing logic as the success case
+            const newSession = retryResult.data;
+            
+            // Validate that we have a valid session
+            if (!newSession || !newSession.id) {
+              throw new Error("Invalid session data returned from database");
+            }
+            
+            // Update the active session ID in the context
+            updateActiveSessionInContext(newSession.id);
+            
+            // Apply the session data and inform parent components
+            startTransition(() => {
+              // Pass the session data to the parent component
+              onLoadSession(newSession);
+              
+              // Update the session name in the parent component
+              onSessionNameChange(newSession.name);
+              
+              console.log(`[SessionManager][${startTimestamp}][${operationId}] ✅ Successfully loaded session on retry: ${newSession.id}`);
+              
+              // Mark the switch as successful in our enhanced logging
+              if (switchLogger) {
+                switchLogger.complete(true, undefined, {
+                  taskDescriptionLength: newSession.taskDescription?.length || 0,
+                  includedFilesCount: newSession.includedFiles?.length || 0,
+                  excludedFilesCount: newSession.forceExcludedFiles?.length || 0,
+                  viaTry: true
+                });
+              }
+            });
+            
+            // Reset states and exit successfully
+            setIsSyncingState(false);
+            setGlobalSwitchingState(false);
+            return;
+          }
+        } catch (retryError) {
+          // If retry also fails, continue with original error handling
+          console.error(`[SessionManager][${startTimestamp}][${operationId}] ❌ Retry also failed:`, retryError);
+          errorMessage = 'Failed to load session even after retry';
+        }
+      }
       
       if (error && typeof error === 'object' && 'name' in error) {
         if (error.name === 'OperationTimeoutError') {
@@ -814,6 +906,9 @@ const SessionManager = ({
           setIsSyncingState(false);
           setGlobalSwitchingState(false);
           return;
+        } else if (checkSessionClearError(error)) {
+          // This is a session clear error that we tried to retry but still failed
+          errorMessage = 'Session loading was canceled during system maintenance. Please try again.';
         } else {
           errorMessage = error instanceof Error ? error.message : String(error);
         }

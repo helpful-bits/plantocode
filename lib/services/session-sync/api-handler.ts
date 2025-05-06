@@ -8,6 +8,32 @@
 import { SessionApiResponse } from './types';
 import { Session } from '@/types/session-types';
 
+// Helper function to ensure URL works in both client and server environments
+const getApiUrl = (path: string): string => {
+  // Remove leading slash if present to normalize the path
+  const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+  
+  // In browser environment, we can use relative paths
+  if (typeof window !== 'undefined') {
+    return `/${normalizedPath}`; // Ensure leading slash
+  }
+  
+  // In server environment (Node.js), we need absolute URLs
+  // Use process.env.NEXT_PUBLIC_APP_URL if available, fallback to default
+  // For local development, typically use http://localhost:3000
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  
+  try {
+    // Properly join the base URL and path
+    const url = new URL(normalizedPath, baseUrl);
+    return url.toString();
+  } catch (error) {
+    console.error(`[ApiHandler] Error creating URL from ${baseUrl} and ${normalizedPath}:`, error);
+    // Fallback to simple string concatenation if URL construction fails
+    return `${baseUrl}/${normalizedPath}`;
+  }
+};
+
 // Retry configuration
 const RETRY_CONFIG = {
   maxRetries: 3,
@@ -201,8 +227,11 @@ export async function setActiveSession(
     
     console.time(`[Perf] setActiveSession API call ${operationId}`);
     
-    // Use the actual API endpoint which is /api/active-session
-    const response = await fetch('/api/active-session', {
+    // Create a proper URL that works in both client and server environments
+    const apiUrl = getApiUrl('api/active-session');
+    console.log(`[ApiHandler] Making POST request to: ${apiUrl}`);
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -212,6 +241,8 @@ export async function setActiveSession(
         projectDirectory,
         sessionId,
       }),
+      // Ensure we don't attempt to revalidate or cache this request
+      cache: 'no-store',
     });
 
     const apiDuration = Date.now() - startTime;
@@ -258,12 +289,19 @@ export async function getSessionById(
       const fetchStartTime = Date.now();
       
       console.log(`[Perf] Initiating fetch for session ${sessionId} (Operation: ${operationId})`);
-      const response = await fetch(`/api/session/${sessionId}`, {
+      
+      // Create a proper URL that works in both client and server environments
+      const apiUrl = getApiUrl(`api/session/${sessionId}`);
+      console.log(`[ApiHandler] Making GET request to: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'X-Operation-ID': operationId,
           'Cache-Control': 'no-cache, no-store',
         },
+        // Ensure we don't attempt to revalidate or cache this request
+        cache: 'no-store',
       });
       
       const fetchEndTime = Date.now();
@@ -431,13 +469,19 @@ export async function patchSessionStateFields(
   
   while (retryCount <= RETRY_CONFIG.maxRetries) {
     try {
-      const response = await fetch(`/api/session/${sessionId}/state`, {
+      // Create a proper URL that works in both client and server environments
+      const apiUrl = getApiUrl(`api/session/${sessionId}/state`);
+      console.log(`[ApiHandler] Making PATCH request to: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'X-Operation-ID': operationId,
         },
-        body: JSON.stringify(sessionData)
+        body: JSON.stringify(sessionData),
+        // Ensure we don't attempt to revalidate or cache this request
+        cache: 'no-store',
       });
 
       if (!response.ok) {

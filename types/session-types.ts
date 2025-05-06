@@ -19,7 +19,6 @@ export type ApiType = 'gemini' | 'claude' | 'whisper' | 'groq';
 
 // Type for task types
 export type TaskType = 
-  | 'xml_generation' 
   | 'pathfinder' 
   | 'transcription' 
   | 'regex_generation'
@@ -29,38 +28,72 @@ export type TaskType =
   | 'task_enhancement'
   | 'guidance_generation'
   | 'task_guidance'
+  | 'implementation_plan'
   | 'unknown';
 
-// Type for individual background job (formerly GeminiRequest)
+// Type for AI background job
 export type BackgroundJob = {
+    // Core identifying fields
     id: string;
     sessionId: string;
-    prompt: string;
-    status: JobStatus;
-    startTime: number | null;
-    endTime: number | null;
-    xmlPath: string | null;
-    statusMessage: string | null;
-    tokensReceived: number;
-    tokensSent?: number; // Add token estimation for prompt
-    charsReceived: number;
-    lastUpdate: number | null;
-    createdAt: number;
-    updatedAt?: number;
-    cleared?: boolean; // For history clearing functionality
     apiType: ApiType;
     taskType: TaskType;
+    status: JobStatus;
+    
+    // Timestamps
+    createdAt: number;
+    updatedAt?: number;
+    startTime: number | null;
+    endTime: number | null;
+    lastUpdate: number | null;
+    
+    // Input and output content
+    prompt: string;       // The user-provided input text
+    
+    /**
+     * The primary field for storing the main textual output of a completed job.
+     * This contains the primary result such as:
+     * - Transcription text
+     * - Corrected text
+     * - Improved text
+     * - Generated guidance
+     * - Regex patterns
+     * - Implementation plans
+     * - Any other textual content that represents the job's completed output
+     */
+    response: string | null;
+    
+    // Project information
+    projectDirectory?: string; // The project directory this job relates to
+    
+    // Token and performance tracking
+    tokensSent: number;   // Token count for input
+    tokensReceived: number; // Token count for output
+    totalTokens: number;  // Total tokens (input + output)
+    charsReceived: number; // Character count for response
+    
+    // Status and error information
+    statusMessage: string | null;
+    /**
+     * Detailed error message for failed jobs.
+     * This field should be populated with a human-readable description of what went wrong
+     * when a job fails (status = 'failed').
+     */
+    errorMessage: string | null;
+    
+    // Model configuration
     modelUsed: string | null;
     maxOutputTokens: number | null;
-    // Additional properties used in the DB layer
-    rawInput?: string;
-    modelOutput?: string;
-    promptTokens?: number;
-    completionTokens?: number;
-    totalTokens?: number;
-    includeSyntax?: boolean;
     temperature?: number;
-    visible?: boolean;
+    includeSyntax?: boolean;
+    
+    // Output file paths
+    outputFilePath: string | null;
+    
+    // Visibility/management flags
+    cleared?: boolean;   // For history clearing functionality
+    visible?: boolean;   // Whether the job should be shown in the UI
+    
     /**
      * Structured supplementary data for the job, such as token counts, 
      * file paths, or other structured information.
@@ -72,29 +105,9 @@ export type BackgroundJob = {
      * The primary textual output should always be stored in the 'response' field.
      */
     metadata?: {
-        tokensReceived?: number;
-        charsReceived?: number;
         targetField?: string; // Field in the form that should be updated with response
         [key: string]: any;
     } | null;
-    /**
-     * The primary field for storing the main textual output of a completed job.
-     * This should contain the primary result such as:
-     * - Transcription text
-     * - Corrected text
-     * - Improved text
-     * - Generated guidance
-     * - Regex patterns
-     * - Any other textual content that represents the job's completed output
-     */
-    response?: string | null;
-    /**
-     * Detailed error message for failed jobs.
-     * This field should be populated with a human-readable description of what went wrong
-     * when a job fails (status = 'failed').
-     */
-    errorMessage?: string | null;
-    // Removing redundant message field as statusMessage and errorMessage cover its use cases
 };
 
 // Type for task-specific settings stored in the task_settings JSON column

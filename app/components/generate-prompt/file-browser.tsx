@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Info, Loader2, FileText, FolderClosed, AlertCircle, X, RefreshCw, Files } from "lucide-react";
+import { Info, Loader2, FileText, FolderClosed, AlertCircle, X, RefreshCw, Files, Sparkles, FileCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,15 +10,16 @@ import { FileInfo } from "@/types";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import FileListItem from "./_components/file-list-item";
+import RegexAccordion from "./_components/regex-accordion";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
 import { FilesMap } from "./_hooks/file-management/use-project-file-list";
+import { GeneratePromptContextValue } from "./_contexts/generate-prompt-context";
 
 // Constants for auto-retry logic
 const AUTO_RETRY_DELAY = 2000; // 2 seconds delay for auto-retry
 const MAX_AUTO_RETRIES = 3; // Maximum number of automatic retries
 
 const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
-const DEBUG_LOGS = process.env.NODE_ENV === 'development';
 
 interface FileBrowserProps {
   managedFilesMap: FilesMap;
@@ -36,12 +37,15 @@ interface FileBrowserProps {
   isLoading?: boolean;
   loadingMessage?: string;
   
-  // Regex props
-  titleRegex: string;
-  contentRegex: string;
-  negativeTitleRegex: string;
-  negativeContentRegex: string;
-  isRegexActive: boolean;
+  // Find Relevant Files props
+  onFindRelevantFiles?: () => void;
+  isFindingFiles?: boolean;
+  searchSelectedFilesOnly?: boolean;
+  onToggleSearchSelectedFilesOnly?: (value?: boolean) => void;
+  taskDescription?: string;
+  
+  // Regex state
+  regexState: GeneratePromptContextValue['regexState'];
 }
 
 export default function FileBrowser({
@@ -59,22 +63,14 @@ export default function FileBrowser({
   refreshFiles,
   isLoading,
   loadingMessage = "",
-  titleRegex,
-  contentRegex,
-  negativeTitleRegex,
-  negativeContentRegex,
-  isRegexActive
+  onFindRelevantFiles,
+  isFindingFiles = false,
+  searchSelectedFilesOnly = false,
+  onToggleSearchSelectedFilesOnly,
+  taskDescription = "",
+  regexState
 }: FileBrowserProps) {
   const { projectDirectory } = useProject();
-  
-  // Only log in development mode
-  if (DEBUG_LOGS) {
-    console.log(`[FileBrowser] Component rendered with:
-      - projectDirectory: ${projectDirectory || 'not set'}
-      - managedFilesMap size: ${Object.keys(managedFilesMap).length}
-      - isLoading: ${isLoading}
-    `);
-  }
   
   const [showPathInfo, setShowPathInfo] = useState(false);
   const lastRenderedMapRef = useRef<string | null>(null); // Track rendered file list
@@ -98,13 +94,7 @@ export default function FileBrowser({
     fileContentsMap,
     searchTerm,
     showOnlySelected,
-    regexState: {
-      titleRegex,
-      contentRegex,
-      negativeTitleRegex,
-      negativeContentRegex,
-      isRegexActive
-    }
+    regexState
   });
   
   // Update the regex errors from the hook
@@ -124,7 +114,6 @@ export default function FileBrowser({
   const handleManualRefresh = useCallback(() => {
     // Call refreshFiles if provided (real refresh)
     if (refreshFiles) {
-      console.log("[FileBrowser] Performing manual refresh with preserveState=true");
       refreshFiles(true).catch(error => {
         console.error("[FileBrowser] Error refreshing files:", error);
       });
@@ -174,24 +163,6 @@ export default function FileBrowser({
     [managedFilesMap]
   );
 
-  // Track file changes for debugging (only in development mode)
-  useEffect(() => {
-    if (!DEBUG_LOGS) return;
-    
-    const fileCount = Object.keys(managedFilesMap).length;
-    const selectedCount = Object.values(managedFilesMap).filter(f => f.included && !f.forceExcluded).length;
-    
-    // Create a unique hash of the file state for change detection
-    const mapHash = JSON.stringify({
-      count: fileCount,
-      selected: selectedCount
-    });
-    
-    if (lastRenderedMapRef.current !== mapHash) {
-      console.log(`[FileBrowser] Files updated: ${fileCount} total files, ${selectedCount} selected files`);
-      lastRenderedMapRef.current = mapHash;
-    }
-  }, [managedFilesMap]);
 
   // Handle adding path to selection textarea
   const handleAddPath = useCallback(async (path: string, e: React.MouseEvent) => {
@@ -219,17 +190,8 @@ export default function FileBrowser({
   return (
     // Use key to force re-render when projectDirectory changes, ensuring cache state is reset
     <div className="space-y-4 mb-4 border rounded-lg p-4 bg-card shadow-sm">
-      {/* Debug data to help troubleshoot issues */}
-      {DEBUG_LOGS && (
-        <div className="bg-gray-100 text-xs font-mono p-2 rounded mb-2 text-gray-700">
-          managedFilesMap: {Object.keys(managedFilesMap).length} files | 
-          filtered: {filteredFiles.length} | 
-          displayed: {displayedFiles.length} | 
-          loading: {isLoading ? 'yes' : 'no'}
-        </div>
-      )}
       
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-2">
         <div className="relative flex-1"> {/* Added relative positioning */}
           <Input
             type="search" // Use search type for better semantics and potential browser clear button
@@ -286,6 +248,60 @@ export default function FileBrowser({
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
+      
+      {/* Find Relevant Files UI Section */}
+      <div className="flex items-center gap-4 mb-4 border-b pb-3">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={onFindRelevantFiles}
+            disabled={isFindingFiles || !taskDescription || !taskDescription.trim()}
+            className="h-9 flex items-center gap-1.5"
+            title="Find files relevant to your task using AI"
+          >
+            {isFindingFiles ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            Find Relevant Files
+          </Button>
+        </div>
+        
+        <div className="flex items-center space-x-2 border rounded-md px-3 py-1.5 bg-background">
+          <div className="flex items-center gap-1.5">
+            {searchSelectedFilesOnly ? (
+              <FileCheck className="h-4 w-4 text-primary" />
+            ) : (
+              <Files className="h-4 w-4 text-muted-foreground" />
+            )}
+            <Label htmlFor="ai-search-scope-toggle" className="text-sm font-medium cursor-pointer">
+              {searchSelectedFilesOnly ? "Search: Selected" : "Search: Entire Project"}
+            </Label>
+          </div>
+          <Switch
+            id="ai-search-scope-toggle"
+            checked={searchSelectedFilesOnly}
+            onCheckedChange={onToggleSearchSelectedFilesOnly}
+            title="Toggle AI search scope between currently selected files and the entire project"
+          />
+        </div>
+        
+        <p className="text-xs text-muted-foreground">AI will suggest files based on your task description.</p>
+      </div>
+
+      {/* Regex Accordion */}
+      <RegexAccordion
+        regexState={regexState}
+        onInteraction={onInteraction || (() => {})}
+        taskDescription={taskDescription}
+        titleRegexError={titleRegexError}
+        contentRegexError={contentRegexError}
+        negativeTitleRegexError={negativeTitleRegexError}
+        negativeContentRegexError={negativeContentRegexError}
+      />
 
       {/* Status bar with file counts */}
       {!isLoading && totalFilesCount > 0 && ( // Use totalFilesCount for check
@@ -343,15 +359,6 @@ export default function FileBrowser({
           </div>
         )}
         
-        {/* Debug info */}
-        {DEBUG_LOGS && (
-          <div className="text-xs bg-gray-100 p-2 mb-2 rounded font-mono">
-            displayedFiles: {displayedFiles.length},
-            filteredFiles: {filteredFiles.length},
-            totalFilesCount: {totalFilesCount},
-            isLoading: {isLoading ? 'true' : 'false'}
-          </div>
-        )}
         
         {/* Empty state message */}
         {displayedFiles.length === 0 && !isLoading && (
@@ -361,7 +368,7 @@ export default function FileBrowser({
                 <FolderClosed className="h-8 w-8" />
                 <p>Please select a project directory first</p>
               </>
-            ) : searchTerm || (isRegexActive && (titleRegex || contentRegex || negativeTitleRegex || negativeContentRegex)) ? (
+            ) : searchTerm || (regexState.isRegexActive && (regexState.titleRegex || regexState.contentRegex || regexState.negativeTitleRegex || regexState.negativeContentRegex)) ? (
               <>
                 <Info className="h-8 w-8" />
                 <p>No files match your search criteria</p>

@@ -519,49 +519,126 @@ export function createQueueManager(): QueueManager {
     
     /**
      * Clear operations for a session
+     * @param sessionId The session ID to clear operations for
+     * @param operationTypes Optional array of operation types to clear (e.g., ['save', 'delete'])
+     *                       If not provided, all operation types will be cleared
+     * @param preserveInProgress If true, operations currently being processed will not be canceled
+     * @returns The number of operations that were cleared
      */
-    clearSessionOperations(sessionId: string | null): number {
+    clearSessionOperations(
+      sessionId: string | null, 
+      operationTypes?: Array<'load' | 'save' | 'delete' | 'setActive'>,
+      preserveInProgress: boolean = false
+    ): number {
       // Check for a valid session ID format
       if (sessionId !== null && typeof sessionId !== 'string') {
         console.error(`[QueueManager] Invalid sessionId format in clearSessionOperations: ${typeof sessionId}`);
         return 0;
       }
       
+      const timestamp = new Date().toISOString();
+      console.log(`[QueueManager][${timestamp}] Clearing operations for session ${sessionId || 'new'}: ` + 
+                  `types=${operationTypes ? operationTypes.join(',') : 'all'}, preserveInProgress=${preserveInProgress}`);
+      
       const initialQueueSize = queue.length;
       
-      // Filter operations for this session
-      const sessionOperations = queue.filter(op => op.sessionId === sessionId);
+      // Filter operations for this session (and by type if specified)
+      const sessionOperations = queue.filter(op => {
+        const matchesSession = op.sessionId === sessionId;
+        const matchesType = !operationTypes || operationTypes.includes(op.type as any);
+        return matchesSession && matchesType;
+      });
       
-      // Remove operations for this session from the queue
-      const newQueue = queue.filter(op => op.sessionId !== sessionId);
+      if (sessionOperations.length === 0) {
+        console.log(`[QueueManager][${timestamp}] No matching operations found to clear for session ${sessionId || 'new'}`);
+        return 0;
+      }
+      
+      // Log details about what we're clearing
+      console.log(`[QueueManager][${timestamp}] Found ${sessionOperations.length} operations to clear for session ${sessionId || 'new'}:`);
+      const typeCount = sessionOperations.reduce((acc, op) => {
+        acc[op.type] = (acc[op.type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      // Log a breakdown of operation types
+      Object.entries(typeCount).forEach(([type, count]) => {
+        console.log(`[QueueManager][${timestamp}]   - ${type}: ${count} operations`);
+      });
+      
+      // Remove operations for this session from the queue (and by type if specified)
+      const newQueue = queue.filter(op => {
+        const matchesSession = op.sessionId === sessionId;
+        const matchesType = !operationTypes || operationTypes.includes(op.type as any);
+        // Keep if it doesn't match the session, or if it matches but not the specified types
+        return !matchesSession || (matchesSession && !matchesType);
+      });
+      
+      // Update the queue
       queue.length = 0;
       queue.push(...newQueue);
       
-      console.log(`[QueueManager] Removed ${initialQueueSize - queue.length} operations for session ${sessionId || 'new'}`);
+      const clearedQueueCount = initialQueueSize - queue.length;
+      console.log(`[QueueManager][${timestamp}] Removed ${clearedQueueCount} operations from queue for session ${sessionId || 'new'}`);
       
       // Reject all promises for these operations
+      let rejectedPromisesCount = 0;
       sessionOperations.forEach(op => {
         const promiseData = operationPromises.get(op.id);
         if (promiseData) {
           if (promiseData.timeoutId) {
             clearTimeout(promiseData.timeoutId);
           }
-          promiseData.reject(new Error(`Operation canceled due to session clear: ${sessionId || 'new'}`));
-          operationPromises.delete(op.id);
-        }
-      });
-      
-      // Clean up processing operations for this session
-      processingOperations.forEach((data, opId) => {
-        if (data.operation.sessionId === sessionId) {
-          processingOperations.delete(opId);
           
-          // Adjust active operation count
-          activeOperationCount = Math.max(0, activeOperationCount - 1);
+          // Create a descriptive error message with operation details to help with debugging
+          const errorMessage = `Operation ${op.type} (ID: ${op.id}) canceled during session clear: ${sessionId || 'new'}`;
+          promiseData.reject(new Error(errorMessage));
+          operationPromises.delete(op.id);
+          rejectedPromisesCount++;
         }
       });
       
-      return initialQueueSize - queue.length;
+      console.log(`[QueueManager][${timestamp}] Rejected ${rejectedPromisesCount} promises for cleared operations`);
+      
+      // Clean up processing operations for this session (unless preserveInProgress is true)
+      if (!preserveInProgress) {
+        let canceledProcessingCount = 0;
+        const processingOpIds: string[] = [];
+        
+        processingOperations.forEach((data, opId) => {
+          const op = data.operation;
+          const matchesSession = op.sessionId === sessionId;
+          const matchesType = !operationTypes || operationTypes.includes(op.type as any);
+          
+          if (matchesSession && matchesType) {
+            processingOpIds.push(opId);
+            processingOperations.delete(opId);
+            
+            // Adjust active operation count
+            activeOperationCount = Math.max(0, activeOperationCount - 1);
+            canceledProcessingCount++;
+          }
+        });
+        
+        if (canceledProcessingCount > 0) {
+          console.log(`[QueueManager][${timestamp}] Canceled ${canceledProcessingCount} in-progress operations for session ${sessionId || 'new'}:`, processingOpIds);
+        }
+      } else {
+        // Just log the in-progress operations we're preserving
+        const inProgressOps = Array.from(processingOperations.entries())
+          .filter(([_, data]) => data.operation.sessionId === sessionId)
+          .map(([opId, data]) => ({
+            id: opId,
+            type: data.operation.type,
+            runningFor: `${Date.now() - data.startTime}ms`
+          }));
+          
+        if (inProgressOps.length > 0) {
+          console.log(`[QueueManager][${timestamp}] Preserving ${inProgressOps.length} in-progress operations for session ${sessionId || 'new'}:`, inProgressOps);
+        }
+      }
+      
+      return clearedQueueCount;
     },
     
     /**

@@ -4,9 +4,9 @@ import { promises as fs } from 'fs';
 import path from 'path'; // Keep path import
 import os from 'os';
 import { existsSync } from 'fs';
-import { getAppPatchesDirectory, getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
+import { getAppOutputFilesDirectory, getFilename as getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
 import { getProjectSetting } from '@/actions/project-settings-actions';
-import { XML_EDITOR_COMMAND_KEY } from '@/lib/constants';
+import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,8 +20,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project directory is required and must be a string' }, { status: 400 });
     }
 
-    // Get custom XML editor command from project settings
-    const customCommand = await getProjectSetting(projectDirectory, XML_EDITOR_COMMAND_KEY);
+    // Get custom output file editor command from project settings
+    const customCommand = await getProjectSetting(projectDirectory, OUTPUT_FILE_EDITOR_COMMAND_KEY);
 
     // Resolve the path to handle potential relative paths
     const resolvedFilePath = path.resolve(filePath);
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       if (!existsSync(resolvedFilePath)) {
         // If file doesn't exist at the provided path, check if it might be in the fallback location
         const filename = getPatchFilename(resolvedFilePath);
-        const fallbackPath = path.join(getAppPatchesDirectory(), filename);
+        const fallbackPath = path.join(getAppOutputFilesDirectory(), filename);
         
         if (existsSync(fallbackPath)) {
           // Use the fallback path instead

@@ -5,6 +5,8 @@ import { BackgroundJob, JobStatus, JOB_STATUSES } from "@/types/session-types";
 import { setupDatabase } from '@/lib/db';
 import streamingRequestPool from '@/lib/api/streaming-request-pool';
 import { backgroundJobRepository } from '@/lib/db/repositories';
+import { globalJobQueue } from '@/lib/jobs/global-job-queue';
+import { updateJobToCancelled } from '@/lib/jobs/job-helpers';
 
 // Enhanced validation for server-side execution environment
 const isValidExecutionEnvironment = (): boolean => {
@@ -190,7 +192,7 @@ export async function cancelBackgroundJobAction(
       };
     }
     
-    // If job is already completed, failed, or canceled, we don't need to do anything
+    // If job is already in a terminal state, we don't need to do anything
     if (JOB_STATUSES.TERMINAL.includes(job.status)) {
       return {
         isSuccess: true,
@@ -199,25 +201,42 @@ export async function cancelBackgroundJobAction(
       };
     }
     
-    // Update the job status to 'canceled'
-    const cancellationReason = 'User requested cancellation';
-    await backgroundJobRepository.updateBackgroundJobStatus({
-      jobId: jobId,
-      status: 'canceled', // Use canceled status
-      endTime: Date.now(),
-      statusMessage: cancellationReason
-    });
-    
-    // Additionally, if it's an API call, try to cancel it in the request pool
-    if ((job.status === 'running' || job.status === 'preparing') && 
-        typeof streamingRequestPool.cancelRequest === 'function') {
+    // Check if job is in the queue
+    let queuedJobRemoved = false;
+    if (job.status === 'queued' && job.metadata?.queueJobId) {
+      const queueJobId = job.metadata.queueJobId as string;
       try {
-        streamingRequestPool.cancelRequest(jobId);
-      } catch (cancelError) {
-        console.warn(`Error canceling stream request for job ${jobId}:`, cancelError);
-        // Continue even if cancel request fails
+        queuedJobRemoved = await globalJobQueue.remove(queueJobId);
+        console.log(`[cancelBackgroundJobAction] Removed job from queue: ${queueJobId}`);
+      } catch (queueError) {
+        console.warn(`[cancelBackgroundJobAction] Error removing job from queue:`, queueError);
+        // Continue even if queue removal fails - we'll still update the job status
       }
     }
+    
+    // If job is running, try to cancel it in the streaming request pool
+    let requestCancelled = false;
+    if (job.status === 'running') {
+      try {
+        // Job ID is used as the request ID in streamingRequestPool
+        requestCancelled = streamingRequestPool.cancelRequest(jobId);
+        if (requestCancelled) {
+          console.log(`[cancelBackgroundJobAction] Cancelled active request: ${jobId}`);
+        }
+      } catch (cancelError) {
+        console.warn(`[cancelBackgroundJobAction] Error canceling stream request:`, cancelError);
+        // Continue even if request cancellation fails - we'll still update the job status
+      }
+    }
+    
+    // Update the job status to 'canceled'
+    const cancellationReason = queuedJobRemoved 
+      ? 'Canceled from queue by user'
+      : requestCancelled 
+        ? 'Active request canceled by user'
+        : 'User requested cancellation';
+        
+    await updateJobToCancelled(jobId, cancellationReason);
     
     return {
       isSuccess: true,
@@ -394,6 +413,29 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
       };
     }
     
+    // First remove any jobs in the queue for this session
+    try {
+      const removedCount = await globalJobQueue.removeBySessionId(sessionId);
+      if (removedCount > 0) {
+        console.log(`[cancelSessionBackgroundJobsAction] Removed ${removedCount} queued jobs for session ${sessionId}`);
+      }
+    } catch (queueError) {
+      console.warn(`[cancelSessionBackgroundJobsAction] Error removing jobs from queue:`, queueError);
+      // Continue even if queue removal fails - we'll still cancel the jobs in the database
+    }
+    
+    // Then cancel any running requests for this session
+    try {
+      const cancelledCount = streamingRequestPool.cancelQueuedSessionRequests(sessionId);
+      if (cancelledCount > 0) {
+        console.log(`[cancelSessionBackgroundJobsAction] Cancelled ${cancelledCount} active requests for session ${sessionId}`);
+      }
+    } catch (cancelError) {
+      console.warn(`[cancelSessionBackgroundJobsAction] Error canceling session requests:`, cancelError);
+      // Continue even if request cancellation fails - we'll still cancel the jobs in the database
+    }
+    
+    // Finally, cancel all session jobs in the database
     await backgroundJobRepository.cancelAllSessionBackgroundJobs(sessionId);
     
     return {
@@ -411,4 +453,4 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
       data: null
     };
   }
-} 
+}

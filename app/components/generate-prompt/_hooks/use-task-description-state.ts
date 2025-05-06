@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useBackgroundJob } from "@/lib/contexts/background-jobs-context";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 import { useNotification } from '@/lib/contexts/notification-context';
+import { useProject } from "@/lib/contexts/project-context";
 import { AUTO_SAVE_INTERVAL } from "@/lib/constants";
 import debounce from '@/lib/utils/debounce';
 import { sessionSyncService } from '@/lib/services/session-sync-service';
@@ -31,9 +32,50 @@ export function useTaskDescriptionState({
   
   // External hooks
   const { showNotification } = useNotification();
+  const { projectDirectory } = useProject();
   // Fetch the background job
   const textImprovementJob = useBackgroundJob(textImprovementJobId);
   
+  // Generate localStorage key for taskDescription backup
+  const localStorageKey = useMemo(() => {
+    return `task-description-backup-${encodeURIComponent(projectDirectory || 'default')}`;
+  }, [projectDirectory]);
+
+  // Initialize from local storage on mount
+  useEffect(() => {
+    try {
+      // Only restore from backup if current value is empty
+      if (!taskDescription || taskDescription.trim() === '') {
+        const backup = localStorage.getItem(localStorageKey);
+        if (backup && backup.length > 0) {
+          console.log('[TaskDescriptionState] Restoring from local storage backup:', localStorageKey, 
+            `(first ${backup.substring(0, 20)}... of ${backup.length} chars)`);
+          setTaskDescription(backup);
+          if (onInteraction) onInteraction();
+        } else {
+          console.log('[TaskDescriptionState] No local storage backup found or backup is empty');
+        }
+      } else {
+        console.log('[TaskDescriptionState] Not restoring from local storage - value already exists:', 
+          `(first ${taskDescription.substring(0, 20)}... of ${taskDescription.length} chars)`);
+      }
+    } catch (error) {
+      console.error('[TaskDescriptionState] Error accessing localStorage:', error);
+    }
+  }, [localStorageKey, taskDescription, setTaskDescription, onInteraction]);
+
+  // Update local storage when value changes
+  useEffect(() => {
+    try {
+      if (taskDescription && taskDescription.trim() !== '') {
+        console.log('[TaskDescriptionState] Saving to localStorage:', localStorageKey, `(${taskDescription.length} chars)`);
+        localStorage.setItem(localStorageKey, taskDescription);
+      }
+    } catch (error) {
+      console.error('[TaskDescriptionState] Error saving to localStorage:', error);
+    }
+  }, [taskDescription, localStorageKey]);
+
   // Reset function to clear state - wrapped in useCallback for stability
   const reset = useCallback(() => {
     console.log('[TaskDescriptionState] Resetting task description state');
@@ -41,7 +83,14 @@ export function useTaskDescriptionState({
     setTaskCopySuccess(false);
     setIsImprovingText(false);
     setTextImprovementJobId(null);
-  }, [setTaskDescription, setTaskCopySuccess, setIsImprovingText, setTextImprovementJobId]);
+    
+    // Also clear the localStorage backup
+    try {
+      localStorage.removeItem(localStorageKey);
+    } catch (error) {
+      console.error('[TaskDescriptionState] Error removing localStorage backup:', error);
+    }
+  }, [setTaskDescription, setTaskCopySuccess, setIsImprovingText, setTextImprovementJobId, localStorageKey]);
   
   // Add useEffect to monitor activeSessionId changes for automatic reset
   useEffect(() => {
@@ -221,10 +270,12 @@ export function useTaskDescriptionState({
         }
       }
       
-      // Ensure we pass the text correctly to the action
+      // Ensure we pass the text correctly to the action with targetField
       const result = await improveSelectedTextAction({
         text: selectedText,
-        sessionId: activeSessionId
+        sessionId: activeSessionId,
+        projectDirectory, // Include project directory
+        targetField: 'taskDescription' // Explicitly set targetField
       });
       
       if (result.isSuccess) {
@@ -281,7 +332,7 @@ export function useTaskDescriptionState({
         type: "error"
       });
     }
-  }, [isImprovingText, showNotification, activeSessionId, taskDescription, taskDescriptionRef]);
+  }, [isImprovingText, showNotification, activeSessionId, taskDescription, taskDescriptionRef, projectDirectory]);
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {

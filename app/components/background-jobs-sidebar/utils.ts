@@ -92,8 +92,6 @@ export function formatTaskType(taskType: TaskType): string {
   
   // Convert enum values to human readable format
   switch (taskType) {
-    case 'xml_generation':
-      return 'XML Generation';
     case 'pathfinder':
       return 'Path Finding';
     case 'transcription':
@@ -112,6 +110,8 @@ export function formatTaskType(taskType: TaskType): string {
       return 'Guidance Generation';
     case 'task_guidance':
       return 'Task Guidance';
+    case 'implementation_plan':
+      return 'Implementation Plan';
     // Handle non-standard values used in the app
     case 'path_finding' as any:
       return 'Path Finding';

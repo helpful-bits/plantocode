@@ -67,6 +67,9 @@ pnpm migrate
 
 # Start the development server
 pnpm dev
+
+# Start the background job workers (in a separate terminal)
+pnpm workers
 ```
 
 ### ⚠️ IMPORTANT: Database Migrations
@@ -158,6 +161,64 @@ This safely moves data from the old location (`o1-pro-flow.db`) to the new locat
 - Real-time status updates without intrusive notifications
 - Project settings customization for consistent workflows
 
+## 🔄 Background Job Processing
+
+The application uses a robust, priority-based job queuing system to handle resource-intensive operations efficiently:
+
+### Job Queue Architecture
+- **GlobalJobQueue** - In-memory queue that stores job descriptors with priority handling
+- **JobProcessor** - Interface for components that execute specific job types
+- **JobRegistry** - Maps job types to their specialized processors
+- **JobDispatcher** - Routes jobs to appropriate processors
+- **JobScheduler** - Manages worker concurrency and polls for jobs
+- **API Clients** - Integrated with job system for request tracking and management
+- **Specialized Processors** - One processor per job type, following a consistent pattern
+
+### Job Status Lifecycle
+The system tracks job status in the database with a clear lifecycle:
+
+- `created`: Initial state when job is created in the database
+- `queued`: Job has been added to the processing queue
+- `running`: Job is actively being processed
+- `completed`: Job finished successfully
+- `failed`: Job failed due to an error
+- `canceled`: Job was canceled by the user
+- `preparing`: Job is in preparation phase (e.g., gathering resources)
+
+### Job Types and Dedicated Processors
+Each operation type has a specialized processor for efficient handling:
+
+- `GEMINI_REQUEST`: General Gemini API requests
+- `CLAUDE_REQUEST`: Claude API requests
+- `IMPLEMENTATION_PLAN_GENERATION`: Architecture planning
+- `PATH_FINDER`: Smart file selection
+- `TEXT_CORRECTION`: Text refinement
+- `GUIDANCE_GENERATION`: Task guidance
+- `PATH_CORRECTION`: Path normalization
+- `REGEX_GENERATION`: Pattern matching
+- `TEXT_IMPROVEMENT`: Style improvement
+- `VOICE_CORRECTION`: Voice transcription refinement
+- `VOICE_TRANSCRIPTION`: Audio-to-text conversion
+- `READ_DIRECTORY`: File system operations
+
+### Worker Configuration
+You can configure the worker system through environment variables:
+
+- `WORKER_CONCURRENCY` - Maximum number of concurrent jobs (default: 5)
+- `WORKER_POLLING_INTERVAL` - How often workers check for new jobs in milliseconds (default: 200)
+- `WORKER_JOB_TIMEOUT` - Maximum job execution time in milliseconds (default: 10 minutes)
+
+### Starting Workers
+```bash
+# Start workers with default configuration
+pnpm workers
+
+# Start workers with custom configuration
+WORKER_CONCURRENCY=10 WORKER_POLLING_INTERVAL=100 pnpm workers
+```
+
+The worker system must be running alongside the Next.js server for background jobs to be processed.
+
 ## 📂 Project Structure
 
 ```
@@ -168,6 +229,9 @@ This safely moves data from the old location (`o1-pro-flow.db`) to the new locat
 ├── components          # Reusable UI components
 ├── lib                 # Utility functions and libraries
 │   ├── db              # Database layer (SQLite)
+│   ├── jobs            # Background job processing system
+│   │   ├── processors  # Job type-specific processors
+│   │   └── job-types.ts # Job type definitions
 │   └── services        # Core services
 │       └── session-sync  # Session persistence and synchronization
 │           ├── api-handler.ts      # API interaction logic

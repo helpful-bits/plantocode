@@ -127,6 +127,13 @@ class GeminiClient {
 const geminiClient = new GeminiClient();
 export default geminiClient;
 
-// Also export individual functions and types for direct use
-export * from './gemini-streaming';
-export * from './gemini-standard'; 
+// Export individual functions and types for direct use - but manage duplicates
+export { sendStreamingRequest, processSseEvent } from './gemini-streaming';
+export { sendRequest } from './gemini-standard';
+
+// Re-export types using 'export type' for compatibility with isolatedModules
+export type { StreamingUpdateCallback } from './gemini-streaming';
+export type { GeminiResponse } from './gemini-standard';
+
+// Re-export the payload type to avoid ambiguity (from standard version)
+export type { GeminiRequestPayload } from './gemini-standard'; 

@@ -4,7 +4,7 @@ import { ActionState } from '@/types';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getAllNonIgnoredFiles } from '@/lib/git-utils';
-import { isBinaryFile, BINARY_EXTENSIONS } from '@/lib/file-utils';
+import { isBinaryFile, BINARY_EXTENSIONS, validateFilePath } from '@/lib/file-utils';
 import { estimateTokens } from '@/lib/token-estimator';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 import geminiClient from '@/lib/api/clients/gemini';
@@ -16,121 +16,12 @@ import { ApiType, TaskType } from '@/types/session-types';
 import { handleActionError } from '@/lib/action-utils';
 import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
 import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@/lib/prompts/path-finder-prompts';
+import { normalizePathForComparison } from '@/lib/path-utils';
 
 // Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
 const FLASH_MAX_OUTPUT_TOKENS = 16384;
 const TOKEN_BUFFER = 20000; // Buffer for XML tags and other overhead
-
-/**
- * Helper function to validate a file path
- */
-async function validateFilePathInternal(
-  filePath: string, 
-  fileContents: Record<string, string>, 
-  projectDirectory: string,
-  allFiles?: string[]
-): Promise<boolean> {
-  try {
-    // Skip empty paths
-    if (!filePath || typeof filePath !== 'string' || filePath.trim() === '') {
-      console.warn(`[PathFinder] Skipping empty file path`);
-      return false;
-    }
-    
-    // Normalize path to handle different formats
-    const normalizedPath = filePath.replace(/\\/g, '/').trim();
-    
-    // First check if we already have the content in our map
-    if (fileContents[normalizedPath]) {
-      // Skip binary files by checking the extension
-      const ext = path.extname(normalizedPath).toLowerCase();
-      if (BINARY_EXTENSIONS.has(ext)) {
-        console.debug(`[PathFinder] Skipping binary file by extension: ${normalizedPath}`);
-        return false;
-      }
-      
-      // We already have the content, so we can check if it's binary
-      const content = fileContents[normalizedPath];
-      if (!content) return false;
-      
-      try {
-        const isBinary = await isBinaryFile(Buffer.from(content));
-        return !isBinary;
-      } catch (err) {
-        console.debug(`[PathFinder] Error checking binary content for ${normalizedPath}: ${err}`);
-        return false;
-      }
-    } else {
-      // Check if the path exists in our known files list
-      if (allFiles && allFiles.length > 0) {
-        const fileExists = allFiles.includes(normalizedPath);
-        if (!fileExists) {
-          console.debug(`[PathFinder] Path does not exist in project files: ${normalizedPath}`);
-          return false;
-        }
-        
-        // Skip binary files by checking the extension
-        const ext = path.extname(normalizedPath).toLowerCase();
-        if (BINARY_EXTENSIONS.has(ext)) {
-          console.debug(`[PathFinder] Skipping binary file by extension: ${normalizedPath}`);
-          return false;
-        }
-        
-        // Try to read the file to check if it's binary or too large
-        try {
-          // Resolve the full path correctly
-          let fullPath;
-          if (path.isAbsolute(normalizedPath)) {
-            fullPath = normalizedPath;
-          } else {
-            fullPath = path.join(projectDirectory, normalizedPath);
-          }
-          
-          // Check file size first
-          const stats = await fs.stat(fullPath).catch(error => {
-            console.debug(`[PathFinder] File stat error for ${normalizedPath}: ${error.code || error.message}`);
-            return null;
-          });
-          
-          // Skip if stats couldn't be retrieved or if the file is too large
-          if (!stats) {
-            return false;
-          }
-          
-          // Skip files that are too large (>10MB) to avoid memory issues
-          if (stats.size > 10 * 1024 * 1024) {
-            console.warn(`[PathFinder] Skipping large file (${Math.round(stats.size / 1024 / 1024)}MB): ${normalizedPath}`);
-            return false;
-          }
-          
-          // Try to read the file and check if it's binary
-          const content = await fs.readFile(fullPath);
-          const isBinary = await isBinaryFile(content);
-          
-          if (isBinary) {
-            console.debug(`[PathFinder] Skipping detected binary file: ${normalizedPath}`);
-            return false;
-          }
-          
-          return true;
-        } catch (readError) {
-          // Handle file reading errors (permissions, etc)
-          console.debug(`[PathFinder] Could not read file: ${normalizedPath}`, readError);
-          return false;
-        }
-      }
-      
-      // If no allFiles provided, the path is not valid
-      console.debug(`[PathFinder] No file list provided to validate against: ${normalizedPath}`);
-      return false;
-    }
-  } catch (error) {
-    // Skip files with any other issues
-    console.debug(`[PathFinder] Error processing file: ${filePath}`, error);
-    return false;
-  }
-}
 
 /**
  * Extract file paths from a response containing XML tags
@@ -335,124 +226,150 @@ export async function findRelevantFilesAction(
     // Ensure maxTokens is a valid number
     const includeSyntax = pathfinderSettings.maxTokens !== undefined && pathfinderSettings.maxTokens > 0;
     
-    // Create a background job for path finding
+    // Get all the data ready first, before creating the background job
     try {
-      // Create a background job using the centralized helper
+      // Get all non-ignored files in the project
+      let allFiles;
+      try {
+        allFiles = await getAllNonIgnoredFiles(projectDirectory);
+        if (!allFiles || allFiles.files.length === 0) {
+          return { isSuccess: false, message: "No files found in project directory" };
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to get project files';
+        return { isSuccess: false, message: `Failed to get project files: ${errorMessage}` };
+      }
+      
+      console.log(`[PathFinder] Found ${allFiles.files.length} files in project`);
+      
+      // Generate directory tree for context
+      let dirTree;
+      try {
+        dirTree = await generateDirectoryTree(projectDirectory);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to generate directory tree';
+        return { isSuccess: false, message: `Failed to generate directory tree: ${errorMessage}` };
+      }
+      
+      // Use the centralized prompts
+      const systemPrompt = generatePathFinderSystemPrompt();
+      
+      // Create a prompt with project structure and task description
+      const prompt = generatePathFinderUserPrompt(dirTree, taskDescription);
+      
+      // Estimate tokens to ensure we're within limits
+      let estimatedTokens;
+      try {
+        const promptTokens = await estimateTokens(prompt);
+        const systemPromptTokens = await estimateTokens(systemPrompt);
+        estimatedTokens = promptTokens + systemPromptTokens;
+        
+        if (estimatedTokens > MAX_INPUT_TOKENS - TOKEN_BUFFER) {
+          return { 
+            isSuccess: false, 
+            message: `The project is too large to analyze at once (${estimatedTokens} estimated tokens). Please try a more specific task description or focus on a subdirectory.` 
+          };
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to estimate tokens';
+        return { isSuccess: false, message: `Error estimating tokens: ${errorMessage}` };
+      }
+      
+      // Now create a single background job with all the prepared data
       const job = await createBackgroundJob(
         sessionId,
         {
           apiType: 'gemini',
           taskType: 'pathfinder' as TaskType,
           model: options?.modelOverride || pathfinderSettings.model,
-          rawInput: taskDescription,
+          rawInput: prompt,
           includeSyntax,
-          temperature
+          temperature,
+          metadata: {
+            systemPrompt: systemPrompt,
+            maxOutputTokens: pathfinderSettings.maxTokens,
+            estimatedInputTokens: estimatedTokens || 0
+          }
         }
       );
       
       // Create an async function to be executed in the background
       const executePathFinder = async () => {
         try {
-          // Update job to running with proper timestamp handling
+          // Update the job status to running
           await updateJobToRunning(job.id, 'gemini');
           
-          // Get all non-ignored files in the project
-          let allFiles;
-          try {
-            allFiles = await getAllNonIgnoredFiles(projectDirectory);
-            if (!allFiles || allFiles.files.length === 0) {
-              await updateJobToFailed(job.id, 'No files found in project directory');
-              return { isSuccess: false, message: "No files found in project directory" };
-            }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Failed to get project files';
-            await updateJobToFailed(job.id, `Error getting project files: ${errorMessage}`);
-            return { isSuccess: false, message: `Failed to get project files: ${errorMessage}` };
-          }
+          // We need to make the actual API call here as part of the background job processing
+          // This is the key change - using the geminiClient to make the API request
+          console.log(`[PathFinder] Making API request for job ${job.id}`);
           
-          console.log(`[PathFinder] Found ${allFiles.files.length} files in project`);
-          
-          // Generate directory tree for context
-          let dirTree;
-          try {
-            dirTree = await generateDirectoryTree(projectDirectory);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Failed to generate directory tree';
-            await updateJobToFailed(job.id, `Error generating directory tree: ${errorMessage}`);
-            return { isSuccess: false, message: `Failed to generate directory tree: ${errorMessage}` };
-          }
-          
-          // Use the centralized prompts
-          const systemPrompt = generatePathFinderSystemPrompt();
-          
-          // Create a prompt with project structure and task description
-          const prompt = generatePathFinderUserPrompt(dirTree, taskDescription);
-          
-          // Estimate tokens to ensure we're within limits
-          let estimatedTokens;
-          try {
-            const promptTokens = await estimateTokens(prompt);
-            const systemPromptTokens = await estimateTokens(systemPrompt);
-            estimatedTokens = promptTokens + systemPromptTokens;
-            
-            if (estimatedTokens > MAX_INPUT_TOKENS - TOKEN_BUFFER) {
-              await updateJobToFailed(job.id, `The project is too large to analyze at once (${estimatedTokens} estimated tokens). Please try with fewer files.`);
-              
-              return { 
-                isSuccess: false, 
-                message: `The project is too large to analyze at once (${estimatedTokens} estimated tokens). Please try a more specific task description or focus on a subdirectory.` 
-              };
-            }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Failed to estimate tokens';
-            await updateJobToFailed(job.id, `Error estimating tokens: ${errorMessage}`);
-            return { isSuccess: false, message: `Error estimating tokens: ${errorMessage}` };
-          }
-          
-          // Call Gemini through our client
-          let result;
-          try {
-            result = await geminiClient.sendRequest(prompt, {
-              model: options?.modelOverride || pathfinderSettings.model,
+          // Use the standard request function (non-streaming for path finder)
+          const apiResult = await geminiClient.sendRequest(prompt, {
+            sessionId,
+            requestId: job.id, // Use job ID as request ID for tracing
+            model: options?.modelOverride || pathfinderSettings.model,
+            systemPrompt,
+            temperature,
+            maxOutputTokens: pathfinderSettings.maxTokens,
+            includeSyntax,
+            taskType: 'pathfinder',
+            apiType: 'gemini',
+            metadata: {
               systemPrompt,
-              temperature: pathfinderSettings.temperature,
               maxOutputTokens: pathfinderSettings.maxTokens,
-              requestType: RequestType.CODE_ANALYSIS,
-              projectDirectory,
-              taskType: 'pathfinder' as unknown as ApiType
-            });
-            
-            if (!result.isSuccess || !result.data) {
-              await updateJobToFailed(job.id, result.message || "Failed to find paths");
-              return { isSuccess: false, message: result.message || "Failed to find paths" };
+              estimatedInputTokens: estimatedTokens || 0
             }
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error in Gemini API request';
-            await updateJobToFailed(job.id, `Error in Gemini request: ${errorMessage}`);
-            return { isSuccess: false, message: `Error in Gemini request: ${errorMessage}` };
+          });
+          
+          // Check if the API call was successful
+          if (!apiResult.isSuccess) {
+            console.error(`[PathFinder] API error for job ${job.id}: ${apiResult.message}`);
+            await updateJobToFailed(job.id, `API Error: ${apiResult.message}`);
+            return { isSuccess: false, message: apiResult.message };
           }
           
-          // Process the response to get clean paths
-          const responseText = result.data;
+          // Make sure we have a response - handle the TypeScript undefined case
+          const responseData = apiResult.data || '';
+          
+          // Update the job with the API response
+          await updateJobToCompleted(job.id, responseData, {
+            tokensSent: estimatedTokens || 0,
+            tokensReceived: apiResult.metadata?.tokensReceived || Math.ceil(responseData.length / 3.5),
+            totalTokens: (estimatedTokens || 0) + (apiResult.metadata?.tokensReceived || Math.ceil(responseData.length / 3.5)),
+            modelUsed: options?.modelOverride || pathfinderSettings.model
+          });
+          
+          // Create result object from API response
+          const result = {
+            isSuccess: true,
+            data: responseData,
+            metadata: apiResult.metadata || {}
+          };
+          
+          // Process the response to get clean paths (we know responseData is a string from above)
           
           // Try to extract paths from the response
           let paths: string[] = [];
           
           // First method: split by lines (common format for path listing)
-          paths = responseText
+          paths = responseData
             .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .filter(line => !line.includes('node_modules/'))
-            .map(line => {
+            .map((line: string) => line.trim())
+            .filter((line: string) => line.length > 0)
+            .filter((line: string) => !line.includes('node_modules/'))
+            .map((line: string) => {
               // Clean up paths - remove numbers or bullets at the start
               return line.replace(/^[\d\.\s-]+/, '').trim();
-            });
+            })
+            // Normalize paths for consistent comparison
+            .map((line: string) => normalizePathForComparison(line));
           
           // Fallback method: try to extract from XML tags if present
-          if (paths.length === 0 && responseText.includes('<file')) {
+          if (paths.length === 0 && responseData.includes('<file')) {
             try {
-              paths = await extractFilePathsFromTags(responseText);
+              const extractedPaths = await extractFilePathsFromTags(responseData);
+              // Normalize extracted paths
+              paths = extractedPaths.map(p => normalizePathForComparison(p));
             } catch (error) {
               console.warn('[PathFinder] Error extracting paths from tags:', error);
               // Continue with other methods
@@ -462,7 +379,9 @@ export async function findRelevantFilesAction(
           // Last resort: try to extract potential paths without structure
           if (paths.length === 0) {
             try {
-              paths = await extractPotentialFilePaths(responseText);
+              const potentialPaths = await extractPotentialFilePaths(responseData);
+              // Normalize extracted paths
+              paths = potentialPaths.map(p => normalizePathForComparison(p));
             } catch (error) {
               console.warn('[PathFinder] Error extracting potential paths:', error);
               // If we still have no paths, fail gracefully
@@ -480,10 +399,13 @@ export async function findRelevantFilesAction(
           // and let validateFilePath use the filesystem fallback
           const fileContents: Record<string, string> = {};
           
-          // Validate the paths using our helper function with the actual files list
+          // Ensure all files in the list are also normalized for consistent comparison
+          const normalizedAllFilesList = allFiles.files.map(p => normalizePathForComparison(p));
+          
+          // Validate the paths using our helper function with the normalized files list
           try {
             for (const filePath of paths) {
-              if (await validateFilePathInternal(filePath, fileContents, projectDirectory, allFiles.files)) {
+              if (await validateFilePath(filePath, fileContents, projectDirectory, normalizedAllFilesList)) {
                 validatedPaths.push(filePath);
               }
             }
@@ -494,17 +416,36 @@ export async function findRelevantFilesAction(
           
           console.log(`[PathFinder] Found ${validatedPaths.length} relevant files`);
           
-          // Filter out the force excluded files
+          // Filter out the force excluded files - normalize the excluded files for consistent comparison
+          const normalizedExcludedFiles = forceExcludedFiles.map(p => normalizePathForComparison(p));
           const finalPaths = validatedPaths.filter(
-            filePath => !forceExcludedFiles.includes(filePath)
+            filePath => !normalizedExcludedFiles.includes(filePath)
           );
           
-          // Update session includedFiles
+          // Get current session to merge with existing includedFiles
           try {
-            await sessionRepository.updateSessionFields(sessionId, {
-              includedFiles: finalPaths
-            });
-            console.log(`[PathFinder] Successfully updated session ${sessionId} with ${finalPaths.length} included files`);
+            // Fetch the current session to get existing includedFiles
+            const currentSession = await sessionRepository.getSession(sessionId);
+            if (!currentSession) {
+              console.error(`[PathFinder] Session ${sessionId} not found for path merging`);
+              // We'll continue and just use the new paths
+            } else {
+              // Get existing included files and normalize them for consistent comparison
+              const existingIncludedPaths = (currentSession.includedFiles || [])
+                .map(p => normalizePathForComparison(p));
+              
+              // Merge existing paths with the new paths
+              const mergedPathsSet = new Set([...existingIncludedPaths, ...finalPaths]);
+              const mergedIncludedFiles = Array.from(mergedPathsSet);
+              
+              console.log(`[PathFinder] Merging ${existingIncludedPaths.length} existing paths with ${finalPaths.length} new paths (${mergedIncludedFiles.length} total after deduplication)`);
+              
+              // Update session with merged paths
+              await sessionRepository.updateSessionFields(sessionId, {
+                includedFiles: mergedIncludedFiles
+              });
+              console.log(`[PathFinder] Successfully updated session ${sessionId} with ${mergedIncludedFiles.length} merged included files`);
+            }
           } catch (updateError) {
             console.error('[PathFinder] Failed to update session with included files:', updateError);
             // Continue with job update even if session update fails
@@ -512,10 +453,14 @@ export async function findRelevantFilesAction(
           }
           
           // Update the job status to completed with proper timestamp handling
+          // Extract token counts from the result if available
+          const promptTokens = result.metadata?.promptTokens || result.metadata?.tokensInput || estimatedTokens || 0;
+          const completionTokens = result.metadata?.completionTokens || result.metadata?.tokensOutput || finalPaths.length * 5 || 0;
+          
           await updateJobToCompleted(job.id, finalPaths.join('\n'), {
-            promptTokens: 0,
-            completionTokens: 0,
-            totalTokens: 0
+            tokensSent: promptTokens,
+            tokensReceived: completionTokens,
+            totalTokens: promptTokens + completionTokens
           });
           
           return {

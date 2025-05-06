@@ -121,10 +121,10 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   prompt TEXT NOT NULL,
-  status TEXT DEFAULT 'idle' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing')),
+  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued')),
   start_time INTEGER,
   end_time INTEGER,
-  xml_path TEXT,
+  output_file_path TEXT,
   status_message TEXT,
   tokens_received INTEGER DEFAULT 0,
   tokens_sent INTEGER DEFAULT 0,
@@ -150,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_cleared ON background_jobs(cleare
 CREATE INDEX IF NOT EXISTS idx_background_jobs_status_cleared ON background_jobs(status, cleared);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_api_type ON background_jobs(api_type);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
+CREATE INDEX IF NOT EXISTS idx_background_jobs_output_file_path ON background_jobs(output_file_path);
 
 -- Record that this consolidated migration was applied
 INSERT INTO migrations (name, applied_at) 
@@ -169,4 +170,13 @@ VALUES ('add_updated_at_column', strftime('%s', 'now'));
 
 -- Add the search_selected_files_only column migration record
 INSERT INTO migrations (name, applied_at) 
-VALUES ('add_search_selected_files_only_column', strftime('%s', 'now')); 
+VALUES ('add_search_selected_files_only_column', strftime('%s', 'now'));
+
+-- Update cached_state table key if it exists
+UPDATE cached_state
+SET key = 'output-file-editor-command'
+WHERE key = 'xml-editor-command';
+
+-- Add the rename_xml_path_to_output_file_path migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('rename_xml_path_to_output_file_path', strftime('%s', 'now'));

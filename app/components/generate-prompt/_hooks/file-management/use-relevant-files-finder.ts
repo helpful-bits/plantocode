@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { findRelevantFilesAction } from "@/actions/path-finder/index";
 import { useBackgroundJob } from "@/lib/contexts/background-jobs-context";
 import { useAsyncAction } from "../use-async-state";
 import { normalizePath } from "@/lib/path-utils";
+import { JOB_STATUSES, JobStatus } from "@/types/session-types";
 
 interface UseRelevantFilesFinderProps {
   activeSessionId: string | null;
@@ -26,6 +27,9 @@ export function useRelevantFilesFinder({
 }: UseRelevantFilesFinderProps) {
   // State
   const [findingFilesJobId, setFindingFilesJobId] = useState<string | null>(null);
+  
+  // Single ref to track if a job is being created
+  const isRequestInProgressRef = useRef<boolean>(false);
   
   // Monitor the background job status
   const findingFilesJobResult = useBackgroundJob(findingFilesJobId);
@@ -87,40 +91,57 @@ export function useRelevantFilesFinder({
     throw new Error("Unexpected response from findRelevantFilesAction");
   });
 
-  // Clear job ID when task completes or fails
+  // Job completion handler
   useEffect(() => {
-    if (findingFilesJobId && findingFilesJobResult) {
-      const { status } = findingFilesJobResult;
-      
-      if (status === 'completed' || status === 'failed' || status === 'canceled') {
-        console.log(`[RelevantFilesFinder] Job ${findingFilesJobId} ${status}, clearing job ID`);
-        // Clear in the next tick to avoid state update during render
-        setTimeout(() => setFindingFilesJobId(null), 0);
-      }
+    // Skip if no job is running or no result available
+    if (!findingFilesJobId || !findingFilesJobResult) {
+      return;
+    }
+    
+    const { status } = findingFilesJobResult;
+    
+    // We no longer dispatch the event here - the consumer (useFileManagementState)
+    // will use the findingFilesJobResult directly to react to completed jobs
+    
+    // Once job is in any terminal state, clear the job ID
+    if (JOB_STATUSES.TERMINAL.includes(status as JobStatus)) {
+      setFindingFilesJobId(null);
     }
   }, [findingFilesJobId, findingFilesJobResult]);
 
-  // Function to execute the find operation - stabilized with useCallback
+  
+  // Function to execute the find operation
   const executeFindRelevantFiles = useCallback(async () => {
-    if (!taskDescription.trim()) {
-      throw new Error("Task description is required for finding relevant files");
+    // If no task description or job already running or request in progress, exit
+    if (!taskDescription.trim() || findingFilesJobId || isRequestInProgressRef.current) {
+      return;
     }
     
-    if (findRelevantFilesAsync.isLoading) {
-      throw new Error("Already finding relevant files. Please wait for the current operation to complete.");
-    }
+    // Mark request as in progress
+    isRequestInProgressRef.current = true;
     
-    return await findRelevantFilesAsync.execute();
-  }, [taskDescription, findRelevantFilesAsync]);
+    try {
+      // Execute the async operation
+      await findRelevantFilesAsync.execute();
+    } finally {
+      // Always clean up
+      isRequestInProgressRef.current = false;
+    }
+  }, [taskDescription, findRelevantFilesAsync, findingFilesJobId]);
 
-  // Memoize the returned object to ensure stability
-  return useMemo(() => ({
-    isFindingFiles: findRelevantFilesAsync.isLoading,
-    findingFilesJobId,
-    error: findRelevantFilesAsync.error,
-    findingFilesJobResult,
-    executeFindRelevantFiles
-  }), [
+  // Return with all required properties
+  return useMemo(() => {
+    // Single boolean to indicate if finding files process is active
+    const isFindingFiles = findRelevantFilesAsync.isLoading || findingFilesJobId !== null || isRequestInProgressRef.current;
+    
+    return {
+      isFindingFiles,
+      findingFilesJobId,
+      error: findRelevantFilesAsync.error,
+      findingFilesJobResult,
+      executeFindRelevantFiles
+    };
+  }, [
     findRelevantFilesAsync.isLoading,
     findingFilesJobId,
     findRelevantFilesAsync.error,

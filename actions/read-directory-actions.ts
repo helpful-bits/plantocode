@@ -59,17 +59,19 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
 }
 
 export async function readDirectoryAction(projectDirectory: string): Promise<ActionState<{ files: string[] }>> {
-  return streamingRequestPool.execute(
-    async () => {
-      // Implementation of directory reading
-      return await readDirectoryImplementation(projectDirectory);
-    },
-    {
-      sessionId: 'file-system',
-      priority: 10,
-      requestType: RequestType.FILE_OPERATION
-    }
-  );
+  // Direct implementation using the job system's createBackgroundJob and enqueueJob
+  // would be the proper approach here, but for now to minimize changes,
+  // we'll just directly execute the implementation
+  try {
+    // Simply run the implementation directly
+    return await readDirectoryImplementation(projectDirectory);
+  } catch (error) {
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Failed to read directory",
+      error: error instanceof Error ? error : new Error("Failed to read directory")
+    };
+  }
 }
 
 // Implementation function for directory reading

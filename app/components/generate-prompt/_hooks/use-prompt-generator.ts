@@ -83,6 +83,7 @@ export function usePromptGenerator({
       const warnings: string[] = [];
 
       if (hasPastedPaths) {
+        console.log("[PromptGenerator] Using pasted paths for file selection");
         // Create a normalized map for better file path matching
         const normalizedFileContentsMap = Object.keys(currentFileContents).reduce((acc, key) => {
           const normalizedKey = normalizePath(key, projectDirectory);
@@ -95,6 +96,7 @@ export function usePromptGenerator({
           .map((p) => p.trim())
           .filter((p) => !!p && !p.startsWith("#"));
 
+        console.log(`[PromptGenerator] Processing ${rawPastedPaths.length} pasted paths`);
         const projectFilePaths = new Set(Object.keys(currentFileContents || {}));
 
         for (const filePath of rawPastedPaths) {
@@ -106,17 +108,20 @@ export function usePromptGenerator({
             // Use the original path from the map
             const originalPath = normalizedFileContentsMap[normalizedPath];
             filesToUse.push(originalPath);
+            console.log(`[PromptGenerator] Found match for normalized path: ${normalizedPath} -> ${originalPath}`);
           }
           else if (projectFilePaths.has(filePath)) {
             // Original path lookup
             if (currentFileContents[filePath] !== undefined) {
               filesToUse.push(filePath);
+              console.log(`[PromptGenerator] Found match for direct path: ${filePath}`);
             } else {
               warnings.push(`Could not find content for project path "${filePath}".`);
               console.warn(`Content missing for project path: ${filePath}`);
             }
           } else {
             // Path is potentially external
+            console.log(`[PromptGenerator] Attempting to read external path: ${filePath}`);
             const externalFileResult = await readExternalFileAction(filePath);
 
             // Process the external file result
@@ -131,6 +136,7 @@ export function usePromptGenerator({
               // Add the path
               const addedPath = Object.keys(externalFileResult.data)[0];
               filesToUse.push(addedPath);
+              console.log(`[PromptGenerator] Successfully read external path: ${filePath} -> ${addedPath}`);
             } else {
               warnings.push(`Could not read external path "${filePath}": ${externalFileResult.message}`);
               console.warn(`Failed to read external file ${filePath}: ${externalFileResult.message}`);
@@ -145,11 +151,14 @@ export function usePromptGenerator({
           return;
         }
       } else if (isAnyFileIncludedFromBrowser) {
+        console.log("[PromptGenerator] No pasted paths, using browser-selected files");
         // No pasted paths, use files selected in the browser from the state
         const selectedPaths = new Set(Object.values(allFilesMap)
           .filter((f: FileInfo) => f.included && !f.forceExcluded)
           .map((f: FileInfo) => f.path));
-
+        
+        console.log(`[PromptGenerator] Found ${selectedPaths.size} selected paths in browser`);
+        
         // Create a map of normalized paths to original paths for better matching
         const normalizedToOriginal: Record<string, string> = {};
         Object.keys(currentFileContents).forEach(originalPath => {
@@ -160,9 +169,19 @@ export function usePromptGenerator({
         filesToUse = Object.keys(currentFileContents)
           .filter(path => selectedPaths.has(path) && currentFileContents[path] !== undefined);
         
-        console.log("Files to use:", filesToUse);
+        console.log(`[PromptGenerator] After filtering, using ${filesToUse.length} files from browser selection`);
+        if (filesToUse.length > 0) {
+          console.log(`[PromptGenerator] Sample files: ${filesToUse.slice(0, 3).join(', ')}${filesToUse.length > 3 ? '...' : ''}`);
+        } else {
+          console.warn("[PromptGenerator] No valid files found from browser selection");
+        }
       } else {
         // Neither pasted paths nor browser selection
+        console.warn("[PromptGenerator] No files selected - neither pasted paths nor browser selection found");
+        console.log(`[PromptGenerator] pastedPaths length: ${pastedPaths.length}, hasPastedPaths: ${hasPastedPaths}`);
+        console.log(`[PromptGenerator] browser selection: isAnyFileIncludedFromBrowser: ${isAnyFileIncludedFromBrowser}`);
+        console.log(`[PromptGenerator] allFilesMap has ${Object.keys(allFilesMap || {}).length} entries`);
+        
         setError("Please include at least one file using the file browser or paste file paths.");
         setIsGenerating(false);
         return;

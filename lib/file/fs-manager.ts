@@ -2,7 +2,7 @@ import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { getAppPatchesDirectory, getProjectPatchesDirectory, getProjectImplementationPlansDirectory, IMPLEMENTATION_PLANS_DIR_NAME } from '@/lib/path-utils';
+import { getAppOutputFilesDirectory, getProjectOutputFilesDirectory, getProjectImplementationPlansDirectory, IMPLEMENTATION_PLANS_DIR_NAME } from '@/lib/path-utils';
 
 // File operation lock map
 interface FileLock {
@@ -90,18 +90,18 @@ export class FileSystemManager {
           // Use implementation plans directory
           baseDir = getProjectImplementationPlansDirectory(projectDir);
         } else {
-          // Default to patches directory
-          baseDir = getProjectPatchesDirectory(projectDir);
+          // Default to output files directory
+          baseDir = getProjectOutputFilesDirectory(projectDir);
         }
         await fs.mkdir(baseDir, { recursive: true });
       } catch (error) {
         console.warn(`Cannot use project directory, falling back to app directory: ${error}`);
-        baseDir = getAppPatchesDirectory();
+        baseDir = getAppOutputFilesDirectory();
         await fs.mkdir(baseDir, { recursive: true });
       }
     } else {
-      // Use app patches directory
-      baseDir = getAppPatchesDirectory();
+      // Use app output files directory
+      baseDir = getAppOutputFilesDirectory();
       await fs.mkdir(baseDir, { recursive: true });
     }
     

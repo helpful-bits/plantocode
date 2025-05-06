@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { shouldIncludeByDefault } from "../../_utils/file-selection";
 import { useNotification } from "@/lib/contexts/notification-context";
-import { normalizePath } from "@/lib/path-utils";
+import { normalizePath, normalizePathForComparison } from "@/lib/path-utils";
 
 // Types
 export type FileInfo = { 
@@ -11,6 +11,7 @@ export type FileInfo = {
   size?: number; 
   included: boolean; 
   forceExcluded: boolean;
+  comparablePath: string; // Added for consistent path comparison
 };
 
 export type FilesMap = { [path: string]: FileInfo };
@@ -129,12 +130,16 @@ export function useProjectFileList(projectDirectory: string | null) {
           // Get size from stats if available
           const fileSize = hasStats ? result.stats[i]?.size : undefined;
           
+          // Compute comparable path for consistent matching
+          const comparablePath = normalizePathForComparison(filePath);
+          
           // Add to file map
           filesMap[filePath] = {
             path: filePath,
             size: fileSize,
             included: include,
-            forceExcluded: false
+            forceExcluded: false,
+            comparablePath
           };
         }
         
