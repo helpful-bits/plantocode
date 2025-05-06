@@ -14,6 +14,7 @@ Prioritize files that contain core logic, data structures, and APIs directly rel
 Ignore irrelevant configuration files, assets, or generated code unless they're directly involved in the task.
 Don't include node_modules or other dependency directories.
 Do not hallucinate or make up file paths.
+All returned file paths must be relative to the project root.
 List one file path per line and focus on files needed to FULLY understand the dataflow and context.`;
 }
 

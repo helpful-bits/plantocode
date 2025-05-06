@@ -38,22 +38,29 @@ export async function sendPromptToGeminiAction(
       return { isSuccess: false, message: "Session not found." };
     }
     
-    // Get the global model settings for the project
-    const projectSettings = await getModelSettingsForProject(session.projectDirectory);
+    // Get the project directory - critical for settings and path resolution
+    const projectDirectory = session.projectDirectory;
     
-    // Get the XML generation task settings or use defaults
-    const xmlSettings = projectSettings?.xml_generation || {
+    // Get the project-specific model settings
+    const projectSettings = await getModelSettingsForProject(projectDirectory);
+    
+    // Get the implementation plan task settings or use defaults
+    const planSettings = projectSettings?.implementation_plan || {
       model: GEMINI_FLASH_MODEL,
       maxTokens: MAX_OUTPUT_TOKENS,
       temperature: 0.7
     };
     
+    console.log(`[Gemini Action] Using ${planSettings.model} model with ${planSettings.maxTokens} max tokens for implementation plan`);
+    
     // Use the Gemini client for streaming requests
     return geminiClient.sendStreamingRequest(promptText, sessionId, {
-      // Use settings from project settings
-      model: xmlSettings.model,
-      maxOutputTokens: xmlSettings.maxTokens,
-      temperature: options?.temperature || xmlSettings.temperature, // Allow override of temperature
+      // Use settings from project settings with potential override for temperature
+      model: planSettings.model,
+      maxOutputTokens: planSettings.maxTokens,
+      temperature: options?.temperature || planSettings.temperature,
+      
+      // Pass streaming updates handlers
       streamingUpdates: options?.streamingUpdates || {
         onStart: () => {
           console.log(`[Gemini Action] Started processing for session ${sessionId}`);
@@ -62,9 +69,20 @@ export async function sendPromptToGeminiAction(
           console.error(`[Gemini Action] Error processing request:`, error);
         }
       },
-      taskType: 'xml_generation',
+      
+      // Pass critical metadata for tracking and consistency
+      taskType: 'implementation_plan',
       apiType: 'gemini',
-      projectDirectory: session.projectDirectory
+      projectDirectory: projectDirectory,
+      
+      // Pass additional metadata to help with job tracking
+      metadata: {
+        modelConfig: {
+          model: planSettings.model,
+          maxTokens: planSettings.maxTokens,
+          temperature: options?.temperature || planSettings.temperature
+        }
+      }
     });
   } catch (error) {
     console.error(`[Gemini Action] Error preparing request:`, error);

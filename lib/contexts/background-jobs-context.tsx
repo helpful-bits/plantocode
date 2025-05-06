@@ -94,8 +94,8 @@ function areJobsEqual(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
     },
     // File outputs shown in UI - may be null/undefined
     { 
-      field: 'xmlPath', 
-      compare: () => safeStringCompare(jobA.xmlPath, jobB.xmlPath)
+      field: 'outputFilePath', 
+      compare: () => safeStringCompare(jobA.outputFilePath, jobB.outputFilePath)
     },
     // Use lastUpdate for sorting/organizing in UI - may be null
     { 

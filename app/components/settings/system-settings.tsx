@@ -6,41 +6,41 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { getProjectSetting, saveProjectSetting } from "@/actions/project-settings-actions";
-import { XML_EDITOR_COMMAND_KEY } from "@/lib/constants";
+import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from "@/lib/constants";
 
 interface SystemSettingsProps {
   projectDirectory: string;
 }
 
 export default function SystemSettings({ projectDirectory }: SystemSettingsProps) {
-  const [xmlEditorCommand, setXmlEditorCommand] = useState<string>("");
+  const [outputFileEditorCommand, setOutputFileEditorCommand] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Fetch the XML editor command when component mounts or projectDirectory changes
+  // Fetch the output file editor command when component mounts or projectDirectory changes
   useEffect(() => {
     if (!projectDirectory) return;
 
-    async function fetchXmlEditorCommand() {
+    async function fetchOutputFileEditorCommand() {
       setIsLoading(true);
       setError(null);
       
       try {
-        const command = await getProjectSetting(projectDirectory, XML_EDITOR_COMMAND_KEY);
-        setXmlEditorCommand(command || "");
+        const command = await getProjectSetting(projectDirectory, OUTPUT_FILE_EDITOR_COMMAND_KEY);
+        setOutputFileEditorCommand(command || "");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load XML editor command");
-        console.error("Error fetching XML editor command:", err);
+        setError(err instanceof Error ? err.message : "Failed to load output file editor command");
+        console.error("Error fetching output file editor command:", err);
       } finally {
         setIsLoading(false);
       }
     }
 
-    fetchXmlEditorCommand();
+    fetchOutputFileEditorCommand();
   }, [projectDirectory]);
 
-  // Handle saving the XML editor command
+  // Handle saving the output file editor command
   const handleSave = async () => {
     if (!projectDirectory) {
       setError("No active project");
@@ -54,8 +54,8 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
     try {
       const result = await saveProjectSetting(
         projectDirectory, 
-        XML_EDITOR_COMMAND_KEY, 
-        xmlEditorCommand
+        OUTPUT_FILE_EDITOR_COMMAND_KEY, 
+        outputFileEditorCommand
       );
       
       if (result.isSuccess) {
@@ -63,11 +63,11 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
         // Hide success message after a delay
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        setError(result.message || "Failed to save XML editor command");
+        setError(result.message || "Failed to save output file editor command");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save XML editor command");
-      console.error("Error saving XML editor command:", err);
+      setError(err instanceof Error ? err.message : "Failed to save output file editor command");
+      console.error("Error saving output file editor command:", err);
     } finally {
       setIsLoading(false);
     }
@@ -84,19 +84,19 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
       <CardContent>
         <div className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="xml-editor-command" className="text-sm font-medium">
-              XML Editor Command
+            <label htmlFor="output-file-editor-command" className="text-sm font-medium">
+              Output File Editor Command
             </label>
             <div className="text-xs text-muted-foreground mb-2">
-              Specify the command to use when opening XML implementation plan files.
-              For example: <code>code</code>, <code>vim</code>, or <code>open -a &quot;XML Editor&quot;</code>
+              Specify the command to use when opening output files, such as implementation plans.
+              For example: <code>code</code>, <code>vim</code>, or <code>open -a &quot;Text Editor&quot;</code>
             </div>
             <div className="flex items-center space-x-2">
               <Input
-                id="xml-editor-command"
-                value={xmlEditorCommand}
-                onChange={(e) => setXmlEditorCommand(e.target.value)}
-                placeholder="Enter command to open XML files"
+                id="output-file-editor-command"
+                value={outputFileEditorCommand}
+                onChange={(e) => setOutputFileEditorCommand(e.target.value)}
+                placeholder="Enter command to open output files"
                 className="flex-1"
                 disabled={isLoading}
               />

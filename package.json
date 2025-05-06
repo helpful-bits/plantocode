@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "workers": "tsx scripts/start-workers.ts",
     "migrate": "tsx scripts/run-migrations.ts",
     "migrate:consolidated": "tsx scripts/apply-consolidated-migration.ts",
     "migrate-cached-state": "tsx scripts/run-cached-state-migration.ts",
@@ -21,7 +22,9 @@
     "repair-db": "tsx scripts/repair-db.ts",
     "db:backup": "tsx scripts/backup-database.ts",
     "db:dump": "tsx scripts/dump-tables.ts",
-    "db:fix-permissions": "tsx scripts/fix-database-permissions.ts"
+    "db:fix-permissions": "tsx scripts/fix-database-permissions.ts",
+    "migrate:xml-to-output": "tsx scripts/apply-column-rename-migration.ts",
+    "fix:output-file-path": "tsx scripts/apply-column-fix.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.11",

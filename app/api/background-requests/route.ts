@@ -29,10 +29,10 @@ export async function GET(request: NextRequest) {
     // Map requests to ensure backward compatibility for clients expecting modelOutput
     const requests = jobs.map(job => ({
       ...job,
-      // Ensure response exists (use modelOutput as fallback if needed)
-      response: job.response || job.modelOutput || null,
+      // Response field
+      response: job.response || null,
       // Keep modelOutput for backward compatibility
-      modelOutput: job.modelOutput || job.response || null
+      modelOutput: job.response || null
     }));
     
     // Log some basic info about the jobs for debugging
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
           id: job.id?.substring(0, 8),
           status: job.status,
           hasResponse: Boolean(job.response),
-          hasModelOutput: Boolean(job.modelOutput)
+          hasModelOutput: Boolean(job.response)
         }))
       );
     }

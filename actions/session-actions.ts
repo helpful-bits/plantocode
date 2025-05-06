@@ -29,8 +29,8 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
             return { isSuccess: true, message: "No background jobs found to update" };
         }
         
-        // Find the latest job with an XML path
-        const latestJobWithXml = session.backgroundJobs.find(job => job.xmlPath);
+        // Find the latest job with an output file path
+        const latestJobWithXml = session.backgroundJobs.find(job => job.outputFilePath);
         
         if (latestJobWithXml) {
             await backgroundJobRepository.updateBackgroundJobStatus({
@@ -40,7 +40,7 @@ export async function clearSessionXmlPathAction(sessionId: string): Promise<Acti
                 endTime: latestJobWithXml.endTime,
                 statusMessage: "XML file not found",
                 metadata: {
-                    xmlPath: null // Set XML path to null through metadata
+                    outputFilePath: null // Set output file path to null through metadata
                 }
             });
         }
@@ -121,7 +121,12 @@ export async function createSessionAction(
     // If this is a new session, automatically set it as the active session for the project
     if (session) {
       console.log(`[Action] Setting new session ${session.id} as active for project: ${session.projectDirectory}`);
-      await sessionSyncService.setActiveSession(session.projectDirectory, session.id);
+      try {
+        await sessionSyncService.setActiveSession(session.projectDirectory, session.id);
+      } catch (error) {
+        console.warn(`[Action] Could not set active session, but session was created successfully:`, error);
+        // Don't fail the whole operation if just setting the active session fails
+      }
     }
     
     revalidatePath('/');
@@ -236,7 +241,12 @@ export async function deleteSessionAction(sessionId: string): Promise<ActionStat
     // If the deleted session was the active one for its project, clear the active session
     if (session.projectDirectory) {
       console.log(`[Action] Checking if deleted session was active for project: ${session.projectDirectory}`);
-      await sessionSyncService.setActiveSession(session.projectDirectory, null);
+      try {
+        await sessionSyncService.setActiveSession(session.projectDirectory, null);
+      } catch (error) {
+        console.warn(`[Action] Could not clear active session, but session was deleted successfully:`, error);
+        // Don't fail the whole operation if just clearing the active session fails
+      }
     }
     
     revalidatePath('/');

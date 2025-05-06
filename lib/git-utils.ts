@@ -3,6 +3,7 @@
 import { exec } from "child_process";
 import { promises as fs } from "fs";
 import path from "path";
+import { normalizePathForComparison } from "./path-utils";
 
 // Custom exec function with promise interface instead of using promisify
 const execAsync = (command: string, options?: { cwd?: string }): Promise<{ stdout: string, stderr: string }> => {
@@ -90,7 +91,8 @@ const now = Date.now();
           // Check if the file still exists in the filesystem
           await fs.access(filePath);
           // If access succeeds, the file exists
-          existingFiles.push(file);
+          // Normalize the path before adding to ensure consistency
+          existingFiles.push(normalizePathForComparison(file));
         } catch (error) {
           // If access fails, the file doesn't exist (likely deleted or permission issue)
           if (DEBUG_LOGS) console.log(`[Refresh] Skipping deleted file: ${file}`);
@@ -103,6 +105,7 @@ const now = Date.now();
       
       // Cache disabled - not storing result
       if (DEBUG_LOGS) console.log(`[Git Utils] Not caching results - cache disabled`);
+      if (DEBUG_LOGS) console.log(`[Git Utils] Normalized ${existingFiles.length} file paths for consistent comparison`);
       
       return { files: existingFiles, isGitRepo };
     } catch (error: any) {

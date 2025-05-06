@@ -25,6 +25,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   const formatMetadata = (metadata: any) => {
     try {
       if (!metadata) return 'None';
+      
+      // If it's a string, try to parse it as JSON
       if (typeof metadata === 'string') {
         try {
           metadata = JSON.parse(metadata);
@@ -32,7 +34,25 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           return metadata;
         }
       }
-      return JSON.stringify(metadata, null, 2);
+      
+      // Filter out keys that are already shown in the UI
+      // or don't provide useful information
+      const filteredMetadata = {...metadata};
+      const keysToRemove = [
+        'modelUsed', 'maxOutputTokens', 'temperature', 
+        'tokensSent', 'tokensReceived', 'tokensTotal',
+        'lastUpdateTime', // This is redundant with the updatedAt field
+        'outputFilePath' // This is shown separately in the UI
+      ];
+      
+      keysToRemove.forEach(key => {
+        if (key in filteredMetadata) {
+          delete filteredMetadata[key];
+        }
+      });
+      
+      // Format the object for display
+      return JSON.stringify(filteredMetadata, null, 2);
     } catch (e) {
       return 'Invalid metadata';
     }
@@ -45,8 +65,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     job.status
   ) : 'N/A';
 
-  // Determine which content to show as the prompt - prioritize prompt field
-  const promptContent = job.prompt || job.rawInput || 'No prompt data available';
+  // Determine which content to show as the prompt
+  const promptContent = job.prompt || 'No prompt data available';
 
   // Get response based on status and available data
   // For completed jobs, expect a response
@@ -56,11 +76,6 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     // If we have a response, use it
     if (job.response) {
       return job.response;
-    }
-    
-    // For backward compatibility, check modelOutput as well
-    if (job.modelOutput) {
-      return job.modelOutput;
     }
     
     // Customize the fallback based on job status
@@ -115,8 +130,22 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           
           <div className="col-span-2 md:col-span-1">
             <h4 className="font-semibold mb-1">Model</h4>
-            <p className="text-sm">{job.modelUsed || 'Not specified'}</p>
+            <p className="text-sm">
+              {job.modelUsed || 'Not specified'}
+              {job.temperature !== undefined && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  (temp: {job.temperature})
+                </span>
+              )}
+            </p>
           </div>
+          
+          {job.maxOutputTokens && (
+            <div className="col-span-2 md:col-span-1">
+              <h4 className="font-semibold mb-1">Max Output Tokens</h4>
+              <p className="text-sm">{job.maxOutputTokens.toLocaleString()}</p>
+            </div>
+          )}
           
           <div className="col-span-2 md:col-span-1">
             <h4 className="font-semibold mb-1">Created</h4>
@@ -135,16 +164,31 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           
           <div className="col-span-2 md:col-span-1">
             <h4 className="font-semibold mb-1">Tokens</h4>
-            <p className="text-sm">
-              Input: ~{formatTokenCount(job.tokensSent)} / Output: ~{formatTokenCount(job.tokensReceived)}
-            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-xs text-muted-foreground">Input:</span>
+                <p className="text-sm font-mono">{job.tokensSent?.toLocaleString() || 0}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Output:</span>
+                <p className="text-sm font-mono">{job.tokensReceived?.toLocaleString() || 0}</p>
+              </div>
+              {(job.tokensSent || job.tokensReceived) && (
+                <div className="col-span-2">
+                  <span className="text-xs text-muted-foreground">Total:</span>
+                  <p className="text-sm font-mono">
+                    {((job.tokensSent || 0) + (job.tokensReceived || 0)).toLocaleString()} tokens
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           
-          {job.xmlPath && (
+          {job.outputFilePath && (
             <div className="col-span-2">
               <h4 className="font-semibold mb-1">File Output</h4>
-              <p className="text-sm truncate" title={job.xmlPath}>
-                {job.xmlPath}
+              <p className="text-sm truncate" title={job.outputFilePath || ""}>
+                {job.outputFilePath}
               </p>
             </div>
           )}
@@ -185,8 +229,14 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           
           {job.metadata && Object.keys(typeof job.metadata === 'object' ? job.metadata : {}).length > 0 && (
             <div className="flex flex-col">
-              <h4 className="font-semibold mb-1">Metadata</h4>
+              <h4 className="font-semibold mb-1">Additional Information</h4>
               <ScrollArea className="h-[100px] min-h-[100px] border rounded-md p-3 text-sm bg-gray-50">
+                {job.metadata.targetField && (
+                  <div className="mb-2">
+                    <span className="text-xs font-semibold">Target Field: </span>
+                    <span className="text-xs">{job.metadata.targetField}</span>
+                  </div>
+                )}
                 <pre className="whitespace-pre-wrap font-mono text-xs">{formatMetadata(job.metadata)}</pre>
               </ScrollArea>
             </div>

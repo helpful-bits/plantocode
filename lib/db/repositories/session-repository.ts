@@ -517,11 +517,12 @@ class SessionRepository {
           status: row.status as JobStatus,
           startTime: row.start_time,
           endTime: row.end_time,
-          xmlPath: row.xml_path,
+          outputFilePath: row.output_file_path,
           statusMessage: row.status_message,
           tokensReceived: row.tokens_received,
           tokensSent: row.tokens_sent,
           charsReceived: row.chars_received,
+          totalTokens: (row.tokens_sent || 0) + (row.tokens_received || 0),
           lastUpdate: row.last_update,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
@@ -869,6 +870,60 @@ class SessionRepository {
       
       db.prepare(sql).run(projectDirectory, projectHash, Date.now(), sessionId);
     }, false); // Writable connection
+  }
+  
+  /**
+   * Update included files for a session
+   */
+  async updateIncludedFiles(sessionId: string, filePaths: string[]): Promise<void> {
+    console.log(`[Repo] Updating included files for session ${sessionId}: ${filePaths.length} files`);
+    
+    // Add validation for sessionId
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new Error('Invalid session ID provided for updating included files');
+    }
+    
+    // Always use connectionPool.withConnection with readOnly=false for write operations
+    await connectionPool.withConnection((db: Database.Database) => {
+      try {
+        // Begin a transaction
+        db.prepare('BEGIN TRANSACTION').run();
+        
+        // Delete existing included files for this session
+        db.prepare(`DELETE FROM included_files WHERE session_id = ?`).run(sessionId);
+        
+        // If there are new files to insert
+        if (filePaths.length > 0) {
+          // Prepare the insert statement once
+          const insertStmt = db.prepare(`INSERT INTO included_files (session_id, path) VALUES (?, ?)`);
+          
+          // Insert each path
+          for (const filePath of filePaths) {
+            // Normalize path for consistent storage
+            const normalizedPath = normalizePath(filePath);
+            insertStmt.run(sessionId, normalizedPath);
+          }
+        }
+        
+        // Also update the session's updated_at timestamp
+        db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(Date.now(), sessionId);
+        
+        // Commit the transaction
+        db.prepare('COMMIT').run();
+        
+        console.log(`[Repo] Successfully updated ${filePaths.length} included files for session ${sessionId}`);
+      } catch (error) {
+        // Rollback on error
+        try {
+          db.prepare('ROLLBACK').run();
+        } catch (rollbackError) {
+          console.error(`[Repo] Error during rollback: ${rollbackError}`);
+        }
+        
+        console.error(`[Repo] Error updating included files: ${error}`);
+        throw error;
+      }
+    }, false); // Explicitly use a writable connection
   }
   
   /**

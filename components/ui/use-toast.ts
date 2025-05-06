@@ -14,6 +14,7 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  clipboardFeedback?: boolean
 }
 
 export type ToastOptions = Omit<ToasterToast, "id">
