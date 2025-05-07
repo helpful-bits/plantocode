@@ -8,7 +8,6 @@ export interface FileManagementContextValue {
   managedFilesMap: FilesMap;
   searchTerm: string;
   showOnlySelected: boolean;
-  pastedPaths: string;
   externalPathWarnings: string[];
   includedPaths: string[];
   excludedPaths: string[];
@@ -21,7 +20,6 @@ export interface FileManagementContextValue {
   // Actions
   setSearchTerm: (searchTerm: string) => void;
   setShowOnlySelected: (showOnlySelected: boolean) => void;
-  setPastedPaths: (pastedPaths: string) => void;
   toggleFileSelection: (filePath: string) => void;
   toggleFileExclusion: (filePath: string) => void;
   toggleSearchSelectedFilesOnly: (value?: boolean) => void;
@@ -29,14 +27,15 @@ export interface FileManagementContextValue {
   applySelectionsFromPaths: (paths: string[]) => void;
   findRelevantFiles: () => Promise<void>;
   refreshFiles: () => Promise<void>;
+  flushPendingOperations?: () => void;
   
   // Session state extraction for saving
   getFileStateForSession: () => {
     searchTerm: string;
-    pastedPaths: string;
     includedFiles: string[];
     forceExcludedFiles: string[];
     searchSelectedFilesOnly: boolean;
+    pastedPaths: string;
   };
 }
 

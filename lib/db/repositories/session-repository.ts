@@ -14,7 +14,6 @@ interface SessionRow {
   project_hash: string;
   task_description: string;
   search_term: string;
-  pasted_paths: string;
   title_regex: string;
   content_regex: string;
   negative_title_regex: string;
@@ -68,7 +67,6 @@ class SessionRepository {
           project_hash: projectHash,
           task_description: session.taskDescription,
           search_term: session.searchTerm,
-          pasted_paths: session.pastedPaths,
           title_regex: session.titleRegex,
           content_regex: session.contentRegex,
           negative_title_regex: session.negativeTitleRegex || '',
@@ -83,10 +81,10 @@ class SessionRepository {
         // Build SQL statement
         const sql = `
           INSERT OR REPLACE INTO sessions
-          (id, name, project_directory, project_hash, task_description, search_term, pasted_paths,
+          (id, name, project_directory, project_hash, task_description, search_term,
            title_regex, content_regex, negative_title_regex, negative_content_regex, is_regex_active, 
            diff_temperature, codebase_structure, updated_at, search_selected_files_only)
-          VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term, @pasted_paths,
+          VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term,
            @title_regex, @content_regex, @negative_title_regex, @negative_content_regex, @is_regex_active, 
            @diff_temperature, @codebase_structure, @updated_at, @search_selected_files_only)`;
         
@@ -259,7 +257,6 @@ class SessionRepository {
                 projectHash: row.project_hash,
                 taskDescription: row.task_description,
                 searchTerm: row.search_term,
-                pastedPaths: row.pasted_paths,
                 titleRegex: row.title_regex,
                 contentRegex: row.content_regex,
                 negativeTitleRegex: row.negative_title_regex,
@@ -384,7 +381,6 @@ class SessionRepository {
             projectHash: row.project_hash,
             taskDescription: row.task_description,
             searchTerm: row.search_term,
-            pastedPaths: row.pasted_paths,
             titleRegex: row.title_regex,
             contentRegex: row.content_regex,
             negativeTitleRegex: row.negative_title_regex,
@@ -450,7 +446,6 @@ class SessionRepository {
             forceExcludedFiles: excludedFiles,
             taskDescription: row.task_description,
             searchTerm: row.search_term,
-            pastedPaths: row.pasted_paths,
             titleRegex: row.title_regex,
             contentRegex: row.content_regex,
             negativeTitleRegex: row.negative_title_regex,
@@ -544,7 +539,6 @@ class SessionRepository {
           projectHash: sessionRow.project_hash,
           taskDescription: sessionRow.task_description,
           searchTerm: sessionRow.search_term,
-          pastedPaths: sessionRow.pasted_paths,
           titleRegex: sessionRow.title_regex,
           contentRegex: sessionRow.content_regex,
           negativeTitleRegex: sessionRow.negative_title_regex,
@@ -677,7 +671,6 @@ class SessionRepository {
           { clientKey: 'projectDirectory', dbKey: 'project_directory' },
           { clientKey: 'taskDescription', dbKey: 'task_description' },
           { clientKey: 'searchTerm', dbKey: 'search_term' },
-          { clientKey: 'pastedPaths', dbKey: 'pasted_paths' },
           { clientKey: 'titleRegex', dbKey: 'title_regex' },
           { clientKey: 'contentRegex', dbKey: 'content_regex' },
           { clientKey: 'negativeTitleRegex', dbKey: 'negative_title_regex' },

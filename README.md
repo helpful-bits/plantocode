@@ -60,7 +60,7 @@ pnpm install
 
 # Set up environment variables
 cp .env.example .env.local
-# Edit .env.local to add your API keys
+# Edit .env.local to add your API keys. These keys are used by both the main application and the background worker processes.
 
 # Run required database migrations
 pnpm migrate
@@ -218,6 +218,13 @@ WORKER_CONCURRENCY=10 WORKER_POLLING_INTERVAL=100 pnpm workers
 ```
 
 The worker system must be running alongside the Next.js server for background jobs to be processed.
+
+#### Worker Environment Variables
+The worker processes automatically load API keys and other environment variables from your `.env.local` file (or `.env` as a fallback) at startup. Ensure these files are properly configured in your project root with the required API keys:
+
+- `GEMINI_API_KEY` - Required for implementation plan generation
+- `ANTHROPIC_API_KEY` - Required for text correction/improvement
+- `GROQ_API_KEY` - Required for voice transcription
 
 ## 📂 Project Structure
 

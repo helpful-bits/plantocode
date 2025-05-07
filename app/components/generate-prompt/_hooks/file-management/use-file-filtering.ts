@@ -61,9 +61,17 @@ export function useFileFiltering({
     // --- 1. Filter by Search Term ---
     const lowerSearchTerm = searchTerm.toLowerCase();
     if (lowerSearchTerm) {
-      filesToFilter = filesToFilter.filter(file =>
-        file.path.toLowerCase().includes(lowerSearchTerm)
-      );
+      filesToFilter = filesToFilter.filter(file => {
+        // First try searching in the path directly (most visible to users)
+        if (file.path.toLowerCase().includes(lowerSearchTerm)) {
+          return true;
+        }
+        
+        // If not found in path, try in comparable path as fallback
+        return file.comparablePath ? 
+          file.comparablePath.toLowerCase().includes(lowerSearchTerm) : 
+          false;
+      });
     }
 
     // --- 2. Filter by Positive Regex (if active) ---
@@ -82,8 +90,9 @@ export function useFileFiltering({
           try {
             const regex = new RegExp(titleRegexTrimmed);
             filesToFilter.forEach(file => {
-              if (regex.test(file.path)) {
-                matchedPathsByRegex.add(file.path); // Add matches from title regex
+              // Ensure file has a valid comparablePath
+              if (file.comparablePath && regex.test(file.comparablePath)) {
+                matchedPathsByRegex.add(file.comparablePath); // Add matches from title regex
               }
             });
             titleRegexError = null; // Clear error if regex is valid
@@ -98,9 +107,16 @@ export function useFileFiltering({
           try {
             const regex = new RegExp(contentRegexTrimmed, 'm'); // Use multiline flag
             filesToFilter.forEach(file => {
-              const content = fileContentsMap[file.path];
+              // Skip if no valid comparablePath (needed for type safety)
+              if (!file.comparablePath) return;
+              
+              // Get content using comparablePath first, then fallback to path for backward compatibility
+              const content = fileContentsMap[file.comparablePath] !== undefined 
+                ? fileContentsMap[file.comparablePath] 
+                : (file.path ? fileContentsMap[file.path] : undefined);
+              
               if (typeof content === 'string' && regex.test(content)) {
-                matchedPathsByRegex.add(file.path); // Add matches from content regex
+                matchedPathsByRegex.add(file.comparablePath); // Add matches from content regex
               }
             });
             contentRegexError = null; // Clear error if regex is valid
@@ -112,7 +128,9 @@ export function useFileFiltering({
 
         // Filter based on the combined matches from *either* title or content regex
         if (hasTitleRegex || hasContentRegex) {
-          filteredFiles = filesToFilter.filter(file => matchedPathsByRegex.has(file.path));
+          filteredFiles = filesToFilter.filter(file => 
+            file.comparablePath && matchedPathsByRegex.has(file.comparablePath)
+          );
         } else {
           // If regex is active but neither pattern is valid or provided, return the search-filtered list
           filteredFiles = filesToFilter;
@@ -137,8 +155,9 @@ export function useFileFiltering({
           try {
             const regex = new RegExp(negativeTitleRegexTrimmed);
             filteredFiles.forEach(file => {
-              if (regex.test(file.path)) {
-                excludeByNegativeRegex.add(file.path);
+              // Ensure file has a valid comparablePath
+              if (file.comparablePath && regex.test(file.comparablePath)) {
+                excludeByNegativeRegex.add(file.comparablePath);
               }
             });
             negativeTitleRegexError = null;
@@ -153,9 +172,16 @@ export function useFileFiltering({
           try {
             const regex = new RegExp(negativeContentRegexTrimmed, 'm');
             filteredFiles.forEach(file => {
-              const content = fileContentsMap[file.path];
+              // Skip if no valid comparablePath (needed for type safety)
+              if (!file.comparablePath) return;
+              
+              // Get content using comparablePath first, then fallback to path for backward compatibility
+              const content = fileContentsMap[file.comparablePath] !== undefined 
+                ? fileContentsMap[file.comparablePath] 
+                : (file.path ? fileContentsMap[file.path] : undefined);
+              
               if (typeof content === 'string' && regex.test(content)) {
-                excludeByNegativeRegex.add(file.path);
+                excludeByNegativeRegex.add(file.comparablePath);
               }
             });
             negativeContentRegexError = null;
@@ -167,7 +193,9 @@ export function useFileFiltering({
         
         // Exclude files that match negative patterns
         if (excludeByNegativeRegex.size > 0) {
-          filteredFiles = filteredFiles.filter(file => !excludeByNegativeRegex.has(file.path));
+          filteredFiles = filteredFiles.filter(file => 
+            !file.comparablePath || !excludeByNegativeRegex.has(file.comparablePath)
+          );
         }
       }
     } else {

@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   const rateLimitKey = `active-session:get:${clientIp}:${projectDirectory}`;
   
   // Check if rate limited
-  const isRateLimited = await rateLimitCheck(rateLimitKey, 5, 30); // 5 requests per 30 seconds
+  const isRateLimited = await rateLimitCheck(rateLimitKey, 15, 30); // 15 requests per 30 seconds - relaxed rate limit
   
   if (isRateLimited) {
     console.warn(`[API] /active-session GET: Rate limit exceeded for project: ${projectDirectory}, IP: ${clientIp}`);
@@ -88,8 +88,8 @@ export async function POST(req: Request) {
     const clientIp = headersList.get('x-forwarded-for') || 'unknown';
     const rateLimitKey = `active-session:post:${clientIp}:${projectDirectory}`;
     
-    // Check if rate limited (3 requests per 30 seconds is more strict for write operations)
-    const isRateLimited = await rateLimitCheck(rateLimitKey, 3, 30);
+    // Check if rate limited (write operations with relaxed limits)
+    const isRateLimited = await rateLimitCheck(rateLimitKey, 10, 30); // 10 requests per 30 seconds
     
     if (isRateLimited) {
       console.warn(`[API] /active-session POST: Rate limit exceeded for project: ${projectDirectory}, IP: ${clientIp}`);
