@@ -95,7 +95,11 @@ export async function enqueueJob(
     metadata: {
       queueJobId, // Store the queue job ID for reference
       queuedAt: Date.now(),
-      priority
+      priority,
+      // Store essential job information for workers
+      jobTypeForWorker: jobType,
+      jobPayloadForWorker: payload,
+      jobPriorityForWorker: priority
     }
   });
   
@@ -124,18 +128,35 @@ export async function updateJobToRunning(
 
   const now = Date.now();
   
-  // Don't set endTime for running jobs - clear it if it somehow was set
-  await backgroundJobRepository.updateBackgroundJobStatus({
-    jobId: jobId,
-    status: 'running' as JobStatus,
-    startTime: now, // Set or update startTime 
-    endTime: null,  // Explicitly set to null to clear any endTime that might be set
-    statusMessage: statusMessage || `Processing with ${apiType.toUpperCase()} API`,
-    metadata: {
-      lastUpdateTime: now,
-      apiType: apiType
-    }
-  });
+  try {
+    // First get the job to check if we need to set startTime
+    const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
+    
+    // Only set startTime if it's not already set
+    const startTime = (existingJob && existingJob.startTime) ? existingJob.startTime : now;
+  
+    // Don't set endTime for running jobs - clear it if it somehow was set
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId: jobId,
+      status: 'running' as JobStatus,
+      startTime: startTime, // Keep existing startTime if available, otherwise set new one
+      endTime: null,  // Explicitly set to null to clear any endTime that might be set
+      statusMessage: statusMessage || `Processing with ${apiType.toUpperCase()} API`,
+      metadata: {
+        lastUpdateTime: now,
+        apiType: apiType,
+        runningUpdateCount: ((existingJob?.metadata?.runningUpdateCount || 0) + 1)
+      }
+    });
+  } catch (error) {
+    console.error(`Error updating job ${jobId} to running:`, error);
+    // Still try a basic update if the above fails
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId: jobId,
+      status: 'running' as JobStatus,
+      statusMessage: statusMessage || `Processing with ${apiType.toUpperCase()} API`,
+    });
+  }
 }
 
 /**
@@ -172,25 +193,55 @@ export async function updateJobToCompleted(
   }
 
   const now = Date.now();
-  await backgroundJobRepository.updateBackgroundJobStatus({
-    jobId,
-    status: 'completed',
-    endTime: now,
-    response: responseText,
-    statusMessage: `Completed successfully`,
-    // Clear any error messages that might have been set earlier
-    errorMessage: '',
-    metadata: {
-      tokensSent: tokens.tokensSent || 0,
-      tokensReceived: tokens.tokensReceived || 0,
-      totalTokens: tokens.totalTokens || ((tokens.tokensSent || 0) + (tokens.tokensReceived || 0)),
-      lastUpdateTime: now,
-      completedAt: now,
-      modelUsed: tokens.modelUsed,
-      maxOutputTokens: tokens.maxOutputTokens,
-      outputFilePath: tokens.outputFilePath
+  
+  try {
+    // First get the job to check current state
+    const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
+    
+    // Ensure job exists
+    if (!existingJob) {
+      console.error(`[JobHelper] Cannot complete job ${jobId}: Job not found`);
+      throw new Error(`Cannot complete job ${jobId}: Job not found`);
     }
-  });
+    
+    // Ensure we have a valid startTime for the job (needed for duration calculations)
+    // If startTime is missing, fallback to createdAt or now
+    const startTime = existingJob.startTime || existingJob.createdAt || now;
+    
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId,
+      status: 'completed',
+      startTime: startTime, // Ensure startTime is set before completing
+      endTime: now,         // Always set endTime on completion
+      response: responseText,
+      statusMessage: `Completed successfully`,
+      // Clear any error messages that might have been set earlier
+      errorMessage: '',
+      metadata: {
+        tokensSent: tokens.tokensSent || existingJob.tokensSent || 0,
+        tokensReceived: tokens.tokensReceived || existingJob.tokensReceived || 0,
+        totalTokens: tokens.totalTokens || 
+                   ((tokens.tokensReceived || existingJob.tokensReceived || 0) + 
+                    (tokens.tokensSent || existingJob.tokensSent || 0)),
+        lastUpdateTime: now,
+        completedAt: now,
+        duration: now - startTime, // Calculate duration in ms
+        modelUsed: tokens.modelUsed || existingJob.modelUsed || undefined,
+        maxOutputTokens: tokens.maxOutputTokens || existingJob.maxOutputTokens || undefined,
+        outputFilePath: tokens.outputFilePath || existingJob.outputFilePath || undefined
+      }
+    });
+  } catch (error) {
+    console.error(`Error updating job ${jobId} to completed:`, error);
+    // Still try a basic update if the above fails
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId,
+      status: 'completed',
+      endTime: now,
+      response: responseText,
+      statusMessage: `Completed successfully`,
+    });
+  }
 }
 
 /**
@@ -201,10 +252,12 @@ export async function updateJobToCompleted(
  * 
  * @param jobId Unique identifier for the job
  * @param errorMessage Description of the error that occurred
+ * @param partialResponse Optional partial response content from the job
  */
 export async function updateJobToFailed(
   jobId: string,
-  errorMessage: string
+  errorMessage: string,
+  partialResponse?: string
 ): Promise<void> {
   // Validate jobId
   if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
@@ -218,20 +271,64 @@ export async function updateJobToFailed(
   }
 
   const now = Date.now();
-  await backgroundJobRepository.updateBackgroundJobStatus({
-    jobId,
-    status: 'failed',
-    endTime: now,
-    errorMessage,
-    // Set a standard status message for failed jobs
-    statusMessage: "Failed due to error",
-    metadata: {
-      lastUpdateTime: now,
-      failedAt: now,
-      // Add error indication in metadata for analytics
-      hasError: true
+  
+  try {
+    // First get the job to check current state
+    const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
+    
+    // Ensure job exists
+    if (!existingJob) {
+      console.warn(`[JobHelper] Cannot mark job ${jobId} as failed: Job not found`);
+      // Create a basic update instead of throwing
+      await backgroundJobRepository.updateBackgroundJobStatus({
+        jobId,
+        status: 'failed',
+        endTime: now,
+        errorMessage,
+        statusMessage: "Failed due to error"
+      });
+      return;
     }
-  });
+    
+    // Ensure we have a valid startTime for the job (needed for duration calculations)
+    // If startTime is missing, fallback to createdAt or now
+    const startTime = existingJob.startTime || existingJob.createdAt || now;
+    
+    const updateParams: any = {
+      jobId,
+      status: 'failed',
+      startTime: startTime, // Ensure startTime is set before completing
+      endTime: now,         // Always set endTime on completion
+      errorMessage,
+      // Set a standard status message for failed jobs
+      statusMessage: "Failed due to error",
+      metadata: {
+        lastUpdateTime: now,
+        failedAt: now,
+        duration: now - startTime, // Calculate duration in ms
+        // Add error indication in metadata for analytics
+        hasError: true
+      }
+    };
+    
+    // Include partial response if provided
+    if (partialResponse) {
+      updateParams.response = partialResponse;
+      updateParams.metadata.partialResponse = true;
+    }
+    
+    await backgroundJobRepository.updateBackgroundJobStatus(updateParams);
+  } catch (error) {
+    console.error(`Error updating job ${jobId} to failed:`, error);
+    // Still try a basic update if the above fails
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId,
+      status: 'failed',
+      endTime: now,
+      errorMessage,
+      statusMessage: "Failed due to error",
+    });
+  }
 }
 
 /**
@@ -242,10 +339,12 @@ export async function updateJobToFailed(
  * 
  * @param jobId Unique identifier for the job
  * @param reason Optional reason for cancellation
+ * @param partialResponse Optional partial response content from the job
  */
 export async function updateJobToCancelled(
   jobId: string,
-  reason: string = "Canceled by user interaction"
+  reason: string = "Canceled by user interaction",
+  partialResponse?: string
 ): Promise<void> {
   // Validate jobId
   if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
@@ -253,19 +352,63 @@ export async function updateJobToCancelled(
   }
 
   const now = Date.now();
-  await backgroundJobRepository.updateBackgroundJobStatus({
-    jobId,
-    status: 'canceled',
-    endTime: now,
-    statusMessage: "Canceled by user interaction",
-    errorMessage: reason || "Canceled by user interaction",
-    metadata: {
-      lastUpdateTime: now,
-      cancelledAt: now,
-      // Add cancel indication in metadata for analytics
-      userCancelled: true
+  
+  try {
+    // First get the job to check current state
+    const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
+    
+    // Ensure job exists
+    if (!existingJob) {
+      console.warn(`[JobHelper] Cannot mark job ${jobId} as cancelled: Job not found`);
+      // Create a basic update instead of throwing
+      await backgroundJobRepository.updateBackgroundJobStatus({
+        jobId,
+        status: 'canceled',
+        endTime: now,
+        statusMessage: "Canceled by user interaction",
+        errorMessage: reason || "Canceled by user interaction"
+      });
+      return;
     }
-  });
+    
+    // Ensure we have a valid startTime for the job (needed for duration calculations)
+    // If startTime is missing, fallback to createdAt or now
+    const startTime = existingJob.startTime || existingJob.createdAt || now;
+    
+    const updateParams: any = {
+      jobId,
+      status: 'canceled',
+      startTime: startTime, // Ensure startTime is set before completing
+      endTime: now,         // Always set endTime on completion
+      statusMessage: "Canceled by user interaction",
+      errorMessage: reason || "Canceled by user interaction",
+      metadata: {
+        lastUpdateTime: now,
+        cancelledAt: now,
+        duration: now - startTime, // Calculate duration in ms
+        // Add cancel indication in metadata for analytics
+        userCancelled: true
+      }
+    };
+    
+    // Include partial response if provided
+    if (partialResponse) {
+      updateParams.response = partialResponse;
+      updateParams.metadata.partialResponse = true;
+    }
+    
+    await backgroundJobRepository.updateBackgroundJobStatus(updateParams);
+  } catch (error) {
+    console.error(`Error updating job ${jobId} to cancelled:`, error);
+    // Still try a basic update if the above fails
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId,
+      status: 'canceled',
+      endTime: now,
+      statusMessage: "Canceled by user interaction",
+      errorMessage: reason || "Canceled by user interaction"
+    });
+  }
 }
 
 /**

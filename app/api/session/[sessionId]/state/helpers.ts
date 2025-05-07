@@ -16,10 +16,6 @@ export function validateSessionData(sessionData: Partial<Session>): string | und
     return 'Search term must be a string';
   }
   
-  // Check if pastedPaths is provided and is a string
-  if (sessionData.pastedPaths !== undefined && typeof sessionData.pastedPaths !== 'string') {
-    return 'Pasted paths must be a string';
-  }
   
   // Check if titleRegex is provided and is a string
   if (sessionData.titleRegex !== undefined && typeof sessionData.titleRegex !== 'string') {

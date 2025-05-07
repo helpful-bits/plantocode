@@ -17,8 +17,16 @@ export async function isBinaryFile(buffer: Buffer): Promise<boolean> {
   if (hasNullByte) return true;
 
   // Check ratio of non-printable characters (excluding tab, LF, CR)
-  const nonPrintable = buffer.filter(byte => (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) || byte >= 127);
-  const ratio = nonPrintable.length / buffer.length;
+  // Count non-printable characters by iterating over the buffer
+  let nonPrintableCount = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    const byte = buffer[i];
+    if ((byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) || byte >= 127) {
+      nonPrintableCount++;
+    }
+  }
+  
+  const ratio = nonPrintableCount / buffer.length;
 
   // If more than 10% are non-printable, assume binary
   return ratio > 0.1;
@@ -41,10 +49,10 @@ export const BINARY_EXTENSIONS = new Set([ // Keep BINARY_EXTENSIONS
 
 /**
  * Load file contents for a list of files with batching, timeouts, and size limits
- * @param projectDirectory The base directory for the files
- * @param filePaths Array of file paths to load
+ * @param projectDirectory The absolute path to the base directory for the files
+ * @param filePaths Array of project-relative file paths to load
  * @param existingContents Optional existing file contents map to use as a base
- * @returns A record mapping file paths to their contents
+ * @returns A record mapping project-relative file paths to their contents
  */
 export async function loadFileContents(
   projectDirectory: string,
@@ -95,23 +103,8 @@ export async function loadFileContents(
     // Process files in the current batch concurrently
     const batchPromises = batch.map(async (filePath) => {
       try {
-        // Check if the path already starts with the project directory
-        const normalizedProjectDir = projectDirectory.replace(/\\/g, '/').replace(/\/+$/, '');
-        const normalizedFilePath = filePath.replace(/\\/g, '/');
-        
-        // Determine the full path carefully
-        let fullPath;
-        
-        if (normalizedFilePath.startsWith(normalizedProjectDir)) {
-          // If the path already includes the project directory, use it directly
-          fullPath = filePath;
-        } else if (normalizedFilePath.startsWith('/')) {
-          // If the path is absolute but doesn't include project directory
-          fullPath = join(normalizedProjectDir, normalizedFilePath.slice(1));
-        } else {
-          // Path is relative to project directory
-          fullPath = join(projectDirectory, filePath);
-        }
+        // Resolve the relative path to an absolute path using the project directory
+        const fullPath = join(projectDirectory, filePath);
         
         // Verify the file exists before trying to read it
         if (existsSync(fullPath)) {
@@ -157,6 +150,12 @@ export async function loadFileContents(
 
 /**
  * Helper function to validate a file path, checking for existence, size, and binary content
+ * 
+ * @param filePath Project-relative file path to validate
+ * @param fileContents Record mapping project-relative paths to their contents
+ * @param projectDirectory Absolute path to project directory
+ * @param allFiles Optional list of known project-relative file paths
+ * @returns Boolean indicating if the path is valid and not binary
  */
 export async function validateFilePath(
   filePath: string, 
@@ -212,13 +211,8 @@ export async function validateFilePath(
         
         // Try to read the file to check if it's binary or too large
         try {
-          // Resolve the full path correctly
-          let fullPath;
-          if (path.isAbsolute(normalizedPath)) {
-            fullPath = normalizedPath;
-          } else {
-            fullPath = path.join(projectDirectory, normalizedPath);
-          }
+          // Resolve the full path (always use project directory as base for normalized path)
+          const fullPath = path.join(projectDirectory, normalizedPath);
           
           // Check file size first
           const stats = await fs.stat(fullPath).catch(error => {

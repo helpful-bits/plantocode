@@ -61,17 +61,37 @@ export function useRegexState({
     }
   }, []);
 
+  // Create debounced interaction handler for regular inputs
+  const debouncedInteraction = useMemo(
+    () => debounce(() => {
+      if (onInteraction) {
+        console.log('[RegexState] Triggering debounced interaction for regex changes');
+        onInteraction();
+      }
+    }, 1000), // 1 second debounce for text inputs
+    [onInteraction]
+  );
+  
+  // Create debounced interaction handler for bulk operations
+  const debouncedBulkInteraction = useMemo(
+    () => debounce(() => {
+      if (onInteraction) {
+        console.log('[RegexState] Triggering debounced bulk interaction for regex pattern application');
+        onInteraction();
+      }
+    }, 2000), // 2 second debounce for bulk operations
+    [onInteraction]
+  );
+
   // Handler for title regex changes
   const handleTitleRegexChange = useCallback((value: string) => {
     setTitleRegex(value);
     const error = validateRegex(value);
     setTitleRegexError(error);
 
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [validateRegex, onInteraction]);
+    // Notify parent component of changes with debounce
+    debouncedInteraction();
+  }, [validateRegex, debouncedInteraction]);
 
   // Handler for content regex changes
   const handleContentRegexChange = useCallback((value: string) => {
@@ -79,11 +99,9 @@ export function useRegexState({
     const error = validateRegex(value);
     setContentRegexError(error);
 
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [validateRegex, onInteraction]);
+    // Notify parent component of changes with debounce
+    debouncedInteraction();
+  }, [validateRegex, debouncedInteraction]);
 
   // Handler for negative title regex changes
   const handleNegativeTitleRegexChange = useCallback((value: string) => {
@@ -91,11 +109,9 @@ export function useRegexState({
     const error = validateRegex(value);
     setNegativeTitleRegexError(error);
 
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [validateRegex, onInteraction]);
+    // Notify parent component of changes with debounce
+    debouncedInteraction();
+  }, [validateRegex, debouncedInteraction]);
 
   // Handler for negative content regex changes
   const handleNegativeContentRegexChange = useCallback((value: string) => {
@@ -103,17 +119,15 @@ export function useRegexState({
     const error = validateRegex(value);
     setNegativeContentRegexError(error);
 
-    // Notify parent component of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [validateRegex, onInteraction]);
+    // Notify parent component of changes with debounce
+    debouncedInteraction();
+  }, [validateRegex, debouncedInteraction]);
 
   // Toggle regex active state
   const handleToggleRegexActive = useCallback((newValue?: boolean) => {
     setIsRegexActive(prev => typeof newValue === 'boolean' ? newValue : !prev);
     
-    // Notify parent component of changes
+    // Notify parent component of changes - no debounce for toggle actions
     if (onInteraction) {
       onInteraction();
     }
@@ -162,16 +176,14 @@ export function useRegexState({
     setIsGeneratingTaskRegex(false);
     setGeneratingRegexJobId(null);
     
-    // Trigger the interaction callback, which will handle saving
-    if (onInteraction) {
-      onInteraction();
-    }
+    // Use debounced bulk interaction since multiple regex changes may be applied at once
+    debouncedBulkInteraction();
   }, [
     handleTitleRegexChange,
     handleContentRegexChange,
     handleNegativeTitleRegexChange,
     handleNegativeContentRegexChange,
-    onInteraction
+    debouncedBulkInteraction
   ]);
 
   // Clear all patterns - stabilized with useCallback
@@ -185,7 +197,7 @@ export function useRegexState({
     setNegativeTitleRegexError("");
     setNegativeContentRegexError("");
     
-    // Notify parent component of changes
+    // Notify parent component of changes - no debounce for clear action
     if (onInteraction) {
       onInteraction();
     }

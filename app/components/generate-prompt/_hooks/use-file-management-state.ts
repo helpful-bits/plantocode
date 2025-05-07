@@ -5,7 +5,7 @@ import { useProjectFileList, FileInfo } from "./file-management/use-project-file
 import { useFileSelectionManager } from "./file-management/use-file-selection-manager";
 import { useRelevantFilesFinder } from "./file-management/use-relevant-files-finder";
 import { FileManagementContextValue } from "../_contexts/file-management-context";
-import { normalizePathForComparison } from "@/lib/path-utils";
+import { normalizePathForComparison, makePathRelative } from "@/lib/path-utils";
 import { JOB_STATUSES } from "@/types/session-types";
 
 interface UseFileManagementStateProps {
@@ -17,9 +17,9 @@ interface UseFileManagementStateProps {
     includedFiles?: string[];
     forceExcludedFiles?: string[];
     searchTerm?: string;
-    pastedPaths?: string;
     searchSelectedFilesOnly?: boolean;
   };
+  isSwitchingSession?: boolean;
 }
 
 export function useFileManagementState({
@@ -28,17 +28,16 @@ export function useFileManagementState({
   taskDescription,
   onInteraction,
   sessionData,
+  isSwitchingSession = false,
 }: UseFileManagementStateProps): FileManagementContextValue {
   // Used to track state for session saving
   const currentFileStateRef = useRef<{
     searchTerm: string;
-    pastedPaths: string;
     includedFiles: string[];
     forceExcludedFiles: string[];
     searchSelectedFilesOnly: boolean;
   }>({
     searchTerm: "",
-    pastedPaths: "",
     includedFiles: [],
     forceExcludedFiles: [],
     searchSelectedFilesOnly: false,
@@ -68,23 +67,29 @@ export function useFileManagementState({
   // File selection management
   const fileSelectionManager = useFileSelectionManager({
     rawFilesMap,
-    sessionIncludedFiles: sessionData?.includedFiles || [],
-    sessionExcludedFiles: sessionData?.forceExcludedFiles || [],
-    onInteraction: handleInteraction
+    sessionIncludedFiles: sessionData?.includedFiles,
+    sessionExcludedFiles: sessionData?.forceExcludedFiles,
+    initialSearchSelectedFilesOnly: sessionData?.searchSelectedFilesOnly,
+    initialSearchTerm: sessionData?.searchTerm,
+    onInteraction: handleInteraction,
+    isSwitchingSession
   });
+  
+  // Log changes to file selection state for debugging
+  useEffect(() => {
+    console.log(`[FileManagementState] Selection state updated: ${fileSelectionManager.includedPaths.length} included, ${fileSelectionManager.excludedPaths.length} excluded`);
+  }, [fileSelectionManager.includedPaths, fileSelectionManager.excludedPaths]);
 
   const {
     managedFilesMap,
     searchTerm,
     showOnlySelected,
-    pastedPaths,
     externalPathWarnings,
     searchSelectedFilesOnly,
     includedPaths,
     excludedPaths,
     setSearchTerm,
     setShowOnlySelected,
-    setPastedPaths,
     toggleFileSelection,
     toggleFileExclusion,
     toggleSearchSelectedFilesOnly,
@@ -108,54 +113,30 @@ export function useFileManagementState({
     searchSelectedFilesOnly
   });
 
-  // Update session data when changes occur
-  useEffect(() => {
-    if (sessionData?.searchTerm !== undefined && sessionData.searchTerm !== searchTerm) {
-      setSearchTerm(sessionData.searchTerm);
-    }
-  }, [sessionData?.searchTerm, searchTerm, setSearchTerm]);
 
-  useEffect(() => {
-    if (sessionData?.pastedPaths !== undefined && sessionData.pastedPaths !== pastedPaths) {
-      setPastedPaths(sessionData.pastedPaths);
-    }
-  }, [sessionData?.pastedPaths, pastedPaths, setPastedPaths]);
-
-  // Track if we've loaded the initial searchSelectedFilesOnly state
-  const hasLoadedSearchSelectedRef = useRef(false);
+  // Track previous session ID to detect changes
+  const prevActiveSessionIdRef = useRef<string | null>(null);
   
-  // Load searchSelectedFilesOnly from session data (only once)
+  // Reset tracking when session changes
   useEffect(() => {
-    if (
-      !hasLoadedSearchSelectedRef.current &&
-      sessionData?.searchSelectedFilesOnly !== undefined && 
-      sessionData.searchSelectedFilesOnly !== searchSelectedFilesOnly
-    ) {
-      // Mark as loaded so we don't trigger this again
-      hasLoadedSearchSelectedRef.current = true;
-      
-      // Need to handle this specially since it's a toggle
-      // Use the value overload rather than the toggle function to avoid infinite loops
-      toggleSearchSelectedFilesOnly(sessionData.searchSelectedFilesOnly);
+    if (activeSessionId !== prevActiveSessionIdRef.current) {
+      prevActiveSessionIdRef.current = activeSessionId;
+      console.log(`[FileManagementState] Session changed to ${activeSessionId}, resetting load flags`);
     }
-  }, [
-    sessionData?.searchSelectedFilesOnly,
-    toggleSearchSelectedFilesOnly,
-    searchSelectedFilesOnly
-  ]);
+  }, [activeSessionId]);
 
   // Update state ref for session saving
   useEffect(() => {
+    // Project-relative paths are already normalized via file selection manager
     currentFileStateRef.current = {
       searchTerm,
-      pastedPaths,
-      includedFiles: includedPaths,
-      forceExcludedFiles: excludedPaths,
+      includedFiles: includedPaths, // These are already project-relative paths
+      forceExcludedFiles: excludedPaths, // These are already project-relative paths
       searchSelectedFilesOnly,
     };
-  }, [searchTerm, pastedPaths, includedPaths, excludedPaths, searchSelectedFilesOnly]);
+  }, [searchTerm, includedPaths, excludedPaths, searchSelectedFilesOnly]);
 
-  
+
   // Function to execute find relevant files
   const findRelevantFilesCallback = useCallback(async (): Promise<void> => {
     if (!taskDescription.trim() || isFindingFiles) {
@@ -192,16 +173,26 @@ export function useFileManagementState({
         // Apply the paths to the current selection (merging on UI side)
         applySelectionsFromPaths(normalizedPaths);
         
+        // Set showOnlySelected to true to show only the selected files
+        setShowOnlySelected(true);
+        
         // Trigger interaction to save state
         handleInteraction();
       }
     }
-  }, [findingFilesJobResult, applySelectionsFromPaths, handleInteraction]);
+  }, [findingFilesJobResult, applySelectionsFromPaths, setShowOnlySelected, handleInteraction]);
 
   // Function to get current file state for session saving
   const getFileStateForSession = useCallback(() => {
-    return currentFileStateRef.current;
-  }, []);
+    // Get the most up-to-date values from the fileSelectionManager
+    return {
+      searchTerm: fileSelectionManager.searchTerm,
+      includedFiles: fileSelectionManager.includedPaths,
+      forceExcludedFiles: fileSelectionManager.excludedPaths,
+      searchSelectedFilesOnly: fileSelectionManager.searchSelectedFilesOnly,
+      pastedPaths: ""
+    };
+  }, [fileSelectionManager]);
 
   // Adapter for handleBulkToggle that swaps parameter order
   const adaptedHandleBulkToggle = useCallback((files: FileInfo[], include: boolean) => {
@@ -215,7 +206,6 @@ export function useFileManagementState({
       managedFilesMap,
       searchTerm,
       showOnlySelected,
-      pastedPaths,
       externalPathWarnings,
       includedPaths,
       excludedPaths,
@@ -228,7 +218,6 @@ export function useFileManagementState({
       // Actions
       setSearchTerm,
       setShowOnlySelected,
-      setPastedPaths,
       toggleFileSelection,
       toggleFileExclusion,
       toggleSearchSelectedFilesOnly,
@@ -239,12 +228,14 @@ export function useFileManagementState({
       
       // Session state extraction
       getFileStateForSession,
+      
+      // Forward the flush operation
+      flushPendingOperations: fileSelectionManager.flushPendingOperations
     }),
     [
       managedFilesMap,
       searchTerm,
       showOnlySelected,
-      pastedPaths,
       externalPathWarnings,
       includedPaths,
       excludedPaths,
@@ -254,7 +245,6 @@ export function useFileManagementState({
       findingFilesJobId,
       setSearchTerm,
       setShowOnlySelected,
-      setPastedPaths,
       toggleFileSelection,
       toggleFileExclusion,
       toggleSearchSelectedFilesOnly,
@@ -263,6 +253,7 @@ export function useFileManagementState({
       findRelevantFilesCallback,
       refreshFiles,
       getFileStateForSession,
+      fileSelectionManager.flushPendingOperations
     ]
   );
 }

@@ -28,7 +28,7 @@ interface TaskSectionProps {
 }
 
 const TaskSection = React.memo(function TaskSection({ state, actions }: TaskSectionProps) {
-  // Get pastedPaths from the FileManagement context
+  // Get file management context
   const fileState = useFileManagement();
   
   const {
@@ -41,7 +41,7 @@ const TaskSection = React.memo(function TaskSection({ state, actions }: TaskSect
   } = state;
 
   // Get file paths from FileManagement context
-  const { pastedPaths, includedPaths } = fileState;
+  const { includedPaths } = fileState;
 
   const {
     handleTaskChange,

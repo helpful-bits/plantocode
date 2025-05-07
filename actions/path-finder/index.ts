@@ -16,137 +16,14 @@ import { ApiType, TaskType } from '@/types/session-types';
 import { handleActionError } from '@/lib/action-utils';
 import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
 import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@/lib/prompts/path-finder-prompts';
-import { normalizePathForComparison } from '@/lib/path-utils';
+import { normalizePathForComparison, makePathRelative } from '@/lib/path-utils';
+import { extractFilePathsFromTags, extractPotentialFilePaths } from './utils';
 
 // Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
 const FLASH_MAX_OUTPUT_TOKENS = 16384;
 const TOKEN_BUFFER = 20000; // Buffer for XML tags and other overhead
 
-/**
- * Extract file paths from a response containing XML tags
- */
-async function extractFilePathsFromTags(responseText: string): Promise<string[]> {
-  const paths: string[] = [];
-  
-  // Match <file path="..."> or <file>path</file> patterns
-  const filePathRegex = /<file(?:\s+path="([^"]+)"|[^>]*)>(?:([^<]+)<\/file>)?/g;
-  let match;
-  
-  while ((match = filePathRegex.exec(responseText)) !== null) {
-    const attributePath = match[1]; // path from attribute
-    const contentPath = match[2]; // path from content
-    
-    if (attributePath) {
-      paths.push(attributePath.trim());
-    } else if (contentPath) {
-      paths.push(contentPath.trim());
-    }
-  }
-  
-  return paths;
-}
-
-/**
- * Extract file paths without relying on XML tags
- */
-async function extractPotentialFilePaths(responseText: string): Promise<string[]> {
-  const paths: string[] = [];
-  
-  // Split by newlines and process each line
-  const lines = responseText.split('\n');
-  
-  // Common file extensions to help identify legitimate paths
-  const commonExtensions = new Set([
-    '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.h', '.hpp',
-    '.go', '.rb', '.php', '.html', '.css', '.scss', '.json', '.xml', '.yaml', 
-    '.yml', '.md', '.txt', '.sh', '.bat', '.ps1', '.sql', '.graphql', '.prisma',
-    '.vue', '.svelte', '.dart', '.kt', '.swift', '.m', '.rs', '.toml'
-  ]);
-  
-  // Regex to identify invalid path characters
-  const invalidPathChars = /[<>:"|?*\x00-\x1F]/;
-  
-  // Regex to detect line formatting that's likely not a file path
-  const nonPathLineFormats = /^(note|remember|important|tip|hint|warning|error|caution|attention|info):/i;
-  
-  // Regex to match common code file pattern: [dir/]file.ext
-  const filePathPattern = /^(?:(?:\.{1,2}\/)?[\w-]+\/)*[\w-]+\.\w+$/;
-  
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    
-    // Skip empty lines, lines that look like XML tags, or commented lines
-    if (!trimmedLine || 
-        trimmedLine.startsWith('<') || 
-        trimmedLine.startsWith('#') ||
-        trimmedLine.startsWith('//') ||
-        trimmedLine.startsWith('/*') ||
-        trimmedLine.startsWith('*')) {
-      continue;
-    }
-    
-    // Skip lines that are likely prose or instructions
-    if (nonPathLineFormats.test(trimmedLine)) {
-      continue;
-    }
-    
-    // Remove numbering/bullets at the start of lines (common in LLM responses)
-    const cleanedLine = trimmedLine.replace(/^[\d\.\s-]+/, '').trim();
-    
-    // Skip if it's empty after cleaning
-    if (!cleanedLine) continue;
-    
-    // Skip lines that look like they're just regular text (too many spaces, parentheses, etc.)
-    if (cleanedLine.split(' ').length > 2) continue;
-    
-    // Skip if it's too short to be a valid path
-    if (cleanedLine.length < 4) continue;
-    
-    // Skip lines that don't look like file paths (no extension or directory separator)
-    if (!cleanedLine.includes('.') && !cleanedLine.includes('/')) continue;
-    
-    // Require at least one path separator to avoid single filenames
-    if (!cleanedLine.includes('/') && !cleanedLine.includes('\\')) continue;
-    
-    // Check for common file extensions
-    const hasValidExtension = Array.from(commonExtensions).some(ext => 
-      cleanedLine.toLowerCase().endsWith(ext)
-    );
-    
-    // Skip if no valid extension found and it doesn't look like a directory path
-    if (!hasValidExtension && !cleanedLine.endsWith('/')) continue;
-    
-    // Skip paths with invalid characters
-    if (invalidPathChars.test(cleanedLine)) continue;
-    
-    // Skip extremely long paths (likely not valid)
-    if (cleanedLine.length > 255) continue;
-    
-    // Skip if the line contains HTML/Markdown formatting
-    if (cleanedLine.includes('</') || cleanedLine.includes('](')) continue;
-    
-    // Skip likely descriptive text that happens to contain periods and slashes
-    if (cleanedLine.includes(':') && !cleanedLine.includes(':/')) continue;
-    
-    // Apply stricter regex pattern for common file path format
-    if (!filePathPattern.test(cleanedLine) && 
-        !cleanedLine.startsWith('/') && 
-        !cleanedLine.startsWith('./') &&
-        !cleanedLine.startsWith('../')) {
-      continue;
-    }
-    
-    // Check if it has a minimum number of path segments for typical codebase paths
-    const pathSegments = cleanedLine.split('/').filter(Boolean);
-    if (pathSegments.length < 2 && !cleanedLine.startsWith('./')) continue;
-    
-    // Add to our potential paths
-    paths.push(cleanedLine);
-  }
-  
-  return paths;
-}
 
 export async function findRelevantFilesAction(
   sessionId: string,
@@ -155,7 +32,8 @@ export async function findRelevantFilesAction(
   forceExcludedFiles: string[] = [],
   options?: { 
     modelOverride?: string,
-    projectDirectory?: string
+    projectDirectory?: string,
+    includeFileContents?: boolean // Flag to indicate whether to include file contents
   }
 ): Promise<ActionState<{ jobId: string }>> {
   try {
@@ -240,7 +118,6 @@ export async function findRelevantFilesAction(
         return { isSuccess: false, message: `Failed to get project files: ${errorMessage}` };
       }
       
-      console.log(`[PathFinder] Found ${allFiles.files.length} files in project`);
       
       // Generate directory tree for context
       let dirTree;
@@ -254,8 +131,78 @@ export async function findRelevantFilesAction(
       // Use the centralized prompts
       const systemPrompt = generatePathFinderSystemPrompt();
       
-      // Create a prompt with project structure and task description
-      const prompt = generatePathFinderUserPrompt(dirTree, taskDescription);
+      // Load file contents if requested
+      let fileContents: {[filePath: string]: string} | undefined;
+      
+      if (options?.includeFileContents) {
+        fileContents = {};
+        const filesToProcess = includedFiles.length > 0 ? includedFiles : allFiles.files;
+        
+        // Set a reasonable limit on how many files to include
+        const MAX_FILES_TO_INCLUDE = 50;
+        const MAX_FILE_SIZE = 100 * 1024; // 100 KB
+        
+        // Process files and load contents
+        let filesProcessed = 0;
+        let totalSize = 0;
+        const MAX_TOTAL_SIZE = 2 * 1024 * 1024; // 2 MB total
+        
+        
+        for (const filePath of filesToProcess) {
+          // Stop if we've reached the limits
+          if (filesProcessed >= MAX_FILES_TO_INCLUDE || totalSize >= MAX_TOTAL_SIZE) {
+            break;
+          }
+          
+          // Skip binary files by extension first (faster check)
+          const ext = path.extname(filePath).toLowerCase();
+          if (BINARY_EXTENSIONS.has(ext)) {
+            continue;
+          }
+          
+          // Get the full file path
+          const fullPath = path.join(projectDirectory, filePath);
+          
+          try {
+            // Read file buffer and check if it's binary
+            const fileBuffer = await fs.readFile(fullPath);
+            if (await isBinaryFile(fileBuffer)) {
+              continue;
+            }
+          } catch (error) {
+            console.warn(`[PathFinder] Error checking if file is binary: ${filePath}`, error);
+            continue; // Skip this file if we can't determine if it's binary
+          }
+          
+          try {
+            
+            // Check file size first to avoid reading large files
+            const stats = await fs.stat(fullPath);
+            if (stats.size > MAX_FILE_SIZE) {
+              continue;
+            }
+            
+            // Read the file content
+            const content = await fs.readFile(fullPath, 'utf8');
+            
+            // Update total size
+            totalSize += content.length;
+            
+            // Add to file contents map
+            fileContents[filePath] = content;
+            filesProcessed++;
+            
+          } catch (readError) {
+            console.warn(`[PathFinder] Failed to read file: ${filePath}`, readError);
+            // Continue with other files
+          }
+        }
+        
+      }
+      
+      // Create a prompt with project structure, task description and file contents
+      // Ensure we only pass the directory tree once - it's included in the prompt template
+      const prompt = generatePathFinderUserPrompt(dirTree, taskDescription, fileContents);
       
       // Estimate tokens to ensure we're within limits
       let estimatedTokens;
@@ -301,7 +248,6 @@ export async function findRelevantFilesAction(
           
           // We need to make the actual API call here as part of the background job processing
           // This is the key change - using the geminiClient to make the API request
-          console.log(`[PathFinder] Making API request for job ${job.id}`);
           
           // Use the standard request function (non-streaming for path finder)
           const apiResult = await geminiClient.sendRequest(prompt, {
@@ -367,8 +313,9 @@ export async function findRelevantFilesAction(
           // Fallback method: try to extract from XML tags if present
           if (paths.length === 0 && responseData.includes('<file')) {
             try {
-              const extractedPaths = await extractFilePathsFromTags(responseData);
-              // Normalize extracted paths
+              // Pass projectDirectory to make absolute paths relative if needed
+              const extractedPaths = await extractFilePathsFromTags(responseData, projectDirectory);
+              // Normalize extracted paths (already relative if they were absolute)
               paths = extractedPaths.map(p => normalizePathForComparison(p));
             } catch (error) {
               console.warn('[PathFinder] Error extracting paths from tags:', error);
@@ -379,8 +326,9 @@ export async function findRelevantFilesAction(
           // Last resort: try to extract potential paths without structure
           if (paths.length === 0) {
             try {
-              const potentialPaths = await extractPotentialFilePaths(responseData);
-              // Normalize extracted paths
+              // Pass projectDirectory to make absolute paths relative if needed
+              const potentialPaths = await extractPotentialFilePaths(responseData, projectDirectory);
+              // Normalize extracted paths (already relative if they were absolute)
               paths = potentialPaths.map(p => normalizePathForComparison(p));
             } catch (error) {
               console.warn('[PathFinder] Error extracting potential paths:', error);
@@ -414,9 +362,9 @@ export async function findRelevantFilesAction(
             // Continue with any paths we have validated so far
           }
           
-          console.log(`[PathFinder] Found ${validatedPaths.length} relevant files`);
           
           // Filter out the force excluded files - normalize the excluded files for consistent comparison
+          // These should already be normalized project-relative paths from the database
           const normalizedExcludedFiles = forceExcludedFiles.map(p => normalizePathForComparison(p));
           const finalPaths = validatedPaths.filter(
             filePath => !normalizedExcludedFiles.includes(filePath)
@@ -431,20 +379,20 @@ export async function findRelevantFilesAction(
               // We'll continue and just use the new paths
             } else {
               // Get existing included files and normalize them for consistent comparison
+              // These should already be project-relative paths from the database
               const existingIncludedPaths = (currentSession.includedFiles || [])
                 .map(p => normalizePathForComparison(p));
               
               // Merge existing paths with the new paths
+              // All paths here are normalized project-relative paths
               const mergedPathsSet = new Set([...existingIncludedPaths, ...finalPaths]);
               const mergedIncludedFiles = Array.from(mergedPathsSet);
               
-              console.log(`[PathFinder] Merging ${existingIncludedPaths.length} existing paths with ${finalPaths.length} new paths (${mergedIncludedFiles.length} total after deduplication)`);
               
-              // Update session with merged paths
+              // Update session with merged paths - all project-relative
               await sessionRepository.updateSessionFields(sessionId, {
                 includedFiles: mergedIncludedFiles
               });
-              console.log(`[PathFinder] Successfully updated session ${sessionId} with ${mergedIncludedFiles.length} merged included files`);
             }
           } catch (updateError) {
             console.error('[PathFinder] Failed to update session with included files:', updateError);

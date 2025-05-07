@@ -176,20 +176,15 @@ export function applySessionSelections(
       };
       explicitlyIncludedCount++;
     } else {
-      // Path not explicitly mentioned in session lists
-      // Determine default inclusion using shouldIncludeByDefault
-      const shouldInclude = shouldIncludeByDefault(path);
+      // Path not explicitly mentioned in session lists - always default to not selected
       result[path] = {
         ...result[path],
-        included: shouldInclude,
+        included: false,
         forceExcluded: false
       };
       
-      if (shouldInclude) {
-        defaultIncludedCount++;
-      } else {
-        defaultExcludedCount++;
-      }
+      // Track as default excluded for logging
+      defaultExcludedCount++;
     }
   });
   

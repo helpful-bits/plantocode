@@ -63,7 +63,7 @@ export class PathFinderProcessor implements JobProcessor<PathFinderPayload> {
 
       // Parse the response to extract paths
       const response = result.data as string;
-      const paths = this.extractPaths(response);
+      const paths = this.extractPaths(response, projectDirectory);
       
       if (paths.length === 0) {
         const errorMessage = "No valid paths were found in the response";
@@ -151,41 +151,71 @@ export class PathFinderProcessor implements JobProcessor<PathFinderPayload> {
    * Extract paths from the LLM response
    * This handles various formats the LLM might use to return paths
    */
-  private extractPaths(response: string): string[] {
-    const paths: string[] = [];
+  private extractPaths(response: string, projectDirectory?: string): string[] {
+    let paths: string[] = [];
     
-    // First look for paths in a markdown code block with JSON format
-    // Match code blocks containing a JSON array across multiple lines
-    // Looking for: ```json ["path1", "path2", "path3"]```
-    const jsonMatches = response.split('\n').join(' ').match(/```(?:json)?\s*(\[\s*"[^"]+(?:",\s*"[^"]+)*"\s*\])/);
-    if (jsonMatches && jsonMatches[1]) {
-      try {
-        const jsonPaths = JSON.parse(jsonMatches[1]);
-        if (Array.isArray(jsonPaths) && jsonPaths.every(p => typeof p === 'string')) {
-          return jsonPaths;
+    // First try to extract simple newline-separated paths (primary expected format)
+    const lines = response.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    if (lines.length > 0) {
+      // Filter lines that look like valid paths and don't start with markdown list markers or comments
+      const linePaths = lines.filter(line => 
+        !line.startsWith('#') && 
+        !line.startsWith('//') && 
+        !line.startsWith('/*') && 
+        !line.startsWith('*') &&
+        !line.startsWith('-') &&
+        !line.startsWith('+') &&
+        !line.startsWith('<') &&
+        !line.match(/^\d+\./) &&  // Numbered list items
+        (line.includes('/') || line.includes('.')) && 
+        !line.includes('?') && 
+        !line.includes('#') &&
+        !line.includes('*')
+      ).map(line => line.trim());
+      
+      if (linePaths.length > 0) {
+        paths = [...paths, ...linePaths];
+      }
+    }
+    
+    // If we didn't find any paths using the primary method, try fallbacks
+    if (paths.length === 0) {
+      // Look for paths in a markdown code block with JSON format
+      const jsonMatches = response.split('\n').join(' ').match(/```(?:json)?\s*(\[\s*"[^"]+(?:",\s*"[^"]+)*"\s*\])/);
+      if (jsonMatches && jsonMatches[1]) {
+        try {
+          const jsonPaths = JSON.parse(jsonMatches[1]);
+          if (Array.isArray(jsonPaths) && jsonPaths.every(p => typeof p === 'string')) {
+            paths = [...paths, ...jsonPaths];
+          }
+        } catch (e) {
+          console.warn("[PathFinderProcessor] Failed to parse JSON paths:", e);
+          // Continue with other extraction methods
         }
-      } catch (e) {
-        console.warn("[PathFinderProcessor] Failed to parse JSON paths:", e);
-        // Continue with other extraction methods
       }
-    }
-    
-    // Look for markdown list items
-    const listItemsRegex = /[-*+]\s+`([^`]+)`|[-*+]\s+([^\s].*?)(?:\s*\n|$)/gm;
-    let match;
-    while ((match = listItemsRegex.exec(response)) !== null) {
-      const path = match[1] || match[2];
-      if (path && !paths.includes(path)) {
-        paths.push(path.trim());
+      
+      // Look for markdown list items if we still have no paths
+      if (paths.length === 0) {
+        const listItemsRegex = /[-*+]\s+`([^`]+)`|[-*+]\s+([^\s].*?)(?:\s*\n|$)/gm;
+        let match;
+        while ((match = listItemsRegex.exec(response)) !== null) {
+          const path = match[1] || match[2];
+          if (path && !paths.includes(path)) {
+            paths.push(path.trim());
+          }
+        }
       }
-    }
-    
-    // Also extract paths between backticks
-    const backtickRegex = /`([^`\n]+)`/g;
-    while ((match = backtickRegex.exec(response)) !== null) {
-      const path = match[1];
-      if (path && !paths.includes(path)) {
-        paths.push(path.trim());
+      
+      // Also extract paths between backticks if we still have no paths
+      if (paths.length === 0) {
+        const backtickRegex = /`([^`\n]+)`/g;
+        let match;
+        while ((match = backtickRegex.exec(response)) !== null) {
+          const path = match[1];
+          if (path && !paths.includes(path)) {
+            paths.push(path.trim());
+          }
+        }
       }
     }
     

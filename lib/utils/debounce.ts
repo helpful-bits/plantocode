@@ -4,18 +4,27 @@
  * 
  * @param func The function to debounce.
  * @param wait The number of milliseconds to delay.
- * @returns A debounced version of the function.
+ * @returns A debounced version of the function with cancel and flush methods.
  */
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
-): ((...args: Parameters<T>) => void) & { cancel: () => void } {
+): ((...args: Parameters<T>) => void) & { cancel: () => void, flush: () => void } {
   let timeout: NodeJS.Timeout | null = null;
+  let lastArgs: Parameters<T> | null = null;
   
-  const debounced = function(this: any, ...args: Parameters<T>): void {
+  // Use an arrow function to automatically capture the correct 'this' context
+  const debounced = function(...args: Parameters<T>): void {
+    // Store arguments for later use
+    lastArgs = args;
+    
     const later = () => {
       timeout = null;
-      func.apply(this, args);
+      if (lastArgs) {
+        func(...lastArgs);
+        // Clear references to prevent memory leaks
+        lastArgs = null;
+      }
     };
     
     if (timeout !== null) {
@@ -30,6 +39,24 @@ export function debounce<T extends (...args: any[]) => any>(
     if (timeout !== null) {
       clearTimeout(timeout);
       timeout = null;
+    }
+    // Clear references
+    lastArgs = null;
+  };
+  
+  // Add flush method to immediately invoke the function with the last arguments
+  debounced.flush = function() {
+    if (timeout !== null) {
+      clearTimeout(timeout);
+      timeout = null;
+      
+      if (lastArgs !== null) {
+        const args = lastArgs;
+        // Clear references
+        lastArgs = null;
+        // Execute the function immediately
+        func(...args);
+      }
     }
   };
   

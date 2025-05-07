@@ -34,6 +34,14 @@ import { useRegexState } from "./use-regex-state";
 import { useGuidanceGeneration } from "./use-guidance-generation";
 import { useSessionMetadata } from "./use-session-metadata";
 
+// Interface for loaded session file preferences
+export interface LoadedSessionFilePrefs {
+  includedFiles: string[];
+  forceExcludedFiles: string[];
+  searchTerm: string;
+  searchSelectedFilesOnly: boolean;
+}
+
 // File management is now handled separately in useFileManagementState
 export function useGeneratePromptState() {
   const { projectDirectory, setProjectDirectory, activeSessionId: contextActiveSessionId } = useProject();
@@ -61,6 +69,12 @@ export function useGeneratePromptState() {
   
   // State for background job IDs not in sub-hooks
   const [isStateLoaded, setIsStateLoaded] = useState(false);
+
+  // State for loaded session file preferences
+  const [loadedSessionFilePrefs, setLoadedSessionFilePrefs] = useState<LoadedSessionFilePrefs | null>(null);
+  
+  // State for storing the full session data
+  const [loadedSessionFullData, setLoadedSessionFullData] = useState<Session | null>(null);
 
   // Refs not in sub-hooks
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -96,7 +110,6 @@ export function useGeneratePromptState() {
     stateToSave?: typeof currentStateRef.current,
     fileState?: {
       searchTerm: string;
-      pastedPaths: string;
       includedFiles: string[];
       forceExcludedFiles: string[];
       searchSelectedFilesOnly: boolean;
@@ -125,7 +138,6 @@ export function useGeneratePromptState() {
           includedFilesCount: fileState.includedFiles?.length || 0,
           excludedFilesCount: fileState.forceExcludedFiles?.length || 0,
           hasSearchTerm: !!fileState.searchTerm,
-          hasPastedPaths: !!fileState.pastedPaths,
           searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
         } : 'not provided'
       });
@@ -146,7 +158,6 @@ export function useGeneratePromptState() {
           // Include file state if provided
           ...(fileState && {
             searchTerm: fileState.searchTerm,
-            pastedPaths: fileState.pastedPaths,
             includedFiles: fileState.includedFiles,
             forceExcludedFiles: fileState.forceExcludedFiles,
             searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
@@ -178,13 +189,12 @@ export function useGeneratePromptState() {
     }
   }, [showNotification, setHasUnsavedChanges, setIsFormSaving, contextActiveSessionId, projectDirectory]);
 
-  // Create a debounced function for saving all state
+  // Create a debounced function for saving all state with increased timeout
   const debouncedSaveAllState = useMemo(
     () => debounce((
       sessionId: string,
       fileStateGetter?: () => {
         searchTerm: string;
-        pastedPaths: string;
         includedFiles: string[];
         forceExcludedFiles: string[];
         searchSelectedFilesOnly: boolean;
@@ -203,7 +213,7 @@ export function useGeneratePromptState() {
       
       // Pass the captured state to handleSaveSessionState along with the sessionId
       handleSaveSessionState(sessionId, stateAtTriggerTime, fileState);
-    }, 1500), // 1.5 second debounce
+    }, 3000), // Increased to 3 seconds to reduce API calls
     [handleSaveSessionState]
   );
 
@@ -211,7 +221,6 @@ export function useGeneratePromptState() {
   const handleInteraction = useCallback((
     fileStateGetter?: () => {
       searchTerm: string;
-      pastedPaths: string;
       includedFiles: string[];
       forceExcludedFiles: string[];
       searchSelectedFilesOnly: boolean;
@@ -235,6 +244,57 @@ export function useGeneratePromptState() {
       interactionTimeoutRef.current = null;
     }
   }, [contextActiveSessionId, debouncedSaveAllState, hasUnsavedChanges]);
+  
+  // Add a method to flush any pending debounced saves immediately
+  const flushPendingSaves = useCallback((
+    fileStateGetter?: () => {
+      searchTerm: string;
+      includedFiles: string[];
+      forceExcludedFiles: string[];
+      searchSelectedFilesOnly: boolean;
+    }
+  ) => {
+    console.log(`[useGeneratePromptState] Flushing pending debounced saves for session: ${contextActiveSessionId || 'none'}`);
+    
+    if (!contextActiveSessionId) {
+      console.log(`[useGeneratePromptState] No active session, nothing to flush`);
+      return Promise.resolve(false); 
+    }
+    
+    // Store current state for immediate save
+    const stateAtFlush = { ...currentStateRef.current };
+    
+    // Get the file state if provided
+    const fileState = fileStateGetter ? fileStateGetter() : undefined;
+    
+    // Flush the debounced save by calling its flush method
+    try {
+      debouncedSaveAllState.flush();
+      
+      // For extra safety, also perform an immediate save
+      return handleSaveSessionState(contextActiveSessionId, stateAtFlush, fileState)
+        .then(() => {
+          console.log(`[useGeneratePromptState] Successfully flushed and saved state for session: ${contextActiveSessionId}`);
+          return true;
+        })
+        .catch(error => {
+          console.error(`[useGeneratePromptState] Error during manual flush save:`, error);
+          return false;
+        });
+    } catch (error) {
+      console.error(`[useGeneratePromptState] Error flushing pending saves:`, error);
+      // Try the manual save as a fallback
+      return handleSaveSessionState(contextActiveSessionId, stateAtFlush, fileState)
+        .then(() => {
+          console.log(`[useGeneratePromptState] Successfully saved state using fallback after flush error`);
+          return true;
+        })
+        .catch(error => {
+          console.error(`[useGeneratePromptState] Error during fallback save:`, error);
+          return false;
+        });
+    }
+  }, [contextActiveSessionId, debouncedSaveAllState, handleSaveSessionState]);
   
   // Initialize session metadata hook
   const sessionMetadata = useSessionMetadata({
@@ -340,7 +400,7 @@ export function useGeneratePromptState() {
     };
   }, [contextActiveSessionId, projectDirectory]);
 
-  // Handle loading a session - simplified to remove file handling
+  // Handle loading a session - updated to store full session data
   const handleLoadSession = useCallback(async (sessionData: Session | null) => {
     const timestamp = new Date().toISOString();
     const sequence = Math.random().toString(36).substring(2, 8);
@@ -348,6 +408,8 @@ export function useGeneratePromptState() {
     if (!sessionData) {
       // Handle reset logic when null is passed
       console.log(`[useGeneratePromptState][${sequence}][${timestamp}] 🔄 LOAD SESSION: Received null session, no action needed`);
+      setLoadedSessionFilePrefs(null);
+      setLoadedSessionFullData(null);
       return;
     }
     
@@ -365,13 +427,22 @@ export function useGeneratePromptState() {
       taskDescriptionLength: sessionData.taskDescription?.length || 0,
       hasRegexPatterns: !!(sessionData.titleRegex || sessionData.contentRegex || sessionData.negativeTitleRegex || sessionData.negativeContentRegex),
       isRegexActive: sessionData.isRegexActive,
-      // File state is now logged elsewhere in the file management hooks
+      filePrefs: {
+        includedFilesCount: sessionData.includedFiles?.length || 0,
+        excludedFilesCount: sessionData.forceExcludedFiles?.length || 0,
+        hasSearchTerm: !!sessionData.searchTerm,
+        searchSelectedFilesOnly: sessionData.searchSelectedFilesOnly
+      }
     });
     
     try {
       // Step 1: Set switching session flag immediately to prevent other operations
       console.log(`[useGeneratePromptState][${sequence}] Step 1: Setting isSwitchingSession=true`);
       setIsSwitchingSession(true);
+      
+      // Store the full session data to be used by file management provider
+      console.log(`[useGeneratePromptState][${sequence}] Step 1.5: Storing full session data`);
+      setLoadedSessionFullData(sessionData);
       
       // Collect and log debug information about current state
       if (typeof window !== 'undefined' && window.debugSessionState) {
@@ -402,6 +473,15 @@ export function useGeneratePromptState() {
       console.log(`[useGeneratePromptState][${sequence}] Step 3.4: Resetting other state variables`);
       sessionMetadata.reset();
       setHasUnsavedChanges(false);
+      
+      // Store the loaded session file preferences
+      console.log(`[useGeneratePromptState][${sequence}] Step 3.5: Storing loaded session file preferences`);
+      setLoadedSessionFilePrefs({
+        includedFiles: sessionData.includedFiles || [],
+        forceExcludedFiles: sessionData.forceExcludedFiles || [],
+        searchTerm: sessionData.searchTerm || '',
+        searchSelectedFilesOnly: sessionData.searchSelectedFilesOnly || false
+      });
       
       // Step 4: Apply all session data in a consistent order
       console.log(`[useGeneratePromptState][${sequence}] Step 4: Applying session data for ${sessionData.id}`);
@@ -461,6 +541,8 @@ export function useGeneratePromptState() {
       setIsRestoringSession(false);
       setIsSwitchingSession(false);
       setIsStateLoaded(true); // Mark as loaded even if there was an error
+      setLoadedSessionFilePrefs(null); // Clear file prefs on error
+      setLoadedSessionFullData(null); // Clear full session data on error
       
       // Show error
       setError(`Failed to load session: ${error instanceof Error ? error.message : String(error)}`);
@@ -482,7 +564,6 @@ export function useGeneratePromptState() {
   const getCurrentSessionState = useCallback((
     fileState?: {
       searchTerm: string;
-      pastedPaths: string;
       includedFiles: string[];
       forceExcludedFiles: string[];
       searchSelectedFilesOnly: boolean;
@@ -501,7 +582,6 @@ export function useGeneratePromptState() {
       // Include file state if provided
       ...(fileState && {
         searchTerm: fileState.searchTerm,
-        pastedPaths: fileState.pastedPaths,
         includedFiles: fileState.includedFiles,
         forceExcludedFiles: fileState.forceExcludedFiles,
         searchSelectedFilesOnly: fileState.searchSelectedFilesOnly
@@ -540,6 +620,14 @@ export function useGeneratePromptState() {
     setSessionInitialized(false);
     setIsRestoringSession(false);
     setIsSwitchingSession(false);
+    
+    // Clear loaded session file preferences
+    console.log(`[useGeneratePromptState][${sequence}] Step 4.5: Clearing loaded session file preferences`);
+    setLoadedSessionFilePrefs(null);
+    
+    // Clear loaded session full data
+    console.log(`[useGeneratePromptState][${sequence}] Step 4.6: Clearing loaded session full data`);
+    setLoadedSessionFullData(null);
     
     // No need to clear activeSessionId as it's now controlled by the context
     console.log(`[useGeneratePromptState][${sequence}] Step 5: Active session ID is now controlled by the context`);
@@ -711,6 +799,10 @@ export function useGeneratePromptState() {
     projectDirectory,
     projectDataLoading,
     
+    // Loaded session data
+    loadedSessionFilePrefs,
+    loadedSessionFullData,
+    
     // Prompt state
     prompt,
     tokenCount,
@@ -729,6 +821,7 @@ export function useGeneratePromptState() {
     handleLoadSession,
     handleGenerateGuidance: guidanceGeneration.handleGenerateGuidance,
     saveSessionState: handleSaveSessionState,
+    flushPendingSaves, // Add the flush method to the exposed API
     getCurrentSessionState,
     setSessionInitialized,
     setHasUnsavedChanges,
@@ -753,6 +846,8 @@ export function useGeneratePromptState() {
     regexState,
     projectDirectory,
     projectDataLoading,
+    loadedSessionFilePrefs,
+    loadedSessionFullData,
     prompt,
     tokenCount, 
     copySuccess,
@@ -763,6 +858,7 @@ export function useGeneratePromptState() {
     resetAllState,
     handleLoadSession,
     handleSaveSessionState,
+    flushPendingSaves,
     getCurrentSessionState,
     setSessionInitialized,
     setHasUnsavedChanges,

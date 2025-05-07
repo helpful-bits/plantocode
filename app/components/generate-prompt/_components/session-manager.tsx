@@ -35,6 +35,7 @@ import { normalizePath } from "@/lib/path-utils";
 import { debounce } from "@/lib/utils/debounce";
 import sessionSyncService from '@/lib/services/session-sync-service';
 import { useNotification } from '@/lib/contexts/notification-context';
+import { useGeneratePrompt } from '../_contexts/generate-prompt-context';
 import {
   createSessionAction,
   deleteSessionAction,
@@ -107,6 +108,7 @@ const SessionManager = ({
   setIsSwitchingSession: setGlobalSwitchingState
 } = useProject();
   const { showNotification } = useNotification();
+  const generatePromptContext = useGeneratePrompt();
   
   const [isPending, startTransition] = useTransition();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -641,7 +643,7 @@ const SessionManager = ({
         console.log(`[SessionManager][${startTimestamp}][${operationId}] sessionSyncService.markSessionSwitching not available, continuing without prioritization`);
       }
       
-      // Step 2: Save the current session (optional)
+      // Step 2: Flush any pending debounced saves and save the current session
       if (activeSessionId) {
         try {
           console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 2: Saving previous active session: ${activeSessionId}`);
@@ -649,7 +651,17 @@ const SessionManager = ({
           // Simply use String for type safety
           const sessionIdStr = String(activeSessionId);
           
-          // Get current state from parent component
+          // First, try to flush any pending debounced saves
+          try {
+            console.log(`[SessionManager][${startTimestamp}][${operationId}] Flushing any pending debounced saves`);
+            await generatePromptContext.flushPendingSaves();
+            console.log(`[SessionManager][${startTimestamp}][${operationId}] Successfully flushed pending saves`);
+          } catch (flushError) {
+            console.error(`[SessionManager][${startTimestamp}][${operationId}] Error flushing pending saves:`, flushError);
+            // Continue with the save operation even if flush fails
+          }
+          
+          // Get current state from parent component after flushing pending saves
           const currentSessionState = getCurrentSessionState();
           
           // Find the session details from the sessions state to get the name
@@ -674,7 +686,6 @@ const SessionManager = ({
               contentRegex: currentSessionState.contentRegex,
               isRegexActive: currentSessionState.isRegexActive,
               diffTemperature: currentSessionState.diffTemperature,
-              pastedPaths: currentSessionState.pastedPaths,
               negativeTitleRegex: currentSessionState.negativeTitleRegex,
               negativeContentRegex: currentSessionState.negativeContentRegex,
               searchSelectedFilesOnly: currentSessionState.searchSelectedFilesOnly
@@ -739,6 +750,15 @@ const SessionManager = ({
         };
         
         console.log(`[SessionManager][${startTimestamp}][${operationId}] Fetched session data successfully in ${fetchDuration}ms:`, sessionStateSummary);
+        
+        // Enhanced logging for session selection data
+        console.log(`[SessionManager][handleLoadSession] Loaded newSession ${newSession.id} (${newSession.name}). Included: ${newSession.includedFiles?.length}, Excluded: ${newSession.forceExcludedFiles?.length}`);
+        if (newSession.includedFiles?.length) {
+          console.log(`[SessionManager][handleLoadSession] Sample includedFiles:`, newSession.includedFiles.slice(0, 3));
+        }
+        if (newSession.forceExcludedFiles?.length) {
+          console.log(`[SessionManager][handleLoadSession] Sample excludedFiles:`, newSession.forceExcludedFiles.slice(0, 3));
+        }
         
         // Step 4: Update the active session ID in the context
         console.log(`[SessionManager][${startTimestamp}][${operationId}] Step 4: Updating context with new session ID: ${newSession.id}`);
@@ -989,7 +1009,6 @@ const SessionManager = ({
         projectDirectory: sourceSession.projectDirectory,
         taskDescription: sourceSession.taskDescription,
         searchTerm: sourceSession.searchTerm,
-        pastedPaths: sourceSession.pastedPaths,
         titleRegex: sourceSession.titleRegex,
         contentRegex: sourceSession.contentRegex,
         isRegexActive: sourceSession.isRegexActive,

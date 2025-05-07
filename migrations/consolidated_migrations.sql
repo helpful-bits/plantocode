@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   project_hash TEXT, -- Hash of project_directory for faster lookups
   task_description TEXT DEFAULT '',
   search_term TEXT DEFAULT '',
-  pasted_paths TEXT DEFAULT '',
   title_regex TEXT DEFAULT '',
   content_regex TEXT DEFAULT '',
   negative_title_regex TEXT DEFAULT '',

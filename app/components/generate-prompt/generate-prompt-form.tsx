@@ -11,6 +11,7 @@ import FileSection from "./_sections/FileSection";
 import ActionSection from "./_sections/ActionSection";
 import PromptPreview from "./_sections/PromptPreview";
 import { Button } from "@/components/ui/button";
+import { Session } from "@/types/session-types";
 
 /**
  * Generate Prompt Form
@@ -51,6 +52,44 @@ export default function GeneratePromptForm() {
     contextValue
   ]);
 
+  // Create session data for FileManagementProvider with the minimum required fields
+  // Use loadedSessionFilePrefs as the authoritative source for file preferences
+  const getSessionData = () => {
+    if (!contextValue.activeSessionId) return undefined;
+    
+    // Get the current session state for non-file preferences
+    const currentState = contextValue.getCurrentSessionState();
+    
+    // Use the loaded session file preferences or empty defaults
+    const filePrefs = contextValue.loadedSessionFilePrefs || {
+      includedFiles: [],
+      forceExcludedFiles: [],
+      searchTerm: "",
+      searchSelectedFilesOnly: false
+    };
+    
+    // Create a session object with the minimum required fields
+    const sessionData: Session = {
+      id: contextValue.activeSessionId,
+      name: contextValue.sessionName || "Untitled Session",
+      createdAt: Date.now(),
+      projectDirectory: contextValue.projectDirectory || '/unknown',
+      taskDescription: currentState.taskDescription || "",
+      titleRegex: currentState.titleRegex || "",
+      contentRegex: currentState.contentRegex || "",
+      negativeTitleRegex: currentState.negativeTitleRegex || "",
+      negativeContentRegex: currentState.negativeContentRegex || "",
+      isRegexActive: currentState.isRegexActive !== undefined ? currentState.isRegexActive : true,
+      includedFiles: filePrefs.includedFiles,
+      forceExcludedFiles: filePrefs.forceExcludedFiles,
+      searchTerm: filePrefs.searchTerm,
+      searchSelectedFilesOnly: filePrefs.searchSelectedFilesOnly,
+      diffTemperature: currentState.diffTemperature || 0.7,
+    };
+    
+    return sessionData;
+  };
+
   return (
     <GeneratePromptContext.Provider value={contextValue}>
       <div className="py-4 w-full flex h-full">
@@ -61,7 +100,8 @@ export default function GeneratePromptForm() {
               projectDirectory={contextValue.projectDirectory || ''}
               activeSessionId={contextValue.activeSessionId}
               taskDescription={contextValue.taskState.taskDescription}
-              sessionData={undefined}
+              sessionData={getSessionData()}
+              isSwitchingSession={contextValue.isSwitchingSession}
             >
               <ProjectSection />
             </FileManagementProvider>
@@ -80,7 +120,8 @@ export default function GeneratePromptForm() {
               projectDirectory={contextValue.projectDirectory || ''}
               activeSessionId={contextValue.activeSessionId}
               taskDescription={contextValue.taskState.taskDescription}
-              sessionData={undefined}
+              sessionData={getSessionData()}
+              isSwitchingSession={contextValue.isSwitchingSession}
             >
               {/* Task Description Section */}
               <div>

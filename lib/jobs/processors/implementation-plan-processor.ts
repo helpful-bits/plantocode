@@ -4,13 +4,14 @@ import {
   generateImplementationPlanSystemPrompt, 
   generateImplementationPlanUserPrompt 
 } from '@/lib/prompts/implementation-plan-prompts';
-import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
+import { updateJobToRunning } from '../job-helpers';
 import { generateDirectoryTree } from '@/lib/directory-tree';
 import { ActionState } from '@/types';
 import path from 'path';
 import fs from 'fs/promises';
-// Import Gemini client for API requests
+// Import Gemini streaming client for streaming API requests
 import geminiClient from '@/lib/api/clients/gemini';
+import { getProjectImplementationPlansDirectory } from '@/lib/path-utils';
 
 /**
  * Implementation Plan Processor
@@ -33,13 +34,17 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
     } = payload;
 
     try {
-      // Update job status to running
+      // Initial status update - job is now running
       await updateJobToRunning(backgroundJobId, 'gemini', 'Preparing implementation plan generation');
 
       // Generate directory tree for context
       if (!projectDirectory) {
         throw new Error("Missing project directory in payload");
       }
+      
+      // Update job status for prompt generation phase
+      await updateJobToRunning(backgroundJobId, 'gemini', 'Generating prompts and context from project structure');
+      
       const projectStructure = await generateDirectoryTree(projectDirectory);
       
       // Generate prompts
@@ -51,23 +56,58 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
         fileContents: fileContentsMap
       });
 
-      // Update job status to reflect prompt preparation is complete
-      await updateJobToRunning(backgroundJobId, 'gemini', 'Sending request to Gemini API');
+      // Update job status to reflect file preparation phase
+      await updateJobToRunning(backgroundJobId, 'gemini', 'Preparing output file location');
 
-      // Make direct request to Gemini API without going through streaming request pool
-      const result = await geminiClient.sendRequest(userPrompt, {
+      // Generate the output file path
+      const planDir = getProjectImplementationPlansDirectory(projectDirectory);
+      
+      // Create a sanitized filename from the task description
+      const sanitizedTaskDesc = originalTaskDescription
+        .substring(0, 40)  // Take first 40 chars
+        .replace(/[^\w\s]/g, '')  // Remove special chars
+        .replace(/\s+/g, '_');  // Replace spaces with underscores
+      
+      // Generate the filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `plan_${timestamp}_${sanitizedTaskDesc}.xml`;
+      const targetOutputFilePath = path.join(planDir, filename);
+      
+      // Ensure the directory exists
+      await fs.mkdir(planDir, { recursive: true });
+
+      // Update job status to reflect API request is about to start
+      await updateJobToRunning(backgroundJobId, 'gemini', 'Sending request to Gemini API and processing stream');
+
+      // Make a streaming request to Gemini API using the streaming client
+      console.log(`[ImplementationPlanProcessor] Sending request to Gemini API for job ${backgroundJobId}`);
+      const result = await geminiClient.sendStreamingRequest(userPrompt, sessionId, {
         model,
         systemPrompt,
         temperature,
         maxOutputTokens,
+        taskType: 'implementation_plan',
+        outputFilePath: targetOutputFilePath,
+        requestId: backgroundJobId, // Use the background job ID as the request ID for tracking
+        projectDirectory,
+        apiType: 'gemini',
+        metadata: {
+          sessionName: sessionId, // Use the session ID as a fallback session name
+          taskDescription: originalTaskDescription
+        }
       });
 
+      // Debug log the result
+      console.log(`[ImplementationPlanProcessor] Received result from Gemini API:`, {
+        isSuccess: result.isSuccess,
+        message: result.message,
+        savedFilePath: result.data?.savedFilePath,
+        hasError: !!result.error
+      });
+
+      // The streaming client handles job status updates (completed, failed) based on the result
       if (!result.isSuccess) {
-        await updateJobToFailed(
-          backgroundJobId, 
-          result.message || "Failed to generate implementation plan"
-        );
-        
+        console.error(`[ImplementationPlanProcessor] Gemini API request failed:`, result.error || result.message);
         return {
           success: false,
           message: result.message || "Failed to generate implementation plan",
@@ -75,55 +115,19 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
         };
       }
 
-      // Save the implementation plan to a file
-      const response = result.data as string;
-      
-      // Validate project directory
-      if (!projectDirectory) {
-        throw new Error("Missing project directory in payload");
-      }
-      
-      const planFilePath = await this.saveImplementationPlan(
-        response, 
-        projectDirectory, 
-        sessionId, 
-        originalTaskDescription
-      );
-
-      // Update job to completed
-      await updateJobToCompleted(
-        backgroundJobId,
-        response,
-        {
-          tokensSent: result.metadata?.tokensSent || 0,
-          tokensReceived: result.metadata?.tokensReceived || 0,
-          totalTokens: result.metadata?.totalTokens || 0,
-          modelUsed: result.metadata?.modelUsed || model,
-          maxOutputTokens: maxOutputTokens,
-          outputFilePath: planFilePath
-        }
-      );
-
       return {
         success: true,
         message: "Successfully generated implementation plan",
         data: {
-          planContent: response,
-          planFilePath
+          planFilePath: result.data?.savedFilePath || null
         }
       };
     } catch (error) {
-      // If any error occurs, mark the job as failed
+      // If any error occurs, the streaming client should update the job to failed
       const errorMessage = error instanceof Error ? 
         error.message : 
         "Unknown error during implementation plan generation";
       
-      try {
-        await updateJobToFailed(backgroundJobId, errorMessage);
-      } catch (updateError) {
-        console.error("[ImplementationPlanProcessor] Error updating job status:", updateError);
-      }
-
       return {
         success: false,
         message: errorMessage,
@@ -132,41 +136,6 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
     }
   }
 
-  /**
-   * Save the implementation plan to a file in the project directory
-   */
-  private async saveImplementationPlan(
-    content: string,
-    projectDirectory: string,
-    sessionId: string,
-    taskDescription: string
-  ): Promise<string> {
-    try {
-      // Create a sanitized filename from the task description
-      const sanitizedTaskDesc = taskDescription
-        .substring(0, 40)  // Take first 40 chars
-        .replace(/[^\w\s]/g, '')  // Remove special chars
-        .replace(/\s+/g, '_');  // Replace spaces with underscores
-      
-      // Create the implementation plans directory if it doesn't exist
-      const planDir = path.join(projectDirectory, 'implementation_plans');
-      await fs.mkdir(planDir, { recursive: true });
-      
-      // Generate the filename with timestamp and session info
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `plan_${timestamp}_${sanitizedTaskDesc}.md`;
-      const filePath = path.join(planDir, filename);
-      
-      // Write the content to the file
-      await fs.writeFile(filePath, content, 'utf-8');
-      
-      console.debug(`[ImplementationPlanProcessor] Saved implementation plan to ${filePath}`);
-      return filePath;
-    } catch (error) {
-      console.error('[ImplementationPlanProcessor] Error saving implementation plan:', error);
-      throw error;
-    }
-  }
 }
 
 // Export the job type this processor handles

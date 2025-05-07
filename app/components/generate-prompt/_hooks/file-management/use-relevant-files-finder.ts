@@ -57,7 +57,7 @@ export function useRelevantFilesFinder({
       ? includedPaths
       : null; // null means all files in the project
     
-    console.log(`[RelevantFilesFinder] Finding relevant files: ${searchSelectedFilesOnly ? `${includedPaths.length} selected files` : 'all files'}`);
+    console.log(`[RelevantFilesFinder] Finding relevant files: ${searchSelectedFilesOnly ? `${includedPaths.length} selected files` : 'all files'}, including file contents`);
     
     const result = await findRelevantFilesAction(
       activeSessionId,
@@ -65,7 +65,8 @@ export function useRelevantFilesFinder({
       filesToSearch ? filesToSearch : [],
       [],
       {
-        projectDirectory: normalizePath(projectDirectory)
+        projectDirectory: normalizePath(projectDirectory),
+        includeFileContents: true // Always include file contents for better accuracy
       }
     );
     

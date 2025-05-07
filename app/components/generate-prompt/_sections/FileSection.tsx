@@ -22,8 +22,20 @@ const FileSection = React.memo(function FileSection() {
         onToggleSelection={fileState.toggleFileSelection}
         onToggleExclusion={fileState.toggleFileExclusion}
         onBulkToggle={(shouldInclude, targetFiles) => {
-          // Type assertion to fix incompatible FileInfo types
+          console.log(`[FileSection] Bulk toggle ${shouldInclude ? 'selecting' : 'deselecting'} ${targetFiles.length} files`);
+          
+          // First update local state
           fileState.handleBulkToggle(targetFiles as any, shouldInclude);
+          
+          // Then ensure we save to backend with some delay to let React finish updating
+          setTimeout(() => {
+            const state = fileState.getFileStateForSession();
+            console.log(`[FileSection] Saving bulk update: included=${state.includedFiles.length}, excluded=${state.forceExcludedFiles.length}`);
+            if (context.saveSessionState && context.activeSessionId) {
+              // This bypasses all the debouncing and directly saves the state
+              context.saveSessionState(context.activeSessionId, undefined, state);
+            }
+          }, 100);
         }}
         showOnlySelected={fileState.showOnlySelected}
         onShowOnlySelectedChange={() => fileState.setShowOnlySelected(!fileState.showOnlySelected)}
@@ -34,19 +46,12 @@ const FileSection = React.memo(function FileSection() {
         isLoading={fileState.isLoadingFiles || fileState.isFindingFiles}
         loadingMessage={
           fileState.isFindingFiles 
-            ? "Finding relevant files..." 
+            ? "Finding relevant files (analyzing file contents)..." 
             : fileState.isLoadingFiles 
               ? "Loading files..." 
               : ""
         }
-        onAddPath={(path) => {
-          fileState.setPastedPaths(
-            fileState.pastedPaths 
-              ? `${fileState.pastedPaths}\n${path}` 
-              : path
-          );
-        }}
-        onFindRelevantFiles={fileState.findRelevantFiles}
+              onFindRelevantFiles={fileState.findRelevantFiles}
         isFindingFiles={fileState.isFindingFiles}
         searchSelectedFilesOnly={fileState.searchSelectedFilesOnly}
         onToggleSearchSelectedFilesOnly={fileState.toggleSearchSelectedFilesOnly}

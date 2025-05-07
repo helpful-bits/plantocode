@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { readDirectoryAction, readExternalFileAction } from "@/actions/read-directory-actions";
 import { enhanceTaskDescriptionAction, generateTaskPromptTemplateAction } from "@/actions/task-enhancement-actions";
 import { estimateTokens } from "@/lib/token-estimator";
-import { normalizePath } from "@/lib/path-utils";
+import { normalizePath, makePathRelative } from "@/lib/path-utils";
 import { FilesMap, FileInfo } from "./file-management/use-project-file-list";
 
 interface UsePromptGeneratorProps {
@@ -86,7 +86,7 @@ export function usePromptGenerator({
         console.log("[PromptGenerator] Using pasted paths for file selection");
         // Create a normalized map for better file path matching
         const normalizedFileContentsMap = Object.keys(currentFileContents).reduce((acc, key) => {
-          const normalizedKey = normalizePath(key, projectDirectory);
+          const normalizedKey = makePathRelative(key, projectDirectory);
           acc[normalizedKey] = key; // Store the original key
           return acc as Record<string, string>;
         }, {} as Record<string, string>);
@@ -101,7 +101,7 @@ export function usePromptGenerator({
 
         for (const filePath of rawPastedPaths) {
           // Try to normalize the path if it's not an absolute path
-          const normalizedPath = normalizePath(filePath, projectDirectory);
+          const normalizedPath = makePathRelative(filePath, projectDirectory);
           
           // Check if the path exists in our normalized map
           if (normalizedFileContentsMap[normalizedPath]) {
@@ -162,7 +162,7 @@ export function usePromptGenerator({
         // Create a map of normalized paths to original paths for better matching
         const normalizedToOriginal: Record<string, string> = {};
         Object.keys(currentFileContents).forEach(originalPath => {
-          const normalizedPath = normalizePath(originalPath, projectDirectory);
+          const normalizedPath = makePathRelative(originalPath, projectDirectory);
           normalizedToOriginal[normalizedPath] = originalPath;
         });
         

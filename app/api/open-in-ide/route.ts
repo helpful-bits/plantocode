@@ -28,15 +28,78 @@ export async function POST(request: NextRequest) {
     // Security check: verify file exists
     try {
       if (!existsSync(resolvedFilePath)) {
-        // If file doesn't exist at the provided path, check if it might be in the fallback location
+        // If file doesn't exist at the provided path, try creating directories if needed
+        try {
+          // Create directories if needed
+          await fs.mkdir(path.dirname(resolvedFilePath), { recursive: true });
+        } catch (dirError) {
+          console.error(`Error creating directories for ${resolvedFilePath}:`, dirError);
+        }
+        
+        // Check if maybe just the directory was missing
+        if (existsSync(resolvedFilePath)) {
+          return openFileWithIDE(resolvedFilePath, customCommand);
+        }
+        
+        // Try different path variations for implementation plans
+        // 1. Check if this is an implementation plan file (typically has .xml extension and 'plan_' prefix)
+        const isImplementationPlan = path.basename(resolvedFilePath).startsWith('plan_') && 
+                                   path.extname(resolvedFilePath) === '.xml';
+        
+        if (isImplementationPlan && projectDirectory) {
+          // Try standard implementation plans directory paths
+          const implPlansDirectPaths = [
+            // Standard location within project directory
+            path.join(projectDirectory, 'implementation_plans', path.basename(resolvedFilePath)),
+            // Alternative location sometimes used
+            path.join(projectDirectory, 'output', 'implementation_plans', path.basename(resolvedFilePath))
+          ];
+          
+          // Check each potential path
+          for (const potentialPath of implPlansDirectPaths) {
+            if (existsSync(potentialPath)) {
+              // Found implementation plan at alternative path
+              return openFileWithIDE(potentialPath, customCommand);
+            }
+          }
+        }
+        
+        // If still not found, check if it might be in the fallback location
         const filename = getPatchFilename(resolvedFilePath);
         const fallbackPath = path.join(getAppOutputFilesDirectory(), filename);
         
         if (existsSync(fallbackPath)) {
           // Use the fallback path instead
+          // Found file at fallback path
           return openFileWithIDE(fallbackPath, customCommand);
         }
         
+        // Final attempt: extract just the filename and look for it in implementation_plans directory
+        const baseFilename = path.basename(resolvedFilePath);
+        if (projectDirectory && baseFilename) {
+          const projectImplPlanDir = path.join(projectDirectory, 'implementation_plans');
+          if (existsSync(projectImplPlanDir)) {
+            // Get all files in the implementation_plans directory
+            try {
+              const files = await fs.readdir(projectImplPlanDir);
+              // Look for files that contain parts of the requested filename
+              const similarFiles = files.filter(file => 
+                file.includes(baseFilename) || baseFilename.includes(file)
+              );
+              
+              if (similarFiles.length > 0) {
+                // Use the first matching file
+                const matchPath = path.join(projectImplPlanDir, similarFiles[0]);
+                // Found similar implementation plan by partial match
+                return openFileWithIDE(matchPath, customCommand);
+              }
+            } catch (readError) {
+              console.error(`[OpenInIDE] Error reading implementation_plans directory:`, readError);
+            }
+          }
+        }
+        
+        console.error(`[OpenInIDE] File not found after trying multiple paths: ${resolvedFilePath}`);
         return NextResponse.json({ error: 'File not found' }, { status: 404 });
       }
       
@@ -61,7 +124,7 @@ function openFileWithIDE(resolvedFilePath: string, customCommand: string | null)
     command = customCommand.trim();
     args = [resolvedFilePath];
     
-    console.log(`[OpenInIDE] Using custom command: ${command} ${args.join(' ')}`);
+    // Using custom command to open the file
   } else {
     // Fall back to OS-specific defaults
     switch (os.platform()) {
@@ -82,7 +145,7 @@ function openFileWithIDE(resolvedFilePath: string, customCommand: string | null)
         break;
     }
     
-    console.log(`[OpenInIDE] Using default command: ${command} ${args.join(' ')}`);
+    // Using default command for this OS platform
   }
 
   // Execute the command

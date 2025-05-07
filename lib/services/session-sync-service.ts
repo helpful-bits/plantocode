@@ -1197,12 +1197,13 @@ export class SessionSyncService {
       // Mark this as a session being switched to for queue prioritization
       this.markSessionSwitching(sessionIdStr);
       
-      // Clear only 'save' and 'delete' operations for this session
-      // but preserve 'load' operations to prevent race conditions
-      // Also preserve any in-progress operations to avoid abrupt cancellations
-      // Call with correct parameters based on the function definition
+      // Clear ALL operations for this session to ensure we get a completely fresh state
+      // We want to start with a clean slate rather than let any existing operations continue
+      // This is especially important for save operations which might overwrite our freshly loaded state
       const clearedCount = queueManager.clearSessionOperations(
-        sessionIdStr
+        sessionIdStr,
+        undefined, // Clear all operation types (load, save, delete, setActive)
+        false // Don't preserve in-progress operations to ensure complete reset
       );
       console.log(`[SessionSyncService][${timestamp}][${operationId}] Cleared ${clearedCount} non-essential pending operations for session ${sessionIdStr}`);
       

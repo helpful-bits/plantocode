@@ -104,19 +104,28 @@ export function useTaskDescriptionState({
     // as data will be loaded by the session loading handler
   }, [activeSessionId, reset]);
   
+  // Create a debounced version of onInteraction to reduce frequency of calls
+  const debouncedInteraction = useMemo(
+    () => debounce(() => {
+      if (onInteraction) {
+        console.log('[TaskDescriptionState] Triggering debounced interaction for task description changes');
+        onInteraction();
+      }
+    }, 1000), // 1 second debounce for textarea changes
+    [onInteraction]
+  );
+
   // Function to update task description
   const handleTaskDescriptionChange = useCallback((value: string) => {
-    // Set the task description state
+    // Set the task description state immediately for UI responsiveness
     setTaskDescription(value);
     
     // Update the last saved content reference
     lastContentRef.current = value;
     
-    // Notify of changes
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [onInteraction]);
+    // Notify of changes with debouncing
+    debouncedInteraction();
+  }, [debouncedInteraction]);
 
   // Store selection range for text improvement
   const selectionRangeRef = useRef<{start: number; end: number; text: string} | null>(null);

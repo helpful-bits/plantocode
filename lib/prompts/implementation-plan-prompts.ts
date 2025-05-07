@@ -22,6 +22,7 @@ You are an expert software architect tasked with providing a detailed implementa
 - Prioritize simple, straightforward solutions without overengineering
 - Choose the most maintainable and pragmatic approach over complex solutions
 - Identify and eliminate any code duplication in the solution
+- Critically evaluate the existing application architecture and, when a significantly better approach is identified, propose and outline those changes boldly
 - Refactor overly large files into smaller, focused modules with clear responsibilities
 - Thoroughly analyze and understand data structures, data flow, and function interactions
 </implementation_plan_requirements>
@@ -116,9 +117,10 @@ ${codeContext}
 </codebase_info>
 
 <request>
-Provide a detailed, step-by-step implementation plan for this task using the required XML structure.
-
-Focus on:
+<important_part>
+Provide a thorough, step-by-step implementation plan for the original task in the EXACT XML structure specified above (the one that starts with <implementation_plan> and ends with </implementation_plan>).
+</important_part>
+<focus_points>
 - Specific file paths, component names, and exact changes needed for each file
 - Analyzing data structures, data flow, and function interactions before implementing changes
 - Creating simple, straightforward solutions WITHOUT overengineering
@@ -126,15 +128,23 @@ Focus on:
 - Refactoring large files into smaller modules with clear responsibilities
 - Including bash commands only when they provide significant value
 - Using targeted patterns and specific directories in exploration commands
+- Critically evaluating the current architecture and boldly proposing superior approaches when they offer clear benefits
+</focus_points>
 
+<thinking_process>
 THINK DEEPLY about the solution:
 - Carefully analyze the existing architecture and code patterns
 - Explore multiple alternative approaches
 - Take time to think through all implications of your plan
 - Iterate on your plan to ensure it's truly the BEST solution possible
+</thinking_process>
 
+<forbidden_actions>
 DO NOT include:
 - Actual code implementations (only describe what changes are needed)
 - Git branch instructions, version control commands, or test directives
+- Any mentions of testing
+</forbidden_actions>
+
 </request>`;
 }

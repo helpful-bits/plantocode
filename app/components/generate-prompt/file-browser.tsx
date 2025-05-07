@@ -164,23 +164,25 @@ export default function FileBrowser({
   );
 
 
-  // Handle adding path to selection textarea
   const handleAddPath = useCallback(async (path: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering parent click handlers
     
-    // Call the callback if provided
-    if (onAddPath) {
-      onAddPath(path);
-      
-      // Set visual feedback
-      setCopiedPath(path);
-      // Reset the copied state after 2 seconds
-      setTimeout(() => {
-        // Only reset if the current copied path is still the one we set
-        setCopiedPath(currentPath => currentPath === path ? null : currentPath);
-      }, 2000);
+    // Set visual feedback to indicate path was copied
+    setCopiedPath(path);
+    // Reset the copied state after 2 seconds
+    setTimeout(() => {
+      // Only reset if the current copied path is still the one we set
+      setCopiedPath(currentPath => currentPath === path ? null : currentPath);
+    }, 2000);
+    
+    // Copy path to clipboard instead
+    try {
+      await navigator.clipboard.writeText(path);
+      console.log("[FileBrowser] Path copied to clipboard:", path);
+    } catch (error) {
+      console.error("[FileBrowser] Failed to copy path to clipboard:", error);
     }
-  }, [onAddPath]);
+  }, []);
 
   // Handle bulk toggle for filtered files
   const handleBulkToggle = useCallback((shouldInclude: boolean) => {
@@ -266,7 +268,7 @@ export default function FileBrowser({
             ) : (
               <Sparkles className="h-4 w-4 mr-2" />
             )}
-            Find Relevant Files
+            Find Relevant Files{searchSelectedFilesOnly ? (includedCount > 0 ? ` (${includedCount} Files)` : '') : ' (All Files)'}
           </Button>
         </div>
         
@@ -322,7 +324,11 @@ export default function FileBrowser({
                 <Button
                   type="button"
                   variant="secondary" size="sm"
-                  onClick={() => handleBulkToggle(false)}
+                  onClick={() => {
+                    console.log('[FileBrowser] Deselect Visible clicked');
+                    // Directly call onBulkToggle to skip any unnecessary abstractions
+                    onBulkToggle(false, filteredFiles);
+                  }}
                   disabled={filteredFiles.length === 0 || includedCount === 0}
                   className="h-9" // Keep existing style
                 > {/* Close Button */}
@@ -331,7 +337,11 @@ export default function FileBrowser({
                 <Button
                   type="button"
                   variant="secondary" size="sm"
-                  onClick={() => handleBulkToggle(true)}
+                  onClick={() => {
+                    console.log('[FileBrowser] Include Filtered clicked');
+                    // Directly call onBulkToggle to skip any unnecessary abstractions
+                    onBulkToggle(true, filteredFiles);
+                  }}
                   disabled={filteredFiles.length === 0 || filteredFiles.every(f => f.included || f.forceExcluded)}
                   className="h-9" // Keep existing style
                 > {/* Close Button */}

@@ -3,15 +3,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { shouldIncludeByDefault } from "../../_utils/file-selection";
 import { useNotification } from "@/lib/contexts/notification-context";
-import { normalizePath, normalizePathForComparison } from "@/lib/path-utils";
+import { normalizePath, normalizePathForComparison, makePathRelative } from "@/lib/path-utils";
 
 // Types
 export type FileInfo = { 
-  path: string; 
+  path: string;         // Project-relative path
   size?: number; 
   included: boolean; 
   forceExcluded: boolean;
-  comparablePath: string; // Added for consistent path comparison
+  comparablePath: string; // Normalized project-relative path for consistent comparison
 };
 
 export type FilesMap = { [path: string]: FileInfo };
@@ -123,19 +123,23 @@ export function useProjectFileList(projectDirectory: string | null) {
         const hasStats = result.stats && Array.isArray(result.stats) && result.stats.length === filePaths.length;
         
         for (let i = 0; i < filePaths.length; i++) {
-          const filePath = filePaths[i];
-          // Determine if file should be included by default
-          const include = shouldIncludeByDefault(filePath);
+          const absoluteFilePath = filePaths[i];
+          
+          // Convert absolute path to project-relative path
+          const relativePath = makePathRelative(absoluteFilePath, dirToLoad);
+          
+          // No automatic inclusion - start with everything unchecked
+          const include = false;
           
           // Get size from stats if available
           const fileSize = hasStats ? result.stats[i]?.size : undefined;
           
-          // Compute comparable path for consistent matching
-          const comparablePath = normalizePathForComparison(filePath);
+          // Compute comparable path for consistent matching from the relative path
+          const comparablePath = normalizePathForComparison(relativePath);
           
-          // Add to file map
-          filesMap[filePath] = {
-            path: filePath,
+          // Add to file map using the relative path as the key
+          filesMap[relativePath] = {
+            path: relativePath,
             size: fileSize,
             included: include,
             forceExcluded: false,
@@ -144,7 +148,7 @@ export function useProjectFileList(projectDirectory: string | null) {
         }
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`[ProjectFileList] Processed ${Object.keys(filesMap).length} file paths into filesMap`);
+          console.log(`[ProjectFileList] Processed ${Object.keys(filesMap).length} file paths into filesMap (project-relative paths)`);
         }
         
         // Final check for abort signal before updating state

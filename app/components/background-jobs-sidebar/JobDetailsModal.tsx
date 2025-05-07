@@ -213,7 +213,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         <div className="flex flex-col space-y-4 flex-grow overflow-hidden">
           <div className="flex flex-col">
             <h4 className="font-semibold mb-1">Prompt</h4>
-            <ScrollArea className="h-[120px] min-h-[120px] border rounded-md p-3 text-sm bg-gray-50">
+            <ScrollArea className="h-[180px] min-h-[180px] border rounded-md p-3 text-sm bg-gray-50">
               <pre className="whitespace-pre-wrap font-mono text-xs">{promptContent}</pre>
             </ScrollArea>
           </div>

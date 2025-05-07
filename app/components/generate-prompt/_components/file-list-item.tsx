@@ -29,18 +29,8 @@ function FileListItem({
   const fileName = pathParts.pop() || '';
   const dirPath = pathParts.join('/');
   
-  const handleToggleForceExcludeOffAndInclude = () => {
-    if (file.forceExcluded) {
-      // First disable force exclude, then enable inclusion
-      onToggleExclusion(file.path);
-      if (!file.included) {
-        onToggleSelection(file.path);
-      }
-    } else {
-      // Normal toggle
-      onToggleSelection(file.path);
-    }
-  };
+  // The complex handleToggleForceExcludeOffAndInclude function has been removed
+  // Instead, we'll use the simpler onToggleSelection directly
   
   const formatFileSize = (sizeInBytes: number | undefined) => {
     // Handle undefined size values
@@ -99,7 +89,7 @@ function FileListItem({
             "font-mono flex-1 truncate cursor-pointer", 
             file.forceExcluded && "line-through text-muted-foreground/80"
           )}
-          onClick={handleToggleForceExcludeOffAndInclude}
+          onClick={() => onToggleSelection(file.path)}
           title={`${file.path}${file.forceExcluded ? " (force excluded)" : file.included ? " (included)" : " (not included)"}`}
         >
           {dirPath ? (

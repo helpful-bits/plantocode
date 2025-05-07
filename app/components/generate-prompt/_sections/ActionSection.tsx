@@ -53,7 +53,7 @@ const ActionSection = React.memo(function ActionSection() {
   const canPerformPlanAction = Boolean(
     projectDirectory && 
     taskState.taskDescription.trim() && 
-    (fileState.includedPaths.length > 0 || fileState.pastedPaths.trim().length > 0) &&
+    fileState.includedPaths.length > 0 &&
     activeSessionId
   );
   
@@ -63,16 +63,14 @@ const ActionSection = React.memo(function ActionSection() {
       hasProjectDirectory: Boolean(projectDirectory),
       hasTaskDescription: Boolean(taskState.taskDescription.trim()),
       hasIncludedPaths: fileState.includedPaths.length > 0,
-      hasPastedPaths: fileState.pastedPaths.trim().length > 0,
       hasActiveSession: Boolean(activeSessionId),
       canPerformPlanAction
     });
-  }, [projectDirectory, taskState.taskDescription, fileState.includedPaths.length, fileState.pastedPaths, activeSessionId, canPerformPlanAction]);
+  }, [projectDirectory, taskState.taskDescription, fileState.includedPaths.length, activeSessionId, canPerformPlanAction]);
   
   // Handler for generating implementation plan prompt
   const handleGeneratePrompt = async () => {
-    if (!projectDirectory || !taskState.taskDescription || 
-        (fileState.includedPaths.length === 0 && !fileState.pastedPaths.trim())) {
+    if (!projectDirectory || !taskState.taskDescription || fileState.includedPaths.length === 0) {
       showNotification({
         title: "Cannot Generate Prompt",
         message: "Please ensure you have a project directory, task description, and at least one file selected.",
@@ -81,8 +79,7 @@ const ActionSection = React.memo(function ActionSection() {
       console.log("[ActionSection] Cannot generate prompt:", {
         hasProjectDirectory: Boolean(projectDirectory),
         hasTaskDescription: Boolean(taskState.taskDescription),
-        hasIncludedPaths: fileState.includedPaths.length > 0,
-        hasPastedPaths: Boolean(fileState.pastedPaths.trim()),
+        hasIncludedPaths: fileState.includedPaths.length > 0
       });
       return;
     }
@@ -126,8 +123,7 @@ const ActionSection = React.memo(function ActionSection() {
   // Handler for viewing implementation plan prompt in a dialog
   const handleViewPlanPrompt = async () => {
     try {
-      if (projectDirectory && taskState.taskDescription && 
-          (fileState.includedPaths.length > 0 || fileState.pastedPaths.trim())) {
+      if (projectDirectory && taskState.taskDescription && fileState.includedPaths.length > 0) {
         setShowPlanPromptDialog(true);
         
         // Get the plan prompt but don't copy it

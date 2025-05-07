@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from "react";
 import { Session } from "@/types/session-types";
+import { LoadedSessionFilePrefs } from "../_hooks/use-generate-prompt-state";
 
 // Define the structure of the context value
 export interface GeneratePromptContextValue {
@@ -20,6 +21,9 @@ export interface GeneratePromptContextValue {
   // Project data
   projectDirectory: string | null;
   projectDataLoading: boolean;
+  
+  // Loaded file preferences from session
+  loadedSessionFilePrefs: LoadedSessionFilePrefs | null;
   
   // Task state
   taskState: {
@@ -81,6 +85,16 @@ export interface GeneratePromptContextValue {
       searchSelectedFilesOnly: boolean;
     }
   ) => Promise<void>;
+  // New method to immediately flush any pending debounced saves
+  flushPendingSaves: (
+    fileStateGetter?: () => {
+      searchTerm: string;
+      pastedPaths: string;
+      includedFiles: string[];
+      forceExcludedFiles: string[];
+      searchSelectedFilesOnly: boolean;
+    }
+  ) => Promise<boolean>;
   getCurrentSessionState: (
     fileState?: {
       searchTerm: string;
