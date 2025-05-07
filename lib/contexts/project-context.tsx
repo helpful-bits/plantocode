@@ -289,9 +289,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const isSwitchingOperation = isSwitchingSession;
       
       // Update local state immediately for a responsive UI
-      // The third parameter is a priority flag (added in useLocalStorage hook)
+      // The second parameter is a priority flag (added in useLocalStorage hook)
       // When switching sessions, we want to bypass rate limiting
-      setActiveSessionIdLS(id, undefined, isSwitchingOperation);
+      setActiveSessionIdLS(id, isSwitchingOperation);
       console.log(`[ProjectContext][${timestamp}] Updated local active session via localStorage hook: ${id || 'null'} (priority: ${isSwitchingOperation})`);
       
       // Inform the sync service about the session change

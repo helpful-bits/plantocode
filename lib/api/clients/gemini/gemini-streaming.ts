@@ -15,6 +15,7 @@ import {
   updateJobToFailed,
   handleApiError
 } from '@/lib/jobs/job-helpers';
+import { processSseEvent, SSEEventResult } from './utils/sse-processor';
 
 // Constants
 const GENERATE_CONTENT_API = "generateContent";
@@ -67,83 +68,6 @@ export interface GeminiRequestOptions {
   metadata?: { [key: string]: any; };
 }
 
-// Helper for the SSE event processing
-interface SSEEventResult {
-  success: boolean;
-  content: string | null;
-  tokenCount: number;
-  charCount: number;
-}
-
-/**
- * Process a Server-Sent Event (SSE) from the Gemini API
- */
-export function processSseEvent(eventData: string, writeStream: WriteStream | null): SSEEventResult {
-  try {
-    // Default result object
-    const result: SSEEventResult = {
-      success: false,
-      content: null,
-      tokenCount: 0,
-      charCount: 0
-    };
-    
-    // Parse the JSON data from the event
-    const data = JSON.parse(eventData);
-    
-    // Handle error responses
-    if (data.error) {
-      console.error(`[Gemini Streaming] API Error:`, data.error);
-      return result;
-    }
-    
-    // If response has no candidates, it's likely an empty event
-    if (!data.candidates || data.candidates.length === 0) {
-      // This is normal for the final event in a sequence
-      return { ...result, success: true };
-    }
-    
-    // Extract content from the first candidate
-    const candidate = data.candidates[0];
-    
-    // If we don't have content or parts, it's likely an empty/control event
-    if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
-      // This is typical for initial event or empty update
-      return { ...result, success: true };
-    }
-    
-    // Get the text content from the parts array
-    const text = candidate.content.parts[0].text || '';
-    
-    // Write to file if we have a stream and content
-    if (writeStream && text) {
-      writeStream.write(text);
-    }
-    
-    // If the candidate has a finishReason, store it for processing
-    // const finishReason = candidate.finishReason;
-    
-    // Return structured result with content and count metrics
-    result.success = true;
-    result.content = text;
-    
-    // Calculate approximate token count (3-4 chars per token, erring on the side of caution)
-    const approxTokens = Math.ceil(text.length / 3.5);
-    result.tokenCount = approxTokens;
-    result.charCount = text.length;
-    
-    return result;
-  } catch (error) {
-    console.error(`[Gemini Streaming] Error processing SSE event:`, error, eventData);
-    return {
-      success: false,
-      content: null,
-      tokenCount: 0,
-      charCount: 0
-    };
-  }
-}
-
 /**
  * Send a streaming request to the Gemini API
  */
@@ -157,12 +81,14 @@ export async function sendStreamingRequest(
     return { isSuccess: false, message: "Gemini API key not found in environment variables" };
   }
   
-  // Create a unique request ID if not provided
+  // Use request ID for tracking or create a new one
   const requestId = options.requestId || `gemini_stream_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
   
   // Load project settings if projectDirectory is provided
   const taskType = options.taskType || 'streaming';
   const projectDirectory = options.projectDirectory;
+  
+  // Use existing request ID if provided
   
   if (projectDirectory && taskType) {
     try {
@@ -202,24 +128,57 @@ export async function sendStreamingRequest(
   const streamingUpdates = options.streamingUpdates;
   
   try {
-    // Create the background job using the centralized helper
-    job = await createBackgroundJob(
-      sessionId,
-      {
-        apiType: options.apiType || 'gemini' as ApiType,
-        taskType: options.taskType as TaskType || 'streaming' as TaskType,
-        model: modelId,
-        includeSyntax: !!options.includeSyntax,
-        temperature: temperature
+    // If we have a request ID that looks like a job ID (starting with 'job_'),
+    // use it instead of creating a new job
+    if (options.requestId && options.requestId.startsWith('job_')) {
+      
+      // Get the job from the database to make sure it exists
+      const existingJob = await backgroundJobRepository.getBackgroundJob(options.requestId);
+      
+      if (existingJob) {
+        // Use the existing job
+        job = existingJob;
+        
+        // Update to preparing status
+        await backgroundJobRepository.updateBackgroundJobStatus({
+          jobId: job.id,
+          status: 'preparing' as JobStatus,
+          statusMessage: 'Setting up Gemini API request'
+        });
+      } else {
+        console.error(`[Gemini Streaming] Could not find job with ID ${options.requestId}, creating new job`);
+        // Fall back to creating a new job
+        job = await createBackgroundJob(
+          sessionId,
+          {
+            apiType: options.apiType || 'gemini' as ApiType,
+            taskType: options.taskType as TaskType || 'streaming' as TaskType,
+            model: modelId,
+            includeSyntax: !!options.includeSyntax,
+            temperature: temperature
+          }
+        );
       }
-    );
-    
-    // Update to preparing status
-    await backgroundJobRepository.updateBackgroundJobStatus({
-      jobId: job?.id,
-      status: 'preparing' as JobStatus,
-      statusMessage: 'Setting up Gemini API request'
-    });
+    } else {
+      // Create a new background job the normal way
+      job = await createBackgroundJob(
+        sessionId,
+        {
+          apiType: options.apiType || 'gemini' as ApiType,
+          taskType: options.taskType as TaskType || 'streaming' as TaskType,
+          model: modelId,
+          includeSyntax: !!options.includeSyntax,
+          temperature: temperature
+        }
+      );
+      
+      // Update to preparing status
+      await backgroundJobRepository.updateBackgroundJobStatus({
+        jobId: job?.id,
+        status: 'preparing' as JobStatus,
+        statusMessage: 'Setting up Gemini API request'
+      });
+    }
     
     // If the task type is for implementation plans, save to the appropriate directory
     if (options.taskType === 'implementation_plan') {
@@ -247,7 +206,7 @@ export async function sendStreamingRequest(
           : '';
         
         // Create appropriate filename with extension based on task type
-        const fileExtension = options.taskType === 'implementation_plan' ? '.md' : '.xml';
+        const fileExtension = options.taskType === 'implementation_plan' ? '.xml' : '.md';
         const filePrefix = options.taskType === 'implementation_plan' ? 'plan_' : 'output_';
         
         // Include session name in the filename if available
@@ -257,7 +216,6 @@ export async function sendStreamingRequest(
         
         outputPath = path.join(outputDir, fileName);
         
-        console.log(`Creating implementation plan file: ${outputPath}`);
         
         // Create the write stream
         writeStream = createWriteStream(outputPath);
@@ -335,8 +293,7 @@ export async function sendStreamingRequest(
           let totalChars = 0;
           
           // Make the API request
-          console.log(`[Gemini Streaming] Calling ${modelId} with streaming`);
-          const response = await fetch(apiUrl, {
+              const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -406,8 +363,8 @@ export async function sendStreamingRequest(
               // Skip empty or non-JSON events
               if (!eventText || eventText === '[DONE]') continue;
               
-              // Process the event
-              const result = processSseEvent(eventText, writeStream);
+              // Process the event with task type
+              const result = processSseEvent(eventText, writeStream, options.taskType);
               if (result.success && result.content) {
                 // Aggregate content
                 aggregatedText += result.content;
@@ -429,7 +386,6 @@ export async function sendStreamingRequest(
             
             // Cancel handling
             if (streamingRequestPool.isCancelled(requestId)) {
-              console.log(`[Gemini Streaming] Request ${requestId} was cancelled`);
               reader.cancel();
               
               // Update job status to cancelled
@@ -476,7 +432,7 @@ export async function sendStreamingRequest(
               
               if (!eventText || eventText === '[DONE]') continue;
               
-              const result = processSseEvent(eventText, writeStream);
+              const result = processSseEvent(eventText, writeStream, options.taskType);
               if (result.success && result.content) {
                 aggregatedText += result.content;
                 totalTokens += result.tokenCount;

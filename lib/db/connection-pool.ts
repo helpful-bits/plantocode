@@ -6,7 +6,8 @@ import { fixDatabasePermissions, handleReadonlyDatabase } from './utils';
 import { APP_DATA_DIR, DB_FILE } from './constants';
 
 // Connection pool settings
-const POOL_SIZE = 3;
+// Increased from 3 to 7 to accommodate worker concurrency (5) plus buffer
+const POOL_SIZE = process.env.CONNECTION_POOL_SIZE ? parseInt(process.env.CONNECTION_POOL_SIZE, 10) : 7;
 const MAX_CONNECTION_AGE_MS = 300000; // 5 minutes
 const CONNECTION_TIMEOUT_MS = 5000; // 5 seconds busy timeout
 const MAX_RETRIES = 3; // Maximum retries for locked database
@@ -24,6 +25,17 @@ const isDebugEnabled = () => {
 const debugLog = (message: string, ...args: any[]) => {
   if (isDebugEnabled()) {
     console.debug(message, ...args);
+  }
+};
+
+// Wrapper for fallback warning logs - set to false to disable these specific warnings
+// This can be enabled with CONNECTION_POOL_FALLBACK_WARN=true env var
+const logFallbackWarning = (message: string, ...args: any[]) => {
+  if (process.env.CONNECTION_POOL_FALLBACK_WARN === 'true') {
+    console.warn(message, ...args);
+  } else {
+    // Still log at debug level if debug mode is enabled
+    debugLog(message, ...args);
   }
 };
 
@@ -210,7 +222,8 @@ class ConnectionPool {
         if (conn.isReadOnly) {
           debugLog(`[ConnectionPool] Reusing existing readonly connection ${conn.id} for read operation`);
         } else {
-          console.trace(`[ConnectionPool] Fallback: Reusing existing write connection ${conn.id} for read operation (Pool possibly full or only write connections available)`);
+          // Using logFallbackWarning instead of console.trace to avoid stack traces in the logs
+          logFallbackWarning(`[ConnectionPool] Fallback: Reusing existing write connection ${conn.id} for read operation (Pool possibly full or only write connections available)`);
         }
         return conn;
       }

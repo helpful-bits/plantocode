@@ -4,13 +4,89 @@
 import path from 'path';
 
 /**
- * Formats a file path for display by making it relative to the base directory
- * @param filePath The file path to format
- * @param baseDir Optional base directory to make path relative to
- * @returns A formatted path suitable for display in the UI
+ * Simplifies a path by normalizing slashes and removing redundant parts.
+ * This is the core normalization function focusing ONLY on formatting, not path relationships.
+ * 
+ * @param filePath The file path to normalize
+ * @param addTrailingSlash If true, ensures the path ends with a slash
+ * @returns A normalized path with consistent slash formatting
  */
-export function formatPathForDisplay(filePath: string, baseDir?: string): string {
-  return normalizePath(filePath, baseDir);
+export function normalizePath(filePath: string, addTrailingSlash = false): string {
+  if (!filePath) return filePath;
+  
+  let normalizedPath = filePath;
+  
+  // Convert backslashes to forward slashes
+  normalizedPath = normalizedPath.replace(/\\/g, '/');
+  
+  // Replace multiple consecutive slashes with a single one
+  normalizedPath = normalizedPath.replace(/\/\/+/g, '/');
+  
+  // Add trailing separator if requested and not already present
+  if (addTrailingSlash && !normalizedPath.endsWith('/')) {
+    normalizedPath += '/';
+  }
+  
+  return normalizedPath;
+}
+
+/**
+ * Makes an absolute path relative to a project root directory.
+ * If the path is not within the project root, returns the original path.
+ * 
+ * @param absolutePath The absolute file path to make relative
+ * @param projectRoot The absolute path to the project root directory
+ * @returns A path relative to the project root or the original path if not within the project
+ */
+export function makePathRelative(absolutePath: string, projectRoot: string): string {
+  if (!absolutePath || !projectRoot) return absolutePath;
+  
+  // Normalize both paths for consistent comparison
+  const normalizedPath = normalizePath(absolutePath);
+  let normalizedRoot = normalizePath(projectRoot);
+  
+  // Ensure root ends with a slash for accurate startsWith comparison
+  if (!normalizedRoot.endsWith('/')) {
+    normalizedRoot += '/';
+  }
+
+  // If the path starts with the project root, make it relative
+  if (normalizedRoot !== '/' && normalizedPath.startsWith(normalizedRoot)) {
+    return normalizedPath.substring(normalizedRoot.length);
+  }
+  
+  // Path is not within the project root, return original
+  return absolutePath;
+}
+
+/**
+ * Resolves a relative or absolute path against a project root.
+ * If the path is already absolute, returns it unchanged.
+ * If it's relative, resolves it against the project root.
+ * 
+ * @param relativePathOrAbsolute A path which could be relative or absolute
+ * @param projectRoot The absolute path to the project root directory
+ * @returns A resolved absolute path
+ */
+export function resolvePath(relativePathOrAbsolute: string, projectRoot: string): string {
+  if (!relativePathOrAbsolute) return relativePathOrAbsolute;
+  if (!projectRoot) return relativePathOrAbsolute;
+  
+  // Check if the path is already absolute
+  const normalizedPath = normalizePath(relativePathOrAbsolute);
+  
+  // For Windows-style absolute paths (C:\path\to\file)
+  if (/^[A-Za-z]:[\\\/]/.test(normalizedPath)) {
+    return normalizedPath;
+  }
+  
+  // For Unix-style absolute paths (/path/to/file)
+  if (normalizedPath.startsWith('/')) {
+    return normalizedPath;
+  }
+  
+  // It's a relative path, resolve against project root
+  return path.join(projectRoot, normalizedPath);
 }
 
 /**
@@ -52,43 +128,21 @@ export function normalizePathForComparison(filePath: string): string {
 }
 
 /**
- * Normalizes file paths to ensure consistent handling throughout the application
- * using forward slashes and handling relative paths against a base directory.
- *
- * @param filePath The file path to normalize
- * @param baseDir Optional base directory to make paths relative to (if applicable)
- * @returns A normalized path for consistent comparison
- */ 
-export function normalizePath(filePath: string, baseDir?: string | null, addTrailingSlash = false): string {
-  if (!filePath) return filePath;
+ * Formats a file path for display by making it relative to the base directory
+ * @param filePath The file path to format
+ * @param baseDir Optional base directory to make path relative to
+ * @returns A formatted path suitable for display in the UI
+ */
+export function formatPathForDisplay(filePath: string, baseDir?: string): string {
+  if (!filePath) return '';
   
-  let normalizedPath = filePath;
-  
-  // Convert backslashes to forward slashes
-  normalizedPath = normalizedPath.replace(/\\/g, '/');
-  normalizedPath = normalizedPath.replace(/\/\/+/g, '/'); // Replace multiple slashes with single
-
-  // If baseDir is provided, try to make the path relative
+  // If baseDir is provided, make the path relative to it
   if (baseDir) {
-    // Normalize baseDir as well
-    let normBaseDir = baseDir.replace(/\\/g, '/');
-    // Ensure baseDir ends with a slash for accurate startsWith comparison
-    if (!normBaseDir.endsWith('/')) {
-      normBaseDir += '/';
-    }
-
-    // If the filePath starts with the baseDir, make it relative
-    if (normBaseDir !== '/' && normalizedPath.startsWith(normBaseDir)) { // Avoid stripping root paths accidentally
-      normalizedPath = normalizedPath.substring(normBaseDir.length);
-    }
+    return makePathRelative(filePath, baseDir);
   }
   
-  // Add trailing separator if requested and not already present
-  if (addTrailingSlash && !normalizedPath.endsWith('/')) {
-    normalizedPath += '/';
-  }
-  
-  return normalizedPath;
+  // Otherwise just normalize the path
+  return normalizePath(filePath);
 }
 
 /**
@@ -116,10 +170,10 @@ export function getDirectoryName(filePath: string): string {
 }
 
 /**
- * Returns the path to the output files directory in the project directory
+ * Returns the absolute path to the output files directory in the project directory
  * This directory is used for generated output files like patches, implementation plans, etc.
- * @param projectDirectory Path to the project directory
- * @returns Path to the output files directory within the project
+ * @param projectDirectory Absolute path to the project directory
+ * @returns Absolute path to the output files directory within the project
  */
 export function getProjectOutputFilesDirectory(projectDirectory: string): string {
   if (!projectDirectory) {
@@ -134,10 +188,10 @@ export function getProjectOutputFilesDirectory(projectDirectory: string): string
 export const IMPLEMENTATION_PLANS_DIR_NAME = 'implementation_plans';
 
 /**
- * Returns the path to the implementation plans directory in the project directory
+ * Returns the absolute path to the implementation plans directory in the project directory
  * This directory is used for generated implementation plans
- * @param projectDirectory Path to the project directory
- * @returns Path to the implementation plans directory within the project
+ * @param projectDirectory Absolute path to the project directory
+ * @returns Absolute path to the implementation plans directory within the project
  */
 export function getProjectImplementationPlansDirectory(projectDirectory: string): string {
   if (!projectDirectory) {
@@ -147,19 +201,19 @@ export function getProjectImplementationPlansDirectory(projectDirectory: string)
 }
 
 /**
- * Returns the path to the fallback outputs directory in the application directory
- * @returns Path to the application's output files directory
+ * Returns the absolute path to the fallback outputs directory in the application directory
+ * @returns Absolute path to the application's output files directory
  */
 export function getAppOutputFilesDirectory(): string {
   return path.join(process.cwd(), 'generated_outputs');
 }
 
 /**
- * Resolves an output filename to a full path in the output files directory
+ * Resolves an output filename to a full absolute path in the output files directory
  * @param filename The output filename
  * @param outputType Type of output (e.g., 'patches', 'implementation_plans')
- * @param projectDirectory Optional project directory
- * @returns The full path to the output file
+ * @param projectDirectory Optional absolute project directory path
+ * @returns The full absolute path to the output file
  */
 export function resolveOutputFilePath(filename: string, outputType: string, projectDirectory?: string): string {
   if (projectDirectory) {

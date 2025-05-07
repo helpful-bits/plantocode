@@ -99,7 +99,6 @@ export function createCoreTables(db: any): void {
       project_hash TEXT,
       task_description TEXT,
       search_term TEXT,
-      pasted_paths TEXT,
       title_regex TEXT,
       content_regex TEXT,
       negative_title_regex TEXT,

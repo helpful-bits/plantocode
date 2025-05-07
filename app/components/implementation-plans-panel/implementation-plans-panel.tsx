@@ -199,14 +199,32 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                         size="sm"
                         className="h-8 px-2"
                         onClick={() => {
-                          // If we don't have an outputFilePath, try to construct a reasonable path
+                          // Try to get or generate a reasonable file path
                           let filePath = plan.outputFilePath;
-                          if (!filePath && projectDirectory) {
-                            // Generate a path using the same pattern from implementation-plan-actions.ts
-                            const planFileName = `plan_${new Date(plan.createdAt).getTime()}.xml`;
-                            const sessionDir = plan.sessionId || 'default-session';
-                            filePath = `${projectDirectory}/implementation_plans/${sessionDir}/${planFileName}`;
+                          
+                          // Check the metadata first - might have path info even if outputFilePath is missing
+                          if (!filePath && plan.metadata?.outputFilePath) {
+                            filePath = plan.metadata.outputFilePath as string;
                           }
+                          
+                          // If still no path, construct one using timestamps and naming conventions
+                          if (!filePath && projectDirectory) {
+                            // Try a few different approaches to get the best filename
+                            
+                            // Option 1: Use timestamp from the job and sanitized prompt
+                            const timestamp = new Date(plan.createdAt).toISOString().replace(/[:.]/g, '-');
+                            const sanitizedPrompt = plan.prompt ? plan.prompt.slice(0, 30)
+                              .replace(/[^\w\s-]/g, '')
+                              .replace(/\s+/g, '-')
+                              .toLowerCase() : 'unknown';
+                            const planFileName = `plan_${timestamp}_${sanitizedPrompt}.xml`;
+                            filePath = `${projectDirectory}/implementation_plans/${planFileName}`;
+                            
+                            // Generated path based on naming convention
+                          }
+                          
+                          // Pass both the filePath and the XML content (as a fallback)
+                          // This way if opening fails, we can still try to create the file
                           handleOpenFile(filePath, plan.id);
                         }}
                         disabled={isOpening === plan.id}

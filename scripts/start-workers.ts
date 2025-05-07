@@ -14,6 +14,42 @@
  * alongside the Next.js server.
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+
+// Load environment variables
+const projectRoot = process.cwd();
+const envLocalPath = path.resolve(projectRoot, '.env.local');
+const envPath = path.resolve(projectRoot, '.env');
+
+let loadedEnvFile = null;
+
+try {
+  if (fs.existsSync(envLocalPath)) {
+    dotenv.config({ path: envLocalPath });
+    loadedEnvFile = envLocalPath;
+  } else if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath }); // Fallback to .env
+    loadedEnvFile = envPath;
+  }
+
+  if (loadedEnvFile) {
+    console.log(`[WorkerEnv] Successfully loaded environment variables from: ${loadedEnvFile}`);
+  } else {
+    console.warn(`[WorkerEnv] No .env.local or .env file found in project root (${projectRoot}). API keys might be missing for worker processes.`);
+  }
+} catch (e) {
+  console.error(`[WorkerEnv] Error loading environment file: ${e instanceof Error ? e.message : String(e)}`);
+}
+
+// Debug: Check if GEMINI_API_KEY is now set
+if (process.env.GEMINI_API_KEY) {
+  console.log('[WorkerEnv] GEMINI_API_KEY is SET in the worker environment.');
+} else {
+  console.warn('[WorkerEnv] GEMINI_API_KEY is NOT SET in the worker environment. Implementation plan generation will likely fail.');
+}
+
 import { setupDatabase } from '../lib/db';
 import { jobScheduler } from '../lib/jobs/job-scheduler';
 

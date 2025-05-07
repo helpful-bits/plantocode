@@ -148,6 +148,18 @@ function shouldRateLimitUpdate(
   
   const timeSinceLastUpdate = now - lastUpdate.timestamp;
   
+  // Check if this is a file selection update (only includes selection-related fields)
+  const isFileSelectionUpdate = updateFields.length > 0 && updateFields.every(
+    field => ['includedFiles', 'forceExcludedFiles', 'searchSelectedFilesOnly'].includes(field)
+  );
+  
+  // We don't want to rate limit file selection updates anymore - they're important user actions
+  if (isFileSelectionUpdate) {
+    console.log(`[ApiHandler] Bypassing rate limiting for file selection update from ${source}`);
+    // We'll update the timestamp but allow the update to proceed
+    return false;
+  }
+
   // If updating the same session within the cooldown period
   if (timeSinceLastUpdate < UPDATE_COOLDOWN) {
     // Check if we're updating the same fields
@@ -161,7 +173,7 @@ function shouldRateLimitUpdate(
     }
     
     // Even if different fields, limit overall update frequency
-    if (timeSinceLastUpdate < 2000) { // Increased from 1000ms to 2000ms
+    if (!isFileSelectionUpdate && timeSinceLastUpdate < 2000) { // Increased from 1000ms to 2000ms
       // Special exception for active session changes - allow higher frequency
       if (sessionId.startsWith('active-') && updateFields.includes('activeSession')) {
         // Only rate limit active session updates if they happen less than 500ms apart

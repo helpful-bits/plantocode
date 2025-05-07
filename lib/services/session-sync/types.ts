@@ -27,6 +27,7 @@ export interface SessionOperation {
   priority: number;
   addedAt: number;
   timeoutMs?: number;
+  sequence?: number;
 }
 
 /**
@@ -81,6 +82,7 @@ export interface QueuedOperation {
   callback: SessionCallback;
   priority?: number;
   timeoutMs?: number;
+  sequence?: number;
 }
 
 /**

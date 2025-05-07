@@ -1,17 +1,17 @@
 // Define the possible statuses for background jobs processing
-export type JobStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'canceled' | 'created' | 'queued';
+export type JobStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'canceled' | 'created' | 'queued' | 'acknowledged_by_worker';
 
 // Constants for job status groups - use these instead of hardcoded arrays
 export const JOB_STATUSES = {
   // Active job statuses (non-terminal)
-  ACTIVE: ['idle', 'preparing', 'running', 'queued', 'created'] as JobStatus[],
+  ACTIVE: ['idle', 'preparing', 'running', 'queued', 'created', 'acknowledged_by_worker'] as JobStatus[],
   // Terminal job statuses
   TERMINAL: ['completed', 'failed', 'canceled'] as JobStatus[],
   // Specific status groups
   COMPLETED: ['completed'] as JobStatus[],
   FAILED: ['failed', 'canceled'] as JobStatus[],
   // All valid statuses
-  ALL: ['idle', 'preparing', 'running', 'queued', 'created', 'completed', 'failed', 'canceled'] as JobStatus[]
+  ALL: ['idle', 'preparing', 'running', 'queued', 'created', 'completed', 'failed', 'canceled', 'acknowledged_by_worker'] as JobStatus[]
 };
 
 // Type for API types
@@ -99,7 +99,7 @@ export type BackgroundJob = {
      * file paths, or other structured information.
      * 
      * This can include information like the target form field to update,
-     * indicated by 'targetField' (e.g., 'taskDescription', 'pastedPaths').
+     * indicated by 'targetField' (e.g., 'taskDescription', 'searchTerm').
      * 
      * NOTE: This field is for auxiliary structured data only.
      * The primary textual output should always be stored in the 'response' field.
@@ -127,7 +127,6 @@ export type Session = {
     projectHash?: string; // Hashed project directory for database lookups
     taskDescription: string;
     searchTerm: string;
-    pastedPaths: string;
     titleRegex: string;
     contentRegex: string;
     negativeTitleRegex: string;

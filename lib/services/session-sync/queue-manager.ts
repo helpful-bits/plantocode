@@ -6,7 +6,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { SessionCallback, SessionOperation, OperationTimeoutError } from '@/lib/services/session-sync/types';
+import { SessionCallback, SessionOperation, OperationTimeoutError, QueuedOperation } from '@/lib/services/session-sync/types';
 
 // Default timeout for operations (1 minute)
 const DEFAULT_OPERATION_TIMEOUT = 60000;
@@ -68,7 +68,11 @@ export interface QueueManager {
     priority?: number,
     timeoutMs?: number
   ): Promise<any>;
-  clearSessionOperations(sessionId: string | null): number;
+  clearSessionOperations(
+    sessionId: string | null, 
+    operationTypes?: Array<'load' | 'save' | 'delete' | 'setActive'>,
+    preserveInProgress?: boolean
+  ): number;
   setServiceOptions(options: ServiceOptions): void;
   registerOperationCompletion(operationId: string, result: any, error?: Error): void;
   requestQueueRefresh(adjustPriorities?: boolean): void;
@@ -543,7 +547,7 @@ export function createQueueManager(): QueueManager {
       const initialQueueSize = queue.length;
       
       // Filter operations for this session (and by type if specified)
-      const sessionOperations = queue.filter(op => {
+      let sessionOperations = queue.filter(op => {
         const matchesSession = op.sessionId === sessionId;
         const matchesType = !operationTypes || operationTypes.includes(op.type as any);
         return matchesSession && matchesType;
@@ -566,12 +570,36 @@ export function createQueueManager(): QueueManager {
         console.log(`[QueueManager][${timestamp}]   - ${type}: ${count} operations`);
       });
       
-      // Remove operations for this session from the queue (and by type if specified)
+      // Filter save operations separately - we'll handle them differently
+      const saveOperations = sessionOperations.filter(op => op.type === 'save');
+      const otherOperations = sessionOperations.filter(op => op.type !== 'save');
+      
+      console.log(`[QueueManager][${timestamp}] Found ${saveOperations.length} save operations and ${otherOperations.length} other operations to clear`);
+      
+      // Handle save operations - only keep the most recent one for each path/property combination
+      if (saveOperations.length > 0) {
+        // Get the most recent save operation - the one with the highest sequence number
+        const mostRecentSave = saveOperations.reduce((latest, current) => {
+          // Handle undefined sequence values by defaulting to 0
+          const latestSeq = latest?.sequence || 0;
+          const currentSeq = current.sequence || 0;
+          return (!latest || currentSeq > latestSeq) ? current : latest;
+        }, null as SessionOperation | null);
+        
+        // Keep only the most recent save operation in the queue
+        if (mostRecentSave) {
+          console.log(`[QueueManager][${timestamp}] Keeping the most recent save operation: ${mostRecentSave.id}`);
+          // Make it highest priority to ensure it completes quickly
+          mostRecentSave.priority = 11; // Higher than normal high priority
+          // Remove it from our list of operations to remove
+          sessionOperations = sessionOperations.filter(op => op.id !== mostRecentSave.id);
+        }
+      }
+      
+      // Remove operations for this session from the queue (except the most recent save we want to keep)
       const newQueue = queue.filter(op => {
-        const matchesSession = op.sessionId === sessionId;
-        const matchesType = !operationTypes || operationTypes.includes(op.type as any);
-        // Keep if it doesn't match the session, or if it matches but not the specified types
-        return !matchesSession || (matchesSession && !matchesType);
+        // Keep if it's not in our filtered list of operations to remove
+        return !sessionOperations.some(removeOp => removeOp.id === op.id);
       });
       
       // Update the queue
@@ -581,7 +609,7 @@ export function createQueueManager(): QueueManager {
       const clearedQueueCount = initialQueueSize - queue.length;
       console.log(`[QueueManager][${timestamp}] Removed ${clearedQueueCount} operations from queue for session ${sessionId || 'new'}`);
       
-      // Reject all promises for these operations
+      // Reject promises for the operations we're removing
       let rejectedPromisesCount = 0;
       sessionOperations.forEach(op => {
         const promiseData = operationPromises.get(op.id);

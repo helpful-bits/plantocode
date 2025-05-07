@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "lint:all": "tsc --noEmit && next lint",
     "workers": "tsx scripts/start-workers.ts",
     "migrate": "tsx scripts/run-migrations.ts",
     "migrate:consolidated": "tsx scripts/apply-consolidated-migration.ts",
@@ -24,7 +26,10 @@
     "db:dump": "tsx scripts/dump-tables.ts",
     "db:fix-permissions": "tsx scripts/fix-database-permissions.ts",
     "migrate:xml-to-output": "tsx scripts/apply-column-rename-migration.ts",
-    "fix:output-file-path": "tsx scripts/apply-column-fix.ts"
+    "fix:output-file-path": "tsx scripts/apply-column-fix.ts",
+    "migrate:remove-pasted-paths": "tsx scripts/remove-pasted-paths-column.ts",
+    "test:job-polling": "tsx scripts/test-job-polling.ts",
+    "update-job-status-constraint": "tsx scripts/update-job-status-constraint.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.11",
@@ -47,6 +52,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.5.0",
     "form-data": "^4.0.2",
     "glob": "^11.0.2",
     "libxmljs": "^1.0.11",

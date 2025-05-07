@@ -111,7 +111,7 @@ export async function PATCH(
   const clientIp = headersList.get('x-forwarded-for') || request.headers.get('x-forwarded-for') || 'unknown';
   const operationId = headersList.get('x-operation-id') || `op_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const rateLimitKey = `session:state:patch:${sessionId}:${clientIp}`;
-  const isRateLimited = await rateLimitCheck(rateLimitKey, 10, 30); // 10 requests per 30 seconds
+  const isRateLimited = await rateLimitCheck(rateLimitKey, 30, 30); // 30 requests per 30 seconds - relaxed rate limit
   
   if (isRateLimited) {
     console.warn(`[API session/state] Rate limit exceeded for session ${sessionId}, IP: ${clientIp}, OperationID: ${operationId}`);
@@ -127,7 +127,7 @@ export async function PATCH(
         status: 429,
         headers: {
           'Retry-After': '5',
-          'X-RateLimit-Limit': '10',
+          'X-RateLimit-Limit': '30',
           'X-RateLimit-Window': '30s'
         }
       }

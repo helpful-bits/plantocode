@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useMemo } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { useFileManagementState } from "../_hooks/use-file-management-state";
 import { FileManagementContext } from "./file-management-context";
 import { useGeneratePrompt } from "./generate-prompt-context";
@@ -12,6 +12,7 @@ interface FileManagementProviderProps {
   activeSessionId: string | null;
   taskDescription: string;
   sessionData?: Session;
+  isSwitchingSession?: boolean;
 }
 
 export function FileManagementProvider({
@@ -20,9 +21,9 @@ export function FileManagementProvider({
   activeSessionId,
   taskDescription,
   sessionData,
+  isSwitchingSession = false,
 }: FileManagementProviderProps) {
   const context = useGeneratePrompt();
-  const lastSessionIdRef = useRef<string | null>(null);
 
   // Create the file management state, passing in the data from the session if it exists
   const fileManagementState = useFileManagementState({
@@ -39,26 +40,45 @@ export function FileManagementProvider({
       includedFiles: sessionData.includedFiles,
       forceExcludedFiles: sessionData.forceExcludedFiles,
       searchTerm: sessionData.searchTerm,
-      pastedPaths: sessionData.pastedPaths,
       searchSelectedFilesOnly: sessionData.searchSelectedFilesOnly,
     } : undefined,
+    isSwitchingSession, // Pass the session switching flag
   });
 
-  // Handle session changes - memoize the dependencies to avoid frequent re-renders
-  const memoizedSessionId = useMemo(() => activeSessionId, [activeSessionId]);
-  const memoizedSessionData = useMemo(() => sessionData, [sessionData]);
+  // Keep track of session data for debugging
+  const fileSelectionsRef = useRef({
+    includedFiles: sessionData?.includedFiles || [],
+    forceExcludedFiles: sessionData?.forceExcludedFiles || []
+  });
   
+  // Update ref when session data changes (for debugging purposes only)
   useEffect(() => {
-    if (memoizedSessionId !== lastSessionIdRef.current) {
-      lastSessionIdRef.current = memoizedSessionId;
-
-      // If we have session data and the session ID changed, apply it
-      if (memoizedSessionData && memoizedSessionData.id === memoizedSessionId) {
-        // Log that we're applying session data
-        console.log(`[FileManagementProvider] Applying session data for ${memoizedSessionId}`);
-      }
+    if (sessionData) {
+      fileSelectionsRef.current = {
+        includedFiles: sessionData.includedFiles || [],
+        forceExcludedFiles: sessionData.forceExcludedFiles || []
+      };
+      console.log(`[FileManagementProvider] Received session data with ${sessionData.includedFiles?.length || 0} included files`);
     }
-  }, [memoizedSessionId, memoizedSessionData]);
+  }, [sessionData]);
+  
+  // Handle component unmounting or session change
+  useEffect(() => {
+    // Clean up when the component unmounts
+    return () => {
+      // Force immediate save of any pending changes before unmounting
+      if (fileManagementState.flushPendingOperations) {
+        console.log('[FileManagementProvider] Component unmounting, flushing pending operations');
+        fileManagementState.flushPendingOperations();
+        
+        // Also trigger a manual interaction if needed
+        if (context && activeSessionId) {
+          console.log('[FileManagementProvider] Forcing final state update before unmount');
+          context.handleInteraction(() => fileManagementState.getFileStateForSession());
+        }
+      }
+    };
+  }, [fileManagementState, context, activeSessionId]);
 
   return (
     <FileManagementContext.Provider value={fileManagementState}>
