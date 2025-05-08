@@ -26,7 +26,21 @@ export function sendGeminiStreamingRequest(
 ): Promise<ActionState<{ requestId: string; savedFilePath: string | null }>> {
   // Generate a default sessionId if none is provided
   const effectiveSessionId = sessionId || `default_session_${Date.now()}`;
-  return sendStreamingRequest(promptText, effectiveSessionId, options);
+  
+  // Create a requestId for tracking
+  const requestId = options.requestId || `gemini_stream_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  
+  // Call the refactored function with adapted parameters
+  return sendStreamingRequest(promptText, {
+    ...options,
+    sessionId: effectiveSessionId
+  }).then(result => ({
+    ...result,
+    data: {
+      requestId,
+      savedFilePath: null
+    }
+  }));
 }
 
 class GeminiClient {
@@ -48,7 +62,23 @@ class GeminiClient {
     sessionId: string,
     options: any = {}
   ): Promise<ActionState<{ requestId: string; savedFilePath: string | null }>> {
-    return sendStreamingRequest(promptText, sessionId, options);
+    // Create a requestId for tracking
+    const requestId = options.requestId || `gemini_stream_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    
+    // Call the refactored streaming function
+    const result = await sendStreamingRequest(promptText, {
+      ...options,
+      sessionId
+    });
+    
+    // Adapt the new return type to match the expected interface
+    return {
+      ...result,
+      data: {
+        requestId,
+        savedFilePath: null
+      }
+    };
   }
 
   /**
@@ -130,11 +160,19 @@ export default geminiClient;
 // Export individual functions and types for direct use - but manage duplicates
 export { sendStreamingRequest } from './gemini-streaming';
 export { sendRequest } from './gemini-standard';
-export { processSseEvent } from './utils/sse-processor';
+export { 
+  streamGeminiContentWithSDK,
+  streamGeminiCompletionWithSDK,
+  extractXmlContent
+} from './gemini-sdk-handler';
 
 // Re-export types using 'export type' for compatibility with isolatedModules
 export type { StreamingUpdateCallback } from './gemini-streaming';
 export type { GeminiResponse } from './gemini-standard';
+export type { 
+  GeminiSdkRequestPayload,
+  StreamCallbacks 
+} from './gemini-sdk-handler';
 
 // Re-export the payload type to avoid ambiguity (from standard version)
-export type { GeminiRequestPayload } from './gemini-standard'; 
+export type { GeminiRequestPayload } from './gemini-standard';

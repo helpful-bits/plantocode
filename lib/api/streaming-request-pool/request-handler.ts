@@ -2,11 +2,30 @@ import { RequestType, RequestInfo, FetchOptions, Response, ActiveRequest } from 
 import { safeFetch } from '@/lib/utils';
 
 /**
+ * Lazy-load the background job repository to avoid circular dependencies
+ * This function returns a promise that resolves to the backgroundJobRepository instance
+ */
+async function getBackgroundJobRepository() {
+  // Dynamic import to avoid circular dependencies
+  const { backgroundJobRepository } = await import('@/lib/db/repositories/background-job-repository');
+  return backgroundJobRepository;
+}
+
+/**
  * Handler for managing active requests and their execution
  */
 export class RequestHandler {
   // Tracking active requests with their abort controllers
   private activeRequests: Map<string, ActiveRequest> = new Map();
+  
+  // Track streaming requests that are associated with background jobs
+  private streamingJobs: Map<string, {
+    backgroundJobId: string;
+    accumulatedResponse: string;
+    totalTokens: number;
+    lastChunkTime: number;
+    currentLength: number;
+  }> = new Map();
   
   // Counters for active requests
   private activeGlobal: number = 0;
@@ -32,6 +51,94 @@ export class RequestHandler {
     Object.values(RequestType).forEach(type => {
       this.activeByType.set(type, 0);
     });
+  }
+  
+  /**
+   * Register a streaming job to receive incremental updates
+   * 
+   * This associates a requestId with a backgroundJobId for streaming updates
+   * 
+   * @param requestId The request ID (used for tracking in the streaming pool)
+   * @param backgroundJobId The background job ID (in the database)
+   */
+  public registerStreamingJob(requestId: string, backgroundJobId: string): void {
+    if (this.streamingJobs.has(requestId)) {
+      console.warn(`[RequestHandler] Overwriting existing streaming job for request ${requestId}`);
+    }
+    
+    this.streamingJobs.set(requestId, {
+      backgroundJobId,
+      accumulatedResponse: '',
+      totalTokens: 0,
+      lastChunkTime: Date.now(),
+      currentLength: 0
+    });
+    
+    // Registered streaming job
+  }
+  
+  /**
+   * Handle an incoming chunk for a streaming request
+   * 
+   * This updates the accumulated response and submits incremental updates to the background job
+   * 
+   * @param requestId The request ID
+   * @param chunk The new text chunk
+   * @param tokenCount The estimated token count for this chunk
+   * @returns True if the chunk was handled, false if the request is not registered
+   */
+  public async handleStreamChunk(requestId: string, chunk: string, tokenCount: number): Promise<boolean> {
+    const job = this.streamingJobs.get(requestId);
+    if (!job) {
+      return false;
+    }
+    
+    // Update the job's accumulated response and token count
+    job.accumulatedResponse += chunk;
+    job.totalTokens += tokenCount;
+    job.lastChunkTime = Date.now();
+    job.currentLength += chunk.length;
+    
+    try {
+      // Lazy load the background job repository to avoid circular dependencies
+      const backgroundJobRepository = await getBackgroundJobRepository();
+      
+      // Update the background job with the new chunk
+      await backgroundJobRepository.appendToJobResponse(
+        job.backgroundJobId,
+        chunk,
+        tokenCount,
+        job.currentLength
+      );
+      
+      return true;
+    } catch (error) {
+      console.error(`[RequestHandler] Error updating streaming job ${job.backgroundJobId}:`, error);
+      return false;
+    }
+  }
+  
+  /**
+   * Clean up a streaming job when it completes or errors
+   * 
+   * @param requestId The request ID to clean up
+   * @returns The job info if it was found, undefined otherwise
+   */
+  public cleanupStreamingJob(requestId: string): {
+    backgroundJobId: string;
+    accumulatedResponse: string;
+    totalTokens: number;
+  } | undefined {
+    const job = this.streamingJobs.get(requestId);
+    if (job) {
+      this.streamingJobs.delete(requestId);
+      return {
+        backgroundJobId: job.backgroundJobId,
+        accumulatedResponse: job.accumulatedResponse,
+        totalTokens: job.totalTokens
+      };
+    }
+    return undefined;
   }
   
   /**

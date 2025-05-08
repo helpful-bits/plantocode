@@ -11,7 +11,8 @@ import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJo
 export async function transcribeAudioAction(
   base64Audio: string,
   language: string = "en",
-  sessionId: string
+  sessionId: string,
+  projectDirectory: string
 ): Promise<ActionState<{ text: string; jobId: string }>> {
   try {
     if (!base64Audio) {
@@ -50,7 +51,8 @@ export async function transcribeAudioAction(
         rawInput: `Audio transcription request (${Math.round(base64Audio.length / 1024)} KB)`,
         includeSyntax: false,
         temperature: 0.0
-      }
+      },
+      projectDirectory
     );
 
     // Fetch session data to use in tracking

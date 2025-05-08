@@ -8,7 +8,9 @@ import {
   Clock, 
   XCircle, 
   Loader2, 
-  X 
+  X,
+  FileCode,
+  ExternalLink
 } from 'lucide-react';
 import { 
   getStatusIconName,
@@ -154,7 +156,10 @@ export const JobCard = React.memo(({
           </Badge>
         )}
         {job.taskType && (
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className="text-[10px] flex items-center gap-1">
+            {job.taskType === 'implementation_plan' && job.outputFilePath && (
+              <FileCode className="h-3 w-3" />
+            )}
             {formatTaskType(job.taskType)}
           </Badge>
         )}

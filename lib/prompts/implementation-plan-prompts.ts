@@ -10,6 +10,7 @@ You are an expert software architect tasked with providing a detailed implementa
 1. Review the codebase to understand its structure and architecture
 2. Analyze how the task should be implemented within the existing architecture
 3. Create a step-by-step implementation plan with clear file operations
+4. Analyze data structures, data flow, and function interactions before implementing changes
 </role>
 
 <implementation_plan_requirements>
@@ -37,8 +38,50 @@ You are an expert software architect tasked with providing a detailed implementa
 - Only use mkdir, cp, mv, rm commands when necessary; avoid touch commands
 </bash_commands_guidelines>
 
-<response_format>
-Your response MUST use structured XML tags as follows:
+<important_part>
+DO NOT include actual code implementations, only describe what code changes are needed.
+DO NOT include any instructions about git branches, version control, or tests.
+
+Focus on providing an actionable plan that an AI agent can follow precisely:
+- Be specific about file paths, component names, and function names to be modified
+- Always follow existing project conventions for naming and file organization
+- Ensure a deep understanding of data structures and how data flows through the application
+- Take time to think through all implications and provide the best possible solution
+
+Provide a thorough, step-by-step implementation plan for the original task in the EXACT XML structure specified above (the one that starts with <implementation_plan> and ends with </implementation_plan>).
+</important_part>
+
+
+
+<request>
+
+<focus_points>
+- Specific file paths, component names, and exact changes needed for each file
+- Creating simple, straightforward solutions WITHOUT overengineering
+- Eliminating any code duplication you identify
+- Refactoring large files into smaller modules with clear responsibilities
+- Including bash commands only when they provide significant value
+- Using targeted patterns and specific directories in exploration commands
+- Critically evaluating the current architecture and boldly proposing superior approaches when they offer clear benefits
+</focus_points>
+
+<thinking_process>
+THINK DEEPLY about the solution:
+- Carefully analyze the existing architecture and code patterns
+- Explore multiple alternative approaches
+- Take time to think through all implications of your plan
+</thinking_process>
+
+<forbidden_actions>
+DO NOT include:
+- Actual code implementations (only describe what changes are needed; the bash code for the AI agent for the implementation_plan below IS allowed)
+- Git branch instructions, version control commands, or test directives
+- Any mentions of testing
+</forbidden_actions>
+
+</request>
+
+Your response MUST use structured XML tags as follows and NOTHING ELSE, JUST THIS XML STRUCTURE:
 
 <implementation_plan>
   <steps>
@@ -55,21 +98,11 @@ Your response MUST use structured XML tags as follows:
       <!-- The following elements are optional and should only be included when necessary -->
       <bash_commands>mkdir -p path/to/dir && touch path/to/file.js && mv old/file.js new/location.js</bash_commands>
       <exploration_commands>grep -n "exactFunctionName" --include="*.js" src/specific-directory/ -A 2 -B 2</exploration_commands>
-      <api_tests>curl -X GET "http://localhost:3000/api/endpoint" -H "Content-Type: application/json" | jq</api_tests>
     </step>
     <!-- Additional steps as needed -->
   </steps>
 </implementation_plan>
-
-DO NOT include actual code implementations, only describe what code changes are needed.
-DO NOT include any instructions about git branches, version control, or tests.
-
-Focus on providing an actionable plan that an AI agent can follow precisely:
-- Be specific about file paths, component names, and function names to be modified
-- Always follow existing project conventions for naming and file organization
-- Ensure a deep understanding of data structures and how data flows through the application
-- Take time to think through all implications and provide the best possible solution
-</response_format>`;
+`;
 }
 
 // Function that generates the user prompt based on the input parameters
@@ -102,10 +135,7 @@ ${content}
   const totalFileCount = Object.keys(fileContents).length;
   const relevantFileCount = relevantFiles.length;
   
-  return `<original_task>
-${originalDescription}
-</original_task>
-
+  return `
 <project_structure>
 ${projectStructure}
 </project_structure>
@@ -116,35 +146,8 @@ You have access to ${totalFileCount} code files in this project, with ${relevant
 ${codeContext}
 </codebase_info>
 
-<request>
-<important_part>
-Provide a thorough, step-by-step implementation plan for the original task in the EXACT XML structure specified above (the one that starts with <implementation_plan> and ends with </implementation_plan>).
-</important_part>
-<focus_points>
-- Specific file paths, component names, and exact changes needed for each file
-- Analyzing data structures, data flow, and function interactions before implementing changes
-- Creating simple, straightforward solutions WITHOUT overengineering
-- Eliminating any code duplication you identify
-- Refactoring large files into smaller modules with clear responsibilities
-- Including bash commands only when they provide significant value
-- Using targeted patterns and specific directories in exploration commands
-- Critically evaluating the current architecture and boldly proposing superior approaches when they offer clear benefits
-</focus_points>
-
-<thinking_process>
-THINK DEEPLY about the solution:
-- Carefully analyze the existing architecture and code patterns
-- Explore multiple alternative approaches
-- Take time to think through all implications of your plan
-- Iterate on your plan to ensure it's truly the BEST solution possible
-</thinking_process>
-
-<forbidden_actions>
-DO NOT include:
-- Actual code implementations (only describe what changes are needed)
-- Git branch instructions, version control commands, or test directives
-- Any mentions of testing
-</forbidden_actions>
-
-</request>`;
+<task>
+${originalDescription}
+</task>
+`;
 }

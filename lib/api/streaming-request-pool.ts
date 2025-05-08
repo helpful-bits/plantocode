@@ -141,6 +141,16 @@ class StreamingRequestPool {
   }
   
   /**
+   * Get the request handler instance
+   * This allows direct access to the handler for streaming job updates
+   * 
+   * @returns The RequestHandler instance
+   */
+  public getRequestHandler(): RequestHandler {
+    return this.requestHandler;
+  }
+  
+  /**
    * Update request limits
    */
   public updateLimits(
@@ -149,7 +159,7 @@ class StreamingRequestPool {
     newTypeLimits?: Partial<Record<RequestType, number>>
   ): void {
     this.requestHandler.updateLimits(newGlobalLimit, newSessionLimit, newTypeLimits);
-    console.log(`[Streaming Pool] Updated request limits:`, this.requestHandler.getLimits());
+    // Updated request limits
   }
 }
 
@@ -159,3 +169,7 @@ export default streamingRequestPool;
 
 // Re-export RequestType for external usage
 export { RequestType } 
+
+// Export RequestHandler for direct access in streaming implementations
+// This allows external modules to access the handler methods for streaming job updates
+export { RequestHandler } 

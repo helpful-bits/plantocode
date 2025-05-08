@@ -13,7 +13,6 @@ interface UsePromptGeneratorProps {
   fileContentsMap: Record<string, string>;
   pastedPaths: string;
   projectDirectory: string;
-  diffTemperature: number;
 }
 
 export function usePromptGenerator({

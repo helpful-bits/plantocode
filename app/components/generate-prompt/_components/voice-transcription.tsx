@@ -23,7 +23,7 @@ export default function VoiceTranscription({
 }: VoiceTranscriptionProps) {
   const [showRevertOption, setShowRevertOption] = useState(false);
   const [languageCode, setLanguageCode] = useState('en');
-  const { activeSessionId } = useProject(); // Get active session ID from project context
+  const { activeSessionId, projectDirectory } = useProject(); // Get active session ID and project directory from project context
   
   // Log active session ID for debugging
   useEffect(() => {
@@ -212,7 +212,8 @@ export default function VoiceTranscription({
     onCorrectionComplete: handleCorrectionComplete, // Pass the correction callback
     onInteraction, // Pass the interaction handler
     languageCode, // Pass the current language code to the hook
-    sessionId: activeSessionId // Pass the active session ID for background job tracking
+    sessionId: activeSessionId, // Pass the active session ID for background job tracking
+    projectDirectory: projectDirectory // Pass the project directory
   });
 
   const handleToggleRecording = async () => {

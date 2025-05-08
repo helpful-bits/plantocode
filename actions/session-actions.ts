@@ -229,6 +229,16 @@ export async function deleteSessionAction(sessionId: string): Promise<ActionStat
       };
     }
     
+    // IMPORTANT: First explicitly delete any background jobs associated with this session
+    // to avoid potential foreign key constraint issues
+    try {
+      console.log(`[Action] Explicitly deleting background jobs for session: ${sessionId}`);
+      await backgroundJobRepository.cancelAllSessionBackgroundJobs(sessionId);
+    } catch (error) {
+      console.warn(`[Action] Error canceling background jobs for session ${sessionId}:`, error);
+      // Continue with session deletion even if canceling jobs fails
+    }
+    
     // Delete the session using the queue
     const priority = 3; // Medium priority for deletion
     await sessionSyncService.queueOperation(
@@ -359,9 +369,12 @@ export async function updateSessionProjectDirectoryAction(
 
 /**
  * Save an existing session with the specified settings
+ * @param sessionData - The session data to save
+ * @param priorityOverride - Optional priority level to override the default (higher values indicate higher priority)
  */
 export async function saveSessionAction(
-  sessionData: Partial<Session>
+  sessionData: Partial<Session>,
+  priorityOverride?: number
 ): Promise<ActionState<Session>> {
   try {
     console.log(`[Action] Saving session: ${sessionData.id}`);
@@ -383,7 +396,7 @@ export async function saveSessionAction(
     }
     
     // Save the session using the sync service
-    const priority = 3; // Medium priority for regular saves
+    const priority = priorityOverride !== undefined ? priorityOverride : 3; // Use override or default medium priority
     const session = await sessionSyncService.queueOperation(
       'save', 
       sessionData.id, 

@@ -19,9 +19,7 @@ export class GuidanceGenerationProcessor implements JobProcessor<GuidanceGenerat
       temperature,
       maxOutputTokens,
       model,
-      paths,
-      projectSummary,
-      guidanceType
+      paths
     } = payload;
 
     try {

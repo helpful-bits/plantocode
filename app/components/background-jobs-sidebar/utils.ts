@@ -108,8 +108,6 @@ export function formatTaskType(taskType: TaskType): string {
       return 'Task Enhancement';
     case 'guidance_generation':
       return 'Guidance Generation';
-    case 'task_guidance':
-      return 'Task Guidance';
     case 'implementation_plan':
       return 'Implementation Plan';
     // Handle non-standard values used in the app
