@@ -1,14 +1,13 @@
-import { GEMINI_FLASH_MODEL } from "@/lib/constants";
-import { ActionState } from "@/types";
+import { GEMINI_FLASH_MODEL, DEFAULT_TASK_SETTINGS } from "@/lib/constants";
+import { ActionState, TaskSettings } from "@/types";
 import { RequestType } from "@/lib/api/streaming-request-pool-types";
-import crypto from 'crypto';
 import { updateJobToRunning, updateJobToCompleted, createBackgroundJob, handleApiError } from "@/lib/jobs/job-helpers";
-import { BackgroundJob } from "@/types/session-types";
+import { BackgroundJob, TaskType } from "@/types/session-types";
 import { backgroundJobRepository } from '@/lib/db/repositories';
+import { GoogleGenerativeAI, GenerateContentRequest } from '@google/generative-ai';
+import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 
 // Constants
-const GENERATE_CONTENT_API = "generateContent";
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const MAX_OUTPUT_TOKENS = 60000; // Default for Flash model
 
 // Types for request and response
@@ -43,6 +42,9 @@ export interface GeminiRequestPayload {
 
 /**
  * Send a request to Gemini API (non-streaming version)
+ * 
+ * Uses Google Generative AI SDK instead of direct API calls for better integration
+ * and more consistent error handling.
  */
 export async function sendRequest(
   userPromptContent: string,
@@ -61,6 +63,8 @@ export async function sendRequest(
     priority?: number;
     job?: BackgroundJob;
     forceBackgroundJob?: boolean; // Whether to force using a background job
+    projectDirectory?: string; // The project directory for fetching task-specific settings
+    taskType?: TaskType; // The specific task type for settings selection
     [key: string]: any;
   } = {}
 ): Promise<ActionState<string>> {
@@ -73,10 +77,38 @@ export async function sendRequest(
   // Extract job from options if present - use let instead of const so we can modify it
   let job = options.job;
   
-  // Extract options
-  const modelId = options.model || GEMINI_FLASH_MODEL;
-  const maxOutputTokens = options.maxOutputTokens || MAX_OUTPUT_TOKENS;
-  const temperature = options.temperature || 0.7;
+  // Get task-specific settings if projectDirectory and taskType are provided
+  let projectSettings: TaskSettings | null = null;
+  let specificTaskSettings = null;
+  
+  if (options.projectDirectory && options.taskType) {
+    try {
+      projectSettings = await getModelSettingsForProject(options.projectDirectory);
+      const taskTypeKey = options.taskType as keyof TaskSettings;
+      specificTaskSettings = projectSettings?.[taskTypeKey] || 
+                            DEFAULT_TASK_SETTINGS[taskTypeKey as keyof TaskSettings] || 
+                            DEFAULT_TASK_SETTINGS.streaming;
+    } catch (error) {
+      console.warn(`[Gemini Client] Error fetching project settings:`, error);
+      // Continue with defaults if settings can't be fetched
+    }
+  }
+  
+  // Extract options, prioritizing explicit parameters over task settings
+  const modelId = options.model || 
+                  (specificTaskSettings?.model) || 
+                  GEMINI_FLASH_MODEL;
+  
+  const maxOutputTokens = options.maxOutputTokens || 
+                         (specificTaskSettings?.maxTokens) || 
+                         MAX_OUTPUT_TOKENS;
+  
+  const temperature = options.temperature !== undefined ? 
+                     options.temperature : 
+                     (specificTaskSettings?.temperature !== undefined ? 
+                      specificTaskSettings.temperature : 
+                      0.7);
+  
   const topP = options.topP || 0.95;
   const topK = options.topK || 40;
   
@@ -87,7 +119,7 @@ export async function sendRequest(
   // Create a unique request ID if not provided
   const requestId = options.requestId || `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
   
-  // Direct implementation without using the deprecated streaming request pool
+  // Direct implementation using the Google Generative AI SDK
   try {
     // Check if we need to force using a background job
     if (options.forceBackgroundJob && !job && options.sessionId) {
@@ -110,111 +142,82 @@ export async function sendRequest(
       await updateJobToRunning(job.id, options.apiType || 'gemini');
     }
     
-    // Build the API URL
-    const apiUrl = `${GEMINI_API_BASE}/${modelId}:${GENERATE_CONTENT_API}?key=${apiKey}`;
+    // Initialize the GenAI client
+    const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Build request payload
-    const payload: GeminiRequestPayload = {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: userPromptContent }
-          ]
-        }
-      ],
-      generationConfig: {
-        maxOutputTokens,
-        temperature,
-        topP,
-        topK,
-      },
+    // Get the model
+    const model = genAI.getGenerativeModel({ model: modelId });
+    
+    // Prepare the generation configuration
+    const generationConfig = {
+      maxOutputTokens,
+      temperature,
+      topP,
+      topK
+    };
+    
+    // Create the contents payload
+    const contents = [
+      {
+        role: 'user',
+        parts: [{ text: userPromptContent }]
+      }
+    ];
+    
+    // Prepare the request options
+    const requestOptions: {
+      contents: { role: string; parts: { text: string }[] }[];
+      generationConfig: typeof generationConfig;
+      systemInstruction?: string;
+    } = {
+      contents,
+      generationConfig
     };
     
     // Add system instruction if provided
     if (options.systemPrompt) {
-      payload.systemInstruction = {
-        parts: [
-          { text: options.systemPrompt }
-        ]
-      };
+      requestOptions.systemInstruction = options.systemPrompt;
     }
     
-    // Make the API request
-    console.log(`[Gemini Client] Calling ${modelId}`);
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    // Make the API request using the SDK
+    console.log(`[Gemini Client] Calling ${modelId} using SDK`);
+    const result = await model.generateContent(requestOptions);
+    const response = result.response;
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Gemini Client] Error: ${response.status}`, errorText);
+    // Check for content blocks
+    if (response.promptFeedback?.blockReason) {
+      const blockReason = response.promptFeedback.blockReason;
+      const blockMessage = `Request blocked: ${blockReason}`;
+      console.error(`[Gemini Client] ${blockMessage}`);
       
-      // If job exists, update its status to failed before throwing
+      // If job exists, update its status to failed
       if (job) {
-        await handleApiError(job.id, response.status, errorText, options.apiType || 'gemini');
-      }
-      
-      let errorMessage = `API Error: ${response.status}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.error && errorJson.error.message) {
-          errorMessage += ` - ${errorJson.error.message}`;
-        }
-      } catch (e) {
-        errorMessage += ` - ${errorText.substring(0, 100)}`;
+        await handleApiError(job.id, 403, blockMessage, options.apiType || 'gemini');
       }
       
       return {
         isSuccess: false,
-        message: errorMessage,
+        message: blockMessage,
         data: "",
         metadata: {
-          errorType: "API_ERROR",
-          statusCode: response.status,
+          errorType: "CONTENT_BLOCKED",
+          blockReason
         }
       };
     }
     
-    // Process the response
-    const data: GeminiResponse & { usage?: { promptTokenCount?: number; totalTokenCount?: number } } = await response.json();
-    
-    // Extract the generated text from the response
-    if (!data.candidates || data.candidates.length === 0 || !data.candidates[0].content || !data.candidates[0].content.parts) {
-      // Return error if the response doesn't have the expected structure
-      console.error(`[Gemini Client] Unexpected response format:`, data);
-      
-      // If job exists, update its status
-      if (job) {
-        await handleApiError(job.id, 200, 'Unexpected response format', options.apiType || 'gemini');
-      }
-      
-      return {
-        isSuccess: false,
-        message: "Unexpected response format from Gemini API",
-        data: "",
-        metadata: {
-          errorType: "RESPONSE_FORMAT_ERROR",
-          statusCode: 200,
-        }
-      };
-    }
-    
-    // Extract text from all parts (typically there's just one)
-    const parts = data.candidates[0].content.parts;
-    const generatedText = parts.map(part => part.text || '').join('');
+    // Extract text from the response
+    const generatedText = response.text();
     
     // Update job to completed with response
     if (job) {
       // Extract token counts from the response usage metadata
-      const promptTokens = data.usage?.promptTokenCount || 0;
-      const completionTokens = data.usage?.totalTokenCount 
-        ? data.usage.totalTokenCount - promptTokens  // If we have total, use it to calculate completion
-        : Math.ceil(generatedText.length / 3.5);     // Otherwise estimate based on output length
+      const usageMetadata = response.usageMetadata;
+      const promptTokens = usageMetadata?.promptTokenCount || 0;
+      const completionTokens = usageMetadata?.candidatesTokenCount || 0;
+      const totalTokens = usageMetadata?.totalTokenCount || 
+        (promptTokens + completionTokens) || // Calculate from components if available
+        Math.ceil(generatedText.length / 3.5); // Otherwise estimate based on length
       
       // Ensure we have valid values
       const validPromptTokens = isNaN(promptTokens) ? 0 : promptTokens;
@@ -239,36 +242,56 @@ export async function sendRequest(
           metadata: {
             jobId: job.id,
             model: modelId,
-            chars: generatedText.length
+            chars: generatedText.length,
+            tokens: totalTokens
           }
         };
       }
     }
     
+    // Return the successful response
     return {
       isSuccess: true,
       message: "Successfully generated content",
       data: generatedText,
       metadata: {
         model: modelId,
-        chars: generatedText.length
+        chars: generatedText.length,
+        tokens: response.usageMetadata?.totalTokenCount
       }
     };
   } catch (error) {
     console.error(`[Gemini Client] Error:`, error);
     
-    // If job exists, update its status to failed
-    if (job) {
-      await handleApiError(job.id, 0, `Error: ${error instanceof Error ? error.message : String(error)}`, options.apiType || 'gemini');
+    // Extract meaningful error details
+    let errorMessage = '';
+    let statusCode = 0;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      // Extract status code from error message if available (SDK format)
+      const statusMatch = error.message.match(/status code (\d+)/i);
+      if (statusMatch && statusMatch[1]) {
+        statusCode = parseInt(statusMatch[1], 10);
+      }
+    } else {
+      errorMessage = String(error);
     }
     
+    // If job exists, update its status to failed
+    if (job) {
+      await handleApiError(job.id, statusCode, errorMessage, options.apiType || 'gemini');
+    }
+    
+    // Return a standardized error response
     return {
       isSuccess: false,
-      message: `Error: ${error instanceof Error ? error.message : String(error)}`,
+      message: errorMessage,
       data: "",
       metadata: {
-        errorType: "RUNTIME_ERROR",
-        statusCode: 0,
+        errorType: "SDK_ERROR",
+        statusCode: statusCode
       }
     };
   }

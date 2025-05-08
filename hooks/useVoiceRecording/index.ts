@@ -18,6 +18,7 @@ interface UseVoiceRecordingProps {
   onTranscribed?: (text: string) => void;
   onCorrectionComplete?: (rawText: string, correctedText: string) => void;
   onInteraction?: () => void;
+  projectDirectory?: string; // Add project directory prop
 }
 
 interface UseVoiceRecordingResult {
@@ -39,7 +40,8 @@ export function useVoiceRecording({
   autoCorrect = true,
   onStateChange,
   onTranscribed,
-  onCorrectionComplete
+  onCorrectionComplete,
+  projectDirectory = ""
 }: UseVoiceRecordingProps = {}): UseVoiceRecordingResult {
   // State management
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -84,6 +86,7 @@ export function useVoiceRecording({
       error: newState.error ?? error,
     });
   }, [isRecording, isProcessing, error, onStateChange]);
+  
   
   // Start recording
   const startRecording = useCallback(async () => {
@@ -210,7 +213,7 @@ export function useVoiceRecording({
         // Send for transcription
         setTextStatus('loading');
         console.log(`[VoiceRecording] Sending ${audioBlob.size} bytes for transcription`);
-        const result = await handleTranscription(audioBlob, sessionId);
+        const result = await handleTranscription(audioBlob, sessionId, projectDirectory);
         
         if (result.isSuccess && result.data) {
           // Check if we received a background job
@@ -383,7 +386,7 @@ export function useVoiceRecording({
                 // Send for transcription
                 setTextStatus('loading');
                 console.log(`[VoiceRecording] Sending fallback audio (${fallbackBlob.size} bytes) for transcription`);
-                const result = await handleTranscription(fallbackBlob, sessionId);
+                const result = await handleTranscription(fallbackBlob, sessionId, projectDirectory);
                 
                 if (result.isSuccess && result.data) {
                   // Process transcription as normal
@@ -422,7 +425,7 @@ export function useVoiceRecording({
       streamRef.current = null;
       updateState({ isProcessing: false });
     }
-  }, [updateState, language, sessionId, autoCorrect]);
+  }, [updateState, language, sessionId, autoCorrect, projectDirectory]);
   
   // Reset the recording state
   const reset = useCallback(() => {
@@ -472,7 +475,7 @@ export function useVoiceRecording({
       
       // Send for transcription
       console.log(`[VoiceRecording] Sending ${audioBlob.size} bytes for transcription (retry)`);
-      const result = await handleTranscription(audioBlob, sessionId);
+      const result = await handleTranscription(audioBlob, sessionId, projectDirectory);
       
       if (result.isSuccess && result.data) {
         // Check if we received a background job
@@ -565,7 +568,7 @@ export function useVoiceRecording({
     } finally {
       updateState({ isProcessing: false });
     }
-  }, [updateState, sessionId, autoCorrect]);
+  }, [updateState, sessionId, autoCorrect, projectDirectory]);
   
   // Helper function to handle correction results (reused in multiple places)
   const handleCorrectionResult = useCallback((correctionResult: ActionState<string | { isBackgroundJob: true; jobId: string }>) => {

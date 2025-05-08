@@ -21,11 +21,11 @@ export async function createImplementationPlanAction(params: {
   relevantFiles: string[]; 
   fileContentsMap: Record<string, string>; 
   sessionId: string; 
-  diffTemperature?: number; 
+  temperatureOverride?: number; 
 }): Promise<ActionState<{ jobId?: string }>> {
   await setupDatabase();
   
-  const { projectDirectory, taskDescription, relevantFiles, fileContentsMap, sessionId, diffTemperature } = params;
+  const { projectDirectory, taskDescription, relevantFiles, fileContentsMap, sessionId, temperatureOverride } = params;
   
   if (!taskDescription.trim()) {
     return { isSuccess: false, message: "Task description cannot be empty" };
@@ -47,8 +47,11 @@ export async function createImplementationPlanAction(params: {
     const planSettings = projectSettings?.implementation_plan || {
       model: GEMINI_PRO_PREVIEW_MODEL,
       maxTokens: 65536,
-      temperature: 0.7
+      temperature: 0.95
     };
+    
+    // Calculate the final temperature to use (override takes precedence)
+    const finalTemperature = temperatureOverride !== undefined ? temperatureOverride : planSettings.temperature;
     
     // Load file contents if not provided or empty
     let actualFileContents = fileContentsMap;
@@ -80,16 +83,16 @@ export async function createImplementationPlanAction(params: {
         taskType: 'implementation_plan',
         model: planSettings.model,
         maxOutputTokens: planSettings.maxTokens,
-        temperature: diffTemperature || planSettings.temperature,
+        temperature: finalTemperature,
         rawInput: `Generate implementation plan for: ${taskDescription}`,
         metadata: {
-          sessionName,
-          projectDirectory
+          sessionName
         }
-      }
+      },
+      projectDirectory
     );
     
-    // Enqueue the job for processing
+    // Note: The fileContentsMap is passed in the job payload for processing but is not stored persistently in the background_jobs database table to avoid excessive storage.
     await enqueueJob(
       'IMPLEMENTATION_PLAN_GENERATION',
       {
@@ -99,10 +102,9 @@ export async function createImplementationPlanAction(params: {
         relevantFiles,
         fileContentsMap: actualFileContents,
         originalTaskDescription: taskDescription,
-        diffTemperature,
         model: planSettings.model,
         maxOutputTokens: planSettings.maxTokens,
-        temperature: diffTemperature || planSettings.temperature
+        temperature: finalTemperature
       },
       10 // Higher priority for implementation plans
     );

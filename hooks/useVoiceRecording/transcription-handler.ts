@@ -28,7 +28,8 @@ export function validateTranscriptionText(text: string | null): { isValid: boole
  */
 export async function handleTranscription(
   audioBlob: Blob,
-  sessionId?: string | null
+  sessionId?: string | null,
+  projectDirectory?: string
 ): Promise<ActionState<string | { isBackgroundJob: true; jobId: string }>> {
   try {
     if (!audioBlob) {
@@ -76,11 +77,17 @@ export async function handleTranscription(
     // Import dynamically to avoid Next.js server component issues
     const { transcribeVoiceAction } = await import('@/actions/voice-transcription/transcribe-blob');
     
+    // Check if projectDirectory is provided
+    if (!projectDirectory) {
+      console.warn('[Transcription] No project directory provided, using empty string');
+    }
+    
     // Call the server action with the proper parameters
     const result = await transcribeVoiceAction(
       audioBlob,
       "en", // Default language
-      sessionId || "" // Ensure we pass a string
+      sessionId || "", // Ensure we pass a string
+      projectDirectory || ""
     );
     
     console.log(`[Transcription] Request completed: ${result.isSuccess ? 'success' : 'failure'}`);

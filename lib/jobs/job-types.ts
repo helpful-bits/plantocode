@@ -16,7 +16,8 @@ export type JobType =
   | 'IMPLEMENTATION_PLAN_GENERATION'
   | 'GUIDANCE_GENERATION'
   | 'PATH_CORRECTION'
-  | 'READ_DIRECTORY';
+  | 'READ_DIRECTORY'
+  | 'GENERIC_GEMINI_STREAM';
 
 /**
  * Base interface for all job payloads
@@ -80,6 +81,7 @@ export interface TranscriptionPayload extends BaseJobPayload {
   audioData: string; // Base64 encoded audio or path to temp file
   isBlob: boolean; // True if audioData is a blob, false if base64
   language: string;
+  projectDirectory: string;
 }
 
 /**
@@ -133,7 +135,6 @@ export interface ImplementationPlanPayload extends BaseJobPayload {
   relevantFiles: string[];
   fileContentsMap: Record<string, string>;
   originalTaskDescription: string;
-  diffTemperature?: number;
   model?: string;
   maxOutputTokens?: number;
   temperature?: number;
@@ -146,8 +147,6 @@ export interface ImplementationPlanPayload extends BaseJobPayload {
 export interface GuidanceGenerationPayload extends BaseJobPayload {
   promptText: string;
   paths?: string[]; // For generateGuidanceForPathsAction
-  projectSummary?: string; // For generateTaskGuidanceAction
-  guidanceType?: 'full' | 'planning' | 'structured' | 'task' | 'paths';
   modelOverride?: string;
   systemPrompt?: string;
   temperature?: number; 
@@ -177,6 +176,23 @@ export interface TextCorrectionPostTranscriptionPayload extends BaseJobPayload {
 }
 
 /**
+ * Payload for generic Gemini streaming jobs
+ */
+export interface GenericGeminiStreamPayload extends BaseJobPayload {
+  promptText: string;
+  systemPrompt?: string;
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  topP?: number;
+  topK?: number;
+  metadata?: {
+    targetField?: string;
+    [key: string]: any;
+  };
+}
+
+/**
  * Union type of all possible job payloads for type safety
  */
 export type AnyJobPayload = 
@@ -190,4 +206,5 @@ export type AnyJobPayload =
   | ImplementationPlanPayload
   | GuidanceGenerationPayload
   | PathCorrectionPayload
-  | TextCorrectionPostTranscriptionPayload;
+  | TextCorrectionPostTranscriptionPayload
+  | GenericGeminiStreamPayload;

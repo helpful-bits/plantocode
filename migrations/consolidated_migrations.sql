@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   negative_title_regex TEXT DEFAULT '',
   negative_content_regex TEXT DEFAULT '',
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
-  diff_temperature REAL DEFAULT 0.9,
   codebase_structure TEXT DEFAULT '',
   updated_at INTEGER NOT NULL,
   model_used TEXT DEFAULT 'gemini-2.5-flash-preview-04-17',
@@ -151,6 +150,12 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_api_type ON background_jobs(api_t
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_output_file_path ON background_jobs(output_file_path);
 
+-- Add project_directory column to background_jobs table if it doesn't exist
+ALTER TABLE background_jobs ADD COLUMN project_directory TEXT;
+
+-- Create index for project_directory if it doesn't exist
+CREATE INDEX IF NOT EXISTS idx_background_jobs_project_directory ON background_jobs(project_directory);
+
 -- Record that this consolidated migration was applied
 INSERT INTO migrations (name, applied_at) 
 VALUES ('consolidated_migrations.sql', strftime('%s', 'now'));
@@ -179,3 +184,7 @@ WHERE key = 'xml-editor-command';
 -- Add the rename_xml_path_to_output_file_path migration record
 INSERT INTO migrations (name, applied_at) 
 VALUES ('rename_xml_path_to_output_file_path', strftime('%s', 'now'));
+
+-- Add the add_project_directory_to_background_jobs migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('add_project_directory_to_background_jobs', strftime('%s', 'now'));
