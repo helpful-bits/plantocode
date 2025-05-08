@@ -11,7 +11,8 @@ import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJo
 export async function transcribeVoiceAction(
   audioBlob: Blob,
   language: string = "en",
-  sessionId: string | null = ""
+  sessionId: string | null = "",
+  projectDirectory: string
 ): Promise<ActionState<{ text: string; jobId: string }>> {
   try {
     console.log(`[Voice Transcription] Processing audio blob (${audioBlob?.size || 'unknown'} bytes) with sessionId: ${sessionId || 'none'}`);
@@ -59,7 +60,8 @@ export async function transcribeVoiceAction(
         rawInput: `Audio blob transcription request (${(audioBlob.size / 1024).toFixed(1)} KB)`,
         includeSyntax: false,
         temperature: 0.0
-      }
+      },
+      projectDirectory
     );
 
     console.log(`[Voice Transcription] Created background job: ${runningJob.id} for session: ${effectiveSessionId}`);

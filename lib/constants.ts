@@ -63,19 +63,26 @@ export const DEFAULT_TASK_SETTINGS: TaskSettings = {
     maxTokens: 16384,
     temperature: 0.7
   },
-  task_guidance: { 
-    model: GEMINI_PRO_PREVIEW_MODEL, 
-    maxTokens: 16384,
-    temperature: 0.7
-  },
   implementation_plan: { 
     model: GEMINI_PRO_PREVIEW_MODEL, 
     maxTokens: 65536,
     temperature: 0.7
   },
+  generic_llm_stream: {
+    model: GEMINI_FLASH_MODEL,
+    maxTokens: 16384,
+    temperature: 0.7
+  },
   unknown: { 
     model: GEMINI_FLASH_MODEL, 
     maxTokens: 4096,
+    temperature: 0.7
+  },
+  
+  // Optional general streaming settings
+  streaming: {
+    model: GEMINI_FLASH_MODEL,
+    maxTokens: 16384,
     temperature: 0.7
   }
 };

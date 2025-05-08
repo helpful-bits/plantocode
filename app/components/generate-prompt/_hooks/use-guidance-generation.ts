@@ -192,6 +192,19 @@ export function useGuidanceGeneration({
             type: "info"
           });
           
+          // Force refresh the background jobs list to immediately show the new job
+          try {
+            // Add a slight delay to ensure the job has been created in the database
+            setTimeout(() => {
+              // Force DOM event to trigger jobs update without importing the context directly
+              // This is more reliable than trying to access the context functions directly
+              const refreshEvent = new CustomEvent('refresh-background-jobs');
+              window.dispatchEvent(refreshEvent);
+            }, 200);
+          } catch (refreshError) {
+            console.warn('[GuidanceGeneration] Could not refresh job list:', refreshError);
+          }
+          
           // Don't reset isGeneratingGuidance here - it will be reset when the job completes
         }
         // Handle immediate response

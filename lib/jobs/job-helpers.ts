@@ -20,7 +20,8 @@ export async function createBackgroundJob(
     includeSyntax?: boolean;
     temperature?: number;
     metadata?: { [key: string]: any };
-  }
+  },
+  projectDirectory?: string
 ): Promise<BackgroundJob> {
   // Strictly validate sessionId
   if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -50,7 +51,8 @@ export async function createBackgroundJob(
       ...metadata,
       modelUsed: model,
       maxOutputTokens: options.maxOutputTokens,
-    }
+    },
+    projectDirectory
   );
   
   return job;
@@ -186,10 +188,10 @@ export async function updateJobToCompleted(
     throw new Error('Invalid job ID provided for updateJobToCompleted');
   }
 
-  // Validate response - must not be null or undefined for completed jobs
+  // Log a warning if response is null/undefined, but don't use a placeholder
   if (responseText === null || responseText === undefined) {
-    console.warn(`[JobHelper] Attempt to complete job ${jobId} with null/undefined response, using placeholder`);
-    responseText = '[Job completed with no response]';
+    console.warn(`[JobHelper] Completing job ${jobId} with null response`);
+    // Keep responseText as null/undefined - this is valid for completion with no textual response
   }
 
   const now = Date.now();
@@ -264,10 +266,10 @@ export async function updateJobToFailed(
     throw new Error('Invalid job ID provided for updateJobToFailed');
   }
 
-  // Validate error message - must not be null or undefined for failed jobs
+  // Log a warning if error message is empty, but don't use a placeholder
   if (errorMessage === null || errorMessage === undefined || errorMessage.trim() === '') {
-    console.warn(`[JobHelper] Attempt to fail job ${jobId} with empty error message, using placeholder`);
-    errorMessage = 'Job failed with no error message';
+    console.warn(`[JobHelper] Failed job ${jobId} with null/empty error message`);
+    // Keep errorMessage as provided - empty error is valid, repository will handle it
   }
 
   const now = Date.now();
@@ -343,7 +345,7 @@ export async function updateJobToFailed(
  */
 export async function updateJobToCancelled(
   jobId: string,
-  reason: string = "Canceled by user interaction",
+  reason?: string,
   partialResponse?: string
 ): Promise<void> {
   // Validate jobId
@@ -381,7 +383,7 @@ export async function updateJobToCancelled(
       startTime: startTime, // Ensure startTime is set before completing
       endTime: now,         // Always set endTime on completion
       statusMessage: "Canceled by user interaction",
-      errorMessage: reason || "Canceled by user interaction",
+      errorMessage: reason,
       metadata: {
         lastUpdateTime: now,
         cancelledAt: now,
@@ -406,7 +408,7 @@ export async function updateJobToCancelled(
       status: 'canceled',
       endTime: now,
       statusMessage: "Canceled by user interaction",
-      errorMessage: reason || "Canceled by user interaction"
+      errorMessage: reason
     });
   }
 }

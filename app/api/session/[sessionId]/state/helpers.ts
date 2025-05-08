@@ -81,10 +81,6 @@ export function validateSessionData(sessionData: Partial<Session>): string | und
     return 'Search selected files only must be a boolean';
   }
   
-  // Check diffTemperature if provided
-  if (sessionData.diffTemperature !== undefined && typeof sessionData.diffTemperature !== 'number') {
-    return 'Diff temperature must be a number';
-  }
   
   // All validations passed
   return undefined;

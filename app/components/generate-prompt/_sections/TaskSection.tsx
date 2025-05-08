@@ -84,9 +84,6 @@ const TaskSection = React.memo(function TaskSection({ state, actions }: TaskSect
             <p className="text-xs text-muted-foreground mt-1">
               Uses AI to analyze selected files and provide high-level implementation guidance or architectural insights.
             </p>
-            <Subtle className="text-xs">
-              This will be shared with AI, so don&apos;t include sensitive info. Be as specific as possible for better results.
-            </Subtle>
           </div>
 
         </div>

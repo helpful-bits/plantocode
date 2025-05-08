@@ -90,15 +90,13 @@ export function useGeneratePromptState() {
     negativeTitleRegex: string;
     negativeContentRegex: string;
     isRegexActive: boolean;
-    diffTemperature: number;
   }>({
     taskDescription: "",
     titleRegex: "",
     contentRegex: "",
     negativeTitleRegex: "",
     negativeContentRegex: "",
-    isRegexActive: true,
-    diffTemperature: 0.9
+    isRegexActive: true
   });
 
   // Add state for session switching
@@ -133,7 +131,6 @@ export function useGeneratePromptState() {
         taskDescriptionLength: state.taskDescription?.length || 0,
         hasRegexPatterns: !!(state.titleRegex || state.contentRegex),
         isRegexActive: state.isRegexActive,
-        diffTemperature: state.diffTemperature,
         fileState: fileState ? {
           includedFilesCount: fileState.includedFiles?.length || 0,
           excludedFilesCount: fileState.forceExcludedFiles?.length || 0,
@@ -154,7 +151,6 @@ export function useGeneratePromptState() {
           negativeTitleRegex: state.negativeTitleRegex,
           negativeContentRegex: state.negativeContentRegex,
           isRegexActive: state.isRegexActive,
-          diffTemperature: state.diffTemperature,
           // Include file state if provided
           ...(fileState && {
             searchTerm: fileState.searchTerm,
@@ -299,7 +295,6 @@ export function useGeneratePromptState() {
   // Initialize session metadata hook
   const sessionMetadata = useSessionMetadata({
     onInteraction: () => handleInteraction(),
-    initialDiffTemperature: 0.7,
     initialSessionName: "Untitled Session"
   });
   
@@ -334,8 +329,7 @@ export function useGeneratePromptState() {
     allFilesMap: {}, // This will now come from the separate file management context
     fileContentsMap: {}, // This will now come from the separate file management context
     pastedPaths: "", // This will now come from the separate file management context
-    projectDirectory,
-    diffTemperature: sessionMetadata.diffTemperature
+    projectDirectory
   });
   
   // Initialize guidance generation hook
@@ -357,8 +351,7 @@ export function useGeneratePromptState() {
       contentRegex: regexState.contentRegex,
       negativeTitleRegex: regexState.negativeTitleRegex,
       negativeContentRegex: regexState.negativeContentRegex,
-      isRegexActive: regexState.isRegexActive,
-      diffTemperature: sessionMetadata.diffTemperature
+      isRegexActive: regexState.isRegexActive
     };
   }, [
     taskState.taskDescription,
@@ -366,8 +359,7 @@ export function useGeneratePromptState() {
     regexState.contentRegex,
     regexState.negativeTitleRegex,
     regexState.negativeContentRegex,
-    regexState.isRegexActive,
-    sessionMetadata.diffTemperature
+    regexState.isRegexActive
   ]);
 
   // Basic session ID and project directory change monitoring
@@ -492,10 +484,10 @@ export function useGeneratePromptState() {
         sessionMetadata.setSessionName(sessionData.name);
       }
       
-      // Update task description if available
-      if (sessionData.taskDescription) {
-        console.log(`[useGeneratePromptState][${sequence}] Step 4.2: Setting task description (${sessionData.taskDescription.length} chars)`);
-        taskState.setTaskDescription(sessionData.taskDescription);
+      // Update task description if available, using loadDataForSession to also track the session ID
+      if (sessionData.taskDescription !== undefined) {
+        console.log(`[useGeneratePromptState][${sequence}] Step 4.2: Setting task description (${sessionData.taskDescription ? sessionData.taskDescription.length : 0} chars)`);
+        taskState.loadDataForSession(sessionData.taskDescription || "", sessionData.id);
       }
       
       // Apply regex patterns if available
@@ -506,11 +498,6 @@ export function useGeneratePromptState() {
       regexState.setNegativeContentRegex(sessionData.negativeContentRegex || '');
       regexState.setIsRegexActive(sessionData.isRegexActive === true);
       
-      // Apply diff temperature if available
-      if (typeof sessionData.diffTemperature === 'number') {
-        console.log(`[useGeneratePromptState][${sequence}] Step 4.5: Setting diffTemperature: ${sessionData.diffTemperature}`);
-        sessionMetadata.setDiffTemperature(sessionData.diffTemperature);
-      }
       
       // NOTE: File selections are now handled by the FileManagementProvider
       
@@ -578,7 +565,6 @@ export function useGeneratePromptState() {
       negativeTitleRegex: regexState.negativeTitleRegex,
       negativeContentRegex: regexState.negativeContentRegex,
       isRegexActive: regexState.isRegexActive,
-      diffTemperature: sessionMetadata.diffTemperature,
       // Include file state if provided
       ...(fileState && {
         searchTerm: fileState.searchTerm,
@@ -594,8 +580,7 @@ export function useGeneratePromptState() {
     regexState.contentRegex,
     regexState.negativeTitleRegex,
     regexState.negativeContentRegex,
-    regexState.isRegexActive,
-    sessionMetadata.diffTemperature
+    regexState.isRegexActive
   ]);
 
   const resetAllState = useCallback(() => {
@@ -644,7 +629,6 @@ export function useGeneratePromptState() {
       const projectDir = projectDirectory;
       const desc = taskState.taskDescription;
       const sessionId = contextActiveSessionId;
-      const temp = sessionMetadata.diffTemperature;
       
       if (!projectDir || !desc.trim() || !sessionId || includedPaths.length === 0) {
         showNotification({
@@ -669,7 +653,7 @@ export function useGeneratePromptState() {
         relevantFiles: includedPaths,
         fileContentsMap,
         sessionId,
-        diffTemperature: temp
+        temperatureOverride: undefined
       });
       
       // Ensure we reset state BEFORE showing notifications
@@ -712,7 +696,7 @@ export function useGeneratePromptState() {
       });
       setIsCreatingPlan(false); // Make sure to reset state on error
     }
-  }, [projectDirectory, taskState.taskDescription, contextActiveSessionId, sessionMetadata.diffTemperature, showNotification]);
+  }, [projectDirectory, taskState.taskDescription, contextActiveSessionId, showNotification]);
   
   // Handler for copying implementation plan prompt
   const handleCopyImplementationPlanPrompt = useCallback(async (includedPaths: string[], fileContentsMap: Record<string, string>) => {
@@ -793,7 +777,6 @@ export function useGeneratePromptState() {
     // Form state
     taskState,
     regexState,
-    diffTemperature: sessionMetadata.diffTemperature,
     
     // Project data
     projectDirectory,
@@ -817,7 +800,6 @@ export function useGeneratePromptState() {
     // Action methods
     resetAllState,
     setSessionName: sessionMetadata.setSessionName,
-    setDiffTemperature: sessionMetadata.setDiffTemperature,
     handleLoadSession,
     handleGenerateGuidance: guidanceGeneration.handleGenerateGuidance,
     saveSessionState: handleSaveSessionState,

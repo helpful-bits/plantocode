@@ -54,3 +54,4 @@ out/
 /pnpm-lock.yaml
 
 **/.claude/settings.local.json
+/implementation_plans/

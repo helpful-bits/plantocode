@@ -2,6 +2,8 @@ import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { TranscriptionPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
 import streamingRequestPool, { RequestType } from '@/lib/api/streaming-request-pool';
+import { getModelSettingsForProject } from '@/actions/project-settings-actions';
+import { DEFAULT_TASK_SETTINGS } from '@/lib/constants';
 
 /**
  * Voice Transcription Processor
@@ -15,7 +17,8 @@ export class VoiceTranscriptionProcessor implements JobProcessor<TranscriptionPa
       sessionId,
       audioData,
       isBlob,
-      language
+      language,
+      projectDirectory
     } = payload;
 
     try {
@@ -85,8 +88,15 @@ export class VoiceTranscriptionProcessor implements JobProcessor<TranscriptionPa
         }
       }
       
+      // Fetch project-specific task settings
+      const projectSettings = await getModelSettingsForProject(projectDirectory);
+      const transcriptionSettings = projectSettings?.transcription || DEFAULT_TASK_SETTINGS.transcription;
+      
+      // Use the model from settings
+      const modelToUse = transcriptionSettings.model || 'whisper-large-v3';
+      
       // Add other parameters to the form data
-      formData.append('model', 'whisper-1');
+      formData.append('model', modelToUse);
       if (language) {
         formData.append('language', language);
       }
@@ -167,7 +177,7 @@ export class VoiceTranscriptionProcessor implements JobProcessor<TranscriptionPa
         backgroundJobId,
         result.text,
         {
-          modelUsed: 'whisper-1'
+          modelUsed: modelToUse
         }
       );
 

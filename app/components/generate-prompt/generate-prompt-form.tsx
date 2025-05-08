@@ -84,7 +84,6 @@ export default function GeneratePromptForm() {
       forceExcludedFiles: filePrefs.forceExcludedFiles,
       searchTerm: filePrefs.searchTerm,
       searchSelectedFilesOnly: filePrefs.searchSelectedFilesOnly,
-      diffTemperature: currentState.diffTemperature || 0.7,
     };
     
     return sessionData;

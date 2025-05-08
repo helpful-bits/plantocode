@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 import { useBackgroundJobs, useBackgroundJob } from "@/lib/contexts/background-jobs-context";
+import { useProject } from "@/lib/contexts/project-context";
 
 import { useNotification } from '@/lib/contexts/notification-context';
 
@@ -33,6 +34,7 @@ export default React.memo(forwardRef<TaskDescriptionHandle, TaskDescriptionProps
 }: TaskDescriptionProps, ref) { // Keep ref parameter
   // Minimal state for selection tracking
   const { showNotification } = useNotification();
+  const { isSwitchingSession } = useProject();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [hasActiveSelection, setHasActiveSelection] = useState(false);
   
@@ -166,12 +168,19 @@ export default React.memo(forwardRef<TaskDescriptionHandle, TaskDescriptionProps
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <label htmlFor="taskDescArea" className="font-semibold text-lg text-foreground">Task Description:</label>
+        <div className="flex items-center gap-2">
+          <label htmlFor="taskDescArea" className="font-semibold text-lg text-foreground">Task Description:</label>
+          {isSwitchingSession && (
+            <span className="text-xs bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 px-2 py-0.5 rounded">
+              Session switching...
+            </span>
+          )}
+        </div>
         <Button
           type="button"
           variant="secondary" size="sm"
           onClick={handleImproveSelection}
-          disabled={isImproving || !hasActiveSelection}
+          disabled={isImproving || !hasActiveSelection || isSwitchingSession}
           className="h-7 text-xs px-2"
         >
           {isImproving ? (
@@ -181,15 +190,22 @@ export default React.memo(forwardRef<TaskDescriptionHandle, TaskDescriptionProps
         </Button>
       </div>
       <p className="text-xs text-muted-foreground mt-1">Uses AI to refine the clarity and grammar of the selected text.</p>
-      <Textarea // Use the Textarea component
-        ref={textareaRef} // Add ref to Textarea
-        id="taskDescArea" // Ensure ID matches htmlFor
-        className="border rounded bg-background/80 text-foreground p-2 min-h-[150px] w-full resize-y" // Allow vertical resize
-        value={value}
-        onChange={handleChange} // Use the new handler that includes localStorage backup
-        onSelect={handleSelect}
-        placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
-      />
+      <div className={`relative ${isSwitchingSession ? 'opacity-70' : ''}`}>
+        {isSwitchingSession && (
+          <div className="absolute inset-0 bg-background/30 backdrop-blur-[1px] z-10 pointer-events-none rounded flex items-center justify-center">
+            {/* This div is just a visual overlay, not blocking interactions */}
+          </div>
+        )}
+        <Textarea // Use the Textarea component
+          ref={textareaRef} // Add ref to Textarea
+          id="taskDescArea" // Ensure ID matches htmlFor
+          className="border rounded bg-background/80 text-foreground p-2 min-h-[150px] w-full resize-y" // Allow vertical resize
+          value={value}
+          onChange={handleChange} // Use the new handler that includes localStorage backup
+          onSelect={handleSelect}
+          placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
+        />
+      </div>
     </div>
   );
 }));

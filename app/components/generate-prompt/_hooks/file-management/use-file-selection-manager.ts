@@ -832,6 +832,28 @@ export function useFileSelectionManager({
     
     return { includedPaths: included, excludedPaths: excluded };
   }, [managedFilesMap]);
+  
+  // Track previous included paths length to detect when selection becomes empty
+  const prevIncludedPathsLengthRef = useRef<number | undefined>();
+  
+  // Effect to auto-toggle "Show Only Selected" to "All Files" when selection becomes empty
+  useEffect(() => {
+    const currentIncludedPathsLength = includedPaths.length;
+
+    // Only act if "show only selected" is currently active
+    // and there are files in the project (rawFilesMap indicates loaded project files)
+    if (showOnlySelected && Object.keys(rawFilesMap).length > 0) {
+      // Check if the count *became* zero (i.e., it was > 0 before and now is 0)
+      if (currentIncludedPathsLength === 0 && 
+          prevIncludedPathsLengthRef.current !== undefined && 
+          prevIncludedPathsLengthRef.current > 0) {
+        console.log('[FileSelectionManager] All selected files deselected, switching to "All Files" view.');
+        setShowOnlySelectedInternal(false);
+      }
+    }
+    // Update previous length for the next run
+    prevIncludedPathsLengthRef.current = currentIncludedPathsLength;
+  }, [includedPaths, showOnlySelected, setShowOnlySelectedInternal, rawFilesMap]);
 
   // Create a function to force flush all pending debounced operations
   const flushPendingOperations = useCallback(() => {

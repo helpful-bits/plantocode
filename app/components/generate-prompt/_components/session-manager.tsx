@@ -672,7 +672,7 @@ const SessionManager = ({
           console.log(`[SessionManager][${startTimestamp}][${operationId}] Saving state of current session ${sessionIdStr}`);
           
           try {
-            // Use saveSessionAction to save the current session state
+            // Use saveSessionAction to save the current session state with high priority
             const saveStartTime = Date.now();
             const saveResult = await saveSessionAction({
               id: sessionIdStr,
@@ -685,11 +685,10 @@ const SessionManager = ({
               titleRegex: currentSessionState.titleRegex,
               contentRegex: currentSessionState.contentRegex,
               isRegexActive: currentSessionState.isRegexActive,
-              diffTemperature: currentSessionState.diffTemperature,
               negativeTitleRegex: currentSessionState.negativeTitleRegex,
               negativeContentRegex: currentSessionState.negativeContentRegex,
               searchSelectedFilesOnly: currentSessionState.searchSelectedFilesOnly
-            });
+            }, 8); // High priority (8) for saving outgoing session during session switch
             
             const saveDuration = Date.now() - saveStartTime;
             
@@ -1012,7 +1011,6 @@ const SessionManager = ({
         titleRegex: sourceSession.titleRegex,
         contentRegex: sourceSession.contentRegex,
         isRegexActive: sourceSession.isRegexActive,
-        diffTemperature: sourceSession.diffTemperature,
         includedFiles: sourceSession.includedFiles,
         forceExcludedFiles: sourceSession.forceExcludedFiles
       };

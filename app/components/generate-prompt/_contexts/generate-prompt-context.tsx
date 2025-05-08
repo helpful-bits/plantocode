@@ -54,9 +54,6 @@ export interface GeneratePromptContextValue {
     reset: () => void;
   };
 
-  // Temperature state
-  diffTemperature: number;
-  setDiffTemperature: (value: number) => void;
   
   // Prompt state
   prompt?: string;

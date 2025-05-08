@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -19,7 +19,47 @@ interface JobDetailsModalProps {
 }
 
 export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
-  if (!job) return null;
+  // State for file content loading
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [isLoadingFile, setIsLoadingFile] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  
+  // Function to load file content for implementation plans
+  const loadFileContent = useCallback(async (filePath: string) => {
+    setIsLoadingFile(true);
+    setFileError(null);
+    
+    try {
+      const response = await fetch(`/api/read-file-content?path=${encodeURIComponent(filePath)}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}: Failed to load file content`);
+      }
+      
+      const data = await response.json();
+      setFileContent(data.content);
+    } catch (error) {
+      console.error('Error loading file content:', error);
+      setFileError(error instanceof Error ? error.message : 'Failed to load file content');
+    } finally {
+      setIsLoadingFile(false);
+    }
+  }, []);
+  
+  // Load the implementation plan from file when the job is an implementation plan with output file
+  useEffect(() => {
+    if (job && 
+        job.taskType === 'implementation_plan' && 
+        job.status === 'completed' && 
+        job.outputFilePath) {
+      loadFileContent(job.outputFilePath);
+    } else {
+      // Reset state if not loading from file
+      setFileContent(null);
+      setFileError(null);
+    }
+  }, [job, loadFileContent]);
   
   // Format JSON data for display
   const formatMetadata = (metadata: any) => {
@@ -58,6 +98,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     }
   };
   
+  if (!job) return null;
+
   // Get job duration if possible, using startTime and endTime if available
   const jobDuration = job.startTime ? formatJobDuration(
     job.startTime, 
@@ -69,11 +111,25 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   const promptContent = job.prompt || 'No prompt data available';
 
   // Get response based on status and available data
-  // For completed jobs, expect a response
-  // For failed jobs, expect an error message
-  // For other statuses, show a status-appropriate message
   const getResponseContent = () => {
-    // If we have a response, use it
+    // Special handling for implementation plans loaded from file
+    if (job.taskType === 'implementation_plan' && job.status === 'completed' && job.outputFilePath) {
+      if (isLoadingFile) {
+        return 'Loading implementation plan from file...';
+      }
+      
+      if (fileError) {
+        return `Error loading implementation plan: ${fileError}`;
+      }
+      
+      if (fileContent) {
+        return fileContent;
+      }
+      
+      return 'Implementation plan file content will be loaded...';
+    }
+    
+    // Standard handling for other job types
     if (job.response) {
       return job.response;
     }
@@ -219,7 +275,19 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           </div>
           
           <div className="flex flex-col flex-grow">
-            <h4 className="font-semibold mb-1">Response</h4>
+            <div className="flex justify-between items-center mb-1">
+              <h4 className="font-semibold">Response</h4>
+              {job.taskType === 'implementation_plan' && job.outputFilePath && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => job.outputFilePath && loadFileContent(job.outputFilePath)}
+                  disabled={isLoadingFile}
+                >
+                  {isLoadingFile ? 'Loading...' : 'Reload'}
+                </Button>
+              )}
+            </div>
             <ScrollArea className="h-[220px] min-h-[180px] flex-grow border rounded-md p-3 text-sm bg-gray-50 overflow-y-auto">
               <pre className="whitespace-pre-wrap font-mono text-xs">
                 {responseContent}

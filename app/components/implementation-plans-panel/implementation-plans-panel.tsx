@@ -24,6 +24,12 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
   const [isOpening, setIsOpening] = useState<string | null>(null);
   const [initialLoadComplete, setInitialLoadComplete] = useState<boolean>(false);
   const [sessionNames, setSessionNames] = useState<Record<string, string>>({});
+  // State to track the file contents of plans
+  const [planFileContents, setPlanFileContents] = useState<Record<string, { 
+    content: string | null; 
+    isLoading: boolean; 
+    error: string | null 
+  }>>({});
 
   // Memoize the filtered and sorted implementation plans to prevent unnecessary re-renders
   const implementationPlans = useMemo(() => {
@@ -60,16 +66,83 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
     setSessionNames(names);
   }, [jobs]);
 
+  // Function to fetch plan content from file
+  const fetchPlanContent = useCallback(async (jobId: string, filePath: string, projDir: string) => {
+    // Skip if already loading or loaded
+    if (planFileContents[jobId]?.isLoading) return;
+    
+    // Set loading state
+    setPlanFileContents(prev => ({
+      ...prev,
+      [jobId]: { content: null, isLoading: true, error: null }
+    }));
+    
+    try {
+      // Encode parameters for URL
+      const encodedFilePath = encodeURIComponent(filePath);
+      const encodedProjectDir = encodeURIComponent(projDir);
+      
+      console.log(`Fetching file content for path: ${filePath} in project: ${projDir}`);
+      
+      // Fetch file content from API
+      const response = await fetch(`/api/read-file-content?filePath=${encodedFilePath}&projectDirectory=${encodedProjectDir}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to load plan content: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update state with content
+      setPlanFileContents(prev => ({
+        ...prev,
+        [jobId]: { content: data.content, isLoading: false, error: null }
+      }));
+    } catch (error) {
+      console.error(`Error loading plan file for ${jobId}:`, error);
+      
+      // Update state with error
+      setPlanFileContents(prev => ({
+        ...prev,
+        [jobId]: { 
+          content: null, 
+          isLoading: false, 
+          error: error instanceof Error ? error.message : 'Failed to load plan content' 
+        }
+      }));
+    }
+  }, [planFileContents]);
+  
   // Set initial load complete after first data load
   useEffect(() => {
     if (!isLoading && jobs.length > 0 && !initialLoadComplete) {
       setInitialLoadComplete(true);
     }
   }, [isLoading, jobs, initialLoadComplete]);
+  
+  // Load plan content from files when plans list changes
+  useEffect(() => {
+    if (!projectDirectory || implementationPlans.length === 0) return;
+    
+    // For each plan with an outputFilePath, fetch the content
+    implementationPlans.forEach(plan => {
+      if (
+        plan.outputFilePath && 
+        !planFileContents[plan.id]?.content && 
+        !planFileContents[plan.id]?.isLoading
+      ) {
+        fetchPlanContent(plan.id, plan.outputFilePath, projectDirectory);
+      }
+    });
+  }, [implementationPlans, projectDirectory, planFileContents, fetchPlanContent]);
 
   const copyToClipboard = useCallback(async (text: string, jobId: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      // Use file content if available, otherwise use the provided text
+      const contentToCopy = planFileContents[jobId]?.content || text;
+      
+      await navigator.clipboard.writeText(contentToCopy);
       setCopiedPlanId(jobId);
       
       // Reset the copied state after 2 seconds
@@ -78,8 +151,13 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
       }, 2000);
     } catch (err) {
       console.error("Failed to copy text: ", err);
+      toast({
+        title: "Error",
+        description: "Failed to copy content to clipboard",
+        variant: "destructive",
+      });
     }
-  }, []);
+  }, [planFileContents]);
 
   const handleOpenFile = useCallback(async (filePath: string | null, planId: string) => {
     if (!filePath || !projectDirectory) {
@@ -183,10 +261,17 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                         variant="ghost" 
                         size="sm"
                         className="h-8 px-2"
-                        onClick={() => plan.response && copyToClipboard(plan.response, plan.id)}
+                        onClick={() => copyToClipboard(plan.response || "", plan.id)}
+                        disabled={!plan.response && !planFileContents[plan.id]?.content}
+                        title={planFileContents[plan.id]?.content ? "Copy full plan contents" : "Copy placeholder response"}
                       >
                         {copiedPlanId === plan.id ? (
                           <span className="text-xs">Copied!</span>
+                        ) : planFileContents[plan.id]?.isLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            <span className="text-xs">Loading</span>
+                          </>
                         ) : (
                           <>
                             <ClipboardCopy className="h-4 w-4 mr-1" />
@@ -245,9 +330,28 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                   </div>
                   <CollapsibleContent>
                     <div className="p-4">
-                      <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
-                        {plan.response}
-                      </pre>
+                      {planFileContents[plan.id]?.isLoading ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+                          <span className="text-muted-foreground">Loading plan content...</span>
+                        </div>
+                      ) : planFileContents[plan.id]?.error ? (
+                        <div className="text-destructive py-2">
+                          <p><strong>Error loading plan:</strong> {planFileContents[plan.id].error}</p>
+                          <p className="text-xs text-muted-foreground mt-2">Showing placeholder response instead:</p>
+                          <pre className="whitespace-pre-wrap text-sm overflow-x-auto mt-2 p-2 bg-muted/50 rounded">
+                            {plan.response}
+                          </pre>
+                        </div>
+                      ) : planFileContents[plan.id]?.content ? (
+                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
+                          {planFileContents[plan.id].content}
+                        </pre>
+                      ) : (
+                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
+                          {plan.response || "Loading plan content..."}
+                        </pre>
+                      )}
                     </div>
                   </CollapsibleContent>
                 </Collapsible>

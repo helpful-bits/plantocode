@@ -19,7 +19,6 @@ interface SessionRow {
   negative_title_regex: string;
   negative_content_regex: string;
   is_regex_active: number; // Sqlite uses 0/1 for booleans
-  diff_temperature: number;
   codebase_structure: string;
   updated_at: number;
   created_at: number;
@@ -72,7 +71,6 @@ class SessionRepository {
           negative_title_regex: session.negativeTitleRegex || '',
           negative_content_regex: session.negativeContentRegex || '',
           is_regex_active: session.isRegexActive ? 1 : 0,
-          diff_temperature: session.diffTemperature || 1.0,
           codebase_structure: session.codebaseStructure || "",
           updated_at: Date.now(),
           search_selected_files_only: session.searchSelectedFilesOnly ? 1 : 0
@@ -83,10 +81,10 @@ class SessionRepository {
           INSERT OR REPLACE INTO sessions
           (id, name, project_directory, project_hash, task_description, search_term,
            title_regex, content_regex, negative_title_regex, negative_content_regex, is_regex_active, 
-           diff_temperature, codebase_structure, updated_at, search_selected_files_only)
+           codebase_structure, updated_at, search_selected_files_only)
           VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term,
            @title_regex, @content_regex, @negative_title_regex, @negative_content_regex, @is_regex_active, 
-           @diff_temperature, @codebase_structure, @updated_at, @search_selected_files_only)`;
+           @codebase_structure, @updated_at, @search_selected_files_only)`;
         
         // Insert or replace the session
         console.time(`[Perf] Session row save ${session.id}`);
@@ -262,7 +260,6 @@ class SessionRepository {
                 negativeTitleRegex: row.negative_title_regex,
                 negativeContentRegex: row.negative_content_regex,
                 isRegexActive: row.is_regex_active === 1,
-                diffTemperature: row.diff_temperature,
                 codebaseStructure: row.codebase_structure,
                 updatedAt: row.updated_at,
                 createdAt: row.created_at,
@@ -386,7 +383,6 @@ class SessionRepository {
             negativeTitleRegex: row.negative_title_regex,
             negativeContentRegex: row.negative_content_regex,
             isRegexActive: row.is_regex_active === 1,
-            diffTemperature: row.diff_temperature,
             codebaseStructure: row.codebase_structure,
             updatedAt: row.updated_at,
             createdAt: row.created_at,
@@ -451,7 +447,6 @@ class SessionRepository {
             negativeTitleRegex: row.negative_title_regex,
             negativeContentRegex: row.negative_content_regex,
             isRegexActive: !!row.is_regex_active,
-            diffTemperature: row.diff_temperature,
             updatedAt: row.updated_at,
             codebaseStructure: row.codebase_structure,
             createdAt: row.created_at || Date.now()
@@ -544,7 +539,6 @@ class SessionRepository {
           negativeTitleRegex: sessionRow.negative_title_regex,
           negativeContentRegex: sessionRow.negative_content_regex,
           isRegexActive: sessionRow.is_regex_active === 1,
-          diffTemperature: sessionRow.diff_temperature,
           codebaseStructure: sessionRow.codebase_structure,
           updatedAt: sessionRow.updated_at,
           createdAt: sessionRow.created_at,
@@ -572,22 +566,31 @@ class SessionRepository {
       throw new Error('Invalid session ID provided for deleting session');
     }
     
-    // Always use connectionPool.withConnection with readOnly=false for write operations
-    return connectionPool.withConnection((db: Database.Database) => {
+    // Always use connectionPool.withTransaction for atomic write operations
+    return connectionPool.withTransaction((db: Database.Database) => {
       try {
-        // Delete the session
-        const result = db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+        // Enable foreign keys to ensure proper constraint handling
+        db.pragma('foreign_keys = ON');
+        
+        // First, explicitly delete background jobs associated with this session
+        // This helps avoid foreign key constraint issues
+        console.log(`[Repo] Explicitly deleting background jobs for session ${sessionId}`);
+        db.prepare('DELETE FROM background_jobs WHERE session_id = ?').run(sessionId);
         
         // Delete associated included and excluded files
         db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
         db.prepare('DELETE FROM excluded_files WHERE session_id = ?').run(sessionId);
         
+        // Now delete the session itself
+        const result = db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+        
+        console.log(`[Repo] Session ${sessionId} deleted: rows affected = ${result?.changes || 0}`);
         return !!result && result.changes > 0;
       } catch (error) {
-        console.error("Error in deleteSession:", error);
+        console.error(`[Repo] Error in deleteSession ${sessionId}:`, error);
         throw error;
       }
-    }, false); // Explicitly use a writable connection
+    }); // Using transaction ensures atomicity
   }
   
   /**
@@ -599,9 +602,12 @@ class SessionRepository {
     // Generate hash for project directory
     const projectHash = hashString(projectDirectory);
     
-    // Always use connectionPool.withConnection with readOnly=false for write operations
-    return connectionPool.withConnection((db: Database.Database) => {
+    // Always use connectionPool.withTransaction for atomic write operations
+    return connectionPool.withTransaction((db: Database.Database) => {
       try {
+        // Enable foreign keys to ensure proper constraint handling
+        db.pragma('foreign_keys = ON');
+        
         // First get all session IDs for this project
         const sessionIds = db.prepare('SELECT id FROM sessions WHERE project_hash = ?')
                           .all(projectHash)
@@ -611,8 +617,14 @@ class SessionRepository {
           return 0;
         }
         
-        // Delete associated included and excluded files
+        console.log(`[Repo] Found ${sessionIds.length} sessions to delete for project: ${projectDirectory}`);
+        
+        // For each session, explicitly delete related records first to avoid foreign key issues
         for (const sessionId of sessionIds) {
+          // Delete associated background jobs
+          db.prepare('DELETE FROM background_jobs WHERE session_id = ?').run(sessionId);
+          
+          // Delete associated included and excluded files
           db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
           db.prepare('DELETE FROM excluded_files WHERE session_id = ?').run(sessionId);
         }
@@ -620,12 +632,13 @@ class SessionRepository {
         // Delete all sessions for this project
         const result = db.prepare('DELETE FROM sessions WHERE project_hash = ?').run(projectHash);
         
+        console.log(`[Repo] Deleted ${result.changes || 0} sessions for project: ${projectDirectory}`);
         return result.changes || 0;
       } catch (error) {
-        console.error("Error in deleteAllSessions:", error);
+        console.error(`[Repo] Error in deleteAllSessions for ${projectDirectory}:`, error);
         throw error;
       }
-    }, false); // Explicitly use a writable connection
+    }); // Using transaction ensures atomicity
   }
   
   /**
@@ -721,12 +734,6 @@ class SessionRepository {
         }
         
         // Number fields
-        if (sessionData.diffTemperature !== undefined && 
-            sessionData.diffTemperature !== currentSession.diffTemperature) {
-          updates.push('diff_temperature = @diff_temperature');
-          parameters.diff_temperature = sessionData.diffTemperature;
-          needsUpdate = true;
-        }
         
         // OPTIMIZATION: Prepare both file operations in advance to minimize transaction time
         const hasIncludedFilesChanges = Array.isArray(sessionData.includedFiles);

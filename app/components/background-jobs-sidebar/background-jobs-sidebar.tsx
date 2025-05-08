@@ -45,7 +45,7 @@ export const BackgroundJobsSidebar: React.FC = () => {
   } = useJobFiltering(jobs, isLoading);
   
   // Handle manual refresh of jobs
-  const handleRefresh = async () => {
+  const handleRefresh = React.useCallback(async () => {
     // Prevent duplicate clicks
     if (refreshClickedRef.current || isLoading || isRefreshing) return;
     
@@ -61,7 +61,23 @@ export const BackgroundJobsSidebar: React.FC = () => {
         refreshClickedRef.current = false;
       }, 1000);
     }
-  };
+  }, [isLoading, isRefreshing, refreshJobs]);
+  
+  // Add event listener for custom refresh event
+  React.useEffect(() => {
+    const handleRefreshEvent = () => {
+      console.log('[BackgroundJobsSidebar] Received refresh-background-jobs event');
+      handleRefresh();
+    };
+    
+    // Add event listener
+    window.addEventListener('refresh-background-jobs', handleRefreshEvent);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('refresh-background-jobs', handleRefreshEvent);
+    };
+  }, [handleRefresh]);
   
   // Handle clearing of history
   const handleClearHistory = async () => {

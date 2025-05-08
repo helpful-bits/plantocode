@@ -1,100 +1,43 @@
 "use strict";
 
 /**
- * Generates a prompt for file-specific guidance
+ * Generates a prompt for architectural guidance as a concise data flow narrative
  */
 export function generateGuidanceForPathsPrompt(
   taskDescription: string,
-  paths: string[]
+  paths: string[],
+  fileContents?: Record<string, string>
 ): string {
-  return `
-Task: ${taskDescription}
-
-Files that will be used to accomplish this task:
-${paths.map(p => `- ${p}`).join('\n')}
-
-Please provide guidance on:
-1. The overall approach to accomplish this task
-2. The specific role of each listed file in the solution
-3. Key functions and changes that would need to be implemented
-4. Any potential challenges or edge cases to consider
-
-Structure your guidance in a clear, step-by-step format.
-`;
-}
-
-/**
- * Generates a prompt for task guidance based on the specified guidance type
- */
-export function generateTaskGuidancePrompt(
-  taskDescription: string,
-  projectSummary: string,
-  guidanceType: 'full' | 'planning' | 'structured' = 'full'
-): string {
-  switch (guidanceType) {
-    case 'planning':
-      return `
-Task: ${taskDescription}
-
-Project summary:
-${projectSummary}
-
-Based on this information, please generate a comprehensive plan for implementing this task. The plan should include:
-
-1. An analysis of what the task requires
-2. A step-by-step breakdown of the implementation
-3. The files that will need to be modified or created
-4. Potential challenges or considerations
-
-Please provide specific details and actionable steps.
-`;
-
-    case 'structured':
-      return `
-Task: ${taskDescription}
-
-Project summary:
-${projectSummary}
-
-Please provide a structured analysis and implementation guide for this task with the following sections:
-
-## Understanding the Task
-[Brief analysis of what the task requires]
-
-## Implementation Steps
-1. [First step with details]
-2. [Second step with details]
-...
-
-## Files to Modify
-- [File path]: [Description of changes]
-...
-
-## Testing Approach
-[How to verify the implementation works correctly]
-
-## Potential Challenges
-[List of challenges or considerations]
-`;
-
-    case 'full':
-    default:
-      return `
-Task: ${taskDescription}
-
-Project summary:
-${projectSummary}
-
-Please provide detailed guidance on how to implement this task, including:
-
-1. Analysis of the task requirements
-2. Step-by-step implementation plan
-3. Specific files to modify and how to modify them
-4. Code examples where helpful
-5. Testing approach
-6. Any considerations or edge cases to be aware of
-
-The guidance should be thorough and actionable, enabling a developer to complete the task efficiently.
-`;
+  // Build file content sections if available
+  let fileContentSections = '';
+  if (fileContents) {
+    fileContentSections = `
+  <file_contents>
+${Object.entries(fileContents).map(([path, content]) => `    <file path="${path}"><![CDATA[${content}]]></file>`).join('\n')}
+  </file_contents>`;
   }
+
+  return `<architectural_guidance_query>
+  <task_description><![CDATA[${taskDescription}]]></task_description>
+
+  <relevant_files>
+${paths.map(p => `    <file>${p}</file>`).join('\n')}
+  </relevant_files>${fileContentSections}
+
+  <response_format>
+    Create a concise narrative in Markdown that directly explains the data flow and architecture.
+
+    Your response must be brief and focused primarily on:
+
+    1. The specific path data takes through the system
+    2. How data is transformed between components
+    3. The key function calls in sequence
+    4. Clear, actionable implementation guidance
+    5. No introduction, just the story
+
+    Avoid lengthy, philosophical, or overly metaphorical explanations. The reader needs a clear, direct understanding of how data moves through the code. It has to be in engaging Andrew Huberman style (but without the science, just style of talking). The story has to be very short. Use simple English.
+
+  </response_format>
+</architectural_guidance_query>`;
 }
+

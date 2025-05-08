@@ -10,6 +10,7 @@ import { TextImprovementProcessor, PROCESSOR_TYPE as TEXT_IMPROVEMENT_TYPE } fro
 import { VoiceCorrectionProcessor, PROCESSOR_TYPE as VOICE_CORRECTION_TYPE } from './voice-correction-processor';
 import { VoiceTranscriptionProcessor, PROCESSOR_TYPE as VOICE_TRANSCRIPTION_TYPE } from './voice-transcription-processor';
 import { ReadDirectoryProcessor, PROCESSOR_TYPE as READ_DIRECTORY_TYPE } from './read-directory-processor';
+import { GenericGeminiStreamProcessor, PROCESSOR_TYPE as GENERIC_GEMINI_STREAM_TYPE } from './generic-gemini-stream-processor';
 
 /**
  * Register all available job processors with the registry
@@ -30,6 +31,7 @@ export function registerAllProcessors(): void {
   jobRegistry.register(VOICE_CORRECTION_TYPE, new VoiceCorrectionProcessor());
   jobRegistry.register(VOICE_TRANSCRIPTION_TYPE, new VoiceTranscriptionProcessor());
   jobRegistry.register(READ_DIRECTORY_TYPE, new ReadDirectoryProcessor());
+  jobRegistry.register(GENERIC_GEMINI_STREAM_TYPE, new GenericGeminiStreamProcessor());
   
   const registeredTypes = jobRegistry.getRegisteredJobTypes();
   console.log(`[JobProcessors] Registered ${registeredTypes.length} processor(s): ${registeredTypes.join(', ')}`);
@@ -47,7 +49,8 @@ export {
   TextImprovementProcessor,
   VoiceCorrectionProcessor,
   VoiceTranscriptionProcessor,
-  ReadDirectoryProcessor
+  ReadDirectoryProcessor,
+  GenericGeminiStreamProcessor
 };
 
 // Register all processors when this module is imported

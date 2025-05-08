@@ -27,8 +27,9 @@ export type TaskType =
   | 'voice_correction'
   | 'task_enhancement'
   | 'guidance_generation'
-  | 'task_guidance'
   | 'implementation_plan'
+  | 'generic_llm_stream'
+  | 'streaming'
   | 'unknown';
 
 // Type for AI background job
@@ -106,6 +107,8 @@ export type BackgroundJob = {
      */
     metadata?: {
         targetField?: string; // Field in the form that should be updated with response
+        lastStreamUpdateTime?: number; // Timestamp of the last streaming update
+        responseLength?: number; // Current length of the response text
         [key: string]: any;
     } | null;
 };
@@ -113,6 +116,12 @@ export type BackgroundJob = {
 // Type for task-specific settings stored in the task_settings JSON column
 export type TaskSettings = {
     [taskType in TaskType]: {
+        model: string;
+        maxTokens: number;
+        temperature?: number;
+    };
+} & {
+    streaming?: {
         model: string;
         maxTokens: number;
         temperature?: number;
@@ -132,7 +141,6 @@ export type Session = {
     negativeTitleRegex: string;
     negativeContentRegex: string;
     isRegexActive: boolean;
-    diffTemperature?: number; // Temperature setting for diff generation
     updatedAt?: number; // Timestamp of last update (managed by repository)
     createdAt: number; // Timestamp when the session was created
     includedFiles: string[]; // Paths relative to projectDirectory

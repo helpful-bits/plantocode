@@ -47,6 +47,12 @@ const taskTypeDefinitions: Record<TaskType, {
   defaultModel: string;
   defaultMaxTokens: number;
 }> = {
+  generic_llm_stream: {
+    label: "Generic LLM Stream",
+    defaultApiType: 'gemini',
+    defaultModel: GEMINI_FLASH_MODEL,
+    defaultMaxTokens: 16384,
+  },
   pathfinder: { 
     label: "Path Finder", 
     defaultApiType: 'gemini',
@@ -95,12 +101,6 @@ const taskTypeDefinitions: Record<TaskType, {
     defaultModel: GEMINI_PRO_PREVIEW_MODEL, 
     defaultMaxTokens: 16384 
   },
-  task_guidance: { 
-    label: "Task Guidance", 
-    defaultApiType: 'gemini',
-    defaultModel: GEMINI_PRO_PREVIEW_MODEL, 
-    defaultMaxTokens: 16384 
-  },
   implementation_plan: {
     label: "Implementation Plan",
     defaultApiType: 'gemini',
@@ -112,6 +112,12 @@ const taskTypeDefinitions: Record<TaskType, {
     defaultApiType: 'gemini',
     defaultModel: GEMINI_FLASH_MODEL, 
     defaultMaxTokens: 4096 
+  },
+  streaming: {
+    label: "Streaming",
+    defaultApiType: 'gemini',
+    defaultModel: GEMINI_FLASH_MODEL,
+    defaultMaxTokens: 16384
   }
 };
 

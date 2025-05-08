@@ -63,7 +63,7 @@ export async function loadFileContents(
     return existingContents;
   }
 
-  console.log(`Loading contents for ${filePaths.length} files`);
+  // Loading file contents
   
   // Start with the existing contents
   const contents: Record<string, string> = { ...existingContents };
@@ -98,7 +98,7 @@ export async function loadFileContents(
   // Process each batch sequentially
   for (let batchIndex = 0; batchIndex < filePathBatches.length; batchIndex++) {
     const batch = filePathBatches[batchIndex];
-    console.log(`Processing batch ${batchIndex + 1}/${filePathBatches.length} (${batch.length} files)`);
+    // Processing file batch
     
     // Process files in the current batch concurrently
     const batchPromises = batch.map(async (filePath) => {
@@ -108,13 +108,13 @@ export async function loadFileContents(
         
         // Verify the file exists before trying to read it
         if (existsSync(fullPath)) {
-          console.log(`Processing file: ${filePath}`);
+          // Processing file
           
           // Check file size first
           try {
             const fileStats = await stat(fullPath);
             if (fileStats.size > MAX_FILE_SIZE) {
-              console.log(`File too large (${Math.round(fileStats.size / 1024)}KB), truncating: ${filePath}`);
+              // File too large, truncating
               // Read just the first part of large files
               const fileContent = await readFileWithTimeout(fullPath, FILE_READ_TIMEOUT);
               contents[filePath] = fileContent.substring(0, MAX_FILE_SIZE) + 
@@ -143,7 +143,7 @@ export async function loadFileContents(
     await Promise.all(batchPromises);
   }
   
-  console.log(`Successfully loaded ${Object.keys(contents).length - Object.keys(existingContents).length} of ${filePaths.length} files`);
+  // File loading complete
   
   return contents;
 }

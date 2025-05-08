@@ -24,7 +24,8 @@ export class BackgroundJobRepository {
     includeSyntax: boolean = true,
     temperature: number = 1.0,
     visible: boolean = true,
-    metadata: { [key: string]: any } = {}
+    metadata: { [key: string]: any } = {},
+    projectDirectory?: string
   ): Promise<BackgroundJob> {
     // Add strict session ID validation
     if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -36,6 +37,9 @@ export class BackgroundJobRepository {
     // Create job ID and timestamp
     const jobId = `job_${uuid()}`;
     const now = Math.floor(Date.now() / 1000);
+    
+    // Extract projectDirectory from metadata if provided explicitly and not in parameters
+    const effectiveProjectDirectory = projectDirectory || metadata.projectDirectory || null;
     
     // Create new job object with defaults based on BackgroundJob type
     const job: BackgroundJob = {
@@ -77,6 +81,9 @@ export class BackgroundJobRepository {
       
       // Output file paths
       outputFilePath: null,
+      
+      // Project directory 
+      projectDirectory: effectiveProjectDirectory,
       
       // Visibility/management flags
       cleared: false,
@@ -183,13 +190,15 @@ export class BackgroundJobRepository {
             id, session_id, api_type, task_type, status, tokens_sent, tokens_received,
             chars_received, prompt, response, error_message, metadata, created_at,
             updated_at, cleared, start_time, end_time,
-            output_file_path, status_message, last_update, model_used, max_output_tokens
+            output_file_path, status_message, last_update, model_used, max_output_tokens,
+            project_directory
           )
           VALUES (
             @id, @session_id, @api_type, @task_type, @status, @tokens_sent, @tokens_received,
             @chars_received, @prompt, @response, @error_message, @metadata, @created_at,
             @updated_at, @cleared, @start_time, @end_time,
-            @output_file_path, @status_message, @last_update, @model_used, @max_output_tokens
+            @output_file_path, @status_message, @last_update, @model_used, @max_output_tokens,
+            @project_directory
           )
         `);
         
@@ -210,11 +219,11 @@ export class BackgroundJobRepository {
           // Input field
           prompt: jobCopy.prompt || '',
           
-          // Output field - consistently normalize null/undefined to empty string
-          response: jobCopy.response || '',
+          // Output field - preserve null/undefined values as null for database storage
+          response: jobCopy.response ?? null,
           
-          // For error messages, consistently normalize null/undefined to empty string
-          error_message: jobCopy.errorMessage || '',
+          // For error messages, preserve null/undefined values as null for database storage
+          error_message: jobCopy.errorMessage ?? null,
           
           // Metadata and timestamps
           metadata: metadataJson,
@@ -227,10 +236,18 @@ export class BackgroundJobRepository {
           status_message: jobCopy.statusMessage,
           last_update: jobCopy.lastUpdate,
           
+          // Project directory
+          project_directory: jobCopy.projectDirectory || null,
+          
           // Model configuration
           model_used: jobCopy.modelUsed,
           max_output_tokens: jobCopy.maxOutputTokens
         };
+        
+        // Diagnostic log for implementation plan jobs
+        if (jobCopy.taskType === 'implementation_plan' && jobCopy.status === 'completed') {
+          console.log(`[BackgroundJobRepo] Saving completed implementation plan job ${jobCopy.id}. Response length: ${jobCopy.response?.length || 0}. Snippet: ${jobCopy.response?.substring(0, 100) || 'N/A'}`);
+        }
         
         stmt.run(sqlParams);
         
@@ -287,7 +304,8 @@ export class BackgroundJobRepository {
             status_message,
             last_update,
             model_used,
-            max_output_tokens
+            max_output_tokens,
+            project_directory
           FROM background_jobs
           WHERE id = ?
         `);
@@ -643,46 +661,29 @@ export class BackgroundJobRepository {
       
       // 2. Ensure relevant fields are set based on terminal status type
       if (status === 'completed') {
-        // For completed jobs, ensure response is set
-        const hasExistingResponse = Boolean(updatedJob.response && updatedJob.response.trim());
-        const hasNewResponse = Boolean(response && response.trim());
-        
-        if (!hasExistingResponse && !hasNewResponse) {
-          // Set placeholder response if no response content exists
-          updatedJob.response = '[Job completed with no response]';
-          
-          console.warn(`[Repo] Job ${jobId} marked as 'completed' but has no response, adding placeholder`);
-        } 
-        else if (hasNewResponse) {
-          // Update response field
-          updatedJob.response = response === undefined ? null : response;
+        // For completed jobs, simply use the response value provided
+        if (response !== undefined) {
+          // Update response field - preserve null if null was explicitly passed
+          updatedJob.response = response;
         }
         
         // Clear error message for completed jobs
         updatedJob.errorMessage = '';
       }
       else if (JOB_STATUSES.FAILED.includes(status)) {
-        // For failed/canceled jobs, ensure errorMessage is set
-        const hasExistingError = Boolean(updatedJob.errorMessage && updatedJob.errorMessage.trim());
-        const hasNewError = Boolean(errorMessage && errorMessage.trim());
-        
-        if (!hasExistingError && !hasNewError) {
-          // Set specific placeholder based on status
-          const errorPlaceholder = status === 'failed' 
-            ? 'Job failed with no error message' 
-            : 'Job canceled with no reason provided';
-          
-          updatedJob.errorMessage = errorPlaceholder;
-          
-          console.warn(`[Repo] Job ${jobId} marked as '${status}' but has no error message, adding placeholder`);
-        }
-        else if (hasNewError) {
-          // Update error message with the provided value
-          updatedJob.errorMessage = errorMessage || '';
+        // For failed/canceled jobs, use the errorMessage value provided
+        if (errorMessage !== undefined) {
+          // Update error message with the provided value - preserve null if null was explicitly passed
+          updatedJob.errorMessage = errorMessage;
         }
         
-        // Clear response for failed/canceled jobs
-        updatedJob.response = '';
+        // Clear response for failed/canceled jobs if no explicit response is provided
+        if (response === undefined) {
+          updatedJob.response = '';
+        } else {
+          // Use the provided response value (could be partial content)
+          updatedJob.response = response;
+        }
       }
     }
     // ------------- END TERMINAL STATUS HANDLING -------------
@@ -716,20 +717,18 @@ export class BackgroundJobRepository {
         console.debug(`[Repo] Updating response for job ${jobId}: ${response?.substring(0, 50)}...`);
       }
       
-      // Ensure null/undefined responses are converted to empty strings
-      // This is especially important for completed jobs
-      updatedJob.response = response ?? '';
+      // Use the response value as is, preserving null if provided
+      updatedJob.response = response;
     }
     
     // Update error message if provided (now separate from terminal status handling)
     if (errorMessage !== undefined) {
-      const errorMsg = errorMessage || '';
-      
       if (DEBUG_JOB_UPDATES) {
-        console.debug(`[Repo] Updating error message for job ${jobId}: ${errorMsg.substring(0, 50)}...`);
+        console.debug(`[Repo] Updating error message for job ${jobId}: ${errorMessage?.substring(0, 50)}...`);
       }
       
-      updatedJob.errorMessage = errorMsg;
+      // Use the error message value as is, preserving null if provided
+      updatedJob.errorMessage = errorMessage;
     }
     
     // Merge metadata if provided and preserve existing fields
@@ -756,6 +755,16 @@ export class BackgroundJobRepository {
       
       if (metadata.tokensTotal !== undefined) {
         updatedJob.totalTokens = metadata.tokensTotal;
+      }
+      
+      // Special handling for outputFilePath in metadata
+      if (metadata.outputFilePath !== undefined) {
+        // Set outputFilePath directly on the job object
+        updatedJob.outputFilePath = metadata.outputFilePath;
+        
+        if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+          console.debug(`[Repo] Setting job ${jobId} outputFilePath to '${metadata.outputFilePath}'`);
+        }
       }
       
       // Special handling for targetField in metadata (critical for form updates)
@@ -1004,6 +1013,105 @@ export class BackgroundJobRepository {
         updateJobs(jobIds);
       } catch (error) {
         console.error(`Error canceling jobs for session ${sessionId}:`, error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Append content to a job's response without changing its status
+   * 
+   * This method is used for streaming updates, where we want to incrementally
+   * update the job's response and token counts while keeping it in 'running' status.
+   * 
+   * @param jobId The job ID
+   * @param chunk The text chunk to append to the response
+   * @param newTokensReceived Number of tokens in this chunk
+   * @param currentTotalResponseLength Current length of the total response (chars)
+   * @returns Promise that resolves when the update is complete
+   */
+  async appendToJobResponse(
+    jobId: string, 
+    chunk: string, 
+    newTokensReceived: number,
+    currentTotalResponseLength: number
+  ): Promise<void> {
+    // Validate jobId
+    if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
+      throw new Error('Invalid job ID provided for appending to response');
+    }
+    
+    // First, get the current job to ensure it exists and is in 'running' state
+    const job = await this.getBackgroundJob(jobId);
+    
+    if (!job) {
+      throw new Error(`Cannot append to job response: Job with ID ${jobId} not found`);
+    }
+    
+    // Temporary diagnostic logging for implementation plan jobs
+    if (job.taskType === 'implementation_plan') {
+      console.log(`[TEMP_DEBUG_IMPL_PLAN] Appending to job ${jobId}, chunk length: ${chunk.length}, newTokens: ${newTokensReceived}, currentLength: ${currentTotalResponseLength}`);
+    }
+    
+    // Only append to jobs in 'running' status
+    if (job.status !== 'running') {
+      console.warn(`[Repo] Cannot append to job ${jobId} with status '${job.status}', job must be in 'running' status`);
+      return;
+    }
+    
+    // Calculate updated token counts
+    const updatedTokensReceived = (job.tokensReceived || 0) + newTokensReceived;
+    const updatedTotalTokens = (job.tokensSent || 0) + updatedTokensReceived;
+    
+    // Update the job with the new chunk and token counts
+    return connectionPool.withTransaction((db: Database.Database) => {
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        
+        // Get current response - special handling for null response
+        const currentResponse = job.response === null ? '' : job.response;
+        
+        // Append chunk to the current response
+        const updatedResponse = currentResponse + chunk;
+        
+        // Update the job, preserving its 'running' status
+        const stmt = db.prepare(`
+          UPDATE background_jobs
+          SET response = ?,
+              tokens_received = ?,
+              updated_at = ?,
+              last_update = ?,
+              metadata = json_set(
+                metadata, 
+                '$.lastStreamUpdateTime', ?,
+                '$.responseLength', ?,
+                '$.totalTokens', ?
+              )
+          WHERE id = ? AND status = 'running'
+        `);
+        
+        const result = stmt.run(
+          updatedResponse,
+          updatedTokensReceived,
+          now,
+          now,
+          Date.now(), // millisecond precision for stream updates
+          currentTotalResponseLength,
+          updatedTotalTokens,
+          jobId
+        );
+        
+        // Temporary logging for implementation plan jobs
+        if (job.taskType === 'implementation_plan') {
+          console.log(`[TEMP_DEBUG_IMPL_PLAN] Update result for ${jobId}: changes=${result?.changes || 0}, new response length=${updatedResponse.length}`);
+        }
+        
+        // Check if the update succeeded (should affect one row)
+        if (!result || result.changes !== 1) {
+          console.warn(`[Repo] Failed to append to job ${jobId}, no rows updated. Job may no longer be in 'running' status.`);
+        }
+      } catch (error) {
+        console.error(`[Repo] Error appending to job ${jobId}:`, error);
         throw error;
       }
     });

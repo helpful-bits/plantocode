@@ -6,7 +6,8 @@ import geminiClient from '@/lib/api/gemini-client';
 import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@/lib/constants';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 import { generateDirectoryTree } from '@/lib/directory-tree';
-import { generateGuidanceForPathsPrompt, generateTaskGuidancePrompt } from '@/lib/prompts/guidance-prompts';
+import { generateGuidanceForPathsPrompt } from '@/lib/prompts/guidance-prompts';
+import { loadFileContents } from '@/lib/file-utils';
 
 /**
  * Generate guidance for specific file paths
@@ -44,16 +45,28 @@ export async function generateGuidanceForPathsAction(
     
     // Get settings for guidance generation
     const guidanceSettings = projectSettings?.guidance_generation || {
-      model: GEMINI_PRO_PREVIEW_MODEL,
-      maxTokens: 16384,
-      temperature: 0.7
+      model: GEMINI_FLASH_MODEL, // Use Flash model for faster responses
+      maxTokens: 8192, // Reduce token count since we want concise responses
+      temperature: 0.5 // Lower temperature for more focused responses
     };
     
     // Override model if provided
     const model = options?.modelOverride || guidanceSettings.model;
     
-    // Prepare prompt for guidance generation
-    const promptText = generateGuidanceForPathsPrompt(taskDescription, paths);
+    // Read file contents for the paths
+    let fileContents: Record<string, string> = {};
+    try {
+      // Read content for all selected files
+      fileContents = await loadFileContents(session.projectDirectory, paths);
+      
+      console.log(`[generateGuidanceForPathsAction] Read content for ${Object.keys(fileContents).length} of ${paths.length} files`);
+    } catch (readError) {
+      console.warn(`[generateGuidanceForPathsAction] Error reading file contents:`, readError);
+      // Continue even if file reading fails - we'll use paths only
+    }
+    
+    // Prepare prompt for guidance generation with file contents
+    const promptText = generateGuidanceForPathsPrompt(taskDescription, paths, fileContents);
     
     // Call the Gemini client
     const result = await geminiClient.sendRequest(promptText, {
@@ -127,97 +140,4 @@ async function getProjectSummary(projectDirectory: string): Promise<string> {
   }
 }
 
-export async function generateTaskGuidanceAction(
-  taskDescription: string,
-  projectDirectory: string,
-  options?: {
-    modelOverride?: string;
-    guidanceType?: 'full' | 'planning' | 'structured';
-    projectSummary?: string;
-  },
-  sessionId?: string
-): Promise<ActionState<{ guidance: string }>> {
-  await setupDatabase();
-  
-  if (!taskDescription.trim()) {
-    return { isSuccess: false, message: "Task description cannot be empty" };
-  }
-  
-  // Validate sessionId if provided
-  if (sessionId !== undefined && (typeof sessionId !== 'string' || !sessionId.trim())) {
-    return { isSuccess: false, message: "Invalid session ID provided for task guidance" };
-  }
-  
-  try {
-    // Get project settings
-    const projectSettings = await getModelSettingsForProject(projectDirectory);
-    
-    // Get settings for task guidance
-    const guidanceSettings = projectSettings?.['task_guidance'] || {
-      model: GEMINI_FLASH_MODEL,
-      maxTokens: 8192,
-      temperature: 0.3 // Lower temperature for more predictable output
-    };
-    
-    // Override model if provided
-    const model = options?.modelOverride || guidanceSettings.model;
-    
-    // Get the files listing from the project directory
-    const projectSummary = options?.projectSummary || await getProjectSummary(projectDirectory);
-    
-    const guidanceType = options?.guidanceType || 'full';
-    const promptText = generateTaskGuidancePrompt(taskDescription, projectSummary, guidanceType);
-    
-    // Call the Gemini client
-    const result = await geminiClient.sendRequest(promptText, {
-      model,
-      maxOutputTokens: guidanceSettings.maxTokens,
-      temperature: guidanceSettings.temperature,
-      apiType: 'gemini',
-      taskType: 'task_guidance',
-      projectDirectory,
-      sessionId,
-      // Force using a background job for task guidance
-      forceBackgroundJob: true,
-      metadata: {
-        targetField: 'taskDescription',
-        isVisible: true
-      }
-    });
-    
-    if (!result.isSuccess) {
-      return { 
-        isSuccess: false, 
-        message: result.message || "Failed to generate task guidance" 
-      };
-    }
-    
-    // Check if this is a background job response
-    if (result.metadata?.jobId) {
-      return {
-        isSuccess: true,
-        message: "Task guidance generation started in the background",
-        data: { guidance: "" },
-        metadata: {
-          isBackgroundJob: true,
-          jobId: result.metadata.jobId
-        }
-      };
-    }
-    
-    // Otherwise return the immediate result
-    return {
-      isSuccess: true,
-      message: "Successfully generated task guidance",
-      data: { guidance: result.data || "" }
-    };
-  } catch (error) {
-    console.error("[generateTaskGuidanceAction]", error);
-    
-    return {
-      isSuccess: false,
-      message: error instanceof Error ? error.message : "Unknown error generating guidance",
-      error: error instanceof Error ? error : new Error("Unknown error")
-    };
-  }
-} 
+ 
