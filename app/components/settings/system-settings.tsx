@@ -1,9 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Button,
+  Label,
+  Separator
+} from "@/components/ui";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { getProjectSetting, saveProjectSetting } from "@/actions/project-settings-actions";
 import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from "@/lib/constants";
@@ -82,15 +90,15 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
         </CardDescription>
       </CardHeader>
       <CardContent className="p-6">
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="space-y-2">
-            <label htmlFor="output-file-editor-command" className="text-sm font-medium">
+            <Label htmlFor="output-file-editor-command" className="text-sm font-medium">
               Output File Editor Command
-            </label>
-            <div className="text-xs text-muted-foreground mb-2 text-balance">
+            </Label>
+            <p className="text-xs text-muted-foreground text-balance">
               Command used to open generated output files (like implementation plans) in your preferred editor.
               For example: <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">code</code>, <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">vim</code>, or <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">open -a &quot;Text Editor&quot;</code>
-            </div>
+            </p>
             <div className="flex items-center gap-2">
               <Input
                 id="output-file-editor-command"
@@ -100,8 +108,8 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
                 className="flex-1"
                 disabled={isLoading}
               />
-              <Button 
-                onClick={handleSave} 
+              <Button
+                onClick={handleSave}
                 disabled={isLoading}
                 size="sm"
                 className="min-w-[70px]"
@@ -111,10 +119,10 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
                 ) : "Save"}
               </Button>
             </div>
-            <div className="flex items-center h-5 mt-1">
-              {error && <span className="text-xs text-destructive">{error}</span>}
+            <div className="h-5 text-xs">
+              {error && <span className="text-destructive">{error}</span>}
               {saveSuccess && (
-                <span className="text-xs text-green-500 flex items-center gap-1">
+                <span className="text-primary flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Saved successfully
                 </span>
               )}

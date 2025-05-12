@@ -25,14 +25,15 @@ Task Description: "${taskDescription}"
 
 IMPORTANT: The generated patterns will be used in an OR relationship - files matching EITHER the titleRegex OR the contentRegex will be included in the results. You don't need to combine both patterns into one; they will be applied separately.
 
-Provide the output *only* as a JSON object with these keys:
+CRITICAL: Your entire response must be ONLY the raw JSON object. Do NOT include any surrounding text, explanations, or markdown code fences like \`\`\`json ... \`\`\`. The response must start with '{' and end with '}'.
+
+Provide the output with these keys:
 - "titleRegex": Pattern to match file paths to INCLUDE
 - "contentRegex": Pattern to match file content to INCLUDE
 - "negativeTitleRegex": Pattern to match file paths to EXCLUDE
 - "negativeContentRegex": Pattern to match file content to EXCLUDE
 
-If a pattern is not applicable or cannot be generated for a category, omit the key or set its value to an empty string. Do not include any explanatory text outside the JSON object. Escaped backslashes are needed for JSON strings containing regex.
-Output *only* the raw JSON object, without any markdown formatting (like \`\`\`json).
+If a pattern is not applicable or cannot be generated for a category, omit the key or set its value to an empty string. Escaped backslashes are needed for JSON strings containing regex.
 IMPORTANT: Do NOT use inline flags like (?i) or lookarounds within the regex patterns. Standard, widely compatible JavaScript RegExp syntax only.
 Example for "Find all TypeScript files in components folder, but exclude test files":
 {

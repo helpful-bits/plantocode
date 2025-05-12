@@ -192,8 +192,6 @@ export async function createSessionAction(
       }
     }
     
-    revalidatePath('/');
-    
     return session.id;
   } catch (error) {
     console.error(`[createSessionAction] Error:`, error);
@@ -306,8 +304,6 @@ export async function deleteSessionAction(sessionId: string): Promise<ActionStat
       }
     }
 
-    revalidatePath('/');
-    
     return {
       isSuccess: true,
       message: "Session deleted successfully"
@@ -337,8 +333,6 @@ export async function clearSessionsAction(): Promise<ActionState<null>> {
     for (const projectDirectory of projectDirectories) {
       await sessionRepository.deleteAllSessions(projectDirectory);
     }
-    
-    revalidatePath('/');
     
     return {
       isSuccess: true,
@@ -410,8 +404,6 @@ export async function updateSessionProjectDirectoryAction(
     
     // Set this as the active session for the new project directory
     await sessionRepository.setActiveSession(projectDirectory, sessionId);
-    
-    revalidatePath('/');
     
     return {
       isSuccess: true,

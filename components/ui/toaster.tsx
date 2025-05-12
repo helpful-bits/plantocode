@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import {
   Toast,
   ToastClose,
@@ -13,22 +14,27 @@ import { useToast } from "@/components/ui/use-toast"
 export function Toaster() {
   const { toasts } = useToast()
 
+  // Use React.useMemo to prevent unnecessary re-renders of toast elements
+  const toastElements = React.useMemo(() => {
+    return toasts.map(function ({ id, title, description, action, ...props }) {
+      return (
+        <Toast key={id} {...props}>
+          <div className="grid gap-1">
+            {title && <ToastTitle>{title}</ToastTitle>}
+            {description && (
+              <ToastDescription>{description}</ToastDescription>
+            )}
+          </div>
+          {action}
+          <ToastClose />
+        </Toast>
+      )
+    })
+  }, [toasts])
+
   return (
-    <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, ...props }) {
-        return (
-          <Toast key={id} {...props}>
-            <div className="grid gap-1">
-              {title && <ToastTitle>{title}</ToastTitle>}
-              {description && (
-                <ToastDescription>{description}</ToastDescription>
-              )}
-            </div>
-            {action}
-            <ToastClose />
-          </Toast>
-        )
-      })}
+    <ToastProvider swipeDirection="right" duration={5000}>
+      {toastElements}
       <ToastViewport />
     </ToastProvider>
   )

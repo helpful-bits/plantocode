@@ -115,6 +115,7 @@ export const BackgroundJobsSidebar: React.FC = () => {
 
   // Handle clearing of history
   // daysToKeep parameter determines the clearing behavior:
+  // - When -1: Delete all completed/failed/canceled jobs
   // - When undefined or 0: Only permanently deletes very old jobs (90+ days)
   // - When > 0: Hides jobs older than the specified number of days from view (marks as cleared=1)
   const handleClearHistory = async (daysToKeep?: number) => {
@@ -123,7 +124,9 @@ export const BackgroundJobsSidebar: React.FC = () => {
       await clearHistory(daysToKeep);
 
       // Set appropriate feedback message based on the clearing operation
-      if (daysToKeep === undefined || daysToKeep === 0) {
+      if (daysToKeep === -1) {
+        setClearFeedback("All completed, failed, and canceled jobs have been deleted");
+      } else if (daysToKeep === undefined || daysToKeep === 0) {
         setClearFeedback("Jobs older than 90 days permanently deleted");
       } else {
         setClearFeedback(`Jobs older than ${daysToKeep} day${daysToKeep > 1 ? 's' : ''} have been hidden from view`);
@@ -157,9 +160,9 @@ export const BackgroundJobsSidebar: React.FC = () => {
     if (activeCollapsed || !error) return null;
 
     return (
-      <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 text-xs mx-4 mt-3 rounded-md">
+      <div className="bg-warning-background border border-warning-border text-warning-foreground px-4 py-3 text-xs mx-4 mt-3 rounded-md">
         <div className="flex items-center gap-2 mb-1.5">
-          <AlertCircle className="h-4 w-4" />
+          <AlertCircle className="h-4 w-4 text-warning" />
           <span className="font-medium">Error</span>
         </div>
         <div className="text-xs text-balance">
@@ -244,6 +247,10 @@ export const BackgroundJobsSidebar: React.FC = () => {
                   </Tooltip>
                 </TooltipProvider>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleClearHistory(-1)} disabled={isClearing}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    <span>Delete all completed/failed/canceled jobs</span>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleClearHistory()} disabled={isClearing}>
                     <Clock className="mr-2 h-4 w-4" />
                     <span>Delete jobs older than 90 days</span>

@@ -754,45 +754,63 @@ export class BackgroundJobRepository {
     if (metadata) {
       // Get existing metadata object
       const existingMetadata = updatedJob.metadata || {};
-      
+
       // Update tokens and other counts if provided
       if (metadata.tokensReceived !== undefined) {
         updatedJob.tokensReceived = metadata.tokensReceived;
-        
+
         if (DEBUG_JOB_UPDATES) {
           console.debug(`[Repo] Updating tokensReceived for job ${jobId} to ${metadata.tokensReceived}`);
         }
       }
-      
+
       if (metadata.charsReceived !== undefined) {
         updatedJob.charsReceived = metadata.charsReceived;
       }
-      
+
       if (metadata.tokensSent !== undefined) {
         updatedJob.tokensSent = metadata.tokensSent;
       }
-      
+
       if (metadata.tokensTotal !== undefined) {
         updatedJob.totalTokens = metadata.tokensTotal;
       }
-      
+
+      // Update top-level modelUsed if provided in metadata
+      if (typeof metadata.modelUsed === 'string' && metadata.modelUsed.trim() !== '') {
+        updatedJob.modelUsed = metadata.modelUsed;
+        if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
+          console.debug(`[Repo] Setting job ${jobId} modelUsed to '${metadata.modelUsed}' from metadata`);
+        }
+      }
+
+      // Update top-level maxOutputTokens if provided in metadata
+      if (typeof metadata.maxOutputTokens === 'number') {
+        updatedJob.maxOutputTokens = metadata.maxOutputTokens;
+      }
+
+      // Update top-level temperature if provided in metadata
+      if (typeof metadata.temperature === 'number') {
+        updatedJob.temperature = metadata.temperature;
+      }
+
       // Special handling for outputFilePath in metadata
       if (metadata.outputFilePath !== undefined) {
         // Set outputFilePath directly on the job object
         updatedJob.outputFilePath = metadata.outputFilePath;
-        
+
         if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
           console.debug(`[Repo] Setting job ${jobId} outputFilePath to '${metadata.outputFilePath}'`);
         }
       }
-      
+
       // Special handling for targetField in metadata (critical for form updates)
       if (metadata.targetField !== undefined) {
         if (DEBUG_JOB_UPDATES || isTerminalStatusUpdate) {
           console.debug(`[Repo] Job ${jobId} has targetField '${metadata.targetField}' in metadata`);
         }
       }
-      
+
       // Merge metadata objects with new values taking precedence
       updatedJob.metadata = {
         ...existingMetadata,
@@ -819,11 +837,12 @@ export class BackgroundJobRepository {
   
   /**
    * Clear old background job history
-   * This function has two modes:
-   * 1. When daysToKeep is 0, it ONLY performs hard deletion of very old jobs (90+ days) to maintain database size
-   * 2. When daysToKeep > 0, it will ALSO mark completed jobs older than daysToKeep as cleared
+   * This function has three modes:
+   * 1. When daysToKeep is -1, it deletes ALL completed, failed, and canceled jobs
+   * 2. When daysToKeep is 0, it ONLY performs hard deletion of very old jobs (90+ days) to maintain database size
+   * 3. When daysToKeep > 0, it will ALSO mark completed jobs older than daysToKeep as cleared
    *
-   * @param daysToKeep Number of days to keep completed jobs visible (0 = keep all visible)
+   * @param daysToKeep Number of days to keep completed jobs visible (0 = keep all visible, -1 = delete all completed/failed/canceled)
    */
   async clearBackgroundJobHistory(daysToKeep: number = 0): Promise<void> {
     return connectionPool.withTransaction((db: Database.Database) => {
@@ -836,6 +855,32 @@ export class BackgroundJobRepository {
         `).get();
 
         if (!tableExists) {
+          return;
+        }
+
+        // SPECIAL CASE: Delete ALL completed/failed/canceled jobs when daysToKeep is -1
+        if (daysToKeep === -1) {
+          // Count how many jobs will be deleted
+          const countResult = db.prepare(`
+            SELECT COUNT(*) as count FROM background_jobs
+            WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
+          `).get();
+
+          const jobCount = (countResult as any)?.count || 0;
+
+          if (jobCount > 0) {
+            console.log(`[BackgroundJobRepo] Deleting all ${jobCount} completed/failed/canceled jobs`);
+
+            // Delete jobs matching the terminal statuses
+            const result = db.prepare(`
+              DELETE FROM background_jobs
+              WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
+            `).run();
+
+            const deletedCount = result?.changes || 0;
+            console.log(`[BackgroundJobRepo] Deleted ${deletedCount} jobs`);
+          }
+
           return;
         }
 

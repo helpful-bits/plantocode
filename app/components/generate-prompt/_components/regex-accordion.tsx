@@ -26,15 +26,11 @@ export default function RegexAccordion({
   titleRegexError,
   contentRegexError,
   negativeTitleRegexError,
-  negativeContentRegexError
+  negativeContentRegexError,
+  disabled = false
 }: RegexAccordionProps) {
   // Local state for controlling the accordion
   const [isOpen, setIsOpen] = useState(false);
-  
-  // Function to handle the switch click without triggering the collapsible
-  const handleSwitchClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
 
   return (
     <div className="mb-4">
@@ -49,75 +45,45 @@ export default function RegexAccordion({
                 {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </div>
             </CollapsibleTrigger>
-            
-            <div className="flex items-center gap-3 mr-3" onClick={handleSwitchClick}>
-              <span className="text-xs text-muted-foreground">
-                {regexState.isRegexActive ? "Active" : "Inactive"}
-              </span>
-              <div
-                className="inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 bg-input"
-                style={{
-                  backgroundColor: regexState.isRegexActive ? 'var(--primary)' : 'var(--input)',
-                  position: 'relative'
-                }}
+
+            {/* Generate Regex Button - moved here for better UX */}
+            <div className="pr-3">
+              <Button
+                type="button"
+                variant={isOpen ? "secondary" : "outline"}
+                size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  const newValue = !regexState.isRegexActive;
-                  regexState.setIsRegexActive(newValue);
-                  // onInteraction is now called inside setIsRegexActive
+                  regexState.handleGenerateRegexFromTask();
+                  if (!isOpen) setIsOpen(true);
                 }}
-                role="switch"
-                aria-checked={regexState.isRegexActive}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    const newValue = !regexState.isRegexActive;
-                    regexState.setIsRegexActive(newValue);
-                    // onInteraction is now called inside setIsRegexActive
-                  }
-                }}
+                disabled={!taskDescription.trim() || regexState.isGeneratingTaskRegex || disabled}
+                className="h-8"
+                title="Generate regex patterns based on your task description"
               >
-                <div
-                  className="pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform"
-                  style={{
-                    transform: regexState.isRegexActive ? 'translateX(16px)' : 'translateX(0)',
-                    position: 'absolute',
-                    left: '2px'
-                  }}
-                />
-              </div>
+                {regexState.isGeneratingTaskRegex ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Filter className="h-4 w-4 mr-1.5" />
+                    Generate Regex
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 
           {/* Collapsible content */}
           <CollapsibleContent className="pt-6 border border-t-0 rounded-b-md px-6 pb-6 mt-[-1px]">
-            {/* "Generate Regex from Task" Button Section */}
-            <div className="mb-5">
-              <div className="flex items-center justify-between mb-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={regexState.handleGenerateRegexFromTask}
-                  disabled={!taskDescription.trim() || regexState.isGeneratingTaskRegex}
-                  className="h-9"
-                >
-                  {regexState.isGeneratingTaskRegex ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    "Generate Regex from Task"
-                  )}
-                </Button>
-                {regexState.regexGenerationError && (
-                  <p className="text-xs text-destructive">{regexState.regexGenerationError}</p>
-                )}
+            {/* Show regex generation error if present */}
+            {regexState.regexGenerationError && (
+              <div className="mb-4 p-2 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
+                <strong>Error:</strong> {regexState.regexGenerationError}
               </div>
-              <p className="text-xs text-muted-foreground text-balance">Suggests regex patterns based on the task description using AI.</p>
-            </div>
+            )}
 
             {/* RegexInput Component */}
             <RegexInput
@@ -133,10 +99,9 @@ export default function RegexAccordion({
               contentRegexError={contentRegexError}
               negativeTitleRegexError={negativeTitleRegexError}
               negativeContentRegexError={negativeContentRegexError}
-              isRegexActive={regexState.isRegexActive}
-              onRegexActiveChange={regexState.setIsRegexActive}
               onInteraction={onInteraction}
               onClearPatterns={regexState.handleClearPatterns}
+              disabled={disabled}
             />
           </CollapsibleContent>
         </Collapsible>

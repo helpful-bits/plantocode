@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useProjectFileList, FileInfo } from "./file-management/use-project-file-list";
 import { useFileSelectionManager } from "./file-management/use-file-selection-manager";
 import { useRelevantFilesFinder } from "./file-management/use-relevant-files-finder";
@@ -44,8 +44,14 @@ export function useFileManagementState({
 
   const includedFiles = currentSession?.includedFiles || [];
   const forceExcludedFiles = currentSession?.forceExcludedFiles || [];
-  const searchTerm = currentSession?.searchTerm || '';
-  const searchSelectedFilesOnly = currentSession?.searchSelectedFilesOnly || false;
+  // Initialize search term state from session or default to empty string
+  const [searchTerm, setSearchTermState] = useState<string>(
+    currentSession?.searchTerm || ''
+  );
+  // Initialize search selected files only state from session or default to false
+  const [searchSelectedFilesOnly, setSearchSelectedFilesOnlyState] = useState<boolean>(
+    currentSession?.searchSelectedFilesOnly || false
+  );
   const handleUpdateIncludedFiles = useCallback((paths: string[]) => {
     // Use setTimeout to defer the state update to the next microtask
     // This prevents the "Cannot update a component while rendering a different component" error
@@ -64,6 +70,9 @@ export function useFileManagementState({
   }, [updateCurrentSessionFields, setSessionModified]);
 
   const handleUpdateSearchTerm = useCallback((term: string) => {
+    // Update local state
+    setSearchTermState(term);
+
     // Use setTimeout to defer the state update to the next microtask
     setTimeout(() => {
       updateCurrentSessionFields({ searchTerm: term });
@@ -71,13 +80,30 @@ export function useFileManagementState({
     }, 0);
   }, [updateCurrentSessionFields, setSessionModified]);
 
-  const handleUpdateSearchSelectedOnly = useCallback((value: boolean) => {
-    // Use setTimeout to defer the state update to the next microtask
-    setTimeout(() => {
-      updateCurrentSessionFields({ searchSelectedFilesOnly: value });
+  // Add debounce ref for search selected files only
+  const searchSelectedFilesOnlyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleUpdateSearchSelectedOnly = useCallback((value?: boolean) => {
+    // Handle undefined by toggling the current value
+    const newValue = value === undefined ? !searchSelectedFilesOnly : value;
+
+    // Clear any pending timeouts
+    if (searchSelectedFilesOnlyTimeoutRef.current) {
+      clearTimeout(searchSelectedFilesOnlyTimeoutRef.current);
+    }
+
+    // Use a single debounced update to prevent flickering
+    searchSelectedFilesOnlyTimeoutRef.current = setTimeout(() => {
+      // Update local state first
+      setSearchSelectedFilesOnlyState(newValue);
+
+      // Then update session state
+      updateCurrentSessionFields({ searchSelectedFilesOnly: newValue });
       setSessionModified(true);
-    }, 0);
-  }, [updateCurrentSessionFields, setSessionModified]);
+
+      searchSelectedFilesOnlyTimeoutRef.current = null;
+    }, 50); // Small delay to debounce rapid changes
+  }, [updateCurrentSessionFields, setSessionModified, searchSelectedFilesOnly]);
 
   const fileSelectionManager = useFileSelectionManager({
     rawFilesMap,
@@ -140,17 +166,42 @@ export function useFileManagementState({
     replaceAllSelectionsWithPaths,
   } = fileSelectionManager;
 
+  // Core UI state - moved up to fix variable declaration order
+  const [filterMode, setFilterModeState] = useState<'all' | 'selected' | 'regex'>('all');
+  const [findFilesMode, setFindFilesMode] = useState<'replace' | 'extend'>('extend');
+
+  // Create dedicated functions for each mode to eliminate backward compatibility options
+  const addPathsToSelection = useCallback((paths: string[]) => {
+    if (paths.length === 0) return;
+
+    // Use applySelectionsFromPaths which naturally adds to existing selection
+    applySelectionsFromPaths(paths);
+    setShowOnlySelected(true);
+  }, [applySelectionsFromPaths, setShowOnlySelected]);
+
+  const replaceSelectionWithPaths = useCallback((paths: string[]) => {
+    if (paths.length === 0) return;
+
+    // Use replaceAllSelectionsWithPaths which naturally replaces existing selection
+    replaceAllSelectionsWithPaths(paths);
+    setShowOnlySelected(true);
+  }, [replaceAllSelectionsWithPaths, setShowOnlySelected]);
+
   const handlePathsFoundByAI = useCallback((paths: string[]) => {
     if (paths.length > 0) {
+      // Directly use the appropriate function based on the mode
+      if (findFilesMode === 'replace') {
+        replaceSelectionWithPaths(paths);
+      } else {
+        addPathsToSelection(paths);
+      }
 
-      // Replace all current selections with the new paths
-      replaceAllSelectionsWithPaths(paths);
-
-      // Set showOnlySelected to true to show only the selected files
-      setShowOnlySelected(true);
+      // Explicitly set filter mode to 'selected' when we get results
+      setFilterModeState('selected');
     } else {
+      console.log("[FileManagementState] No paths found by AI");
     }
-  }, [replaceAllSelectionsWithPaths, setShowOnlySelected]);
+  }, [findFilesMode, replaceSelectionWithPaths, addPathsToSelection, setFilterModeState]);
 
   const {
     isFindingFiles,
@@ -186,6 +237,37 @@ export function useFileManagementState({
     }
   }, [activeSessionId, isTransitioningSession, fileSelectionManager]);
 
+  // Listen for session changes and update local state accordingly
+  useEffect(() => {
+    // Skip if we're transitioning between sessions to avoid flickering
+    if (isTransitioningSession) {
+      return;
+    }
+
+    // Update local state when session changes (but only from session load, not from local edits)
+    if (currentSession) {
+      // Only update if values are different to avoid unnecessary renders
+      if (searchTerm !== currentSession.searchTerm) {
+        setSearchTermState(currentSession.searchTerm || '');
+      }
+
+      // For searchSelectedFilesOnly, debounce the update to avoid flickering
+      if (searchSelectedFilesOnly !== currentSession.searchSelectedFilesOnly &&
+          // Only update if we don't have a pending timeout (prevents conflicts with user-initiated changes)
+          !searchSelectedFilesOnlyTimeoutRef.current) {
+
+        if (searchSelectedFilesOnlyTimeoutRef.current) {
+          clearTimeout(searchSelectedFilesOnlyTimeoutRef.current);
+        }
+
+        searchSelectedFilesOnlyTimeoutRef.current = setTimeout(() => {
+          setSearchSelectedFilesOnlyState(currentSession.searchSelectedFilesOnly || false);
+          searchSelectedFilesOnlyTimeoutRef.current = null;
+        }, 50);
+      }
+    }
+  }, [currentSession?.id, isTransitioningSession, currentSession, searchTerm, searchSelectedFilesOnly]);
+
 
   const findRelevantFilesCallback = useCallback(async (): Promise<void> => {
     if (!taskDescription.trim() || isFindingFiles) {
@@ -217,12 +299,37 @@ export function useFileManagementState({
     handleBulkToggle(include, files);
   }, [handleBulkToggle]);
 
-  // Use useStableRef to create a stable context object that automatically updates when its dependencies change
+  // Handler for filter mode changes
+  const handleFilterModeChange = useCallback((mode: 'all' | 'selected' | 'regex') => {
+    setFilterModeState(mode);
+  }, []);
+
+  // Set up an event listener to handle filter mode changes from regex generation
+  useEffect(() => {
+    const handleSetFilterModeToRegex = () => {
+      console.log('[FileManagementState] Received event to set filter mode to regex');
+      setFilterModeState('regex');
+    };
+
+    window.addEventListener('setFilterModeToRegex', handleSetFilterModeToRegex);
+
+    return () => {
+      window.removeEventListener('setFilterModeToRegex', handleSetFilterModeToRegex);
+    };
+  }, []);
+
+  // Calculate if regex is available based on patterns
+  const isRegexAvailable = Boolean(currentSession?.titleRegex?.trim() ||
+                                  currentSession?.contentRegex?.trim() ||
+                                  currentSession?.negativeTitleRegex?.trim() ||
+                                  currentSession?.negativeContentRegex?.trim());
+
   const stableContextValue = useStableRef({
     // State
     managedFilesMap,
     searchTerm,
-    showOnlySelected,
+    filterMode,
+    isRegexAvailable,
     externalPathWarnings,
     includedPaths,
     excludedPaths,
@@ -233,17 +340,24 @@ export function useFileManagementState({
     isFindingFiles: Boolean(isFindingFiles),
     findingFilesJobId,
     fileContentsMap: {},
+    findFilesMode,
+    canUndo: fileSelectionManager.canUndo,
+    canRedo: fileSelectionManager.canRedo,
 
     // Actions
-    setSearchTerm,
-    setShowOnlySelected,
+    setSearchTerm: handleUpdateSearchTerm, // Use the handler that updates both local state and session
+    setFilterMode: handleFilterModeChange,
     toggleFileSelection,
     toggleFileExclusion,
-    toggleSearchSelectedFilesOnly,
+    toggleSearchSelectedFilesOnly: handleUpdateSearchSelectedOnly, // Use the handler that updates both local state and session
     handleBulkToggle: adaptedHandleBulkToggle,
-    applySelectionsFromPaths,
+    addPathsToSelection, // Clean method to add paths
+    replaceSelectionWithPaths, // Clean method to replace paths
     findRelevantFiles: findRelevantFilesCallback,
     refreshFiles,
+    setFindFilesMode,
+    undoSelection: fileSelectionManager.undoSelection,
+    redoSelection: fileSelectionManager.redoSelection,
 
     // Session state extraction
     getFileStateForSession,

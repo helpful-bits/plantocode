@@ -8,6 +8,7 @@ import { useFileManagement } from "../_contexts/file-management-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useNotification } from "@/lib/contexts/notification-context";
 import { estimateTokens } from "@/lib/token-estimator";
+import { useToast } from "@/components/ui/use-toast";
 
 /**
  * Reusable dialog component for displaying implementation plan prompts
@@ -16,15 +17,32 @@ interface PlanPromptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   planPrompt: string;
-  onCopy: () => void;
 }
 
 const PlanPromptDialog: React.FC<PlanPromptDialogProps> = ({
   open,
   onOpenChange,
-  planPrompt,
-  onCopy
+  planPrompt
 }) => {
+  const { toast } = useToast();
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(planPrompt);
+      toast({
+        title: "Prompt Copied",
+        description: "System + User Prompt copied to clipboard.",
+        variant: "success"
+      });
+    } catch (error) {
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy prompt to clipboard.",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
@@ -34,7 +52,7 @@ const PlanPromptDialog: React.FC<PlanPromptDialogProps> = ({
             Implementation Plan Prompt
           </DialogTitle>
           <DialogDescription className="text-balance">
-            This is the prompt that will be sent to the AI to generate an implementation plan.
+            This is the complete prompt (system + user) that will be sent to the AI to generate an implementation plan.
           </DialogDescription>
         </DialogHeader>
 
@@ -43,10 +61,7 @@ const PlanPromptDialog: React.FC<PlanPromptDialogProps> = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                navigator.clipboard.writeText(planPrompt);
-                onCopy();
-              }}
+              onClick={handleCopy}
               className="text-xs h-8"
             >
               <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
@@ -54,7 +69,7 @@ const PlanPromptDialog: React.FC<PlanPromptDialogProps> = ({
             </Button>
           </div>
 
-          <pre className="bg-muted p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[70vh] border">
+          <pre className="bg-muted p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[70vh] border mb-2">
             {planPrompt || "Loading prompt..."}
           </pre>
         </div>
@@ -82,29 +97,13 @@ export const ImplementationPlanActions: React.FC<ImplementationPlanActionsProps>
   const context = useGeneratePrompt();
   const fileState = useFileManagement();
   const { showNotification } = useNotification();
-  
+  const { toast } = useToast();
+
   // State for implementation plan prompts
   const [showPlanPromptDialog, setShowPlanPromptDialog] = useState(false);
   const [planPrompt, setPlanPrompt] = useState("");
-  const [generatedPrompt, setGeneratedPrompt] = useState("");
-  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [promptGeneratedAt, setPromptGeneratedAt] = useState<Date | null>(null);
-  const [tokenEstimate, setTokenEstimate] = useState<number>(0);
-  
-  // Update token estimate when prompt changes
-  useEffect(() => {
-    const updateTokenCount = async () => {
-      if (generatedPrompt) {
-        const tokens = await estimateTokens(generatedPrompt);
-        setTokenEstimate(tokens);
-      } else {
-        setTokenEstimate(0);
-      }
-    };
-    
-    updateTokenCount();
-  }, [generatedPrompt]);
-  
+
+
   // Extract values from context
   const {
     taskState,
@@ -136,54 +135,6 @@ export const ImplementationPlanActions: React.FC<ImplementationPlanActionsProps>
     });
   }, [projectDirectory, taskState.taskDescription, fileState.includedPaths.length, activeSessionId, canPerformPlanAction]);
   
-  // Handler for generating implementation plan prompt
-  const handleGeneratePrompt = async () => {
-    if (!projectDirectory || !taskState.taskDescription || fileState.includedPaths.length === 0) {
-      showNotification({
-        title: "Cannot Generate Prompt",
-        message: "Please ensure you have a project directory, task description, and at least one file selected.",
-        type: "error"
-      });
-      console.log("[ImplementationPlanActions] Cannot generate prompt:", {
-        hasProjectDirectory: Boolean(projectDirectory),
-        hasTaskDescription: Boolean(taskState.taskDescription),
-        hasIncludedPaths: fileState.includedPaths.length > 0
-      });
-      return;
-    }
-
-    setIsGeneratingPrompt(true);
-    try {
-      // Use context's method to get implementation plan prompt
-      const promptText = context.handleGetImplementationPlanPrompt
-        ? await context.handleGetImplementationPlanPrompt(
-            taskState.taskDescription,
-            fileState.includedPaths,
-            fileState.fileContentsMap
-          )
-        : null;
-
-      if (promptText) {
-        setGeneratedPrompt(promptText);
-        setPromptGeneratedAt(new Date());
-        showNotification({
-          title: "Prompt Generated",
-          message: "Implementation plan prompt has been generated successfully.",
-          type: "success"
-        });
-      }
-      // No need for error handling here as handleGetImplementationPlanPrompt already handles errors
-    } catch (error) {
-      console.error("[handleGeneratePrompt]", error);
-      showNotification({
-        title: "Error",
-        message: error instanceof Error ? error.message : "Failed to generate plan prompt",
-        type: "error"
-      });
-    } finally {
-      setIsGeneratingPrompt(false);
-    }
-  };
   
   // Handler for viewing implementation plan prompt in a dialog
   const handleViewPlanPrompt = async () => {
@@ -238,25 +189,28 @@ export const ImplementationPlanActions: React.FC<ImplementationPlanActionsProps>
             <Eye className="h-3.5 w-3.5 mr-1.5" />
             View Plan Prompt
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleCopyImplementationPlanPrompt(taskState.taskDescription, fileState.includedPaths, fileState.fileContentsMap)}
+            onClick={async () => {
+              await handleCopyImplementationPlanPrompt(
+                taskState.taskDescription,
+                fileState.includedPaths,
+                fileState.fileContentsMap
+              );
+              // Toast is handled by the handler itself
+            }}
             disabled={!canPerformPlanAction}
             isLoading={isCopyingPlanPrompt}
             title="Copy the implementation plan prompt to the clipboard"
             className="flex-1"
           >
-            {planPromptCopySuccess ? (
-              <ClipboardCopy className="h-3.5 w-3.5 mr-1.5 text-green-500" />
-            ) : (
-              <ClipboardCopy className="h-3.5 w-3.5 mr-1.5" />
-            )}
-            {planPromptCopySuccess ? "Copied!" : "Copy Prompt"}
+            <ClipboardCopy className="h-3.5 w-3.5 mr-1.5" />
+            Copy Prompt
           </Button>
         </div>
-        
+
         <Button
           variant="default"
           size="sm"
@@ -269,123 +223,78 @@ export const ImplementationPlanActions: React.FC<ImplementationPlanActionsProps>
           <FileCode className="h-3.5 w-3.5 mr-1.5" />
           Create Implementation Plan
         </Button>
-        
+
         {/* Plan prompt dialog */}
         <PlanPromptDialog
           open={showPlanPromptDialog}
           onOpenChange={setShowPlanPromptDialog}
           planPrompt={planPrompt}
-          onCopy={() => {
-            showNotification({
-              title: "Copied!",
-              message: "Implementation plan prompt copied to clipboard.",
-              type: "success",
-              clipboardFeedback: true
-            });
-          }}
         />
       </div>
     );
   }
   
-  // Render the default variant (full featured)
+  // Render the default variant (simplified)
   return (
     <div className={`bg-card p-6 rounded-lg border shadow-sm ${className}`}>
       <div>
         <h3 className="text-sm font-medium mb-3">Implementation Plans</h3>
-        
+
         <Button
           variant="default"
           size="sm"
-          onClick={handleGeneratePrompt}
+          onClick={() => handleCreateImplementationPlan(taskState.taskDescription, fileState.includedPaths, fileState.fileContentsMap)}
           disabled={!canPerformPlanAction}
-          isLoading={isGeneratingPrompt}
-          loadingText="Generating Prompt..."
-          title="Generate the implementation plan prompt"
+          isLoading={isCreatingPlan}
+          loadingText="Creating Implementation Plan..."
           className="flex items-center justify-center w-full h-9"
         >
           <FileCode className="h-4 w-4 mr-2" />
-          Generate Implementation Plan Prompt
+          Create Implementation Plan
         </Button>
       </div>
-      
+
       <p className="text-xs text-muted-foreground mt-3 text-balance">
-        Generates the detailed prompt used to create the implementation plan based on the task and selected files.
+        Creates an implementation plan based on your task description and selected files.
       </p>
-      
-      {/* Display the generated prompt */}
-      {generatedPrompt && (
-        <div className="mt-6 border-t pt-4">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              {promptGeneratedAt && (
-                <h4 className="text-sm font-medium">
-                  {promptGeneratedAt.toLocaleString(undefined, {
-                    year: 'numeric',
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                  })}
-                </h4>
-              )}
-              <p className="text-xs text-muted-foreground">
-                ~{tokenEstimate.toLocaleString()} tokens estimated
-              </p>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                navigator.clipboard.writeText(generatedPrompt);
-                showNotification({
-                  title: "Copied!",
-                  message: "Implementation plan prompt copied to clipboard.",
-                  type: "success",
-                  clipboardFeedback: true
-                });
-              }}
-              className="text-xs h-8"
-            >
-              <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
-              Copy
-            </Button>
-          </div>
-          
-          <pre className="bg-muted p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[300px] border">
-            {generatedPrompt}
-          </pre>
-          
-          <div className="mt-4">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => handleCreateImplementationPlan(taskState.taskDescription, fileState.includedPaths, fileState.fileContentsMap)}
-              isLoading={isCreatingPlan}
-              loadingText="Creating Implementation Plan..."
-              className="flex items-center justify-center w-full h-9 bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <FileCode className="h-4 w-4 mr-2" />
-              Create Implementation Plan
-            </Button>
-          </div>
-        </div>
-      )}
-      
+
+      <div className="mt-4 flex gap-3 justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleViewPlanPrompt}
+          disabled={!canPerformPlanAction}
+          title="View the implementation plan prompt"
+        >
+          <Eye className="h-3.5 w-3.5 mr-1.5" />
+          View Plan Prompt
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            await handleCopyImplementationPlanPrompt(
+              taskState.taskDescription,
+              fileState.includedPaths,
+              fileState.fileContentsMap
+            );
+            // Toast is handled by the handler itself
+          }}
+          disabled={!canPerformPlanAction}
+          isLoading={isCopyingPlanPrompt}
+          title="Copy the system and user prompt to the clipboard"
+        >
+          <ClipboardCopy className="h-3.5 w-3.5 mr-1.5" />
+          Copy Prompt
+        </Button>
+      </div>
+
       {/* Dialog for displaying the plan prompt */}
       <PlanPromptDialog
         open={showPlanPromptDialog}
         onOpenChange={setShowPlanPromptDialog}
         planPrompt={planPrompt}
-        onCopy={() => {
-          showNotification({
-            title: "Copied!",
-            message: "Implementation plan prompt copied to clipboard.",
-            type: "success",
-            clipboardFeedback: true
-          });
-        }}
       />
     </div>
   );

@@ -108,7 +108,7 @@ export default function VoiceTranscription({
         toast({
           title: "Transcription Added",
           description: "Your transcribed text has been inserted.",
-          variant: "default"
+          variant: "success"
         });
       } catch (error) {
         console.error("[VoiceTranscription] Error inserting text at cursor position:", error);
@@ -244,7 +244,7 @@ export default function VoiceTranscription({
       toast({
         title: "Retrying Transcription",
         description: "Processing your previous recording again...",
-        variant: "default"
+        variant: "success"
       });
     } catch (error) {
       console.error("[VoiceTranscription] Error retrying recording:", error);
@@ -321,7 +321,7 @@ export default function VoiceTranscription({
         toast({
           title: "Reverted to Raw Text",
           description: "Using the unmodified transcription text.",
-          variant: "default"
+          variant: "success"
         });
 
         // Hide the revert option since we've now used it

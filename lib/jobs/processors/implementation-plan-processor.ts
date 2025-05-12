@@ -74,18 +74,20 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
 
       // Generate the output file path
       const planDir = getProjectImplementationPlansDirectory(projectDirectory);
-      
+
       // Create a sanitized filename from the task description
       const sanitizedTaskDesc = originalTaskDescription
         .substring(0, 40)  // Take first 40 chars
         .replace(/[^\w\s]/g, '')  // Remove special chars
         .replace(/\s+/g, '_');  // Replace spaces with underscores
-      
+
       // Generate the filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `plan_${backgroundJobId}_${timestamp}.xml`;
       const targetOutputFilePath = path.join(planDir, filename);
-      
+
+      console.log(`[ImplementationPlanProcessor] Target output file path: ${targetOutputFilePath}`);
+
       // Ensure the directory exists
       await fs.mkdir(planDir, { recursive: true });
 
@@ -135,62 +137,171 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
       try {
         // Get the background job repository - loaded only when needed
         const backgroundJobRepo = await getBackgroundJobRepository();
-        
+
         // Sending request to Gemini API with streaming updates using SDK
         // We don't use the callback for database updates to avoid incremental response updates
         // This ensures the final response is set only once at completion time
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Starting Gemini API streaming request`);
+
+        let chunkCounter = 0;
+        const logInterval = 50; // Log every 50 chunks
+        const logThreshold = 10000; // Or every 10KB
+
         for await (const textChunk of streamGeminiCompletionWithSDK(
-          apiPayload, 
-          apiKey, 
-          model || GEMINI_FLASH_MODEL, 
+          apiPayload,
+          apiKey,
+          model || GEMINI_FLASH_MODEL,
           abortController.signal
           // No callback for streaming database updates - we'll set the full response at the end
         )) {
           // Write each chunk to the file
           writeStream.write(textChunk);
-          
+
           // Aggregate text and update counters
           aggregatedText += textChunk;
           charCount += textChunk.length;
           const chunkTokens = Math.ceil(textChunk.length / 3.5); // Approximate token count
           tokenCount += chunkTokens;
-          
-          // We can still update the job status or metadata if needed, but not the response field
-          // This keeps UI progress without affecting the final response
-          await updateJobToRunning(backgroundJobId, 'gemini', `Processing stream: Received ${Math.round(charCount / 1024)}KB`);
+
+          // Increment chunk counter
+          chunkCounter++;
+
+          // Log periodically to avoid excessive logging
+          if (chunkCounter % logInterval === 0 || textChunk.length > logThreshold) {
+            console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Received chunk #${chunkCounter}, length: ${textChunk.length}, cumulative chars: ${charCount}, estimated tokens: ${tokenCount}`);
+          }
         }
-        
+
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Stream completed, received ${chunkCounter} chunks, total chars: ${aggregatedText.length}, estimated tokens: ${tokenCount}`);
+
+        // Before closing the stream, perform robust validation of the content
+        // Check for common error indicators and validate XML structure
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Validating generated content`);
+
+        // Check if content is empty or whitespace only
+        if (!aggregatedText || !aggregatedText.trim()) {
+          throw new Error("Generated implementation plan is empty");
+        }
+
+        // Check for error indicators in the content
+        if (aggregatedText.includes("[Request interrupted") ||
+            aggregatedText.includes("Think hard!")) {
+          throw new Error("Stream appears to have been interrupted");
+        }
+
+        // Validate XML structure - but allow for text before/after the XML content
+        // This handles cases where AI might include introductory text, code blocks, etc.
+        // And support both implementation_plan and implementation-plan tag formats
+        const openingTagRegex = /<implementation[-_]plan/i;
+        const closingTagRegex = /<\/implementation[-_]plan>/i;
+
+        const openingTagMatch = aggregatedText.match(openingTagRegex);
+        const closingTagMatch = aggregatedText.match(closingTagRegex);
+
+        if (!openingTagMatch) {
+          console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Content missing opening implementation plan tag`);
+          throw new Error("Generated implementation plan content is incomplete or malformed (missing opening tag)");
+        }
+
+        if (!closingTagMatch) {
+          console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Content missing closing implementation plan tag`);
+          throw new Error("Generated implementation plan content is incomplete or malformed (missing closing tag)");
+        }
+
+        // At this point, we know both matches exist, so we can safely use their indexes
+        // TypeScript needs non-null assertion to understand this
+        const openingIndex = openingTagMatch.index!;
+        const closingIndex = closingTagMatch.index!;
+
+        // Check that opening tag appears before closing tag
+        if (openingIndex > closingIndex) {
+          console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: XML tags in incorrect order`);
+          throw new Error("Generated implementation plan content has XML tags in wrong order");
+        }
+
+        // Extract the actual implementation plan XML content for later use
+        const xmlContentStart = openingIndex;
+
+        // Determine the exact closing tag used by finding it in the original text
+        // We know the regex matched, so we know there's a closing tag at this position
+        const closingTagText = aggregatedText.substring(closingIndex, closingIndex + 30);
+        const closingTagMatch2 = closingTagText.match(/<\/implementation[-_]plan>/i);
+        if (!closingTagMatch2) {
+          // This should never happen, but just in case
+          throw new Error("Failed to determine closing tag format");
+        }
+        const closingTagFound = closingTagMatch2[0];
+        const xmlContentEnd = closingIndex + closingTagFound.length;
+
+        // Log if we found any non-XML content
+        if (xmlContentStart > 0) {
+          console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Found ${xmlContentStart} characters of text before XML content`);
+        }
+
+        if (xmlContentEnd < aggregatedText.length) {
+          console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Found ${aggregatedText.length - xmlContentEnd} characters of text after XML content`);
+        }
+
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Content validation successful`);
+
+        // Create a promise that resolves when the write stream is finished
+        const streamFinished = new Promise<void>((resolve, reject) => {
+          writeStream.on('finish', () => {
+            console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Write stream finished successfully`);
+            resolve();
+          });
+          writeStream.on('error', (error) => {
+            console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Write stream error:`, error);
+            reject(error);
+          });
+        });
+
         // Close the write stream
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Closing write stream`);
         writeStream.end();
-        
+
+        // Wait for the stream to finish writing to disk
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Waiting for file write to complete`);
+        await streamFinished;
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: File successfully written to ${targetOutputFilePath}`);
+
         // Log the size of aggregatedText for debugging
         console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId} completed. Full content written to file (${aggregatedText?.length || 0} chars).`);
 
-        // For implementation plans, we always want to provide a concise, informative response
-        // that summarizes what was created and indicates that the full content is stored in a file
+        // Now that content is validated and file is written successfully, we can extract summary information
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Extracting plan summary from validated content`);
 
-        // Extract a brief summary from the aggregated text (first implementation-plan or steps tag content)
+        // Extract the actual XML content for summary generation
+        // Using the indexes we found during validation (we know they exist at this point)
+        const xmlContent = aggregatedText.substring(xmlContentStart, xmlContentEnd);
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Extracted XML content of ${xmlContent.length} characters for summary generation`);
+
+        // Extract a brief summary from the parsed XML content
         let planSummary = '';
-        if (aggregatedText.includes('<implementation-plan')) {
-          const planTag = aggregatedText.match(/<implementation-plan[^>]*>([\s\S]*?)<\/implementation-plan>/);
-          if (planTag && planTag[1]) {
-            const stepsMatch = planTag[1].match(/<steps[^>]*>([\s\S]*?)<\/steps>/);
+        // Match the content between opening and closing implementation plan tags
+        // Support both hyphen and underscore formats
+        const planTag = xmlContent.match(/<implementation[-_]plan[^>]*>([\s\S]*?)<\/implementation[-_]plan>/i);
+        if (planTag && planTag[1]) {
+            const stepsMatch = planTag[1].match(/<steps[^>]*>([\s\S]*?)<\/steps>/i);
             if (stepsMatch && stepsMatch[1]) {
-              const stepMatch = stepsMatch[1].match(/<step[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/);
-              if (stepMatch && stepMatch[1]) {
-                planSummary = `Plan includes step: "${stepMatch[1]}" and other steps...`;
-              }
+                const stepMatch = stepsMatch[1].match(/<step[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/i);
+                if (stepMatch && stepMatch[1]) {
+                    planSummary = `Plan includes step: "${stepMatch[1]}" and other steps...`;
+                }
             }
 
             // If we can't extract steps, try to get the title
             if (!planSummary) {
-              const titleMatch = planTag[1].match(/<title>([\s\S]*?)<\/title>/);
-              if (titleMatch && titleMatch[1]) {
-                planSummary = `Plan titled: "${titleMatch[1]}"`;
-              }
+                const titleMatch = planTag[1].match(/<title>([\s\S]*?)<\/title>/i);
+                if (titleMatch && titleMatch[1]) {
+                    planSummary = `Plan titled: "${titleMatch[1]}"`;
+                }
             }
-          }
         }
+
+        // Count the number of steps in the plan for metadata using the XML content
+        const stepCount = (xmlContent.match(/<step\s/ig) || []).length;
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Extracted summary. Plan has ${stepCount} steps.`);
 
         // Create a comprehensive response message
         const responseText =
@@ -200,6 +311,8 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
           `File location: ${targetOutputFilePath}\n` +
           `Size: ${(aggregatedText.length / 1024).toFixed(1)}KB | Tokens: ${tokenCount.toLocaleString()}\n\n` +
           `You can view the full content in the file or reload it in this dialog.`;
+
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Updating job status to completed`);
 
         // Update the job with comprehensive metadata
         // For the properties that are not defined in the tokens type, use the metadata object properly
@@ -216,7 +329,8 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
           status: 'completed', // Required status property
           metadata: {
             planSize: aggregatedText.length,
-            hasSteps: planSummary.includes("step:"),
+            hasSteps: stepCount > 0,
+            stepCount: stepCount,
             planFilename: path.basename(targetOutputFilePath)
           }
         });
@@ -233,18 +347,43 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
           }
         };
       } catch (error) {
-        // Close the write stream in case of error
-        writeStream.end();
-        
-        // Log the error
-        console.error(`[ImplementationPlanProcessor] Gemini API request failed:`, error);
-        
-        // Update job status to failed
-        await updateJobToFailed(
-          backgroundJobId, 
-          error instanceof Error ? error.message : String(error)
-        );
-        
+        // Make sure the write stream is properly closed in case of error
+        if (writeStream.writable) {
+          console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Closing write stream after error`);
+          writeStream.end();
+        }
+
+        // Log the error and current state of aggregated text
+        console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Error during streaming or content validation:`, error);
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Content size at point of failure: ${aggregatedText?.length || 0} chars`);
+
+        // Always delete the output file if we reached this point as it's likely corrupted or incomplete
+        try {
+          console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Cleaning up incomplete/corrupted file: ${targetOutputFilePath}`);
+          await fs.unlink(targetOutputFilePath).catch(e => {
+            console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Failed to delete corrupted file: ${e.message}`);
+          });
+        } catch (cleanupError) {
+          console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Error during file cleanup:`, cleanupError);
+        }
+
+        // Create a clear error message that distinguishes between streaming and validation failures
+        let errorMessage = "Unknown error during implementation plan generation";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+
+          // Add context to the error message
+          if (error.message.includes("malformed") || error.message.includes("incomplete")) {
+            errorMessage = `Content validation failed: ${error.message}`;
+          } else if (error.message.includes("interrupted")) {
+            errorMessage = `Stream interrupted: ${error.message}`;
+          }
+        }
+
+        // Update job status to failed with the enhanced error message
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Updating job status to failed: ${errorMessage}`);
+        await updateJobToFailed(backgroundJobId, errorMessage);
+
         return {
           success: false,
           message: error instanceof Error ? error.message : "Failed to generate implementation plan",

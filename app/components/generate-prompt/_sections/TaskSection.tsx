@@ -1,10 +1,9 @@
 "use client";
 
 import React, { Suspense } from "react";
-import { Sparkles, Copy, Loader2 } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import VoiceTranscription from "../_components/voice-transcription";
-import { P, Subtle } from "@/components/ui/typography";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
 

@@ -7,6 +7,7 @@ import { Sparkles, Loader2 } from "lucide-react";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 import { useBackgroundJobs, useBackgroundJob } from "@/lib/contexts/background-jobs-context";
 import { useTextareaResize } from '../_hooks/use-textarea-resize';
+import { useSessionContext } from "@/lib/contexts/session-context";
 
 import { useNotification } from '@/lib/contexts/notification-context';
 
@@ -38,6 +39,7 @@ export default React.memo(forwardRef<TaskDescriptionHandle, TaskDescriptionProps
 }: TaskDescriptionProps, ref) { // Keep ref parameter
   // Minimal state for selection tracking
   const { showNotification } = useNotification();
+  const sessionContext = useSessionContext();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [hasActiveSelection, setHasActiveSelection] = useState(false);
   
@@ -215,7 +217,14 @@ export default React.memo(forwardRef<TaskDescriptionHandle, TaskDescriptionProps
           value={value}
           onChange={handleChange}
           onSelect={handleSelect}
-          onBlur={onBlur} // Add onBlur handler to save on focus loss
+          onBlur={(e) => {
+            // Call the original onBlur handler if provided
+            if (onBlur) {
+              onBlur();
+            }
+            // Flush any pending saves to ensure data is persisted immediately
+            sessionContext.flushSaves();
+          }}
           placeholder="Clearly describe the changes or features you want the AI to implement. You can use the voice recorder below or type directly."
           aria-required="true"
           aria-invalid={effectiveIsEmpty}

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { TaskSettings } from "@/types";
 import TaskModelSettings from "./task-model-settings";
 import SystemSettings from "./system-settings";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { getModelSettingsForProject, saveModelSettingsForProject } from "@/actions/project-settings-actions";
 import { DEFAULT_TASK_SETTINGS } from "@/lib/constants";
@@ -95,7 +95,7 @@ export default function SettingsForm() {
           </div>
           <div className="flex items-center gap-2 min-w-[100px] justify-end">
             {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            {saveSuccess && <div className="flex items-center gap-1 text-xs text-green-500"><CheckCircle className="h-4 w-4" /> Saved</div>}
+            {saveSuccess && <div className="flex items-center gap-1 text-xs text-primary"><CheckCircle className="h-4 w-4" /> Saved</div>}
             {error && <span className="text-xs text-destructive">{error}</span>}
           </div>
         </CardHeader>

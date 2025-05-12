@@ -391,7 +391,7 @@ export function useTaskDescriptionState({
     }
   }, [internalTaskDescription]);
 
-  // CHANGED: Update internal state instead of directly updating session context
+  // Update both internal state and session context
   const setTaskDescription = useCallback((value: string) => {
     // Update internal state
     setInternalTaskDescription(value);
@@ -401,11 +401,14 @@ export function useTaskDescriptionState({
       taskDescriptionRef.current.value = value;
     }
 
+    // Update session context directly
+    sessionContext.updateCurrentSessionFields({ taskDescription: value });
+
     // Notify parent components of change
     if (onInteraction) {
       onInteraction();
     }
-  }, [taskDescriptionRef, onInteraction]);
+  }, [taskDescriptionRef, onInteraction, sessionContext]);
 
   return useMemo(() => ({
     // CHANGED: Return internal state instead of session state

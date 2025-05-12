@@ -1,19 +1,16 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { RegexGenerationPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import claudeClient from '@/lib/api/claude-client';
-// Import regex prompts generator
-import { generateRegexPatternPrompt } from '@/lib/prompts/regex-prompts';
 
 /**
  * Regex Generation Processor
- * 
+ *
  * Processes jobs that generate regex patterns based on task description
  */
 export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPayload> {
   async process(payload: RegexGenerationPayload): Promise<JobProcessResult> {
-    const { 
-      backgroundJobId, 
+    const {
+      backgroundJobId,
       sessionId,
       projectDirectory,
       taskDescription,
@@ -24,60 +21,196 @@ export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPay
       // Update job status to running
       await updateJobToRunning(backgroundJobId, 'claude', 'Generating regex patterns');
 
-      // Generate the prompt
-      const prompt = generateRegexPatternPrompt(taskDescription, directoryTree);
-
-      // Call Claude API
-      const result = await claudeClient.sendRequest({
-        messages: [{ role: 'user', content: prompt }],
-        model: 'claude-3-7-sonnet-20250219',
-        max_tokens: 2048,
-        temperature: 0.2 // Lower temperature for more precise regex
-      });
-
-      if (!result.isSuccess) {
-        await updateJobToFailed(
-          backgroundJobId, 
-          result.message || "Failed to generate regex patterns"
-        );
-        
+      // The prompt content is expected to be already in the job's rawInput
+      // Extract Claude API parameters from job metadata or use defaults
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        await updateJobToFailed(backgroundJobId, "Anthropic API key is not configured");
         return {
           success: false,
-          message: result.message || "Failed to generate regex patterns",
-          error: result.error
+          message: "Anthropic API key is not configured",
+          error: new Error("Anthropic API key is not configured")
         };
       }
 
-      // Parse the generated regex patterns
-      const response = result.data as string;
-      const patterns = this.extractRegexPatterns(response);
+      // Retrieve the job to get the raw prompt and metadata
+      const { backgroundJobRepository } = await import('@/lib/db/repositories');
+      const job = await backgroundJobRepository.getBackgroundJob(backgroundJobId);
 
-      // Update job to completed
-      await updateJobToCompleted(
-        backgroundJobId,
-        response,
-        {
-          tokensSent: result.metadata?.tokensSent || 0,
-          tokensReceived: result.metadata?.tokensReceived || 0,
-          totalTokens: result.metadata?.totalTokens || 0,
-          modelUsed: result.metadata?.modelUsed,
+      if (!job) {
+        await updateJobToFailed(backgroundJobId, "Background job not found");
+        return {
+          success: false,
+          message: "Background job not found",
+          error: new Error("Background job not found")
+        };
+      }
+
+      const promptContent = job.prompt; // Use job.prompt instead of rawInput
+      const metadata = job.metadata || {};
+
+      // Extract parameters from metadata or use defaults
+      const model = metadata.model || 'claude-3-7-sonnet-20250219';
+      const maxTokens = metadata.max_tokens || 1024;
+      const temperature = metadata.temperature || 0.2;
+
+      // Make a direct API call to Claude
+      const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+      const ANTHROPIC_VERSION = "2023-06-01";
+
+      console.log(`[RegexGenerationProcessor] Calling Claude API directly with model ${model}`);
+
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: model,
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: promptContent }],
+          temperature: temperature
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[RegexGenerationProcessor] Anthropic API error: ${response.status} ${errText}`);
+
+        await updateJobToFailed(
+          backgroundJobId,
+          `API error: ${response.status} ${errText.substring(0, 100)}`
+        );
+
+        return {
+          success: false,
+          message: `API error: ${errText.slice(0, 150)}`,
+          error: new Error(`API error ${response.status}: ${errText.slice(0, 150)}`)
+        };
+      }
+
+      const data = await response.json();
+
+      // Validate response
+      if (!data.content || data.content.length === 0 || typeof data.content[0].text !== 'string') {
+        const errorMsg = "Anthropic returned an invalid response structure.";
+        console.error(`[RegexGenerationProcessor] ${errorMsg}`, JSON.stringify(data).slice(0, 500));
+
+        await updateJobToFailed(backgroundJobId, errorMsg);
+
+        return {
+          success: false,
+          message: errorMsg,
+          error: new Error(errorMsg)
+        };
+      }
+
+      // Get the text content from the response
+      const responseText = data.content[0].text.trim();
+
+      // Extract token counts from the response usage metadata
+      const tokensSent = data.usage?.input_tokens || 0;
+      const tokensReceived = data.usage?.output_tokens || 0;
+
+      // Parse the generated regex patterns
+      let parsedJson: any = null;
+      let parseError: Error | null = null;
+      let regexPatterns: any = {
+        titleRegex: '',
+        contentRegex: '',
+        negativeTitleRegex: '',
+        negativeContentRegex: ''
+      };
+
+      // Try to parse the response directly as JSON first
+      try {
+        parsedJson = JSON.parse(responseText);
+        console.log("[RegexGenerationProcessor] Successfully parsed response as direct JSON");
+      } catch (e) {
+        parseError = e as Error;
+        console.warn("[RegexGenerationProcessor] Failed to parse response as JSON directly:", e);
+
+        // Fallback: Try to extract JSON from markdown code blocks
+        const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch && jsonMatch[1]) {
+          try {
+            parsedJson = JSON.parse(jsonMatch[1].trim());
+            parseError = null;
+            console.log("[RegexGenerationProcessor] Successfully parsed JSON from code block");
+          } catch (e2) {
+            console.error("[RegexGenerationProcessor] Failed to parse extracted JSON from code block:", e2);
+          }
         }
-      );
+
+        // If still not successful, try to extract JSON from anywhere in the text
+        if (!parsedJson) {
+          const potentialJson = responseText.match(/({[\s\S]*})/);
+          if (potentialJson && potentialJson[1]) {
+            try {
+              parsedJson = JSON.parse(potentialJson[1].trim());
+              parseError = null;
+              console.log("[RegexGenerationProcessor] Successfully parsed JSON from plaintext extraction");
+            } catch (e3) {
+              console.error("[RegexGenerationProcessor] Failed to parse JSON from plaintext extraction:", e3);
+            }
+          }
+        }
+      }
+
+      // If we have successfully parsed JSON, extract the patterns
+      if (parsedJson) {
+        regexPatterns = {
+          titleRegex: parsedJson.titleRegex || '',
+          contentRegex: parsedJson.contentRegex || '',
+          negativeTitleRegex: parsedJson.negativeTitleRegex || '',
+          negativeContentRegex: parsedJson.negativeContentRegex || ''
+        };
+
+        console.log("[RegexGenerationProcessor] Extracted structured regex patterns:", Object.keys(regexPatterns));
+      } else {
+        console.warn("[RegexGenerationProcessor] Could not parse JSON, patterns will be empty");
+      }
+
+      // Get the existing job to access existing metadata
+      const finalMetadata = {
+        ...metadata,
+        regexPatterns,  // This is the structured regex patterns object
+        tokensSent,
+        tokensReceived,
+        totalTokens: tokensSent + tokensReceived,
+        modelUsed: model
+      };
+
+      // Debugging log to verify what's being stored
+      console.log("[RegexGenerationProcessor] Final metadata for job:", finalMetadata);
+      console.log("[RegexGenerationProcessor] Regex patterns in metadata:", finalMetadata.regexPatterns);
+
+      // Update job to completed with the regex patterns in metadata
+      await backgroundJobRepository.updateBackgroundJobStatus({
+        jobId: backgroundJobId,
+        status: 'completed',
+        response: responseText,
+        endTime: Date.now(),
+        statusMessage: 'Completed successfully',
+        metadata: finalMetadata
+      });
 
       return {
         success: true,
-        message: `Successfully generated regex patterns. Found ${Object.keys(patterns).length} patterns.`,
+        message: `Successfully generated regex patterns. Found ${Object.keys(regexPatterns).filter(k => regexPatterns[k]).length} patterns.`,
         data: {
-          rawResponse: response,
-          patterns
+          rawResponse: responseText,
+          patterns: regexPatterns
         }
       };
     } catch (error) {
       // If any error occurs, mark the job as failed
-      const errorMessage = error instanceof Error ? 
-        error.message : 
+      const errorMessage = error instanceof Error ?
+        error.message :
         "Unknown error during regex generation";
-      
+
       try {
         await updateJobToFailed(backgroundJobId, errorMessage);
       } catch (updateError) {
@@ -90,143 +223,6 @@ export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPay
         error: error instanceof Error ? error : new Error(errorMessage)
       };
     }
-  }
-
-  /**
-   * Extract regex patterns from Claude's response
-   */
-  private extractRegexPatterns(response: string): {
-    titleRegex?: string;
-    contentRegex?: string;
-    negativeTitleRegex?: string;
-    negativeContentRegex?: string;
-  } {
-    const patterns: {
-      [key: string]: string | undefined;
-      titleRegex?: string;
-      contentRegex?: string;
-      negativeTitleRegex?: string;
-      negativeContentRegex?: string;
-    } = {};
-
-    console.log("[RegexGenerationProcessor] Extracting regex patterns from response");
-
-    // First check for a JSON object with properties in the format { "field": "/pattern/" }
-    // which is commonly returned by Claude but requires special handling
-    try {
-      // Look for JSON with regex patterns that include slashes
-      const regexJsonMatch = response.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
-      if (regexJsonMatch && regexJsonMatch[1]) {
-        // First convert any regex literals (e.g., /pattern/) to strings before parsing
-        const processedJson = regexJsonMatch[1].replace(/:\s*\/(.*?)\/([gim]*)(?=,|\s*})/g, ': "$1"');
-        console.log("[RegexGenerationProcessor] Attempting to parse processed JSON:", processedJson.substring(0, 100) + "...");
-
-        try {
-          const jsonPatterns = JSON.parse(processedJson);
-
-          patterns.titleRegex = jsonPatterns.titleRegex || jsonPatterns.title_regex || undefined;
-          patterns.contentRegex = jsonPatterns.contentRegex || jsonPatterns.content_regex || undefined;
-          patterns.negativeTitleRegex = jsonPatterns.negativeTitleRegex || jsonPatterns.negative_title_regex || undefined;
-          patterns.negativeContentRegex = jsonPatterns.negativeContentRegex || jsonPatterns.negative_content_regex || undefined;
-
-          // Check if we found any patterns - if we did, return early
-          if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
-            console.log("[RegexGenerationProcessor] Successfully extracted patterns from processed JSON");
-            return patterns;
-          }
-        } catch (e) {
-          console.warn("[RegexGenerationProcessor] Failed to parse processed JSON:", e);
-        }
-      }
-    } catch (e) {
-      console.warn("[RegexGenerationProcessor] Error in regex JSON processing:", e);
-    }
-
-    // Try to extract standard JSON format
-    const jsonMatch = response.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
-    if (jsonMatch && jsonMatch[1]) {
-      try {
-        const jsonPatterns = JSON.parse(jsonMatch[1]);
-        console.log("[RegexGenerationProcessor] Parsed JSON patterns:", Object.keys(jsonPatterns));
-
-        patterns.titleRegex = jsonPatterns.titleRegex || jsonPatterns.title_regex || undefined;
-        patterns.contentRegex = jsonPatterns.contentRegex || jsonPatterns.content_regex || undefined;
-        patterns.negativeTitleRegex = jsonPatterns.negativeTitleRegex || jsonPatterns.negative_title_regex || undefined;
-        patterns.negativeContentRegex = jsonPatterns.negativeContentRegex || jsonPatterns.negative_content_regex || undefined;
-
-        // Check if we found any patterns - if we did, return early
-        if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
-          console.log("[RegexGenerationProcessor] Successfully extracted patterns from JSON");
-          return patterns;
-        }
-      } catch (e) {
-        console.warn("[RegexGenerationProcessor] Failed to parse JSON patterns:", e);
-        // Continue with regex extraction
-      }
-    }
-
-    // Attempt to parse as a standalone JSON object outside code blocks
-    try {
-      // Look for a JSON-like structure in the plain text
-      if (response.includes('{') && response.includes('}')) {
-        const potentialJson = response.match(/({[\s\S]*})/);
-        if (potentialJson && potentialJson[1]) {
-          try {
-            const jsonPatterns = JSON.parse(potentialJson[1]);
-
-            patterns.titleRegex = jsonPatterns.titleRegex || jsonPatterns.title_regex || undefined;
-            patterns.contentRegex = jsonPatterns.contentRegex || jsonPatterns.content_regex || undefined;
-            patterns.negativeTitleRegex = jsonPatterns.negativeTitleRegex || jsonPatterns.negative_title_regex || undefined;
-            patterns.negativeContentRegex = jsonPatterns.negativeContentRegex || jsonPatterns.negative_content_regex || undefined;
-
-            // Check if we found any patterns
-            if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
-              console.log("[RegexGenerationProcessor] Successfully extracted patterns from plain JSON");
-              return patterns;
-            }
-          } catch (e) {
-            console.warn("[RegexGenerationProcessor] Failed to parse plain JSON:", e);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[RegexGenerationProcessor] Error in plain JSON extraction:", e);
-    }
-
-    // Extract individual patterns with regex - improved to handle more formats
-    // For title regex
-    const titleMatch = response.match(/title(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|title(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (titleMatch) {
-      patterns.titleRegex = titleMatch[1] || titleMatch[2];
-      console.log("[RegexGenerationProcessor] Found title regex:", patterns.titleRegex);
-    }
-
-    // For content regex
-    const contentMatch = response.match(/content(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|content(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (contentMatch) {
-      patterns.contentRegex = contentMatch[1] || contentMatch[2];
-      console.log("[RegexGenerationProcessor] Found content regex:", patterns.contentRegex);
-    }
-
-    // For negative title regex
-    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+title)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (negTitleMatch) {
-      patterns.negativeTitleRegex = negTitleMatch[1] || negTitleMatch[2];
-      console.log("[RegexGenerationProcessor] Found negative title regex:", patterns.negativeTitleRegex);
-    }
-
-    // For negative content regex
-    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+content)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (negContentMatch) {
-      patterns.negativeContentRegex = negContentMatch[1] || negContentMatch[2];
-      console.log("[RegexGenerationProcessor] Found negative content regex:", patterns.negativeContentRegex);
-    }
-
-    // Log the results of the extraction
-    const extractedPatternCount = Object.values(patterns).filter(Boolean).length;
-    console.log(`[RegexGenerationProcessor] Extracted ${extractedPatternCount} patterns using regex matching`);
-
-    return patterns;
   }
 }
 
