@@ -23,16 +23,24 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
   
   // Callback to generate directory tree
   const handleGenerateStructure = async () => {
-    if (!projectDirectory) return;
+    if (!projectDirectory) {
+      setError("No project directory selected. Please select a project directory first.");
+      return;
+    }
 
     setError(null);
     setIsGenerating(true);
-    try { // Corrected: Call the utility function
+
+    try {
       const tree = await generateDirectoryTree(projectDirectory);
-      if (tree) {
+
+      if (tree && tree.trim()) {
         onChange(tree);
         setIsExpanded(true); // Show the generated tree
         setError(null); // Clear error on success
+      } else {
+        // Handle empty tree result
+        setError("Could not generate a meaningful directory tree. Try with a smaller directory.");
       }
     } catch (error) {
       setError("Failed to generate directory tree. Is `tree` command available?");
@@ -44,39 +52,45 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between mb-1"> {/* Reduced bottom margin */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
         <label className="font-bold text-foreground">Codebase Structure</label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 mt-1 sm:mt-0">
           <Button
             type="button"
-            variant="secondary" size="sm"
+            variant="secondary"
+            size="sm"
             onClick={handleGenerateStructure}
             disabled={isGenerating || !projectDirectory}
+            className="h-8"
           >
             {isGenerating
               ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              : <FolderTree className="h-4 w-4 mr-2" /> } {/* Use FolderTree instead of TreeStructure */}
+              : <FolderTree className="h-4 w-4 mr-2" />}
             Generate
           </Button>
-          <p className="text-xs text-muted-foreground mt-1">Automatically generates the project structure using the &apos;tree&apos; command (if available).</p>
           <Button
             type="button"
-            variant="ghost" size="sm"
+            variant="ghost"
+            size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="text-sm text-muted-foreground hover:text-foreground h-8"
           >
             {isExpanded ? "Hide" : "Show"}
           </Button>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground mb-2">
+        Automatically generates the project structure using file system information.
+      </p>
       
       {isExpanded && (
         <>
-          <div className="text-sm text-muted-foreground mb-1"> {/* Reduced bottom margin */}
-            Define the current or planned directory structure using ASCII tree format.
+          <div className="text-sm text-muted-foreground mb-2">
+            Define the directory structure using ASCII tree format to help the model understand your project organization.
           </div>
           <Textarea
-            id="codebaseStructure" // Keep id attribute
+            id="codebaseStructure"
             value={value}
             onChange={handleChange}
             placeholder={`project/
@@ -84,16 +98,18 @@ export default function CodebaseStructure({ value, onChange }: CodebaseStructure
   │   └── file.ts    # Description
   └── ...
 
-Optionally provide the project's file structure for better AI context.`}
-            className="min-h-[150px] font-mono text-sm" // Increased min height and added font
+Defines your project's file structure to provide better context for the AI.`}
+            className="min-h-[200px] font-mono text-sm resize-y"
           />
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
         </>
       )}
-      <div className="mt-3 text-white">
-        Loading or generating your project structure is essential to help the AI understand your codebase. If you&apos;re experiencing issues, try selecting a smaller directory that contains only the files you&apos;re working with.
+
+      {error && (
+        <p className="text-sm text-destructive mt-1">{error}</p>
+      )}
+
+      <div className="mt-2 text-sm text-muted-foreground">
+        Adding your project structure helps the AI better understand your codebase organization. If you&apos;re experiencing issues with generation, try selecting a smaller directory or write it manually.
       </div>
     </div>
   );

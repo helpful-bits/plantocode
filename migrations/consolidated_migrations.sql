@@ -1,8 +1,9 @@
 -- Consolidated SQL Migrations
--- This file combines all migrations from 0000 to 0020 into a single SQL file
+-- This file combines all migrations from 0000 to 0021 into a single SQL file
 -- Original migration files are preserved in the migrations_backup directory
 -- Note: This consolidated migration standardizes on using 'path' column in included_files and excluded_files
 -- tables, replacing the older inconsistent use of both 'path' and 'file_path' columns.
+-- Note 2: This update removes the active_sessions table which is replaced by key_value_store
 
 -- Enable foreign key support
 PRAGMA foreign_keys = ON;
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   negative_content_regex TEXT DEFAULT '',
   is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
   codebase_structure TEXT DEFAULT '',
+  created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   model_used TEXT DEFAULT 'gemini-2.5-flash-preview-04-17',
   search_selected_files_only INTEGER DEFAULT 0 CHECK(search_selected_files_only IN (0, 1))
@@ -86,19 +88,6 @@ CREATE TABLE IF NOT EXISTS excluded_files (
 -- Create index for excluded_files table
 CREATE INDEX IF NOT EXISTS idx_excluded_files_session ON excluded_files(session_id);
 
--- Create active_sessions table
-CREATE TABLE IF NOT EXISTS active_sessions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_directory TEXT NOT NULL, -- Original project directory path
-  project_hash TEXT NOT NULL UNIQUE, -- Hashed project directory for faster lookups
-  session_id TEXT, -- Can be NULL if no session is active
-  updated_at INTEGER,
-  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-);
-
--- Create index for active_sessions table
-CREATE INDEX IF NOT EXISTS idx_active_sessions_project_hash ON active_sessions(project_hash);
-
 -- Create cached_state table
 CREATE TABLE IF NOT EXISTS cached_state (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,12 +103,22 @@ CREATE TABLE IF NOT EXISTS cached_state (
 CREATE INDEX IF NOT EXISTS idx_cached_state_lookup ON cached_state(project_hash, key);
 CREATE INDEX IF NOT EXISTS idx_cached_state_project_dir ON cached_state(project_directory);
 
+-- Create key_value_store table
+CREATE TABLE IF NOT EXISTS key_value_store (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at INTEGER NOT NULL
+);
+
+-- Create index for key_value_store table
+CREATE INDEX IF NOT EXISTS idx_key_value_store_key ON key_value_store(key);
+
 -- Create background_jobs table
 CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   prompt TEXT NOT NULL,
-  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued')),
+  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker')),
   start_time INTEGER,
   end_time INTEGER,
   output_file_path TEXT,
@@ -188,3 +187,7 @@ VALUES ('rename_xml_path_to_output_file_path', strftime('%s', 'now'));
 -- Add the add_project_directory_to_background_jobs migration record
 INSERT INTO migrations (name, applied_at) 
 VALUES ('add_project_directory_to_background_jobs', strftime('%s', 'now'));
+
+-- Add the create_key_value_store migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('create_key_value_store', strftime('%s', 'now'));

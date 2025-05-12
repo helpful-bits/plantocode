@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DB_FILE, isServer } from '@/lib/db';
 import { checkDatabaseIntegrity, backupDatabase, recreateDatabaseStructure } from '@/lib/db/integrity-check';
-import { resetDatabase } from '@/lib/db/setup';
+import { resetDatabase, setupDatabase } from '@/lib/db/setup';
+import { closeDatabase } from '@/lib/db/connection-close';
 import fs from 'fs';
 import { humanFileSize } from '@/lib/utils/file-size';
 import { exec } from 'child_process';
@@ -38,6 +39,21 @@ export async function POST(request: NextRequest) {
     }
 
     switch (action) {
+      case 'setup':
+        // Initialize database with recovery mode if needed
+        try {
+          await setupDatabase(true);
+          return NextResponse.json({
+            success: true,
+            message: 'Database setup/checked successfully'
+          });
+        } catch (error) {
+          console.error('Database setup error:', error);
+          return NextResponse.json(
+            { success: false, error: `Database setup failed: ${error instanceof Error ? error.message : String(error)}` },
+            { status: 500 }
+          );
+        }
       case 'health':
         return await handleHealthCheck();
       case 'repair':
@@ -68,7 +84,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   } finally {
-    closeDatabase();
+    closeDatabaseConnections();
   }
 }
 
@@ -82,14 +98,29 @@ export async function GET(request: NextRequest) {
   // For GET requests, we'll treat them like POSTs but use query params
   try {
     switch (action) {
+      case 'setup':
+        // Initialize database with recovery mode if needed
+        try {
+          await setupDatabase(true);
+          return NextResponse.json({
+            success: true,
+            message: 'Database setup/checked successfully'
+          });
+        } catch (error) {
+          console.error('Database setup error:', error);
+          return NextResponse.json(
+            { success: false, error: `Database setup failed: ${error instanceof Error ? error.message : String(error)}` },
+            { status: 500 }
+          );
+        }
       case 'health':
         return await handleHealthCheck();
-      
+
       case 'status':
         // Only in dev mode, provide detailed diagnostics info
         if (!isDev) {
-          return NextResponse.json({ 
-            error: 'This detailed status is only available in development mode' 
+          return NextResponse.json({
+            error: 'This detailed status is only available in development mode'
           }, { status: 403 });
         }
         return await handleDetailedStatus();
@@ -122,11 +153,13 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('[API database/maintenance] Error:', error);
-    
+
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error during database maintenance'
     }, { status: 500 });
+  } finally {
+    closeDatabaseConnections();
   }
 }
 
@@ -408,6 +441,11 @@ async function handleDetailedStatus() {
   }
 }
 
-async function closeDatabase() {
-  // Implementation of closeDatabase function
+async function closeDatabaseConnections() {
+  try {
+    closeDatabase();
+    console.log('[API] Database connections closed successfully');
+  } catch (error) {
+    console.error('[API] Error closing database connections:', error);
+  }
 } 

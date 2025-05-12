@@ -1,27 +1,17 @@
 "use client";
 
 import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback, useMemo } from "react";
-// TODO: Fix the missing database context module
-// import { useDatabase } from "./database-context";
 import { normalizePath } from "@/lib/path-utils";
 import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
 import { useNotification } from "./notification-context";
-import { useLocalStorage } from "@/lib/hooks/use-local-storage";
-import { debounce } from "@/lib/utils/debounce";
-import sessionSyncService from '@/lib/services/session-sync-service';
-import * as apiHandler from '@/lib/services/session-sync/api-handler';
-
-// Helper function to get localStorage key for active session based on project directory
-const getLocalStorageKeyForActiveSession = (projectDirectory: string) => 
-  `activeSessionId-${projectDirectory}`;
+import { useUILayout } from "./ui-layout-context";
+import { getGenericCachedStateAction, saveGenericCachedStateAction } from "@/actions/project-settings-actions";
 
 interface ProjectContextType {
   projectDirectory: string;
   setProjectDirectory: (dir: string) => void;
   isLoading: boolean;
   error: string | null;
-  activeSessionId: string | null;
-  setActiveSessionId: (id: string | null, currentProjectDirectory?: string) => void;
   isSwitchingSession: boolean;
   setIsSwitchingSession: (isSwitching: boolean) => void;
 }
@@ -32,8 +22,6 @@ const defaultContextValue: ProjectContextType = {
   setProjectDirectory: () => {},
   isLoading: true,
   error: null,
-  activeSessionId: null,
-  setActiveSessionId: () => {},
   isSwitchingSession: false,
   setIsSwitchingSession: () => {}
 };
@@ -91,77 +79,92 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   // TODO: Fix the database context issue
   // const { repository } = useDatabase();
   const { showNotification } = useNotification();
-  
+  const { setAppInitializing } = useUILayout();
+
   // Local state
   const [projectDirectory, setProjectDirectoryState] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSwitchingSession, setIsSwitchingSession] = useState<boolean>(false);
-  
-  // Track the storage key to ensure it updates when project directory changes
-  const storageKey = getLocalStorageKeyForActiveSession(projectDirectory || "none");
-  
-  // Use localStorage for activeSessionId with dynamic key based on project directory
-  const [activeSessionId, setActiveSessionIdLS] = useLocalStorage<string | null>(
-    storageKey, 
-    null
-  );
-  
+
   // Refs
   const lastProjectDirChangeRef = useRef<number>(0);
   const PROJECT_DIR_CHANGE_COOLDOWN = 5000; // 5 second cooldown
+  const hasInitializedRef = useRef<boolean>(false);
   
-  // Debounced localStorage setter to avoid rapid subsequent writes
-  const debouncedSetGlobalProjectDir = useRef(
-    debounce((dir: string) => {
-      try {
-        if (typeof window !== 'undefined') {
-          console.log(`[ProjectContext] Debounced localStorage update for project directory: ${dir}`);
-          localStorage.setItem(GLOBAL_PROJECT_DIR_KEY, dir);
+  // Function to save global project directory
+  const saveGlobalProjectDir = async (dir: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        console.log(`[ProjectContext] Saving project directory: ${dir}`);
+        // Use the server action to save the state immediately
+        const result = await saveGenericCachedStateAction(null, GLOBAL_PROJECT_DIR_KEY, dir);
+        if (!result.isSuccess) {
+          console.error(`[ProjectContext] Error saving global project directory:`, result.message);
         }
-      } catch (err) {
-        console.error('[ProjectContext] Error in debounced localStorage update:', err);
       }
-    }, 1000) // 1 second debounce
-  ).current;
+    } catch (err) {
+      console.error('[ProjectContext] Error in project directory update:', err);
+    }
+  };
   
+  // Track initialization state to prevent circular dependencies
+  const isInitialLoadingRef = useRef<boolean>(true);
+
   // Load initial project directory
   useEffect(() => {
     let isMounted = true;
-    
+
     const loadInitialData = async () => {
+      // Set loading state
       setIsLoading(true);
       setError(null);
-      
+
       try {
-        console.log(`[ProjectContext] Loading initial project directory...`);
-        
-        // Load project directory from localStorage
-        const cachedDir = typeof window !== 'undefined' ? localStorage.getItem(GLOBAL_PROJECT_DIR_KEY) : null;
-        
+        // Load project directory directly, no delay
+        const cachedResult = await getGenericCachedStateAction(null, GLOBAL_PROJECT_DIR_KEY);
+
         // Safety check for component unmount during async operation
         if (!isMounted) return;
-        
+
+        const cachedDir = cachedResult.isSuccess ? cachedResult.data : null;
+
         if (cachedDir) {
           try {
             const normalizedDir = normalizePath(cachedDir);
             console.log(`[ProjectContext] Found cached project directory: ${normalizedDir}`);
-            setProjectDirectoryState(normalizedDir);
-            
-            // The activeSessionId will be loaded automatically by the useLocalStorage hook
-            // based on the localStorage key for this project directory
+
+            // Set project directory, but ensure it doesn't trigger context cascades
+            // if it's the same as what was already loaded during hot reload
+            if (isInitialLoadingRef.current) {
+              setProjectDirectoryState(normalizedDir);
+              isInitialLoadingRef.current = false;
+            } else {
+              // Only update if it's actually different (prevents redundant renders during hot reload)
+              if (projectDirectory !== normalizedDir) {
+                setProjectDirectoryState(normalizedDir);
+              } else {
+                console.log(`[ProjectContext] Skipping redundant project directory update: ${normalizedDir}`);
+              }
+            }
+
+            // Mark project as initialized
+            hasInitializedRef.current = true;
           } catch (pathErr) {
             console.error(`[ProjectContext] Error normalizing path:`, pathErr);
             setError(`Invalid project directory format: ${cachedDir}`);
           }
         } else {
           console.log(`[ProjectContext] No cached project directory found`);
+          // Mark initialization as completed even if no directory found
+          isInitialLoadingRef.current = false;
+          hasInitializedRef.current = true;
         }
       } catch (err) {
         console.error(`[ProjectContext] Error loading initial data:`, err);
         if (isMounted) {
           setError(`Failed to load project data: ${err instanceof Error ? err.message : String(err)}`);
-          
+
           // Show notification for the error
           showNotification({
             title: "Error",
@@ -175,14 +178,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    
+
     loadInitialData();
-    
+
     // Cleanup function to prevent state updates if unmounted
     return () => {
       isMounted = false;
     };
-  }, [showNotification]);
+  }, [showNotification, projectDirectory]);
   
   // Set project directory with persistence
   const setProjectDirectory = useCallback(async (dir: string) => {
@@ -209,156 +212,47 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       // before initiating the project change, rather than doing it here
       
       // Before changing project, clear active session ID for the new directory
-      if (typeof window !== 'undefined') {
-        const newStorageKey = getLocalStorageKeyForActiveSession(normalizedDir);
-        // Explicitly set to null to avoid loading a potentially stale session
-        localStorage.removeItem(newStorageKey);
-        console.log(`[ProjectContext] Cleared localStorage active session for new project directory: ${normalizedDir}`);
-      }
+      // We don't need to manually manage session IDs anymore as they're handled by SessionContext
       
       // Update state for immediate UI response
       setProjectDirectoryState(normalizedDir);
       
-      // Use debounced function for localStorage update to prevent rapid writes
-      debouncedSetGlobalProjectDir(normalizedDir);
-      
+      // Save the directory to the database
+      await saveGlobalProjectDir(normalizedDir);
+
     } catch (err) {
       console.error(`[ProjectContext] Error setting project directory:`, err);
       setError(`Failed to set project directory: ${err instanceof Error ? err.message : String(err)}`);
-      
+
       showNotification({
         title: "Error",
         message: `Failed to set project directory: ${err instanceof Error ? err.message : String(err)}`,
         type: "error"
       });
     }
-  }, [showNotification, debouncedSetGlobalProjectDir]);
+  }, [showNotification]);
   
-  // Set active session ID with persistence and server sync
-  const setActiveSessionId = useCallback((id: string | null, currentProjectDirectory?: string) => {
-    // Add validation for id (allow null but reject objects)
-    if (id !== null && typeof id !== 'string') {
-      console.error('[ProjectContext] Invalid sessionId type:', typeof id, id);
-      showNotification({
-        title: "Error",
-        message: "Cannot set active session: invalid session ID type",
-        type: "error"
-      });
-      return;
-    }
-    
-    // We now only support setting the active session for the current project directory
-    // Cross-project updates should be managed at a higher level
-    if (currentProjectDirectory && currentProjectDirectory !== projectDirectory) {
-      console.warn(`[ProjectContext] Cross-project session updates are no longer supported. Ignoring update for ${currentProjectDirectory}.`);
-      return;
-    }
-    
-    const timestamp = new Date().toISOString();
-    
-    // Check if the incoming ID matches the current ID to prevent redundant updates
-    if (id === activeSessionId) {
-      console.log(`[ProjectContext][${timestamp}] Skipping active session update - same ID (${id || 'null'})`);
-      return;
-    }
-    
-    // For debugging only - no need to track extensively in production
-    if (process.env.NODE_ENV === 'development') {
-      const callStack = new Error().stack;
-      trackAPICall('sessionId', `${projectDirectory}-${id}`, { stack: callStack });
-    }
-    
-    if (!projectDirectory) {
-      console.log(`[ProjectContext][${timestamp}] Cannot set active session: no project directory`);
-      showNotification({
-        title: "Warning",
-        message: "Cannot set active session: no project directory selected",
-        type: "warning"
-      });
-      return;
-    }
-    
-    try {
-      console.log(`[ProjectContext][${timestamp}] Setting active session ID: ${id || 'null'}`);
-      
-      // Generate a unique operation ID for tracking
-      const operationId = `set_active_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      
-      // Check if this is part of a switching operation - if so, increase priority
-      // by setting local state with a higher priority flag
-      const isSwitchingOperation = isSwitchingSession;
-      
-      // Update local state immediately for a responsive UI
-      // The second parameter is a priority flag (added in useLocalStorage hook)
-      // When switching sessions, we want to bypass rate limiting
-      setActiveSessionIdLS(id, isSwitchingOperation);
-      console.log(`[ProjectContext][${timestamp}] Updated local active session via localStorage hook: ${id || 'null'} (priority: ${isSwitchingOperation})`);
-      
-      // Inform the sync service about the session change
-      if (id !== activeSessionId) {
-        try {
-          const previousSessionId = activeSessionId;
-          console.log(`[ProjectContext][${timestamp}] Marking session ${id || 'null'} as switching target (previous: ${previousSessionId || 'null'})`);
-          sessionSyncService.markSessionSwitching(id, previousSessionId);
-        } catch (markError) {
-          // Safely ignore errors with markSessionSwitching
-          console.warn(`[ProjectContext][${timestamp}] Unable to mark session switching (non-critical):`, markError);
-        }
-      }
-      
-      // Update server state in background with priority flag for session switches
-      try {
-        // Fire and forget - don't await this call to keep UI responsive
-        // Pass along the switching flag to the API handler to give it higher priority
-        apiHandler.setActiveSession(projectDirectory, id, operationId, isSwitchingSession)
-          .then(() => {
-            console.log(`[ProjectContext][${timestamp}] Successfully synced active session to server: ${id || 'null'}`);
-          })
-          .catch((syncError: any) => {
-            console.error(`[ProjectContext][${timestamp}] Error syncing active session to server:`, syncError);
-            // Don't show notification for background sync failures to avoid user confusion
-          });
-        
-        console.log(`[ProjectContext][${timestamp}] Initiated background sync of active session to server: ${id || 'null'}`);
-      } catch (syncError) {
-        console.error(`[ProjectContext][${timestamp}] Error setting up background sync:`, syncError);
-        // Continue with local state update even if server sync setup fails
-      }
-    } catch (err) {
-      console.error(`[ProjectContext][${timestamp}] Error setting active session ID:`, err);
-      
-      showNotification({
-        title: "Error",
-        message: `Failed to set active session: ${err instanceof Error ? err.message : String(err)}`,
-        type: "error"
-      });
-    }
-  }, [projectDirectory, setActiveSessionIdLS, showNotification, activeSessionId, isSwitchingSession]);
-  
-  // Listen for activeSessionId changes (for logging purposes only)
-  // The actual API calls are now handled in the setActiveSessionId function
+  // The setActiveSessionId method has been moved to SessionContext
+
+  // Session ID management has been moved to SessionContext
+
+  // Simple effect to maintain isSwitchingSession state
   useEffect(() => {
-    if (!projectDirectory || !activeSessionId) return;
-    
-    if (typeof window !== 'undefined') {
-      try {
-        const timestamp = new Date().toISOString();
-        console.log(`[ProjectContext][${timestamp}] Active session ID changed: ${activeSessionId}`);
-        // No redundant API calls here - setActiveSessionId already handles server syncing
-      } catch (error) {
-        console.error(`[ProjectContext] Error in sessionId change effect:`, error);
-      }
-    }
-  }, [projectDirectory, activeSessionId]);
-  
+    // Always initialize to false by default
+    setIsSwitchingSession(false);
+
+    // No complex event handling or timeouts here anymore
+    // SessionContext will be responsible for managing its own events
+    // and this context will only track a simple boolean state
+    // that can be used by components to show loading indicators
+  }, [setIsSwitchingSession]);
+
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({
     projectDirectory,
     setProjectDirectory,
     isLoading,
     error,
-    activeSessionId,
-    setActiveSessionId,
     isSwitchingSession,
     setIsSwitchingSession
   }), [
@@ -366,8 +260,6 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setProjectDirectory,
     isLoading,
     error,
-    activeSessionId,
-    setActiveSessionId,
     isSwitchingSession,
     setIsSwitchingSession
   ]);

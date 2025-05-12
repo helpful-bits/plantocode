@@ -1,11 +1,11 @@
 "use server";
 
 import { ActionState } from "@/types";
-import geminiClient from '@/lib/api/gemini-client';
-import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants'; 
+import { geminiClient } from '@/lib/api'; // Import from centralized API module
+import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
 import { generateDirectoryTree } from '@/lib/directory-tree';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { 
+import {
   generateImplementationPlanSystemPrompt,
   generateImplementationPlanUserPrompt
 } from '@/lib/prompts/implementation-plan-prompts';
@@ -148,15 +148,33 @@ export async function enhanceTaskDescriptionAction({
       }
     );
 
-    if (!result.isSuccess || !result.data) {
+    if (!result.isSuccess) {
       console.error("Gemini API call failed for Task Enhancement:", result.message);
       return { isSuccess: false, message: result.message || "Failed to enhance task description via AI" };
     }
 
+    // Handle background job response
+    if (result.data && typeof result.data === 'object' && 'isBackgroundJob' in result.data) {
+      return {
+        isSuccess: true,
+        message: "Task enhancement sent to background job processor.",
+        data: `Processing in background job: ${result.data.jobId}`
+      };
+    }
+
+    // Handle string response
+    if (result.data && typeof result.data === 'string') {
+      return {
+        isSuccess: true,
+        message: "Successfully enhanced task description.",
+        data: result.data.trim()
+      };
+    }
+
+    // Fallback for missing data
     return {
-      isSuccess: true,
-      message: "Successfully enhanced task description.",
-      data: result.data.trim()
+      isSuccess: false,
+      message: "Failed to enhance task description - no data returned"
     };
   } catch (error: unknown) {
     console.error("Error enhancing task description:", error);

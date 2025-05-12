@@ -3,82 +3,86 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { useFileManagementState } from "../_hooks/use-file-management-state";
 import { FileManagementContext } from "./file-management-context";
-import { useGeneratePrompt } from "./generate-prompt-context";
+import { useSessionContext } from "@/lib/contexts/session-context";
 import { Session } from "@/types/session-types";
+import { useStableRef } from "../_hooks/use-stable-refs";
 
 interface FileManagementProviderProps {
   children: ReactNode;
   projectDirectory: string;
-  activeSessionId: string | null;
   taskDescription: string;
-  sessionData?: Session;
-  isSwitchingSession?: boolean;
 }
 
 export function FileManagementProvider({
   children,
   projectDirectory,
-  activeSessionId,
   taskDescription,
-  sessionData,
-  isSwitchingSession = false,
 }: FileManagementProviderProps) {
-  const context = useGeneratePrompt();
+  // Get the session transition state for passing to child components
+  const { activeSessionId, isTransitioningSession } = useSessionContext();
 
-  // Create the file management state, passing in the data from the session if it exists
-  const fileManagementState = useFileManagementState({
+  // Track session ID changes in a ref for better debugging
+  const prevSessionIdRef = useRef<string | null>(null);
+  const prevTransitionStateRef = useRef<boolean>(false);
+
+  // DEBUG: Log immediate mount events, but only in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[DEBUG][FileManagementProvider] Mounting - project: ${projectDirectory}, session: ${activeSessionId}, transitioning: ${isTransitioningSession}`);
+  }
+
+  // Create stable refs for props to prevent unnecessary re-renders
+  const stableProps = useStableRef({
     projectDirectory,
-    activeSessionId,
     taskDescription,
-    onInteraction: () => {
-      if (context && activeSessionId) {
-        // Use the file state getter pattern to provide current file state to the context
-        context.handleInteraction(() => fileManagementState.getFileStateForSession());
-      }
-    },
-    sessionData: sessionData ? {
-      includedFiles: sessionData.includedFiles,
-      forceExcludedFiles: sessionData.forceExcludedFiles,
-      searchTerm: sessionData.searchTerm,
-      searchSelectedFilesOnly: sessionData.searchSelectedFilesOnly,
-    } : undefined,
-    isSwitchingSession, // Pass the session switching flag
+    isTransitioningSession,
   });
 
-  // Keep track of session data for debugging
-  const fileSelectionsRef = useRef({
-    includedFiles: sessionData?.includedFiles || [],
-    forceExcludedFiles: sessionData?.forceExcludedFiles || []
+  // Create the file management state by passing stable props
+  // Use a ref to avoid passing the props directly during render
+  const stateProps = useRef({
+    projectDirectory,
+    taskDescription,
+    isTransitioningSession,
   });
-  
-  // Update ref when session data changes (for debugging purposes only)
+
+  // Update the ref when props change
   useEffect(() => {
-    if (sessionData) {
-      fileSelectionsRef.current = {
-        includedFiles: sessionData.includedFiles || [],
-        forceExcludedFiles: sessionData.forceExcludedFiles || []
-      };
-      console.log(`[FileManagementProvider] Received session data with ${sessionData.includedFiles?.length || 0} included files`);
-    }
-  }, [sessionData]);
-  
-  // Handle component unmounting or session change
-  useEffect(() => {
-    // Clean up when the component unmounts
-    return () => {
-      // Force immediate save of any pending changes before unmounting
-      if (fileManagementState.flushPendingOperations) {
-        console.log('[FileManagementProvider] Component unmounting, flushing pending operations');
-        fileManagementState.flushPendingOperations();
-        
-        // Also trigger a manual interaction if needed
-        if (context && activeSessionId) {
-          console.log('[FileManagementProvider] Forcing final state update before unmount');
-          context.handleInteraction(() => fileManagementState.getFileStateForSession());
-        }
-      }
+    stateProps.current = {
+      projectDirectory,
+      taskDescription,
+      isTransitioningSession,
     };
-  }, [fileManagementState, context, activeSessionId]);
+  }, [projectDirectory, taskDescription, isTransitioningSession]);
+
+  const fileManagementState = useFileManagementState(stateProps.current);
+
+  // Log session changes for better debugging
+  useEffect(() => {
+    if (activeSessionId !== prevSessionIdRef.current) {
+      console.log(`[FileManagementProvider] Session ID changed from "${prevSessionIdRef.current}" to "${activeSessionId}"`);
+
+      // Update ref for next comparison
+      prevSessionIdRef.current = activeSessionId;
+    }
+  }, [activeSessionId]);
+
+  // Log transition state changes
+  useEffect(() => {
+    if (isTransitioningSession !== prevTransitionStateRef.current) {
+      console.log(`[FileManagementProvider] Transition state changed from ${prevTransitionStateRef.current} to ${isTransitioningSession}`);
+
+      // Update ref for next comparison
+      prevTransitionStateRef.current = isTransitioningSession;
+    }
+  }, [isTransitioningSession]);
+
+  // Extract initialization state for better logging
+  const { isInitialized, isLoadingFiles, fileLoadError } = fileManagementState;
+
+  // Log initialization and loading state changes
+  useEffect(() => {
+    console.log(`[FileManagementProvider] File state update: isInitialized=${isInitialized}, isLoadingFiles=${isLoadingFiles}, hasError=${!!fileLoadError}`);
+  }, [isInitialized, isLoadingFiles, fileLoadError]);
 
   return (
     <FileManagementContext.Provider value={fileManagementState}>

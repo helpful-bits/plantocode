@@ -23,48 +23,48 @@ export const GEMINI_MODEL = GEMINI_FLASH_MODEL;
 import { TaskSettings } from "@/types";
 
 export const DEFAULT_TASK_SETTINGS: TaskSettings = {
-  pathfinder: { 
-    model: GEMINI_FLASH_MODEL, 
+  pathfinder: {
+    model: GEMINI_FLASH_MODEL,
     maxTokens: 8192,
     temperature: 0.3 // Lower temperature for more accurate path finding
   },
-  transcription: { 
-    model: "whisper-large-v3", 
+  transcription: {
+    model: "whisper-large-v3",
     maxTokens: 4096
     // No temperature for transcription
   },
-  regex_generation: { 
-    model: "claude-3-7-sonnet-20250219", 
+  regex_generation: {
+    model: "claude-3-7-sonnet-20250219",
     maxTokens: 4096,
     temperature: 0.2 // Low temperature for accurate regex generation
   },
-  path_correction: { 
-    model: GEMINI_FLASH_MODEL, 
+  path_correction: {
+    model: GEMINI_FLASH_MODEL,
     maxTokens: 8192,
     temperature: 0.2 // Low temperature for accurate path correction
   },
-  text_improvement: { 
-    model: "claude-3-7-sonnet-20250219", 
+  text_improvement: {
+    model: "claude-3-7-sonnet-20250219",
     maxTokens: 8192,
     temperature: 0.7 // Higher temperature for creative improvements
   },
-  voice_correction: { 
-    model: "claude-3-7-sonnet-20250219", 
+  voice_correction: {
+    model: "claude-3-7-sonnet-20250219",
     maxTokens: 4096,
     temperature: 0.3 // Moderate temperature for voice correction
   },
-  task_enhancement: { 
-    model: GEMINI_PRO_PREVIEW_MODEL, 
+  task_enhancement: {
+    model: GEMINI_PRO_PREVIEW_MODEL,
     maxTokens: 16384,
     temperature: 0.7
   },
-  guidance_generation: { 
-    model: GEMINI_PRO_PREVIEW_MODEL, 
+  guidance_generation: {
+    model: GEMINI_PRO_PREVIEW_MODEL,
     maxTokens: 16384,
     temperature: 0.7
   },
-  implementation_plan: { 
-    model: GEMINI_PRO_PREVIEW_MODEL, 
+  implementation_plan: {
+    model: GEMINI_PRO_PREVIEW_MODEL,
     maxTokens: 65536,
     temperature: 0.7
   },
@@ -73,16 +73,14 @@ export const DEFAULT_TASK_SETTINGS: TaskSettings = {
     maxTokens: 16384,
     temperature: 0.7
   },
-  unknown: { 
-    model: GEMINI_FLASH_MODEL, 
-    maxTokens: 4096,
-    temperature: 0.7
-  },
-  
-  // Optional general streaming settings
   streaming: {
     model: GEMINI_FLASH_MODEL,
     maxTokens: 16384,
+    temperature: 0.7
+  },
+  unknown: {
+    model: GEMINI_FLASH_MODEL,
+    maxTokens: 4096,
     temperature: 0.7
   }
 };

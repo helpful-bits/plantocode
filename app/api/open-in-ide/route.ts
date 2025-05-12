@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execFile } from 'child_process'; // Use execFile for security
+import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
-import path from 'path'; // Keep path import
+import path from 'path';
 import os from 'os';
 import { existsSync } from 'fs';
-import { getAppOutputFilesDirectory, getFilename as getPatchFilename } from '@/lib/path-utils'; // Keep path-utils import
 import { getProjectSetting } from '@/actions/project-settings-actions';
 import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from '@/lib/constants';
 
@@ -23,91 +22,56 @@ export async function POST(request: NextRequest) {
     // Get custom output file editor command from project settings
     const customCommand = await getProjectSetting(projectDirectory, OUTPUT_FILE_EDITOR_COMMAND_KEY);
 
-    // Resolve the path to handle potential relative paths
-    const resolvedFilePath = path.resolve(filePath);
-    // Security check: verify file exists
-    try {
-      if (!existsSync(resolvedFilePath)) {
-        // If file doesn't exist at the provided path, try creating directories if needed
-        try {
-          // Create directories if needed
-          await fs.mkdir(path.dirname(resolvedFilePath), { recursive: true });
-        } catch (dirError) {
-          console.error(`Error creating directories for ${resolvedFilePath}:`, dirError);
-        }
-        
-        // Check if maybe just the directory was missing
-        if (existsSync(resolvedFilePath)) {
-          return openFileWithIDE(resolvedFilePath, customCommand);
-        }
-        
-        // Try different path variations for implementation plans
-        // 1. Check if this is an implementation plan file (typically has .xml extension and 'plan_' prefix)
-        const isImplementationPlan = path.basename(resolvedFilePath).startsWith('plan_') && 
-                                   path.extname(resolvedFilePath) === '.xml';
-        
-        if (isImplementationPlan && projectDirectory) {
-          // Try standard implementation plans directory paths
-          const implPlansDirectPaths = [
-            // Standard location within project directory
-            path.join(projectDirectory, 'implementation_plans', path.basename(resolvedFilePath)),
-            // Alternative location sometimes used
-            path.join(projectDirectory, 'output', 'implementation_plans', path.basename(resolvedFilePath))
-          ];
-          
-          // Check each potential path
-          for (const potentialPath of implPlansDirectPaths) {
-            if (existsSync(potentialPath)) {
-              // Found implementation plan at alternative path
-              return openFileWithIDE(potentialPath, customCommand);
-            }
-          }
-        }
-        
-        // If still not found, check if it might be in the fallback location
-        const filename = getPatchFilename(resolvedFilePath);
-        const fallbackPath = path.join(getAppOutputFilesDirectory(), filename);
-        
-        if (existsSync(fallbackPath)) {
-          // Use the fallback path instead
-          // Found file at fallback path
-          return openFileWithIDE(fallbackPath, customCommand);
-        }
-        
-        // Final attempt: extract just the filename and look for it in implementation_plans directory
-        const baseFilename = path.basename(resolvedFilePath);
-        if (projectDirectory && baseFilename) {
-          const projectImplPlanDir = path.join(projectDirectory, 'implementation_plans');
-          if (existsSync(projectImplPlanDir)) {
-            // Get all files in the implementation_plans directory
-            try {
-              const files = await fs.readdir(projectImplPlanDir);
-              // Look for files that contain parts of the requested filename
-              const similarFiles = files.filter(file => 
-                file.includes(baseFilename) || baseFilename.includes(file)
-              );
-              
-              if (similarFiles.length > 0) {
-                // Use the first matching file
-                const matchPath = path.join(projectImplPlanDir, similarFiles[0]);
-                // Found similar implementation plan by partial match
-                return openFileWithIDE(matchPath, customCommand);
-              }
-            } catch (readError) {
-              console.error(`[OpenInIDE] Error reading implementation_plans directory:`, readError);
-            }
-          }
-        }
-        
-        console.error(`[OpenInIDE] File not found after trying multiple paths: ${resolvedFilePath}`);
-        return NextResponse.json({ error: 'File not found' }, { status: 404 });
-      }
-      
-      return openFileWithIDE(resolvedFilePath, customCommand);
-    } catch (err) {
-      console.error(`File access error for ${resolvedFilePath}:`, err);
-      return NextResponse.json({ error: 'File not found or inaccessible' }, { status: 404 });
+    // Handle paths properly with security checks
+    // Calculate absolute path depending on whether input is absolute or relative
+    let absoluteFilePath: string;
+    if (path.isAbsolute(filePath)) {
+      absoluteFilePath = path.normalize(filePath);
+    } else {
+      // If it's a relative path, resolve against project directory
+      absoluteFilePath = path.join(projectDirectory, filePath);
     }
+
+    // Security check: Ensure file path is within allowed directories
+    // Files should be either in project directory or the implementation_plans subdirectory
+    const normalizedProjectDir = path.normalize(projectDirectory);
+    const implPlansDir = path.join(normalizedProjectDir, 'implementation_plans');
+
+    const allowedPaths = [normalizedProjectDir, implPlansDir];
+    const isInAllowedPath = allowedPaths.some(allowedPath =>
+      absoluteFilePath.startsWith(allowedPath) &&
+      (absoluteFilePath === allowedPath || absoluteFilePath.substring(allowedPath.length).startsWith(path.sep))
+    );
+
+    if (!isInAllowedPath) {
+      return NextResponse.json({
+        error: 'Security restriction: File must be within project directory or implementation_plans directory'
+      }, { status: 403 });
+    }
+
+    // Verify file exists
+    if (!existsSync(absoluteFilePath)) {
+      // Try to create directory if needed
+      try {
+        const dirPath = path.dirname(absoluteFilePath);
+        if (!existsSync(dirPath)) {
+          await fs.mkdir(dirPath, { recursive: true });
+        }
+      } catch (dirError) {
+        console.error(`Error creating directories for ${absoluteFilePath}:`, dirError);
+      }
+
+      // Check again if file exists after directory creation
+      if (!existsSync(absoluteFilePath)) {
+        console.error(`[OpenInIDE] File not found: ${absoluteFilePath}`);
+        return NextResponse.json({
+          error: `File not found: ${path.basename(absoluteFilePath)}`
+        }, { status: 404 });
+      }
+    }
+
+    // File exists and is in allowed directory, open it
+    return openFileWithIDE(absoluteFilePath, customCommand);
   } catch (error) {
     console.error('Error in open-in-ide route:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

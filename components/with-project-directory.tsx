@@ -55,28 +55,4 @@ export function RequireProjectDirectory({
   return <>{children}</>;
 }
 
-export function InlineProjectNotFound({ onSelectProject }: ProjectNotFoundProps) {
-  return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>No Project Selected</CardTitle>
-        <CardDescription>
-          Please select a project directory to continue
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground mb-4">
-          You need to select a project directory before you can configure project-specific settings.
-        </p>
-        <Button 
-          variant="outline" 
-          className="gap-2"
-          onClick={onSelectProject}
-        >
-          <FolderOpen size={16} />
-          Select Project Directory
-        </Button>
-      </CardContent>
-    </Card>
-  );
-} 
+// InlineProjectNotFound component has been removed as it duplicates functionality in ProjectNotFound 

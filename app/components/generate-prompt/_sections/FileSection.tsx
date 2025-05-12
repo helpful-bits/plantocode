@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import FileBrowser from "../file-browser";
 import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 
-const FileSection = React.memo(function FileSection() {
+interface FileSectionProps {
+  disabled?: boolean;
+}
+
+const FileSection = React.memo(function FileSection({
+  disabled = false
+}: FileSectionProps) {
   // Get state and actions from contexts
   const context = useGeneratePrompt();
   const fileState = useFileManagement();
@@ -23,19 +29,9 @@ const FileSection = React.memo(function FileSection() {
         onToggleExclusion={fileState.toggleFileExclusion}
         onBulkToggle={(shouldInclude, targetFiles) => {
           console.log(`[FileSection] Bulk toggle ${shouldInclude ? 'selecting' : 'deselecting'} ${targetFiles.length} files`);
-          
-          // First update local state
+
+          // Update state through fileState.handleBulkToggle which will trigger the proper interaction handlers
           fileState.handleBulkToggle(targetFiles as any, shouldInclude);
-          
-          // Then ensure we save to backend with some delay to let React finish updating
-          setTimeout(() => {
-            const state = fileState.getFileStateForSession();
-            console.log(`[FileSection] Saving bulk update: included=${state.includedFiles.length}, excluded=${state.forceExcludedFiles.length}`);
-            if (context.saveSessionState && context.activeSessionId) {
-              // This bypasses all the debouncing and directly saves the state
-              context.saveSessionState(context.activeSessionId, undefined, state);
-            }
-          }, 100);
         }}
         showOnlySelected={fileState.showOnlySelected}
         onShowOnlySelectedChange={() => fileState.setShowOnlySelected(!fileState.showOnlySelected)}
@@ -44,19 +40,24 @@ const FileSection = React.memo(function FileSection() {
           await fileState.refreshFiles();
         }}
         isLoading={fileState.isLoadingFiles || fileState.isFindingFiles}
+        isInitialized={fileState.isInitialized}
+        fileLoadError={fileState.fileLoadError}
         loadingMessage={
-          fileState.isFindingFiles 
-            ? "Finding relevant files (analyzing file contents)..." 
-            : fileState.isLoadingFiles 
-              ? "Loading files..." 
-              : ""
+          fileState.isFindingFiles
+            ? "Finding relevant files (analyzing file contents)..."
+            : !fileState.isInitialized
+              ? "Initializing file list..."
+              : fileState.isLoadingFiles
+                ? "Loading files..."
+                : ""
         }
-              onFindRelevantFiles={fileState.findRelevantFiles}
+        onFindRelevantFiles={fileState.findRelevantFiles}
         isFindingFiles={fileState.isFindingFiles}
         searchSelectedFilesOnly={fileState.searchSelectedFilesOnly}
         onToggleSearchSelectedFilesOnly={fileState.toggleSearchSelectedFilesOnly}
         taskDescription={context.taskState.taskDescription}
         regexState={context.regexState}
+        disabled={disabled}
       />
     </>
   );

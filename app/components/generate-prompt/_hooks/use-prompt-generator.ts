@@ -61,15 +61,12 @@ export function usePromptGenerator({
         return;
       }
 
-      // Current implementation - we're temporarily going to need another server action to load file contents
-      // Note: When updating this code, add a content loading action that can load content for specific files on demand
-      const freshResult = await readDirectoryAction(projectDirectory); 
-      if (freshResult.isSuccess && freshResult.data) {
-        // This will be an empty object or contain old file contents
-        // TODO: Add implementation to load contents for all selected files
-        currentFileContents = fileContentsMap; // Use the existing content map for now
+      // Use the fileContentsMap provided by props
+      // This contains all the loaded file contents from FileManagementContext
+      if (Object.keys(fileContentsMap).length > 0) {
+        currentFileContents = fileContentsMap;
       } else {
-        setError("Failed to get file list: " + freshResult.message);
+        setError("No file contents available. Please ensure files are loaded in the browser.");
         setIsGenerating(false);
         return;
       }
