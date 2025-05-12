@@ -2,12 +2,13 @@
 
 import { ActionState } from '@/types';
 import { setupDatabase } from '@/lib/db';
-import geminiClient from '@/lib/api/gemini-client';
 import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@/lib/constants';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 import { generateDirectoryTree } from '@/lib/directory-tree';
 import { generateGuidanceForPathsPrompt } from '@/lib/prompts/guidance-prompts';
 import { loadFileContents } from '@/lib/file-utils';
+import { createBackgroundJob, enqueueJob } from '@/lib/jobs/job-helpers';
+import { ApiType, TaskType } from '@/types/session-types';
 
 /**
  * Generate guidance for specific file paths
@@ -17,7 +18,7 @@ export async function generateGuidanceForPathsAction(
   paths: string[],
   sessionId: string,
   options?: { modelOverride?: string }
-): Promise<ActionState<{ guidance: string }>> {
+): Promise<ActionState<{ jobId: string }>> {
   await setupDatabase();
   
   if (!taskDescription.trim()) {
@@ -68,48 +69,49 @@ export async function generateGuidanceForPathsAction(
     // Prepare prompt for guidance generation with file contents
     const promptText = generateGuidanceForPathsPrompt(taskDescription, paths, fileContents);
     
-    // Call the Gemini client
-    const result = await geminiClient.sendRequest(promptText, {
-      model,
-      maxOutputTokens: guidanceSettings.maxTokens,
-      temperature: guidanceSettings.temperature,
-      apiType: 'gemini',
-      taskType: 'guidance_generation',
+    // Create a background job
+    const job = await createBackgroundJob(
+      sessionId,
+      {
+        apiType: 'gemini' as ApiType,
+        taskType: 'guidance_generation' as TaskType,
+        model: model,
+        rawInput: taskDescription,
+        maxOutputTokens: guidanceSettings.maxTokens,
+        temperature: guidanceSettings.temperature,
+        metadata: {
+          targetField: 'taskDescription',
+          isVisible: true
+        }
+      },
+      session.projectDirectory
+    );
+    
+    // Prepare the job payload
+    const guidanceGenerationPayload = {
+      backgroundJobId: job.id,
       sessionId,
       projectDirectory: session.projectDirectory,
-      // Force using a background job for architectural guidance
-      forceBackgroundJob: true,
-      metadata: {
-        targetField: 'taskDescription',
-        isVisible: true
-      }
-    });
+      promptText,
+      paths,
+      model,
+      temperature: guidanceSettings.temperature,
+      maxOutputTokens: guidanceSettings.maxTokens
+    };
     
-    if (!result.isSuccess) {
-      return { 
-        isSuccess: false, 
-        message: result.message || "Failed to generate guidance" 
-      };
-    }
+    // Enqueue the job
+    await enqueueJob('GUIDANCE_GENERATION', guidanceGenerationPayload);
     
-    // Check if this is a background job response
-    if (result.metadata?.jobId) {
-      return {
-        isSuccess: true,
-        message: "Guidance generation started in the background",
-        data: { guidance: "" },
-        metadata: {
-          isBackgroundJob: true,
-          jobId: result.metadata.jobId
-        }
-      };
-    }
-    
-    // Otherwise return the immediate result
+    // Return success with job ID
     return {
       isSuccess: true,
-      message: "Successfully generated guidance",
-      data: { guidance: result.data || "" }
+      message: "Guidance generation job queued",
+      data: { jobId: job.id },
+      metadata: { 
+        jobId: job.id, 
+        isBackgroundJob: true, 
+        targetField: 'taskDescription'
+      }
     };
   } catch (error) {
     console.error("[generateGuidanceForPathsAction]", error);

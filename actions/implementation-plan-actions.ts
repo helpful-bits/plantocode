@@ -15,13 +15,13 @@ import { loadFileContents } from '@/lib/file-utils';
 /**
  * Create an implementation plan for a given task
  */
-export async function createImplementationPlanAction(params: { 
-  projectDirectory: string; 
-  taskDescription: string; 
-  relevantFiles: string[]; 
-  fileContentsMap: Record<string, string>; 
-  sessionId: string; 
-  temperatureOverride?: number; 
+export async function createImplementationPlanAction(params: {
+  projectDirectory: string;
+  taskDescription: string;
+  relevantFiles: string[];
+  fileContentsMap: Record<string, string>;
+  sessionId: string;
+  temperatureOverride?: number;
 }): Promise<ActionState<{ jobId?: string }>> {
   await setupDatabase();
   
@@ -148,13 +148,13 @@ export async function getImplementationPlanPromptAction(params: {
   }
   
   try {
-    // Generate directory tree
-    const projectStructure = await generateDirectoryTree(projectDirectory);
-    
+    // Generate directory tree using only the selected relevant files
+    const projectStructure = await generateDirectoryTree(projectDirectory, relevantFiles);
+
     // Load file contents if not provided or empty
     let actualFileContents = fileContentsMap;
     const isFileContentsEmpty = Object.keys(fileContentsMap).length === 0;
-    
+
     if (isFileContentsEmpty && relevantFiles.length > 0) {
       // Use the shared loadFileContents utility
       actualFileContents = await loadFileContents(projectDirectory, relevantFiles);

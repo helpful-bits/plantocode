@@ -136,11 +136,21 @@ export function formatTimeAgo(timestamp: number): string {
 }
 
 /**
- * Format token count for display
+ * Format token count for display with better handling of edge cases
  */
-export function formatTokenCount(count?: number): string {
-  if (!count) return '0';
-  return count >= 1000 ? `${(count / 1000).toFixed(1)}K` : count.toString();
+export function formatTokenCount(count?: number | null): string {
+  // Handle undefined, null, NaN, or non-positive numbers
+  if (count === undefined || count === null || isNaN(count) || count <= 0) {
+    return '0';
+  }
+
+  // Format large numbers with K suffix
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}K`;
+  }
+
+  // Format small numbers as integers
+  return Math.round(count).toString();
 }
 
 /**

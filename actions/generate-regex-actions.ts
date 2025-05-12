@@ -42,7 +42,11 @@ export async function generateRegexPatternsAction(
       return { isSuccess: false, message: "Active session required to generate regex patterns." };
     }
 
-    const result: ActionState<string | { isBackgroundJob: true; jobId: string }> = await claudeClient.sendRequest(payload, sessionId, 'regex_generation', projectDirectory);
+    const result: ActionState<string | { isBackgroundJob: true; jobId: string }> = await claudeClient.sendRequest(payload, {
+      sessionId,
+      taskType: 'regex_generation',
+      projectDirectory
+    });
 
     if (!result.isSuccess) {
       console.error("[generateRegexPatternsAction] Claude API call failed:", result.message);

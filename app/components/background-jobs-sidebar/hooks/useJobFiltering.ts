@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BackgroundJob, JOB_STATUSES } from '@/types/session-types';
 
+// Enable this for extensive logging of job filtering and sorting
+// Define this outside of the hook entirely to avoid it being included in dependency arrays
+const DEBUG_JOB_FILTERING = false;
+
 /**
  * Custom hook for filtering and sorting jobs in the background jobs sidebar
  */
@@ -8,9 +12,6 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
   // Keep a cached version of jobs to show during loading
   const [cachedJobs, setCachedJobs] = useState<BackgroundJob[]>([]);
   const [initialLoad, setInitialLoad] = useState(true);
-  
-  // Enable this for extensive logging of job filtering and sorting
-  const DEBUG_JOB_FILTERING = false;
   
   // Update cached jobs whenever we get new jobs
   useEffect(() => {
@@ -97,7 +98,9 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
       failedJobs: failedList,
       hasJobs: jobsToUse.length > 0
     };
-  }, [jobs, cachedJobs, isLoading, DEBUG_JOB_FILTERING]);
+  // DEBUG_JOB_FILTERING is a constant and doesn't need to be in deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs, cachedJobs, isLoading]);
   
   // Show loading only on first load, otherwise show cached content during updates
   const shouldShowLoading = initialLoad && isLoading && cachedJobs.length === 0;

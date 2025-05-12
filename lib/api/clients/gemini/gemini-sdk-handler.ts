@@ -45,7 +45,7 @@ function convertPayloadToSdkFormat(payload: GeminiSdkRequestPayload) {
 
 /**
  * Stream content from Gemini API using the official Google SDK
- * 
+ *
  * @param payload The Gemini API request payload
  * @param apiKey Gemini API key
  * @param modelId Gemini model ID to use
@@ -60,24 +60,44 @@ export async function streamGeminiContentWithSDK(
   callbacks?: StreamCallbacks,
   abortSignal?: AbortSignal
 ): Promise<{ finalContent: string; stats: { tokens: number, chars: number, model: string } }> {
-  if (!apiKey) {
-    throw new Error('API key is required for Gemini API requests');
+  // Check if API key is available in the environment if not provided directly
+  const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
+
+  // Return a structured error response if no API key is available
+  if (!effectiveApiKey) {
+    console.error('[Gemini SDK] No API key provided and GEMINI_API_KEY environment variable is not set');
+
+    // Call error callback if provided
+    if (callbacks?.onError) {
+      const error = new Error('Gemini API key is not configured in the environment');
+      callbacks.onError(error);
+    }
+
+    // Return a structured response with error information
+    return {
+      finalContent: '',
+      stats: {
+        tokens: 0,
+        chars: 0,
+        model: modelId
+      }
+    };
   }
-  
+
   if (!payload || !payload.contents || payload.contents.length === 0) {
     throw new Error('Valid payload with contents is required for Gemini API requests');
   }
-  
+
   try {
     // Initialize the GenAI client
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
+    const genAI = new GoogleGenerativeAI(effectiveApiKey);
+
     // Get the model
     const model = genAI.getGenerativeModel({ model: modelId });
-    
+
     // Convert payload to SDK format
     const sdkPayload = convertPayloadToSdkFormat(payload);
-    
+
     // Create request object
     const request = {
       contents: sdkPayload.contents,
@@ -170,7 +190,7 @@ export async function streamGeminiContentWithSDK(
 /**
  * Async generator version of streamGeminiContentWithSDK
  * This version yields chunks as they arrive, similar to the original streamGeminiCompletion
- * 
+ *
  * @param payload The Gemini API request payload
  * @param apiKey Gemini API key
  * @param modelId Gemini model ID to use
@@ -185,24 +205,32 @@ export async function* streamGeminiCompletionWithSDK(
   abortSignal?: AbortSignal,
   onChunk?: (chunk: string, tokenCount: number, totalLength: number) => Promise<void>
 ): AsyncGenerator<string, void, undefined> {
-  if (!apiKey) {
-    throw new Error('API key is required for Gemini API requests');
+  // Check if API key is available in the environment if not provided directly
+  const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
+
+  // Return an empty generator if no API key is available
+  if (!effectiveApiKey) {
+    console.error('[Gemini SDK] No API key provided and GEMINI_API_KEY environment variable is not set');
+
+    // Yield an error message that can be captured by the caller
+    yield 'ERROR: Gemini API key is not configured in the environment';
+    return;
   }
-  
+
   if (!payload || !payload.contents || payload.contents.length === 0) {
     throw new Error('Valid payload with contents is required for Gemini API requests');
   }
-  
+
   try {
     // Initialize the GenAI client
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
+    const genAI = new GoogleGenerativeAI(effectiveApiKey);
+
     // Get the model
     const model = genAI.getGenerativeModel({ model: modelId });
-    
+
     // Convert payload to SDK format
     const sdkPayload = convertPayloadToSdkFormat(payload);
-    
+
     // Create request object
     const request = {
       contents: sdkPayload.contents,

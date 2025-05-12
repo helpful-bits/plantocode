@@ -4,40 +4,36 @@ import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
 import { useNotification } from '@/lib/contexts/notification-context';
 import { useBackgroundJob } from '@/lib/contexts/background-jobs-context';
-import { sessionSyncService } from '@/lib/services/session-sync-service';
-import debounce from '@/lib/utils/debounce';
+import { useSessionContext } from '@/lib/contexts/session-context';
 
 interface UseRegexStateProps {
   activeSessionId: string | null;
   taskDescription: string;
   onInteraction?: () => void;
+  isSwitchingSession?: boolean;
 }
 
 export function useRegexState({
   activeSessionId,
   taskDescription,
-  onInteraction
+  onInteraction,
+  isSwitchingSession = false
 }: UseRegexStateProps) {
+  // Get session context
+  const sessionContext = useSessionContext();
   // Get notification context
   const { showNotification } = useNotification();
-  
+
   // Constants
   const REGEX_MAX_LENGTH = 500;
 
-  // State variables
-  const [titleRegex, setTitleRegex] = useState("");
-  const [contentRegex, setContentRegex] = useState("");
-  const [negativeTitleRegex, setNegativeTitleRegex] = useState("");
-  const [negativeContentRegex, setNegativeContentRegex] = useState("");
-  const [isRegexActive, setIsRegexActive] = useState(true);
-  
-  // Error states for regex validation
+  // Error states for regex validation - these are UI-only state, not persisted
   const [titleRegexError, setTitleRegexError] = useState<string | null>(null);
   const [contentRegexError, setContentRegexError] = useState<string | null>(null);
   const [negativeTitleRegexError, setNegativeTitleRegexError] = useState<string | null>(null);
   const [negativeContentRegexError, setNegativeContentRegexError] = useState<string | null>(null);
-  
-  // State for regex generation via AI
+
+  // State for regex generation via AI - UI-only state
   const [isGeneratingTaskRegex, setIsGeneratingTaskRegex] = useState(false);
   const [generatingRegexJobId, setGeneratingRegexJobId] = useState<string | null>(null);
   const [regexGenerationError, setRegexGenerationError] = useState<string | null>(null);
@@ -61,79 +57,169 @@ export function useRegexState({
     }
   }, []);
 
-  // Create debounced interaction handler for regular inputs
-  const debouncedInteraction = useMemo(
-    () => debounce(() => {
-      if (onInteraction) {
-        console.log('[RegexState] Triggering debounced interaction for regex changes');
-        onInteraction();
-      }
-    }, 1000), // 1 second debounce for text inputs
-    [onInteraction]
-  );
-  
-  // Create debounced interaction handler for bulk operations
-  const debouncedBulkInteraction = useMemo(
-    () => debounce(() => {
-      if (onInteraction) {
-        console.log('[RegexState] Triggering debounced bulk interaction for regex pattern application');
-        onInteraction();
-      }
-    }, 2000), // 2 second debounce for bulk operations
-    [onInteraction]
-  );
+  // Direct interaction handling without debouncing
+  const triggerInteraction = useCallback(() => {
+    if (isSwitchingSession) {
+      console.log('[RegexState] Suppressed interaction: session switch in progress');
+      return;
+    }
 
-  // Handler for title regex changes
+    if (onInteraction) {
+      console.log('[RegexState] Triggering interaction for regex changes');
+      onInteraction();
+    }
+  }, [onInteraction, isSwitchingSession]);
+
+  // Internal state for regex patterns
+  const [internalTitleRegex, setInternalTitleRegex] = useState<string>('');
+  const [internalContentRegex, setInternalContentRegex] = useState<string>('');
+  const [internalNegativeTitleRegex, setInternalNegativeTitleRegex] = useState<string>('');
+  const [internalNegativeContentRegex, setInternalNegativeContentRegex] = useState<string>('');
+  const [internalIsRegexActive, setInternalIsRegexActive] = useState<boolean>(true);
+
+  // Initialize internal state from session when session changes
+  useEffect(() => {
+    // Handle the case when session is transitioning or currentSession is null
+    if (isSwitchingSession || !sessionContext.currentSession) {
+      console.log('[RegexState] Session transition or null session detected, resetting state');
+      // Reset all internal state to defaults
+      setInternalTitleRegex('');
+      setInternalContentRegex('');
+      setInternalNegativeTitleRegex('');
+      setInternalNegativeContentRegex('');
+      setInternalIsRegexActive(true);
+      return;
+    }
+
+    // If we have a valid session, initialize from it
+    console.log('[RegexState] Initializing internal state from session');
+
+    // Only update if the values have changed to prevent loops
+    if (internalTitleRegex !== (sessionContext.currentSession?.titleRegex || '')) {
+      setInternalTitleRegex(sessionContext.currentSession?.titleRegex || '');
+    }
+
+    if (internalContentRegex !== (sessionContext.currentSession?.contentRegex || '')) {
+      setInternalContentRegex(sessionContext.currentSession?.contentRegex || '');
+    }
+
+    if (internalNegativeTitleRegex !== (sessionContext.currentSession?.negativeTitleRegex || '')) {
+      setInternalNegativeTitleRegex(sessionContext.currentSession?.negativeTitleRegex || '');
+    }
+
+    if (internalNegativeContentRegex !== (sessionContext.currentSession?.negativeContentRegex || '')) {
+      setInternalNegativeContentRegex(sessionContext.currentSession?.negativeContentRegex || '');
+    }
+
+    if (internalIsRegexActive !== (sessionContext.currentSession?.isRegexActive ?? true)) {
+      setInternalIsRegexActive(sessionContext.currentSession?.isRegexActive ?? true);
+    }
+  }, [
+    sessionContext.currentSession,
+    sessionContext.activeSessionId, // React to changes in activeSessionId
+    isSwitchingSession,
+    internalTitleRegex,
+    internalContentRegex,
+    internalNegativeTitleRegex,
+    internalNegativeContentRegex,
+    internalIsRegexActive
+  ]);
+
+  // Handler for title regex changes - now updates internal state
   const handleTitleRegexChange = useCallback((value: string) => {
-    setTitleRegex(value);
+    // Skip update if the value is the same
+    if (value === internalTitleRegex) {
+      return;
+    }
+
+    // Update internal state
+    setInternalTitleRegex(value);
+
+    // Validate for UI feedback only
     const error = validateRegex(value);
     setTitleRegexError(error);
 
-    // Notify parent component of changes with debounce
-    debouncedInteraction();
-  }, [validateRegex, debouncedInteraction]);
+    // Notify parent component of changes
+    triggerInteraction();
+  }, [validateRegex, triggerInteraction, internalTitleRegex]);
 
-  // Handler for content regex changes
+  // Handler for content regex changes - now updates internal state
   const handleContentRegexChange = useCallback((value: string) => {
-    setContentRegex(value);
+    // Skip update if the value is the same
+    if (value === internalContentRegex) {
+      return;
+    }
+
+    // Update internal state
+    setInternalContentRegex(value);
+
+    // Validate for UI feedback only
     const error = validateRegex(value);
     setContentRegexError(error);
 
-    // Notify parent component of changes with debounce
-    debouncedInteraction();
-  }, [validateRegex, debouncedInteraction]);
+    // Notify parent component of changes
+    triggerInteraction();
+  }, [validateRegex, triggerInteraction, internalContentRegex]);
 
-  // Handler for negative title regex changes
+  // Handler for negative title regex changes - now updates internal state
   const handleNegativeTitleRegexChange = useCallback((value: string) => {
-    setNegativeTitleRegex(value);
+    // Skip update if the value is the same
+    if (value === internalNegativeTitleRegex) {
+      return;
+    }
+
+    // Update internal state
+    setInternalNegativeTitleRegex(value);
+
+    // Validate for UI feedback only
     const error = validateRegex(value);
     setNegativeTitleRegexError(error);
 
-    // Notify parent component of changes with debounce
-    debouncedInteraction();
-  }, [validateRegex, debouncedInteraction]);
+    // Notify parent component of changes
+    triggerInteraction();
+  }, [validateRegex, triggerInteraction, internalNegativeTitleRegex]);
 
-  // Handler for negative content regex changes
+  // Handler for negative content regex changes - now updates internal state
   const handleNegativeContentRegexChange = useCallback((value: string) => {
-    setNegativeContentRegex(value);
+    // Skip update if the value is the same
+    if (value === internalNegativeContentRegex) {
+      return;
+    }
+
+    // Update internal state
+    setInternalNegativeContentRegex(value);
+
+    // Validate for UI feedback only
     const error = validateRegex(value);
     setNegativeContentRegexError(error);
 
-    // Notify parent component of changes with debounce
-    debouncedInteraction();
-  }, [validateRegex, debouncedInteraction]);
+    // Notify parent component of changes
+    triggerInteraction();
+  }, [validateRegex, triggerInteraction, internalNegativeContentRegex]);
 
-  // Toggle regex active state
+  // Toggle regex active state - now updates internal state
   const handleToggleRegexActive = useCallback((newValue?: boolean) => {
-    setIsRegexActive(prev => typeof newValue === 'boolean' ? newValue : !prev);
-    
-    // Notify parent component of changes - no debounce for toggle actions
+    // Get current value from internal state
+    const currentValue = internalIsRegexActive;
+    // Determine new value
+    const nextValue = typeof newValue === 'boolean' ? newValue : !currentValue;
+
+    // Skip the update if the value is already set
+    if (nextValue === currentValue) {
+      console.log('[RegexState] Skipping redundant isRegexActive update');
+      return;
+    }
+
+    // Update internal state
+    setInternalIsRegexActive(nextValue);
+
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
-  }, [onInteraction]);
+  }, [onInteraction, internalIsRegexActive]);
 
-  // Apply regex patterns to state - stabilized with useCallback
+  // Apply regex patterns to state - now updates internal state
   const applyRegexPatterns = useCallback(({
     titlePattern,
     contentPattern,
@@ -147,7 +233,7 @@ export function useRegexState({
   }) => {
     // Count of non-empty patterns
     let patternsCount = 0;
-    
+
     // Only update non-empty patterns
     if (titlePattern) {
       handleTitleRegexChange(titlePattern);
@@ -165,78 +251,138 @@ export function useRegexState({
       handleNegativeContentRegexChange(negativeContentPattern);
       patternsCount++;
     }
-    
+
     // Ensure regex is active if at least one pattern was provided
     if (patternsCount > 0) {
-      setIsRegexActive(true);
+      // Update internal regex active state
+      setInternalIsRegexActive(true);
       console.log('[RegexState] Applied regex patterns, activating regex mode');
     }
-    
+
     // Reset the generating state
     setIsGeneratingTaskRegex(false);
     setGeneratingRegexJobId(null);
-    
-    // Use debounced bulk interaction since multiple regex changes may be applied at once
-    debouncedBulkInteraction();
+
+    // Notify parent of changes
+    triggerInteraction();
   }, [
     handleTitleRegexChange,
     handleContentRegexChange,
     handleNegativeTitleRegexChange,
     handleNegativeContentRegexChange,
-    debouncedBulkInteraction
+    triggerInteraction
   ]);
 
-  // Clear all patterns - stabilized with useCallback
+  // Clear all patterns - now updates internal state
   const handleClearPatterns = useCallback(() => {
-    setTitleRegex("");
-    setContentRegex("");
-    setNegativeTitleRegex("");
-    setNegativeContentRegex("");
-    setTitleRegexError("");
-    setContentRegexError("");
-    setNegativeTitleRegexError("");
-    setNegativeContentRegexError("");
-    
-    // Notify parent component of changes - no debounce for clear action
+    // Update internal state with empty values
+    setInternalTitleRegex("");
+    setInternalContentRegex("");
+    setInternalNegativeTitleRegex("");
+    setInternalNegativeContentRegex("");
+
+    // Clear error states (UI-only)
+    setTitleRegexError(null);
+    setContentRegexError(null);
+    setNegativeTitleRegexError(null);
+    setNegativeContentRegexError(null);
+
+    // Notify parent component of changes
     if (onInteraction) {
       onInteraction();
     }
-  }, [
-    onInteraction
-  ]);
+  }, [onInteraction]);
 
   // Helper function to extract regex patterns using regex
   const extractAndApplyPatterns = useCallback((response: string) => {
     const patterns: Record<string, string> = {};
-    
-    // Extract title regex
-    const titleMatch = response.match(/title(?:\s+regex)?:\s*`([^`]+)`|title(?:\s+regex)?:\s*"([^"]+)"|title(?:\s+regex)?:\s*\/([^\/]+)\//i);
+
+    console.log('[RegexState] Attempting to extract patterns from text, length:', response.length);
+
+    // Extract title regex - improved format matching
+    const titleMatch = response.match(/title(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|title(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (titleMatch) {
-      patterns.titlePattern = titleMatch[1] || titleMatch[2] || titleMatch[3];
+      patterns.titlePattern = titleMatch[1] || titleMatch[2];
+      console.log('[RegexState] Found title regex:', patterns.titlePattern);
     }
-    
-    // Extract content regex
-    const contentMatch = response.match(/content(?:\s+regex)?:\s*`([^`]+)`|content(?:\s+regex)?:\s*"([^"]+)"|content(?:\s+regex)?:\s*\/([^\/]+)\//i);
+
+    // Extract content regex - improved format matching
+    const contentMatch = response.match(/content(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|content(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (contentMatch) {
-      patterns.contentPattern = contentMatch[1] || contentMatch[2] || contentMatch[3];
+      patterns.contentPattern = contentMatch[1] || contentMatch[2];
+      console.log('[RegexState] Found content regex:', patterns.contentPattern);
     }
-    
-    // Extract negative title regex
-    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?:\s*`([^`]+)`|negative(?:\s+title)?(?:\s+regex)?:\s*"([^"]+)"|negative(?:\s+title)?(?:\s+regex)?:\s*\/([^\/]+)\//i);
+
+    // Extract negative title regex - improved format matching
+    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+title)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (negTitleMatch) {
-      patterns.negativeTitlePattern = negTitleMatch[1] || negTitleMatch[2] || negTitleMatch[3];
+      patterns.negativeTitlePattern = negTitleMatch[1] || negTitleMatch[2];
+      console.log('[RegexState] Found negative title regex:', patterns.negativeTitlePattern);
     }
-    
-    // Extract negative content regex
-    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?:\s*`([^`]+)`|negative(?:\s+content)?(?:\s+regex)?:\s*"([^"]+)"|negative(?:\s+content)?(?:\s+regex)?:\s*\/([^\/]+)\//i);
+
+    // Extract negative content regex - improved format matching
+    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+content)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (negContentMatch) {
-      patterns.negativeContentPattern = negContentMatch[1] || negContentMatch[2] || negContentMatch[3];
+      patterns.negativeContentPattern = negContentMatch[1] || negContentMatch[2];
+      console.log('[RegexState] Found negative content regex:', patterns.negativeContentPattern);
     }
-    
+
+    // Try to find patterns in regular structured text if no matches found above
+    if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length === 0) {
+      console.log('[RegexState] No patterns found with primary regex, trying lines with ":" format');
+
+      // Extract patterns from lines that look like "Pattern name: pattern"
+      const lines = response.split('\n');
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+
+        if (trimmedLine.toLowerCase().startsWith('title') && trimmedLine.includes(':')) {
+          const patternText = trimmedLine.split(':')[1].trim();
+          if (patternText && !patterns.titlePattern) {
+            patterns.titlePattern = patternText.replace(/^["'`]|["'`]$/g, '');
+            console.log('[RegexState] Found title regex from line:', patterns.titlePattern);
+          }
+        }
+
+        if (trimmedLine.toLowerCase().startsWith('content') && trimmedLine.includes(':')) {
+          const patternText = trimmedLine.split(':')[1].trim();
+          if (patternText && !patterns.contentPattern) {
+            patterns.contentPattern = patternText.replace(/^["'`]|["'`]$/g, '');
+            console.log('[RegexState] Found content regex from line:', patterns.contentPattern);
+          }
+        }
+
+        if (trimmedLine.toLowerCase().includes('negative') &&
+            trimmedLine.toLowerCase().includes('title') &&
+            trimmedLine.includes(':')) {
+          const patternText = trimmedLine.split(':')[1].trim();
+          if (patternText && !patterns.negativeTitlePattern) {
+            patterns.negativeTitlePattern = patternText.replace(/^["'`]|["'`]$/g, '');
+            console.log('[RegexState] Found negative title regex from line:', patterns.negativeTitlePattern);
+          }
+        }
+
+        if (trimmedLine.toLowerCase().includes('negative') &&
+            trimmedLine.toLowerCase().includes('content') &&
+            trimmedLine.includes(':')) {
+          const patternText = trimmedLine.split(':')[1].trim();
+          if (patternText && !patterns.negativeContentPattern) {
+            patterns.negativeContentPattern = patternText.replace(/^["'`]|["'`]$/g, '');
+            console.log('[RegexState] Found negative content regex from line:', patterns.negativeContentPattern);
+          }
+        }
+      }
+    }
+
+    // Log the final extraction results
+    const patternsFound = Object.keys(patterns).filter(k => patterns[k] !== undefined).length;
+    console.log(`[RegexState] Extracted ${patternsFound} patterns from text`);
+
     // Apply the extracted patterns
-    if (Object.keys(patterns).length > 0) {
+    if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
       applyRegexPatterns(patterns);
-      
+
       // Show success notification
       showNotification({
         title: "Regex patterns extracted",
@@ -257,26 +403,24 @@ export function useRegexState({
   // Reset function to clear state
   const reset = useCallback(() => {
     console.log('[RegexState] Resetting regex state');
-    
-    // Reset patterns
-    setTitleRegex("");
-    setContentRegex("");
-    setNegativeTitleRegex("");
-    setNegativeContentRegex("");
-    
-    // Reset validation errors
+
+    // Reset internal patterns state
+    setInternalTitleRegex("");
+    setInternalContentRegex("");
+    setInternalNegativeTitleRegex("");
+    setInternalNegativeContentRegex("");
+    setInternalIsRegexActive(true); // Reset regex active state to default (true)
+
+    // Reset validation errors (UI-only)
     setTitleRegexError(null);
     setContentRegexError(null);
     setNegativeTitleRegexError(null);
     setNegativeContentRegexError(null);
-    
-    // Reset regex generation state
+
+    // Reset regex generation state (UI-only)
     setIsGeneratingTaskRegex(false);
     setGeneratingRegexJobId(null);
     setRegexGenerationError(null);
-    
-    // Reset regex active state to default (true)
-    setIsRegexActive(true);
   }, []);
   
   // Add useEffect to monitor activeSessionId changes for automatic reset
@@ -300,22 +444,28 @@ export function useRegexState({
     if (!generatingRegexJobId || !isGeneratingTaskRegex) {
       return;
     }
-    
+
+    // Log the current job state to help with debugging
+    if (regexJob) {
+      console.log(`[RegexState] Regex job status: ${regexJob.status}, response length: ${regexJob.response ? (typeof regexJob.response === 'string' ? regexJob.response.length : 'non-string') : 'none'}`);
+    }
+
     // If job is completed, process the result
     if (regexJob && regexJob.status === 'completed' && regexJob.response) {
       console.log('[RegexState] Regex generation job completed, processing results');
-      
+
       try {
         // Try to parse the response as JSON if it's a string
         if (typeof regexJob.response === 'string') {
           // Try to extract the JSON if it's in a code block
           const jsonMatch = regexJob.response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
           const jsonText = jsonMatch ? jsonMatch[1] : regexJob.response;
-          
+
           try {
             // Parse the JSON
             const patterns = JSON.parse(jsonText);
-            
+            console.log('[RegexState] Successfully parsed JSON patterns:', patterns);
+
             // Apply the patterns
             applyRegexPatterns({
               titlePattern: patterns.titleRegex || patterns.title_regex,
@@ -323,7 +473,7 @@ export function useRegexState({
               negativeTitlePattern: patterns.negativeTitleRegex || patterns.negative_title_regex,
               negativeContentPattern: patterns.negativeContentRegex || patterns.negative_content_regex
             });
-            
+
             // Show success notification
             showNotification({
               title: "Regex patterns generated",
@@ -332,6 +482,9 @@ export function useRegexState({
             });
           } catch (parseError) {
             console.error('[RegexState] Failed to parse regex job response JSON:', parseError);
+            console.log('[RegexState] Attempting regex extraction as fallback, response sample:',
+              regexJob.response.substring(0, 200) + (regexJob.response.length > 200 ? '...' : ''));
+
             // Try regex extraction as fallback
             extractAndApplyPatterns(regexJob.response);
           }
@@ -346,7 +499,7 @@ export function useRegexState({
         setRegexGenerationError(error instanceof Error ? error.message : "Failed to process regex patterns");
       }
     }
-    
+
     // If job failed, show error
     if (regexJob && (regexJob.status === 'failed' || regexJob.status === 'canceled')) {
       console.error('[RegexState] Regex generation job failed:', regexJob.errorMessage);
@@ -355,12 +508,12 @@ export function useRegexState({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    regexJob, 
-    generatingRegexJobId, 
-    isGeneratingTaskRegex, 
-    applyRegexPatterns, 
-    setIsGeneratingTaskRegex, 
-    setRegexGenerationError, 
+    regexJob,
+    generatingRegexJobId,
+    isGeneratingTaskRegex,
+    applyRegexPatterns,
+    setIsGeneratingTaskRegex,
+    setRegexGenerationError,
     showNotification,
     extractAndApplyPatterns
   ]);
@@ -439,12 +592,12 @@ export function useRegexState({
   ]);
 
   return useMemo(() => ({
-    // State
-    titleRegex,
-    contentRegex,
-    negativeTitleRegex,
-    negativeContentRegex,
-    isRegexActive,
+    // State - now using internal state values
+    titleRegex: internalTitleRegex,
+    contentRegex: internalContentRegex,
+    negativeTitleRegex: internalNegativeTitleRegex,
+    negativeContentRegex: internalNegativeContentRegex,
+    isRegexActive: internalIsRegexActive,
     isGeneratingTaskRegex,
     regexGenerationError,
     titleRegexError,
@@ -452,7 +605,7 @@ export function useRegexState({
     negativeTitleRegexError,
     negativeContentRegexError,
     generatingRegexJobId,
-    
+
     // Actions
     setTitleRegex: handleTitleRegexChange,
     setContentRegex: handleContentRegexChange,
@@ -466,11 +619,13 @@ export function useRegexState({
     validateRegex,
     reset
   }), [
-    titleRegex,
-    contentRegex,
-    negativeTitleRegex,
-    negativeContentRegex,
-    isRegexActive,
+    // Internal state values
+    internalTitleRegex,
+    internalContentRegex,
+    internalNegativeTitleRegex,
+    internalNegativeContentRegex,
+    internalIsRegexActive,
+    // Local UI state
     isGeneratingTaskRegex,
     regexGenerationError,
     titleRegexError,
@@ -478,6 +633,7 @@ export function useRegexState({
     negativeTitleRegexError,
     negativeContentRegexError,
     generatingRegexJobId,
+    // Actions
     handleTitleRegexChange,
     handleContentRegexChange,
     handleNegativeTitleRegexChange,

@@ -89,13 +89,13 @@ export default function SettingsForm() {
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div>
             <CardTitle className="text-lg">Project: {projectDirectory.split('/').pop()}</CardTitle>
-            <CardDescription>
-              Configure AI model preferences specifically for the &apos;{projectDirectory.split('/').pop()}&apos; project. These settings will apply to all sessions within this project directory.
+            <CardDescription className="text-balance">
+              Configure AI model preferences specifically for the &apos;{projectDirectory.split('/').pop()}&apos; project. These settings override global defaults and apply to all sessions within this project.
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-[100px] justify-end">
             {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            {saveSuccess && <CheckCircle className="h-4 w-4 text-green-500" />}
+            {saveSuccess && <div className="flex items-center gap-1 text-xs text-green-500"><CheckCircle className="h-4 w-4" /> Saved</div>}
             {error && <span className="text-xs text-destructive">{error}</span>}
           </div>
         </CardHeader>

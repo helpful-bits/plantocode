@@ -37,17 +37,17 @@ const isValidExecutionEnvironment = (): boolean => {
 export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]>> {
   // Track timing for performance monitoring
   const startTime = performance.now();
-  
+
   // Enable debug logging for troubleshooting
   const DEBUG_JOBS_ACTION = false;
-  
+
   // Generate request ID for tracing
   const requestId = Math.random().toString(36).substring(2, 10);
-  
+
   if (DEBUG_JOBS_ACTION) {
     console.debug(`[getActiveJobsAction][${requestId}] Starting background jobs fetch`);
   }
-  
+
   // Immediately check if we're in a valid execution context
   if (!isValidExecutionEnvironment()) {
     console.warn(`[getActiveJobsAction][${requestId}] Invalid execution environment`);
@@ -58,14 +58,14 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
       error: new Error("Invalid execution environment")
     };
   }
-  
+
   try {
     // Initialize database with error handling
     try {
       if (DEBUG_JOBS_ACTION) {
         console.debug(`[getActiveJobsAction][${requestId}] Setting up database connection`);
       }
-      
+
       await setupDatabase();
     } catch (dbError) {
       console.error(`[getActiveJobsAction][${requestId}] Database initialization error:`, dbError);
@@ -82,54 +82,57 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
       if (DEBUG_JOBS_ACTION) {
         console.debug(`[getActiveJobsAction][${requestId}] Fetching jobs from repository`);
       }
-      
+
       // Use the repository's getAllVisibleBackgroundJobs method to get properly mapped BackgroundJob objects
       const jobs = await backgroundJobRepository.getAllVisibleBackgroundJobs();
-      
+
       const duration = performance.now() - startTime;
-      
-      // Check jobs for data integrity issues
-      const incompleteJobs = jobs.filter(job => 
-        job.status === JOB_STATUSES.COMPLETED[0] && !job.response && !job.errorMessage
+
+      // No post-processing needed, all processing now happens in the mapper
+      const processedJobs = jobs;
+
+      // Still check jobs for data integrity issues for monitoring
+      const incompleteJobs = processedJobs.filter(job =>
+        job.status === JOB_STATUSES.COMPLETED[0] && !job.response && !job.errorMessage && !job.outputFilePath
       ).length;
-      
+
       if (incompleteJobs > 0) {
         console.warn(`[getActiveJobsAction][${requestId}] Found ${incompleteJobs} completed jobs with no response or error message`);
       }
-      
+
       // Log status distribution for monitoring
       if (DEBUG_JOBS_ACTION) {
-        const statusCounts = jobs.reduce((acc, job) => {
+        const statusCounts = processedJobs.reduce((acc, job) => {
           if (job.status && typeof job.status === 'string') {
             acc[job.status] = (acc[job.status] || 0) + 1;
           }
           return acc;
         }, {} as Record<string, number>);
-        
+
         console.debug(`[getActiveJobsAction][${requestId}] Job status distribution:`, statusCounts);
       }
-      
+
       // Log success metrics
-      console.debug(`[getActiveJobsAction][${requestId}] Successfully retrieved ${jobs.length} jobs in ${Math.round(duration)}ms`);
-      
+      console.debug(`[getActiveJobsAction][${requestId}] Successfully retrieved ${processedJobs.length} jobs in ${Math.round(duration)}ms`);
+
       return {
         isSuccess: true,
-        message: `Successfully retrieved ${jobs.length} background jobs`,
-        data: jobs as BackgroundJob[]
+        message: `Successfully retrieved ${processedJobs.length} background jobs`,
+        data: processedJobs as BackgroundJob[]
       };
     } catch (repoError) {
       console.error(`[getActiveJobsAction][${requestId}] Repository error fetching background jobs:`, repoError);
       return {
         isSuccess: false,
         message: "Database error: " + (repoError instanceof Error ? repoError.message : "Unknown repository error"),
-        data: [], // Return empty array as fallback 
+        data: [], // Return empty array as fallback
         error: repoError instanceof Error ? repoError : new Error("Repository operation failed")
       };
     }
   } catch (error) {
     const duration = performance.now() - startTime;
     console.error(`[getActiveJobsAction][${requestId}] Error fetching active background jobs after ${Math.round(duration)}ms:`, error);
-    
+
     // Ensure we return a valid response even on error
     return {
       isSuccess: false,
@@ -258,7 +261,7 @@ export async function cancelBackgroundJobAction(
 /**
  * Clear all background job history (mark all jobs as cleared)
  */
-export async function clearJobHistoryAction(): Promise<ActionState<null>> {
+export async function clearJobHistoryAction(daysToKeep: number = 0): Promise<ActionState<null>> {
   // Immediately check if we're in a valid execution context
   if (!isValidExecutionEnvironment()) {
     console.warn("[clearJobHistoryAction] Invalid execution environment");
@@ -269,7 +272,7 @@ export async function clearJobHistoryAction(): Promise<ActionState<null>> {
       data: null
     };
   }
-  
+
   try {
     // Initialize database with error handling
     try {
@@ -283,17 +286,23 @@ export async function clearJobHistoryAction(): Promise<ActionState<null>> {
         data: null
       };
     }
-    
-    await backgroundJobRepository.clearBackgroundJobHistory();
-    
+
+    // Pass the daysToKeep parameter to control how jobs are cleared
+    await backgroundJobRepository.clearBackgroundJobHistory(daysToKeep);
+
+    // Use different message based on the daysToKeep value
+    const message = daysToKeep > 0
+      ? `Jobs older than ${daysToKeep} days have been hidden from view`
+      : "Jobs older than 90 days have been permanently deleted; all other jobs remain visible";
+
     return {
       isSuccess: true,
-      message: "Job history cleared successfully",
+      message,
       data: null
     };
   } catch (error) {
     console.error("Error clearing job history:", error);
-    
+
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Unknown error clearing job history",

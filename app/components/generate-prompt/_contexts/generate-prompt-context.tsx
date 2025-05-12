@@ -17,13 +17,15 @@ export interface GeneratePromptContextValue {
   isGeneratingGuidance: boolean;
   isFormSaving: boolean;
   error: string;
-  
+
   // Project data
   projectDirectory: string | null;
   projectDataLoading: boolean;
-  
-  // Loaded file preferences from session
-  loadedSessionFilePrefs: LoadedSessionFilePrefs | null;
+
+  // Direct access to taskDescription for components that need it
+  taskDescription?: string;
+
+  // No longer need loadedSessionFilePrefs here as it's managed directly by FileManagementProvider
   
   // Task state
   taskState: {
@@ -69,7 +71,6 @@ export interface GeneratePromptContextValue {
   // Session actions
   resetAllState: () => void;
   setSessionName: (name: string) => void;
-  handleLoadSession: (sessionData: Session | null) => Promise<void>;
   handleGenerateGuidance: (selectedPaths?: string[]) => Promise<void>;
   saveSessionState: (
     sessionId: string, 
@@ -119,8 +120,9 @@ export interface GeneratePromptContextValue {
   handleGenerateCodebase: () => Promise<void>;
   
   // Implementation plan methods
-  handleCreateImplementationPlan: (includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
-  handleCopyImplementationPlanPrompt: (includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
+  handleCreateImplementationPlan: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
+  handleCopyImplementationPlanPrompt: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
+  handleGetImplementationPlanPrompt: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<string | null>;
 }
 
 // Create the context with a default undefined value

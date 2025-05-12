@@ -1,12 +1,12 @@
 /**
  * Claude API Client
- * 
+ *
  * This client provides access to the Anthropic Claude API, handling:
  * - Background job management compatible with Gemini client
  * - Request prioritization via streaming request pool
  * - Token usage tracking
  * - Comprehensive job metadata
- * - Error handling and reporting 
+ * - Error handling and reporting
  * - Specialized methods for text improvement and voice correction
  */
 
@@ -18,7 +18,7 @@ import { getModelSettingsForProject } from "@/actions/project-settings-actions";
 import { TaskType } from "@/types/session-types";
 import streamingRequestPool, { RequestType } from '@/lib/api/streaming-request-pool';
 import { ApiType } from '@/types/session-types';
-import { 
+import {
   createBackgroundJob,
   updateJobToRunning,
   updateJobToCompleted,
@@ -26,11 +26,17 @@ import {
   handleApiError,
   cancelAllSessionJobs
 } from '@/lib/jobs/job-helpers';
-import { 
-  generateVoiceCorrectionSystemPrompt, 
-  generateVoiceCorrectionUserPrompt 
+import {
+  generateVoiceCorrectionSystemPrompt,
+  generateVoiceCorrectionUserPrompt
 } from '@/lib/prompts/voice-correction-prompts';
 import { generateTextImprovementPrompt } from '@/lib/prompts/text-improvement-prompts';
+import { ApiClient, ApiClientOptions } from './api-client-interface';
+import {
+  ApiErrorType,
+  handleApiClientError,
+  createApiSuccessResponse
+} from './api-error-handling';
 
 // Constants
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -39,7 +45,7 @@ const DEFAULT_MODEL = "claude-3-7-sonnet-20250219";
 
 // Types
 export interface ClaudeRequestPayload {
-  messages: { role: string; content: string }[];
+  messages: { role: string; content: string | { type: string; text: string }[] }[];
   max_tokens?: number;
   temperature?: number;
   top_p?: number;
@@ -53,16 +59,31 @@ export interface ClaudeResponse {
   usage?: { input_tokens: number, output_tokens: number };
 }
 
-class ClaudeClient {
+class ClaudeClient implements ApiClient {
   /**
    * Send a request to Claude API with automatic queueing, rate limiting and retries
    */
   async sendRequest(
-    payload: ClaudeRequestPayload, 
-    sessionId?: string,
-    taskType: string = 'text_improvement',
-    projectDirectory?: string
+    input: ClaudeRequestPayload | string,
+    options?: ApiClientOptions
   ): Promise<ActionState<string | { isBackgroundJob: true, jobId: string }>> {
+    // Convert string input to payload if needed
+    let payload: ClaudeRequestPayload;
+    if (typeof input === 'string') {
+      // Create a basic message for string inputs
+      payload = {
+        messages: [
+          { role: "user", content: [{ type: "text", text: input }] }
+        ]
+      } as ClaudeRequestPayload;
+    } else {
+      payload = input;
+    }
+
+    // Extract options
+    const sessionId = options?.sessionId;
+    const taskType = options?.taskType || 'text_improvement';
+    const projectDirectory = options?.projectDirectory;
     // Get API key from environment
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -310,11 +331,11 @@ class ClaudeClient {
       streamingRequestPool.untrackRequest(requestId);
       
       if (!result.isSuccess) {
-        return {
-          isSuccess: false,
-          message: result.message,
-          error: result.error
-        };
+        return handleApiClientError(result.error || new Error(result.message), {
+          jobId: job?.id,
+          apiType: 'claude',
+          logPrefix: '[Claude Client]'
+        });
       }
       
       const data = result.data as ClaudeResponse;
@@ -322,76 +343,60 @@ class ClaudeClient {
       
       // Return immediately with the job ID if this is a background job
       if (job) {
-        return { 
-          isSuccess: true, 
-          message: "Claude request processed successfully.",
-          data: { isBackgroundJob: true, jobId: job.id },
-          metadata: {
-            isBackgroundJob: true,
+        return createApiSuccessResponse(
+          { isBackgroundJob: true, jobId: job.id },
+          {
+            message: "Claude request processed successfully.",
             jobId: job.id,
+            isBackgroundJob: true,
+            modelInfo: {
+              modelUsed: payload.model || DEFAULT_MODEL,
+              maxOutputTokens: payload.max_tokens || 2048,
+              temperature: payload.temperature || 0.7
+            },
             requestId: requestId,
-            modelUsed: payload.model || DEFAULT_MODEL,
-            maxOutputTokens: payload.max_tokens || 2048,
-            temperature: payload.temperature || 0.7,
             projectDirectory: projectDirectory
           }
-        };
+        );
       } else {
         // Extract token counts if available
         const tokensSent = data.usage?.input_tokens || 0;
         const tokensReceived = data.usage?.output_tokens || 0;
-        
-        return { 
-          isSuccess: true, 
-          message: "Claude request processed successfully.",
-          data: responseText,
-          metadata: {
+
+        return createApiSuccessResponse(
+          responseText,
+          {
+            message: "Claude request processed successfully.",
+            modelInfo: {
+              modelUsed: payload.model || DEFAULT_MODEL,
+              maxOutputTokens: payload.max_tokens || 2048,
+              temperature: payload.temperature || 0.7
+            },
+            tokenInfo: {
+              tokensSent,
+              tokensReceived,
+              totalTokens: tokensSent + tokensReceived
+            },
             requestId: requestId,
-            modelUsed: payload.model || DEFAULT_MODEL,
-            maxOutputTokens: payload.max_tokens || 2048,
-            temperature: payload.temperature || 0.7,
-            tokensSent,
-            tokensReceived,
-            totalTokens: tokensSent + tokensReceived,
             chars: responseText.length
           }
-        };
+        );
       }
     } catch (error) {
       console.error("Error executing Claude request:", error);
-      
+
       // Even if we encounter an error at the pool level, we need to ensure the job is marked as failed
       if (job) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         await updateJobToFailed(job.id, errorMessage);
-        
-        return {
-          isSuccess: false,
-          message: `Error executing Claude request: ${errorMessage}`,
-          error: error instanceof Error ? error : new Error(errorMessage),
-          metadata: {
-            isBackgroundJob: true,
-            jobId: job.id,
-            errorType: "RUNTIME_ERROR",
-            statusCode: 0,
-            modelUsed: payload.model || DEFAULT_MODEL,
-            maxOutputTokens: payload.max_tokens || 2048,
-            temperature: payload.temperature || 0.7,
-            projectDirectory: projectDirectory
-          }
-        };
       }
-      
-      return {
-        isSuccess: false,
-        message: `Error executing Claude request: ${error instanceof Error ? error.message : String(error)}`,
-        error: error instanceof Error ? error : new Error(String(error)),
-        metadata: {
-          errorType: "RUNTIME_ERROR",
-          statusCode: 0,
-          modelUsed: payload.model || DEFAULT_MODEL
-        }
-      };
+
+      return handleApiClientError(error, {
+        jobId: job?.id,
+        apiType: 'claude',
+        logPrefix: '[Claude Client]',
+        response: undefined,
+      });
     }
   }
   
@@ -430,39 +435,48 @@ class ClaudeClient {
     
     try {
       // Execute the request and wait for response
-      const result = await this.sendRequest(payload, sessionId, 'text_improvement', projectDirectory);
-      
+      const result = await this.sendRequest(payload, {
+        sessionId,
+        taskType: 'text_improvement',
+        projectDirectory
+      });
+
       // If this is a background job, return the jobId with a clear metadata structure
       if (result.isSuccess && result.metadata?.isBackgroundJob) {
-        return {
-          isSuccess: true,
-          message: "Text improvement is being processed in the background.",
-          data: { isBackgroundJob: true, jobId: result.metadata.jobId } as { isBackgroundJob: true, jobId: string },
-          metadata: { 
-            isBackgroundJob: true, 
+        return createApiSuccessResponse(
+          { isBackgroundJob: true, jobId: result.metadata.jobId } as { isBackgroundJob: true, jobId: string },
+          {
+            message: "Text improvement is being processed in the background.",
             jobId: result.metadata.jobId,
+            isBackgroundJob: true,
             operationId: result.metadata.jobId, // Include operationId for backward compatibility
-            modelUsed: result.metadata.modelUsed || options?.model || "claude-3-7-sonnet-20250219",
-            maxOutputTokens: result.metadata.maxOutputTokens || options?.max_tokens || 2048,
-            temperature: result.metadata.temperature || 0.7,
+            modelInfo: {
+              modelUsed: result.metadata.modelUsed || options?.model || "claude-3-7-sonnet-20250219",
+              maxOutputTokens: result.metadata.maxOutputTokens || options?.max_tokens || 2048,
+              temperature: result.metadata.temperature || 0.7,
+            },
             projectDirectory: projectDirectory
           }
-        };
+        );
       }
-      
+
       // Otherwise return the immediate text result
       return result;
     } catch (error) {
       console.error("Error improving text with Claude:", error);
-      return {
-        isSuccess: false,
-        message: error instanceof Error ? error.message : "Unknown error during text improvement",
-      };
+      return handleApiClientError(error, {
+        apiType: 'claude',
+        logPrefix: '[Claude Text Improvement]'
+      });
     }
   }
 
   /**
-   * Processes and corrects raw task description text, improving its clarity and structure
+   * Processes and corrects raw task description text, improving its clarity and structure.
+   *
+   * This function now accepts an optional existing jobId parameter to update an existing job
+   * rather than always creating a new one. This is used by the new correctTextAction approach
+   * which creates its own dedicated voice_correction job.
    */
   async correctTaskDescription(
     rawText: string,
@@ -472,10 +486,11 @@ class ClaudeClient {
       max_tokens?: number;
       model?: string;
       projectDirectory?: string;
+      jobId?: string; // Optional existing job ID to update
     }
   ): Promise<ActionState<string | { isBackgroundJob: true, jobId: string }>> {
     console.log(`[Claude] Processing voice correction request for ${options?.sessionId || 'anonymous user'}`);
-    
+
     // Parameter validation
     if (!rawText || typeof rawText !== 'string' || rawText.trim() === '') {
       return {
@@ -483,13 +498,140 @@ class ClaudeClient {
         message: "No text provided for correction."
       };
     }
-    
-    const { sessionId, language = 'en', max_tokens = 2048, model = "claude-3-7-sonnet-20250219", projectDirectory } = options || {};
-    
+
+    const {
+      sessionId,
+      language = 'en',
+      max_tokens = 2048,
+      model = "claude-3-7-sonnet-20250219",
+      projectDirectory,
+      jobId
+    } = options || {};
+
     // Use centralized prompts
     const systemPrompt = generateVoiceCorrectionSystemPrompt(language);
     const userMessage = generateVoiceCorrectionUserPrompt(rawText);
 
+    // If we have a specific job ID, update it directly instead of creating a new one
+    if (jobId && sessionId) {
+      try {
+        // Get the existing job
+        await setupDatabase();
+        const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
+
+        if (!existingJob) {
+          console.warn(`[correctTaskDescription] Job ${jobId} not found, falling back to creating a new job`);
+        } else {
+          console.log(`[correctTaskDescription] Using existing job ${jobId} for voice correction`);
+
+          // Prepare the execution function that will be passed to streamingRequestPool
+          const requestId = crypto.randomUUID();
+          streamingRequestPool.trackRequest(requestId, sessionId, RequestType.CLAUDE_REQUEST);
+
+          try {
+            const response = await fetch(ANTHROPIC_API_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": process.env.ANTHROPIC_API_KEY || '',
+                "anthropic-version": ANTHROPIC_VERSION,
+              },
+              body: JSON.stringify({
+                model: model,
+                max_tokens: max_tokens,
+                messages: [{ role: "user", content: userMessage }],
+                system: systemPrompt,
+                temperature: 0.3 // Lower temperature for more predictable corrections
+              }),
+            });
+
+            if (!response.ok) {
+              const errText = await response.text();
+              console.error(`[correctTaskDescription] Anthropic API error: ${response.status} ${errText}`);
+
+              // Update job status to failed
+              await updateJobToFailed(jobId, `API error: ${response.status} ${errText.substring(0, 100)}`);
+
+              streamingRequestPool.untrackRequest(requestId);
+
+              return {
+                isSuccess: false,
+                message: `API error: ${errText.slice(0, 150)}`,
+                metadata: {
+                  jobId
+                }
+              };
+            }
+
+            const data = await response.json();
+
+            // Validate response
+            if (!data.content || data.content.length === 0 || typeof data.content[0].text !== 'string') {
+              const errorMsg = "Anthropic returned an invalid response structure.";
+              console.error(`[correctTaskDescription] ${errorMsg}`, JSON.stringify(data).slice(0, 500));
+
+              await updateJobToFailed(jobId, errorMsg);
+              streamingRequestPool.untrackRequest(requestId);
+
+              return {
+                isSuccess: false,
+                message: errorMsg,
+                metadata: {
+                  jobId
+                }
+              };
+            }
+
+            // Extract token counts from the response usage metadata
+            const tokensSent = data.usage?.input_tokens || 0;
+            const tokensReceived = data.usage?.output_tokens || 0;
+            const responseText = data.content[0].text.trim();
+
+            // Update the background job with complete information
+            await updateJobToCompleted(jobId, responseText, {
+              tokensSent,
+              tokensReceived,
+              totalTokens: tokensSent + tokensReceived,
+              modelUsed: model,
+              maxOutputTokens: max_tokens
+            });
+
+            streamingRequestPool.untrackRequest(requestId);
+
+            return {
+              isSuccess: true,
+              message: "Text correction completed successfully.",
+              data: responseText,
+              metadata: {
+                jobId,
+                tokensSent,
+                tokensReceived,
+                totalTokens: tokensSent + tokensReceived,
+                modelUsed: model
+              }
+            };
+          } catch (error) {
+            console.error("[correctTaskDescription] Error during Claude API request:", error);
+
+            await updateJobToFailed(jobId, error instanceof Error ? error.message : String(error));
+            streamingRequestPool.untrackRequest(requestId);
+
+            return {
+              isSuccess: false,
+              message: `Error processing correction: ${error instanceof Error ? error.message : String(error)}`,
+              metadata: {
+                jobId
+              }
+            };
+          }
+        }
+      } catch (err) {
+        console.error("[correctTaskDescription] Error while handling existing job:", err);
+        // Continue with creating a new job as fallback
+      }
+    }
+
+    // Default path: Create a new job and use sendRequest
     return this.sendRequest(
       {
         model: model,
@@ -500,9 +642,11 @@ class ClaudeClient {
         max_tokens,
         temperature: 0.3 // Lower temperature for more predictable corrections
       },
-      sessionId,
-      'voice_correction',
-      projectDirectory
+      {
+        sessionId,
+        taskType: 'voice_correction',
+        projectDirectory
+      }
     );
   }
   
@@ -515,30 +659,61 @@ class ClaudeClient {
   
   /**
    * Cancel all requests for a specific session
+   *
+   * @param sessionId - The unique ID of the session to cancel all requests for
+   * @returns Promise indicating success or failure with detailed metrics
    */
-  async cancelAllSessionRequests(sessionId: string): Promise<ActionState<null>> {
+  async cancelAllSessionRequests(sessionId: string): Promise<ActionState<{
+    cancelledQueueRequests: number;
+    cancelledBackgroundJobs: number;
+  }>> {
     try {
       // Cancel any queued requests through the streaming request pool
-      const cancelledCount = streamingRequestPool.cancelQueuedSessionRequests(sessionId);
-      
-      // Also cancel background jobs in the database
-      await cancelAllSessionJobs(sessionId);
-      
-      return { 
-        isSuccess: true, 
-        message: `Cancelled ${cancelledCount} Claude requests for session ${sessionId}.`,
-        data: null
+      const cancelledQueueRequests = streamingRequestPool.cancelQueuedSessionRequests(sessionId);
+
+      // Also cancel background jobs in the database with the enhanced helper that returns count
+      const cancelledBackgroundJobs = await cancelAllSessionJobs(sessionId, 'claude');
+
+      return {
+        isSuccess: true,
+        message: `Cancelled ${cancelledQueueRequests} queued and ${cancelledBackgroundJobs} running Claude requests for session ${sessionId}.`,
+        data: {
+          cancelledQueueRequests,
+          cancelledBackgroundJobs
+        },
+        metadata: {
+          totalCancelled: cancelledQueueRequests + cancelledBackgroundJobs,
+          sessionId,
+          apiType: 'claude',
+          cancelledAt: Date.now()
+        }
       };
     } catch (error) {
-      return { 
-        isSuccess: false, 
-        message: `Error cancelling Claude requests: ${error instanceof Error ? error.message : String(error)}`,
-        error: error instanceof Error ? error : new Error(String(error))
+      // Use the standard error handling system
+      const errorResult = await handleApiClientError(error, {
+        logPrefix: '[Claude Client]',
+        apiType: 'claude'
+      });
+
+      return {
+        isSuccess: false,
+        message: errorResult.message,
+        data: {
+          cancelledQueueRequests: 0,
+          cancelledBackgroundJobs: 0
+        },
+        metadata: {
+          ...errorResult.metadata,
+          sessionId
+        },
+        error: errorResult.error
       };
     }
   }
 }
 
+// Create singleton instance
+const __claude = new ClaudeClient();
+
 // Export singleton instance
-const claudeClient = new ClaudeClient();
-export default claudeClient; 
+export default __claude; 

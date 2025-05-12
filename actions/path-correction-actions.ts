@@ -80,13 +80,22 @@ export async function correctPathsAction(
     }
     
     // Parse the corrected paths from the result
-    const correctedPaths = result.data
-      ? result.data
+    let correctedPaths: string[] = [];
+
+    if (result.data) {
+      // Handle string data (normal response)
+      if (typeof result.data === 'string') {
+        correctedPaths = result.data
           .split('\n')
-          .map(line => line.trim())
-          .filter(line => line && !line.startsWith('-')) // Filter out empty lines and bullet points
-          .map(line => line.replace(/^- /, '')) // Remove bullet points if any
-      : [];
+          .map((line: string) => line.trim())
+          .filter((line: string) => line && !line.startsWith('-')) // Filter out empty lines and bullet points
+          .map((line: string) => line.replace(/^- /, '')); // Remove bullet points if any
+      }
+      // Handle background job response
+      else if (typeof result.data === 'object' && 'isBackgroundJob' in result.data) {
+        console.log(`Path correction sent to background job: ${result.data.jobId}`);
+      }
+    }
     
     return {
       isSuccess: true,

@@ -126,10 +126,15 @@ export async function listDirectoriesAction(directoryPath: string): Promise<Acti
       };
     }
 
-    // Get parent directory
-    const parentPath = path.dirname(resolvedPath) !== resolvedPath 
-      ? normalizePath(path.dirname(resolvedPath))
-      : null;
+    // Get parent directory - always provide a parent path except for root
+    let parentPath = null;
+    if (path.dirname(resolvedPath) !== resolvedPath) {
+      // Normal case - not at root
+      parentPath = normalizePath(path.dirname(resolvedPath));
+    } else if (resolvedPath !== '/' && !resolvedPath.endsWith(':\\')) {
+      // Special case for Windows drive roots or other root-like paths
+      parentPath = '/';
+    }
 
     // Read directory contents
     let files: string[];

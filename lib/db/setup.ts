@@ -9,13 +9,14 @@ import path from 'path';
 import os from 'os';
 import { validateDatabaseConnection } from './setup/validation';
 import { runMigrations } from './setup/migrations';
-import { 
-  fixDatabasePermissions, 
-  createMinimalDatabase, 
+import {
+  fixDatabasePermissions,
+  createMinimalDatabase,
   logDatabaseError,
   resetDatabase as resetDatabaseImpl,
   getDatabaseInfo as getDatabaseInfoImpl
 } from './setup/utils';
+import { normalizePath } from '../path-utils';
 
 /**
  * Result of database setup operation
@@ -44,7 +45,7 @@ const PERMISSIONS_CHECK_INTERVAL = 60000; // 1 minute
 let setupInProgress = false;
 let setupPromise: Promise<DBSetupResult> | null = null;
 let lastSetupTime = 0;
-const SETUP_DEBOUNCE_MS = 5000; // Increase debounce to 5 seconds to avoid redundant setup operations
+const SETUP_DEBOUNCE_MS = 10000; // Increased to 10 seconds to further reduce redundant setup operations
 
 /**
  * Setup and initialize the database
@@ -55,7 +56,7 @@ export async function setupDatabase(forceRecoveryMode: boolean = false): Promise
   
   // If database is already initialized and we're not forcing recovery mode, return fast
   if (databaseInitialized && !forceRecoveryMode) {
-    // Skip verbose logging for most calls to reduce noise
+    // Completely silent return for normal operation to reduce noise
     return {
       success: true,
       message: "Database already initialized"
@@ -65,13 +66,13 @@ export async function setupDatabase(forceRecoveryMode: boolean = false): Promise
   // Debounce rapid setup calls
   const now = Date.now();
   if (now - lastSetupTime < SETUP_DEBOUNCE_MS && setupPromise) {
-    console.log("[Setup] Setup call debounced, reusing pending setup promise");
+    console.debug("[Setup] Setup call debounced, reusing pending setup promise");
     return setupPromise;
   }
   
   // If setup is already in progress, return the existing promise
   if (setupInProgress && setupPromise) {
-    console.log("[Setup] Setup already in progress, returning existing promise");
+    console.debug("[Setup] Setup already in progress, returning existing promise");
     return setupPromise;
   }
   

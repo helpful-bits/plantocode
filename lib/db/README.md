@@ -52,37 +52,42 @@ If you encounter database issues:
 
 The database contains these primary tables:
 
-- `sessions` - Stores user sessions by project
-- `background_jobs` - Tracks API requests and their states
-- `cached_state` - Stores UI state and preferences
+- `sessions` - Stores user sessions by project (task description, regex settings, model settings)
+- `included_files` - Tracks files selected for inclusion in a session
+- `excluded_files` - Tracks files explicitly excluded from a session
+- `background_jobs` - Tracks API requests and their states with metadata and output files
+- `cached_state` - Stores UI state and preferences by project
+- `key_value_store` - General purpose storage for application state
 - `migrations` - Tracks applied database migrations
+
+### background_jobs Table
+
+The `background_jobs` table has these primary columns:
+- `id` - Unique job identifier
+- `session_id` - Foreign key to sessions
+- `prompt` - The input prompt sent to the API
+- `status` - Current job status ('idle', 'running', 'completed', 'failed', 'canceled', etc)
+- `response` - The text response from the API (for small outputs)
+- `output_file_path` - Path to file storing larger outputs (like implementation plans)
+- `metadata` - JSON-encoded metadata that varies by task type
+- `task_type` - The type of task ('implementation_plan', 'pathfinder', etc)
+- `api_type` - The API provider ('gemini', 'claude', etc)
+- `model_used` - The specific model used for the request
 
 # Database Migrations
 
 This folder contains the database migration logic for the application.
 
-## Migration 0008 Fix
+## Migration Standards
 
-A special fix was implemented for migration `0008_rename_patch_path_to_xml_path.sql`, which was failing due to attempting to directly modify `sqlite_master` to rename columns.
+When adding new migrations:
+1. SQLite has limited ALTER TABLE support - use table recreation for complex changes
+2. Always check if tables/columns exist before modifying them
+3. Use transactions to ensure migration integrity
+4. Add descriptive comments for future maintainers
 
-### The Issue
-
-The original migration was attempting to:
-1. Update the `gemini_patch_path` column to `gemini_xml_path` in the `sessions` table
-2. Update the `patch_path` column to `xml_path` in the `gemini_requests` table
-
-These operations were failing with `SQLITE_ERROR: no such column: gemini_patch_path` because:
-1. The `sqlite_master` table is not directly modifiable in some scenarios
-2. The columns may not exist in all installations
-
-### The Fix
-
-A revised migration approach was implemented:
-1. The problematic `0008_rename_patch_path_to_xml_path.sql` file was renamed to `0008_rename_patch_path_to_xml_path.sql.disabled`
-2. A new migration `0008a_fix_rename_patch_path.sql` was created that:
-   - Uses a safer approach with table recreation instead of direct column renaming
-   - Properly checks if tables and columns exist before operating on them
-   - Creates new tables with the correct schema and copies data safely
+The database schema is consolidated in `migrations/consolidated_migrations.sql`, which
+provides the complete current schema in a single file.
 
 ### Code Updates
 

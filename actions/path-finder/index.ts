@@ -16,8 +16,7 @@ import { ApiType, TaskType } from '@/types/session-types';
 import { handleActionError } from '@/lib/action-utils';
 import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
 import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@/lib/prompts/path-finder-prompts';
-import { normalizePathForComparison, makePathRelative } from '@/lib/path-utils';
-import { extractFilePathsFromTags, extractPotentialFilePaths } from './utils';
+import { normalizePathForComparison, makePathRelative, parseFilePathsFromAIResponse } from '@/lib/path-utils';
 
 // Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit
@@ -105,42 +104,50 @@ export async function findRelevantFilesAction(
     const includeSyntax = pathfinderSettings.maxTokens !== undefined && pathfinderSettings.maxTokens > 0;
     
     try {
-      // Create a background job for tracking this operation
-      const job = await createBackgroundJob(
-        sessionId,
-        {
-          apiType: 'gemini',
-          taskType: 'pathfinder' as TaskType,
-          model: options?.modelOverride || pathfinderSettings.model,
-          includeSyntax,
-          temperature,
-          metadata: {
-            projectDirectory,
-            taskDescription,
-            includeFileContents: options?.includeFileContents || false
-          }
-        }
-      );
-      
-      // Import the job-related functions
-      const { enqueueJob } = await import('@/lib/jobs/job-helpers');
-      
-      // Create the job payload
+      // Create the job payload first
       const payload = {
-        backgroundJobId: job.id,
         sessionId,
         taskDescription,
         projectDirectory,
         systemPrompt: generatePathFinderSystemPrompt(),
         modelOverride: options?.modelOverride || pathfinderSettings.model,
         temperature,
-        maxOutputTokens: pathfinderSettings.maxTokens,
-        includeFileContents: options?.includeFileContents || false
+        maxOutputTokens: pathfinderSettings.maxTokens
       };
-      
-      // Enqueue the job for processing
-      await enqueueJob('PATH_FINDER', payload, 2); // Priority 2 (medium-high)
-      
+
+      // Create a background job for tracking this operation with worker-specific details
+      const job = await createBackgroundJob(
+        sessionId,
+        {
+          apiType: 'gemini',
+          taskType: 'pathfinder' as TaskType,
+          model: options?.modelOverride || pathfinderSettings.model,
+          rawInput: taskDescription,
+          includeSyntax,
+          temperature,
+          metadata: {
+            includeFileContents: options?.includeFileContents || false
+          },
+          // Include worker-specific details directly in createBackgroundJob
+          jobTypeForWorker: 'PATH_FINDER',
+          jobPayloadForWorker: payload,
+          jobPriorityForWorker: 2 // Priority 2 (medium-high)
+        }
+      );
+
+      // Add debugging to track the job creation
+      console.log(`[DEBUG] Created PathFinder job: ${job.id}, status: ${job.status}, visible: ${job.visible}, cleared: ${job.cleared}`);
+      console.log(`[DEBUG] Job projectDirectory: ${job.projectDirectory}, taskType: ${job.taskType}`);
+      console.log(`[DEBUG] Job metadata: ${JSON.stringify(job.metadata, null, 2)}`);
+
+      try {
+        // Force job to remain visible
+        await backgroundJobRepository.updateBackgroundJobClearedStatus(job.id, false);
+        console.log(`[DEBUG] Explicitly set job ${job.id} cleared status to false`);
+      } catch (error) {
+        console.error(`[DEBUG] Error setting job visibility: ${error}`);
+      }
+
       // Return immediately with the job ID
       return {
         isSuccess: true,

@@ -15,209 +15,302 @@ const POLLING_INTERVAL = 1500;
 const DEBUG_POLLING = typeof window !== 'undefined' && 
   (localStorage.getItem('DEBUG_BACKGROUND_JOBS') === 'true' || false);
 
-// Deep equality check function for comparing jobs
+// Enhanced job equality check - optimized for performance with better streaming detection
 function areJobsEqual(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
+  // Fast path 1: Reference equality (same object)
+  if (jobA === jobB) return true;
+
   // Basic validation - both jobs must exist and have the same ID
   if (!jobA || !jobB) return false;
   if (jobA.id !== jobB.id) return false;
-  
-  // Helper function to safely compare string fields (handling null/undefined values safely)
-  const safeStringCompare = (a: string | null | undefined, b: string | null | undefined): boolean => {
-    // Convert null/undefined to empty strings for comparison
-    const safeA = a === null || a === undefined ? '' : String(a);
-    const safeB = b === null || b === undefined ? '' : String(b);
-    return safeA === safeB;
-  };
-  
-  // Helper function to safely compare timestamp fields (handling null values safely)
-  const safeTimestampCompare = (a: number | null | undefined, b: number | null | undefined): boolean => {
-    if (a === null && b === null) return true;
-    if (a === undefined && b === undefined) return true;
-    if (a === null || a === undefined) return false;
-    if (b === null || b === undefined) return false;
-    // Use strict equality for timestamps - important for UI rendering decisions
-    return a === b;
-  };
-  
-  // Helper to compare numeric values safely with fallbacks
-  const safeNumberCompare = (a: number | null | undefined, b: number | null | undefined): boolean => {
-    const numA = typeof a === 'number' ? a : 0;
-    const numB = typeof b === 'number' ? b : 0;
-    return numA === numB;
-  };
 
-  // Compare fields that are visible in UI or affect UI behavior
-  // These are the fields that should trigger a re-render when they change
-  const fieldComparisons = [
-    // Status is critically important - defines job card appearance
-    { 
-      field: 'status', 
-      compare: () => jobA.status === jobB.status 
-    },
-    // Status message shown in UI - may be null/undefined
-    { 
-      field: 'statusMessage', 
-      compare: () => safeStringCompare(jobA.statusMessage, jobB.statusMessage)
-    },
-    // Error message shown when job fails - may be null/undefined/empty
-    { 
-      field: 'errorMessage', 
-      compare: () => safeStringCompare(jobA.errorMessage, jobB.errorMessage)
-    },
-    // Response content shown in preview - may be null/undefined
-    { 
-      field: 'response', 
-      compare: () => safeStringCompare(jobA.response, jobB.response)
-    },
-    // Token counts shown in UI 
-    { 
-      field: 'tokensReceived', 
-      compare: () => safeNumberCompare(jobA.tokensReceived, jobB.tokensReceived)
-    },
-    { 
-      field: 'tokensSent', 
-      compare: () => safeNumberCompare(jobA.tokensSent, jobB.tokensSent)
-    },
-    // Character counts might affect UI and job status perception
-    {
-      field: 'charsReceived',
-      compare: () => safeNumberCompare(jobA.charsReceived, jobB.charsReceived)
-    },
-    // Timestamps affect UI display (duration, relative time)
-    { 
-      field: 'startTime', 
-      compare: () => safeTimestampCompare(jobA.startTime, jobB.startTime)
-    },
-    { 
-      field: 'endTime', 
-      compare: () => safeTimestampCompare(jobA.endTime, jobB.endTime)
-    },
-    // File outputs shown in UI - may be null/undefined
-    { 
-      field: 'outputFilePath', 
-      compare: () => safeStringCompare(jobA.outputFilePath, jobB.outputFilePath)
-    },
-    // Use lastUpdate for sorting/organizing in UI - may be null
-    { 
-      field: 'lastUpdate', 
-      compare: () => safeTimestampCompare(jobA.lastUpdate, jobB.lastUpdate)
-    },
-    // updatedAt is important for detecting changes
-    {
-      field: 'updatedAt',
-      compare: () => safeTimestampCompare(jobA.updatedAt, jobB.updatedAt)
+  // Fast path 2: Check status first - if different, jobs are definitely not equal
+  if (jobA.status !== jobB.status) {
+    if (DEBUG_POLLING) {
+      console.debug(`[BackgroundJobs] Jobs differ for ${jobA.id}: status changed from ${jobA.status} to ${jobB.status}`);
     }
-  ];
-  
-  // For debugging, we log specific differences
-  if (DEBUG_POLLING) {
-    // Check each field and log differences
-    const diffFields = [];
-    
-    for (const comp of fieldComparisons) {
-      if (!comp.compare()) {
-        let valueA, valueB;
-        
-        // Format values for logging based on field type
-        switch (comp.field) {
-          case 'startTime':
-          case 'endTime':
-          case 'lastUpdate':
-          case 'updatedAt':
-            valueA = jobA[comp.field as keyof BackgroundJob] ? new Date(jobA[comp.field as keyof BackgroundJob] as number).toISOString() : 'null';
-            valueB = jobB[comp.field as keyof BackgroundJob] ? new Date(jobB[comp.field as keyof BackgroundJob] as number).toISOString() : 'null';
-            break;
-          case 'response':
-          case 'errorMessage':
-            valueA = jobA[comp.field as keyof BackgroundJob] ? 
-              `"${(jobA[comp.field as keyof BackgroundJob] as string).substring(0, 20)}${(jobA[comp.field as keyof BackgroundJob] as string).length > 20 ? '...' : ''}"` : 'null';
-            valueB = jobB[comp.field as keyof BackgroundJob] ? 
-              `"${(jobB[comp.field as keyof BackgroundJob] as string).substring(0, 20)}${(jobB[comp.field as keyof BackgroundJob] as string).length > 20 ? '...' : ''}"` : 'null';
-            break;
-          default:
-            valueA = String(jobA[comp.field as keyof BackgroundJob] ?? 'null');
-            valueB = String(jobB[comp.field as keyof BackgroundJob] ?? 'null');
-        }
-        
-        diffFields.push(`${comp.field}: ${valueA} !== ${valueB}`);
+    return false;
+  }
+
+  // Fast path 3: Check updatedAt timestamp - if unchanged, do quick status-based check
+  if (jobA.updatedAt === jobB.updatedAt) {
+    // For terminal jobs with identical updatedAt, assume content is stable
+    if (JOB_STATUSES.TERMINAL.includes(jobA.status)) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Fast equality check for terminal job ${jobA.id} with matching updatedAt`);
       }
+      return true;
     }
-    
-    // Check metadata separately
-    const metadataDiffers = hasMetadataChanged(jobA, jobB);
-    if (metadataDiffers) {
-      diffFields.push('metadata differs');
+
+    // For non-running/non-streaming jobs, updatedAt is usually sufficient
+    if (jobA.status !== 'running') {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Fast equality check for non-running job ${jobA.id} with matching updatedAt`);
+      }
+      return true;
     }
-    
-    if (diffFields.length > 0) {
-      console.debug(`[BackgroundJobs] Jobs differ for ${jobA.id}:`, diffFields.join(', '));
+  }
+
+  // For running jobs, especially streaming ones, check streaming indicators
+  if (jobA.status === 'running') {
+    // Check streaming indicators directly
+    const jobAIsStreaming = jobA.metadata?.isStreaming === true;
+    const jobBIsStreaming = jobB.metadata?.isStreaming === true;
+
+    // If streaming status changed, jobs are different
+    if (jobAIsStreaming !== jobBIsStreaming) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Streaming status changed for job ${jobA.id}`);
+      }
       return false;
     }
-    
-    return true;
-  } else {
-    // Production fast-path without logging
-    // First check all comparison fields
-    for (const comp of fieldComparisons) {
-      if (!comp.compare()) {
+
+    // For streaming jobs, check crucial streaming indicators
+    if (jobAIsStreaming && jobBIsStreaming) {
+      // Check streaming progress indicators
+      const streamTimeA = jobA.metadata?.lastStreamUpdateTime;
+      const streamTimeB = jobB.metadata?.lastStreamUpdateTime;
+      const charsA = jobA.charsReceived;
+      const charsB = jobB.charsReceived;
+      const tokensA = jobA.tokensReceived;
+      const tokensB = jobB.tokensReceived;
+
+      // Enhanced check for streaming metrics including responseLength for better UI updates
+      const responseLengthA = jobA.metadata?.responseLength;
+      const responseLengthB = jobB.metadata?.responseLength;
+
+      // If any streaming metric changed, jobs are different - this triggers UI updates
+      if (
+        streamTimeA !== streamTimeB ||
+        charsA !== charsB ||
+        tokensA !== tokensB ||
+        responseLengthA !== responseLengthB
+      ) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Streaming metrics changed for job ${jobA.id}:`, {
+            timeChange: streamTimeA !== streamTimeB ? `${streamTimeA} → ${streamTimeB}` : 'unchanged',
+            charsChange: charsA !== charsB ? `${charsA} → ${charsB}` : 'unchanged',
+            tokensChange: tokensA !== tokensB ? `${tokensA} → ${tokensB}` : 'unchanged',
+            responseLengthChange: responseLengthA !== responseLengthB ? `${responseLengthA} → ${responseLengthB}` : 'unchanged'
+          });
+        }
         return false;
       }
+
+      // Enhanced response content comparison for streaming jobs
+      if (typeof jobA.response === 'string' && typeof jobB.response === 'string') {
+        // Length comparison is faster than content comparison
+        if (jobA.response.length !== jobB.response.length) {
+          if (DEBUG_POLLING) {
+            console.debug(`[BackgroundJobs] Response length changed for job ${jobA.id}: ${jobA.response.length} → ${jobB.response.length}`);
+          }
+          return false;
+        }
+
+        // For relatively short responses, compare content directly
+        // This catches character changes even when length is identical
+        if (jobA.response.length < 5000 && jobA.response !== jobB.response) {
+          if (DEBUG_POLLING) {
+            console.debug(`[BackgroundJobs] Response content changed for streaming job ${jobA.id} despite same length`);
+          }
+          return false;
+        }
+      }
     }
-    
-    // Then check metadata (if it's visible in UI)
-    return !hasMetadataChanged(jobA, jobB);
   }
+
+  // Helper functions for efficient comparisons
+  const safeStringCompare = (a: string | null | undefined, b: string | null | undefined): boolean => {
+    // Fast path: reference equality
+    if (a === b) return true;
+
+    // Handle null/undefined
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+
+    // Compare lengths first, then content
+    return a.length === b.length && a === b;
+  };
+
+  // Efficient status message comparison
+  if (!safeStringCompare(jobA.statusMessage, jobB.statusMessage)) {
+    if (DEBUG_POLLING) {
+      console.debug(`[BackgroundJobs] Status message changed for job ${jobA.id}`);
+    }
+    return false;
+  }
+
+  // For all jobs, always check output file path - this is crucial for implementation plans
+  if (!safeStringCompare(jobA.outputFilePath, jobB.outputFilePath)) {
+    if (DEBUG_POLLING) {
+      console.debug(`[BackgroundJobs] Output file path changed for job ${jobA.id}: ${jobA.outputFilePath} → ${jobB.outputFilePath}`);
+    }
+    return false;
+  }
+
+  // For failed/canceled jobs, check error message
+  if (jobA.status === 'failed' || jobA.status === 'canceled') {
+    if (!safeStringCompare(jobA.errorMessage, jobB.errorMessage)) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Error message changed for job ${jobA.id}`);
+      }
+      return false;
+    }
+  }
+
+  // Task-specific checks
+  // For path finder jobs, check pathCount in metadata
+  if (jobA.taskType === 'pathfinder' && jobA.status === 'completed') {
+    if (jobA.metadata?.pathCount !== jobB.metadata?.pathCount) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Path count changed for job ${jobA.id}`);
+      }
+      return false;
+    }
+  }
+
+  // Response content comparison for all job types
+  // This needs to be comprehensive to catch all display changes
+  if (!safeStringCompare(jobA.response, jobB.response)) {
+    if (DEBUG_POLLING) {
+      console.debug(`[BackgroundJobs] Response content changed for job ${jobA.id}`);
+
+      // Additional debugging: detect file reference vs content changes
+      const aHasFileRef = jobA.response?.includes('Content stored in file:') || jobA.response?.includes('available in file:');
+      const bHasFileRef = jobB.response?.includes('Content stored in file:') || jobB.response?.includes('available in file:');
+
+      if (aHasFileRef !== bHasFileRef) {
+        console.debug(`[BackgroundJobs] File reference changed in response: ${aHasFileRef} → ${bHasFileRef}`);
+      }
+    }
+    return false;
+  }
+
+  // For debugging, log that jobs are considered equal
+  if (DEBUG_POLLING) {
+    console.debug(`[BackgroundJobs] Jobs considered equal for ${jobA.id}`);
+  }
+
+  // All checks passed, jobs are equal
+  return true;
 }
 
 // Helper function to check if metadata has changed in a way that affects UI
 function hasMetadataChanged(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
-  // If neither job has metadata, they're equal in this respect
+  // Fast path 1: Reference equality check
+  if (jobA.metadata === jobB.metadata) return false;
+
+  // Fast path 2: If neither job has metadata, they're equal in this respect
   if (!jobA.metadata && !jobB.metadata) return false;
-  
-  // If one has metadata and the other doesn't, they differ
+
+  // Fast path 3: If one has metadata and the other doesn't, they definitely differ
   if (!jobA.metadata || !jobB.metadata) return true;
-  
-  // Define fields that are important for UI updates
+
+  // For pathfinder jobs, check pathData and pathCount first
+  if (jobA.taskType === 'pathfinder') {
+    // For completed path finder jobs, check pathCount
+    if (jobA.status === 'completed') {
+      if (jobA.metadata.pathCount !== jobB.metadata.pathCount) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Path finder job metadata differs: pathCount ${jobA.metadata.pathCount} !== ${jobB.metadata.pathCount}`);
+        }
+        return true;
+      }
+
+      // If pathData is present in only one, they differ
+      const hasPathDataA = 'pathData' in jobA.metadata;
+      const hasPathDataB = 'pathData' in jobB.metadata;
+
+      if (hasPathDataA !== hasPathDataB) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Path finder job metadata differs: pathData presence mismatch`);
+        }
+        return true;
+      }
+
+      // If both have pathData, compare the structures (but not deeply, just check if they're equal references)
+      if (hasPathDataA && hasPathDataB && jobA.metadata.pathData !== jobB.metadata.pathData) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Path finder job metadata differs: pathData reference changes`);
+        }
+        return true;
+      }
+    }
+  }
+
+  // For streaming jobs, check streaming indicators first
+  if (jobA.status === 'running') {
+    // Check isStreaming flag
+    const jobAIsStreaming = jobA.metadata.isStreaming === true;
+    const jobBIsStreaming = jobB.metadata.isStreaming === true;
+
+    if (jobAIsStreaming !== jobBIsStreaming) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Streaming status differs in metadata`);
+      }
+      return true;
+    }
+
+    // For active streaming jobs, check critical streaming indicators
+    if (jobAIsStreaming) {
+      // Check stream update timestamp
+      if (jobA.metadata.lastStreamUpdateTime !== jobB.metadata.lastStreamUpdateTime) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Stream update time differs: ${jobA.metadata.lastStreamUpdateTime} !== ${jobB.metadata.lastStreamUpdateTime}`);
+        }
+        return true;
+      }
+
+      // Check response length tracking
+      if (jobA.metadata.responseLength !== jobB.metadata.responseLength) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Response length differs in metadata: ${jobA.metadata.responseLength} !== ${jobB.metadata.responseLength}`);
+        }
+        return true;
+      }
+    }
+  }
+
+  // Define fields that are important for UI updates, in priority order
   const importantFields = [
-    // targetField determines which form field gets updated
-    'targetField',
-    // Additional fields that affect how the response is processed
-    'responseFormat',
-    'contentType',
-    // Token counts that might be shown in the UI but stored in metadata
-    'tokensReceived',
-    'tokensSent',
-    'charsReceived'
+    // Most important fields for UI display
+    'targetField',          // Determines which form field gets updated
+    'progress',             // Progress indicators
+    'pathCount',            // Number of paths found (for path finder)
+
+    // UI display modifiers
+    'responseFormat',       // How response is formatted (e.g. JSON, markdown)
+    'contentType',          // Content type for response display
+
+    // Performance metrics
+    'tokensReceived',       // Token counts shown in UI
+    'tokensSent',           // Token counts shown in UI
+    'charsReceived',        // Character counts for display
+    'modelUsed'             // Model name to display
   ];
-  
-  // Check each important field
+
+  // Check each important field efficiently with early returns
   for (const field of importantFields) {
     const valueA = jobA.metadata[field];
     const valueB = jobB.metadata[field];
-    
-    // Check if either value exists and is different
-    if ((valueA !== undefined || valueB !== undefined) && valueA !== valueB) {
-      if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Metadata differs for ${field}: ${valueA} !== ${valueB}`);
+
+    // Only compare fields that exist in at least one object
+    if (valueA !== undefined || valueB !== undefined) {
+      // If values differ, metadata has changed
+      if (valueA !== valueB) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Metadata differs for ${field}: ${valueA} !== ${valueB}`);
+        }
+        return true;
       }
-      return true;
     }
   }
-  
-  // Check progress data which might appear in metadata for streaming jobs
-  if (typeof jobA.metadata.progress === 'number' && typeof jobB.metadata.progress === 'number') {
-    if (jobA.metadata.progress !== jobB.metadata.progress) {
-      if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Progress differs: ${jobA.metadata.progress} !== ${jobB.metadata.progress}`);
-      }
-      return true;
-    }
-  }
-  
+
+  // All checks passed, metadata is considered unchanged for UI purposes
   return false;
 }
 
-// Deep equality check for arrays of jobs
+// Deep equality check for arrays of jobs with optimizations
 function areJobArraysEqual(arrA: BackgroundJob[], arrB: BackgroundJob[]): boolean {
   // Compare lengths first for a quick check
   if (arrA.length !== arrB.length) {
@@ -226,54 +319,85 @@ function areJobArraysEqual(arrA: BackgroundJob[], arrB: BackgroundJob[]): boolea
     }
     return false;
   }
-  
+
+  // Empty arrays are equal
+  if (arrA.length === 0) return true;
+
+  // Fast path: Direct reference equality check
+  if (arrA === arrB) return true;
+
+  // For very small arrays (1-2 items), a linear search is faster than Map creation
+  if (arrA.length <= 2) {
+    // Check if all jobs match by ID and content
+    for (const jobA of arrA) {
+      const jobB = arrB.find(job => job.id === jobA.id);
+
+      if (!jobB || !areJobsEqual(jobA, jobB)) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Small array mismatch for job ${jobA.id}`);
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Create maps of jobs by ID for efficient lookup and comparison
   const jobsMapA = new Map(arrA.map(job => [job.id, job]));
   const jobsMapB = new Map(arrB.map(job => [job.id, job]));
-  
-  // Check for job IDs that are in A but not in B
-  for (const jobId of jobsMapA.keys()) {
-    if (!jobsMapB.has(jobId)) {
+
+  // Check for job IDs differences (missing in either array)
+  if (jobsMapA.size !== jobsMapB.size) return false;
+
+  // First check if the set of IDs is the same (without recursion)
+  const jobIdsA = new Set(jobsMapA.keys());
+  const jobIdsB = new Set(jobsMapB.keys());
+
+  // Quick check if sets have different sizes
+  if (jobIdsA.size !== jobIdsB.size) return false;
+
+  // Check if all IDs in A exist in B
+  for (const jobId of jobIdsA) {
+    if (!jobIdsB.has(jobId)) {
       if (DEBUG_POLLING) {
         console.debug(`[BackgroundJobs] Job ${jobId} exists in array A but not in array B`);
       }
       return false;
     }
   }
-  
-  // Check for job IDs that are in B but not in A
-  for (const jobId of jobsMapB.keys()) {
-    if (!jobsMapA.has(jobId)) {
+
+  // At this point, both arrays have the same job IDs
+  // Look for active jobs first - they're most likely to change during polling
+  const activeJobs = arrA.filter(job => JOB_STATUSES.ACTIVE.includes(job.status));
+
+  // If there are active jobs, check them first for early exit
+  for (const jobA of activeJobs) {
+    const jobB = jobsMapB.get(jobA.id);
+    // We know jobB exists because we checked the IDs above
+    if (!areJobsEqual(jobA, jobB!)) {
       if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Job ${jobId} exists in array B but not in array A`);
+        console.debug(`[BackgroundJobs] Active job differs: ${jobA.id}`);
       }
       return false;
     }
   }
-  
-  // At this point, both arrays have the same job IDs
-  // Now compare each job in A with its counterpart in B
-  let allJobsEqual = true;
-  let firstDifferentJobId = null;
-  
-  for (const jobA of arrA) {
+
+  // Then check the remaining jobs (completed/failed/canceled)
+  const terminalJobs = arrA.filter(job => !JOB_STATUSES.ACTIVE.includes(job.status));
+
+  for (const jobA of terminalJobs) {
     const jobB = jobsMapB.get(jobA.id);
-    // We know jobB exists because we checked keys above
+    // We know jobB exists because we checked the IDs above
     if (!areJobsEqual(jobA, jobB!)) {
-      allJobsEqual = false;
-      firstDifferentJobId = jobA.id;
-      // In debug mode, we'll continue to log all differences
-      if (!DEBUG_POLLING) {
-        break; // Exit early if not in debug mode
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Terminal job differs: ${jobA.id}`);
       }
+      return false;
     }
   }
-  
-  if (!allJobsEqual && DEBUG_POLLING) {
-    console.debug(`[BackgroundJobs] Job arrays differ in content. First different job: ${firstDifferentJobId}`);
-  }
-  
-  return allJobsEqual;
+
+  // All jobs are equal
+  return true;
 }
 
 // Use constants from session-types.ts instead of hardcoded values
@@ -286,7 +410,7 @@ type BackgroundJobsContextType = {
   isLoading: boolean;
   error: Error | null;
   cancelJob: (jobId: string) => Promise<void>;
-  clearHistory: () => Promise<void>;
+  clearHistory: (daysToKeep?: number) => Promise<void>;
   refreshJobs: () => Promise<void>;
 };
 
@@ -296,7 +420,7 @@ const BackgroundJobsContext = createContext<BackgroundJobsContextType>({
   isLoading: false,
   error: null,
   cancelJob: async () => {},
-  clearHistory: async () => {},
+  clearHistory: async (daysToKeep?: number) => {},
   refreshJobs: async () => {}
 });
 
@@ -386,9 +510,11 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
       
       // Get jobs from the action result
       const jobsData = result.data || [];
-      
+
+      // Enhanced logging with job status breakdown for monitoring
       if (DEBUG_POLLING && jobsData.length > 0) {
-        console.debug(`[BackgroundJobs] [${fetchAttemptTime}] Retrieved ${jobsData.length} jobs, including:`, 
+        // Log job details for debugging
+        console.debug(`[BackgroundJobs] [${fetchAttemptTime}] Retrieved ${jobsData.length} jobs, including:`,
           jobsData.map(job => ({
             id: job.id,
             status: job.status,
@@ -396,9 +522,25 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
             updatedAt: new Date(job.updatedAt || 0).toISOString()
           }))
         );
+
+        // Count jobs by status for easier monitoring
+        const statusCounts = jobsData.reduce((counts, job) => {
+          counts[job.status] = (counts[job.status] || 0) + 1;
+          return counts;
+        }, {} as Record<string, number>);
+
+        console.debug(`[BackgroundJobs] Jobs by status:`, statusCounts);
       }
       
       // Update jobs using functional update pattern to avoid dependency on current jobs state
+      // Log job types for debugging
+      console.log('[BackgroundJobs] Job types found:', jobsData.map(job => ({
+        id: job.id,
+        type: job.taskType,
+        status: job.status,
+        updatedAt: new Date(job.updatedAt || 0).toISOString().substring(0, 19)
+      })));
+
       setJobs(prevJobs => {
         // Only update if jobs have changed to avoid unnecessary re-renders
         if (!areJobArraysEqual(prevJobs, jobsData)) {
@@ -407,7 +549,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           }
           return jobsData;
         }
-        
+
         if (DEBUG_POLLING) {
           console.debug(`[BackgroundJobs] [${fetchAttemptTime}] No changes in jobs array detected`);
         }
@@ -789,18 +931,21 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   }, [refreshJobs]);
   
   // Clear job history
-  const clearHistory = useCallback(async (): Promise<void> => {
+  // daysToKeep parameter controls job retention:
+  // - When undefined or 0: Only deletes very old jobs (30+ days) - this is the default behavior
+  // - When > 0: Clears jobs older than the specified number of days from view
+  const clearHistory = useCallback(async (daysToKeep?: number): Promise<void> => {
     try {
-      const result = await clearJobHistoryAction();
-      
+      const result = await clearJobHistoryAction(daysToKeep);
+
       if (!result.isSuccess) {
         throw new Error(result.message || "Failed to clear job history");
       }
-      
-      // Clear local state
-      setJobs([]);
-      setActiveJobs([]);
-      
+
+      // With our new approach, we don't want to clear the local state completely,
+      // since we might be keeping many of the jobs. Instead, let refreshJobs
+      // fetch the current state after the clear operation.
+
       // Refresh jobs to ensure we have current state
       await refreshJobs();
     } catch (err) {

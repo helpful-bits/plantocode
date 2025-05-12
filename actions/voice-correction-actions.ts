@@ -1,6 +1,6 @@
 "use server";
 
-import claudeClient from "@/lib/api/claude-client";
+import { claudeClient } from "@/lib/api"; // Import from centralized API module
 import { ActionState } from "@/types";
 import { JOB_STATUSES } from "@/types/session-types";
 import { setupDatabase } from "@/lib/db";

@@ -1,5 +1,10 @@
 /**
- * Date utility functions
+ * Date utility functions for formatting, manipulation, and comparison
+ *
+ * This module provides comprehensive utilities for working with dates including:
+ * - Formatting dates in various styles (standard format, time ago, duration)
+ * - Handling job duration calculations with error recovery
+ * - Converting timestamps with validation and safety checks
  */
 
 /**

@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function SettingsPage() {
   return (
-    <div className="container py-8">
-      <h1 className="text-2xl font-bold mb-6">Project Settings</h1>
+    <div className="py-8">
+      <h1 className="text-2xl font-bold mb-8">Project Settings</h1>
       <RequireProjectDirectory>
         <SettingsForm />
       </RequireProjectDirectory>

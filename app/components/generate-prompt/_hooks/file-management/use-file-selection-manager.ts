@@ -2,19 +2,21 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { FileInfo } from "@/types";
-import { mergeFileMaps, applySessionSelections } from "../../_utils/selection-merge";
 import { FilesMap } from "./use-project-file-list";
-import { makePathRelative } from "@/lib/path-utils";
-import debounce from '@/lib/utils/debounce';
+import { makePathRelative, normalizePathForComparison } from "@/lib/path-utils";
 
 interface UseFileSelectionManagerProps {
   rawFilesMap: FilesMap;
-  sessionIncludedFiles?: string[];
-  sessionExcludedFiles?: string[];
-  initialSearchSelectedFilesOnly?: boolean;
-  initialSearchTerm?: string;
-  onInteraction?: () => void;
-  isSwitchingSession?: boolean;
+  currentIncludedFiles: string[];
+  currentExcludedFiles: string[];
+  currentSearchTerm: string;
+  currentSearchSelectedFilesOnly: boolean;
+  onUpdateIncludedFiles: (paths: string[]) => void;
+  onUpdateExcludedFiles: (paths: string[]) => void;
+  onUpdateSearchTerm: (term: string) => void;
+  onUpdateSearchSelectedOnly: (value: boolean) => void;
+  isTransitioningSession?: boolean;
+  activeSessionId?: string | null;
 }
 
 /**
@@ -22,320 +24,302 @@ interface UseFileSelectionManagerProps {
  */
 export function useFileSelectionManager({
   rawFilesMap,
-  sessionIncludedFiles,
-  sessionExcludedFiles,
-  initialSearchSelectedFilesOnly,
-  initialSearchTerm,
-  onInteraction,
-  isSwitchingSession = false
+  currentIncludedFiles,
+  currentExcludedFiles,
+  currentSearchTerm,
+  currentSearchSelectedFilesOnly,
+  onUpdateIncludedFiles,
+  onUpdateExcludedFiles,
+  onUpdateSearchTerm,
+  onUpdateSearchSelectedOnly,
+  isTransitioningSession = false,
+  activeSessionId = null
 }: UseFileSelectionManagerProps) {
-  // State
+
   const [managedFilesMap, setManagedFilesMap] = useState<FilesMap>({});
-  const [searchTerm, setSearchTermInternal] = useState<string>(initialSearchTerm || "");
   const [showOnlySelected, setShowOnlySelectedInternal] = useState<boolean>(false);
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
-  const [searchSelectedFilesOnly, setSearchSelectedFilesOnly] = useState<boolean>(initialSearchSelectedFilesOnly ?? false);
+
+  const searchTerm = currentSearchTerm;
+  const searchSelectedFilesOnly = currentSearchSelectedFilesOnly;
   
-  // Keep track of the last seen session selections to handle session switching properly
-  const lastSessionSelectionsRef = useRef<{
-    includedFiles?: string[];
-    excludedFiles?: string[];
-  }>({});
-  
-  // Update the saved selections whenever they change
+  const prevIsTransitioningRef = useRef(isTransitioningSession);
+  const prevSessionIdRef = useRef<string | null>(activeSessionId);
   useEffect(() => {
-    if (sessionIncludedFiles !== undefined || sessionExcludedFiles !== undefined) {
-      lastSessionSelectionsRef.current = {
-        includedFiles: sessionIncludedFiles,
-        excludedFiles: sessionExcludedFiles
-      };
+      const sessionChanged = prevSessionIdRef.current !== activeSessionId;
+    const transitionStateChanged = prevIsTransitioningRef.current !== isTransitioningSession;
+    if (sessionChanged) {
+      prevSessionIdRef.current = activeSessionId;
     }
-  }, [sessionIncludedFiles, sessionExcludedFiles]);
-  
-  // Track the previous switching state
-  const prevIsSwitchingRef = useRef(isSwitchingSession);
-  
-  // Effect to update searchTerm state when initialSearchTerm changes or when explicitly switching sessions
+
+    if (transitionStateChanged) {
+      prevIsTransitioningRef.current = isTransitioningSession;
+    }
+  }, [activeSessionId, isTransitioningSession]);
+
+
+  const reset = useCallback(() => {
+    setManagedFilesMap({});
+    setShowOnlySelectedInternal(false);
+    setExternalPathWarnings([]);
+
+    toggleCountRef.current = 0;
+    lastToggleTimeRef.current = 0;
+    bulkOperationCountRef.current = 0;
+    lastBulkOperationTimeRef.current = 0;
+
+  }, []);
+
   useEffect(() => {
-    // This effect ensures that if initialSearchTerm prop changes (e.g. new session) 
-    // or if a session switch is explicitly flagged, the local searchTerm is reset.
-    // It does NOT run on every render, only when these specific dependencies change.
-    if (initialSearchTerm !== undefined || isSwitchingSession) {
-      console.log(`[FileSelectionManager] Updating searchTerm from initialSearchTerm: "${initialSearchTerm}" (switching: ${isSwitchingSession})`);
-      setSearchTermInternal(initialSearchTerm || "");
-    }
-  }, [initialSearchTerm, isSwitchingSession]);
-  
-  // Define applySelectionsFromPaths function
-  const applySelectionsFromPaths = useCallback((paths: string[]) => {
-    if (!paths || paths.length === 0) {
-      console.log(`[FileSelectionManager] No paths provided to applySelectionsFromPaths`);
+    // Skip resets during transitions
+    if (isTransitioningSession) {
       return;
     }
-    
-    console.log(`[FileSelectionManager] Applying selections from ${paths.length} external paths`);
-    if (paths.length > 0) {
-      console.log(`[FileSelectionManager] Sample paths: ${paths.slice(0, 3).join(', ')}${paths.length > 3 ? '...' : ''}`);
+
+    // Only reset after the transition is complete (activeSessionId changed AND transition is done)
+    if (activeSessionId !== prevSessionIdRef.current && prevSessionIdRef.current !== null && !isTransitioningSession) {
+      reset();
     }
-    
-    // Update the file map to mark these paths as included
-    setManagedFilesMap(prevMap => {
-      const updatedMap = { ...prevMap };
-      const warnings: string[] = [];
-      let includedCount = 0;
-      
-      console.log(`[FileSelectionManager] Current file map has ${Object.keys(prevMap).length} entries`);
-      
-      // Debug: Print first few entries from the file map to see structure
-      const samplePaths = Object.keys(prevMap).slice(0, 3);
-      console.log("[FileSelectionManager] Sample file map entries:", samplePaths);
-      
-      // Mark each path as included
-      paths.forEach((path: string) => {
-        // path is already normalized by normalizePathForComparison in PastePaths component
-        const normalizedInputPath = path; // Already normalized
-        
-        if (updatedMap[path]) {
-          updatedMap[path] = {
-            ...updatedMap[path],
-            included: true,
-            forceExcluded: false
-          };
-          includedCount++;
-        } else {
-          // Try to find a matching file using the comparablePath property
-          let found = false;
-          
-          console.log(`[FileSelectionManager] Looking for match for: ${path} (normalized: ${normalizedInputPath})`);
-          
-          // First try: Direct match using comparablePath
+
+    // Update the ref for next comparison, but only when not transitioning
+    if (!isTransitioningSession) {
+      prevSessionIdRef.current = activeSessionId;
+    }
+  }, [activeSessionId, reset, isTransitioningSession]);
+  
+  const applySelectionsFromPaths = useCallback((paths: string[]) => {
+    if (!paths || paths.length === 0) {
+      return;
+    }
+
+    // Find matching file paths in rawFilesMap
+    const warnings: string[] = [];
+    const matchedPaths: string[] = [];
+    const updatedMap: FilesMap = { ...managedFilesMap };
+
+    // Mark each path as included
+    paths.forEach((path: string) => {
+      // path is already normalized by normalizePathForComparison in PastePaths component
+      const normalizedInputPath = path; // Already normalized
+
+      if (updatedMap[path]) {
+        updatedMap[path] = {
+          ...updatedMap[path],
+          included: true,
+          forceExcluded: false
+        };
+        matchedPaths.push(path);
+      } else {
+        // Try to find a matching file using the comparablePath property
+        let found = false;
+
+
+        // First try: Direct match using comparablePath
+        for (const mapPath of Object.keys(updatedMap)) {
+          const fileInfo = updatedMap[mapPath];
+
+          if (fileInfo.comparablePath === normalizedInputPath) {
+              updatedMap[mapPath] = {
+              ...updatedMap[mapPath],
+              included: true,
+              forceExcluded: false
+            };
+            matchedPaths.push(mapPath);
+            found = true;
+            break;
+          }
+        }
+
+        // Second try: Path ends with the input path (handles project-relative paths)
+        if (!found) {
           for (const mapPath of Object.keys(updatedMap)) {
             const fileInfo = updatedMap[mapPath];
-            
-            if (fileInfo.comparablePath === normalizedInputPath) {
-              console.log(`[FileSelectionManager] Found exact comparablePath match: ${mapPath}`);
+
+            if (normalizedInputPath && fileInfo.comparablePath.endsWith('/' + normalizedInputPath)) {
               updatedMap[mapPath] = {
                 ...updatedMap[mapPath],
                 included: true,
                 forceExcluded: false
               };
-              includedCount++;
+              matchedPaths.push(mapPath);
               found = true;
               break;
             }
           }
-          
-          // Second try: Path ends with the input path (handles project-relative paths)
-          if (!found) {
-            for (const mapPath of Object.keys(updatedMap)) {
-              const fileInfo = updatedMap[mapPath];
-              
-              if (normalizedInputPath && fileInfo.comparablePath.endsWith('/' + normalizedInputPath)) {
-                console.log(`[FileSelectionManager] Found path ending match: ${mapPath} for ${path}`);
-                updatedMap[mapPath] = {
-                  ...updatedMap[mapPath],
-                  included: true,
-                  forceExcluded: false
-                };
-                includedCount++;
-                found = true;
-                break;
-              }
+        }
+
+        // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
+        if (!found) {
+          for (const mapPath of Object.keys(updatedMap)) {
+            const fileInfo = updatedMap[mapPath];
+
+            if (normalizedInputPath.includes(fileInfo.comparablePath)) {
+              updatedMap[mapPath] = {
+                ...updatedMap[mapPath],
+                included: true,
+                forceExcluded: false
+              };
+              matchedPaths.push(mapPath);
+              found = true;
+              break;
             }
-          }
-          
-          // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
-          if (!found) {
-            for (const mapPath of Object.keys(updatedMap)) {
-              const fileInfo = updatedMap[mapPath];
-              
-              if (normalizedInputPath.includes(fileInfo.comparablePath)) {
-                console.log(`[FileSelectionManager] Found input-contains-mappath match: ${mapPath} for ${path}`);
-                updatedMap[mapPath] = {
-                  ...updatedMap[mapPath],
-                  included: true,
-                  forceExcluded: false
-                };
-                includedCount++;
-                found = true;
-                break;
-              }
-            }
-          }
-          
-          if (!found) {
-            console.warn(`[FileSelectionManager] Path not found in file map: ${path}`);
-            warnings.push(`Path not found: ${path}`);
           }
         }
-      });
-      
-      if (warnings.length > 0) {
-        console.warn(`[FileSelectionManager] ${warnings.length} paths not found in the current file map`);
-        setExternalPathWarnings(warnings);
-      }
-      
-      console.log(`[FileSelectionManager] Applied selections to ${includedCount} of ${paths.length} paths`);
-      
-      
-      return updatedMap;
-    });
-    
-    if (onInteraction) onInteraction();
-  }, [onInteraction]);
 
-  // Only track session switching state change
-  useEffect(() => {
-    // If we just finished switching sessions, log for debugging
-    if (prevIsSwitchingRef.current && !isSwitchingSession) {
-      console.log('[FileSelectionManager] Session switching completed.');
+        if (!found) {
+          warnings.push(`Path not found: ${path}`);
+        }
+      }
+    });
+
+    if (warnings.length > 0) {
+      setExternalPathWarnings(warnings);
     }
-    
-    prevIsSwitchingRef.current = isSwitchingSession;
-  }, [isSwitchingSession]);
-  
-  // Function to clear external path warnings
+
+    // Update the UI with the new state
+    setManagedFilesMap(updatedMap);
+
+    // Update the session with new included files by merging with current included files
+    const newIncludedFiles = [...new Set([...currentIncludedFiles, ...matchedPaths])];
+    onUpdateIncludedFiles(newIncludedFiles);
+
+    // Also ensure these files are removed from excluded files if they were there
+    const newExcludedFiles = currentExcludedFiles.filter(path => !matchedPaths.includes(path));
+    if (newExcludedFiles.length !== currentExcludedFiles.length) {
+      onUpdateExcludedFiles(newExcludedFiles);
+    }
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+
+  useEffect(() => {
+    prevIsTransitioningRef.current = isTransitioningSession;
+  }, [isTransitioningSession]);
+
   const clearExternalPathWarnings = useCallback(() => {
     if (externalPathWarnings.length > 0) {
-      console.log('[FileSelectionManager] Clearing external path warnings');
-      setExternalPathWarnings([]);
+        setExternalPathWarnings([]);
     }
   }, [externalPathWarnings]);
 
-  // Combined effect to initialize/update managedFilesMap when rawFilesMap or session selections change
+  const prevRawFilesMapKeysRef = useRef<string[]>([]);
+  const isProcessingUpdateRef = useRef<boolean>(false);
+
+  // Core effect to update managedFilesMap based on props
   useEffect(() => {
-    // If session is switching, defer processing to avoid unnecessary work during transition
-    // But make sure we capture the session selection arrays for use when switching is complete
-    if (isSwitchingSession) {
-      console.log('[FileSelectionManager] Session is switching, deferring selection update.');
-      
-      // Store the sessions in case we need them later
-      if (sessionIncludedFiles !== undefined || sessionExcludedFiles !== undefined) {
-        console.log('[FileSelectionManager] Storing session selections during switching');
-      }
-      return;
-    }
+    // During transitions, we'll still process updates
 
-    // If rawFilesMap is empty, it might mean files are still loading for the project.
-    // In this case, we should clear or reset managedFilesMap.
+    // CASE 1: No project files loaded yet - nothing to process
     if (Object.keys(rawFilesMap).length === 0) {
-      setManagedFilesMap(prevMap => {
-        if (Object.keys(prevMap).length > 0) {
-          console.log('[FileSelectionManager] rawFilesMap is empty, resetting managedFilesMap.');
-          return {}; // Reset to empty if it wasn't already
-        }
-        return prevMap; // No change if already empty
-      });
+      // Only log if we're not just starting up (to reduce console noise)
+      if (Object.keys(managedFilesMap).length > 0) {
+      } else {
+      }
+
       return;
     }
 
-    // Always start with a fresh, deep-cloned map of all project files from rawFilesMap.
-    // This ensures all files are present with their default selection states (usually unselected).
-    const newBaseMap = JSON.parse(JSON.stringify(rawFilesMap));
 
-    setManagedFilesMap(currentInternalMap => {
-      let resultMap;
+    // Create a new map based on rawFilesMap
+    const newManagedFilesMap: FilesMap = {};
 
-      // TWO SCENARIOS:
-      // 1. Session change - we have session file selections (includedFiles/excludedFiles) - always use these
-      // 2. Refresh files - we want to preserve existing selections from currentInternalMap
+    // First pass: Copy all files from rawFilesMap
+    for (const [path, fileInfo] of Object.entries(rawFilesMap)) {
+      newManagedFilesMap[path] = {
+        ...fileInfo,
+        included: false, // Default to not included
+        forceExcluded: false // Default to not force-excluded
+      };
+    }
 
-      if (sessionIncludedFiles !== undefined || sessionExcludedFiles !== undefined) {
-        // Scenario 1: Session change - apply session selections
-        console.log(`[FileSelectionManager] Applying session selections: Included: ${sessionIncludedFiles?.length || 0}, Excluded: ${sessionExcludedFiles?.length || 0}`);
-        console.log(`[FileSelectionManager] Using branch 1: Applying session selections`);
-        
-        resultMap = applySessionSelections(
-          newBaseMap,
-          sessionIncludedFiles || [],
-          sessionExcludedFiles || []
-        );
-      } else if (Object.keys(currentInternalMap).length > 0) {
-        // Scenario 2: Refreshing files - we want to preserve existing user selections
-        console.log(`[FileSelectionManager] Preserving selections after file refresh for ${Object.keys(currentInternalMap).length} files`);
-        console.log(`[FileSelectionManager] Using branch 2: Preserving existing selections`);
-        
-        // Merge the current selections into the new file map
-        resultMap = mergeFileMaps(currentInternalMap, newBaseMap);
-      } else {
-        // First load with no session data
-        console.log(`[FileSelectionManager] First load with no session data, using default selection states`);
-        console.log(`[FileSelectionManager] Using branch 3: First load with no session data`);
-        resultMap = newBaseMap;
-      }
+    // Second pass: Apply session selections from props
+    if (currentIncludedFiles.length || currentExcludedFiles.length) {
 
-      // Perform a semantic equality check to see if the map content has actually changed.
-      // This avoids unnecessary re-renders if the effective selections remain the same.
-      let hasDifference = false;
-      if (Object.keys(currentInternalMap).length !== Object.keys(resultMap).length) {
-        hasDifference = true;
-      } else {
-        for (const path of Object.keys(resultMap)) {
-          const prev = currentInternalMap[path];
-          const next = resultMap[path];
-          if (!prev || prev.included !== next.included || prev.forceExcluded !== next.forceExcluded) {
-            hasDifference = true;
-            break;
+      // Apply included files from props
+      if (currentIncludedFiles.length > 0) {
+        // Process all included paths
+        let matchedCount = 0;
+
+        for (const includedPath of currentIncludedFiles) {
+          let matched = false;
+
+          // Normalize for consistent comparison
+          const normalizedIncludedPath = normalizePathForComparison(includedPath);
+
+          // Find matching file in our map
+          for (const [path, fileInfo] of Object.entries(newManagedFilesMap)) {
+            const comparablePath = fileInfo.comparablePath || normalizePathForComparison(path);
+
+            // Check for exact match
+            if (comparablePath === normalizedIncludedPath) {
+              newManagedFilesMap[path] = {
+                ...fileInfo,
+                included: true,
+                forceExcluded: false // If explicitly included, remove any force-exclude
+              };
+              matched = true;
+              matchedCount++;
+              break;
+            }
           }
+
         }
-      }
 
-      if (hasDifference) {
-        return resultMap;
-      }
-      // No effective change in content, skip update
-      return currentInternalMap;
-    });
-  }, [rawFilesMap, sessionIncludedFiles, sessionExcludedFiles, isSwitchingSession]);
+          }
 
-  // Create a debounced version of onInteraction for input field changes
-  const debouncedInteraction = useMemo(
-    () => debounce(() => {
-      if (onInteraction) {
-        console.log('[FileSelectionManager] Triggering debounced interaction for file selection changes');
-        onInteraction();
-      }
-    }, 750), // 750ms debounce for input changes
-    [onInteraction]
-  );
+      // Apply excluded files from props
+      if (currentExcludedFiles.length > 0) {
+        // Process all excluded paths
+        let matchedCount = 0;
 
-  // Wrapper handlers that call onInteraction with debouncing
+        for (const excludedPath of currentExcludedFiles) {
+          let matched = false;
+
+          // Normalize for consistent comparison
+          const normalizedExcludedPath = normalizePathForComparison(excludedPath);
+
+          // Find matching file in our map
+          for (const [path, fileInfo] of Object.entries(newManagedFilesMap)) {
+            const comparablePath = fileInfo.comparablePath || normalizePathForComparison(path);
+
+            // Check for exact match
+            if (comparablePath === normalizedExcludedPath) {
+              newManagedFilesMap[path] = {
+                ...fileInfo,
+                included: false, // Force to false
+                forceExcluded: true // Mark as force-excluded
+              };
+              matched = true;
+              matchedCount++;
+              break;
+            }
+          }
+
+        }
+
+          }
+    } else {
+    }
+
+    // Update state with the new managed files map
+    setManagedFilesMap(newManagedFilesMap);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawFilesMap, currentIncludedFiles, currentExcludedFiles, isTransitioningSession]);
+
+  // Direct setters to update props
   const setSearchTerm = useCallback((value: string) => {
-    setSearchTermInternal(value);
-    debouncedInteraction();
-  }, [debouncedInteraction]);
+    onUpdateSearchTerm(value);
+  }, [onUpdateSearchTerm]);
 
   const setShowOnlySelected = useCallback((value: boolean) => {
     setShowOnlySelectedInternal(value);
-    debouncedInteraction();
-  }, [debouncedInteraction]);
+  }, []);
 
-
-  // Simplified toggle function to avoid comparison issues, with debounced interaction
+  // Simplified toggle function to update through props
   const toggleSearchSelectedFilesOnly = useCallback((value?: boolean) => {
-    if (typeof value === 'boolean') {
-      // Directly set to the specified value
-      setSearchSelectedFilesOnly(value);
-    } else {
-      // Toggle current value
-      setSearchSelectedFilesOnly(prev => !prev);
-    }
-    
-    // Call debounced interaction handler
-    debouncedInteraction();
-  }, [debouncedInteraction]); 
+    const newValue = typeof value === 'boolean' ? value : !searchSelectedFilesOnly;
+    onUpdateSearchSelectedOnly(newValue);
+  }, [searchSelectedFilesOnly, onUpdateSearchSelectedOnly]);
 
-  // Create a more aggressive debounce for rapid checkbox selections
-  const debouncedBulkInteraction = useMemo(
-    () => debounce(() => {
-      if (onInteraction) {
-        console.log('[FileSelectionManager] Triggering debounced bulk interaction for file selections');
-        onInteraction();
-      }
-    }, 750), // 750ms debounce for checkbox operations which tend to happen in bursts
-    [onInteraction]
-  );
-  
   // Track pending bulk operations
   const bulkOperationCountRef = useRef(0);
   const lastBulkOperationTimeRef = useRef(0);
@@ -344,12 +328,12 @@ export function useFileSelectionManager({
   const toggleCountRef = useRef(0);
   const lastToggleTimeRef = useRef(0);
   
-  // File selection handlers with improved debouncing
+  // File selection handlers that update via props
   const toggleFileSelection = useCallback((path: string) => {
     // Track rapid consecutive toggles to detect potential click storms
     const now = Date.now();
     const timeSinceLastToggle = now - lastToggleTimeRef.current;
-    
+
     if (timeSinceLastToggle < 500) {
       // User is toggling multiple files in rapid succession
       toggleCountRef.current++;
@@ -357,20 +341,14 @@ export function useFileSelectionManager({
       // Reset counter for new sequence
       toggleCountRef.current = 1;
     }
-    
+
     // Update last toggle time
     lastToggleTimeRef.current = now;
-    
-    // If we detect rapid toggles that could lead to rate limiting, use more aggressive debouncing
-    if (toggleCountRef.current >= 5) {
-      console.log(`[FileSelectionManager] Detected rapid toggles (${toggleCountRef.current}), using more aggressive debouncing`);
-      debouncedBulkInteraction.cancel(); // Cancel any pending interactions
-    }
-    
+
     setManagedFilesMap(prevMap => {
       const fileInfo = prevMap[path];
       if (!fileInfo) return prevMap;
-      
+
       // Create new map with updated file info
       return {
         ...prevMap,
@@ -382,20 +360,41 @@ export function useFileSelectionManager({
         }
       };
     });
-    
-    // Use standard debounce for single toggles, or bulk debounce for rapid sequences
-    if (toggleCountRef.current >= 5) {
-      debouncedBulkInteraction();
+
+    // Find the normalized path for this file
+    const fileInfo = managedFilesMap[path];
+    if (!fileInfo) return;
+
+    const normalizedPath = fileInfo.comparablePath || normalizePathForComparison(path);
+
+    // Calculate the new included and excluded files
+    if (fileInfo.included) {
+      // If it was included, now we're un-including it
+      const newIncludedFiles = currentIncludedFiles.filter(p =>
+        normalizePathForComparison(p) !== normalizedPath
+      );
+      onUpdateIncludedFiles(newIncludedFiles);
     } else {
-      debouncedInteraction();
+      // If it wasn't included, now we're including it
+      // Also ensure it's removed from excluded files if it was there
+      const newIncludedFiles = [...currentIncludedFiles, normalizedPath];
+      onUpdateIncludedFiles(newIncludedFiles);
+
+      // Remove from excluded if needed
+      const newExcludedFiles = currentExcludedFiles.filter(p =>
+        normalizePathForComparison(p) !== normalizedPath
+      );
+      if (newExcludedFiles.length !== currentExcludedFiles.length) {
+        onUpdateExcludedFiles(newExcludedFiles);
+      }
     }
-  }, [debouncedInteraction, debouncedBulkInteraction]);
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
 
   const toggleFileExclusion = useCallback((path: string) => {
     // Track rapid consecutive toggles to detect potential click storms
     const now = Date.now();
     const timeSinceLastToggle = now - lastToggleTimeRef.current;
-    
+
     if (timeSinceLastToggle < 500) {
       // User is toggling multiple files in rapid succession
       toggleCountRef.current++;
@@ -403,20 +402,14 @@ export function useFileSelectionManager({
       // Reset counter for new sequence
       toggleCountRef.current = 1;
     }
-    
+
     // Update last toggle time
     lastToggleTimeRef.current = now;
-    
-    // If we detect rapid toggles that could lead to rate limiting, use more aggressive debouncing
-    if (toggleCountRef.current >= 5) {
-      console.log(`[FileSelectionManager] Detected rapid toggles (${toggleCountRef.current}), using more aggressive debouncing`);
-      debouncedBulkInteraction.cancel(); // Cancel any pending interactions
-    }
-    
+
     setManagedFilesMap(prevMap => {
       const fileInfo = prevMap[path];
       if (!fileInfo) return prevMap;
-      
+
       // Create new map with updated file info
       return {
         ...prevMap,
@@ -427,78 +420,51 @@ export function useFileSelectionManager({
         }
       };
     });
-    
-    // Use standard debounce for single toggles, or bulk debounce for rapid sequences
-    if (toggleCountRef.current >= 5) {
-      debouncedBulkInteraction();
+
+    // Find the normalized path for this file
+    const fileInfo = managedFilesMap[path];
+    if (!fileInfo) return;
+
+    const normalizedPath = fileInfo.comparablePath || normalizePathForComparison(path);
+
+    // Calculate the new included and excluded files based on the new state
+    if (fileInfo.forceExcluded) {
+      // If it was excluded, now we're un-excluding it
+      const newExcludedFiles = currentExcludedFiles.filter(p =>
+        normalizePathForComparison(p) !== normalizedPath
+      );
+      onUpdateExcludedFiles(newExcludedFiles);
     } else {
-      debouncedInteraction();
+      // If it wasn't excluded, now we're excluding it
+      // Also ensure it's removed from included files
+      const newExcludedFiles = [...currentExcludedFiles, normalizedPath];
+      onUpdateExcludedFiles(newExcludedFiles);
+
+      // Remove from included
+      const newIncludedFiles = currentIncludedFiles.filter(p =>
+        normalizePathForComparison(p) !== normalizedPath
+      );
+      onUpdateIncludedFiles(newIncludedFiles);
     }
-  }, [debouncedInteraction, debouncedBulkInteraction]);
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
 
   const handleBulkToggle = useCallback((shouldInclude: boolean, targetFiles: FileInfo[]) => {
     const operationSize = targetFiles.length;
-    console.log(`[FileSelectionManager] Bulk toggle: ${shouldInclude ? 'selecting' : 'deselecting'} ${operationSize} files`);
-    
-    // For large operations, implement rate limiting protection
-    const now = Date.now();
-    const timeSinceLastOperation = now - lastBulkOperationTimeRef.current;
-    
-    // If we're attempting another large operation within 5 seconds of the last one, use debounce instead
-    if (operationSize > 50 && timeSinceLastOperation < 5000) {
-      console.log(`[FileSelectionManager] Debouncing large bulk operation (${operationSize} files) - too soon after previous operation`);
-      bulkOperationCountRef.current++;
-      
-      // Queue the operation through our aggressive debouncer
-      debouncedBulkInteraction.cancel(); // Cancel any pending operations
-      
-      // Use deep cloned objects to avoid any reference issues
-      const safeTargetFiles = JSON.parse(JSON.stringify(targetFiles)) as FileInfo[];
-      
-      setManagedFilesMap(prevMap => {
-        // Deep clone the previous map to ensure we don't have reference issues
-        const newMap = JSON.parse(JSON.stringify(prevMap));
-        let changedCount = 0;
-        
-        // Update each filtered file
-        safeTargetFiles.forEach(file => {
-          if (newMap[file.path]) {
-            // Skip if already in the desired state for 'included' and 'forceExcluded' is compatible
-            if (newMap[file.path].included === shouldInclude && (shouldInclude ? !newMap[file.path].forceExcluded : true)) {
-              return;
-            }
-            
-            newMap[file.path] = {
-              ...newMap[file.path],
-              included: shouldInclude,
-              // If including, make sure not force excluded
-              forceExcluded: shouldInclude ? false : newMap[file.path].forceExcluded
-            };
-            changedCount++;
-          }
-        });
-        
-        console.log(`[FileSelectionManager] Changed ${changedCount} files in bulk toggle (debounced)`);
-        return newMap;
-      });
-      
-      // Use the aggressive debounce for this bulk operation
-      debouncedBulkInteraction();
-      return;
-    }
-    
+
     // Record this operation's time
+    const now = Date.now();
     lastBulkOperationTimeRef.current = now;
     bulkOperationCountRef.current++;
-    
+
     // Use deep cloned objects to avoid any reference issues
     const safeTargetFiles = JSON.parse(JSON.stringify(targetFiles)) as FileInfo[];
-    
+
+    // Process the file map update
     setManagedFilesMap(prevMap => {
       // Deep clone the previous map to ensure we don't have reference issues
       const newMap = JSON.parse(JSON.stringify(prevMap));
       let changedCount = 0;
-      
+
       // Update each filtered file
       safeTargetFiles.forEach(file => {
         if (newMap[file.path]) {
@@ -506,7 +472,7 @@ export function useFileSelectionManager({
           if (newMap[file.path].included === shouldInclude && (shouldInclude ? !newMap[file.path].forceExcluded : true)) {
             return;
           }
-          
+
           newMap[file.path] = {
             ...newMap[file.path],
             included: shouldInclude,
@@ -516,89 +482,129 @@ export function useFileSelectionManager({
           changedCount++;
         }
       });
-      
-      console.log(`[FileSelectionManager] Changed ${changedCount} files in bulk toggle`);
+
       return newMap;
     });
-    
-    // Use a fixed 750ms delay for all bulk operations as specified
-    const delay = 750; // Fixed 750ms delay for all bulk operations
-    
-    console.log(`[FileSelectionManager] Delaying interaction after bulk toggle (${delay}ms for ${operationSize} files)`);
-    
-    // Use timeout instead of direct call to allow React to finish state updates first
-    // Also provides explicit throttling for large operations
-    setTimeout(() => {
-      console.log(`[FileSelectionManager] Triggering interaction after bulk toggle`);
-      // Decrement pending operations counter
-      bulkOperationCountRef.current = Math.max(0, bulkOperationCountRef.current - 1);
-      
-      // For bulk operations, directly call onInteraction - we already have throttling
-      if (onInteraction && bulkOperationCountRef.current === 0) {
-        onInteraction();
-      } else {
-        console.log(`[FileSelectionManager] Skipping interaction callback - ${bulkOperationCountRef.current} operations still pending`);
+
+    // Calculate the new included and excluded file sets based on the bulk operation
+    const changedPaths = safeTargetFiles.map(file => {
+      const path = file.path;
+      const fileInfo = managedFilesMap[path];
+      if (!fileInfo) return null;
+      return fileInfo.comparablePath || normalizePathForComparison(path);
+    }).filter(Boolean) as string[];
+
+    if (shouldInclude) {
+      // Adding files to included set
+      const newIncludedFiles = [...new Set([...currentIncludedFiles, ...changedPaths])];
+      onUpdateIncludedFiles(newIncludedFiles);
+
+      // Remove from excluded if needed
+      const newExcludedFiles = currentExcludedFiles.filter(path =>
+        !changedPaths.includes(normalizePathForComparison(path))
+      );
+      if (newExcludedFiles.length !== currentExcludedFiles.length) {
+        onUpdateExcludedFiles(newExcludedFiles);
       }
-    }, delay);
-  }, [onInteraction, debouncedBulkInteraction]);
+    } else {
+      // Removing files from included set
+      const newIncludedFiles = currentIncludedFiles.filter(path =>
+        !changedPaths.includes(normalizePathForComparison(path))
+      );
+      onUpdateIncludedFiles(newIncludedFiles);
+    }
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
 
 
-  const replaceAllSelectionsWithPaths = useCallback((newPaths: string[]) => {
+  const normalizePaths = (paths: string[]): Set<string> => {
+    return new Set(paths.map(path => {
+      if (!path) return '';
+
+      // Use a standardized normalization approach
+      // This matches the normalizePathForComparison function but inline for efficiency
+      let normalizedPath = path.trim();
+      normalizedPath = normalizedPath.replace(/\\/g, '/');
+      normalizedPath = normalizedPath.replace(/\/\/+/g, '/');
+
+      // Remove leading ./ if present
+      if (normalizedPath.startsWith('./')) {
+        normalizedPath = normalizedPath.substring(2);
+      }
+
+      // Remove leading / if present (assuming paths are relative to project root)
+      if (normalizedPath.startsWith('/')) {
+        normalizedPath = normalizedPath.substring(1);
+      }
+
+      return normalizedPath;
+    }).filter(Boolean)); // Filter out empty strings
+  };
+
+  const buildFilePathIndex = (filesMap: FilesMap): {
+    byComparablePath: Map<string, string>,
+    byFileName: Map<string, string[]>,
+    byPath: Map<string, string>
+  } => {
+    const byComparablePath = new Map<string, string>();  // Map comparablePath -> actual path
+    const byFileName = new Map<string, string[]>();      // Map filename -> array of paths
+    const byPath = new Map<string, string>();            // Map actual path -> actual path (for direct lookup)
+
+    for (const [path, fileInfo] of Object.entries(filesMap)) {
+      // Store by comparable path (main lookup method)
+      const comparablePath = fileInfo.comparablePath || path;
+      byComparablePath.set(comparablePath, path);
+
+      // Store by path directly
+      byPath.set(path, path);
+
+      // Store by filename for fallback lookup
+      const fileName = path.split('/').pop() || '';
+      if (fileName) {
+        if (!byFileName.has(fileName)) {
+          byFileName.set(fileName, []);
+        }
+        byFileName.get(fileName)?.push(path);
+      }
+    }
+
+    return { byComparablePath, byFileName, byPath };
+  };
+
+  // Improved replaceAllSelectionsWithPaths with safe state updates
+  const replaceAllSelectionsWithPaths = useCallback((newPaths: string[], options?: { mergeWithExisting?: boolean }) => {
     if (!newPaths || newPaths.length === 0) {
       return;
     }
-    
+
+    // Whether to merge with existing selections (default is false - replace all)
+    const mergeWithExisting = options?.mergeWithExisting ?? false;
+
     const operationSize = newPaths.length;
-    console.log(`[FileSelectionManager] Replace selections with ${operationSize} paths`);
-    
-    // For large operations, implement rate limiting protection
+
+    // Record this operation's time for rate limiting
     const now = Date.now();
-    const timeSinceLastOperation = now - lastBulkOperationTimeRef.current;
-    
-    // If we're attempting another large operation within 5 seconds of the last one, use debounce instead
-    if (operationSize > 50 && timeSinceLastOperation < 5000) {
-      console.log(`[FileSelectionManager] Debouncing large path replacement operation (${operationSize} paths) - too soon after previous operation`);
-      bulkOperationCountRef.current++;
-      
-      // Queue the operation through our aggressive debouncer
-      debouncedBulkInteraction.cancel(); // Cancel any pending operations
-      
-      setManagedFilesMap(prevMap => {
-        // Create a mutable copy of the prevMap
-        const updatedMap = { ...prevMap };
-        const warnings: string[] = [];
-        let includedCount = 0;
-        
-        // Normalize all paths in newPaths
-        const normalizedPaths = new Set(newPaths.map(path => {
-          // Use normalizePathForComparison directly rather than as a dependency
-          if (!path) return '';
-          
-          let normalizedPath = path;
-          
-          // Trim whitespace
-          normalizedPath = normalizedPath.trim();
-          
-          // Convert backslashes to forward slashes
-          normalizedPath = normalizedPath.replace(/\\/g, '/');
-          
-          // Replace multiple consecutive slashes with a single one
-          normalizedPath = normalizedPath.replace(/\/\/+/g, '/');
-          
-          // Remove leading ./ if present
-          if (normalizedPath.startsWith('./')) {
-            normalizedPath = normalizedPath.substring(2);
-          }
-          
-          // Remove leading / if present (assuming paths are relative to project root)
-          if (normalizedPath.startsWith('/')) {
-            normalizedPath = normalizedPath.substring(1);
-          }
-          
-          return normalizedPath;
-        }));
-        
-        // First, set all files to not included (except force excluded ones)
+    lastBulkOperationTimeRef.current = now;
+    bulkOperationCountRef.current++;
+
+    // Performance optimization: Build indices for faster lookups
+    const fileIndices = buildFilePathIndex(managedFilesMap);
+
+    // Matched paths will be collected here and used after UI update
+    const matchedNormalizedPaths: string[] = [];
+    const pathMatchingSet = new Set<string>(); // For tracking duplicates
+
+    // Process the update in the UI
+    setManagedFilesMap(prevMap => {
+      // Create a mutable copy of the prevMap
+      const updatedMap = { ...prevMap };
+      const matchedPaths = new Set<string>(); // Track matched paths to avoid duplicates
+      let includedCount = 0;
+
+      // Normalize all paths in newPaths
+      const normalizedPaths = normalizePaths(newPaths);
+
+      // If not merging, first reset all files to not included (except force excluded ones)
+      if (!mergeWithExisting) {
         for (const path of Object.keys(updatedMap)) {
           if (!updatedMap[path].forceExcluded) {
             updatedMap[path] = {
@@ -607,287 +613,215 @@ export function useFileSelectionManager({
             };
           }
         }
-        
-        // Then iterate over the normalized paths and set those that exist in the map to included
-        for (const normalizedPath of normalizedPaths) {
-          let found = false;
-          
-          // First try: Direct match using comparablePath
-          for (const mapPath of Object.keys(updatedMap)) {
-            const fileInfo = updatedMap[mapPath];
-            
-            if (fileInfo.comparablePath === normalizedPath) {
-              updatedMap[mapPath] = {
-                ...updatedMap[mapPath],
-                included: true,
-                forceExcluded: false
-              };
-              includedCount++;
-              found = true;
-              break;
-            }
-          }
-          
-          // Second try: Path ends with the input path (handles project-relative paths)
-          if (!found) {
-            for (const mapPath of Object.keys(updatedMap)) {
-              const fileInfo = updatedMap[mapPath];
-              
-              if (normalizedPath && fileInfo.comparablePath.endsWith('/' + normalizedPath)) {
-                updatedMap[mapPath] = {
-                  ...updatedMap[mapPath],
-                  included: true,
-                  forceExcluded: false
-                };
-                includedCount++;
-                found = true;
-                break;
-              }
-            }
-          }
-          
-          // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
-          if (!found) {
-            for (const mapPath of Object.keys(updatedMap)) {
-              const fileInfo = updatedMap[mapPath];
-              
-              if (normalizedPath.includes(fileInfo.comparablePath)) {
-                updatedMap[mapPath] = {
-                  ...updatedMap[mapPath],
-                  included: true,
-                  forceExcluded: false
-                };
-                includedCount++;
-                found = true;
-                break;
-              }
-            }
-          }
-          
-          if (!found) {
-            warnings.push(`Path not found: ${normalizedPath}`);
-          }
-        }
-        
-        if (warnings.length > 0) {
-          setExternalPathWarnings(warnings);
-        }
-        
-        console.log(`[FileSelectionManager] Applied ${includedCount} of ${operationSize} paths (debounced)`);
-        return updatedMap;
-      });
-      
-      // Use the aggressive debounce for this bulk operation
-      debouncedBulkInteraction();
-      return;
-    }
-    
-    // Record this operation's time
-    lastBulkOperationTimeRef.current = now;
-    bulkOperationCountRef.current++;
-    
-    setManagedFilesMap(prevMap => {
-      // Create a mutable copy of the prevMap
-      const updatedMap = { ...prevMap };
-      const warnings: string[] = [];
-      let includedCount = 0;
-      
-      // Normalize all paths in newPaths
-      const normalizedPaths = new Set(newPaths.map(path => {
-        // Use normalizePathForComparison directly rather than as a dependency
-        if (!path) return '';
-        
-        let normalizedPath = path;
-        
-        // Trim whitespace
-        normalizedPath = normalizedPath.trim();
-        
-        // Convert backslashes to forward slashes
-        normalizedPath = normalizedPath.replace(/\\/g, '/');
-        
-        // Replace multiple consecutive slashes with a single one
-        normalizedPath = normalizedPath.replace(/\/\/+/g, '/');
-        
-        // Remove leading ./ if present
-        if (normalizedPath.startsWith('./')) {
-          normalizedPath = normalizedPath.substring(2);
-        }
-        
-        // Remove leading / if present (assuming paths are relative to project root)
-        if (normalizedPath.startsWith('/')) {
-          normalizedPath = normalizedPath.substring(1);
-        }
-        
-        return normalizedPath;
-      }));
-      
-      // First, set all files to not included (except force excluded ones)
-      for (const path of Object.keys(updatedMap)) {
-        if (!updatedMap[path].forceExcluded) {
-          updatedMap[path] = {
-            ...updatedMap[path],
-            included: false
-          };
-        }
       }
-      
+
       // Then iterate over the normalized paths and set those that exist in the map to included
       for (const normalizedPath of normalizedPaths) {
         let found = false;
-        
-        // First try: Direct match using comparablePath
-        for (const mapPath of Object.keys(updatedMap)) {
-          const fileInfo = updatedMap[mapPath];
-          
-          if (fileInfo.comparablePath === normalizedPath) {
-            updatedMap[mapPath] = {
-              ...updatedMap[mapPath],
+        let matchedPath = null;
+
+        // Optimization: Check most common match patterns first
+
+        // 1. Direct comparable path match (fastest)
+        if (fileIndices.byComparablePath.has(normalizedPath)) {
+          matchedPath = fileIndices.byComparablePath.get(normalizedPath);
+          if (matchedPath && !matchedPaths.has(matchedPath)) {
+            updatedMap[matchedPath] = {
+              ...updatedMap[matchedPath],
               included: true,
               forceExcluded: false
             };
             includedCount++;
             found = true;
-            break;
+            matchedPaths.add(matchedPath);
+
+            // Also add to our outer matched paths collection
+            const normalizedMatchedPath = updatedMap[matchedPath].comparablePath || normalizedPath;
+            if (!pathMatchingSet.has(normalizedMatchedPath)) {
+              matchedNormalizedPaths.push(normalizedMatchedPath);
+              pathMatchingSet.add(normalizedMatchedPath);
+            }
           }
         }
-        
-        // Second try: Path ends with the input path (handles project-relative paths)
+
+        // 2. Path ends with the input path (common for relative paths)
         if (!found) {
-          for (const mapPath of Object.keys(updatedMap)) {
-            const fileInfo = updatedMap[mapPath];
-            
-            if (normalizedPath && fileInfo.comparablePath.endsWith('/' + normalizedPath)) {
-              updatedMap[mapPath] = {
-                ...updatedMap[mapPath],
+          for (const [comparablePath, actualPath] of fileIndices.byComparablePath.entries()) {
+            if (!matchedPaths.has(actualPath) &&
+                normalizedPath &&
+                comparablePath.endsWith('/' + normalizedPath)) {
+              updatedMap[actualPath] = {
+                ...updatedMap[actualPath],
                 included: true,
                 forceExcluded: false
               };
               includedCount++;
               found = true;
+              matchedPaths.add(actualPath);
+
+              // Also add to our outer matched paths collection
+              if (!pathMatchingSet.has(comparablePath)) {
+                matchedNormalizedPaths.push(comparablePath);
+                pathMatchingSet.add(comparablePath);
+              }
               break;
             }
           }
         }
-        
-        // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
+
+        // 3. Filename match (fallback for less specific paths)
         if (!found) {
-          for (const mapPath of Object.keys(updatedMap)) {
-            const fileInfo = updatedMap[mapPath];
-            
-            if (normalizedPath.includes(fileInfo.comparablePath)) {
-              updatedMap[mapPath] = {
-                ...updatedMap[mapPath],
+          const fileName = normalizedPath.split('/').pop() || '';
+          if (fileName && fileIndices.byFileName.has(fileName)) {
+            const candidates = fileIndices.byFileName.get(fileName) || [];
+
+            // If we have a single match by filename, use it
+            if (candidates.length === 1 && !matchedPaths.has(candidates[0])) {
+              const actualPath = candidates[0];
+              updatedMap[actualPath] = {
+                ...updatedMap[actualPath],
                 included: true,
                 forceExcluded: false
               };
               includedCount++;
               found = true;
-              break;
+              matchedPaths.add(actualPath);
+
+              // Also add to our outer matched paths collection
+              const normalizedMatchedPath = updatedMap[actualPath].comparablePath || normalizedPath;
+              if (!pathMatchingSet.has(normalizedMatchedPath)) {
+                matchedNormalizedPaths.push(normalizedMatchedPath);
+                pathMatchingSet.add(normalizedMatchedPath);
+              }
+            }
+            // If multiple matches, try to find the best one by path similarity
+            else if (candidates.length > 1) {
+              // Find best match by comparing common path segments
+              // E.g., if normalizedPath is "src/utils/helper.js", prefer matches with more path parts in common
+              const pathParts = normalizedPath.split('/');
+              let bestMatch = null;
+              let bestMatchScore = 0;
+
+              for (const candidatePath of candidates) {
+                if (matchedPaths.has(candidatePath)) continue;
+
+                const candidateParts = candidatePath.split('/');
+                let matchScore = 0;
+
+                // Count matching segments from the end (filename always matches)
+                for (let i = 1; i <= Math.min(pathParts.length, candidateParts.length); i++) {
+                  if (pathParts[pathParts.length - i] === candidateParts[candidateParts.length - i]) {
+                    matchScore++;
+                  } else {
+                    break; // Stop at first non-match
+                  }
+                }
+
+                if (matchScore > bestMatchScore) {
+                  bestMatchScore = matchScore;
+                  bestMatch = candidatePath;
+                }
+              }
+
+              if (bestMatch) {
+                updatedMap[bestMatch] = {
+                  ...updatedMap[bestMatch],
+                  included: true,
+                  forceExcluded: false
+                };
+                includedCount++;
+                found = true;
+                matchedPaths.add(bestMatch);
+
+                // Also add to our outer matched paths collection
+                const normalizedMatchedPath = updatedMap[bestMatch].comparablePath || normalizedPath;
+                if (!pathMatchingSet.has(normalizedMatchedPath)) {
+                  matchedNormalizedPaths.push(normalizedMatchedPath);
+                  pathMatchingSet.add(normalizedMatchedPath);
+                }
+              }
             }
           }
         }
-        
+
         if (!found) {
-          warnings.push(`Path not found: ${normalizedPath}`);
+          setExternalPathWarnings(prev => [...prev, `Path not found: ${normalizedPath}`]);
         }
       }
-      
-      if (warnings.length > 0) {
-        setExternalPathWarnings(warnings);
-      }
-      
-      console.log(`[FileSelectionManager] Applied ${includedCount} of ${operationSize} paths`);
+
       return updatedMap;
     });
-    
-    // Use a fixed 750ms delay for all bulk operations as specified
-    const delay = 750; // Fixed 750ms delay for all bulk operations
-    
-    console.log(`[FileSelectionManager] Delaying interaction after replacing paths (${delay}ms for ${operationSize} paths)`);
-    
+
+    // Instead of updating the session state in the render phase,
+    // do it in the next microtask to avoid React errors about updating during render
     setTimeout(() => {
-      console.log(`[FileSelectionManager] Triggering interaction after replacing selections with paths`);
-      // Decrement pending operations counter
-      bulkOperationCountRef.current = Math.max(0, bulkOperationCountRef.current - 1);
-      
-      // For bulk operations, directly call onInteraction - we already have throttling
-      if (onInteraction && bulkOperationCountRef.current === 0) {
-        onInteraction();
+      if (mergeWithExisting) {
+        // When merging, add the matched paths to existing selections
+        onUpdateIncludedFiles([...new Set([...currentIncludedFiles, ...matchedNormalizedPaths])]);
       } else {
-        console.log(`[FileSelectionManager] Skipping interaction callback - ${bulkOperationCountRef.current} operations still pending`);
+        // When replacing, set included to exactly the matched paths
+        onUpdateIncludedFiles(matchedNormalizedPaths);
       }
-    }, delay);
-  }, [onInteraction, debouncedBulkInteraction]);
+    }, 0);
+  }, [managedFilesMap, currentIncludedFiles, onUpdateIncludedFiles]);
 
 
-  // Calculate derived state
+  // Calculate derived state directly based on managedFilesMap
   const { includedPaths, excludedPaths } = useMemo(() => {
     const included = Object.values(managedFilesMap)
       .filter(f => f.included && !f.forceExcluded)
       .map(f => f.path);
-    
+
     const excluded = Object.values(managedFilesMap)
       .filter(f => f.forceExcluded)
       .map(f => f.path);
-    
+
     return { includedPaths: included, excludedPaths: excluded };
   }, [managedFilesMap]);
-  
+
   // Track previous included paths length to detect when selection becomes empty
   const prevIncludedPathsLengthRef = useRef<number | undefined>();
-  
+
   // Effect to auto-toggle "Show Only Selected" to "All Files" when selection becomes empty
   useEffect(() => {
-    const currentIncludedPathsLength = includedPaths.length;
+    // Use the current prop value instead of derived state to be consistent with the source of truth
+    const currentIncludedFilesLength = currentIncludedFiles.length;
 
     // Only act if "show only selected" is currently active
     // and there are files in the project (rawFilesMap indicates loaded project files)
     if (showOnlySelected && Object.keys(rawFilesMap).length > 0) {
       // Check if the count *became* zero (i.e., it was > 0 before and now is 0)
-      if (currentIncludedPathsLength === 0 && 
-          prevIncludedPathsLengthRef.current !== undefined && 
+      if (currentIncludedFilesLength === 0 &&
+          prevIncludedPathsLengthRef.current !== undefined &&
           prevIncludedPathsLengthRef.current > 0) {
-        console.log('[FileSelectionManager] All selected files deselected, switching to "All Files" view.');
         setShowOnlySelectedInternal(false);
+
+        // Add user feedback through console for debugging
       }
     }
-    // Update previous length for the next run
-    prevIncludedPathsLengthRef.current = currentIncludedPathsLength;
-  }, [includedPaths, showOnlySelected, setShowOnlySelectedInternal, rawFilesMap]);
 
-  // Create a function to force flush all pending debounced operations
-  const flushPendingOperations = useCallback(() => {
-    // Flush any pending debounced operations
-    if (debouncedInteraction) {
-      console.log('[FileSelectionManager] Flushing pending standard debounced operations');
-      debouncedInteraction.flush();
+    // Better handling for the special case where a session with no selected files is loaded
+    // but "Show Only Selected" is somehow still active - this can cause a confusing empty UI
+    if (showOnlySelected &&
+        currentIncludedFilesLength === 0 &&
+        Object.keys(rawFilesMap).length > 0 &&
+        !isTransitioningSession) {
+      // Safety check: if we have files in rawFilesMap but no selections AND show only selected,
+      // automatically switch to "All Files" view to prevent a confusing empty UI
+      setShowOnlySelectedInternal(false);
     }
-    
-    if (debouncedBulkInteraction) {
-      console.log('[FileSelectionManager] Flushing pending bulk debounced operations');
-      debouncedBulkInteraction.flush();
-    }
-  }, [debouncedInteraction, debouncedBulkInteraction]);
-  
-  // Effect to ensure selections are flushed when component unmounts or when session switches
-  useEffect(() => {
-    // Return cleanup function
-    return () => {
-      // Before unmounting, flush all pending operations
-      flushPendingOperations();
-    };
-  }, [flushPendingOperations]);
-  
-  // Also flush pending operations when explicitly switching sessions
-  useEffect(() => {
-    if (isSwitchingSession) {
-      console.log('[FileSelectionManager] Session switching detected, flushing pending operations');
-      flushPendingOperations();
-    }
-  }, [isSwitchingSession, flushPendingOperations]);
-  
+
+    // Update previous length for the next run
+    prevIncludedPathsLengthRef.current = currentIncludedFilesLength;
+  }, [currentIncludedFiles.length, showOnlySelected, setShowOnlySelectedInternal, rawFilesMap, isTransitioningSession]);
+
+  // Simplified flush function - just a placeholder to maintain API compatibility
+  const flushPendingOperations = useCallback(() => {}, []);
+
+
+
+
   return {
-    // State
     managedFilesMap,
     searchTerm,
     showOnlySelected,
@@ -895,21 +829,16 @@ export function useFileSelectionManager({
     searchSelectedFilesOnly,
     includedPaths,
     excludedPaths,
-    
-    // Setters
     setSearchTerm,
     setShowOnlySelected,
-    setExternalPathWarnings,
-    
-    // Toggles
+    setExternalPathWarnings: clearExternalPathWarnings,
     toggleFileSelection,
     toggleFileExclusion,
     toggleSearchSelectedFilesOnly,
-    
-    // Actions
     handleBulkToggle,
     applySelectionsFromPaths,
     replaceAllSelectionsWithPaths,
-    flushPendingOperations
+    flushPendingOperations,
+    reset
   };
 }

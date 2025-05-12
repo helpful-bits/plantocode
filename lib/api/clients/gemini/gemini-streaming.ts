@@ -1,14 +1,11 @@
-import { ActionState, ApiType, TaskType } from "@/types";
+import { ActionState, ApiType, TaskType, TaskSettings } from "@/types";
 import { getModelSettingsForProject } from "@/actions/project-settings-actions";
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { DEFAULT_TASK_SETTINGS } from '@/lib/constants';
 import { 
   streamGeminiContentWithSDK, 
   GeminiSdkRequestPayload, 
   StreamCallbacks 
 } from './gemini-sdk-handler';
-
-// Constants
-const MAX_OUTPUT_TOKENS = 60000; // Default for Flash model
 
 // Types for the API
 export interface StreamingUpdateCallback {
@@ -74,37 +71,31 @@ export async function sendStreamingRequest(
   }
   
   // Load project settings if projectDirectory is provided
-  const taskType = options.taskType || 'streaming';
+  const taskType = options.taskType || 'generic_llm_stream';
   const projectDirectory = options.projectDirectory;
-  
+  let taskConfig = null;
+
   if (projectDirectory && taskType) {
     try {
-      const modelSettings = await getModelSettingsForProject(projectDirectory);
-      if (modelSettings && modelSettings[taskType as keyof typeof modelSettings]) {
-        const settings = modelSettings[taskType as keyof typeof modelSettings];
-        
-        // Apply settings if not explicitly overridden in options
-        if (settings && settings.model && !options.model) {
-          options.model = settings.model;
-        }
-        
-        if (settings && settings.maxTokens && !options.maxOutputTokens) {
-          options.maxOutputTokens = settings.maxTokens;
-        }
-        
-        if (settings && settings.temperature !== undefined && !options.temperature) {
-          options.temperature = settings.temperature;
-        }
+      const allProjectSettings = await getModelSettingsForProject(projectDirectory);
+      taskConfig = allProjectSettings[taskType as keyof TaskSettings];
+
+      if (!taskConfig) {
+        console.warn(`[Gemini Streaming] Settings for task type ${taskType} not resolved, falling back to generic_llm_stream defaults.`);
+        taskConfig = DEFAULT_TASK_SETTINGS.generic_llm_stream;
       }
     } catch (err) {
       console.warn(`[Gemini Streaming] Failed to load project settings for ${projectDirectory}:`, err);
+      taskConfig = DEFAULT_TASK_SETTINGS[taskType as keyof TaskSettings] || DEFAULT_TASK_SETTINGS.generic_llm_stream;
     }
+  } else {
+    taskConfig = DEFAULT_TASK_SETTINGS.generic_llm_stream;
   }
   
-  // Extract options for API request
-  const modelId = options.model || GEMINI_FLASH_MODEL;
-  const maxOutputTokens = options.maxOutputTokens || MAX_OUTPUT_TOKENS;
-  const temperature = options.temperature || 0.7;
+  // Extract options for API request, prioritizing explicit parameters over resolved settings
+  const modelId = options.model || taskConfig.model;
+  const maxOutputTokens = options.maxOutputTokens || taskConfig.maxTokens;
+  const temperature = options.temperature !== undefined ? options.temperature : taskConfig.temperature;
   const topP = options.topP || 0.95;
   const topK = options.topK || 40;
   const streamingUpdates = options.streamingUpdates;

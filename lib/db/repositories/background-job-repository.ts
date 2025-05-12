@@ -25,7 +25,8 @@ export class BackgroundJobRepository {
     temperature: number = 1.0,
     visible: boolean = true,
     metadata: { [key: string]: any } = {},
-    projectDirectory?: string
+    projectDirectory?: string,
+    initialStatus: JobStatus = 'idle'
   ): Promise<BackgroundJob> {
     // Add strict session ID validation
     if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
@@ -33,14 +34,14 @@ export class BackgroundJobRepository {
       console.error('[Repo] Creation error:', error);
       throw error;
     }
-    
+
     // Create job ID and timestamp
     const jobId = `job_${uuid()}`;
     const now = Math.floor(Date.now() / 1000);
-    
+
     // Extract projectDirectory from metadata if provided explicitly and not in parameters
     const effectiveProjectDirectory = projectDirectory || metadata.projectDirectory || null;
-    
+
     // Create new job object with defaults based on BackgroundJob type
     const job: BackgroundJob = {
       // Core identifying fields
@@ -48,51 +49,51 @@ export class BackgroundJobRepository {
       sessionId,
       apiType,
       taskType,
-      status: 'idle',
-      
+      status: initialStatus, // Use the provided initial status
+
       // Timestamps
       createdAt: now * 1000, // Store as milliseconds in memory
       updatedAt: now * 1000, // Store as milliseconds in memory
       startTime: null,
       endTime: null,
       lastUpdate: now * 1000, // Store as milliseconds in memory
-      
+
       // Input content
       prompt: rawInput,
-      
+
       // Output content
       response: '',
-      
+
       // Token and performance tracking
       tokensSent: 0,
       tokensReceived: 0,
       totalTokens: 0,
       charsReceived: 0,
-      
+
       // Status and error information
-      statusMessage: null,
+      statusMessage: initialStatus === 'queued' ? 'Queued for processing' : null,
       errorMessage: '',
-      
+
       // Model configuration
       modelUsed: null,
       maxOutputTokens: null,
       temperature,
       includeSyntax,
-      
+
       // Output file paths
       outputFilePath: null,
-      
-      // Project directory 
+
+      // Project directory
       projectDirectory: effectiveProjectDirectory,
-      
+
       // Visibility/management flags
       cleared: false,
       visible: true,
-      
+
       // Structured metadata
       metadata: metadata || {}
     };
-    
+
     // Save to database
     try {
       const savedJob = await this.saveBackgroundJob(job);
@@ -140,9 +141,21 @@ export class BackgroundJobRepository {
     jobCopy.totalTokens = jobCopy.totalTokens || 0;
     jobCopy.charsReceived = jobCopy.charsReceived || 0;
     
-    // Prepare metadata JSON
-    const metadataObj = jobCopy.metadata || {};
-    const metadataJson = JSON.stringify(metadataObj);
+    // Prepare metadata JSON - ensure critical fields like temperature are persisted in metadata
+    const effectiveMetadata = jobCopy.metadata || {};
+    
+    // Ensure temperature from the job object (top-level field) is also stored in metadata
+    if (jobCopy.temperature !== undefined && jobCopy.temperature !== null) {
+      effectiveMetadata.temperature = jobCopy.temperature;
+    }
+    
+    // Similarly, ensure modelUsed is in metadata if it exists at the top level
+    if (jobCopy.modelUsed) {
+      effectiveMetadata.modelUsed = jobCopy.modelUsed;
+    }
+    
+    // Stringify the enhanced metadata
+    const metadataJson = JSON.stringify(effectiveMetadata);
     
     // Use withTransaction for better lock handling
     return connectionPool.withTransaction((db: Database.Database) => {
@@ -621,9 +634,15 @@ export class BackgroundJobRepository {
     const updatedJob: BackgroundJob = JSON.parse(JSON.stringify(job));
     
     // Set update timestamp first - critically important for UI updates
+    // Always set the current time to ensure UI updates detect the change
     const updateTimestamp = Date.now();
     updatedJob.updatedAt = updateTimestamp;
     updatedJob.lastUpdate = updateTimestamp;
+
+    // Log timestamp update for debugging
+    if (DEBUG_JOB_UPDATES) {
+      console.debug(`[Repo] Setting updatedAt and lastUpdate for job ${jobId} to ${new Date(updateTimestamp).toISOString()}`);
+    }
     
     // Update status if changed
     if (status !== job.status) {
@@ -799,55 +818,76 @@ export class BackgroundJobRepository {
   }
   
   /**
-   * Clear all background job history
-   * This marks all completed/failed/canceled jobs as cleared so they no longer appear in the UI
+   * Clear old background job history
+   * This function has two modes:
+   * 1. When daysToKeep is 0, it ONLY performs hard deletion of very old jobs (90+ days) to maintain database size
+   * 2. When daysToKeep > 0, it will ALSO mark completed jobs older than daysToKeep as cleared
+   *
+   * @param daysToKeep Number of days to keep completed jobs visible (0 = keep all visible)
    */
-  async clearBackgroundJobHistory(): Promise<void> {
+  async clearBackgroundJobHistory(daysToKeep: number = 0): Promise<void> {
     return connectionPool.withTransaction((db: Database.Database) => {
       try {
+        console.log(`[BackgroundJobRepo] Running clearBackgroundJobHistory with daysToKeep=${daysToKeep}`);
+
         // Check if the 'background_jobs' table exists
         const tableExists = db.prepare(`
           SELECT name FROM sqlite_master WHERE type='table' AND name='background_jobs'
         `).get();
-        
+
         if (!tableExists) {
           return;
         }
-        
-        // Find old jobs to delete (over 30 days old, completed/failed/canceled)
-        // This helps keep the database size under control
-        const thirtyDaysAgo = Math.floor((Date.now() / 1000) - (30 * 24 * 60 * 60));
+
+        // PART 1: Always delete very old jobs (90+ days) regardless of daysToKeep value
+        const ninetyDaysAgo = Math.floor((Date.now() / 1000) - (90 * 24 * 60 * 60));
         const oldJobIdsResult = db.prepare(`
           SELECT id FROM background_jobs
           WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
           AND created_at < ?
           LIMIT 1000
-        `).all(thirtyDaysAgo);
-        
+        `).all(ninetyDaysAgo);
+
         // Extract job IDs from result
         const oldJobIds = oldJobIdsResult.map(row => (row as any).id);
-        
+
         if (oldJobIds.length > 0) {
+          console.log(`[BackgroundJobRepo] Deleting ${oldJobIds.length} jobs older than 90 days`);
+
           // Delete old jobs in batches to avoid potential lock issues
           const batchSize = 100;
           for (let i = 0; i < oldJobIds.length; i += batchSize) {
             const batch = oldJobIds.slice(i, i + batchSize);
             const placeholders = batch.map(() => '?').join(',');
-            
+
             db.prepare(`
               DELETE FROM background_jobs
               WHERE id IN (${placeholders})
             `).run(...batch);
           }
         }
-        
-        // Mark all completed/failed/canceled jobs as cleared (so they don't show in UI)
-        const result = db.prepare(`
-          UPDATE background_jobs
-          SET cleared = 1
-          WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
-          AND cleared = 0
-        `).run();
+
+        // PART 2: Only mark completed/failed/canceled jobs as cleared if daysToKeep > 0
+        // This allows users to control how far back they want to see completed jobs
+        if (daysToKeep > 0) {
+          const daysAgoTimestamp = Math.floor((Date.now() / 1000) - (daysToKeep * 24 * 60 * 60));
+
+          // Mark jobs older than daysToKeep as cleared
+          const result = db.prepare(`
+            UPDATE background_jobs
+            SET cleared = 1
+            WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
+            AND cleared = 0
+            AND created_at < ?
+          `).run(daysAgoTimestamp);
+
+          const clearedCount = result?.changes || 0;
+          if (clearedCount > 0) {
+            console.log(`[BackgroundJobRepo] Marked ${clearedCount} jobs older than ${daysToKeep} days as cleared`);
+          }
+        } else {
+          console.log(`[BackgroundJobRepo] Not clearing any recent jobs as daysToKeep=0 (keep all visible)`);
+        }
       } catch (error) {
         console.error(`Error clearing background job history:`, error);
         throw error;
@@ -1020,10 +1060,10 @@ export class BackgroundJobRepository {
 
   /**
    * Append content to a job's response without changing its status
-   * 
+   *
    * This method is used for streaming updates, where we want to incrementally
    * update the job's response and token counts while keeping it in 'running' status.
-   * 
+   *
    * @param jobId The job ID
    * @param chunk The text chunk to append to the response
    * @param newTokensReceived Number of tokens in this chunk
@@ -1031,8 +1071,8 @@ export class BackgroundJobRepository {
    * @returns Promise that resolves when the update is complete
    */
   async appendToJobResponse(
-    jobId: string, 
-    chunk: string, 
+    jobId: string,
+    chunk: string,
     newTokensReceived: number,
     currentTotalResponseLength: number
   ): Promise<void> {
@@ -1040,72 +1080,77 @@ export class BackgroundJobRepository {
     if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
       throw new Error('Invalid job ID provided for appending to response');
     }
-    
+
     // First, get the current job to ensure it exists and is in 'running' state
     const job = await this.getBackgroundJob(jobId);
-    
+
     if (!job) {
       throw new Error(`Cannot append to job response: Job with ID ${jobId} not found`);
     }
-    
+
     // Temporary diagnostic logging for implementation plan jobs
     if (job.taskType === 'implementation_plan') {
       console.log(`[TEMP_DEBUG_IMPL_PLAN] Appending to job ${jobId}, chunk length: ${chunk.length}, newTokens: ${newTokensReceived}, currentLength: ${currentTotalResponseLength}`);
     }
-    
+
     // Only append to jobs in 'running' status
     if (job.status !== 'running') {
       console.warn(`[Repo] Cannot append to job ${jobId} with status '${job.status}', job must be in 'running' status`);
       return;
     }
-    
+
     // Calculate updated token counts
     const updatedTokensReceived = (job.tokensReceived || 0) + newTokensReceived;
     const updatedTotalTokens = (job.tokensSent || 0) + updatedTokensReceived;
-    
+
     // Update the job with the new chunk and token counts
     return connectionPool.withTransaction((db: Database.Database) => {
       try {
-        const now = Math.floor(Date.now() / 1000);
-        
+        // Get current timestamp at millisecond precision
+        const nowMs = Date.now();
+        const nowSec = Math.floor(nowMs / 1000);
+
         // Get current response - special handling for null response
         const currentResponse = job.response === null ? '' : job.response;
-        
+
         // Append chunk to the current response
         const updatedResponse = currentResponse + chunk;
-        
-        // Update the job, preserving its 'running' status
+
+        // Update the job, preserving its 'running' status - ALWAYS update both updatedAt and lastUpdate
+        // This ensures the client's areJobsEqual optimization can detect changes
         const stmt = db.prepare(`
           UPDATE background_jobs
           SET response = ?,
               tokens_received = ?,
+              chars_received = ?,
               updated_at = ?,
               last_update = ?,
               metadata = json_set(
-                metadata, 
+                metadata,
                 '$.lastStreamUpdateTime', ?,
                 '$.responseLength', ?,
                 '$.totalTokens', ?
               )
           WHERE id = ? AND status = 'running'
         `);
-        
+
         const result = stmt.run(
           updatedResponse,
           updatedTokensReceived,
-          now,
-          now,
-          Date.now(), // millisecond precision for stream updates
+          currentTotalResponseLength,
+          nowSec,
+          nowSec,
+          nowMs, // millisecond precision for stream updates
           currentTotalResponseLength,
           updatedTotalTokens,
           jobId
         );
-        
+
         // Temporary logging for implementation plan jobs
         if (job.taskType === 'implementation_plan') {
           console.log(`[TEMP_DEBUG_IMPL_PLAN] Update result for ${jobId}: changes=${result?.changes || 0}, new response length=${updatedResponse.length}`);
         }
-        
+
         // Check if the update succeeded (should affect one row)
         if (!result || result.changes !== 1) {
           console.warn(`[Repo] Failed to append to job ${jobId}, no rows updated. Job may no longer be in 'running' status.`);

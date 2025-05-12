@@ -1,5 +1,5 @@
 import { jobRegistry } from '../job-registry';
-import { GeminiRequestProcessor, PROCESSOR_TYPE as GEMINI_REQUEST_TYPE } from './gemini-request-processor';
+import { GeminiProcessor, PROCESSOR_TYPE as GEMINI_REQUEST_TYPE } from './gemini-processor';
 import { ImplementationPlanProcessor, PROCESSOR_TYPE as IMPLEMENTATION_PLAN_TYPE } from './implementation-plan-processor';
 import { PathFinderProcessor, PROCESSOR_TYPE as PATH_FINDER_TYPE } from './path-finder-processor';
 import { TextCorrectionProcessor, PROCESSOR_TYPE as TEXT_CORRECTION_TYPE } from './text-correction-processor';
@@ -12,15 +12,10 @@ import { VoiceTranscriptionProcessor, PROCESSOR_TYPE as VOICE_TRANSCRIPTION_TYPE
 import { ReadDirectoryProcessor, PROCESSOR_TYPE as READ_DIRECTORY_TYPE } from './read-directory-processor';
 import { GenericGeminiStreamProcessor, PROCESSOR_TYPE as GENERIC_GEMINI_STREAM_TYPE } from './generic-gemini-stream-processor';
 
-/**
- * Register all available job processors with the registry
- * This function should be called during application startup
- */
 export function registerAllProcessors(): void {
   console.log('[JobProcessors] Registering all job processors...');
   
-  // Register processors
-  jobRegistry.register(GEMINI_REQUEST_TYPE, new GeminiRequestProcessor());
+  jobRegistry.register(GEMINI_REQUEST_TYPE, new GeminiProcessor());
   jobRegistry.register(IMPLEMENTATION_PLAN_TYPE, new ImplementationPlanProcessor());
   jobRegistry.register(PATH_FINDER_TYPE, new PathFinderProcessor());
   jobRegistry.register(TEXT_CORRECTION_TYPE, new TextCorrectionProcessor());
@@ -37,9 +32,8 @@ export function registerAllProcessors(): void {
   console.log(`[JobProcessors] Registered ${registeredTypes.length} processor(s): ${registeredTypes.join(', ')}`);
 }
 
-// Export processor classes for individual registration if needed
 export { 
-  GeminiRequestProcessor,
+  GeminiProcessor,
   ImplementationPlanProcessor,
   PathFinderProcessor,
   TextCorrectionProcessor,
@@ -53,5 +47,4 @@ export {
   GenericGeminiStreamProcessor
 };
 
-// Register all processors when this module is imported
 registerAllProcessors();

@@ -26,14 +26,17 @@ export async function GET(request: NextRequest) {
     
     console.log(`[API] Retrieved ${jobs.length} visible background jobs`);
     
-    // Map requests to ensure backward compatibility for clients expecting modelOutput
-    const requests = jobs.map(job => ({
-      ...job,
-      // Response field
-      response: job.response || null,
-      // Keep modelOutput for backward compatibility
-      modelOutput: job.response || null
-    }));
+    // Map requests for backward compatibility with clients expecting modelOutput
+    // The rowToBackgroundJob mapper already handles response formatting for all job types
+    const requests = jobs.map(job => {
+      // Just add modelOutput field for backward compatibility - the job mapper already handles
+      // all the response formatting, file path references, and edge cases
+      return {
+        ...job,
+        // Keep modelOutput for backward compatibility
+        modelOutput: job.response || null
+      };
+    });
     
     // Log some basic info about the jobs for debugging
     if (requests.length > 0) {

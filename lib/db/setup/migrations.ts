@@ -68,20 +68,36 @@ function getMigrations(): Array<(db: any) => void> {
       // Create core tables
       createCoreTables(db);
     },
-    
+
     // Migration 2: Add additional fields
     (db) => {
       // Check if visible column exists in background_jobs table
       const visibleExists = db.prepare(`
         SELECT name FROM pragma_table_info('background_jobs') WHERE name='visible'
       `).get();
-      
+
       if (!visibleExists) {
         console.log("[DB Migrations] Adding visible column to background_jobs table");
         db.prepare("ALTER TABLE background_jobs ADD COLUMN visible BOOLEAN DEFAULT 1").run();
       }
+    },
+
+    // Migration 3: Create key_value_store table
+    (db) => {
+      // Create key_value_store table
+      console.log("[DB Migrations] Creating key_value_store table");
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS key_value_store (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at INTEGER NOT NULL
+        )
+      `).run();
+
+      // Create index for the key column
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_key_value_store_key ON key_value_store(key)`).run();
     }
-    
+
     // Add more migrations here as needed
   ];
 }
@@ -122,15 +138,7 @@ export function createCoreTables(db: any): void {
     )
   `).run();
   
-  // Create active_sessions table
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS active_sessions (
-      project_hash TEXT PRIMARY KEY,
-      session_id TEXT,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-    )
-  `).run();
+  // NOTE: Removed active_sessions table - now using key_value_store table instead
   
   // Create background_jobs table
   db.prepare(`

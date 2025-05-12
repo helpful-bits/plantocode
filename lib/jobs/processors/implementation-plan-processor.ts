@@ -114,7 +114,7 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
         ],
         generationConfig: {
           maxOutputTokens: maxOutputTokens || 60000,
-          temperature: temperature || 0.7,
+          temperature: temperature !== undefined ? temperature : 0.7,
           topP: 0.95,
           topK: 40,
         },
@@ -163,17 +163,62 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
         // Close the write stream
         writeStream.end();
         
-        // Log the size of aggregatedText for debugging, but clarify we're using a placeholder in the DB
-        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId} completed. Full content written to file (${aggregatedText?.length || 0} chars). Using placeholder for DB response.`);
-        
-        // Mark job as completed with a placeholder response instead of the full XML content
-        // The full content is available in the output file
-        const placeholderResponse = "Implementation plan generated successfully. Full content available in output file.";
-        await updateJobToCompleted(backgroundJobId, placeholderResponse, {
+        // Log the size of aggregatedText for debugging
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId} completed. Full content written to file (${aggregatedText?.length || 0} chars).`);
+
+        // For implementation plans, we always want to provide a concise, informative response
+        // that summarizes what was created and indicates that the full content is stored in a file
+
+        // Extract a brief summary from the aggregated text (first implementation-plan or steps tag content)
+        let planSummary = '';
+        if (aggregatedText.includes('<implementation-plan')) {
+          const planTag = aggregatedText.match(/<implementation-plan[^>]*>([\s\S]*?)<\/implementation-plan>/);
+          if (planTag && planTag[1]) {
+            const stepsMatch = planTag[1].match(/<steps[^>]*>([\s\S]*?)<\/steps>/);
+            if (stepsMatch && stepsMatch[1]) {
+              const stepMatch = stepsMatch[1].match(/<step[^>]*>[\s\S]*?<title>([\s\S]*?)<\/title>/);
+              if (stepMatch && stepMatch[1]) {
+                planSummary = `Plan includes step: "${stepMatch[1]}" and other steps...`;
+              }
+            }
+
+            // If we can't extract steps, try to get the title
+            if (!planSummary) {
+              const titleMatch = planTag[1].match(/<title>([\s\S]*?)<\/title>/);
+              if (titleMatch && titleMatch[1]) {
+                planSummary = `Plan titled: "${titleMatch[1]}"`;
+              }
+            }
+          }
+        }
+
+        // Create a comprehensive response message
+        const responseText =
+          `Implementation plan generated successfully.\n\n` +
+          `${planSummary ? planSummary + '\n\n' : ''}` +
+          `Full XML content stored in file: ${path.basename(targetOutputFilePath)}\n` +
+          `File location: ${targetOutputFilePath}\n` +
+          `Size: ${(aggregatedText.length / 1024).toFixed(1)}KB | Tokens: ${tokenCount.toLocaleString()}\n\n` +
+          `You can view the full content in the file or reload it in this dialog.`;
+
+        // Update the job with comprehensive metadata
+        // For the properties that are not defined in the tokens type, use the metadata object properly
+        await updateJobToCompleted(backgroundJobId, responseText, {
           tokensReceived: tokenCount,
           outputFilePath: targetOutputFilePath,
           modelUsed: model,
-          maxOutputTokens: maxOutputTokens,
+          maxOutputTokens: maxOutputTokens
+        });
+
+        // Update job with additional metadata in a separate call
+        await backgroundJobRepo.updateBackgroundJobStatus({
+          jobId: backgroundJobId,
+          status: 'completed', // Required status property
+          metadata: {
+            planSize: aggregatedText.length,
+            hasSteps: planSummary.includes("step:"),
+            planFilename: path.basename(targetOutputFilePath)
+          }
         });
         
         // Successfully completed implementation plan generation

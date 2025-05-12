@@ -3,6 +3,7 @@ import { jobRegistry } from './job-registry';
 import { globalJobQueue } from './global-job-queue';
 import { JobProcessResult } from './job-processor-interface';
 import { updateJobToFailed } from '../jobs/job-helpers';
+import { ApiErrorType } from '@/lib/api/api-error-handling';
 
 /**
  * Dispatch a job to its appropriate processor.
@@ -116,14 +117,40 @@ export async function dispatchJob(queuedJob: QueuedJob): Promise<JobProcessResul
 
 /**
  * Determine if an error is retryable
- * 
+ *
  * @param error The error to check
  * @returns True if the error should trigger a retry, false otherwise
  */
-function isRetryableError(error?: Error): boolean {
+function isRetryableError(error?: Error | any): boolean {
   if (!error) return false;
-  
-  // Network errors, timeouts, and rate limits are good candidates for retry
+
+  // First check if the error object has a standardized error type
+  if (error.metadata?.errorType) {
+    // The error might be an ActionState with metadata
+    const errorType = error.metadata.errorType;
+    return [
+      ApiErrorType.NETWORK_ERROR,
+      ApiErrorType.TIMEOUT_ERROR,
+      ApiErrorType.RATE_LIMIT_ERROR,
+      ApiErrorType.CAPACITY_ERROR,
+      ApiErrorType.SERVER_ERROR,
+      ApiErrorType.UNAVAILABLE
+    ].includes(errorType);
+  }
+
+  // If error object directly has error type
+  if (error.errorType) {
+    return [
+      ApiErrorType.NETWORK_ERROR,
+      ApiErrorType.TIMEOUT_ERROR,
+      ApiErrorType.RATE_LIMIT_ERROR,
+      ApiErrorType.CAPACITY_ERROR,
+      ApiErrorType.SERVER_ERROR,
+      ApiErrorType.UNAVAILABLE
+    ].includes(error.errorType);
+  }
+
+  // Fall back to checking by error message if no type
   const retryableErrorMessages = [
     'timeout',
     'network',
@@ -137,10 +164,11 @@ function isRetryableError(error?: Error): boolean {
     '503', // HTTP 503 Service Unavailable
     'temporarily unavailable',
     'retry',
-    'connection'
+    'connection',
+    'overloaded' // For "Anthropic API is currently overloaded" errors
   ];
-  
+
   // Check if the error message contains any retryable keywords
-  const errorMessage = error.message.toLowerCase();
+  const errorMessage = (error.message || error.toString()).toLowerCase();
   return retryableErrorMessages.some(keyword => errorMessage.includes(keyword));
 }

@@ -6,6 +6,86 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Consistent transition for interactive elements */
+  .transition-interactive {
+    transition: all 0.2s ease;
+  }
+
+  /* Improved focus styles */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary;
+  }
+
+  /* Loading progress bar animations */
+  @keyframes progress {
+    0% { width: 0; left: 0; }
+    50% { width: 40%; left: 30%; }
+    100% { width: 15%; left: 100%; }
+  }
+
+  .animate-progress {
+    animation: progress 2s ease-in-out infinite;
+  }
+
+  /* Indeterminate progress for global loading indicator */
+  @keyframes progress-indeterminate {
+    0% {
+      transform: translateX(-100%);
+      width: 40%;
+    }
+    50% {
+      width: 70%;
+    }
+    100% {
+      transform: translateX(100%);
+      width: 40%;
+    }
+  }
+
+  .animate-progress-indeterminate {
+    animation: progress-indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  /* Slower pulse animation for placeholders */
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.2; }
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Standard hover effect for cards and interactive elements */
+  .hover-card {
+    @apply hover:shadow-md transition-all duration-200;
+  }
+  
+  /* Standardized heights for form elements */
+  .h-form-element {
+    @apply h-9;
+  }
+  
+  /* Standard spacing for form sections */
+  .form-section-spacing {
+    @apply space-y-4;
+  }
+  
+  /* Consistent form label styling */
+  .form-label {
+    @apply text-sm font-medium mb-1.5 block;
+  }
+  
+  /* Standard card padding */
+  .card-padding {
+    @apply p-4 sm:p-6;
+  }
+  
+  /* Subtle loading animations */
+  .pulse-subtle {
+    @apply animate-pulse opacity-70;
+  }
 }
 
 @layer base {
@@ -35,6 +115,7 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    --sidebar-width: 256px; /* Default sidebar width when expanded */
   }
 
   .dark {
@@ -44,19 +125,19 @@
     --card-foreground: 210 20% 98%;
     --popover: 224 71.4% 4.1%;
     --popover-foreground: 210 20% 98%;
-    --primary: 210 20% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
+    --primary: 217 33% 17%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 215 25% 12%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 25% 9%;
+    --muted-foreground: 217 10% 64%;
+    --accent: 217 15% 12%;
+    --accent-foreground: 210 20% 98%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 215 27.9% 16.9%;
-    --ring: 0 0% 83.1%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 215 25% 14%;
+    --input: 215 25% 10%;
+    --ring: 212 15% 45%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -68,23 +149,80 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
 /* Custom scrollbar styles */
-::-webkit-scrollbar { /* Keep scrollbar styles */
-  width: 8px;
-  height: 8px;
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2); /* Color of the scrollbar thumb */
-  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.15); /* Subtle thumb color */
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.25); /* Slightly darker on hover */
 }
 
 /* Scrollbar track */
 ::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05); /* Slightly visible track */
-    border-radius: 4px;
+  background: rgba(0, 0, 0, 0.03); /* Very subtle track */
+  border-radius: 6px;
+}
+
+/* Dark mode scrollbar styles */
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.15);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+  }
+}
+
+/* Dark mode component improvements */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: hsl(var(--input));
+  color: hsl(var(--foreground));
+}
+
+.dark button[class*="bg-white"],
+.dark div[class*="bg-white"] {
+  background-color: hsl(var(--muted));
+}
+
+.dark .bg-card,
+.dark [class*="bg-background"] {
+  background-color: hsl(var(--background));
+}
+
+.dark [class*="border-gray"],
+.dark [class*="border-slate"] {
+  border-color: hsl(var(--border));
+}
+
+/* Ensure all hover states in dark mode are visible but not too bright */
+.dark button:hover:not([disabled]),
+.dark a:hover:not([disabled]) {
+  filter: brightness(1.1);
+}
+
+/* Better colors for dialog backgrounds in dark mode */
+.dark [role="dialog"] {
+  background-color: hsl(var(--background));
+  border-color: hsl(var(--border));
 }

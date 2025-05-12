@@ -10,15 +10,18 @@ export function cn(...inputs: ClassValue[]) {
  * A safe fetch wrapper that handles common network issues with retries,
  * timeouts, and proper error handling. It binds fetch to window in browser
  * environments to prevent "Illegal invocation" errors.
- * 
+ *
+ * This is the preferred utility for all fetch operations in the application.
+ * Use this instead of the basic fetch API or enhancedFetch.
+ *
  * @param input URL or Request object to fetch
  * @param init Optional fetch options and retry configuration
  * @returns A Promise resolving to the Response
  */
 export function safeFetch(
-  input: RequestInfo | URL, 
-  init?: RequestInit & { 
-    retries?: number; 
+  input: RequestInfo | URL,
+  init?: RequestInit & {
+    retries?: number;
     retryDelay?: number;
     timeout?: number;
   }

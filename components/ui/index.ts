@@ -14,4 +14,4 @@ export * from "./badge"
 export * from "./dropdown-menu"
 export * from "./label"
 export * from "./progress"
-export * from "./typography" // Typography is already exported
+export * from "./typography"

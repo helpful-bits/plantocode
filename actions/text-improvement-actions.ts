@@ -23,9 +23,9 @@ export async function improveSelectedTextAction(
     let actualSessionId: string | undefined | null;
     let actualProjectDirectory: string | undefined;
     let mode: string | undefined;
-    
+
     let targetFieldParam: string | undefined;
-    
+
     if (typeof options === 'string') {
       // Legacy format
       text = options;
@@ -40,14 +40,19 @@ export async function improveSelectedTextAction(
       mode = options.mode;
       targetFieldParam = options.targetField ?? targetField;
     }
-    
+
     if (!text || !text.trim()) {
       return { isSuccess: false, message: "No text selected for improvement." };
     }
-    
-    // Add strict session ID validation
+
+    // Add strict session ID validation - must have a valid session ID
     if (!actualSessionId || typeof actualSessionId !== 'string' || !actualSessionId.trim()) {
       return { isSuccess: false, message: "Active session required to improve text." };
+    }
+
+    // Validate that we have a project directory
+    if (!actualProjectDirectory) {
+      return { isSuccess: false, message: "Project directory is required for text improvement." };
     }
     
     // Use the Claude client to improve the text with project settings

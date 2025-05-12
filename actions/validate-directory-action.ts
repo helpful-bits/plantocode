@@ -8,29 +8,26 @@ import { existsSync } from 'fs'; // Keep existsSync import
 /**
  * Validates a directory path to ensure it exists, is accessible, and optionally check if it's a git repository
  */
-export async function validateDirectoryAction(directoryPath: string, validateGitRepo: boolean = true): Promise<ActionState<{
-  exists: boolean;
-  isAccessible: boolean;
-  stats?: any;
-}>> {
+export async function validateDirectoryAction(directoryPath: string, validateGitRepo: boolean = true): Promise<ActionState<string | null>> {
   if (!directoryPath?.trim()) {
     return {
       isSuccess: false,
       message: "Directory path cannot be empty",
-      data: { exists: false, isAccessible: false }
+      data: null
     };
   }
   
   try {
     console.log(`[Validate] Validating directory: ${directoryPath} (Git required: ${validateGitRepo})`);
     const resolvedPath = path.resolve(directoryPath);
+    console.log(`[Validate] Resolved path: ${resolvedPath}`);
  
     // Check if path exists
     if (!existsSync(resolvedPath)) {
       return {
         isSuccess: false,
         message: "Directory does not exist",
-        data: { exists: false, isAccessible: false }
+        data: null
       };
     }
     
@@ -41,7 +38,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       return {
         isSuccess: false,
         message: "Path exists but is not a directory",
-        data: { exists: true, isAccessible: false }
+        data: null
       };
     }
 
@@ -61,19 +58,10 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       if (files.length === 0) {
         const emptyDirResult = {
           isSuccess: validateGitRepo ? false : true, // Only success if Git is not required
-          message: validateGitRepo 
-            ? "Directory is empty. Please select a valid git repository." 
+          message: validateGitRepo
+            ? "Directory is empty. Please select a valid git repository."
             : "Directory is empty",
-          data: {
-            exists: true, 
-            isAccessible: true,
-            stats: {
-              lastModified: stats.mtime,
-              created: stats.birthtime,
-              isGitRepository: isGitRepo,
-              isEmpty: true
-            }
-          }
+          data: validateGitRepo ? null : resolvedPath
         };
         
         return emptyDirResult;
@@ -109,7 +97,7 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
          return {
            isSuccess: false,
            message: "Directory is not a git repository. Please select a valid git repository.",
-           data: { exists: true, isAccessible: true, stats: directoryStats }
+           data: null
          };
       }
 
@@ -120,18 +108,14 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
       return {
         isSuccess: true,
         message: successMessage,
-        data: {
-          exists: true, 
-          isAccessible: true,
-          stats: directoryStats,
-        }
+        data: resolvedPath,
       };
     } catch (readError) {
       // Handle case where directory exists but cannot be read (permissions)
       return {
         isSuccess: false,
         message: "Directory exists but cannot be read. Please check permissions.",
-        data: { exists: true, isAccessible: false }
+        data: null
       };
     }
   } catch (error: unknown) {
@@ -143,15 +127,12 @@ export async function validateDirectoryAction(directoryPath: string, validateGit
     
     return {
       isSuccess: false,
-      message: isNotFound 
-        ? "Directory does not exist" 
-        : (isPermissionDenied 
-            ? "Directory exists but cannot be accessed due to insufficient permissions" 
+      message: isNotFound
+        ? "Directory does not exist"
+        : (isPermissionDenied
+            ? "Directory exists but cannot be accessed due to insufficient permissions"
             : `Failed to access directory: ${errorMessage}`),
-      data: { 
-        exists: !isNotFound, 
-        isAccessible: false 
-      }
+      data: null
     };
   }
 } 

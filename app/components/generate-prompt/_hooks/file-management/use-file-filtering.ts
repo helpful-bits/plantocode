@@ -88,7 +88,7 @@ export function useFileFiltering({
         // Apply title regex
         if (hasTitleRegex) {
           try {
-            const regex = new RegExp(titleRegexTrimmed);
+            const regex = new RegExp(titleRegexTrimmed, 'i'); // Use case-insensitive flag
             filesToFilter.forEach(file => {
               // Ensure file has a valid comparablePath
               if (file.comparablePath && regex.test(file.comparablePath)) {
@@ -105,19 +105,22 @@ export function useFileFiltering({
         // Apply content regex
         if (hasContentRegex && hasFileContents) {
           try {
-            const regex = new RegExp(contentRegexTrimmed, 'm'); // Use multiline flag
+            const regex = new RegExp(contentRegexTrimmed, 'im'); // Use multiline and case-insensitive flags
             filesToFilter.forEach(file => {
               // Skip if no valid comparablePath (needed for type safety)
               if (!file.comparablePath) return;
-              
+
               // Get content using comparablePath first, then fallback to path for backward compatibility
-              const content = fileContentsMap[file.comparablePath] !== undefined 
-                ? fileContentsMap[file.comparablePath] 
+              const content = fileContentsMap[file.comparablePath] !== undefined
+                ? fileContentsMap[file.comparablePath]
                 : (file.path ? fileContentsMap[file.path] : undefined);
-              
+
+              // If content is available and matches the regex, add to matched paths
               if (typeof content === 'string' && regex.test(content)) {
                 matchedPathsByRegex.add(file.comparablePath); // Add matches from content regex
               }
+              // Skip files whose content isn't loaded yet - don't consider them non-matches
+              // This avoids incorrectly filtering out files that might match but aren't loaded
             });
             contentRegexError = null; // Clear error if regex is valid
           } catch (e) {
@@ -153,7 +156,7 @@ export function useFileFiltering({
         // Apply negative title regex
         if (hasNegativeTitleRegex) {
           try {
-            const regex = new RegExp(negativeTitleRegexTrimmed);
+            const regex = new RegExp(negativeTitleRegexTrimmed, 'i'); // Use case-insensitive flag
             filteredFiles.forEach(file => {
               // Ensure file has a valid comparablePath
               if (file.comparablePath && regex.test(file.comparablePath)) {
@@ -166,20 +169,21 @@ export function useFileFiltering({
             console.error("Negative Title Regex Error:", e);
           }
         }
-        
+
         // Apply negative content regex
         if (hasNegativeContentRegex && hasFileContents) {
           try {
-            const regex = new RegExp(negativeContentRegexTrimmed, 'm');
+            const regex = new RegExp(negativeContentRegexTrimmed, 'im'); // Use multiline and case-insensitive flags
             filteredFiles.forEach(file => {
               // Skip if no valid comparablePath (needed for type safety)
               if (!file.comparablePath) return;
-              
+
               // Get content using comparablePath first, then fallback to path for backward compatibility
-              const content = fileContentsMap[file.comparablePath] !== undefined 
-                ? fileContentsMap[file.comparablePath] 
+              const content = fileContentsMap[file.comparablePath] !== undefined
+                ? fileContentsMap[file.comparablePath]
                 : (file.path ? fileContentsMap[file.path] : undefined);
-              
+
+              // Only exclude if content is available and matches - don't exclude files whose content isn't loaded
               if (typeof content === 'string' && regex.test(content)) {
                 excludeByNegativeRegex.add(file.comparablePath);
               }

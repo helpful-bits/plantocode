@@ -1,4 +1,4 @@
-import { GEMINI_FLASH_MODEL, DEFAULT_TASK_SETTINGS } from "@/lib/constants";
+import { DEFAULT_TASK_SETTINGS } from "@/lib/constants";
 import { ActionState, TaskSettings } from "@/types";
 import { RequestType } from "@/lib/api/streaming-request-pool-types";
 import { updateJobToRunning, updateJobToCompleted, createBackgroundJob, handleApiError } from "@/lib/jobs/job-helpers";
@@ -6,9 +6,6 @@ import { BackgroundJob, TaskType } from "@/types/session-types";
 import { backgroundJobRepository } from '@/lib/db/repositories';
 import { GoogleGenerativeAI, GenerateContentRequest } from '@google/generative-ai';
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-
-// Constants
-const MAX_OUTPUT_TOKENS = 60000; // Default for Flash model
 
 // Types for request and response
 export interface GeminiResponse {
@@ -78,36 +75,30 @@ export async function sendRequest(
   let job = options.job;
   
   // Get task-specific settings if projectDirectory and taskType are provided
-  let projectSettings: TaskSettings | null = null;
-  let specificTaskSettings = null;
+  let taskConfig = null;
   
   if (options.projectDirectory && options.taskType) {
     try {
-      projectSettings = await getModelSettingsForProject(options.projectDirectory);
-      const taskTypeKey = options.taskType as keyof TaskSettings;
-      specificTaskSettings = projectSettings?.[taskTypeKey] || 
-                            DEFAULT_TASK_SETTINGS[taskTypeKey as keyof TaskSettings] || 
-                            DEFAULT_TASK_SETTINGS.streaming;
+      const allProjectSettings = await getModelSettingsForProject(options.projectDirectory);
+      taskConfig = allProjectSettings[options.taskType as keyof TaskSettings];
+      
+      if (!taskConfig) {
+        console.warn(`[Gemini Client] Settings for task type ${options.taskType} not resolved, falling back to generic_llm_stream defaults.`);
+        taskConfig = allProjectSettings.generic_llm_stream || DEFAULT_TASK_SETTINGS.generic_llm_stream;
+      }
     } catch (error) {
       console.warn(`[Gemini Client] Error fetching project settings:`, error);
       // Continue with defaults if settings can't be fetched
+      taskConfig = DEFAULT_TASK_SETTINGS[options.taskType as keyof TaskSettings] || DEFAULT_TASK_SETTINGS.generic_llm_stream;
     }
+  } else {
+    taskConfig = DEFAULT_TASK_SETTINGS.generic_llm_stream;
   }
   
   // Extract options, prioritizing explicit parameters over task settings
-  const modelId = options.model || 
-                  (specificTaskSettings?.model) || 
-                  GEMINI_FLASH_MODEL;
-  
-  const maxOutputTokens = options.maxOutputTokens || 
-                         (specificTaskSettings?.maxTokens) || 
-                         MAX_OUTPUT_TOKENS;
-  
-  const temperature = options.temperature !== undefined ? 
-                     options.temperature : 
-                     (specificTaskSettings?.temperature !== undefined ? 
-                      specificTaskSettings.temperature : 
-                      0.7);
+  const modelId = options.model || taskConfig.model;
+  const maxOutputTokens = options.maxOutputTokens || taskConfig.maxTokens;
+  const temperature = options.temperature !== undefined ? options.temperature : taskConfig.temperature;
   
   const topP = options.topP || 0.95;
   const topK = options.topK || 40;
@@ -127,7 +118,7 @@ export async function sendRequest(
       console.log(`[Gemini Client] Force creating background job for ${options.taskType || 'unspecified task'}`);
       job = await createBackgroundJob(options.sessionId, {
         apiType: options.apiType || 'gemini',
-        taskType: options.taskType || 'streaming',
+        taskType: options.taskType || 'generic_llm_stream',
         model: modelId,
         rawInput: userPromptContent,
         maxOutputTokens: maxOutputTokens,
@@ -229,7 +220,8 @@ export async function sendRequest(
         tokensReceived: validCompletionTokens,
         totalTokens: validPromptTokens + validCompletionTokens,
         modelUsed: modelId,
-        maxOutputTokens: maxOutputTokens
+        maxOutputTokens: maxOutputTokens,
+        temperatureUsed: temperature // Pass the actual temperature used
       });
       
       // If forceBackgroundJob was set, return a background job response instead

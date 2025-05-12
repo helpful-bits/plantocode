@@ -179,8 +179,8 @@ export function useGuidanceGeneration({
       const result = await generateGuidance();
       
       if (result.isSuccess) {
-        // Check if this is a background job
-        if (result.metadata?.isBackgroundJob && result.metadata?.jobId) {
+        // The action now always returns a job ID
+        if (result.metadata?.jobId) {
           console.log(`[GuidanceGeneration] Background job started with ID: ${result.metadata.jobId}`);
           
           // Store the job ID to track completion
@@ -206,49 +206,8 @@ export function useGuidanceGeneration({
           }
           
           // Don't reset isGeneratingGuidance here - it will be reset when the job completes
-        }
-        // Handle immediate response
-        else if (result.data?.guidance) {
-          console.log('[GuidanceGeneration] Received immediate guidance');
-          
-          // Append the guidance to the task description
-          // Get current task description either from the textarea or from state
-          const currentValue = taskDescriptionRef?.current?.value || taskDescription || '';
-            
-          // Always add two newlines between existing content and guidance
-          const newValue = currentValue.trim() + 
-            '\n\n' + 
-            result.data.guidance;
-          
-          // Update the task description
-          setTaskDescription(newValue);
-          
-          // Set cursor at the end of the text if textarea is available
-          if (taskDescriptionRef?.current) {
-            const textarea = taskDescriptionRef.current;
-            setTimeout(() => {
-              if (textarea && typeof textarea.focus === 'function') {
-                textarea.focus();
-                if (typeof textarea.setSelectionRange === 'function') {
-                  textarea.setSelectionRange(newValue.length, newValue.length);
-                }
-              }
-            }, 0);
-          }
-          
-          showNotification({
-            title: "Guidance generated",
-            message: "Guidance has been added to your task description.",
-            type: "success"
-          });
-
-          // Trigger interaction to indicate state change
-          onInteraction();
-          
-          // Reset generation state
-          setIsGeneratingGuidance(false);
         } else {
-          throw new Error("No guidance was generated and no background job was created.");
+          throw new Error("No job ID was returned for the guidance generation job.");
         }
       } else {
         throw new Error(result.message || "Failed to generate guidance.");
@@ -271,12 +230,12 @@ export function useGuidanceGeneration({
     includedPaths, 
     isGeneratingGuidance,
     activeSessionId, 
-    taskDescriptionRef,
-    setTaskDescription,
-    onInteraction,
     showNotification
-    // Note: selectedPaths is intentionally not listed as a dependency because 
+    // Note: 
+    // 1. selectedPaths is intentionally not listed as a dependency because 
     // it's provided as a parameter to the function, not from the hook's props
+    // 2. taskDescriptionRef, setTaskDescription, and onInteraction are used in the useEffect
+    // for job completion, not in the main callback logic anymore
   ]);
 
   return {

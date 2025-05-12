@@ -120,12 +120,6 @@ export type TaskSettings = {
         maxTokens: number;
         temperature?: number;
     };
-} & {
-    streaming?: {
-        model: string;
-        maxTokens: number;
-        temperature?: number;
-    };
 };
 
 // Session structure including background jobs and task settings
@@ -134,18 +128,19 @@ export type Session = {
     name: string; // User-provided name for the session
     projectDirectory: string;
     projectHash?: string; // Hashed project directory for database lookups
-    taskDescription: string;
-    searchTerm: string;
-    titleRegex: string;
-    contentRegex: string;
-    negativeTitleRegex: string;
-    negativeContentRegex: string;
-    isRegexActive: boolean;
+    taskDescription: string; // Task description field
+    searchTerm: string; // Search filter for files
+    titleRegex: string; // Regex for file titles
+    contentRegex: string; // Regex for file contents
+    negativeTitleRegex: string; // Negative regex for file titles
+    negativeContentRegex: string; // Negative regex for file contents
+    isRegexActive: boolean; // Whether regex filtering is active
     updatedAt?: number; // Timestamp of last update (managed by repository)
     createdAt: number; // Timestamp when the session was created
-    includedFiles: string[]; // Paths relative to projectDirectory
-    forceExcludedFiles: string[]; // Paths forced excluded
-    backgroundJobs?: BackgroundJob[];
-    codebaseStructure?: string; // ASCII structure of codebase
-    searchSelectedFilesOnly?: boolean; // Whether to search only in selected files
+    includedFiles: string[]; // Paths relative to projectDirectory that are selected
+    forceExcludedFiles: string[]; // Paths forced excluded even if they match inclusion criteria
+    backgroundJobs?: BackgroundJob[]; // Associated background jobs
+    codebaseStructure: string; // ASCII structure of codebase
+    searchSelectedFilesOnly: boolean; // Whether to search only in selected files
+    modelUsed?: string; // The model used for this session
 };

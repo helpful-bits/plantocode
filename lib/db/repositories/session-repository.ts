@@ -2,7 +2,8 @@ import connectionPool from "../connection-pool";
 import Database from 'better-sqlite3';
 import { Session, ApiType, TaskType, JobStatus, BackgroundJob } from '@/types';
 import { hashString } from '@/lib/hash';
-import { normalizePath } from '../../path-utils';
+import { normalizePath, normalizePathForComparison } from '../../path-utils';
+import { GEMINI_FLASH_MODEL } from '@/lib/constants';
 
 /**
  * Interface representing a row in the sessions table
@@ -23,6 +24,7 @@ interface SessionRow {
   updated_at: number;
   created_at: number;
   search_selected_files_only: number;
+  model_used?: string; // Added model used for session
 }
 
 /**
@@ -64,27 +66,29 @@ class SessionRepository {
           name: session.name,
           project_directory: session.projectDirectory,
           project_hash: projectHash,
-          task_description: session.taskDescription,
-          search_term: session.searchTerm,
-          title_regex: session.titleRegex,
-          content_regex: session.contentRegex,
+          task_description: session.taskDescription || '',
+          search_term: session.searchTerm || '',
+          title_regex: session.titleRegex || '',
+          content_regex: session.contentRegex || '',
           negative_title_regex: session.negativeTitleRegex || '',
           negative_content_regex: session.negativeContentRegex || '',
           is_regex_active: session.isRegexActive ? 1 : 0,
           codebase_structure: session.codebaseStructure || "",
+          created_at: session.createdAt || Date.now(),
           updated_at: Date.now(),
-          search_selected_files_only: session.searchSelectedFilesOnly ? 1 : 0
+          search_selected_files_only: session.searchSelectedFilesOnly ? 1 : 0,
+          model_used: session.modelUsed || GEMINI_FLASH_MODEL
         };
         
         // Build SQL statement
         const sql = `
           INSERT OR REPLACE INTO sessions
           (id, name, project_directory, project_hash, task_description, search_term,
-           title_regex, content_regex, negative_title_regex, negative_content_regex, is_regex_active, 
-           codebase_structure, updated_at, search_selected_files_only)
+           title_regex, content_regex, negative_title_regex, negative_content_regex, is_regex_active,
+           codebase_structure, created_at, updated_at, search_selected_files_only, model_used)
           VALUES (@id, @name, @project_directory, @project_hash, @task_description, @search_term,
-           @title_regex, @content_regex, @negative_title_regex, @negative_content_regex, @is_regex_active, 
-           @codebase_structure, @updated_at, @search_selected_files_only)`;
+           @title_regex, @content_regex, @negative_title_regex, @negative_content_regex, @is_regex_active,
+           @codebase_structure, @created_at, @updated_at, @search_selected_files_only, @model_used)`;
         
         // Insert or replace the session
         console.time(`[Perf] Session row save ${session.id}`);
@@ -106,7 +110,9 @@ class SessionRepository {
             
             // Insert each included file path
             for (const filePath of session.includedFiles) {
-              insertStmt.run(session.id, filePath);
+              // Normalize path for consistent storage and comparison
+              const normalizedPath = normalizePath(filePath);
+              insertStmt.run(session.id, normalizedPath);
             }
           }
           console.timeEnd(`[Perf] Included files save ${session.id}`);
@@ -127,7 +133,9 @@ class SessionRepository {
             
             // Insert each excluded file path
             for (const filePath of session.forceExcludedFiles) {
-              insertStmt.run(session.id, filePath);
+              // Normalize path for consistent storage and comparison
+              const normalizedPath = normalizePath(filePath);
+              insertStmt.run(session.id, normalizedPath);
             }
           }
           console.timeEnd(`[Perf] Excluded files save ${session.id}`);
@@ -227,17 +235,21 @@ class SessionRepository {
               // Fetch included files
               const includedFilesStart = Date.now();
               const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
-              const includedFiles = includedStmt.all(sessionId).map((r: any) => r.path);
+              const includedFilesRaw = includedStmt.all(sessionId);
+              // Normalize paths for consistent handling
+              const includedFiles = includedFilesRaw.map((r: any) => normalizePath(r.path));
               const includedFilesTime = Date.now() - includedFilesStart;
-              
+
               if (includedFilesTime > 500) {
                 console.warn(`[Repo][${timestamp}][${operationId}] Slow query detected: included files lookup took ${includedFilesTime}ms (${includedFiles.length} files)`);
               }
-              
+
               // Fetch excluded files
               const excludedFilesStart = Date.now();
               const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
-              const excludedFiles = excludedStmt.all(sessionId).map((r: any) => r.path);
+              const excludedFilesRaw = excludedStmt.all(sessionId);
+              // Normalize paths for consistent handling
+              const excludedFiles = excludedFilesRaw.map((r: any) => normalizePath(r.path));
               const excludedFilesTime = Date.now() - excludedFilesStart;
               
               if (excludedFilesTime > 500) {
@@ -247,25 +259,26 @@ class SessionRepository {
               // Commit the transaction - these were all read operations
               db.prepare('COMMIT').run();
               
-              // Map DB row to Session object
+              // Map DB row to Session object with proper defaults
               const session: Session = {
                 id: row.id,
-                name: row.name,
+                name: row.name || 'Unnamed Session',
                 projectDirectory: row.project_directory,
                 projectHash: row.project_hash,
-                taskDescription: row.task_description,
-                searchTerm: row.search_term,
-                titleRegex: row.title_regex,
-                contentRegex: row.content_regex,
-                negativeTitleRegex: row.negative_title_regex,
-                negativeContentRegex: row.negative_content_regex,
+                taskDescription: row.task_description || '',
+                searchTerm: row.search_term || '',
+                titleRegex: row.title_regex || '',
+                contentRegex: row.content_regex || '',
+                negativeTitleRegex: row.negative_title_regex || '',
+                negativeContentRegex: row.negative_content_regex || '',
                 isRegexActive: row.is_regex_active === 1,
-                codebaseStructure: row.codebase_structure,
+                codebaseStructure: row.codebase_structure || '',
                 updatedAt: row.updated_at,
                 createdAt: row.created_at,
-                includedFiles: includedFiles,
-                forceExcludedFiles: excludedFiles,
-                searchSelectedFilesOnly: row.search_selected_files_only === 1
+                includedFiles: includedFiles || [],
+                forceExcludedFiles: excludedFiles || [],
+                searchSelectedFilesOnly: row.search_selected_files_only === 1,
+                modelUsed: row.model_used || GEMINI_FLASH_MODEL
               };
               
               const totalTime = Date.now() - startTime;
@@ -349,52 +362,120 @@ class SessionRepository {
    */
   async getAllSessions(): Promise<Session[]> {
     console.log(`[Repo] Getting all sessions`);
-    
+
     return connectionPool.withConnection((db: Database.Database) => {
       try {
-        // Get all sessions
+        // First verify that the sessions table exists
+        const tableExists = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'
+        `).get();
+
+        if (!tableExists) {
+          console.error(`[Repo] Sessions table does not exist in the database`);
+          return [];
+        }
+
+        // Get all sessions in alphabetical order by name for stable UI
         const stmt = db.prepare(`
           SELECT * FROM sessions
-          ORDER BY updated_at DESC
+          ORDER BY name ASC, created_at ASC
         `);
-        
+
         const rows = stmt.all() as SessionRow[];
-        
+        console.log(`[Repo] Raw query returned ${rows.length} sessions`);
+
+        if (rows.length === 0) {
+          console.log(`[Repo] No sessions found in database`);
+          return [];
+        }
+
         // Process each session
         const sessions: Session[] = rows.map(row => {
-          // Get included files for this session
-          const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
-          const includedFiles = includedStmt.all(row.id).map((r: any) => r.path);
-          
-          // Get excluded files for this session
-          const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
-          const excludedFiles = excludedStmt.all(row.id).map((r: any) => r.path);
-          
-          // Map DB row to Session object
-          return {
-            id: row.id,
-            name: row.name,
-            projectDirectory: row.project_directory,
-            projectHash: row.project_hash,
-            taskDescription: row.task_description,
-            searchTerm: row.search_term,
-            titleRegex: row.title_regex,
-            contentRegex: row.content_regex,
-            negativeTitleRegex: row.negative_title_regex,
-            negativeContentRegex: row.negative_content_regex,
-            isRegexActive: row.is_regex_active === 1,
-            codebaseStructure: row.codebase_structure,
-            updatedAt: row.updated_at,
-            createdAt: row.created_at,
-            includedFiles,
-            forceExcludedFiles: excludedFiles
-          };
+          try {
+            // Verify included_files and excluded_files tables exist
+            const includedFilesExists = db.prepare(`
+              SELECT name FROM sqlite_master WHERE type='table' AND name='included_files'
+            `).get();
+
+            const excludedFilesExists = db.prepare(`
+              SELECT name FROM sqlite_master WHERE type='table' AND name='excluded_files'
+            `).get();
+
+            let includedFiles: string[] = [];
+            let excludedFiles: string[] = [];
+
+            if (includedFilesExists) {
+              // Get included files for this session
+              const includedStmt = db.prepare(`SELECT path FROM included_files WHERE session_id = ?`);
+              const rawIncludedFiles = includedStmt.all(row.id);
+              includedFiles = rawIncludedFiles.map((r: any) => normalizePath(r.path));
+            } else {
+              console.warn(`[Repo] included_files table does not exist, using empty array for session ${row.id}`);
+            }
+
+            if (excludedFilesExists) {
+              // Get excluded files for this session
+              const excludedStmt = db.prepare(`SELECT path FROM excluded_files WHERE session_id = ?`);
+              const rawExcludedFiles = excludedStmt.all(row.id);
+              excludedFiles = rawExcludedFiles.map((r: any) => normalizePath(r.path));
+            } else {
+              console.warn(`[Repo] excluded_files table does not exist, using empty array for session ${row.id}`);
+            }
+
+            // Map DB row to Session object with proper type handling and fallbacks
+            const session: Session = {
+              id: row.id,
+              name: row.name || 'Unnamed Session',
+              projectDirectory: row.project_directory,
+              projectHash: row.project_hash,
+              taskDescription: row.task_description || '',
+              searchTerm: row.search_term || '',
+              titleRegex: row.title_regex || '',
+              contentRegex: row.content_regex || '',
+              negativeTitleRegex: row.negative_title_regex || '',
+              negativeContentRegex: row.negative_content_regex || '',
+              isRegexActive: row.is_regex_active === 1, // Consistent boolean conversion
+              codebaseStructure: row.codebase_structure || '',
+              updatedAt: row.updated_at || Date.now(),
+              createdAt: row.created_at || row.updated_at || Date.now(),
+              includedFiles,
+              forceExcludedFiles: excludedFiles,
+              searchSelectedFilesOnly: row.search_selected_files_only === 1,
+              modelUsed: row.model_used || GEMINI_FLASH_MODEL
+            };
+            return session;
+          } catch (rowError) {
+            console.error(`[Repo] Error processing row ${row.id}:`, rowError);
+            // Return minimal valid session to prevent entire query from failing
+            const errorSession: Session = {
+              id: row.id,
+              name: row.name || 'Error: Corrupted Session',
+              projectDirectory: row.project_directory || '',
+              projectHash: row.project_hash || '',
+              taskDescription: '',
+              searchTerm: '',
+              titleRegex: '',
+              contentRegex: '',
+              negativeTitleRegex: '',
+              negativeContentRegex: '',
+              isRegexActive: false,
+              codebaseStructure: '',
+              updatedAt: Date.now(),
+              createdAt: Date.now(),
+              includedFiles: [],
+              forceExcludedFiles: [],
+              searchSelectedFilesOnly: false,
+              modelUsed: GEMINI_FLASH_MODEL
+            };
+            return errorSession;
+          }
         });
-        
-        return sessions;
+
+        console.log(`[Repo] Successfully processed ${sessions.length} sessions`);
+        return sessions as Session[];
       } catch (error) {
         console.error("[Repo] Error in getAllSessions:", error);
-        throw error;
+        return []; // Return empty array instead of throwing, to be more resilient
       }
     }, true); // true = readonly connection
   }
@@ -403,60 +484,152 @@ class SessionRepository {
    * Get sessions for a specific project directory
    */
   async getSessionsForProject(projectDirectory: string): Promise<Session[]> {
-    console.log(`[Repo] Getting sessions for project: ${projectDirectory}`);
-    
+    if (!projectDirectory) {
+      console.error(`[Repo] Invalid project directory provided to getSessionsForProject: ${projectDirectory}`);
+      return [];
+    }
+
+    console.log(`[Repo getSessionsForProject] Received projectDir: "${projectDirectory}". Calculating hash for DB query.`);
+
     // Hash the project directory for faster lookup
     const projectHash = hashString(projectDirectory);
-    
+    console.log(`[Repo getSessionsForProject] Calculated hash: "${projectHash}" for DB query.`);
+
     return connectionPool.withConnection((db: Database.Database) => {
       try {
-        // Get all sessions for this project
+        // First verify that the sessions table exists
+        const tableExists = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'
+        `).get();
+
+        if (!tableExists) {
+          console.error(`[Repo] Sessions table does not exist in the database`);
+          return [];
+        }
+
+        // Get all sessions for this project in alphabetical order by name for stable UI
         const stmt = db.prepare(`
           SELECT * FROM sessions
           WHERE project_hash = ?
-          ORDER BY updated_at DESC
+          ORDER BY name ASC, created_at ASC
         `);
-        
+
         const rows = stmt.all(projectHash) as SessionRow[];
-        
+        console.log(`[Repo] Raw query returned ${rows.length} sessions for project hash: ${projectHash}`);
+
+        if (rows.length === 0) {
+          console.log(`[Repo] No sessions found for project hash: ${projectHash}`);
+          return [];
+        }
+
+        // Verify table schema includes expected columns
+        const pragmaResult = db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[];
+        const columnNames = pragmaResult.map(col => col.name);
+
+        console.log(`[Repo] Sessions table schema: ${columnNames.join(', ')}`);
+
+        const requiredColumns = [
+          'id', 'name', 'project_directory', 'project_hash',
+          'task_description', 'search_term', 'title_regex', 'content_regex',
+          'is_regex_active', 'updated_at', 'created_at'
+        ];
+
+        const missingColumns = requiredColumns.filter(col => !columnNames.includes(col));
+        if (missingColumns.length > 0) {
+          console.error(`[Repo] Missing required columns in sessions table: ${missingColumns.join(', ')}`);
+        }
+
         // Map rows to Session objects
         const sessions = rows.map((row) => {
-          const includedStmt = db.prepare(`
-            SELECT path FROM included_files 
-            WHERE session_id = ?
-          `);
-          const includedFiles = includedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
-          
-          const excludedStmt = db.prepare(`
-            SELECT path FROM excluded_files 
-            WHERE session_id = ?
-          `);
-          const excludedFiles = excludedStmt.all(row.id).map((value: unknown) => (value as { path: string }).path);
-          
-          return {
-            id: row.id,
-            name: row.name,
-            projectDirectory: row.project_directory,
-            projectHash: row.project_hash,
-            includedFiles,
-            forceExcludedFiles: excludedFiles,
-            taskDescription: row.task_description,
-            searchTerm: row.search_term,
-            titleRegex: row.title_regex,
-            contentRegex: row.content_regex,
-            negativeTitleRegex: row.negative_title_regex,
-            negativeContentRegex: row.negative_content_regex,
-            isRegexActive: !!row.is_regex_active,
-            updatedAt: row.updated_at,
-            codebaseStructure: row.codebase_structure,
-            createdAt: row.created_at || Date.now()
-          };
+          try {
+            // Verify included_files table exists
+            const includedFilesExists = db.prepare(`
+              SELECT name FROM sqlite_master WHERE type='table' AND name='included_files'
+            `).get();
+
+            const excludedFilesExists = db.prepare(`
+              SELECT name FROM sqlite_master WHERE type='table' AND name='excluded_files'
+            `).get();
+
+            let includedFiles: string[] = [];
+            let excludedFiles: string[] = [];
+
+            if (includedFilesExists) {
+              const includedStmt = db.prepare(`
+                SELECT path FROM included_files
+                WHERE session_id = ?
+              `);
+              const rawIncludedFiles = includedStmt.all(row.id);
+              includedFiles = rawIncludedFiles.map((value: unknown) => normalizePath((value as { path: string }).path));
+            } else {
+              console.warn(`[Repo] included_files table does not exist, using empty array for session ${row.id}`);
+            }
+
+            if (excludedFilesExists) {
+              const excludedStmt = db.prepare(`
+                SELECT path FROM excluded_files
+                WHERE session_id = ?
+              `);
+              const rawExcludedFiles = excludedStmt.all(row.id);
+              excludedFiles = rawExcludedFiles.map((value: unknown) => normalizePath((value as { path: string }).path));
+            } else {
+              console.warn(`[Repo] excluded_files table does not exist, using empty array for session ${row.id}`);
+            }
+
+            // Handle potential schema issues
+            const session: Session = {
+              id: row.id,
+              name: row.name || 'Unnamed Session',
+              projectDirectory: row.project_directory,
+              projectHash: row.project_hash,
+              includedFiles,
+              forceExcludedFiles: excludedFiles,
+              taskDescription: row.task_description || '',
+              searchTerm: row.search_term || '',
+              titleRegex: row.title_regex || '',
+              contentRegex: row.content_regex || '',
+              negativeTitleRegex: row.negative_title_regex || '',
+              negativeContentRegex: row.negative_content_regex || '',
+              isRegexActive: row.is_regex_active === 1,
+              updatedAt: row.updated_at || Date.now(),
+              codebaseStructure: row.codebase_structure || '',
+              createdAt: row.created_at || row.updated_at || Date.now(),
+              searchSelectedFilesOnly: row.search_selected_files_only === 1,
+              modelUsed: row.model_used || GEMINI_FLASH_MODEL
+            };
+
+            return session;
+          } catch (rowError) {
+            console.error(`[Repo] Error processing session row ${row.id}:`, rowError);
+            // Return a minimal valid session to prevent entire query from failing
+            return {
+              id: row.id,
+              name: row.name || 'Error: Corrupted Session',
+              projectDirectory: row.project_directory,
+              projectHash: row.project_hash,
+              includedFiles: [],
+              forceExcludedFiles: [],
+              taskDescription: '',
+              searchTerm: '',
+              titleRegex: '',
+              contentRegex: '',
+              negativeTitleRegex: '',
+              negativeContentRegex: '',
+              isRegexActive: false,
+              updatedAt: Date.now(),
+              createdAt: Date.now(),
+              searchSelectedFilesOnly: false,
+              codebaseStructure: '',
+              modelUsed: GEMINI_FLASH_MODEL
+            };
+          }
         });
-        
+
+        console.log(`[Repo] Successfully processed ${sessions.length} sessions for project: ${projectDirectory}`);
         return sessions;
       } catch (error) {
-        console.error("Error in getSessionsForProject:", error);
-        throw error;
+        console.error(`[Repo] Error in getSessionsForProject for ${projectDirectory}:`, error);
+        return []; // Return empty array instead of throwing, to be more resilient
       }
     }, true); // readonly connection
   }
@@ -487,17 +660,19 @@ class SessionRepository {
         
         // Get included files
         const includedStmt = db.prepare(`
-          SELECT path FROM included_files 
+          SELECT path FROM included_files
           WHERE session_id = ?
         `);
-        const includedFiles = includedStmt.all(sessionId).map((value: unknown) => (value as { path: string }).path);
-        
+        const rawIncludedFiles = includedStmt.all(sessionId);
+        const includedFiles = rawIncludedFiles.map((value: unknown) => normalizePath((value as { path: string }).path));
+
         // Get excluded files
         const excludedStmt = db.prepare(`
-          SELECT path FROM excluded_files 
+          SELECT path FROM excluded_files
           WHERE session_id = ?
         `);
-        const excludedFiles = excludedStmt.all(sessionId).map((value: unknown) => (value as { path: string }).path);
+        const rawExcludedFiles = excludedStmt.all(sessionId);
+        const excludedFiles = rawExcludedFiles.map((value: unknown) => normalizePath((value as { path: string }).path));
         
         // Map background jobs
         const backgroundJobs: BackgroundJob[] = jobRows.map(row => ({
@@ -544,6 +719,8 @@ class SessionRepository {
           createdAt: sessionRow.created_at,
           includedFiles,
           forceExcludedFiles: excludedFiles,
+          searchSelectedFilesOnly: sessionRow.search_selected_files_only === 1,
+          modelUsed: sessionRow.model_used || GEMINI_FLASH_MODEL,
           backgroundJobs
         };
         
@@ -572,10 +749,15 @@ class SessionRepository {
         // Enable foreign keys to ensure proper constraint handling
         db.pragma('foreign_keys = ON');
         
-        // First, explicitly delete background jobs associated with this session
-        // This helps avoid foreign key constraint issues
-        console.log(`[Repo] Explicitly deleting background jobs for session ${sessionId}`);
-        db.prepare('DELETE FROM background_jobs WHERE session_id = ?').run(sessionId);
+        // No need to explicitly delete background jobs here
+        // The foreign key constraint with ON DELETE CASCADE will handle this automatically
+        // But let's check how many background jobs will be deleted for logging purposes
+        const jobCount = db.prepare('SELECT COUNT(*) as count FROM background_jobs WHERE session_id = ?')
+                        .get(sessionId) as { count: number };
+
+        if (jobCount && jobCount.count > 0) {
+          console.log(`[Repo] Deleting session ${sessionId} will cascade delete ${jobCount.count} background jobs`);
+        }
         
         // Delete associated included and excluded files
         db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
@@ -619,14 +801,23 @@ class SessionRepository {
         
         console.log(`[Repo] Found ${sessionIds.length} sessions to delete for project: ${projectDirectory}`);
         
-        // For each session, explicitly delete related records first to avoid foreign key issues
+        // Count how many background jobs will be deleted across all sessions
+        const jobCountStmt = db.prepare('SELECT COUNT(*) as count FROM background_jobs WHERE session_id = ?');
+        let totalJobsToDelete = 0;
+
+        // For each session, count associated records and delete included/excluded files
         for (const sessionId of sessionIds) {
-          // Delete associated background jobs
-          db.prepare('DELETE FROM background_jobs WHERE session_id = ?').run(sessionId);
-          
+          // Count associated background jobs for logging purposes
+          const jobCount = jobCountStmt.get(sessionId) as { count: number };
+          totalJobsToDelete += jobCount.count;
+
           // Delete associated included and excluded files
           db.prepare('DELETE FROM included_files WHERE session_id = ?').run(sessionId);
           db.prepare('DELETE FROM excluded_files WHERE session_id = ?').run(sessionId);
+        }
+
+        if (totalJobsToDelete > 0) {
+          console.log(`[Repo] Deleting ${sessionIds.length} sessions will cascade delete ${totalJobsToDelete} background jobs`);
         }
         
         // Delete all sessions for this project
@@ -877,40 +1068,40 @@ class SessionRepository {
    */
   async updateIncludedFiles(sessionId: string, filePaths: string[]): Promise<void> {
     console.log(`[Repo] Updating included files for session ${sessionId}: ${filePaths.length} files`);
-    
+
     // Add validation for sessionId
     if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
       throw new Error('Invalid session ID provided for updating included files');
     }
-    
+
     // Always use connectionPool.withConnection with readOnly=false for write operations
     await connectionPool.withConnection((db: Database.Database) => {
       try {
         // Begin a transaction
         db.prepare('BEGIN TRANSACTION').run();
-        
+
         // Delete existing included files for this session
         db.prepare(`DELETE FROM included_files WHERE session_id = ?`).run(sessionId);
-        
+
         // If there are new files to insert
         if (filePaths.length > 0) {
           // Prepare the insert statement once
           const insertStmt = db.prepare(`INSERT INTO included_files (session_id, path) VALUES (?, ?)`);
-          
+
           // Insert each path
           for (const filePath of filePaths) {
-            // Normalize path for consistent storage
+            // Normalize path for consistent storage and comparison across the application
             const normalizedPath = normalizePath(filePath);
             insertStmt.run(sessionId, normalizedPath);
           }
         }
-        
+
         // Also update the session's updated_at timestamp
         db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(Date.now(), sessionId);
-        
+
         // Commit the transaction
         db.prepare('COMMIT').run();
-        
+
         console.log(`[Repo] Successfully updated ${filePaths.length} included files for session ${sessionId}`);
       } catch (error) {
         // Rollback on error
@@ -919,7 +1110,7 @@ class SessionRepository {
         } catch (rollbackError) {
           console.error(`[Repo] Error during rollback: ${rollbackError}`);
         }
-        
+
         console.error(`[Repo] Error updating included files: ${error}`);
         throw error;
       }
@@ -958,22 +1149,22 @@ class SessionRepository {
    */
   async getDatabaseInfo(): Promise<{ ok: boolean; message: string; fileSize: number }> {
     console.log(`[Repo] Getting database info`);
-    
+
     return connectionPool.withConnection((db: Database.Database) => {
       try {
         // Get info about the database file
         const dbInfo = db.pragma('database_list') as Array<{ file: string }>;
         const fileName = dbInfo[0]?.file || 'unknown';
-        
+
         // Get table info
         const tables = db.prepare(`
           SELECT name FROM sqlite_master WHERE type='table'
         `).all() as Array<{ name: string }>;
-        
+
         // Get the size of each table
         const tableSizes: Record<string, number> = {};
         let totalRows = 0;
-        
+
         for (const table of tables) {
           const tableName = table.name;
           if (!tableName.startsWith('sqlite_')) {
@@ -982,7 +1173,7 @@ class SessionRepository {
             totalRows += countResult.count;
           }
         }
-        
+
         return {
           ok: true,
           message: `Database OK. Found ${tables.length} tables with ${totalRows} total rows.`,
@@ -998,9 +1189,68 @@ class SessionRepository {
       }
     }, true); // true = readonly connection
   }
+
+  /**
+   * Set the active session for a project
+   */
+  async setActiveSession(projectDirectory: string, sessionId: string | null): Promise<void> {
+    console.log(`[Repo] Setting active session for project: ${projectDirectory} to: ${sessionId || 'null'}`);
+
+    if (!projectDirectory) {
+      throw new Error('Project directory is required');
+    }
+
+    // Generate a key for the project
+    const projectKey = `activeSession:${hashString(projectDirectory)}`;
+
+    return connectionPool.withConnection(async (db) => {
+      try {
+        // If sessionId is null, delete the entry
+        if (sessionId === null) {
+          db.prepare(`DELETE FROM key_value_store WHERE key = ?`).run(projectKey);
+          return;
+        }
+
+        // Otherwise, insert or replace the entry
+        const sql = `
+          INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
+          VALUES (?, ?, ?)
+        `;
+
+        db.prepare(sql).run(projectKey, sessionId, Date.now());
+      } catch (error) {
+        console.error(`[Repo] Error setting active session:`, error);
+        throw error;
+      }
+    }, false); // Writable connection
+  }
+
+  /**
+   * Get the active session ID for a project
+   */
+  async getActiveSessionId(projectDirectory: string): Promise<string | null> {
+    console.log(`[Repo] Getting active session ID for project: ${projectDirectory}`);
+
+    if (!projectDirectory) {
+      return null;
+    }
+
+    // Generate a key for the project
+    const projectKey = `activeSession:${hashString(projectDirectory)}`;
+
+    return connectionPool.withConnection((db) => {
+      try {
+        const row = db.prepare(`SELECT value FROM key_value_store WHERE key = ?`).get(projectKey);
+        return row ? (row as { value: string }).value : null;
+      } catch (error) {
+        console.error(`[Repo] Error getting active session ID:`, error);
+        throw error;
+      }
+    }, true); // Readonly connection
+  }
+
 }
 
-// Create and export the singleton instance
 export const sessionRepository = new SessionRepository();
 
 // Also export the class itself as the default export

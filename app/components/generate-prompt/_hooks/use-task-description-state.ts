@@ -5,232 +5,94 @@ import { useBackgroundJob } from "@/lib/contexts/background-jobs-context";
 import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
 import { useNotification } from '@/lib/contexts/notification-context';
 import { useProject } from "@/lib/contexts/project-context";
-import { AUTO_SAVE_INTERVAL } from "@/lib/constants";
-import debounce from '@/lib/utils/debounce';
-import { sessionSyncService } from '@/lib/services/session-sync-service';
+import { useSessionContext } from "@/lib/contexts/session-context";
 import { useAsyncAction } from "./use-async-state";
 
 interface UseTaskDescriptionStateProps {
   activeSessionId: string | null;
-  onInteraction?: () => void;
   taskDescriptionRef: React.RefObject<HTMLTextAreaElement>;
+  isSwitchingSession?: boolean;
+  onInteraction?: () => void;
 }
 
 export function useTaskDescriptionState({
   activeSessionId,
-  onInteraction,
-  taskDescriptionRef
+  taskDescriptionRef,
+  isSwitchingSession = false,
+  onInteraction
 }: UseTaskDescriptionStateProps) {
-  // Get the necessary states from the project context
-  const { isSwitchingSession, activeSessionId: globalActiveSessionId, projectDirectory } = useProject();
-  
-  // Core state
-  const [taskDescription, setTaskDescription] = useState("");
+  // Get the necessary states from project and session contexts
+  const { projectDirectory } = useProject();
+  const sessionContext = useSessionContext();
+
+  // Internal state for task description
+  const [internalTaskDescription, setInternalTaskDescription] = useState<string>('');
+
+  // State for UI feedback and improvement features
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [isImprovingText, setIsImprovingText] = useState(false);
   const [textImprovementJobId, setTextImprovementJobId] = useState<string | null>(null);
-  
-  // Refs
-  const lastContentRef = useRef<string>('');
-  const loadedSessionIdRef = useRef<string | null>(null); // Track which session's data is currently loaded
-  const taskDescriptionForOutgoingSaveRef = useRef<string>("");
-  
-  // Keep a copy of taskDescription for saving when switching sessions
-  useEffect(() => {
-    taskDescriptionForOutgoingSaveRef.current = taskDescription;
-  }, [taskDescription]);
-  
+
   // External hooks
   const { showNotification } = useNotification();
   // Fetch the background job
   const textImprovementJob = useBackgroundJob(textImprovementJobId);
-  
-  // Generate localStorage key for taskDescription backup - use activeSessionId
-  const localStorageKey = useMemo(() => {
-    if (!activeSessionId) {
-      // Define a key for when no session is active
-      return `task-description-backup-no-active-session`;
-    }
-    return `task-description-backup-${activeSessionId}`;
-  }, [activeSessionId]);
 
-  // Initialize from local storage on mount
+  // Initialize internal state from session when session changes
   useEffect(() => {
-    // localStorageKey is now reactive to activeSessionId due to its own useMemo dependency.
-    const currentKey = localStorageKey; // Capture the key for this render
+    // Log the current state of the session context
+    console.log('[TaskDescriptionState] Session context state:', {
+      isSwitchingSession,
+      currentSession: sessionContext.currentSession ? 'exists' : 'null',
+      activeSessionId: sessionContext.activeSessionId,
+      taskDescription: sessionContext.currentSession?.taskDescription ?
+        `${sessionContext.currentSession.taskDescription.substring(0, 20)}${sessionContext.currentSession.taskDescription.length > 20 ? '...' : ''}` : 'empty'
+    });
 
-    if (!activeSessionId && currentKey !== `task-description-backup-no-active-session`) {
-      // If activeSessionId is null, but the key isn't the "no-active-session" key,
-      // it might be a state inconsistency during transition. Avoid restoring.
-      console.log('[TaskDescriptionState] No active session, restore behavior depends on localStorageKey for "no-active-session". Current key:', currentKey);
+    // During a session transition, we DON'T want to clear the task description
+    // This was causing the empty state during loading
+    if (!sessionContext.currentSession) {
+      console.log('[TaskDescriptionState] No current session, waiting for session to load');
+      return; // Don't update state at all when there's no session
     }
 
-    try {
-      // Only restore if current taskDescription state is empty.
-      // This allows explicitly loaded DB data (via loadDataForSession) to take precedence.
-      if ((!taskDescription || taskDescription.trim() === '') && activeSessionId) { // Ensure activeSessionId to use its key
-        const backup = localStorage.getItem(currentKey);
-        if (backup !== null) {
-          console.log(`[TaskDescriptionState] Restoring TD for session ${activeSessionId} from key ${currentKey}:`,
-            backup.length > 0 ? `(first ${backup.substring(0, 20)}... of ${backup.length} chars)` : '(empty string)');
-          setTaskDescription(backup);
-          // loadedSessionIdRef.current should already be set to activeSessionId by the session change effect
-          if (onInteraction) onInteraction();
-        } else {
-          console.log(`[TaskDescriptionState] No local storage backup found for session ${activeSessionId} using key ${currentKey}`);
-        }
-      } else if ((!taskDescription || taskDescription.trim() === '') && !activeSessionId && currentKey === `task-description-backup-no-active-session`) {
-        // Handle restoring for "no-active-session" if applicable
-        const backup = localStorage.getItem(currentKey);
-        if (backup !== null) {
-          console.log(`[TaskDescriptionState] Restoring TD for "no-active-session" from key ${currentKey}`);
-          setTaskDescription(backup);
-          if (onInteraction) onInteraction();
-        }
-      } else {
-        console.log('[TaskDescriptionState] Not restoring from local storage - value already exists:', 
-          `(first ${taskDescription.substring(0, 20)}... of ${taskDescription.length} chars)`);
-      }
-    } catch (error) {
-      console.error('[TaskDescriptionState] Error accessing localStorage for restore:', error);
-    }
-  }, [localStorageKey, taskDescription, activeSessionId, setTaskDescription, onInteraction]);
-
-  // Update local storage when value changes
-  useEffect(() => {
-    // Skip saving to localStorage during session switching
-    if (isSwitchingSession) {
-      console.log(`[TaskDescriptionState] Suppressed localStorage save: session switch in progress`);
+    // The key fix: don't clear task description during transitions
+    // If we're switching sessions, keep the current task description unless
+    // the new session's task description is explicitly available
+    if (isSwitchingSession && !sessionContext.currentSession.taskDescription) {
+      console.log('[TaskDescriptionState] Keeping existing task description during transition');
       return;
     }
-    
-    const currentKey = localStorageKey; // Capture the key for this render
-    try {
-      if (typeof taskDescription === 'string') { // Ensure taskDescription is a string
-        // Use the global active session ID from context for consistent session identification
-        const currentActiveSessionId = globalActiveSessionId || activeSessionId;
-        
-        // Log based on whether there's an active session or not
-        if (currentActiveSessionId) {
-          console.log(`[TaskDescriptionState] Saving TD for session ${currentActiveSessionId} to key ${currentKey} (${taskDescription.length} chars)`);
-        } else {
-          console.log(`[TaskDescriptionState] Saving TD for "no-active-session" to key ${currentKey} (${taskDescription.length} chars)`);
-        }
-        localStorage.setItem(currentKey, taskDescription);
-      }
-    } catch (error) {
-      console.error('[TaskDescriptionState] Error saving to localStorage:', error);
-    }
-  }, [taskDescription, localStorageKey, activeSessionId, globalActiveSessionId, isSwitchingSession]); // Added dependencies
 
-  // Reset function to clear state - wrapped in useCallback for stability
+    // If we have a valid session, initialize from it
+    const sessionTaskDescription = sessionContext.currentSession.taskDescription || '';
+    console.log('[TaskDescriptionState] Initializing internal state from session:',
+      sessionTaskDescription.substring(0, 20) + (sessionTaskDescription.length > 20 ? '...' : ''));
+
+    // Update internal state regardless of whether task description is empty or not
+    setInternalTaskDescription(sessionTaskDescription);
+    console.log('[TaskDescriptionState] Updated internal state with task description:',
+      sessionTaskDescription ?
+      `${sessionTaskDescription.substring(0, 20)}${sessionTaskDescription.length > 20 ? '...' : ''}` :
+      '(empty string)');
+  }, [
+    sessionContext.currentSession,
+    sessionContext.activeSessionId, // React to changes in activeSessionId
+    isSwitchingSession
+  ]);
+
+  // Reset function clears UI-related state - wrapped in useCallback for stability
   const reset = useCallback(() => {
-    console.log('[TaskDescriptionState] Resetting task description state');
-    setTaskDescription("");
+    console.log('[TaskDescriptionState] Resetting task description UI state');
+    // Reset local UI state
     setTaskCopySuccess(false);
     setIsImprovingText(false);
     setTextImprovementJobId(null);
-    loadedSessionIdRef.current = null; // Clear the loaded session ID reference
-    
-    // Also clear the localStorage backup
-    try {
-      localStorage.removeItem(localStorageKey);
-    } catch (error) {
-      console.error('[TaskDescriptionState] Error removing localStorage backup:', error);
-    }
-  }, [setTaskDescription, setTaskCopySuccess, setIsImprovingText, setTextImprovementJobId, localStorageKey]);
-  
-  // Add useEffect to monitor activeSessionId changes for session switching
-  useEffect(() => {
-    const previousSessionId = loadedSessionIdRef.current; // Get the ID of the session we are switching FROM
-
-    // This effect runs when activeSessionId prop changes.
-    // `taskDescriptionForOutgoingSaveRef.current` holds the task description
-    // that was associated with `previousSessionId` just before the switch.
-
-    if (activeSessionId) { // Case 1: Switching TO a new, valid session
-      if (activeSessionId !== previousSessionId) {
-        // Save the task description of the outgoing session (previousSessionId)
-        if (previousSessionId && typeof taskDescriptionForOutgoingSaveRef.current === 'string') {
-          const outgoingSessionKey = `task-description-backup-${previousSessionId}`;
-          try {
-            localStorage.setItem(outgoingSessionKey, taskDescriptionForOutgoingSaveRef.current);
-            console.log(`[TaskDescState] Session switch: Saved TD for outgoing session ${previousSessionId} to ${outgoingSessionKey}`);
-          } catch (error) {
-            console.error(`[TaskDescState] Error saving TD for outgoing session ${previousSessionId}:`, error);
-          }
-        }
-
-        // Prepare for the new session:
-        // 1. Update loadedSessionIdRef to the new activeSessionId.
-        loadedSessionIdRef.current = activeSessionId;
-        // 2. Clear the taskDescription state. The restore effect (which now uses the new
-        //    session-specific localStorageKey due to activeSessionId change) will then attempt
-        //    to load the backup for the new session.
-        setTaskDescription('');
-      }
-    } else { // Case 2: Switching TO NO session (activeSessionId is null)
-      if (previousSessionId) { // If there was a session active before
-        // Save the task description of the outgoing session (previousSessionId)
-        if (typeof taskDescriptionForOutgoingSaveRef.current === 'string') {
-          const outgoingSessionKey = `task-description-backup-${previousSessionId}`;
-          try {
-            localStorage.setItem(outgoingSessionKey, taskDescriptionForOutgoingSaveRef.current);
-            console.log(`[TaskDescState] Session deactivation: Saved TD for outgoing session ${previousSessionId} to ${outgoingSessionKey}`);
-          } catch (error) {
-            console.error(`[TaskDescState] Error saving TD for deactivating session ${previousSessionId}:`, error);
-          }
-        }
-        reset(); // reset() will clear taskDescription state and set loadedSessionIdRef.current = null
-      }
-    }
-  }, [activeSessionId, reset]); // This effect should only run when activeSessionId or reset changes.
-  
-  // Create a debounced version of onInteraction to reduce frequency of calls
-  const debouncedInteraction = useMemo(
-    () => debounce(() => {
-      // Skip triggering interactions during session switching to prevent stale data being saved
-      if (isSwitchingSession) {
-        console.log('[TaskDescriptionState] Suppressed debounced interaction: session switch in progress');
-        return;
-      }
-      
-      if (onInteraction) {
-        console.log('[TaskDescriptionState] Triggering debounced interaction for task description changes');
-        onInteraction();
-      }
-    }, 1000), // 1 second debounce for textarea changes
-    [onInteraction, isSwitchingSession]
-  );
-
-  // Function to load data for a specific session
-  const loadDataForSession = useCallback((newDescription: string, sessionId: string) => {
-    console.log(`[TaskDescriptionState] Loading TD from DB for session ${sessionId}. TD length: ${newDescription.length}`);
-    setTaskDescription(newDescription);
-    loadedSessionIdRef.current = sessionId;
   }, []);
-
-  // Function to update task description
-  const handleTaskDescriptionChange = useCallback((value: string) => {
-    // Set the task description state immediately for UI responsiveness
-    setTaskDescription(value);
-    
-    // Update the last saved content reference
-    lastContentRef.current = value;
-    
-    // Skip notifications during session switching to prevent triggering autosave with stale data
-    if (isSwitchingSession) {
-      console.log('[TaskDescriptionState] Suppressed interaction notification: session switch in progress');
-      return;
-    }
-    
-    // Notify of changes with debouncing
-    debouncedInteraction();
-  }, [debouncedInteraction, isSwitchingSession]);
 
   // Store selection range for text improvement
   const selectionRangeRef = useRef<{start: number; end: number; text: string} | null>(null);
-  
+
   // Monitor background job for text improvement
   useEffect(() => {
     // Don't process job updates during session switching to prevent stale data being applied
@@ -238,16 +100,16 @@ export function useTaskDescriptionState({
       console.log('[TaskDescriptionState] Suppressed job processing: session switch in progress');
       return;
     }
-    
+
     if (textImprovementJobId && textImprovementJob) {
       if (textImprovementJob.job && textImprovementJob.job.status === 'completed' && textImprovementJob.job.response) {
         // Job completed successfully
         setIsImprovingText(false);
-        
+
         try {
-          // Use the global active session ID from context for consistent session identification
-          const currentActiveSessionId = globalActiveSessionId || activeSessionId;
-          
+          // Use the session ID from context for consistent session identification
+          const currentActiveSessionId = sessionContext.activeSessionId;
+
           // Check if the job belongs to the current active session
           if (textImprovementJob.job.sessionId === currentActiveSessionId) {
             // Parse the response if it's JSON, or use as-is if it's a string
@@ -260,18 +122,28 @@ export function useTaskDescriptionState({
                 return textImprovementJob.job.response;
               }
             })();
-            
+
             // If we have a valid text response and selection range
             if (typeof improvedText === 'string' && improvedText.trim() && selectionRangeRef.current) {
               const { start, end } = selectionRangeRef.current;
-              
-              // Directly update the state with the new value by replacing the selected portion
-              const currentValue = taskDescription;
+
+              // CHANGED: Use internal state instead of session context
+              const currentValue = internalTaskDescription;
               const newValue = currentValue.substring(0, start) + improvedText + currentValue.substring(end);
-              
-              // Update the task description with the new value
-              setTaskDescription(newValue);
-              
+
+              // Update internal state
+              setInternalTaskDescription(newValue);
+
+              // Update the textarea value if needed
+              if (taskDescriptionRef.current) {
+                taskDescriptionRef.current.value = newValue;
+              }
+
+              // Call onInteraction to notify parent components of a change
+              if (onInteraction) {
+                onInteraction();
+              }
+
               showNotification({
                 title: "Text improved",
                 message: "The selected text has been improved.",
@@ -296,17 +168,17 @@ export function useTaskDescriptionState({
             type: "error"
           });
         }
-        
+
         // Always reset the job ID and selection range reference after processing completed status
         setTextImprovementJobId(null);
         selectionRangeRef.current = null;
       } else if (textImprovementJob.job && (textImprovementJob.job.status === 'failed' || textImprovementJob.job.status === 'canceled')) {
         // Job failed or was canceled
         setIsImprovingText(false);
-        
-        // Use the global active session ID from context for consistent session identification
-        const currentActiveSessionId = globalActiveSessionId || activeSessionId;
-        
+
+        // Use the session ID from context for consistent session identification
+        const currentActiveSessionId = sessionContext.activeSessionId;
+
         // Only show notification if the job belongs to the current active session
         if (textImprovementJob.job.sessionId === currentActiveSessionId) {
           showNotification({
@@ -317,13 +189,22 @@ export function useTaskDescriptionState({
         } else {
           console.warn('[TaskDescriptionState] Text improvement for a non-active session failed/canceled. Suppressing notification.');
         }
-        
+
         // Always reset the job ID and selection range reference after processing failed or canceled status
         setTextImprovementJobId(null);
         selectionRangeRef.current = null;
       }
     }
-  }, [textImprovementJob, textImprovementJobId, activeSessionId, globalActiveSessionId, isSwitchingSession, showNotification, taskDescription]);
+  }, [
+    textImprovementJob,
+    textImprovementJobId,
+    isSwitchingSession,
+    showNotification,
+    sessionContext,
+    internalTaskDescription,
+    taskDescriptionRef,
+    onInteraction
+  ]);
 
   // Handle text improvement
   const handleImproveSelection = useCallback(async (selectedText: string, selectionStart?: number, selectionEnd?: number): Promise<void> => {
@@ -335,7 +216,7 @@ export function useTaskDescriptionState({
       });
       return;
     }
-    
+
     if (isImprovingText) {
       showNotification({
         title: "Already improving text",
@@ -344,36 +225,33 @@ export function useTaskDescriptionState({
       });
       return;
     }
-    
-    // Prevent text improvement during session switching
+
     if (isSwitchingSession) {
-      showNotification({
-        title: "Session switching in progress",
-        message: "Please wait for session switch to complete before improving text.",
-        type: "warning"
-      });
       return;
     }
-    
-    // Use the global active session ID from context for consistency
-    const currentActiveSessionId = globalActiveSessionId || activeSessionId;
-    
-    // Validate that currentActiveSessionId is a string
-    if (currentActiveSessionId !== null && typeof currentActiveSessionId !== 'string') {
-      console.error(`[TaskDescriptionState] Invalid activeSessionId type: ${typeof currentActiveSessionId}, value:`, currentActiveSessionId);
+
+    // Use the session ID from context
+    const currentActiveSessionId = sessionContext.activeSessionId;
+
+    // Validate that we have a session ID
+    if (!currentActiveSessionId) {
+      console.error(`[TaskDescriptionState] No active session ID found`);
       showNotification({
         title: "Error",
-        message: "Invalid session ID format",
+        message: "No active session",
         type: "error"
       });
       return;
     }
-    
+
     setIsImprovingText(true);
-    
+
     try {
       console.log("[TaskDescriptionState] Improving selected text:", selectedText.substring(0, 50) + "...");
-      
+
+      // CHANGED: Use internal state instead of session context
+      const currentTaskDescription = internalTaskDescription;
+
       // If we have selection start and end positions, store them for later use
       if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
         console.log(`[TaskDescriptionState] Storing selection range: ${selectionStart}-${selectionEnd}`);
@@ -386,7 +264,7 @@ export function useTaskDescriptionState({
         // Try to get selection from the textarea element
         const start = taskDescriptionRef.current.selectionStart;
         const end = taskDescriptionRef.current.selectionEnd;
-        
+
         if (typeof start === 'number' && typeof end === 'number') {
           console.log(`[TaskDescriptionState] Getting selection range from textarea: ${start}-${end}`);
           selectionRangeRef.current = {
@@ -397,7 +275,7 @@ export function useTaskDescriptionState({
         } else {
           // Fallback: try to find the text in the task description
           console.log(`[TaskDescriptionState] No selection range provided, searching for text in task description`);
-          const index = taskDescription.indexOf(selectedText);
+          const index = currentTaskDescription.indexOf(selectedText);
           if (index >= 0) {
             selectionRangeRef.current = {
               start: index,
@@ -410,15 +288,15 @@ export function useTaskDescriptionState({
           }
         }
       }
-      
+
       // Ensure we pass the text correctly to the action with targetField
       const result = await improveSelectedTextAction({
         text: selectedText,
-        sessionId: currentActiveSessionId, // Use the consistent session ID from context
+        sessionId: currentActiveSessionId,
         projectDirectory, // Include project directory
         targetField: 'taskDescription' // Explicitly set targetField
       });
-      
+
       if (result.isSuccess) {
         // Check for background job format
         if (result.data && typeof result.data === 'object' && 'isBackgroundJob' in result.data && result.data.jobId) {
@@ -427,31 +305,41 @@ export function useTaskDescriptionState({
         } else if (typeof result.data === 'string') {
           // Handle immediate text improvement result
           console.log("[TaskDescriptionState] Text improvement completed immediately");
-          
+
           // Check if we have a valid selection range and apply the improved text
           if (selectionRangeRef.current) {
             const { start, end } = selectionRangeRef.current;
-            const currentValue = taskDescription;
-            const newValue = currentValue.substring(0, start) + result.data + currentValue.substring(end);
-            
-            // Update the task description with the new value
-            setTaskDescription(newValue);
+            const newValue = currentTaskDescription.substring(0, start) + result.data + currentTaskDescription.substring(end);
+
+            // CHANGED: Update internal state instead of SessionContext
+            setInternalTaskDescription(newValue);
+
+            // Update the textarea value if needed
+            if (taskDescriptionRef.current) {
+              taskDescriptionRef.current.value = newValue;
+            }
+
+            // Call onInteraction to notify parent components of a change
+            if (onInteraction) {
+              onInteraction();
+            }
+
             selectionRangeRef.current = null;
           }
-          
+
           showNotification({
             title: "Text improved",
             message: "The selected text has been improved.",
             type: "success"
           });
-          
+
           setIsImprovingText(false);
         } else {
           // Unexpected data format but still success
           console.warn("[TaskDescriptionState] Unexpected success data format:", result.data);
           setIsImprovingText(false);
           selectionRangeRef.current = null;
-          
+
           showNotification({
             title: "Text improvement result",
             message: "Received unexpected result format.",
@@ -466,60 +354,84 @@ export function useTaskDescriptionState({
       console.error("[TaskDescriptionState] Error improving text:", error);
       setIsImprovingText(false);
       selectionRangeRef.current = null;
-      
+
       showNotification({
         title: "Error improving text",
         message: error instanceof Error ? error.message : "An unknown error occurred.",
         type: "error"
       });
     }
-  }, [isImprovingText, showNotification, activeSessionId, globalActiveSessionId, isSwitchingSession, taskDescription, taskDescriptionRef, projectDirectory]);
+  }, [
+    isImprovingText,
+    showNotification,
+    isSwitchingSession,
+    taskDescriptionRef,
+    projectDirectory,
+    sessionContext,
+    internalTaskDescription,
+    onInteraction
+  ]);
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(taskDescription);
+      // CHANGED: Use internal state instead of session context
+      await navigator.clipboard.writeText(internalTaskDescription);
       setTaskCopySuccess(true);
-      
+
       // Reset the copy success state after a delay
       setTimeout(() => {
         setTaskCopySuccess(false);
       }, 2000);
-      
+
       return true;
     } catch (error) {
       console.error("[TaskDescriptionState] Error copying task description:", error);
       return false;
     }
-  }, [taskDescription]);
+  }, [internalTaskDescription]);
+
+  // CHANGED: Update internal state instead of directly updating session context
+  const setTaskDescription = useCallback((value: string) => {
+    // Update internal state
+    setInternalTaskDescription(value);
+
+    // Update textarea value if ref is available
+    if (taskDescriptionRef.current) {
+      taskDescriptionRef.current.value = value;
+    }
+
+    // Notify parent components of change
+    if (onInteraction) {
+      onInteraction();
+    }
+  }, [taskDescriptionRef, onInteraction]);
 
   return useMemo(() => ({
-    // State
-    taskDescription,
+    // CHANGED: Return internal state instead of session state
+    taskDescription: internalTaskDescription,
     isImprovingText,
     textImprovementJobId,
     taskCopySuccess,
     taskDescriptionRef,
-    
+
     // Actions
-    setTaskDescription: handleTaskDescriptionChange,
+    setTaskDescription,
     handleImproveSelection,
     copyTaskDescription,
-    reset,
-    loadDataForSession
+    reset
   }), [
     // State values
-    taskDescription,
+    internalTaskDescription,
     isImprovingText,
     textImprovementJobId,
     taskCopySuccess,
     taskDescriptionRef,
-    
+
     // Stable callback functions
-    handleTaskDescriptionChange,
+    setTaskDescription,
     handleImproveSelection,
     copyTaskDescription,
-    reset,
-    loadDataForSession
+    reset
   ]);
 } 
