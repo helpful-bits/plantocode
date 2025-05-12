@@ -4,10 +4,11 @@ import { useState, useCallback } from "react";
 import { useSessionContext } from "@/lib/contexts/session-context";
 import { useProject } from "@/lib/contexts/project-context";
 import { useNotification } from '@/lib/contexts/notification-context';
-import { 
-  createImplementationPlanAction, 
-  getImplementationPlanPromptAction 
+import {
+  createImplementationPlanAction,
+  getImplementationPlanPromptAction
 } from '@/actions/implementation-plan-actions';
+import { generateImplementationPlanSystemPrompt } from '@/lib/prompts/implementation-plan-prompts';
 
 /**
  * Hook for managing implementation plan related actions
@@ -129,10 +130,11 @@ export function useImplementationPlanActions() {
 
   /**
    * Copy implementation plan prompt to clipboard
+   * Combines both the system prompt and user prompt
    */
   const handleCopyImplementationPlanPrompt = useCallback(async (
     taskDescription: string,
-    includedPaths: string[], 
+    includedPaths: string[],
     fileContentsMap: Record<string, string>
   ) => {
     setIsCopyingPlanPrompt(true);
@@ -155,21 +157,28 @@ export function useImplementationPlanActions() {
       });
 
       if (result.isSuccess && result.data?.prompt) {
-        await navigator.clipboard.writeText(result.data.prompt);
+        // Get the static system prompt
+        const systemPrompt = generateImplementationPlanSystemPrompt();
+
+        // Combine system and user prompts
+        const fullPrompt = `${systemPrompt}\n\n${result.data.prompt}`;
+
+        // Copy the combined prompt to clipboard
+        await navigator.clipboard.writeText(fullPrompt);
+
         setPlanPromptCopySuccess(true);
-        showNotification({
-          title: "Prompt Copied",
-          message: "Implementation plan prompt copied to clipboard.",
-          type: "success",
-          clipboardFeedback: true
-        });
+
+        // Will be updated in the next step to integrate with toast
         setTimeout(() => setPlanPromptCopySuccess(false), 2000);
+
+        return true; // Return success for toast handling in the component
       } else {
         showNotification({
           title: "Copy Failed",
           message: result.message || "An error occurred while copying the implementation plan prompt.",
           type: "error"
         });
+        return false;
       }
     } catch (error) {
       console.error("[handleCopyImplementationPlanPrompt]", error);
@@ -178,6 +187,7 @@ export function useImplementationPlanActions() {
         message: error instanceof Error ? error.message : "An unknown error occurred.",
         type: "error"
       });
+      return false;
     } finally {
       setIsCopyingPlanPrompt(false);
     }
@@ -185,7 +195,7 @@ export function useImplementationPlanActions() {
 
   /**
    * Get implementation plan prompt string
-   * Returns the prompt string or null on error
+   * Returns the combined system and user prompt or null on error
    */
   const handleGetImplementationPlanPrompt = useCallback(async (
     taskDescription: string,
@@ -210,7 +220,11 @@ export function useImplementationPlanActions() {
       });
 
       if (result.isSuccess && result.data?.prompt) {
-        return result.data.prompt;
+        // Get the static system prompt
+        const systemPrompt = generateImplementationPlanSystemPrompt();
+
+        // Combine system and user prompts
+        return `${systemPrompt}\n\n${result.data.prompt}`;
       } else {
         showNotification({
           title: "Prompt Generation Failed",

@@ -5,6 +5,12 @@ import { FileInfo } from "@/types";
 import { FilesMap } from "./use-project-file-list";
 import { makePathRelative, normalizePathForComparison } from "@/lib/path-utils";
 
+// Define a selection history item type
+interface SelectionHistoryItem {
+  included: string[];
+  excluded: string[];
+}
+
 interface UseFileSelectionManagerProps {
   rawFilesMap: FilesMap;
   currentIncludedFiles: string[];
@@ -39,9 +45,27 @@ export function useFileSelectionManager({
   const [managedFilesMap, setManagedFilesMap] = useState<FilesMap>({});
   const [showOnlySelected, setShowOnlySelectedInternal] = useState<boolean>(false);
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>([]);
+  const [pastSelections, setPastSelections] = useState<SelectionHistoryItem[]>([]);
+  const [futureSelections, setFutureSelections] = useState<SelectionHistoryItem[]>([]);
 
   const searchTerm = currentSearchTerm;
   const searchSelectedFilesOnly = currentSearchSelectedFilesOnly;
+
+  // Helper function to push current selection state to history
+  const pushHistory = useCallback((currentIncluded: string[], currentExcluded: string[]) => {
+    // Only push to history if there are changes to track
+    setPastSelections(prev => {
+      // Limit history size to 20 entries for performance
+      const updatedHistory = [...prev, { included: [...currentIncluded], excluded: [...currentExcluded] }];
+      if (updatedHistory.length > 20) {
+        return updatedHistory.slice(-20);
+      }
+      return updatedHistory;
+    });
+
+    // Clear future selections when a new change is made
+    setFutureSelections([]);
+  }, []);
   
   const prevIsTransitioningRef = useRef(isTransitioningSession);
   const prevSessionIdRef = useRef<string | null>(activeSessionId);
@@ -62,12 +86,19 @@ export function useFileSelectionManager({
     setManagedFilesMap({});
     setShowOnlySelectedInternal(false);
     setExternalPathWarnings([]);
+    setPastSelections([]);
+    setFutureSelections([]);
 
+    // Reset counter refs
     toggleCountRef.current = 0;
     lastToggleTimeRef.current = 0;
     bulkOperationCountRef.current = 0;
     lastBulkOperationTimeRef.current = 0;
 
+    // Reset session deletion detection refs
+    isSessionDeletionRef.current = false;
+    prevIncludedFilesLengthRef.current = 0;
+    prevExcludedFilesLengthRef.current = 0;
   }, []);
 
   useEffect(() => {
@@ -87,10 +118,16 @@ export function useFileSelectionManager({
     }
   }, [activeSessionId, reset, isTransitioningSession]);
   
-  const applySelectionsFromPaths = useCallback((paths: string[]) => {
+  const applySelectionsFromPaths = useCallback((paths: string[], options?: { mergeWithExisting?: boolean }) => {
     if (!paths || paths.length === 0) {
       return;
     }
+
+    // Whether to merge with existing selections (default is true - always merge)
+    const mergeWithExisting = options?.mergeWithExisting ?? true;
+
+    // Save current state to history before making changes
+    pushHistory(currentIncludedFiles, currentExcludedFiles);
 
     // Find matching file paths in rawFilesMap
     const warnings: string[] = [];
@@ -179,8 +216,11 @@ export function useFileSelectionManager({
     // Update the UI with the new state
     setManagedFilesMap(updatedMap);
 
-    // Update the session with new included files by merging with current included files
-    const newIncludedFiles = [...new Set([...currentIncludedFiles, ...matchedPaths])];
+    // Update the session with new included files based on merge option
+    const newIncludedFiles = mergeWithExisting
+      ? [...new Set([...currentIncludedFiles, ...matchedPaths])]  // Merge with existing
+      : [...matchedPaths];  // Replace existing
+
     onUpdateIncludedFiles(newIncludedFiles);
 
     // Also ensure these files are removed from excluded files if they were there
@@ -188,7 +228,7 @@ export function useFileSelectionManager({
     if (newExcludedFiles.length !== currentExcludedFiles.length) {
       onUpdateExcludedFiles(newExcludedFiles);
     }
-  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles, pushHistory]);
 
   useEffect(() => {
     prevIsTransitioningRef.current = isTransitioningSession;
@@ -203,20 +243,51 @@ export function useFileSelectionManager({
   const prevRawFilesMapKeysRef = useRef<string[]>([]);
   const isProcessingUpdateRef = useRef<boolean>(false);
 
+  // Track previous values to detect session deletion
+  const prevIncludedFilesLengthRef = useRef<number>(currentIncludedFiles.length);
+  const prevExcludedFilesLengthRef = useRef<number>(currentExcludedFiles.length);
+  const isSessionDeletionRef = useRef<boolean>(false);
+
   // Core effect to update managedFilesMap based on props
   useEffect(() => {
-    // During transitions, we'll still process updates
+    // Check if we might be in a session deletion scenario
+    // Session deletion typically results in both arrays becoming empty at once
+    const isPossibleSessionDeletion =
+      currentIncludedFiles.length === 0 &&
+      currentExcludedFiles.length === 0 &&
+      (prevIncludedFilesLengthRef.current > 0 || prevExcludedFilesLengthRef.current > 0);
 
-    // CASE 1: No project files loaded yet - nothing to process
-    if (Object.keys(rawFilesMap).length === 0) {
-      // Only log if we're not just starting up (to reduce console noise)
-      if (Object.keys(managedFilesMap).length > 0) {
-      } else {
-      }
+    // If this looks like a session deletion, set the flag
+    if (isPossibleSessionDeletion && !isSessionDeletionRef.current) {
+      isSessionDeletionRef.current = true;
 
+      // Update refs to avoid repeated detection
+      prevIncludedFilesLengthRef.current = 0;
+      prevExcludedFilesLengthRef.current = 0;
+
+      // Skip this render cycle to break potential infinite loop
       return;
     }
 
+    // Reset the deletion flag if we have files again (new session loaded)
+    if ((currentIncludedFiles.length > 0 || currentExcludedFiles.length > 0) && isSessionDeletionRef.current) {
+      isSessionDeletionRef.current = false;
+    }
+
+    // Update tracking refs for next time
+    prevIncludedFilesLengthRef.current = currentIncludedFiles.length;
+    prevExcludedFilesLengthRef.current = currentExcludedFiles.length;
+
+    // During transitions, we'll still process updates
+    // CASE 1: No project files loaded yet - nothing to process
+    if (Object.keys(rawFilesMap).length === 0) {
+      return;
+    }
+
+    // Break potential infinite update loops during session deletion
+    if (isSessionDeletionRef.current) {
+      return;
+    }
 
     // Create a new map based on rawFilesMap
     const newManagedFilesMap: FilesMap = {};
@@ -260,10 +331,8 @@ export function useFileSelectionManager({
               break;
             }
           }
-
         }
-
-          }
+      }
 
       // Apply excluded files from props
       if (currentExcludedFiles.length > 0) {
@@ -292,11 +361,8 @@ export function useFileSelectionManager({
               break;
             }
           }
-
         }
-
-          }
-    } else {
+      }
     }
 
     // Update state with the new managed files map
@@ -314,7 +380,7 @@ export function useFileSelectionManager({
     setShowOnlySelectedInternal(value);
   }, []);
 
-  // Simplified toggle function to update through props
+  // Simplified toggle function to update through props - this calls our debounced handler in the parent
   const toggleSearchSelectedFilesOnly = useCallback((value?: boolean) => {
     const newValue = typeof value === 'boolean' ? value : !searchSelectedFilesOnly;
     onUpdateSearchSelectedOnly(newValue);
@@ -330,6 +396,9 @@ export function useFileSelectionManager({
   
   // File selection handlers that update via props
   const toggleFileSelection = useCallback((path: string) => {
+    // Save current state to history before making changes
+    pushHistory(currentIncludedFiles, currentExcludedFiles);
+
     // Track rapid consecutive toggles to detect potential click storms
     const now = Date.now();
     const timeSinceLastToggle = now - lastToggleTimeRef.current;
@@ -388,9 +457,12 @@ export function useFileSelectionManager({
         onUpdateExcludedFiles(newExcludedFiles);
       }
     }
-  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles, pushHistory]);
 
   const toggleFileExclusion = useCallback((path: string) => {
+    // Save current state to history before making changes
+    pushHistory(currentIncludedFiles, currentExcludedFiles);
+
     // Track rapid consecutive toggles to detect potential click storms
     const now = Date.now();
     const timeSinceLastToggle = now - lastToggleTimeRef.current;
@@ -446,9 +518,12 @@ export function useFileSelectionManager({
       );
       onUpdateIncludedFiles(newIncludedFiles);
     }
-  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles, pushHistory]);
 
   const handleBulkToggle = useCallback((shouldInclude: boolean, targetFiles: FileInfo[]) => {
+    // Save current state to history before making changes
+    pushHistory(currentIncludedFiles, currentExcludedFiles);
+
     const operationSize = targetFiles.length;
 
     // Record this operation's time
@@ -513,7 +588,7 @@ export function useFileSelectionManager({
       );
       onUpdateIncludedFiles(newIncludedFiles);
     }
-  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+  }, [managedFilesMap, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles, pushHistory]);
 
 
   const normalizePaths = (paths: string[]): Set<string> => {
@@ -570,14 +645,16 @@ export function useFileSelectionManager({
     return { byComparablePath, byFileName, byPath };
   };
 
-  // Improved replaceAllSelectionsWithPaths with safe state updates
-  const replaceAllSelectionsWithPaths = useCallback((newPaths: string[], options?: { mergeWithExisting?: boolean }) => {
+  // Modern implementation for replacing selections with new paths (no compatibility options)
+  const replaceAllSelectionsWithPaths = useCallback((newPaths: string[]) => {
     if (!newPaths || newPaths.length === 0) {
       return;
     }
 
-    // Whether to merge with existing selections (default is false - replace all)
-    const mergeWithExisting = options?.mergeWithExisting ?? false;
+    // This is now a dedicated function for replacing, never merging
+
+    // Save current state to history before making changes
+    pushHistory(currentIncludedFiles, currentExcludedFiles);
 
     const operationSize = newPaths.length;
 
@@ -603,15 +680,13 @@ export function useFileSelectionManager({
       // Normalize all paths in newPaths
       const normalizedPaths = normalizePaths(newPaths);
 
-      // If not merging, first reset all files to not included (except force excluded ones)
-      if (!mergeWithExisting) {
-        for (const path of Object.keys(updatedMap)) {
-          if (!updatedMap[path].forceExcluded) {
-            updatedMap[path] = {
-              ...updatedMap[path],
-              included: false
-            };
-          }
+      // Reset all files to not included (except force excluded ones)
+      for (const path of Object.keys(updatedMap)) {
+        if (!updatedMap[path].forceExcluded) {
+          updatedMap[path] = {
+            ...updatedMap[path],
+            included: false
+          };
         }
       }
 
@@ -755,15 +830,10 @@ export function useFileSelectionManager({
     // Instead of updating the session state in the render phase,
     // do it in the next microtask to avoid React errors about updating during render
     setTimeout(() => {
-      if (mergeWithExisting) {
-        // When merging, add the matched paths to existing selections
-        onUpdateIncludedFiles([...new Set([...currentIncludedFiles, ...matchedNormalizedPaths])]);
-      } else {
-        // When replacing, set included to exactly the matched paths
-        onUpdateIncludedFiles(matchedNormalizedPaths);
-      }
+      // Always replace with exactly the matched paths
+      onUpdateIncludedFiles(matchedNormalizedPaths);
     }, 0);
-  }, [managedFilesMap, currentIncludedFiles, onUpdateIncludedFiles]);
+  }, [managedFilesMap, onUpdateIncludedFiles, pushHistory, currentIncludedFiles, currentExcludedFiles]);
 
 
   // Calculate derived state directly based on managedFilesMap
@@ -818,8 +888,67 @@ export function useFileSelectionManager({
   // Simplified flush function - just a placeholder to maintain API compatibility
   const flushPendingOperations = useCallback(() => {}, []);
 
+  // Implement undo selection function
+  const undoSelection = useCallback(() => {
+    if (pastSelections.length === 0) {
+      return; // Nothing to undo
+    }
 
+    // Get a copy of the current state for redoing later
+    const currentState = {
+      included: [...currentIncludedFiles],
+      excluded: [...currentExcludedFiles]
+    };
 
+    // Pop the last state from history
+    const prevSelections = [...pastSelections];
+    const prevState = prevSelections.pop();
+
+    // Save current state to future for redo
+    setFutureSelections(prev => [currentState, ...prev]);
+
+    // Update history
+    setPastSelections(prevSelections);
+
+    // Apply the previous state
+    if (prevState) {
+      onUpdateIncludedFiles(prevState.included);
+      onUpdateExcludedFiles(prevState.excluded);
+    }
+  }, [pastSelections, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+
+  // Implement redo selection function
+  const redoSelection = useCallback(() => {
+    if (futureSelections.length === 0) {
+      return; // Nothing to redo
+    }
+
+    // Get a copy of the current state for undoing later
+    const currentState = {
+      included: [...currentIncludedFiles],
+      excluded: [...currentExcludedFiles]
+    };
+
+    // Pop the next state from future
+    const nextSelections = [...futureSelections];
+    const nextState = nextSelections.shift();
+
+    // Save current state to history for undo
+    setPastSelections(prev => [...prev, currentState]);
+
+    // Update future history
+    setFutureSelections(nextSelections);
+
+    // Apply the next state
+    if (nextState) {
+      onUpdateIncludedFiles(nextState.included);
+      onUpdateExcludedFiles(nextState.excluded);
+    }
+  }, [futureSelections, currentIncludedFiles, currentExcludedFiles, onUpdateIncludedFiles, onUpdateExcludedFiles]);
+
+  // Calculate if undo/redo are available
+  const canUndo = pastSelections.length > 0;
+  const canRedo = futureSelections.length > 0;
 
   return {
     managedFilesMap,
@@ -839,6 +968,10 @@ export function useFileSelectionManager({
     applySelectionsFromPaths,
     replaceAllSelectionsWithPaths,
     flushPendingOperations,
+    undoSelection,
+    redoSelection,
+    canUndo,
+    canRedo,
     reset
   };
 }

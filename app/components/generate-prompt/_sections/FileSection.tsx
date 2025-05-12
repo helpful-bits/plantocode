@@ -16,7 +16,21 @@ const FileSection = React.memo(function FileSection({
   const context = useGeneratePrompt();
   const fileState = useFileManagement();
   const regexState = context.regexState;
-  
+
+  // Calculate if regex is available based on regex patterns
+  const isRegexAvailable = !!(
+    regexState.titleRegex.trim() ||
+    regexState.contentRegex.trim() ||
+    regexState.negativeTitleRegex.trim() ||
+    regexState.negativeContentRegex.trim()
+  );
+
+  // Handle filter mode changes and synchronize with regex state
+  const handleFilterModeChange = (newMode: 'all' | 'selected' | 'regex') => {
+    fileState.setFilterMode(newMode);
+    regexState.setIsRegexActive(newMode === 'regex');
+    context.handleInteraction(() => fileState.getFileStateForSession());
+  };
 
   return (
     <>
@@ -33,8 +47,9 @@ const FileSection = React.memo(function FileSection({
           // Update state through fileState.handleBulkToggle which will trigger the proper interaction handlers
           fileState.handleBulkToggle(targetFiles as any, shouldInclude);
         }}
-        showOnlySelected={fileState.showOnlySelected}
-        onShowOnlySelectedChange={() => fileState.setShowOnlySelected(!fileState.showOnlySelected)}
+        filterMode={fileState.filterMode}
+        onFilterModeChange={handleFilterModeChange}
+        isRegexAvailable={isRegexAvailable}
         onInteraction={() => context.handleInteraction(() => fileState.getFileStateForSession())}
         refreshFiles={async (preserveState?: boolean) => {
           await fileState.refreshFiles();
@@ -51,11 +66,6 @@ const FileSection = React.memo(function FileSection({
                 ? "Loading files..."
                 : ""
         }
-        onFindRelevantFiles={fileState.findRelevantFiles}
-        isFindingFiles={fileState.isFindingFiles}
-        searchSelectedFilesOnly={fileState.searchSelectedFilesOnly}
-        onToggleSearchSelectedFilesOnly={fileState.toggleSearchSelectedFilesOnly}
-        taskDescription={context.taskState.taskDescription}
         regexState={context.regexState}
         disabled={disabled}
       />

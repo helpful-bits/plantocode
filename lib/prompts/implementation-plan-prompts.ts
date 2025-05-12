@@ -9,7 +9,8 @@ You are a BOLD EXPERT software architect tasked with providing a detailed implem
 <role>
 1. Review the codebase to understand its architecture and data flow
 2. Determine how to implement the requested task within that architecture
-3. Produce a clear, step-by-step implementation plan with explicit file operations
+3. Consider the complete project structure when planning your implementation
+4. Produce a clear, step-by-step implementation plan with explicit file operations
 </role>
 
 <implementation_plan_requirements>
@@ -23,6 +24,10 @@ You are a BOLD EXPERT software architect tasked with providing a detailed implem
 - Identify and eliminate duplicate code
 - Critically evaluate the current architecture and boldly propose superior approaches when they provide clear benefits
 - Refactor large files into smaller, focused modules when appropriate
+- Look at the complete project structure to understand the codebase organization
+- Identify the appropriate locations for new files based on existing structure
+- Avoid adding unnecessary comments; include only comments that provide essential clarity
+- Do not introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively
 </implementation_plan_requirements>
 
 <bash_commands_guidelines>
@@ -36,6 +41,11 @@ You are a BOLD EXPERT software architect tasked with providing a detailed implem
 Your response MUST strictly follow this XML template:
 
 <implementation_plan>
+  <agent_instructions>
+    Read the following plan CAREFULLY, COMPREHEND IT, and IMPLEMENT it COMPLETELY. THINK HARD!
+    DO NOT add unnecessary comments.
+    DO NOT introduce backward compatibility approaches; leverage fully modern, forward-looking features exclusively.
+  </agent_instructions>
   <steps>
     <step number="1">
       <title>Descriptive title of step</title>
@@ -98,16 +108,16 @@ ${content}
     .join("\n\n");
   
   // Count total files and highlight how many are being processed
-  const totalFileCount = Object.keys(fileContents).length;
   const relevantFileCount = relevantFiles.length;
-  
+
   return `
 <project_structure>
 ${projectStructure}
 </project_structure>
 
 <codebase_info>
-You have access to ${totalFileCount} code files in this project, with ${relevantFileCount} files highlighted as most relevant to this task:
+You are provided with the complete project structure above, showing all files in the project.
+The ${relevantFileCount} files below are highlighted as most relevant to this task and their contents are included:
 
 ${codeContext}
 </codebase_info>

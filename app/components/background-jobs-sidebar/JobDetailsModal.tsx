@@ -8,7 +8,6 @@ import {
   DialogFooter
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { formatTimestamp, formatJobDuration } from '@/lib/utils/date-utils';
 import { BackgroundJob } from '@/types/session-types';
@@ -173,7 +172,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   const formatMetadata = (metadata: any) => {
     try {
       if (!metadata) return 'None';
-      
+
       // If it's a string, try to parse it as JSON
       if (typeof metadata === 'string') {
         try {
@@ -182,27 +181,56 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           return metadata;
         }
       }
-      
+
       // Filter out keys that are already shown in the UI
       // or don't provide useful information
       const filteredMetadata = {...metadata};
       const keysToRemove = [
-        'modelUsed', 'maxOutputTokens', 'temperature', 
+        'modelUsed', 'maxOutputTokens', 'temperature',
         'tokensSent', 'tokensReceived', 'tokensTotal',
         'lastUpdateTime', // This is redundant with the updatedAt field
-        'outputFilePath' // This is shown separately in the UI
+        'outputFilePath', // This is shown separately in the UI
+        'regexPatterns' // This will be displayed separately if present
       ];
-      
+
       keysToRemove.forEach(key => {
         if (key in filteredMetadata) {
           delete filteredMetadata[key];
         }
       });
-      
+
       // Format the object for display
       return JSON.stringify(filteredMetadata, null, 2);
     } catch (e) {
       return 'Invalid metadata';
+    }
+  };
+
+  // Format regex patterns for display
+  const formatRegexPatterns = (regexPatterns: any) => {
+    if (!regexPatterns) return null;
+
+    try {
+      // If it's a string, try to parse it as JSON
+      if (typeof regexPatterns === 'string') {
+        try {
+          regexPatterns = JSON.parse(regexPatterns);
+        } catch (e) {
+          return regexPatterns;
+        }
+      }
+
+      // Create a nicely formatted section for regex patterns
+      const patterns = [
+        regexPatterns.titleRegex && `Title: ${regexPatterns.titleRegex}`,
+        regexPatterns.contentRegex && `Content: ${regexPatterns.contentRegex}`,
+        regexPatterns.negativeTitleRegex && `Negative Title: ${regexPatterns.negativeTitleRegex}`,
+        regexPatterns.negativeContentRegex && `Negative Content: ${regexPatterns.negativeContentRegex}`
+      ].filter(Boolean);
+
+      return patterns.join('\n');
+    } catch (e) {
+      return JSON.stringify(regexPatterns, null, 2);
     }
   };
   
@@ -341,248 +369,296 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   return (
     <Dialog open={!!job} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-6">
         <DialogHeader>
           <DialogTitle>Job Details</DialogTitle>
           <DialogDescription className="text-balance">
             Details for job ID: {job.id}
           </DialogDescription>
         </DialogHeader>
-        
-        <div className="grid grid-cols-2 gap-4 py-4">
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Status</h4>
-            <p className="text-sm">{job.status}</p>
-          </div>
-          
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">API</h4>
-            <p className="text-sm">{job.apiType}</p>
-          </div>
-          
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Task</h4>
-            <p className="text-sm">{job.taskType}</p>
-          </div>
-          
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Model</h4>
-            <p className="text-sm">
-              {job.modelUsed || 'Not specified'}
-              {job.temperature !== undefined && (
-                <span className="ml-1.5 text-xs text-muted-foreground">
-                  (temp: {job.temperature})
-                </span>
-              )}
-            </p>
-          </div>
-          
-          {job.maxOutputTokens && (
-            <div className="col-span-2 md:col-span-1">
-              <h4 className="font-semibold mb-1.5">Max Output Tokens</h4>
-              <p className="text-sm">{job.maxOutputTokens.toLocaleString()}</p>
-            </div>
-          )}
-          
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Created</h4>
-            <p className="text-sm">{formatTimestamp(job.createdAt && job.createdAt > 0 ? job.createdAt : Date.now())}</p>
-          </div>
-          
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Completed</h4>
-            <p className="text-sm">{job.endTime && job.endTime > 0 ? formatTimestamp(job.endTime) : 'Not completed'}</p>
-          </div>
-          
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Duration</h4>
-            <p className="text-sm">{jobDuration}</p>
-            {job.status === 'running' && job.startTime && (
-              <div className="mt-2">
-                <Progress
-                  value={
-                    // Calculate progress for long-running jobs, more granular for streaming jobs
-                    job.metadata?.isStreaming
-                      ? job.metadata.responseLength && job.metadata.estimatedTotalLength
-                        ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 98)
-                        : job.metadata.streamProgress || Math.min(Math.floor((Date.now() - job.startTime) / 200), 95)
-                      : Math.min(Math.floor((Date.now() - job.startTime) / 300), 90)
-                  }
-                  className="h-1 w-full animate-pulse"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Running...</p>
-              </div>
-            )}
-          </div>
+        <div className="flex flex-col space-y-6 overflow-y-auto pr-2 mt-4" style={{ maxHeight: 'calc(90vh - 150px)' }}>
 
-          <div className="col-span-2 md:col-span-1">
-            <h4 className="font-semibold mb-1.5">Tokens</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <span className="text-xs text-muted-foreground">Input:</span>
-                <p className="text-sm font-mono">{job.tokensSent?.toLocaleString() || 0}</p>
+            <div className="grid grid-cols-2 gap-4 py-4">
+              {/* Job Status Section */}
+              <div className="col-span-2">
+                <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
+                  <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Job Status</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Status</h5>
+                      <p className="text-sm font-medium">{job.status}</p>
+                    </div>
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">API</h5>
+                      <p className="text-sm font-medium">{job.apiType}</p>
+                    </div>
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Task</h5>
+                      <p className="text-sm font-medium">{job.taskType}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Output:</span>
-                <p className="text-sm font-mono">{job.tokensReceived?.toLocaleString() || 0}</p>
+
+              {/* Model Configuration Section */}
+              <div className="col-span-2">
+                <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
+                  <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Model Configuration</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Model</h5>
+                      <p className="text-sm font-medium">{job.modelUsed || job.metadata?.modelUsed || 'Default'}</p>
+                    </div>
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Temperature</h5>
+                      <p className="text-sm font-medium">{job.temperature !== undefined ? job.temperature : 'Default'}</p>
+                    </div>
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Max Output Tokens</h5>
+                      <p className="text-sm font-medium">{job.maxOutputTokens ? job.maxOutputTokens.toLocaleString() : 'Default'}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              {(job.tokensSent || job.tokensReceived) && (
-                <div className="col-span-2">
-                  <span className="text-xs text-muted-foreground">Total:</span>
-                  <p className="text-sm font-mono">
-                    {((job.tokensSent || 0) + (job.tokensReceived || 0)).toLocaleString()} tokens
-                  </p>
+
+              {/* Timing Information Section */}
+              <div className="col-span-2">
+                <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
+                  <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Timing</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Created</h5>
+                      <p className="text-sm font-medium">{formatTimestamp(job.createdAt && job.createdAt > 0 ? job.createdAt : Date.now())}</p>
+                    </div>
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Completed</h5>
+                      <p className="text-sm font-medium">{job.endTime && job.endTime > 0 ? formatTimestamp(job.endTime) : 'Not completed'}</p>
+                    </div>
+                    <div>
+                      <h5 className="text-xs text-muted-foreground mb-1">Duration</h5>
+                      <p className="text-sm font-medium">{jobDuration}</p>
+                      {job.status === 'running' && job.startTime && (
+                        <div className="mt-2">
+                          <Progress
+                            value={
+                              // Calculate progress for long-running jobs, more granular for streaming jobs
+                              job.metadata?.isStreaming
+                                ? job.metadata.responseLength && job.metadata.estimatedTotalLength
+                                  ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 98)
+                                  : job.metadata.streamProgress || Math.min(Math.floor((Date.now() - job.startTime) / 200), 95)
+                                : Math.min(Math.floor((Date.now() - job.startTime) / 300), 90)
+                            }
+                            className="h-1 w-full animate-pulse"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Running...</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-2">
+                <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
+                  <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Token Usage</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                        <h5 className="text-xs text-muted-foreground">Input</h5>
+                      </div>
+                      <p className="text-sm font-mono font-medium">{job.tokensSent?.toLocaleString() || 0}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                        <h5 className="text-xs text-muted-foreground">Output</h5>
+                      </div>
+                      <p className="text-sm font-mono font-medium">{job.tokensReceived?.toLocaleString() || 0}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                        <h5 className="text-xs text-muted-foreground">Total</h5>
+                      </div>
+                      <p className="text-sm font-mono font-medium">
+                        {((job.tokensSent || 0) + (job.tokensReceived || 0)).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
                   {job.status === 'running' && job.metadata?.maxOutputTokens && job.tokensReceived && (
-                    <div className="mt-1 w-full">
+                    <div className="mt-3">
+                      <div className="flex justify-between items-center text-xs text-muted-foreground mb-1">
+                        <span>Output Tokens Used</span>
+                        <span>{job.tokensReceived} / {job.metadata.maxOutputTokens}</span>
+                      </div>
                       <Progress
                         value={Math.min((job.tokensReceived / job.metadata.maxOutputTokens) * 100, 100)}
                         className="h-1"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {job.tokensReceived} / {job.metadata.maxOutputTokens} output tokens
-                      </p>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
-          
-          {job.outputFilePath && (
-            <div className="col-span-2">
-              <h4 className="font-semibold mb-1.5">File Output</h4>
-              <p className="text-sm truncate text-balance" title={job.outputFilePath || ""}>
-                {job.outputFilePath}
-              </p>
-            </div>
-          )}
+              </div>
 
-          {job.statusMessage && (
-            <div className="col-span-2">
-              <h4 className="font-semibold mb-1.5">Status Message</h4>
-              <p className="text-sm text-balance">{job.statusMessage}</p>
-            </div>
-          )}
-        </div>
-        
-        {job.errorMessage && (
-          <div className="mb-6">
-            <h4 className="font-semibold mb-2">Error</h4>
-            <div className="bg-red-50 text-red-800 p-4 rounded-md text-sm overflow-auto max-h-[150px]">
-              <pre className="whitespace-pre-wrap text-balance">{job.errorMessage}</pre>
-            </div>
-          </div>
-        )}
-        
-        <div className="flex flex-col space-y-6 flex-grow overflow-hidden">
-          <div className="flex flex-col">
-            <h4 className="font-semibold mb-2">Prompt</h4>
-            <ScrollArea className="h-[180px] min-h-[180px] border rounded-md p-4 text-sm bg-gray-50">
-              <pre className="whitespace-pre-wrap font-mono text-xs text-balance">{promptContent}</pre>
-            </ScrollArea>
-          </div>
-          
-          <div className="flex flex-col flex-grow">
-            <div className="flex justify-between items-center mb-2">
-              <h4 className="font-semibold">Response</h4>
-              {job.taskType === 'implementation_plan' && job.outputFilePath && (
-                <Button
-                  size="sm"
-                  variant={fileError ? "destructive" : "outline"}
-                  onClick={() => job.outputFilePath && loadFileContent(job.outputFilePath)}
-                  isLoading={isLoadingFile}
-                  loadingText="Loading..."
-                  className="h-9 min-w-[100px]"
-                >
-                  {fileError ? (
-                    <span className="flex items-center"><AlertCircle className="h-4 w-4 mr-2" />Retry</span>
-                  ) : (
-                    <span className="flex items-center"><RefreshCw className="h-4 w-4 mr-2" />Reload</span>
-                  )}
-                </Button>
-              )}
-            </div>
+              {(job.outputFilePath || job.statusMessage) && (
+                <div className="col-span-2">
+                  <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
+                    <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Additional Information</h4>
 
-            <ScrollArea className="h-[220px] min-h-[180px] flex-grow border rounded-md p-4 text-sm bg-gray-50 overflow-y-auto">
-              {/* Show an error message if file loading failed */}
-              {fileError && job.taskType === 'implementation_plan' && job.outputFilePath && (
-                <div className="bg-red-50 text-red-800 p-3 rounded-md mb-3 text-xs">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Error loading file</p>
-                      <p className="mt-1">{fileError}</p>
-                      <p className="mt-2 text-xs text-gray-600">Click &quot;Retry&quot; to attempt loading the file again.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+                    {job.outputFilePath && (
+                      <div className="mb-3">
+                        <h5 className="text-xs text-muted-foreground mb-1">File Output</h5>
+                        <div className="flex items-center gap-2">
+                          <FileCode className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-sm font-medium truncate text-balance" title={job.outputFilePath || ""}>
+                            {job.outputFilePath}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
-              {/* Show progress bar for streaming jobs */}
-              {job.status === 'running' && job.metadata?.isStreaming && (
-                <div className="mb-3">
-                  <Progress
-                    value={
-                      job.metadata.responseLength && job.metadata.estimatedTotalLength
-                        ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 97)
-                        : Math.min(Math.floor((Date.now() - (job.startTime || Date.now())) / 150), 90)
-                    }
-                    className="h-1 mb-2"
-                  />
-                  <div className="flex justify-between items-center text-xs text-muted-foreground">
-                    <span>Streaming in progress...</span>
-                    {job.metadata.responseLength && (
-                      <span>{Math.floor(job.metadata.responseLength / 1024)} KB received</span>
+                    {job.statusMessage && (
+                      <div>
+                        <h5 className="text-xs text-muted-foreground mb-1">Status Message</h5>
+                        <div className="text-sm font-medium text-balance max-h-[100px] overflow-auto">
+                          {job.statusMessage}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Display with improved formatting for file references */}
-              {responseContent && responseContent.includes('file:') && job.outputFilePath ? (
-                <div className="space-y-3">
-                  {/* When we have both content and file reference, display content first */}
-                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance">
-                    {/* Display content part before the file reference */}
-                    {responseContent.split(/file:.*$/m)[0].trim()}
-                  </pre>
-
-                  {/* Show file reference separately with better styling */}
-                  <div className="mt-3 p-3 border rounded-md bg-muted/20 text-xs flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <FileCode className="h-4 w-4" />
-                      <span>Complete content available in file:</span>
-                    </div>
-                    <code className="text-xs bg-muted/30 p-1 rounded font-mono">
-                      {job.outputFilePath}
-                    </code>
-                  </div>
+            {job.errorMessage && (
+              <div className="mb-6">
+                <div className="p-3 bg-red-50 dark:bg-destructive/10 rounded-md mb-2">
+                  <h4 className="font-semibold mb-2 text-xs text-red-800 dark:text-red-400 uppercase flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Error Information
+                  </h4>
+                  <pre className="whitespace-pre-wrap text-balance text-sm text-red-800 dark:text-red-400">{job.errorMessage}</pre>
                 </div>
-              ) : (
-                <pre className="whitespace-pre-wrap font-mono text-xs text-balance">
-                  {responseContent}
-                </pre>
-              )}
-            </ScrollArea>
-          </div>
-          
-          {job.metadata && Object.keys(typeof job.metadata === 'object' ? job.metadata : {}).length > 0 && (
-            <div className="flex flex-col">
-              <h4 className="font-semibold mb-2">Additional Information</h4>
-              <ScrollArea className="h-[100px] min-h-[100px] border rounded-md p-4 text-sm bg-gray-50">
-                {job.metadata.targetField && (
-                  <div className="mb-3">
-                    <span className="text-xs font-semibold">Target Field: </span>
-                    <span className="text-xs">{job.metadata.targetField}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col space-y-6">
+              <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md">
+                <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Prompt</h4>
+                <pre className="whitespace-pre-wrap font-mono text-xs text-balance">{promptContent}</pre>
+              </div>
+
+              <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-semibold text-xs text-muted-foreground uppercase">Response</h4>
+                  {job.taskType === 'implementation_plan' && job.outputFilePath && (
+                    <Button
+                      size="sm"
+                      variant={fileError ? "destructive" : "outline"}
+                      onClick={() => job.outputFilePath && loadFileContent(job.outputFilePath)}
+                      isLoading={isLoadingFile}
+                      loadingText="Loading..."
+                      className="h-8 min-w-[100px]"
+                    >
+                      {fileError ? (
+                        <span className="flex items-center"><AlertCircle className="h-3.5 w-3.5 mr-1.5" />Retry</span>
+                      ) : (
+                        <span className="flex items-center"><RefreshCw className="h-3.5 w-3.5 mr-1.5" />Reload</span>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Show an error message if file loading failed */}
+                {fileError && job.taskType === 'implementation_plan' && job.outputFilePath && (
+                  <div className="bg-red-50 text-red-800 dark:bg-destructive/10 dark:text-red-400 p-3 rounded-md mb-3 text-xs">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Error loading file</p>
+                        <p className="mt-1">{fileError}</p>
+                        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">Click &quot;Retry&quot; to attempt loading the file again.</p>
+                      </div>
+                    </div>
                   </div>
                 )}
-                <pre className="whitespace-pre-wrap font-mono text-xs text-balance">{formatMetadata(job.metadata)}</pre>
-              </ScrollArea>
+
+                {/* Show progress bar for streaming jobs */}
+                {job.status === 'running' && job.metadata?.isStreaming && (
+                  <div className="mb-3">
+                    <Progress
+                      value={
+                        job.metadata.responseLength && job.metadata.estimatedTotalLength
+                          ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 97)
+                          : Math.min(Math.floor((Date.now() - (job.startTime || Date.now())) / 150), 90)
+                      }
+                      className="h-1 mb-2"
+                    />
+                    <div className="flex justify-between items-center text-xs text-muted-foreground">
+                      <span>Streaming in progress...</span>
+                      {job.metadata.responseLength && (
+                        <span>{Math.floor(job.metadata.responseLength / 1024)} KB received</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Display with improved formatting for file references */}
+                {responseContent && responseContent.includes('file:') && job.outputFilePath ? (
+                  <div className="space-y-3">
+                    {/* When we have both content and file reference, display content first */}
+                    <pre className="whitespace-pre-wrap font-mono text-xs text-balance">
+                      {/* Display content part before the file reference */}
+                      {responseContent.split(/file:.*$/m)[0].trim()}
+                    </pre>
+
+                    {/* Show file reference separately with better styling */}
+                    <div className="mt-3 p-3 border rounded-md bg-muted/20 text-xs flex flex-col gap-2">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <FileCode className="h-4 w-4" />
+                        <span>Complete content available in file:</span>
+                      </div>
+                      <code className="text-xs bg-muted/30 p-1 rounded font-mono">
+                        {job.outputFilePath}
+                      </code>
+                    </div>
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance">
+                    {responseContent}
+                  </pre>
+                )}
+              </div>
+
+              {job.metadata && Object.keys(typeof job.metadata === 'object' ? job.metadata : {}).length > 0 && (
+                <div className="p-3 bg-gray-50 dark:bg-muted/10 rounded-md">
+                  <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">Metadata</h4>
+                  {job.metadata.targetField && (
+                    <div className="mb-3">
+                      <h5 className="text-xs text-muted-foreground mb-1">Target Field</h5>
+                      <p className="text-sm font-medium">{job.metadata.targetField}</p>
+                    </div>
+                  )}
+
+                  {/* Display regex patterns separately if they exist */}
+                  {job.metadata.regexPatterns && (
+                    <div className="mb-3">
+                      <h5 className="text-xs text-muted-foreground mb-1">Regex Patterns</h5>
+                      <pre className="whitespace-pre-wrap font-mono text-xs text-balance p-2 bg-muted/20 rounded-md">
+                        {formatRegexPatterns(job.metadata.regexPatterns)}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Other metadata */}
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance">{formatMetadata(job.metadata)}</pre>
+                </div>
+              )}
             </div>
-          )}
         </div>
-        
-        <DialogFooter className="mt-6">
+        <DialogFooter className="mt-4">
           <Button onClick={onClose} size="sm" variant="outline" className="h-9">Close</Button>
         </DialogFooter>
       </DialogContent>

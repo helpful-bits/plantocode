@@ -180,29 +180,17 @@ export function useGeneratePromptState() {
     setHasUnsavedChanges
   ]);
 
-  // Explicit save function for UI triggers - updated to get latest state
+  // Explicit save function for UI triggers - simplified now that hooks update context directly
   const triggerSave = useCallback(() => {
     if (sessionContext.isTransitioningSession || isRestoringSession || !sessionInitialized || !activeSessionId) {
       return;
     }
 
-    // First update session context with the latest state from hooks
-    const currentState = getCurrentSessionState();
+    // No need to explicitly update session context fields here
+    // The individual hooks (useTaskDescriptionState, useRegexState) are already
+    // directly updating the SessionContext when their state changes
 
-    // CHANGED: Update session context with explicit values from hooks
-    sessionContext.updateCurrentSessionFields({
-      taskDescription: currentState.taskDescription,
-      titleRegex: currentState.titleRegex,
-      contentRegex: currentState.contentRegex,
-      negativeTitleRegex: currentState.negativeTitleRegex,
-      negativeContentRegex: currentState.negativeContentRegex,
-      isRegexActive: currentState.isRegexActive
-    });
-
-    // Mark session as modified to ensure it gets saved
-    sessionContext.setSessionModified(true);
-
-    // Then call saveCurrentSession
+    // Just call saveCurrentSession directly - the context already has the latest state
     sessionContext.saveCurrentSession().then(() => {
       setHasUnsavedChanges(false);
     }).catch(error => {
@@ -213,11 +201,10 @@ export function useGeneratePromptState() {
     sessionContext,
     isRestoringSession,
     sessionInitialized,
-    setHasUnsavedChanges,
-    getCurrentSessionState
+    setHasUnsavedChanges
   ]);
 
-  // Method to flush pending saves - updated to get latest state from hooks
+  // Method to flush pending saves - simplified now that hooks update context directly
   const flushPendingSaves = useCallback(async () => {
     if (!activeSessionId || sessionContext.isTransitioningSession || isRestoringSession || !sessionInitialized) {
       return false;
@@ -228,23 +215,11 @@ export function useGeneratePromptState() {
     }
 
     try {
-      // First update session context with the latest state from hooks
-      const currentState = getCurrentSessionState();
+      // No need to explicitly update session context fields here
+      // The individual hooks (useTaskDescriptionState, useRegexState) are already
+      // directly updating the SessionContext when their state changes
 
-      // CHANGED: Update session context with explicit values from hooks first
-      sessionContext.updateCurrentSessionFields({
-        taskDescription: currentState.taskDescription,
-        titleRegex: currentState.titleRegex,
-        contentRegex: currentState.contentRegex,
-        negativeTitleRegex: currentState.negativeTitleRegex,
-        negativeContentRegex: currentState.negativeContentRegex,
-        isRegexActive: currentState.isRegexActive
-      });
-
-      // Mark session as modified to ensure it gets saved
-      sessionContext.setSessionModified(true);
-
-      // Then call flushSaves
+      // Just call flushSaves directly - the context already has the latest state
       const success = await sessionContext.flushSaves();
 
       if (success) {
@@ -263,8 +238,7 @@ export function useGeneratePromptState() {
     isSessionModified,
     setHasUnsavedChanges,
     isRestoringSession,
-    sessionInitialized,
-    getCurrentSessionState
+    sessionInitialized
   ]);
 
   // Initialize session metadata hook

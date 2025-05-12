@@ -6,11 +6,12 @@ import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ClipboardCopy, FileText, Loader2, FilePlus } from "lucide-react";
+import { ChevronDown, ClipboardCopy, FileText, Loader2, FilePlus, AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 import { useProject } from '@/lib/contexts/project-context';
 import { toast } from "@/components/ui/use-toast";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 // This component doesn't actually use the sessionId, but we keep the prop to maintain
 // compatibility with other components that might pass it
@@ -252,6 +253,7 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
       toast({
         title: "Success",
         description: "Plan opened in configured editor",
+        variant: "success"
       });
     } catch (error) {
       console.error("Error opening implementation plan:", error);
@@ -384,14 +386,37 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                   <CollapsibleContent>
                     <div className="p-5">
                       {planFileContents[plan.id]?.isLoading ? (
-                        <div className="flex items-center justify-center py-6">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-3" />
-                          <span className="text-muted-foreground">Loading plan content...</span>
+                        <div className="flex flex-col items-center justify-center py-8">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-3" />
+                          <span className="text-muted-foreground text-sm font-medium">Loading full plan content from file...</span>
                         </div>
                       ) : planFileContents[plan.id]?.error ? (
-                        <div className="text-destructive py-3">
-                          <p className="text-balance"><strong>Error loading plan:</strong> {planFileContents[plan.id].error}</p>
-                          <p className="text-xs text-muted-foreground mt-3">Showing placeholder response instead:</p>
+                        <div className="py-3">
+                          <Alert variant="destructive" className="mb-4">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle>Error loading plan file</AlertTitle>
+                            <AlertDescription>
+                              {planFileContents[plan.id].error}
+                            </AlertDescription>
+                          </Alert>
+                          <div className="flex justify-end mb-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => fetchPlanContent(plan.id, plan.outputFilePath as string, projectDirectory)}
+                              className="text-xs"
+                            >
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5" />
+                              Retry
+                            </Button>
+                          </div>
+                          <Alert variant="default" className="mb-3">
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>Displaying summary from database</AlertTitle>
+                            <AlertDescription>
+                              Full plan content is stored in a file but couldn&apos;t be loaded. The summary below might not contain all details.
+                            </AlertDescription>
+                          </Alert>
                           <pre className="whitespace-pre-wrap text-sm overflow-x-auto mt-3 p-4 bg-muted/30 rounded-md text-balance">
                             {plan.response}
                           </pre>
@@ -401,9 +426,18 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                           {planFileContents[plan.id].content}
                         </pre>
                       ) : (
-                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto py-2 text-balance">
-                          {plan.response || "Loading plan content..."}
-                        </pre>
+                        <div className="py-3">
+                          <Alert variant="default" className="mb-3">
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>Displaying summary from database</AlertTitle>
+                            <AlertDescription>
+                              Full plan content is stored in the file. Showing database summary until the file content is loaded.
+                            </AlertDescription>
+                          </Alert>
+                          <pre className="whitespace-pre-wrap text-sm overflow-x-auto mt-3 p-4 bg-muted/30 rounded-md text-balance">
+                            {plan.response || "Loading plan content..."}
+                          </pre>
+                        </div>
                       )}
                     </div>
                   </CollapsibleContent>

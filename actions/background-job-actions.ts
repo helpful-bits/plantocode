@@ -260,6 +260,9 @@ export async function cancelBackgroundJobAction(
 
 /**
  * Clear all background job history (mark all jobs as cleared)
+ * - When daysToKeep is -1: Permanently delete all completed/failed/canceled jobs
+ * - When daysToKeep is 0 or undefined: Only permanently delete very old jobs (90+ days)
+ * - When daysToKeep > 0: Mark jobs older than daysToKeep days as cleared (hidden from UI)
  */
 export async function clearJobHistoryAction(daysToKeep: number = 0): Promise<ActionState<null>> {
   // Immediately check if we're in a valid execution context
@@ -291,9 +294,14 @@ export async function clearJobHistoryAction(daysToKeep: number = 0): Promise<Act
     await backgroundJobRepository.clearBackgroundJobHistory(daysToKeep);
 
     // Use different message based on the daysToKeep value
-    const message = daysToKeep > 0
-      ? `Jobs older than ${daysToKeep} days have been hidden from view`
-      : "Jobs older than 90 days have been permanently deleted; all other jobs remain visible";
+    let message;
+    if (daysToKeep === -1) {
+      message = "All completed, failed, and canceled jobs have been permanently deleted";
+    } else if (daysToKeep > 0) {
+      message = `Jobs older than ${daysToKeep} days have been hidden from view`;
+    } else {
+      message = "Jobs older than 90 days have been permanently deleted; all other jobs remain visible";
+    }
 
     return {
       isSuccess: true,

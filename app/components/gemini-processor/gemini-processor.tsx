@@ -69,6 +69,7 @@ export function GeminiProcessor({ prompt, temperature = 0.7, activeSessionId }: 
                 toast({
                     title: "Request started",
                     description: `Your request has been sent to Gemini. Check the Background Tasks sidebar for progress (Job ID: ${result.data.requestId}).`,
+                    variant: "success"
                 });
             } else {
                 toast({

@@ -69,14 +69,14 @@
   
   /* Standard spacing for form sections */
   .form-section-spacing {
-    @apply space-y-4;
+    @apply space-y-6;
   }
-  
+
   /* Consistent form label styling */
   .form-label {
-    @apply text-sm font-medium mb-1.5 block;
+    @apply text-sm font-medium mb-2 block;
   }
-  
+
   /* Standard card padding */
   .card-padding {
     @apply p-4 sm:p-6;
@@ -106,6 +106,10 @@
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
+    --warning: 38 92% 50%; /* orange-500 */
+    --warning-foreground: 38 92% 5%; /* dark orange/brown */
+    --warning-background: 38 92% 95%; /* very light orange */
+    --warning-border: 38 92% 80%; /* lighter orange */
     --border: 0 0% 89.8%;
     --input: 220 13% 91%;
     --ring: 0 0% 3.9%;
@@ -135,6 +139,10 @@
     --accent-foreground: 210 20% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 20% 98%;
+    --warning: 38 92% 60%; /* slightly brighter orange */
+    --warning-foreground: 38 92% 95%; /* very light orange/almost white */
+    --warning-background: 38 92% 20%; /* dark orange/brown */
+    --warning-border: 38 92% 40%; /* darker orange */
     --border: 215 25% 14%;
     --input: 215 25% 10%;
     --ring: 212 15% 45%;
@@ -178,18 +186,16 @@
 }
 
 /* Dark mode scrollbar styles */
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.15);
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.25);
-  }
-  
-  ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.03);
-  }
+.dark::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.dark::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.dark::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* Dark mode component improvements */

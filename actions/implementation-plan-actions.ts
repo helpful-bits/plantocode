@@ -148,8 +148,8 @@ export async function getImplementationPlanPromptAction(params: {
   }
   
   try {
-    // Generate directory tree using only the selected relevant files
-    const projectStructure = await generateDirectoryTree(projectDirectory, relevantFiles);
+    // Generate directory tree using ALL project files to provide complete structure context
+    const projectStructure = await generateDirectoryTree(projectDirectory);
 
     // Load file contents if not provided or empty
     let actualFileContents = fileContentsMap;

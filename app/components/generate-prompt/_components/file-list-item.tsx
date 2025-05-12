@@ -125,8 +125,8 @@ function FileListItem({
             type="checkbox"
             checked={!!file.forceExcluded}
             className={cn(
-              "accent-destructive flex-shrink-0 w-3.5 h-3.5",
-              disabled ? "cursor-not-allowed" : "cursor-pointer"
+              "appearance-none flex-shrink-0 w-3.5 h-3.5 border border-destructive rounded-[2px] bg-transparent checked:bg-destructive/20 focus:ring-offset-0 focus:ring-1 focus:ring-destructive",
+              disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
             )}
             disabled={disabled}
             readOnly
