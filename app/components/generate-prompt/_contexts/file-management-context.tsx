@@ -7,7 +7,8 @@ export interface FileManagementContextValue {
   // State
   managedFilesMap: FilesMap;
   searchTerm: string;
-  showOnlySelected: boolean;
+  filterMode: 'all' | 'selected' | 'regex';
+  isRegexAvailable: boolean;
   externalPathWarnings: string[];
   includedPaths: string[];
   excludedPaths: string[];
@@ -18,19 +19,26 @@ export interface FileManagementContextValue {
   findingFilesJobId: string | null;
   fileContentsMap: Record<string, string>;
   fileLoadError: string | null;
+  findFilesMode: 'replace' | 'extend';
+  canUndo: boolean;
+  canRedo: boolean;
 
   // Actions
   setSearchTerm: (searchTerm: string) => void;
-  setShowOnlySelected: (showOnlySelected: boolean) => void;
+  setFilterMode: (mode: 'all' | 'selected' | 'regex') => void;
   toggleFileSelection: (filePath: string) => void;
   toggleFileExclusion: (filePath: string) => void;
   toggleSearchSelectedFilesOnly: (value?: boolean) => void;
   handleBulkToggle: (files: FileInfo[], include: boolean) => void;
-  applySelectionsFromPaths: (paths: string[]) => void;
+  addPathsToSelection: (paths: string[]) => void; // Add paths to existing selection
+  replaceSelectionWithPaths: (paths: string[]) => void; // Replace selection with new paths
   findRelevantFiles: () => Promise<void>;
   refreshFiles: () => Promise<void>;
   flushPendingOperations?: () => void;
   flushFileStateSaves: () => Promise<boolean>;
+  setFindFilesMode: (mode: 'replace' | 'extend') => void;
+  undoSelection: () => void;
+  redoSelection: () => void;
 
   // Session state extraction for saving
   getFileStateForSession: () => {

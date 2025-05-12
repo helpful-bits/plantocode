@@ -8,22 +8,89 @@ import { useSessionContext } from "@/lib/contexts/session-context";
 import ProjectSection from "./_sections/ProjectSection";
 import TaskSection from "./_sections/TaskSection";
 import { FileManagementProvider } from "./_contexts/file-management-provider";
+import { useFileManagement } from "./_contexts/file-management-context";
 import FileSection from "./_sections/FileSection";
+import ActionsSection from "./_sections/ActionsSection";
+import ImplementationPlanActions from "./_components/implementation-plan-actions";
 
 // Define a separate component to handle file management
 // This avoids issues with conditional hook calls
+// Inner component that uses the file management context
+function FileManagementContent({
+  taskSectionState,
+  taskSectionActions,
+  contextValue,
+  hasSession
+}: {
+  taskSectionState: any;
+  taskSectionActions: any;
+  contextValue: any;
+  hasSession: boolean;
+}) {
+  // Access file management state directly
+  const fileState = useFileManagement();
+
+  return (
+    <>
+      {/* Task section */}
+      <div className="mt-4">
+        <TaskSection
+          state={taskSectionState}
+          actions={taskSectionActions}
+        />
+      </div>
+
+      {/* Actions section */}
+      <div className="mt-4">
+        <ActionsSection
+          regexState={contextValue.regexState}
+          taskDescription={contextValue.taskState.taskDescription}
+          titleRegexError={null}
+          contentRegexError={null}
+          negativeTitleRegexError={null}
+          negativeContentRegexError={null}
+          isFindingFiles={fileState.isFindingFiles}
+          executeFindRelevantFiles={fileState.findRelevantFiles}
+          findFilesMode={fileState.findFilesMode}
+          setFindFilesMode={fileState.setFindFilesMode}
+          searchSelectedFilesOnly={fileState.searchSelectedFilesOnly}
+          toggleSearchSelectedFilesOnly={fileState.toggleSearchSelectedFilesOnly}
+          includedFilesCount={fileState.includedPaths.length}
+          canUndo={fileState.canUndo}
+          canRedo={fileState.canRedo}
+          undoSelection={fileState.undoSelection}
+          redoSelection={fileState.redoSelection}
+          onInteraction={contextValue.handleInteraction}
+          disabled={!hasSession}
+        />
+      </div>
+
+      {/* File section */}
+      <FileSection />
+
+      {/* Implementation Plan Actions Section */}
+      <div className="mt-8">
+        <ImplementationPlanActions disabled={!hasSession} />
+      </div>
+    </>
+  );
+}
+
+// Outer wrapper component
 function FileManagementWrapper({
   projectDirectory,
   taskDescription,
   hasSession,
   taskSectionState,
-  taskSectionActions
+  taskSectionActions,
+  contextValue
 }: {
   projectDirectory: string | null;
   taskDescription: string;
   hasSession: boolean;
   taskSectionState: any;
   taskSectionActions: any;
+  contextValue: any;
 }) {
   // Return null when no project directory exists
   if (!projectDirectory) return null;
@@ -38,18 +105,12 @@ function FileManagementWrapper({
           Create a new session or load an existing one to start working.
         </div>
       ) : (
-        <>
-          {/* Task section */}
-          <div className="mt-4">
-            <TaskSection
-                state={taskSectionState}
-                actions={taskSectionActions}
-            />
-          </div>
-
-          {/* File section */}
-          <FileSection />
-        </>
+        <FileManagementContent
+          taskSectionState={taskSectionState}
+          taskSectionActions={taskSectionActions}
+          contextValue={contextValue}
+          hasSession={hasSession}
+        />
       )}
     </FileManagementProvider>
   );
@@ -123,6 +184,7 @@ export default function GeneratePromptForm() {
             hasSession={hasSession}
             taskSectionState={taskSectionState}
             taskSectionActions={taskSectionActions}
+            contextValue={contextValue}
           />
         </div>
       </div>

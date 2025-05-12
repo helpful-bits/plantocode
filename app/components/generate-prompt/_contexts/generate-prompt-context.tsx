@@ -121,7 +121,7 @@ export interface GeneratePromptContextValue {
   
   // Implementation plan methods
   handleCreateImplementationPlan: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
-  handleCopyImplementationPlanPrompt: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<void>;
+  handleCopyImplementationPlanPrompt: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<boolean | undefined>;
   handleGetImplementationPlanPrompt: (taskDescription: string, includedPaths: string[], fileContentsMap: Record<string, string>) => Promise<string | null>;
 }
 

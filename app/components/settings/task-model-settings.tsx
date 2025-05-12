@@ -1,20 +1,28 @@
 "use client";
 
 import React from "react";
-import { 
-  Select, 
-  SelectContent, 
-  SelectGroup, 
-  SelectItem, 
-  SelectLabel, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+  Label,
+  Slider,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Input,
+  Separator
+} from "@/components/ui";
 import { TaskSettings, TaskType } from "@/types";
 import { DEFAULT_TASK_SETTINGS } from "@/lib/constants";
 
@@ -41,56 +49,56 @@ const modelOptions = {
 };
 
 // Task type definitions with user-friendly names and default settings
-const taskTypeDefinitions: Record<TaskType, { 
-  label: string; 
+const taskTypeDefinitions: Record<TaskType, {
+  label: string;
   defaultApiType: 'gemini' | 'claude' | 'whisper';
 }> = {
-  generic_llm_stream: {
-    label: "Generic LLM Stream",
+  pathfinder: {
+    label: "Path Finder",
     defaultApiType: 'gemini',
   },
-  pathfinder: { 
-    label: "Path Finder", 
-    defaultApiType: 'gemini',
-  },
-  transcription: { 
-    label: "Voice Transcription", 
+  transcription: {
+    label: "Voice Transcription",
     defaultApiType: 'whisper',
   },
-  regex_generation: { 
-    label: "Regex Generation", 
+  regex_generation: {
+    label: "Regex Generation",
     defaultApiType: 'claude',
   },
-  path_correction: { 
-    label: "Path Correction", 
+  path_correction: {
+    label: "Path Correction",
     defaultApiType: 'gemini',
   },
-  text_improvement: { 
-    label: "Text Improvement", 
+  text_improvement: {
+    label: "Text Improvement",
     defaultApiType: 'claude',
   },
-  voice_correction: { 
-    label: "Voice Correction", 
+  voice_correction: {
+    label: "Voice Correction",
     defaultApiType: 'claude',
   },
-  task_enhancement: { 
-    label: "Task Enhancement", 
+  task_enhancement: {
+    label: "Task Enhancement",
     defaultApiType: 'gemini',
   },
-  guidance_generation: { 
-    label: "Guidance Generation", 
+  guidance_generation: {
+    label: "Guidance Generation",
     defaultApiType: 'gemini',
   },
   implementation_plan: {
     label: "Implementation Plan",
     defaultApiType: 'gemini',
   },
-  unknown: { 
-    label: "Unknown Task", 
+  generic_llm_stream: {
+    label: "Generic LLM Stream",
     defaultApiType: 'gemini',
   },
   streaming: {
-    label: "Legacy Streaming",
+    label: "Streaming",
+    defaultApiType: 'gemini',
+  },
+  unknown: {
+    label: "Unknown Task",
     defaultApiType: 'gemini',
   }
 };
@@ -203,25 +211,26 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
               )
             ))}
           </TabsList>
-          
+
           {Object.entries(taskTypeDefinitions).map(([type, config]) => {
             const taskType = type as TaskType;
             if (taskType === 'unknown') return null;
-            
+
             const settings = getTaskSettings(taskType);
             const models = getModelsForTask(taskType);
-            
+
             return (
-              <TabsContent key={type} value={type}>
-                <div className="space-y-6">
-                  {/* Model Selection */}
-                  <div className="grid grid-cols-4 items-center gap-4 mb-5">
-                    <Label htmlFor={`model-select-${type}`} className="text-right text-sm font-medium">
-                      Model
-                    </Label>
-                    <div className="col-span-3">
-                      <Select 
-                        value={settings.model} 
+              <TabsContent key={type} value={type} className="w-full">
+                <div className="w-full max-w-full">
+                  {/* Model, Max Tokens, and Temperature in the same row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Model Selection */}
+                    <div className="space-y-2">
+                      <Label htmlFor={`model-select-${type}`} className="text-sm font-medium">
+                        Model
+                      </Label>
+                      <Select
+                        value={settings.model}
                         onValueChange={(value) => handleModelChange(taskType, value)}
                       >
                         <SelectTrigger id={`model-select-${type}`} className="w-full">
@@ -238,29 +247,30 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground">
                         {models.find(m => m.value === settings.model)?.description || "Select a model"}
                         {settings.model && <span className="block text-[10px] text-muted-foreground/70 mt-0.5 font-mono">{settings.model}</span>}
                       </p>
                     </div>
-                  </div>
-                  
-                  {/* Max Tokens Slider */}
-                  <div className="grid grid-cols-4 items-center gap-4 mb-5">
-                    <Label htmlFor={`max-tokens-${type}`} className="text-right text-sm font-medium">
-                      Max Tokens
-                    </Label>
-                    <div className="col-span-3">
-                      <div className="flex items-center gap-4">
-                        <Slider
-                          id={`max-tokens-${type}`}
-                          defaultValue={[settings.maxTokens]}
-                          max={100000}
-                          min={1000}
-                          step={1000}
-                          onValueChange={(value) => handleMaxTokensChange(taskType, value)}
-                          className="flex-1"
-                        />
+
+                    {/* Max Tokens Slider */}
+                    <div className="space-y-2">
+                      <Label htmlFor={`max-tokens-${type}`} className="text-sm font-medium">
+                        Max Tokens
+                      </Label>
+                      <div className="flex items-center gap-4 py-2 w-full">
+                        <div className="flex-1 min-w-[70%] mr-4">
+                          <Slider
+                            id={`max-tokens-${type}`}
+                            defaultValue={[settings.maxTokens]}
+                            max={100000}
+                            min={1000}
+                            step={1000}
+                            onValueChange={(value) => handleMaxTokensChange(taskType, value)}
+                            className="w-full"
+                            aria-label="Max tokens"
+                          />
+                        </div>
                         <Input
                           type="number"
                           value={settings.maxTokens}
@@ -271,34 +281,35 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                               handleMaxTokensChange(taskType, [value]);
                             }
                           }}
-                          className="w-24 font-mono text-sm"
+                          className="w-24 font-mono text-sm ml-auto"
                           min={1000}
                           max={100000}
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground">
                         Maximum output tokens for this task type
                       </p>
                     </div>
-                  </div>
-                  
-                  {/* Temperature Slider - not used by whisper transcription */}
-                  {taskType !== 'transcription' && (
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor={`temperature-${type}`} className="text-right text-sm font-medium">
-                        Temperature
-                      </Label>
-                      <div className="col-span-3">
-                        <div className="flex items-center gap-4">
-                          <Slider
-                            id={`temperature-${type}`}
-                            defaultValue={[settings.temperature as number]}
-                            max={1}
-                            min={0}
-                            step={0.1}
-                            onValueChange={(value) => handleTemperatureChange(taskType, value)}
-                            className="flex-1"
-                          />
+
+                    {/* Temperature Slider - not used by whisper transcription */}
+                    {taskType !== 'transcription' ? (
+                      <div className="space-y-2">
+                        <Label htmlFor={`temperature-${type}`} className="text-sm font-medium">
+                          Temperature
+                        </Label>
+                        <div className="flex items-center gap-4 py-2 w-full">
+                          <div className="flex-1 min-w-[70%] mr-4">
+                            <Slider
+                              id={`temperature-${type}`}
+                              defaultValue={[settings.temperature as number]}
+                              max={1}
+                              min={0}
+                              step={0.05}
+                              onValueChange={(value) => handleTemperatureChange(taskType, value)}
+                              className="w-full"
+                              aria-label="Temperature"
+                            />
+                          </div>
                           <Input
                             type="number"
                             value={settings.temperature as number}
@@ -309,21 +320,32 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                                 handleTemperatureChange(taskType, [value]);
                               }
                             }}
-                            className="w-20 font-mono text-sm"
+                            className="w-20 font-mono text-sm ml-auto"
                             min={0}
                             max={1}
-                            step={0.1}
+                            step={0.05}
                           />
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1 text-balance">
-                          {taskType === 'path_correction' || taskType === 'regex_generation' ? 
-                            "Lower values produce more accurate results for this task" :
-                            "Lower values (0.0-0.3) for predictable, factual outputs. Higher values (0.7-1.0) for more creative or diverse results."
+                        <p className="text-xs text-muted-foreground text-balance">
+                          {taskType === 'path_correction' || taskType === 'regex_generation' ?
+                            "Lower values produce more accurate results" :
+                            "Lower (0.0-0.3): factual. Higher (0.7-1.0): creative."
                           }
                         </p>
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-muted-foreground/80">
+                          Temperature
+                        </Label>
+                        <div className="flex items-center h-[38px] justify-center">
+                          <p className="text-xs text-muted-foreground italic">
+                            Not used for transcription
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </TabsContent>
             );

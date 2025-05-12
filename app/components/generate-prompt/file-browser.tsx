@@ -1,108 +1,19 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Info, Loader2, FileText, FolderClosed, AlertCircle, X, RefreshCw, Files, Sparkles, FileCheck } from "lucide-react";
+import { Info, Loader2, FolderClosed, AlertCircle, X, RefreshCw, Filter, Files } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProject } from "@/lib/contexts/project-context";
 import { FileInfo } from "@/types";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import FileListItem from "./_components/file-list-item";
-import RegexAccordion from "./_components/regex-accordion";
+import FilterModeToggle from "./_components/filter-mode-toggle";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
 import { FilesMap } from "./_hooks/file-management/use-project-file-list";
 import { GeneratePromptContextValue } from "./_contexts/generate-prompt-context";
 
-interface FindRelevantFilesSectionProps {
-  onFindRelevantFiles?: () => void;
-  isFindingFiles?: boolean;
-  searchSelectedFilesOnly?: boolean;
-  onToggleSearchSelectedFilesOnly?: (value?: boolean) => void;
-  taskDescription?: string;
-  includedCount: number;
-  disabled?: boolean; // Add disabled prop
-}
-
-const FindRelevantFilesSection: React.FC<FindRelevantFilesSectionProps> = ({
-  onFindRelevantFiles,
-  isFindingFiles = false,
-  searchSelectedFilesOnly = false,
-  onToggleSearchSelectedFilesOnly,
-  taskDescription = "",
-  includedCount,
-  disabled = false
-}) => {
-  const hasTaskDescription = !!taskDescription?.trim();
-
-  return (
-    <div className="flex flex-col gap-3 mb-4 border-b pb-4">
-      <div className="flex flex-wrap items-center gap-4">
-        <Button
-          type="button"
-          variant={!hasTaskDescription ? "destructive" : "default"}
-          size="sm"
-          onClick={onFindRelevantFiles}
-          disabled={isFindingFiles || !hasTaskDescription || disabled}
-          className="h-9 flex items-center gap-1.5 min-w-[200px]"
-          title={disabled ? "Feature disabled during session switching" :
-                !hasTaskDescription
-                ? "Task description required to find relevant files"
-                : "Find files relevant to your task using AI"}
-        >
-          {isFindingFiles ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : !hasTaskDescription ? (
-            <AlertCircle className="h-4 w-4 mr-2" />
-          ) : (
-            <Sparkles className="h-4 w-4 mr-2" />
-          )}
-          {!hasTaskDescription
-            ? "Task Description Required"
-            : `Find Relevant Files${searchSelectedFilesOnly ? (includedCount > 0 ? ` (${includedCount} Files)` : '') : ' (All Files)'}`}
-        </Button>
-
-        <div className="flex items-center gap-2 border rounded-md px-3 py-1.5 bg-background">
-          <div className="flex items-center gap-1.5">
-            {searchSelectedFilesOnly ? (
-              <FileCheck className="h-4 w-4 text-primary" />
-            ) : (
-              <Files className="h-4 w-4 text-muted-foreground" />
-            )}
-            <span className="text-sm font-medium mr-1">
-              {searchSelectedFilesOnly ? "Search: Selected" : "Search: Entire Project"}
-            </span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onToggleSearchSelectedFilesOnly && onToggleSearchSelectedFilesOnly()}
-            className="h-6 px-2 rounded-sm"
-            disabled={disabled}
-            title="Toggle AI search scope between currently selected files and the entire project"
-          >
-            {searchSelectedFilesOnly ? "Use All Files" : "Use Selected"}
-          </Button>
-        </div>
-      </div>
-
-      <p className={`text-xs ${!hasTaskDescription ? 'text-red-500 dark:text-red-400 font-medium' : 'text-muted-foreground'} text-balance`}>
-        {!hasTaskDescription
-          ? "Please enter a task description above to enable AI file finding. This helps identify the most relevant files for your task."
-          : "Use AI to find files relevant to your task description. Toggle search scope between currently selected files or the entire project."}
-      </p>
-
-      {/* Display warning when task description is empty */}
-      {!hasTaskDescription && (
-        <div className="mt-1 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
-          <AlertCircle className="h-3.5 w-3.5" />
-          <span>Fill in the task description field above to enable this feature</span>
-        </div>
-      )}
-    </div>
-  );
-};
+// This section has been moved to ActionsSection.tsx
 
 // Constants for auto-retry logic
 const AUTO_RETRY_DELAY = 2000; // 2 seconds delay for auto-retry
@@ -118,8 +29,9 @@ interface FileBrowserProps {
   onToggleSelection: (path: string) => void;
   onToggleExclusion: (path: string) => void;
   onBulkToggle: (shouldInclude: boolean, targetFiles: FileInfo[]) => void;
-  showOnlySelected: boolean;
-  onShowOnlySelectedChange: () => void;
+  filterMode: 'all' | 'selected' | 'regex';
+  onFilterModeChange: (mode: 'all' | 'selected' | 'regex') => void;
+  isRegexAvailable: boolean;
   onAddPath?: (path: string) => void;
   onInteraction?: () => void;
   refreshFiles?: (preserveState?: boolean) => Promise<void>;
@@ -129,13 +41,6 @@ interface FileBrowserProps {
   // Initialization and error state
   isInitialized?: boolean;
   fileLoadError?: string | null;
-
-  // Find Relevant Files props
-  onFindRelevantFiles?: () => void;
-  isFindingFiles?: boolean;
-  searchSelectedFilesOnly?: boolean;
-  onToggleSearchSelectedFilesOnly?: (value?: boolean) => void;
-  taskDescription?: string;
 
   // Regex state
   regexState: GeneratePromptContextValue['regexState'];
@@ -152,8 +57,9 @@ export default function FileBrowser({
   onToggleSelection,
   onToggleExclusion,
   onBulkToggle,
-  showOnlySelected,
-  onShowOnlySelectedChange,
+  filterMode,
+  onFilterModeChange,
+  isRegexAvailable,
   onAddPath,
   onInteraction,
   refreshFiles,
@@ -161,11 +67,6 @@ export default function FileBrowser({
   loadingMessage = "",
   isInitialized = false,
   fileLoadError = null,
-  onFindRelevantFiles,
-  isFindingFiles = false,
-  searchSelectedFilesOnly = false,
-  onToggleSearchSelectedFilesOnly,
-  taskDescription = "",
   regexState,
   disabled = false
 }: FileBrowserProps) {
@@ -182,8 +83,8 @@ export default function FileBrowser({
   const [negativeContentRegexError, setNegativeContentRegexError] = useState<string | null>(null);
   
   // Use the useFileFiltering hook
-  const { 
-    filteredFiles, 
+  const {
+    filteredFiles,
     titleRegexError: newTitleRegexError,
     contentRegexError: newContentRegexError,
     negativeTitleRegexError: newNegativeTitleRegexError,
@@ -192,8 +93,13 @@ export default function FileBrowser({
     managedFilesMap,
     fileContentsMap,
     searchTerm,
-    showOnlySelected,
-    regexState
+    filterMode,
+    regexPatterns: {
+      titleRegex: regexState.titleRegex,
+      contentRegex: regexState.contentRegex,
+      negativeTitleRegex: regexState.negativeTitleRegex,
+      negativeContentRegex: regexState.negativeContentRegex
+    }
   });
   
   // Update the regex errors from the hook
@@ -297,93 +203,72 @@ export default function FileBrowser({
   return (
     <div className="space-y-4 mb-4 border rounded-lg p-6 bg-card shadow-sm">
       
-      <div className="flex items-center gap-4 mb-3">
-        <div className="relative flex-1">
-          <Input
-            type="search"
-            placeholder="Search files..."
-            value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pr-10"
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1">
+            <Input
+              type="search"
+              placeholder="Search files..."
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full pr-10"
+              disabled={disabled}
+            />
+            {searchTerm && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onSearchChange("")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
+                title="Clear search"
+                disabled={disabled}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          <FilterModeToggle
+            currentMode={filterMode}
+            onModeChange={onFilterModeChange}
+            isRegexAvailable={isRegexAvailable}
             disabled={disabled}
           />
-          {searchTerm && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => onSearchChange("")}
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
-              title="Clear search"
-              disabled={disabled}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
 
-        <div className="flex items-center gap-2 border rounded-md px-3 py-1.5 bg-background">
-          <div className="flex items-center gap-1.5">
-            {showOnlySelected ? (
-              <Files className="h-4 w-4 text-primary" />
-            ) : (
-              <Files className="h-4 w-4 text-muted-foreground" />
-            )}
-            <span className="text-sm font-medium mr-1">
-              {showOnlySelected ? "Selected Files" : "All Files"}
-            </span>
-          </div>
           <Button
-            variant="ghost"
+            type="button"
+            variant="outline"
             size="sm"
-            onClick={() => typeof onShowOnlySelectedChange === 'function' && onShowOnlySelectedChange()}
-            className="h-6 px-2 rounded-sm"
-            disabled={disabled}
-            title={showOnlySelected ? "Show all files" : "Show selected files only"}
+            onClick={handleManualRefresh}
+            disabled={isLoading || disabled}
+            title="Manually refresh file list"
+            className="flex gap-1.5 items-center h-9"
           >
-            {showOnlySelected ? "Show All" : "Show Selected"}
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
-        
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleManualRefresh}
-          disabled={isLoading || disabled}
-          title="Manually refresh file list"
-          className="flex gap-1.5 items-center h-9"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-      
-      <div className="text-xs text-muted-foreground mt-1 text-balance">
-        Search files by path name. Toggle between showing all project files or only selected files.
-      </div>
-      
-      {/* Find Relevant Files UI Section */}
-      <FindRelevantFilesSection
-        onFindRelevantFiles={onFindRelevantFiles}
-        isFindingFiles={isFindingFiles}
-        searchSelectedFilesOnly={searchSelectedFilesOnly}
-        onToggleSearchSelectedFilesOnly={onToggleSearchSelectedFilesOnly}
-        taskDescription={taskDescription}
-        includedCount={includedCount}
-        disabled={disabled}
-      />
 
-      {/* Regex Accordion */}
-      <RegexAccordion
-        regexState={regexState}
-        onInteraction={onInteraction || (() => {})}
-        taskDescription={taskDescription}
-        titleRegexError={titleRegexError}
-        contentRegexError={contentRegexError}
-        negativeTitleRegexError={negativeTitleRegexError}
-        negativeContentRegexError={negativeContentRegexError}
-        disabled={disabled}
-      />
+        {/* Removed Generate Regex button - moved to RegexAccordion.tsx */}
+        <div className="flex items-center gap-2 justify-between">
+          <p className="text-xs text-muted-foreground text-balance flex-1">
+            {filterMode === 'regex' ?
+              "Use regex patterns to filter files. Click 'Regex File Filtering' below to configure." :
+              "Select 'Regex' filter mode above to enable regex-based filtering."
+            }
+          </p>
+        </div>
+      </div>
+
+      {/* Show error message if regex generation fails */}
+      {regexState.regexGenerationError && (
+        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/30 bg-destructive/5 p-2 rounded-md">
+          {regexState.regexGenerationError}
+        </div>
+      )}
+
+      
+      {/* Find Relevant Files and Regex Accordion moved to ActionsSection.tsx */}
 
       {/* Status bar with file counts */}
       {!isLoading && totalFilesCount > 0 && (
@@ -508,8 +393,8 @@ export default function FileBrowser({
         {projectDirectory && isInitialized && !fileLoadError && !isLoading && Object.keys(managedFilesMap).length === 0 && (
           <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
             <div className="text-center">
-              <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
-              <p className="font-medium text-amber-500">No files found in the selected directory</p>
+              <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
+              <p className="font-medium text-warning">No files found in the selected directory</p>
               <p className="text-xs mt-2 text-muted-foreground">Project directory: {projectDirectory || "none"}</p>
 
               <div className="w-full mt-4">
@@ -525,7 +410,7 @@ export default function FileBrowser({
                   Refresh Files
                 </Button>
 
-                <p className="text-xs text-amber-500 mt-2">
+                <p className="text-xs text-warning mt-2">
                   Files may be loading in the background. If this persists, try clicking Refresh Files again.
                 </p>
               </div>
@@ -554,17 +439,17 @@ export default function FileBrowser({
                     Clear Search
                   </Button>
                 </>
-              ) : showOnlySelected && includedCount === 0 ? (
+              ) : filterMode === 'selected' && includedCount === 0 ? (
                 <>
-                  <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
-                  <p className="font-medium text-amber-500">No files are currently selected</p>
+                  <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
+                  <p className="font-medium text-warning">No files are currently selected</p>
                   <p className="text-xs mt-2 text-muted-foreground">You&apos;re in &quot;Show Selected Files&quot; mode, but no files are currently selected.</p>
-                  
+
                   <Button
                     type="button"
                     variant="default"
                     size="sm"
-                    onClick={() => typeof onShowOnlySelectedChange === 'function' && onShowOnlySelectedChange()}
+                    onClick={() => onFilterModeChange('all')}
                     className="mt-4 h-9"
                     disabled={disabled}
                   >
@@ -597,9 +482,9 @@ export default function FileBrowser({
         {/* ALWAYS render file list container */}
         <div id="file-list-container">
           {/* Only render files when we have files to display */}
-          {Object.keys(managedFilesMap).length > 0 && 
-            // Map all available files
-            Object.values(managedFilesMap).map((file) => (
+          {Object.keys(managedFilesMap).length > 0 &&
+            // Map filtered and sorted files using displayedFiles
+            displayedFiles.map((file) => (
               <FileListItem
                 key={`file-${file.comparablePath || file.path}`}
                 file={file}

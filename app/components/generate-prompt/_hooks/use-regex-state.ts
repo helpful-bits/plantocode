@@ -293,112 +293,6 @@ export function useRegexState({
     }
   }, [onInteraction]);
 
-  // Helper function to extract regex patterns using regex
-  const extractAndApplyPatterns = useCallback((response: string) => {
-    const patterns: Record<string, string> = {};
-
-    console.log('[RegexState] Attempting to extract patterns from text, length:', response.length);
-
-    // Extract title regex - improved format matching
-    const titleMatch = response.match(/title(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|title(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (titleMatch) {
-      patterns.titlePattern = titleMatch[1] || titleMatch[2];
-      console.log('[RegexState] Found title regex:', patterns.titlePattern);
-    }
-
-    // Extract content regex - improved format matching
-    const contentMatch = response.match(/content(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|content(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (contentMatch) {
-      patterns.contentPattern = contentMatch[1] || contentMatch[2];
-      console.log('[RegexState] Found content regex:', patterns.contentPattern);
-    }
-
-    // Extract negative title regex - improved format matching
-    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+title)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (negTitleMatch) {
-      patterns.negativeTitlePattern = negTitleMatch[1] || negTitleMatch[2];
-      console.log('[RegexState] Found negative title regex:', patterns.negativeTitlePattern);
-    }
-
-    // Extract negative content regex - improved format matching
-    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+content)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
-    if (negContentMatch) {
-      patterns.negativeContentPattern = negContentMatch[1] || negContentMatch[2];
-      console.log('[RegexState] Found negative content regex:', patterns.negativeContentPattern);
-    }
-
-    // Try to find patterns in regular structured text if no matches found above
-    if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length === 0) {
-      console.log('[RegexState] No patterns found with primary regex, trying lines with ":" format');
-
-      // Extract patterns from lines that look like "Pattern name: pattern"
-      const lines = response.split('\n');
-
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-
-        if (trimmedLine.toLowerCase().startsWith('title') && trimmedLine.includes(':')) {
-          const patternText = trimmedLine.split(':')[1].trim();
-          if (patternText && !patterns.titlePattern) {
-            patterns.titlePattern = patternText.replace(/^["'`]|["'`]$/g, '');
-            console.log('[RegexState] Found title regex from line:', patterns.titlePattern);
-          }
-        }
-
-        if (trimmedLine.toLowerCase().startsWith('content') && trimmedLine.includes(':')) {
-          const patternText = trimmedLine.split(':')[1].trim();
-          if (patternText && !patterns.contentPattern) {
-            patterns.contentPattern = patternText.replace(/^["'`]|["'`]$/g, '');
-            console.log('[RegexState] Found content regex from line:', patterns.contentPattern);
-          }
-        }
-
-        if (trimmedLine.toLowerCase().includes('negative') &&
-            trimmedLine.toLowerCase().includes('title') &&
-            trimmedLine.includes(':')) {
-          const patternText = trimmedLine.split(':')[1].trim();
-          if (patternText && !patterns.negativeTitlePattern) {
-            patterns.negativeTitlePattern = patternText.replace(/^["'`]|["'`]$/g, '');
-            console.log('[RegexState] Found negative title regex from line:', patterns.negativeTitlePattern);
-          }
-        }
-
-        if (trimmedLine.toLowerCase().includes('negative') &&
-            trimmedLine.toLowerCase().includes('content') &&
-            trimmedLine.includes(':')) {
-          const patternText = trimmedLine.split(':')[1].trim();
-          if (patternText && !patterns.negativeContentPattern) {
-            patterns.negativeContentPattern = patternText.replace(/^["'`]|["'`]$/g, '');
-            console.log('[RegexState] Found negative content regex from line:', patterns.negativeContentPattern);
-          }
-        }
-      }
-    }
-
-    // Log the final extraction results
-    const patternsFound = Object.keys(patterns).filter(k => patterns[k] !== undefined).length;
-    console.log(`[RegexState] Extracted ${patternsFound} patterns from text`);
-
-    // Apply the extracted patterns
-    if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
-      applyRegexPatterns(patterns);
-
-      // Show success notification
-      showNotification({
-        title: "Regex patterns extracted",
-        message: "Patterns applied and regex filtering activated.",
-        type: "success"
-      });
-    } else {
-      setIsGeneratingTaskRegex(false);
-      setRegexGenerationError("Could not extract regex patterns from AI response");
-    }
-  }, [
-    applyRegexPatterns,
-    setIsGeneratingTaskRegex,
-    setRegexGenerationError,
-    showNotification
-  ]);
 
   // Reset function to clear state
   const reset = useCallback(() => {
@@ -438,8 +332,9 @@ export function useRegexState({
   // Use the useBackgroundJob hook to monitor the regex generation job
   const regexJob = useBackgroundJob(generatingRegexJobId);
   
+
   // Effect to handle job status changes
-  useEffect(() => {
+  const handleJobStatusChanges = useCallback(() => {
     // Skip if no job ID or not in generating state
     if (!generatingRegexJobId || !isGeneratingTaskRegex) {
       return;
@@ -447,54 +342,69 @@ export function useRegexState({
 
     // Log the current job state to help with debugging
     if (regexJob) {
-      console.log(`[RegexState] Regex job status: ${regexJob.status}, response length: ${regexJob.response ? (typeof regexJob.response === 'string' ? regexJob.response.length : 'non-string') : 'none'}`);
+      console.log(`[RegexState] Regex job status: ${regexJob.status}, job:`, regexJob.job);
+      // Additional logging to debug the job structure
+      if (regexJob.job) {
+        console.log(`[RegexState] Job metadata:`, regexJob.job.metadata);
+      }
     }
 
     // If job is completed, process the result
-    if (regexJob && regexJob.status === 'completed' && regexJob.response) {
+    if (regexJob && regexJob.status === 'completed') {
       console.log('[RegexState] Regex generation job completed, processing results');
 
       try {
-        // Try to parse the response as JSON if it's a string
-        if (typeof regexJob.response === 'string') {
-          // Try to extract the JSON if it's in a code block
-          const jsonMatch = regexJob.response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-          const jsonText = jsonMatch ? jsonMatch[1] : regexJob.response;
+        // We can now access metadata directly from regexJob thanks to our hook update
+        // Try both paths to find regexPatterns - direct metadata or via job property
+        const metadata = regexJob.metadata || regexJob.job?.metadata;
+        console.log('[RegexState] Job metadata for pattern extraction:', metadata);
 
-          try {
-            // Parse the JSON
-            const patterns = JSON.parse(jsonText);
-            console.log('[RegexState] Successfully parsed JSON patterns:', patterns);
+        const regexPatterns = metadata?.regexPatterns;
 
-            // Apply the patterns
-            applyRegexPatterns({
-              titlePattern: patterns.titleRegex || patterns.title_regex,
-              contentPattern: patterns.contentRegex || patterns.content_regex,
-              negativeTitlePattern: patterns.negativeTitleRegex || patterns.negative_title_regex,
-              negativeContentPattern: patterns.negativeContentRegex || patterns.negative_content_regex
-            });
+        if (regexPatterns) {
+          console.log('[RegexState] Found structured regex patterns in job metadata:', regexPatterns);
 
-            // Show success notification
-            showNotification({
-              title: "Regex patterns generated",
-              message: "Patterns applied and regex filtering activated.",
-              type: "success"
-            });
-          } catch (parseError) {
-            console.error('[RegexState] Failed to parse regex job response JSON:', parseError);
-            console.log('[RegexState] Attempting regex extraction as fallback, response sample:',
-              regexJob.response.substring(0, 200) + (regexJob.response.length > 200 ? '...' : ''));
+          // Prepare patterns for our state
+          const patterns = {
+            titlePattern: regexPatterns.titleRegex || '',
+            contentPattern: regexPatterns.contentRegex || '',
+            negativeTitlePattern: regexPatterns.negativeTitleRegex || '',
+            negativeContentPattern: regexPatterns.negativeContentRegex || ''
+          };
 
-            // Try regex extraction as fallback
-            extractAndApplyPatterns(regexJob.response);
+          // Count non-empty patterns
+          const patternsFound = Object.values(patterns).filter(Boolean).length;
+
+          if (patternsFound > 0) {
+            console.log(`[RegexState] Successfully found ${patternsFound} patterns in metadata`);
+
+            // Apply the patterns we found
+            applyRegexPatterns(patterns);
+
+            // Emit event to switch the filter mode to regex
+            const filterModeChangeEvent = new CustomEvent('setFilterModeToRegex');
+            window.dispatchEvent(filterModeChangeEvent);
+          } else {
+            console.error('[RegexState] No regex patterns found in metadata');
+            setIsGeneratingTaskRegex(false);
+
+            // Only set the error message if the regex panel is open
+            if (regexJob.job?.metadata?.openRegexPanel) {
+              setRegexGenerationError("No valid regex patterns found");
+            } else {
+              // Clear any previous error
+              setRegexGenerationError(null);
+            }
           }
         } else {
-          console.warn('[RegexState] Unexpected response type from regex job:', typeof regexJob.response);
+          console.warn('[RegexState] No regexPatterns found in job metadata');
           setIsGeneratingTaskRegex(false);
-          setRegexGenerationError("Unexpected response from AI");
+
+          // Don't set error message for metadata structure issues
+          setRegexGenerationError(null);
         }
       } catch (error) {
-        console.error('[RegexState] Error processing regex job response:', error);
+        console.error('[RegexState] Error processing regex job metadata:', error);
         setIsGeneratingTaskRegex(false);
         setRegexGenerationError(error instanceof Error ? error.message : "Failed to process regex patterns");
       }
@@ -506,69 +416,55 @@ export function useRegexState({
       setIsGeneratingTaskRegex(false);
       setRegexGenerationError(regexJob.errorMessage || "Failed to generate regex patterns");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     regexJob,
     generatingRegexJobId,
     isGeneratingTaskRegex,
     applyRegexPatterns,
     setIsGeneratingTaskRegex,
-    setRegexGenerationError,
-    showNotification,
-    extractAndApplyPatterns
+    setRegexGenerationError
   ]);
+
+  // Apply the callback in useEffect
+  useEffect(() => {
+    handleJobStatusChanges();
+  }, [handleJobStatusChanges]);
 
   // Generate regex from task description - stabilized with useCallback
   const handleGenerateRegexFromTask = useCallback(async () => {
     if (!taskDescription.trim()) {
-      showNotification({
-        title: "Cannot generate regex",
-        message: "Please provide a task description first.",
-        type: "warning"
-      });
+      // Skip notifying if task description is empty
+      console.warn('[RegexState] Cannot generate regex: Missing task description');
       return;
     }
-    
+
     if (isGeneratingTaskRegex) {
-      showNotification({
-        title: "Already generating regex",
-        message: "Please wait for the current generation to complete.",
-        type: "warning"
-      });
+      // Skip notifying if already generating
+      console.warn('[RegexState] Already generating regex, ignoring request');
       return;
     }
-    
+
     // Validate that activeSessionId is a string if it's used in the action
     if (activeSessionId !== null && typeof activeSessionId !== 'string') {
       console.error(`[RegexState] Invalid activeSessionId type: ${typeof activeSessionId}, value:`, activeSessionId);
-      showNotification({
-        title: "Error",
-        message: "Invalid session ID format",
-        type: "error"
-      });
       return;
     }
-    
+
     setIsGeneratingTaskRegex(true);
     setRegexGenerationError("");
-    
+
     try {
       // Check if we have an active session ID
       if (!activeSessionId) {
         throw new Error("Active session required to generate regex patterns.");
       }
-      
+
       const result = await generateRegexPatternsAction(taskDescription, undefined, undefined, activeSessionId);
-      
+
       if (result.isSuccess && result.data) {
         if (typeof result.data === 'object' && 'jobId' in result.data) {
           setGeneratingRegexJobId(result.data.jobId);
-          
-          showNotification({
-            title: "Generating regex patterns",
-            message: "This may take a moment...",
-            type: "info"
-          });
+          console.log('[RegexState] Started regex generation job:', result.data.jobId);
         }
       } else {
         throw new Error(result.message || "Failed to start regex generation.");
@@ -577,18 +473,11 @@ export function useRegexState({
       console.error("[RegexState] Error generating regex patterns:", error);
       setIsGeneratingTaskRegex(false);
       setRegexGenerationError(error instanceof Error ? error.message : "An unknown error occurred");
-      
-      showNotification({
-        title: "Error generating regex",
-        message: error instanceof Error ? error.message : "An unknown error occurred.",
-        type: "error"
-      });
     }
   }, [
-    taskDescription, 
-    isGeneratingTaskRegex, 
-    activeSessionId, 
-    showNotification
+    taskDescription,
+    isGeneratingTaskRegex,
+    activeSessionId
   ]);
 
   return useMemo(() => ({

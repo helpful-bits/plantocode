@@ -169,6 +169,14 @@ function areJobsEqual(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
     }
   }
 
+  // Check if metadata has changed in a way that affects the UI
+  if (hasMetadataChanged(jobA, jobB)) {
+    if (DEBUG_POLLING) {
+      console.debug(`[BackgroundJobs] Metadata changed for job ${jobA.id}`);
+    }
+    return false;
+  }
+
   // Response content comparison for all job types
   // This needs to be comprehensive to catch all display changes
   if (!safeStringCompare(jobA.response, jobB.response)) {
@@ -205,6 +213,28 @@ function hasMetadataChanged(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
 
   // Fast path 3: If one has metadata and the other doesn't, they definitely differ
   if (!jobA.metadata || !jobB.metadata) return true;
+
+  // Check for regexPatterns in completed jobs (especially for regex generation tasks)
+  if (jobA.status === 'completed') {
+    // Check if regexPatterns exists in only one of the jobs
+    const hasRegexPatternsA = 'regexPatterns' in jobA.metadata;
+    const hasRegexPatternsB = 'regexPatterns' in jobB.metadata;
+
+    if (hasRegexPatternsA !== hasRegexPatternsB) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Metadata differs: regexPatterns presence mismatch for job ${jobA.id}`);
+      }
+      return true;
+    }
+
+    // If both have regexPatterns, compare the references
+    if (hasRegexPatternsA && hasRegexPatternsB && jobA.metadata.regexPatterns !== jobB.metadata.regexPatterns) {
+      if (DEBUG_POLLING) {
+        console.debug(`[BackgroundJobs] Metadata differs: regexPatterns changed for job ${jobA.id}`);
+      }
+      return true;
+    }
+  }
 
   // For pathfinder jobs, check pathData and pathCount first
   if (jobA.taskType === 'pathfinder') {
@@ -932,7 +962,8 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   
   // Clear job history
   // daysToKeep parameter controls job retention:
-  // - When undefined or 0: Only deletes very old jobs (30+ days) - this is the default behavior
+  // - When -1: Delete ALL completed/failed/canceled jobs
+  // - When undefined or 0: Only deletes very old jobs (90+ days) - this is the default behavior
   // - When > 0: Clears jobs older than the specified number of days from view
   const clearHistory = useCallback(async (daysToKeep?: number): Promise<void> => {
     try {
@@ -980,9 +1011,9 @@ export function useBackgroundJobs() {
 
 export function useBackgroundJob(jobId: string | null) {
   const { jobs, isLoading, error } = useBackgroundJobs();
-  
+
   const job = jobId ? jobs.find(j => j.id === jobId) || null : null;
-  
+
   // Create a derived object with properly mapped properties
   const result = {
     job,
@@ -991,9 +1022,10 @@ export function useBackgroundJob(jobId: string | null) {
     // Add derived properties for convenience
     status: job?.status || null,
     response: job?.response || null,
-    errorMessage: job?.errorMessage || null
+    errorMessage: job?.errorMessage || null,
+    metadata: job?.metadata || null  // Expose metadata directly for convenience
   };
-  
+
   return result;
 }
 
