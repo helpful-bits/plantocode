@@ -1,15 +1,12 @@
 "use server";
 
-import { ActionState } from '@/types';
+import { ActionState, TaskType } from '@/types';
 import { sessionRepository } from '@/lib/db/repositories';
 import { setupDatabase } from '@/lib/db'; // Use index export
-import geminiClient from '@/lib/api/gemini-client';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { geminiClient } from '@/lib/api'; // Import from centralized API module
 import { getModelSettingsForProject } from '@/actions/project-settings-actions';
 import { createBackgroundJob, enqueueJob } from '@/lib/jobs/job-helpers';
-
-// Constants
-const MAX_OUTPUT_TOKENS = 65536; // Maximum output tokens for Gemini 2.5 Pro
+import { DEFAULT_TASK_SETTINGS } from '@/lib/constants';
 
 /**
  * Send a prompt to Gemini and receive streaming response
@@ -42,17 +39,14 @@ export async function sendPromptToGeminiAction(
     const projectDirectory = session.projectDirectory;
     
     // Get the project-specific model settings
-    const projectSettings = await getModelSettingsForProject(projectDirectory);
-    
-    // Get the implementation plan task settings or use defaults
-    const planSettings = projectSettings?.implementation_plan || {
-      model: GEMINI_FLASH_MODEL,
-      maxTokens: MAX_OUTPUT_TOKENS,
-      temperature: 0.7
-    };
+    const allSettings = await getModelSettingsForProject(projectDirectory);
+
+    // Get the implementation plan task settings
+    const planSettings = allSettings.implementation_plan || DEFAULT_TASK_SETTINGS.implementation_plan;
     
     // Use the Gemini client for streaming requests
-    return geminiClient.sendStreamingRequest(promptText, sessionId, {
+    return geminiClient.sendStreamingRequest(promptText, {
+      sessionId,
       // Use settings from project settings with potential override for temperature
       model: planSettings.model,
       maxOutputTokens: planSettings.maxTokens,
@@ -105,10 +99,25 @@ export async function cancelGeminiRequestAction(
  */
 export async function cancelGeminiProcessingAction(
   sessionId: string
-): Promise<ActionState<null>> {
+): Promise<ActionState<{ cancelledQueueRequests: number; cancelledBackgroundJobs: number; }>> {
   await setupDatabase();
-  
-  return geminiClient.cancelAllSessionRequests(sessionId);
+
+  const result = await geminiClient.cancelAllSessionRequests(sessionId);
+
+  // Handle the potential null return format
+  if (result.data === null) {
+    return {
+      isSuccess: result.isSuccess,
+      message: result.message,
+      data: {
+        cancelledQueueRequests: 0,
+        cancelledBackgroundJobs: 0
+      },
+      metadata: result.metadata
+    };
+  }
+
+  return result;
 }
 
 /**
@@ -154,38 +163,26 @@ export async function initiateGenericGeminiStreamAction(params: {
   }
   
   try {
-    // Get model settings if project directory is provided
-    let model = explicitModel || GEMINI_FLASH_MODEL;
-    let temperature = explicitTemperature || 0.7;
-    let maxOutputTokens = explicitMaxTokens || 60000;
+    // Set default values to be overridden by settings or explicit params
+    let model, temperature, maxOutputTokens;
     let topP = explicitTopP || 0.95;
     let topK = explicitTopK || 40;
     
     if (projectDirectory) {
       try {
-        const projectSettings = await getModelSettingsForProject(projectDirectory);
+        // Get all task settings from project
+        const allSettings = await getModelSettingsForProject(projectDirectory);
         
-        // Get settings for generic requests (fall back to streaming settings)
-        const genericSettings = projectSettings?.streaming || {
-          model: GEMINI_FLASH_MODEL,
-          maxTokens: 60000,
-          temperature: 0.7
-        };
+        // Get settings for generic_llm_stream task type
+        const genericSettings = allSettings.generic_llm_stream;
         
-        // Apply settings if not explicitly provided
-        if (genericSettings && genericSettings.model && !explicitModel) {
-          model = genericSettings.model;
-        }
-        
-        if (genericSettings && genericSettings.maxTokens && !explicitMaxTokens) {
-          maxOutputTokens = genericSettings.maxTokens;
-        }
-        
-        if (genericSettings && genericSettings.temperature !== undefined && !explicitTemperature) {
-          temperature = genericSettings.temperature;
-        }
+        // Apply settings, prioritizing explicit parameters
+        model = explicitModel || genericSettings.model;
+        temperature = explicitTemperature !== undefined ? explicitTemperature : genericSettings.temperature;
+        maxOutputTokens = explicitMaxTokens || genericSettings.maxTokens;
       } catch (error) {
         console.warn(`Could not retrieve project settings for ${projectDirectory}:`, error);
+        // We'll fall back to explicit values or client defaults if we can't get settings
       }
     }
     

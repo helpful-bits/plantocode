@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import path from 'path';
 import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ClipboardCopy, FileText, Loader2 } from "lucide-react";
+import { ChevronDown, ClipboardCopy, FileText, Loader2, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 import { useProject } from '@/lib/contexts/project-context';
@@ -160,25 +161,85 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
   }, [planFileContents]);
 
   const handleOpenFile = useCallback(async (filePath: string | null, planId: string) => {
-    if (!filePath || !projectDirectory) {
+    // Get the plan from the list
+    const plan = implementationPlans.find(p => p.id === planId);
+    if (!plan) {
       toast({
         title: "Error",
-        description: "Unable to open file: File path or project directory is missing",
+        description: "Unable to find plan details",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check essential prerequisites
+    if (!projectDirectory) {
+      toast({
+        title: "Error",
+        description: "Project directory is missing",
         variant: "destructive",
       });
       return;
     }
 
     setIsOpening(planId);
-    
+
     try {
+      // Prioritize explicit outputFilePath from the plan
+      let pathToOpen = plan.outputFilePath;
+
+      // If we don't have an outputFilePath but the response contains XML content,
+      // we'll need to save it to a file first
+      if (!pathToOpen && plan.response && plan.response.includes('<')) {
+        // Determine a suitable filename based on timestamp
+        const timestamp = new Date(plan.createdAt).getTime();
+        const planFileName = `plan_${timestamp}.xml`;
+
+        // Construct the full path to the implementation_plans directory
+        const implPlansDir = path.join(projectDirectory, 'implementation_plans');
+        pathToOpen = path.join(implPlansDir, planFileName);
+
+        // First verify/create the directory
+        try {
+          // Create the implementation_plans directory if it doesn't exist
+          await fetch('/api/create-directory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              directoryPath: implPlansDir,
+              projectDirectory
+            })
+          });
+
+          // Then save the XML content to the file
+          await fetch('/api/write-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filePath: pathToOpen,
+              content: plan.response,
+              projectDirectory
+            })
+          });
+
+          console.log(`Created implementation plan file at: ${pathToOpen}`);
+        } catch (saveError) {
+          console.error("Failed to save implementation plan to file:", saveError);
+          throw new Error("Failed to save implementation plan to file before opening");
+        }
+      }
+
+      // If we still don't have a path, there's nothing to open
+      if (!pathToOpen) {
+        throw new Error("No file path available for this implementation plan");
+      }
+
+      // Open the file in the IDE
       const response = await fetch('/api/open-in-ide', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filePath,
+          filePath: pathToOpen,
           projectDirectory
         }),
       });
@@ -190,27 +251,27 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
 
       toast({
         title: "Success",
-        description: "File opened in configured editor",
+        description: "Plan opened in configured editor",
       });
     } catch (error) {
-      console.error("Error opening file:", error);
+      console.error("Error opening implementation plan:", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to open file",
+        description: error instanceof Error ? error.message : "Failed to open plan",
         variant: "destructive",
       });
     } finally {
       setIsOpening(null);
     }
-  }, [projectDirectory]);
+  }, [projectDirectory, implementationPlans]);
 
   // Check if project directory is available
   if (!projectDirectory) {
     return (
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Implementation Plans</CardTitle>
-          <CardDescription>Select a project to view implementation plans</CardDescription>
+      <Card className="mt-6 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-xl">Implementation Plans</CardTitle>
+          <CardDescription className="text-balance">Select a project to view implementation plans</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -220,33 +281,53 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
   const showLoadingIndicator = isLoading && !initialLoadComplete && implementationPlans.length === 0;
 
   return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle>Implementation Plans</CardTitle>
-        <CardDescription>
-          {implementationPlans.length > 0 
-            ? `${implementationPlans.length} implementation plan${implementationPlans.length > 1 ? 's' : ''} available`
-            : 'No implementation plans available for this project'}
-        </CardDescription>
+    <Card className="mt-6 shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex justify-between items-start">
+          <div>
+            <CardTitle className="text-xl">Implementation Plans</CardTitle>
+            <CardDescription className="text-balance">
+              {implementationPlans.length > 0
+                ? `${implementationPlans.length} implementation plan${implementationPlans.length > 1 ? 's' : ''} available`
+                : 'No implementation plans available for this project'}
+            </CardDescription>
+          </div>
+
+          {/* Add the ImplementationPlanActions in compact mode for quick access */}
+          {projectDirectory && (
+            <div className="ml-4 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                title="Create New Implementation Plan"
+                onClick={() => window.location.href = "/?view=generate-prompt"}
+                className="text-xs h-8"
+              >
+                <FilePlus className="h-4 w-4 mr-2" />
+                New Plan
+              </Button>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {showLoadingIndicator ? (
-          <div className="flex items-center justify-center py-8">
+          <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : implementationPlans.length === 0 ? (
-          <div className="text-center text-muted-foreground py-4">
+          <div className="text-center text-muted-foreground py-8 text-balance">
             No implementation plans have been generated for this project yet.
           </div>
         ) : (
-          <ScrollArea className="h-[400px] rounded-md border">
+          <ScrollArea className="h-[420px] rounded-md border">
             <div className="space-y-4 p-4">
               {implementationPlans.map((plan) => (
-                <Collapsible key={plan.id} className="border rounded-md">
-                  <div className="flex justify-between items-center p-3 bg-muted/50">
+                <Collapsible key={plan.id} className="border rounded-md shadow-sm">
+                  <div className="flex justify-between items-center p-4 bg-muted/30">
                     <div className="flex-1">
-                      <div className="font-medium">Implementation Plan</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="font-medium text-sm">Implementation Plan</div>
+                      <div className="text-xs text-muted-foreground mt-1 text-balance">
                         Created {formatDistanceToNow(plan.createdAt, { addSuffix: true })}
                         {plan.sessionId && sessionNames[plan.sessionId] && ` in ${sessionNames[plan.sessionId]}`}
                       </div>
@@ -256,11 +337,11 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                           `plan_${new Date(plan.createdAt).getTime()}.xml`}
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-2">
                       <Button 
                         variant="ghost" 
                         size="sm"
-                        className="h-8 px-2"
+                        className="h-9 px-3"
                         onClick={() => copyToClipboard(plan.response || "", plan.id)}
                         disabled={!plan.response && !planFileContents[plan.id]?.content}
                         title={planFileContents[plan.id]?.content ? "Copy full plan contents" : "Copy placeholder response"}
@@ -269,86 +350,58 @@ export function ImplementationPlansPanel({ sessionId }: ImplementationPlansPanel
                           <span className="text-xs">Copied!</span>
                         ) : planFileContents[plan.id]?.isLoading ? (
                           <>
-                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
                             <span className="text-xs">Loading</span>
                           </>
                         ) : (
                           <>
-                            <ClipboardCopy className="h-4 w-4 mr-1" />
+                            <ClipboardCopy className="h-4 w-4 mr-2" />
                             <span className="text-xs">Copy</span>
                           </>
                         )}
                       </Button>
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         size="sm"
-                        className="h-8 px-2"
-                        onClick={() => {
-                          // Try to get or generate a reasonable file path
-                          let filePath = plan.outputFilePath;
-                          
-                          // Check the metadata first - might have path info even if outputFilePath is missing
-                          if (!filePath && plan.metadata?.outputFilePath) {
-                            filePath = plan.metadata.outputFilePath as string;
-                          }
-                          
-                          // If still no path, construct one using timestamps and naming conventions
-                          if (!filePath && projectDirectory) {
-                            // Try a few different approaches to get the best filename
-                            
-                            // Option 1: Use timestamp from the job and sanitized prompt
-                            const timestamp = new Date(plan.createdAt).toISOString().replace(/[:.]/g, '-');
-                            const sanitizedPrompt = plan.prompt ? plan.prompt.slice(0, 30)
-                              .replace(/[^\w\s-]/g, '')
-                              .replace(/\s+/g, '-')
-                              .toLowerCase() : 'unknown';
-                            const planFileName = `plan_${timestamp}_${sanitizedPrompt}.xml`;
-                            filePath = `${projectDirectory}/implementation_plans/${planFileName}`;
-                            
-                            // Generated path based on naming convention
-                          }
-                          
-                          // Pass both the filePath and the XML content (as a fallback)
-                          // This way if opening fails, we can still try to create the file
-                          handleOpenFile(filePath, plan.id);
-                        }}
+                        className="h-9 px-3"
+                        onClick={() => handleOpenFile(plan.outputFilePath, plan.id)}
                         disabled={isOpening === plan.id}
                       >
                         {isOpening === plan.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         ) : (
                           <>
-                            <FileText className="h-4 w-4 mr-1" />
+                            <FileText className="h-4 w-4 mr-2" />
                             <span className="text-xs">Open</span>
                           </>
                         )}
                       </Button>
-                      <CollapsibleTrigger className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent">
+                      <CollapsibleTrigger className="h-9 w-9 rounded-md flex items-center justify-center hover:bg-accent/50">
                         <ChevronDown className="h-4 w-4" />
                       </CollapsibleTrigger>
                     </div>
                   </div>
                   <CollapsibleContent>
-                    <div className="p-4">
+                    <div className="p-5">
                       {planFileContents[plan.id]?.isLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+                        <div className="flex items-center justify-center py-6">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-3" />
                           <span className="text-muted-foreground">Loading plan content...</span>
                         </div>
                       ) : planFileContents[plan.id]?.error ? (
-                        <div className="text-destructive py-2">
-                          <p><strong>Error loading plan:</strong> {planFileContents[plan.id].error}</p>
-                          <p className="text-xs text-muted-foreground mt-2">Showing placeholder response instead:</p>
-                          <pre className="whitespace-pre-wrap text-sm overflow-x-auto mt-2 p-2 bg-muted/50 rounded">
+                        <div className="text-destructive py-3">
+                          <p className="text-balance"><strong>Error loading plan:</strong> {planFileContents[plan.id].error}</p>
+                          <p className="text-xs text-muted-foreground mt-3">Showing placeholder response instead:</p>
+                          <pre className="whitespace-pre-wrap text-sm overflow-x-auto mt-3 p-4 bg-muted/30 rounded-md text-balance">
                             {plan.response}
                           </pre>
                         </div>
                       ) : planFileContents[plan.id]?.content ? (
-                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
+                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto py-2 text-balance">
                           {planFileContents[plan.id].content}
                         </pre>
                       ) : (
-                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto">
+                        <pre className="whitespace-pre-wrap text-sm overflow-x-auto py-2 text-balance">
                           {plan.response || "Loading plan content..."}
                         </pre>
                       )}

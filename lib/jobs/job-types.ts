@@ -34,7 +34,7 @@ export interface BaseJobPayload {
 export interface QueuedJob {
   id: string;
   type: JobType;
-  payload: BaseJobPayload & AnyJobPayload;
+  payload: BaseJobPayload & Partial<AnyJobPayload>;
   priority: number;
   createdAt: number;
   attempt: number; // For retry logic
@@ -90,9 +90,8 @@ export interface TranscriptionPayload extends BaseJobPayload {
 export interface PathFinderPayload extends BaseJobPayload {
   taskDescription: string;
   projectDirectory: string;
+  systemPrompt: string;
   modelOverride?: string;
-  systemPrompt?: string;
-  systemPromptOverride?: string;
   temperature?: number;
   maxOutputTokens?: number;
 }

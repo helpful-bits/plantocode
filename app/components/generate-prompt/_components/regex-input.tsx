@@ -60,7 +60,7 @@ const RegexInput = React.memo(function RegexInput({
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="flex flex-col gap-2">
           <label htmlFor="titleRegex" className="font-medium text-foreground">Title Regex:</label>
           <Textarea
@@ -71,13 +71,13 @@ const RegexInput = React.memo(function RegexInput({
               onInteraction();
             }}
             placeholder="Regex for file path..."
-            className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
-            disabled={!isRegexActive} // Keep disabled state
-            aria-label="Title Regex" // Keep aria-label
+            className={`h-20 font-mono text-sm bg-background/80 rounded-md ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
+            disabled={!isRegexActive}
+            aria-label="Title Regex"
           /> 
           {titleRegexError ? (
             <p className="text-xs text-destructive">{titleRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Enter a JavaScript regex to filter files based on their path (e.g., `src/.*\.ts$`).</p>)} 
+          ) : (<p className="text-xs text-muted-foreground text-balance">Filter files by matching their path (e.g., `src/.*\.ts`).</p>)} 
         </div>
         <div className="flex flex-col gap-2">
           <label htmlFor="contentRegex" className="font-medium text-foreground">Content Regex:</label>
@@ -89,17 +89,17 @@ const RegexInput = React.memo(function RegexInput({
                onInteraction();
             }}
             placeholder="Regex for file content..."
-            className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
-            disabled={!isRegexActive} // Keep disabled state
-            aria-label="Content Regex" // Keep aria-label
+            className={`h-20 font-mono text-sm bg-background/80 rounded-md ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
+            disabled={!isRegexActive}
+            aria-label="Content Regex"
           />
           {contentRegexError ? ( 
             <p className="text-xs text-destructive">{contentRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Enter a JavaScript regex to filter files based on their content (e.g., `import React`).</p>)}
+          ) : (<p className="text-xs text-muted-foreground text-balance">Filter files by matching their content (e.g., `import React`).</p>)}
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-2">
         <div className="flex flex-col gap-2">
           <label htmlFor="negativeTitleRegex" className="font-medium text-foreground">Negative Title Regex:</label>
           <Textarea
@@ -110,13 +110,13 @@ const RegexInput = React.memo(function RegexInput({
               onInteraction();
             }}
             placeholder="Regex to exclude by path..."
-            className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`h-20 font-mono text-sm bg-background/80 rounded-md ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
             disabled={!isRegexActive}
             aria-label="Negative Title Regex"
           /> 
           {negativeTitleRegexError ? (
             <p className="text-xs text-destructive">{negativeTitleRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Enter a JavaScript regex to exclude files based on their path (e.g., `test/.*\.ts$`).</p>)} 
+          ) : (<p className="text-xs text-muted-foreground text-balance">Exclude files by matching their path (e.g., `test/.*\.ts`).</p>)} 
         </div>
         <div className="flex flex-col gap-2">
           <label htmlFor="negativeContentRegex" className="font-medium text-foreground">Negative Content Regex:</label>
@@ -128,13 +128,13 @@ const RegexInput = React.memo(function RegexInput({
                onInteraction();
             }}
             placeholder="Regex to exclude by content..."
-            className={`h-20 font-mono text-sm bg-background/80 ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
+            className={`h-20 font-mono text-sm bg-background/80 rounded-md ${!isRegexActive ? "opacity-60 cursor-not-allowed" : ""}`}
             disabled={!isRegexActive}
             aria-label="Negative Content Regex"
           />
           {negativeContentRegexError ? ( 
             <p className="text-xs text-destructive">{negativeContentRegexError}</p>
-          ) : (<p className="text-xs text-muted-foreground">Enter a JavaScript regex to exclude files based on their content (e.g., `test|mock`).</p>)}
+          ) : (<p className="text-xs text-muted-foreground text-balance">Exclude files by matching their content (e.g., `test|mock`).</p>)}
         </div>
       </div>
     </div>

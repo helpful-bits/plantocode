@@ -4,18 +4,63 @@ import React, { Suspense, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { useGeneratePromptState } from "./_hooks/use-generate-prompt-state";
 import { GeneratePromptContext } from "./_contexts/generate-prompt-context";
-import { FileManagementProvider } from "./_contexts/file-management-provider";
+import { useSessionContext } from "@/lib/contexts/session-context";
 import ProjectSection from "./_sections/ProjectSection";
 import TaskSection from "./_sections/TaskSection";
+import { FileManagementProvider } from "./_contexts/file-management-provider";
 import FileSection from "./_sections/FileSection";
-import ActionSection from "./_sections/ActionSection";
-import PromptPreview from "./_sections/PromptPreview";
-import { Button } from "@/components/ui/button";
-import { Session } from "@/types/session-types";
+
+// Define a separate component to handle file management
+// This avoids issues with conditional hook calls
+function FileManagementWrapper({
+  projectDirectory,
+  taskDescription,
+  hasSession,
+  taskSectionState,
+  taskSectionActions
+}: {
+  projectDirectory: string | null;
+  taskDescription: string;
+  hasSession: boolean;
+  taskSectionState: any;
+  taskSectionActions: any;
+}) {
+  // Return null when no project directory exists
+  if (!projectDirectory) return null;
+
+  return (
+    <FileManagementProvider
+      projectDirectory={projectDirectory}
+      taskDescription={taskDescription}
+    >
+      {!hasSession ? (
+        <div className="text-center text-muted-foreground italic p-4 border border-dashed rounded-md border-border bg-card/50">
+          Create a new session or load an existing one to start working.
+        </div>
+      ) : (
+        <>
+          {/* Task section */}
+          <div className="mt-4">
+            <TaskSection
+                state={taskSectionState}
+                actions={taskSectionActions}
+            />
+          </div>
+
+          {/* File section */}
+          <FileSection />
+        </>
+      )}
+    </FileManagementProvider>
+  );
+}
+
+// Memoize the wrapper component to prevent unnecessary re-renders
+const MemoizedFileManagementWrapper = React.memo(FileManagementWrapper);
 
 /**
  * Generate Prompt Form
- * 
+ *
  * Orchestrates the prompt generation UI components.
  * All business logic and state management is delegated to hooks.
  * The form itself is composed of focused presentational sections.
@@ -24,10 +69,13 @@ import { Session } from "@/types/session-types";
 export default function GeneratePromptForm() {
   // Initialize state from the central hook
   const contextValue = useGeneratePromptState();
-  
+
+  // Get sessionContext to access the task description directly
+  const sessionContext = useSessionContext();
+
   // Create memoized props for TaskSection to prevent unnecessary re-renders
   const taskSectionState = useMemo(() => ({
-    taskDescription: contextValue.taskState.taskDescription,
+      taskDescription: contextValue.taskState.taskDescription,
     isGeneratingGuidance: contextValue.isGeneratingGuidance,
     projectDirectory: contextValue.projectDirectory || '',
     taskDescriptionRef: contextValue.taskState.taskDescriptionRef,
@@ -46,122 +94,36 @@ export default function GeneratePromptForm() {
     handleTaskChange: contextValue.taskState.setTaskDescription,
     handleTranscribedText: contextValue.taskState.setTaskDescription,
     handleInteraction: contextValue.handleInteraction,
+    triggerSave: contextValue.triggerSave,
     copyArchPrompt: (selectedPaths: string[]) => contextValue.handleGenerateGuidance(selectedPaths),
     handleImproveSelection: contextValue.taskState.handleImproveSelection
-  }), [
-    contextValue
-  ]);
+  }), [contextValue]);
 
-  // Create session data for FileManagementProvider with the minimum required fields
-  // Use loadedSessionFilePrefs as the authoritative source for file preferences
-  const getSessionData = () => {
-    if (!contextValue.activeSessionId) return undefined;
-    
-    // Get the current session state for non-file preferences
-    const currentState = contextValue.getCurrentSessionState();
-    
-    // Use the loaded session file preferences or empty defaults
-    const filePrefs = contextValue.loadedSessionFilePrefs || {
-      includedFiles: [],
-      forceExcludedFiles: [],
-      searchTerm: "",
-      searchSelectedFilesOnly: false
-    };
-    
-    // Create a session object with the minimum required fields
-    const sessionData: Session = {
-      id: contextValue.activeSessionId,
-      name: contextValue.sessionName || "Untitled Session",
-      createdAt: Date.now(),
-      projectDirectory: contextValue.projectDirectory || '/unknown',
-      taskDescription: currentState.taskDescription || "",
-      titleRegex: currentState.titleRegex || "",
-      contentRegex: currentState.contentRegex || "",
-      negativeTitleRegex: currentState.negativeTitleRegex || "",
-      negativeContentRegex: currentState.negativeContentRegex || "",
-      isRegexActive: currentState.isRegexActive !== undefined ? currentState.isRegexActive : true,
-      includedFiles: filePrefs.includedFiles,
-      forceExcludedFiles: filePrefs.forceExcludedFiles,
-      searchTerm: filePrefs.searchTerm,
-      searchSelectedFilesOnly: filePrefs.searchSelectedFilesOnly,
-    };
-    
-    return sessionData;
-  };
+  const hasSession = Boolean(contextValue.activeSessionId || sessionContext.currentSession);
 
   return (
     <GeneratePromptContext.Provider value={contextValue}>
       <div className="py-4 w-full flex h-full">
         <div className="flex flex-col flex-1 space-y-8 w-full">
           {/* ProjectSection - Handles project directory selection and session management */}
-          <Suspense fallback={<div>Loading project section...</div>}>
-            <FileManagementProvider
-              projectDirectory={contextValue.projectDirectory || ''}
-              activeSessionId={contextValue.activeSessionId}
-              taskDescription={contextValue.taskState.taskDescription}
-              sessionData={getSessionData()}
-              isSwitchingSession={contextValue.isSwitchingSession}
-            >
-              <ProjectSection />
-            </FileManagementProvider>
+          <Suspense fallback={
+            <div className="flex justify-center items-center p-4 text-muted-foreground text-sm border rounded-lg bg-card/50 min-h-[200px]">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              Loading project section...
+            </div>
+          }>
+            {/* ProjectSection */}
+            <ProjectSection disabled={false} />
           </Suspense>
 
-          {/* Message when no session is active */}
-          {!contextValue.activeSessionId && contextValue.projectDirectory && (
-            <div className="text-center text-muted-foreground italic p-4 border border-dashed rounded-md border-border">
-              Create a new session or load an existing one to start working.
-            </div>
-          )}
-
-          {/* Only show the rest of the form when a session is active and initialized */}
-          {contextValue.activeSessionId && contextValue.sessionInitialized && (
-            <FileManagementProvider
-              projectDirectory={contextValue.projectDirectory || ''}
-              activeSessionId={contextValue.activeSessionId}
-              taskDescription={contextValue.taskState.taskDescription}
-              sessionData={getSessionData()}
-              isSwitchingSession={contextValue.isSwitchingSession}
-            >
-              {/* Task Description Section */}
-              <div>
-                <TaskSection 
-                  state={taskSectionState}
-                  actions={taskSectionActions}
-                />
-              </div>
-
-              {/* File Selection Section */}
-              <div>
-                <Suspense fallback={<div>Loading file browser...</div>}>
-                  <FileSection />
-                </Suspense>
-              </div>
-
-              {/* Action Section */}
-              <div>
-                <Suspense fallback={<div>Loading action section...</div>}>
-                  <ActionSection />
-                </Suspense>
-              </div>
-
-              {/* Prompt Preview Section */}
-              <div className="flex-1 mb-4">
-                <PromptPreview 
-                  state={{
-                    prompt: contextValue.prompt || "", // Use prompt from context if available
-                    copySuccess: contextValue.copySuccess || false,
-                    showPrompt: true,
-                    tokenCount: contextValue.tokenCount || 0,
-                    isCopyingPrompt: false
-                  }}
-                  actions={{
-                    copyPrompt: contextValue.copyPrompt || (async () => {}),
-                    togglePromptView: () => contextValue.setShowPrompt && contextValue.setShowPrompt(!contextValue.showPrompt)
-                  }}
-                />
-              </div>
-            </FileManagementProvider>
-          )}
+          {/* Always render the file management provider with memoization */}
+          <MemoizedFileManagementWrapper
+            projectDirectory={contextValue.projectDirectory}
+            taskDescription={contextValue.taskState.taskDescription || ""}
+            hasSession={hasSession}
+            taskSectionState={taskSectionState}
+            taskSectionActions={taskSectionActions}
+          />
         </div>
       </div>
     </GeneratePromptContext.Provider>

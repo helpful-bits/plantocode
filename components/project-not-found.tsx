@@ -30,14 +30,14 @@ export default function ProjectNotFound({ onSelectProject }: ProjectNotFoundProp
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle>No Project Selected</CardTitle>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-xl">No Project Selected</CardTitle>
         <CardDescription>
           Please select a project directory to continue
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground mb-6">
+      <CardContent className="pt-3">
+        <p className="text-muted-foreground mb-6">
           You need to select a project directory before you can use this application.
           The project directory should be the root directory of your codebase.
         </p>
@@ -45,6 +45,7 @@ export default function ProjectNotFound({ onSelectProject }: ProjectNotFoundProp
           onClick={handleSelectDirectory}
           disabled={isSelectingDirectory || !onSelectProject}
           className="flex items-center gap-2"
+          size="default"
         >
           {isSelectingDirectory ? (
             <Loader2 className="h-4 w-4 animate-spin" />

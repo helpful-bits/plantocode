@@ -1,13 +1,15 @@
 import { backgroundJobRepository } from '@/lib/db/repositories';
 import { BackgroundJob, ApiType, TaskType, JobStatus, JOB_STATUSES } from '@/types/session-types';
 import { GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { BaseJobPayload, JobType } from './job-types';
+import { BaseJobPayload, JobType, AnyJobPayload } from './job-types';
 import { globalJobQueue } from './global-job-queue';
+import { estimateTokens } from '@/lib/token-estimator';
+import { ApiErrorType, mapStatusCodeToErrorType } from '@/lib/api/api-error-handling';
 
 /**
  * Creates a background job in the database
- * This function creates the job record with an initial status of 'created'.
- * Unlike the previous version, it does not update status to 'preparing'.
+ * This function creates the job record with an initial status of 'queued' when jobTypeForWorker is provided.
+ * Otherwise, it creates the job with status 'created'.
  */
 export async function createBackgroundJob(
   sessionId: string,
@@ -20,6 +22,9 @@ export async function createBackgroundJob(
     includeSyntax?: boolean;
     temperature?: number;
     metadata?: { [key: string]: any };
+    jobTypeForWorker?: JobType;  // Type of job for worker processing
+    jobPayloadForWorker?: any;   // Payload for worker processing
+    jobPriorityForWorker?: number; // Priority for worker processing
   },
   projectDirectory?: string
 ): Promise<BackgroundJob> {
@@ -28,17 +33,54 @@ export async function createBackgroundJob(
     throw new Error('Invalid session ID provided for background job creation');
   }
 
-  const { 
+  const {
     apiType,
     taskType,
     model = GEMINI_FLASH_MODEL,
     rawInput = '',
     includeSyntax = false,
     temperature = 0.7,
-    metadata = {}
+    metadata = {},
+    jobTypeForWorker,
+    jobPayloadForWorker,
+    jobPriorityForWorker
   } = options;
 
-  // Create the job with status 'created' (not 'preparing')
+  // Create consolidated metadata that includes model and temperature
+  // to ensure they're available in both top-level fields and metadata
+  const finalMetadata: { [key: string]: any } = {
+    ...metadata,
+    modelUsed: model,
+    temperature: temperature, // Store temperature in metadata as well
+    maxOutputTokens: options.maxOutputTokens,
+  };
+
+  // If worker job information is provided, add it to metadata
+  if (jobTypeForWorker) {
+    finalMetadata.jobTypeForWorker = jobTypeForWorker;
+    finalMetadata.jobPriorityForWorker = jobPriorityForWorker || 1; // Default priority is 1
+
+    // Store worker payload, merged with key job information
+    if (jobPayloadForWorker) {
+      // We need to create the job first to get the ID
+      finalMetadata.queuedAt = Date.now();
+    }
+  }
+
+  // Estimate input tokens if rawInput is provided and estimatedInputTokens not set
+  if (rawInput && !finalMetadata.estimatedInputTokens) {
+    try {
+      finalMetadata.estimatedInputTokens = await estimateTokens(rawInput);
+    } catch (error) {
+      console.warn(`Error estimating tokens for job creation: ${error}`);
+      // Continue with job creation even if token estimation fails
+    }
+  }
+
+  // Set status to 'queued' if this is a worker job, otherwise 'created'
+  const initialStatus = jobTypeForWorker ? 'queued' : 'created';
+
+  // Create the job with the appropriate status
   const job = await backgroundJobRepository.createBackgroundJob(
     sessionId,
     apiType,
@@ -47,30 +89,57 @@ export async function createBackgroundJob(
     includeSyntax,
     temperature,
     true, // visible
-    {
-      ...metadata,
-      modelUsed: model,
-      maxOutputTokens: options.maxOutputTokens,
-    },
-    projectDirectory
+    finalMetadata,
+    projectDirectory,
+    initialStatus
   );
-  
+
+  // If we have worker-specific payload, update the job with complete payload including the job ID
+  if (jobTypeForWorker && jobPayloadForWorker) {
+    // Create the complete worker payload with the background job ID
+    const completeWorkerPayload = {
+      ...jobPayloadForWorker,
+      backgroundJobId: job.id,
+      sessionId: sessionId,
+    };
+
+    // Update the job with the complete worker payload
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId: job.id,
+      status: initialStatus,
+      metadata: {
+        jobTypeForWorker,
+        jobPayloadForWorker: completeWorkerPayload,
+        jobPriorityForWorker: jobPriorityForWorker || 1,
+        queueJobId: job.id,  // Use job ID as queue job ID for reference
+        queuedAt: Date.now()
+      }
+    });
+  }
+
   return job;
 }
 
 /**
  * Enqueues a job into the global job queue
  * This function adds a job to the queue and updates the background job status to 'queued'.
- * 
+ *
  * @param jobType The type of job to enqueue
  * @param payload The job payload (must include backgroundJobId)
  * @param priority The job priority (default: 1)
+ * @param options Optional configuration for the job
  * @returns The queue job ID
  */
-export async function enqueueJob(
-  jobType: JobType, 
-  payload: BaseJobPayload & any, 
-  priority: number = 1
+export async function enqueueJob<T extends BaseJobPayload>(
+  jobType: JobType,
+  payload: T & { [K in keyof AnyJobPayload]?: AnyJobPayload[K] },
+  priority: number = 1,
+  options: {
+    retryEnabled?: boolean;
+    maxRetries?: number;
+    description?: string;
+    delay?: number;
+  } = {}
 ): Promise<string> {
   // Validate payload
   if (!payload || !payload.backgroundJobId) {
@@ -82,29 +151,48 @@ export async function enqueueJob(
     throw new Error('Job payload must include a valid sessionId');
   }
 
+  // Apply defaults for options
+  const {
+    retryEnabled = true,
+    maxRetries = 3,
+    description = '',
+    delay = 0
+  } = options;
+
   // Add job to the queue
   const queueJobId = await globalJobQueue.enqueue({
     type: jobType,
     payload,
     priority
   });
-  
+
+  // Get the existing job to merge metadata
+  const existingJob = await backgroundJobRepository.getBackgroundJob(payload.backgroundJobId);
+  const currentMetadata = existingJob?.metadata || {};
+
   // Update background job status to 'queued'
   await backgroundJobRepository.updateBackgroundJobStatus({
     jobId: payload.backgroundJobId,
     status: 'queued',
     statusMessage: `Queued for processing (${jobType})`,
     metadata: {
+      ...currentMetadata,
       queueJobId, // Store the queue job ID for reference
       queuedAt: Date.now(),
       priority,
       // Store essential job information for workers
       jobTypeForWorker: jobType,
       jobPayloadForWorker: payload,
-      jobPriorityForWorker: priority
+      jobPriorityForWorker: priority,
+      // Add retry configuration
+      retryEnabled,
+      maxRetries,
+      // Add queue information
+      description: description || `${jobType} job`,
+      delayMs: delay
     }
   });
-  
+
   return queueJobId;
 }
 
@@ -181,6 +269,7 @@ export async function updateJobToCompleted(
     modelUsed?: string;
     maxOutputTokens?: number;
     outputFilePath?: string;
+    temperatureUsed?: number; // Add new parameter for final temperature
   } = {}
 ): Promise<void> {
   // Validate jobId
@@ -188,10 +277,19 @@ export async function updateJobToCompleted(
     throw new Error('Invalid job ID provided for updateJobToCompleted');
   }
 
-  // Log a warning if response is null/undefined, but don't use a placeholder
+  // Ensure we have a proper response text for the job
+  // For jobs that primarily write to files, this needs special handling
   if (responseText === null || responseText === undefined) {
-    console.warn(`[JobHelper] Completing job ${jobId} with null response`);
-    // Keep responseText as null/undefined - this is valid for completion with no textual response
+    // Check if this is a job that outputs to a file
+    if (tokens.outputFilePath) {
+      console.log(`[JobHelper] Completing job ${jobId} with output file path: ${tokens.outputFilePath}`);
+      // Set a helpful message stating that content is stored in a file
+      responseText = `Content stored in file: ${tokens.outputFilePath}`;
+    } else {
+      console.warn(`[JobHelper] Completing job ${jobId} with null response and no output file path`);
+      // Provide a default message to indicate completion but no textual output
+      responseText = "Job completed with no output content.";
+    }
   }
 
   const now = Date.now();
@@ -199,16 +297,23 @@ export async function updateJobToCompleted(
   try {
     // First get the job to check current state
     const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
-    
-    // Ensure job exists
+
+    // If job doesn't exist, log a warning but don't throw an error
     if (!existingJob) {
-      console.error(`[JobHelper] Cannot complete job ${jobId}: Job not found`);
-      throw new Error(`Cannot complete job ${jobId}: Job not found`);
+      console.warn(`[JobHelper] Attempted to complete job ${jobId} but it was not found. This may be due to session cleanup.`);
+      // Return early instead of throwing an error - this allows the processor to continue
+      return;
     }
-    
+
     // Ensure we have a valid startTime for the job (needed for duration calculations)
     // If startTime is missing, fallback to createdAt or now
     const startTime = existingJob.startTime || existingJob.createdAt || now;
+    
+    // Get the effective temperature - use the one provided in tokens parameter if available,
+    // otherwise fallback to existing metadata or the job's top-level field
+    const temperature = tokens.temperatureUsed !== undefined ? 
+      tokens.temperatureUsed : 
+      (existingJob.metadata as any)?.temperature ?? existingJob.temperature;
     
     await backgroundJobRepository.updateBackgroundJobStatus({
       jobId,
@@ -230,7 +335,8 @@ export async function updateJobToCompleted(
         duration: now - startTime, // Calculate duration in ms
         modelUsed: tokens.modelUsed || existingJob.modelUsed || undefined,
         maxOutputTokens: tokens.maxOutputTokens || existingJob.maxOutputTokens || undefined,
-        outputFilePath: tokens.outputFilePath || existingJob.outputFilePath || undefined
+        outputFilePath: tokens.outputFilePath || existingJob.outputFilePath || undefined,
+        temperature: temperature, // Include the temperature in metadata
       }
     });
   } catch (error) {
@@ -266,10 +372,11 @@ export async function updateJobToFailed(
     throw new Error('Invalid job ID provided for updateJobToFailed');
   }
 
-  // Log a warning if error message is empty, but don't use a placeholder
+  // Ensure error message is never null/empty for a failed job
   if (errorMessage === null || errorMessage === undefined || errorMessage.trim() === '') {
-    console.warn(`[JobHelper] Failed job ${jobId} with null/empty error message`);
-    // Keep errorMessage as provided - empty error is valid, repository will handle it
+    console.warn(`[JobHelper] Failed job ${jobId} with null/empty error message - setting default message`);
+    // Always provide a default error message for failed jobs
+    errorMessage = "Job failed without a specific error message.";
   }
 
   const now = Date.now();
@@ -277,21 +384,14 @@ export async function updateJobToFailed(
   try {
     // First get the job to check current state
     const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
-    
-    // Ensure job exists
+
+    // If job doesn't exist, log a warning but don't try to update it
     if (!existingJob) {
-      console.warn(`[JobHelper] Cannot mark job ${jobId} as failed: Job not found`);
-      // Create a basic update instead of throwing
-      await backgroundJobRepository.updateBackgroundJobStatus({
-        jobId,
-        status: 'failed',
-        endTime: now,
-        errorMessage,
-        statusMessage: "Failed due to error"
-      });
+      console.warn(`[JobHelper] Attempted to mark job ${jobId} as failed but it was not found. This may be due to session cleanup.`);
+      // Return early instead of attempting to update a non-existent job
       return;
     }
-    
+
     // Ensure we have a valid startTime for the job (needed for duration calculations)
     // If startTime is missing, fallback to createdAt or now
     const startTime = existingJob.startTime || existingJob.createdAt || now;
@@ -351,6 +451,13 @@ export async function updateJobToCancelled(
   // Validate jobId
   if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
     throw new Error('Invalid job ID provided for updateJobToCancelled');
+  }
+
+  // Ensure reason is never null/empty for a canceled job
+  if (reason === null || reason === undefined || reason.trim() === '') {
+    console.warn(`[JobHelper] Cancelling job ${jobId} with null/empty reason - setting default message`);
+    // Always provide a default reason for canceled jobs
+    reason = "Job canceled without a specific reason.";
   }
 
   const now = Date.now();
@@ -415,17 +522,19 @@ export async function updateJobToCancelled(
 
 /**
  * Handles an API error and updates the job status accordingly
- * 
- * This is a utility function to standardize error handling for API calls
- * 
+ *
+ * Standardized error handling that integrates with the ApiErrorType system
+ * to provide consistent job status updates and error reporting.
+ *
  * @param jobId Unique identifier for the job
  * @param status HTTP status code or other numeric error code
  * @param errorText Detailed error message
  * @param apiType The API that generated the error
+ * @returns A promise that resolves when the job status is updated
  */
 export async function handleApiError(
-  jobId: string, 
-  status: number, 
+  jobId: string,
+  status: number,
   errorText: string,
   apiType: ApiType = 'gemini'
 ): Promise<void> {
@@ -434,25 +543,104 @@ export async function handleApiError(
     throw new Error('Invalid job ID provided for handleApiError');
   }
 
-  // Format error message with API name and status code
-  const statusMessage = `${apiType.toUpperCase()} API Error: ${status} ${errorText.substring(0, 100)}${errorText.length > 100 ? '...' : ''}`;
-  
-  // Use updateJobToFailed for consistent behavior with other terminal states
-  await updateJobToFailed(jobId, errorText);
+  // Map the HTTP status code to a standardized error type
+  const errorType = mapStatusCodeToErrorType(status);
+
+  // Format error message with API name, status code, and error type
+  const formattedMessage = `${apiType.toUpperCase()} API Error [${errorType}]: ${status} ${
+    errorText.substring(0, 100)}${errorText.length > 100 ? '...' : ''}`;
+
+  // Additional metadata for the error
+  const errorMetadata = {
+    errorType,
+    statusCode: status,
+    apiType,
+    isRetryable: [
+      ApiErrorType.NETWORK_ERROR,
+      ApiErrorType.TIMEOUT_ERROR,
+      ApiErrorType.RATE_LIMIT_ERROR,
+      ApiErrorType.CAPACITY_ERROR,
+      ApiErrorType.SERVER_ERROR,
+      ApiErrorType.UNAVAILABLE
+    ].includes(errorType)
+  };
+
+  // Update job metadata to include error information
+  const existingJob = await backgroundJobRepository.getBackgroundJob(jobId);
+  if (existingJob) {
+    const currentMetadata = existingJob.metadata || {};
+
+    // Update the background job with error details in metadata
+    await backgroundJobRepository.updateBackgroundJobStatus({
+      jobId,
+      status: 'failed',
+      errorMessage: formattedMessage,
+      statusMessage: `Failed with ${errorType} error`,
+      metadata: {
+        ...currentMetadata,
+        error: errorMetadata,
+        lastErrorType: errorType,
+        lastErrorTime: Date.now(),
+        lastErrorStatus: status
+      }
+    });
+  } else {
+    // Fallback if job not found
+    await updateJobToFailed(jobId, formattedMessage);
+  }
+}
+
+/**
+ * Gets a job by its ID with helpful error handling
+ *
+ * @param jobId The ID of the job to retrieve
+ * @param includeResponse Whether to include the potentially large response field
+ * @returns The job or null if not found
+ */
+export async function getJob(jobId: string, includeResponse: boolean = false): Promise<BackgroundJob | null> {
+  try {
+    if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
+      console.warn('Invalid job ID provided for getJob');
+      return null;
+    }
+
+    // The includeResponse parameter is ignored since the repository method doesn't support it
+    return await backgroundJobRepository.getBackgroundJob(jobId);
+  } catch (error) {
+    console.error(`Error retrieving job ${jobId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Utility function to check if a job exists and is in an active state
+ *
+ * @param jobId The ID of the job to check
+ * @returns True if the job exists and is active, false otherwise
+ */
+export async function isJobActive(jobId: string): Promise<boolean> {
+  try {
+    const job = await getJob(jobId, false);
+    return !!(job && job.status && JOB_STATUSES.ACTIVE.includes(job.status));
+  } catch (error) {
+    console.error(`Error checking job ${jobId} status:`, error);
+    return false;
+  }
 }
 
 /**
  * Cancels all background jobs for a session
- * 
+ *
  * This utility finds and cancels all active jobs associated with a session
- * 
+ *
  * @param sessionId The session to cancel jobs for
  * @param apiType Optional API type for logging purposes
+ * @returns The number of jobs cancelled
  */
 export async function cancelAllSessionJobs(
-  sessionId: string, 
+  sessionId: string,
   apiType: ApiType = 'gemini'
-): Promise<void> {
+): Promise<number> {
   // Validate sessionId
   if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
     throw new Error('Invalid session ID provided for cancelAllSessionJobs');
@@ -460,26 +648,36 @@ export async function cancelAllSessionJobs(
 
   try {
     const jobs = await backgroundJobRepository.findBackgroundJobsBySessionId(sessionId);
-    
+
     // Filter for active jobs that can be cancelled using the standard constants
     const activeJobs = jobs.filter(job => job.status && JOB_STATUSES.ACTIVE.includes(job.status));
-    
+
     if (activeJobs.length === 0) {
-      return;
+      return 0;
     }
-    
+
     console.log(`[Jobs] Cancelling ${activeJobs.length} active jobs for session ${sessionId}`);
-    
+
+    let cancelledCount = 0;
+
     // Mark each job as cancelled using the helper method for consistent behavior
     for (const job of activeJobs) {
       if (!job.id) continue; // Skip jobs with missing IDs
-      
-      // Use the updateJobToCancelled helper for standardized cancellation behavior
-      await updateJobToCancelled(
-        job.id, 
-        `Cancelled due to session action or cleanup`
-      );
+
+      try {
+        // Use the updateJobToCancelled helper for standardized cancellation behavior
+        await updateJobToCancelled(
+          job.id,
+          `Cancelled due to session action or cleanup`
+        );
+        cancelledCount++;
+      } catch (error) {
+        console.error(`Error cancelling job ${job.id}:`, error);
+        // Continue with other jobs
+      }
     }
+
+    return cancelledCount;
   } catch (error) {
     console.error(`[${apiType.toUpperCase()} Client] Error cancelling session jobs:`, error);
     throw error;

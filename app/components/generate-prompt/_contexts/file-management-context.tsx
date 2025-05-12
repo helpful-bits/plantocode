@@ -13,10 +13,12 @@ export interface FileManagementContextValue {
   excludedPaths: string[];
   searchSelectedFilesOnly: boolean;
   isLoadingFiles: boolean;
+  isInitialized: boolean;
   isFindingFiles: boolean;
   findingFilesJobId: string | null;
   fileContentsMap: Record<string, string>;
-  
+  fileLoadError: string | null;
+
   // Actions
   setSearchTerm: (searchTerm: string) => void;
   setShowOnlySelected: (showOnlySelected: boolean) => void;
@@ -28,7 +30,8 @@ export interface FileManagementContextValue {
   findRelevantFiles: () => Promise<void>;
   refreshFiles: () => Promise<void>;
   flushPendingOperations?: () => void;
-  
+  flushFileStateSaves: () => Promise<boolean>;
+
   // Session state extraction for saving
   getFileStateForSession: () => {
     searchTerm: string;

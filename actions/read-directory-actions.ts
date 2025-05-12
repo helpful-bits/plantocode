@@ -5,10 +5,11 @@ import path from "path";
 import { BINARY_EXTENSIONS } from "@/lib/file-utils";
 import { ActionState } from "@/types";
 import streamingRequestPool, { RequestType } from "@/lib/api/streaming-request-pool";
+import { getAllNonIgnoredFiles } from "@/lib/git-utils";
 
 const DEBUG_LOGS = process.env.NODE_ENV === 'development'; // Enable logs in development
 
-// Common directories to exclude from file listing
+// Common directories to exclude from file listing (only used as fallback if git method fails)
 const EXCLUDED_DIRS = new Set([
   'node_modules',
   '.git',
@@ -99,11 +100,31 @@ async function readDirectoryImplementation(projectDirectory: string): Promise<Ac
       };
     }
     
-    // Get all files recursively
-    console.log(`[ReadDir] Starting filesystem scan of ${finalDirectory}`);
-    const allFiles = await readDirectoryRecursive(finalDirectory);
-    console.log(`[ReadDir] Filesystem scanning complete, found ${allFiles.length} files`);
-    
+    // First try using git-aware method that respects .gitignore
+    console.log(`[ReadDir] Starting filesystem scan of ${finalDirectory} using git-aware method`);
+    let allFiles: string[] = [];
+
+    try {
+      // Use git-aware method to get all non-ignored files
+      const { files: gitFiles, isGitRepo } = await getAllNonIgnoredFiles(finalDirectory);
+
+      if (isGitRepo) {
+        // Git method successful
+        allFiles = gitFiles;
+        console.log(`[ReadDir] Git-aware scan complete, found ${allFiles.length} files (respecting .gitignore)`);
+      } else {
+        // Not a git repo, fall back to recursive directory scan
+        console.log(`[ReadDir] Not a git repository, falling back to recursive directory scan`);
+        allFiles = await readDirectoryRecursive(finalDirectory);
+        console.log(`[ReadDir] Fallback scan complete, found ${allFiles.length} files`);
+      }
+    } catch (error) {
+      // Error using git method, fall back to recursive directory scan
+      console.warn(`[ReadDir] Error using git-aware method, falling back to recursive scan:`, error);
+      allFiles = await readDirectoryRecursive(finalDirectory);
+      console.log(`[ReadDir] Fallback scan complete, found ${allFiles.length} files`);
+    }
+
     if (allFiles.length === 0) {
       return {
         isSuccess: false,

@@ -2,7 +2,24 @@ import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { glob } from 'glob';
+import { getAllNonIgnoredFiles } from '@/lib/git-utils';
+import { exec } from 'child_process';
+import { normalizePath, makePathRelative, normalizePathForComparison } from '@/lib/path-utils';
 
+// Helper function to execute shell commands
+const execAsync = (command: string, options?: { cwd?: string }): Promise<{ stdout: string, stderr: string }> => {
+  return new Promise((resolve, reject) => {
+    exec(command, options, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ stdout: stdout.toString(), stderr: stderr.toString() });
+      }
+    });
+  });
+};
+
+// Default directories to exclude (only used as fallback if getAllNonIgnoredFiles fails)
 const DEFAULT_EXCLUDED_DIRS = ['node_modules', '.git', '.next', 'dist', 'build'];
 
 interface FileStats {
@@ -104,21 +121,109 @@ export async function POST(request: Request) {
         );
       }
       
-      console.log(`[list-files] Finding files in ${normalizedDir} with pattern "${pattern}"`);
+      console.log(`[list-files] Finding files in ${normalizedDir}`);
       
-      // Prepare glob options
-      const globOptions = { 
-        cwd: normalizedDir,
-        dot: false,     // Skip dotfiles by default
-        nodir: true,    // Only include files, not directories
-        absolute: true, // Return absolute paths
-        ignore: Array.isArray(exclude) ? exclude.map(dir => `**/${dir}/**`) : undefined
-      };
+      // Variable to store our results
+      let files: string[] = [];
       
-      // Use glob to find files matching the pattern - glob v11 returns promises directly
-      const files = await glob(pattern, globOptions);
-      
-      console.log(`[list-files] Found ${files.length} files in ${normalizedDir}`);
+      // First try to use git-based file discovery which respects .gitignore
+      try {
+        console.log(`[list-files] Attempting git-based file discovery in: ${normalizedDir}`);
+        const { files: gitFiles, isGitRepo } = await getAllNonIgnoredFiles(normalizedDir);
+
+        // Log helpful diagnostics about the git operation
+        console.log(`[list-files] Git repo detection result: isGitRepo=${isGitRepo}, retrieved ${gitFiles.length} files`);
+
+        // If this is a git repo, use the results from getAllNonIgnoredFiles
+        if (isGitRepo) {
+          // Convert relative paths to absolute with consistent path normalization
+          const absoluteGitFiles = gitFiles.map(file => {
+            // Ensure paths are normalized consistently
+            const normalizedRelativePath = normalizePathForComparison(file);
+            const absolutePath = path.join(normalizedDir, normalizedRelativePath);
+            // Normalize the absolute path to ensure consistent forward slashes
+            return normalizePath(absolutePath);
+          });
+
+          // Log some sample files for debugging
+          if (absoluteGitFiles.length > 0) {
+            console.log(`[list-files] Sample git files (after normalization): ${absoluteGitFiles.slice(0, 3).join(', ')}${absoluteGitFiles.length > 3 ? '...' : ''}`);
+          }
+
+          // Filter by pattern if needed
+          if (pattern !== '**/*') {
+            console.log(`[list-files] Applying specific pattern filter: ${pattern}`);
+            // Apply pattern filter using glob
+            const globOptions = {
+              cwd: normalizedDir,
+              absolute: true,
+              nodir: true
+            };
+
+            // Get files that match the pattern
+            const patternMatches = await glob(pattern, globOptions);
+            console.log(`[list-files] Pattern matched ${patternMatches.length} files`);
+
+            // Create a Set for faster lookups
+            const matchSet = new Set(patternMatches.map(match => normalizePath(match)));
+
+            // Filter git files to only include those that match the pattern
+            const preFilterCount = absoluteGitFiles.length;
+            files = absoluteGitFiles.filter(file => matchSet.has(normalizePath(file)));
+            console.log(`[list-files] After pattern filtering: ${files.length} of ${preFilterCount} files remain`);
+          } else {
+            // Use all git files if no specific pattern
+            files = absoluteGitFiles;
+          }
+
+          console.log(`[list-files] Found ${files.length} files using git-aware method (respecting .gitignore)`);
+        } else {
+          throw new Error("Not a git repository, falling back to glob");
+        }
+      } catch (gitError) {
+        console.warn(`[list-files] Failed to use git-aware method, falling back to glob:`, gitError instanceof Error ? gitError.message : String(gitError));
+
+        // Add more detailed logging to help debug Git issues
+        try {
+          console.log(`[list-files] Checking git status in ${normalizedDir}`);
+          const { stdout: gitStatus } = await execAsync('git status --porcelain', { cwd: normalizedDir });
+          console.log(`[list-files] Git status in ${normalizedDir}:`, gitStatus.slice(0, 200) + (gitStatus.length > 200 ? "..." : ""));
+        } catch (statusError) {
+          console.error(`[list-files] Error checking git status:`, statusError instanceof Error ? statusError.message : String(statusError));
+          console.log(`[list-files] Directory may not be a git repository: ${normalizedDir}`);
+        }
+
+        // Fallback to glob if git method fails
+        // Prepare glob options
+        const globOptions = {
+          cwd: normalizedDir,
+          dot: false,     // Skip dotfiles by default
+          nodir: true,    // Only include files, not directories
+          absolute: true, // Return absolute paths
+          ignore: Array.isArray(exclude) ? exclude.map(dir => `**/${dir}/**`) : undefined
+        };
+
+        try {
+          console.log(`[list-files] Starting glob fallback with pattern: ${pattern}`);
+          // Use glob to find files matching the pattern
+          const globFiles = await glob(pattern, globOptions);
+
+          // Normalize the paths consistently
+          files = globFiles.map(file => normalizePath(file));
+
+          console.log(`[list-files] Found ${files.length} files using glob fallback method`);
+
+          // Log some sample files for debugging
+          if (files.length > 0) {
+            console.log(`[list-files] Sample glob files (after normalization): ${files.slice(0, 3).join(', ')}${files.length > 3 ? '...' : ''}`);
+          }
+        } catch (globError) {
+          console.error(`[list-files] Glob fallback failed too:`, globError instanceof Error ? globError.message : String(globError));
+          // Return an empty array rather than failing completely
+          files = [];
+          console.log(`[list-files] Returning empty file list due to glob failure`);
+        }
+      }
       
       // Get file stats if requested
       let stats: FileStats[] = [];
@@ -165,15 +270,32 @@ export async function POST(request: Request) {
         }
       }
       
+      // Process files to ensure path consistency before returning to client
+      const processedFiles = (includeStats ? validFiles : files).map(file => {
+        // Ensure all paths are normalized consistently
+        return normalizePath(file);
+      });
+
+      // Add relative paths calculation
+      const relativePathsMap: {[key: string]: string} = {};
+      processedFiles.forEach(absolutePath => {
+        // Create a relative path for each file (relative to the project directory)
+        const relativePath = makePathRelative(absolutePath, normalizedDir);
+        // Store in map for debugging and potentially future use
+        relativePathsMap[absolutePath] = relativePath;
+      });
+
+      console.log(`[list-files] Processed ${processedFiles.length} files with consistent path normalization`);
+
       // Return success response with valid files and stats
-      return NextResponse.json({ 
-        files: includeStats ? validFiles : files, // If includeStats is true, only return files that have valid stats
+      return NextResponse.json({
+        files: processedFiles, // Return consistently normalized paths
         ...(includeStats ? { stats } : {}),
-        ...(includeStats && validFiles.length < files.length 
-            ? { 
+        ...(includeStats && validFiles.length < files.length
+            ? {
                 warning: `${files.length - validFiles.length} files were excluded due to stat errors`,
-                totalFoundBeforeFiltering: files.length 
-              } 
+                totalFoundBeforeFiltering: files.length
+              }
             : {})
       });
     } catch (error) {
@@ -219,4 +341,4 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-} 
+}

@@ -20,9 +20,18 @@ interface PromptPreviewProps {
     copyPrompt: () => Promise<void>;
     togglePromptView: () => void;
   };
+  isSessionActiveAndInitialized?: boolean;
+  isSwitchingSession?: boolean;
+  disabled?: boolean;
 }
 
-const PromptPreview = React.memo(function PromptPreview({ state, actions }: PromptPreviewProps) {
+const PromptPreview = React.memo(function PromptPreview({
+  state,
+  actions,
+  isSessionActiveAndInitialized = false,
+  isSwitchingSession = false,
+  disabled = false
+}: PromptPreviewProps) {
   const { prompt, error, isLoading, copySuccess, showPrompt } = state;
   const { copyPrompt, togglePromptView } = actions;
 
@@ -36,27 +45,30 @@ const PromptPreview = React.memo(function PromptPreview({ state, actions }: Prom
       {error && (
         <div className="text-red-500 bg-red-50 p-4 rounded border border-red-200 mb-4">
           <p className="font-medium">Error:</p>
-          <p>{error}</p>
+          <p className="mt-1">{error}</p>
         </div>
       )}
 
       {/* Prompt preview */}
       {prompt && !isLoading && showPrompt && (
-        <div className="bg-muted p-4 rounded-lg mt-6 relative border shadow-inner">
+        <div className="bg-muted p-6 rounded-lg mt-6 relative border shadow-sm">
           <div className="flex justify-between items-center mb-2">
-            <h2 className="text-lg font-semibold mb-2">Generated Prompt Preview</h2>
+            <h2 className="text-lg font-semibold">Generated Prompt Preview</h2>
             <Button
               type="button"
               onClick={copyPrompt}
+              disabled={!isSessionActiveAndInitialized || isSwitchingSession || disabled}
               variant={copySuccess ? "outline" : "secondary"}
               size="sm"
-              className="text-xs"
+              className="text-xs h-8"
             >
               {copySuccess ? "Copied!" : "Copy to Clipboard"}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-1 mb-3">Copies the generated prompt text to your clipboard.</p>
-          <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[650px]">
+          <p className="text-xs text-muted-foreground mt-1 mb-3 text-balance">
+            Copies the full generated prompt text below to your clipboard.
+          </p>
+          <pre className="bg-background p-4 rounded-md overflow-auto whitespace-pre-wrap text-xs max-h-[650px] border">
             {prompt}
           </pre>
         </div>
@@ -70,6 +82,8 @@ const PromptPreview = React.memo(function PromptPreview({ state, actions }: Prom
             onClick={togglePromptView}
             variant="outline"
             size="sm"
+            className="h-9"
+            disabled={!isSessionActiveAndInitialized || isSwitchingSession || disabled}
           >
             Show Prompt Preview
           </Button>

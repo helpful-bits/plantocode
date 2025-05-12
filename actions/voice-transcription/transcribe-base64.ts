@@ -1,17 +1,21 @@
 "use server";
 
-import { ActionState, ApiType } from "@/types";
-import { backgroundJobRepository } from "@/lib/db/repositories";
-import { WHISPER_MAX_FILE_SIZE_MB, WHISPER_MODEL } from '@/lib/constants';
-import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
+import { ActionState } from "@/types";
+import { WHISPER_MAX_FILE_SIZE_MB } from '@/lib/constants';
+import { ensureSessionRecord } from '@/lib/db/utils/session-db-utils';
+import { apiClients } from '@/lib/api/client-factory';
+import { handleApiClientError } from '@/lib/api/api-error-handling';
 
 /**
  * Transcribe audio data from a base64-encoded string using Groq's Whisper implementation
+ *
+ * This version uses the standardized GroqApiClient directly for better error handling
+ * and consistency with other API clients.
  */
 export async function transcribeAudioAction(
   base64Audio: string,
   language: string = "en",
-  sessionId: string,
+  sessionId: string | null,
   projectDirectory: string
 ): Promise<ActionState<{ text: string; jobId: string }>> {
   try {
@@ -22,11 +26,6 @@ export async function transcribeAudioAction(
         message: "No audio data was provided",
         data: { text: "", jobId: "" }
       };
-    }
-
-    // Add strict validation for the sessionId parameter
-    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
-      throw new Error("Invalid session ID for audio transcription");
     }
 
     console.log(`[Voice Transcription] Processing base64 audio (${Math.round(base64Audio.length / 1024)} KB)`);
@@ -41,41 +40,17 @@ export async function transcribeAudioAction(
       };
     }
 
-    // Create a background job for tracking using centralized helper
-    const runningJob = await createBackgroundJob(
-      sessionId,
-      {
-        apiType: "groq",
-        taskType: "transcription",
-        model: WHISPER_MODEL,
-        rawInput: `Audio transcription request (${Math.round(base64Audio.length / 1024)} KB)`,
-        includeSyntax: false,
-        temperature: 0.0
-      },
-      projectDirectory
-    );
-
-    // Fetch session data to use in tracking
-    const session = await backgroundJobRepository.getSession(sessionId);
-    if (!session) {
-      console.warn(`[Voice Transcription] Session ${sessionId} not found, proceeding without session context`);
-    }
-
-    // Update job status to running
-    await updateJobToRunning(runningJob.id, 'groq');
+    // Get a guaranteed valid session ID using our utility
+    const dbSafeSessionId = await ensureSessionRecord(sessionId, projectDirectory, 'Base64 Transcription');
 
     // Remove data:audio/whatever;base64, prefix if present
-    const cleanBase64 = base64Audio.includes("base64,") 
-      ? base64Audio.split("base64,")[1] 
+    const cleanBase64 = base64Audio.includes("base64,")
+      ? base64Audio.split("base64,")[1]
       : base64Audio;
-    
+
     // Convert base64 to binary
     const binaryData = Buffer.from(cleanBase64, 'base64');
-    
-    // Create form data
-    const form = new FormData();
-    
-    // Create a Blob from the binary data
+
     // Attempt to detect the mime type from the base64 prefix
     let mimeType = 'audio/wav'; // Default
     if (base64Audio.includes('data:')) {
@@ -84,82 +59,74 @@ export async function transcribeAudioAction(
         mimeType = mimeMatch[1];
       }
     }
-    
-    const blob = new Blob([binaryData], { type: mimeType });
-    
-    // Determine file extension
-    const extensionMap: Record<string, string> = {
-      "audio/flac": "flac",
-      "audio/mp3": "mp3", 
-      "audio/mp4": "mp4",
-      "audio/mpeg": "mp3",
-      "audio/mpga": "mp3",
-      "audio/m4a": "m4a",
-      "audio/ogg": "ogg",
-      "audio/wav": "wav",
-      "audio/webm": "webm",
-      "audio/x-wav": "wav"
-    };
-    
-    const extension = extensionMap[mimeType] || "wav";
-    const filename = `audio-${Date.now()}.${extension}`;
-    
-    // Append the necessary data to the form
-    form.append("file", blob, filename);
-    form.append("model", WHISPER_MODEL);
-    form.append("temperature", "0.0");
-    form.append("response_format", "json");
-    form.append("language", language);
 
-    // Prepare API request to Groq's Whisper API
-    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-      },
-      body: form
+    // Create a Blob from the binary data
+    const audioBlob = new Blob([binaryData], { type: mimeType });
+
+    // Get the Groq API client
+    const groqClient = apiClients.groq;
+
+    // Call the client with direct request instead of using the utility function
+    const result = await groqClient.sendRequest(audioBlob, {
+      sessionId: dbSafeSessionId,
+      projectDirectory,
+      language,
+      taskType: "transcription",
+      forceBackgroundJob: true, // Always run as background job for better UX with potentially long transcriptions
+      metadata: {
+        audioSize: binaryData.length,
+        mimeType,
+        sourceType: 'base64'
+      }
     });
 
-    // Log API request to background job
-    await backgroundJobRepository.updateBackgroundJobStatus({
-      jobId: runningJob.id,
-      status: "running",
-      statusMessage: `Sent request to Groq Whisper API (${new Date().toISOString()})`
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Voice Transcription] Groq API error: ${response.status} - ${errorText}`);
-      
-      // Update job to failed
-      await updateJobToFailed(runningJob.id, `Groq API error: ${response.status} - ${errorText}`);
-      
-      return {
-        isSuccess: false,
-        message: `Transcription failed: ${errorText}`,
-        data: { text: "", jobId: runningJob.id }
-      };
+    // Handle the response
+    if (result.isSuccess) {
+      if (typeof result.data === 'string') {
+        // Direct response with transcription text (shouldn't happen with forceBackgroundJob=true)
+        return {
+          isSuccess: true,
+          message: "Transcription completed",
+          data: {
+            text: result.data,
+            jobId: result.metadata?.jobId || ""
+          }
+        };
+      } else if (typeof result.data === 'object' && 'isBackgroundJob' in result.data) {
+        // Background job response with job ID
+        return {
+          isSuccess: true,
+          message: "Transcription job started",
+          data: {
+            text: "", // Text will be available via job updates
+            jobId: result.data.jobId
+          }
+        };
+      }
     }
 
-    // Get the text from the response
-    const result = await response.json();
-    const text = result.text;
-    console.log(`[Voice Transcription] Transcription completed: ${text.substring(0, 100)}...`);
-
-    // Update job to completed
-    await updateJobToCompleted(runningJob.id, text);
-
+    // If we get here, there was an error
     return {
-      isSuccess: true,
-      message: "Transcription completed",
-      data: { text, jobId: runningJob.id }
+      isSuccess: false,
+      message: result.message || "Transcription failed",
+      data: {
+        text: "",
+        jobId: result.metadata?.jobId || ""
+      },
+      error: result.error || new Error("Transcription failed")
     };
   } catch (error) {
     console.error("[Voice Transcription] Error:", error);
+
+    // Use the standardized error handling for the outer catch block
+    const errorResult = await handleApiClientError(error, {
+      apiType: 'groq',
+      logPrefix: '[Voice Transcription]'
+    });
+
     return {
-      isSuccess: false,
-      message: error instanceof Error ? error.message : "Transcription failed",
+      ...errorResult,
       data: { text: "", jobId: "" }
     };
   }
-} 
+}

@@ -95,32 +95,68 @@ export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPay
   /**
    * Extract regex patterns from Claude's response
    */
-  private extractRegexPatterns(response: string): { 
-    titleRegex?: string; 
-    contentRegex?: string; 
-    negativeTitleRegex?: string; 
-    negativeContentRegex?: string; 
+  private extractRegexPatterns(response: string): {
+    titleRegex?: string;
+    contentRegex?: string;
+    negativeTitleRegex?: string;
+    negativeContentRegex?: string;
   } {
-    const patterns: { 
-      titleRegex?: string; 
-      contentRegex?: string; 
-      negativeTitleRegex?: string; 
-      negativeContentRegex?: string; 
+    const patterns: {
+      [key: string]: string | undefined;
+      titleRegex?: string;
+      contentRegex?: string;
+      negativeTitleRegex?: string;
+      negativeContentRegex?: string;
     } = {};
 
-    // Try to extract JSON format first if available
+    console.log("[RegexGenerationProcessor] Extracting regex patterns from response");
+
+    // First check for a JSON object with properties in the format { "field": "/pattern/" }
+    // which is commonly returned by Claude but requires special handling
+    try {
+      // Look for JSON with regex patterns that include slashes
+      const regexJsonMatch = response.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
+      if (regexJsonMatch && regexJsonMatch[1]) {
+        // First convert any regex literals (e.g., /pattern/) to strings before parsing
+        const processedJson = regexJsonMatch[1].replace(/:\s*\/(.*?)\/([gim]*)(?=,|\s*})/g, ': "$1"');
+        console.log("[RegexGenerationProcessor] Attempting to parse processed JSON:", processedJson.substring(0, 100) + "...");
+
+        try {
+          const jsonPatterns = JSON.parse(processedJson);
+
+          patterns.titleRegex = jsonPatterns.titleRegex || jsonPatterns.title_regex || undefined;
+          patterns.contentRegex = jsonPatterns.contentRegex || jsonPatterns.content_regex || undefined;
+          patterns.negativeTitleRegex = jsonPatterns.negativeTitleRegex || jsonPatterns.negative_title_regex || undefined;
+          patterns.negativeContentRegex = jsonPatterns.negativeContentRegex || jsonPatterns.negative_content_regex || undefined;
+
+          // Check if we found any patterns - if we did, return early
+          if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
+            console.log("[RegexGenerationProcessor] Successfully extracted patterns from processed JSON");
+            return patterns;
+          }
+        } catch (e) {
+          console.warn("[RegexGenerationProcessor] Failed to parse processed JSON:", e);
+        }
+      }
+    } catch (e) {
+      console.warn("[RegexGenerationProcessor] Error in regex JSON processing:", e);
+    }
+
+    // Try to extract standard JSON format
     const jsonMatch = response.match(/```(?:json)?\s*({[\s\S]*?})\s*```/);
     if (jsonMatch && jsonMatch[1]) {
       try {
         const jsonPatterns = JSON.parse(jsonMatch[1]);
-        
+        console.log("[RegexGenerationProcessor] Parsed JSON patterns:", Object.keys(jsonPatterns));
+
         patterns.titleRegex = jsonPatterns.titleRegex || jsonPatterns.title_regex || undefined;
         patterns.contentRegex = jsonPatterns.contentRegex || jsonPatterns.content_regex || undefined;
         patterns.negativeTitleRegex = jsonPatterns.negativeTitleRegex || jsonPatterns.negative_title_regex || undefined;
         patterns.negativeContentRegex = jsonPatterns.negativeContentRegex || jsonPatterns.negative_content_regex || undefined;
-        
-        // Check if we found all patterns - if we did, return early
-        if (Object.keys(patterns).length > 0) {
+
+        // Check if we found any patterns - if we did, return early
+        if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
+          console.log("[RegexGenerationProcessor] Successfully extracted patterns from JSON");
           return patterns;
         }
       } catch (e) {
@@ -129,26 +165,66 @@ export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPay
       }
     }
 
-    // Extract individual patterns with regex
-    const titleMatch = response.match(/title(?:\s+regex)?:\s*`([^`]+)`|title(?:\s+regex)?:\s*"([^"]+)"|title(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    // Attempt to parse as a standalone JSON object outside code blocks
+    try {
+      // Look for a JSON-like structure in the plain text
+      if (response.includes('{') && response.includes('}')) {
+        const potentialJson = response.match(/({[\s\S]*})/);
+        if (potentialJson && potentialJson[1]) {
+          try {
+            const jsonPatterns = JSON.parse(potentialJson[1]);
+
+            patterns.titleRegex = jsonPatterns.titleRegex || jsonPatterns.title_regex || undefined;
+            patterns.contentRegex = jsonPatterns.contentRegex || jsonPatterns.content_regex || undefined;
+            patterns.negativeTitleRegex = jsonPatterns.negativeTitleRegex || jsonPatterns.negative_title_regex || undefined;
+            patterns.negativeContentRegex = jsonPatterns.negativeContentRegex || jsonPatterns.negative_content_regex || undefined;
+
+            // Check if we found any patterns
+            if (Object.keys(patterns).filter(k => patterns[k] !== undefined).length > 0) {
+              console.log("[RegexGenerationProcessor] Successfully extracted patterns from plain JSON");
+              return patterns;
+            }
+          } catch (e) {
+            console.warn("[RegexGenerationProcessor] Failed to parse plain JSON:", e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[RegexGenerationProcessor] Error in plain JSON extraction:", e);
+    }
+
+    // Extract individual patterns with regex - improved to handle more formats
+    // For title regex
+    const titleMatch = response.match(/title(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|title(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (titleMatch) {
-      patterns.titleRegex = titleMatch[1] || titleMatch[2] || titleMatch[3];
+      patterns.titleRegex = titleMatch[1] || titleMatch[2];
+      console.log("[RegexGenerationProcessor] Found title regex:", patterns.titleRegex);
     }
 
-    const contentMatch = response.match(/content(?:\s+regex)?:\s*`([^`]+)`|content(?:\s+regex)?:\s*"([^"]+)"|content(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    // For content regex
+    const contentMatch = response.match(/content(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|content(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (contentMatch) {
-      patterns.contentRegex = contentMatch[1] || contentMatch[2] || contentMatch[3];
+      patterns.contentRegex = contentMatch[1] || contentMatch[2];
+      console.log("[RegexGenerationProcessor] Found content regex:", patterns.contentRegex);
     }
 
-    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?:\s*`([^`]+)`|negative(?:\s+title)?(?:\s+regex)?:\s*"([^"]+)"|negative(?:\s+title)?(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    // For negative title regex
+    const negTitleMatch = response.match(/negative(?:\s+title)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+title)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (negTitleMatch) {
-      patterns.negativeTitleRegex = negTitleMatch[1] || negTitleMatch[2] || negTitleMatch[3];
+      patterns.negativeTitleRegex = negTitleMatch[1] || negTitleMatch[2];
+      console.log("[RegexGenerationProcessor] Found negative title regex:", patterns.negativeTitleRegex);
     }
 
-    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?:\s*`([^`]+)`|negative(?:\s+content)?(?:\s+regex)?:\s*"([^"]+)"|negative(?:\s+content)?(?:\s+regex)?:\s*\/([^\/]+)\//i);
+    // For negative content regex
+    const negContentMatch = response.match(/negative(?:\s+content)?(?:\s+regex)?[:\s=]+["`']?([^`"',\n]+)[`"']?|negative(?:\s+content)?(?:\s+regex)?[:\s=]+\/([^\/\n]+)\/[gim]*/i);
     if (negContentMatch) {
-      patterns.negativeContentRegex = negContentMatch[1] || negContentMatch[2] || negContentMatch[3];
+      patterns.negativeContentRegex = negContentMatch[1] || negContentMatch[2];
+      console.log("[RegexGenerationProcessor] Found negative content regex:", patterns.negativeContentRegex);
     }
+
+    // Log the results of the extraction
+    const extractedPatternCount = Object.values(patterns).filter(Boolean).length;
+    console.log(`[RegexGenerationProcessor] Extracted ${extractedPatternCount} patterns using regex matching`);
 
     return patterns;
   }

@@ -75,23 +75,23 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="pb-2">
         <CardTitle className="text-lg">System Settings</CardTitle>
-        <CardDescription>
+        <CardDescription className="text-balance">
           Configure system-level settings for this project
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6">
         <div className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="output-file-editor-command" className="text-sm font-medium">
               Output File Editor Command
             </label>
-            <div className="text-xs text-muted-foreground mb-2">
-              Specify the command to use when opening output files, such as implementation plans.
-              For example: <code>code</code>, <code>vim</code>, or <code>open -a &quot;Text Editor&quot;</code>
+            <div className="text-xs text-muted-foreground mb-2 text-balance">
+              Command used to open generated output files (like implementation plans) in your preferred editor.
+              For example: <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">code</code>, <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">vim</code>, or <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">open -a &quot;Text Editor&quot;</code>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
               <Input
                 id="output-file-editor-command"
                 value={outputFileEditorCommand}
@@ -104,6 +104,7 @@ export default function SystemSettings({ projectDirectory }: SystemSettingsProps
                 onClick={handleSave} 
                 disabled={isLoading}
                 size="sm"
+                className="min-w-[70px]"
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
