@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(rm:*)",
+      "Bash(tsc --noEmit --pretty)",
+      "Bash(pnpm tsc:*)",
+      "Bash(tsc --noEmit)",
+      "Bash(npx tsc:*)",
+      "Bash(mkdir:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(npm run:*)",
+      "Bash(pnpm run migrate:xml-to-output:*)",
+      "Bash(pnpm run:*)",
+      "Bash(npx tsx:*)",
+      "Bash(node:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm migrate:remove-pasted-paths:*)",
+      "Bash(env)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm list:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(pnpm migrate:consolidated:*)",
+      "Bash(sqlite3:*)",
+      "Bash(npx sqlite3:*)",
+      "Bash(mv:*)",
+      "Bash(tsc --skipLibCheck)",
+      "Bash(cp:*)",
+      "Bash(echo:*)",
+      "Bash(awk:*)",
+      "Bash(pnpm install:*)",
+      "Bash(rg:*)"
+    ],
+    "deny": []
+  }
+}
