@@ -4,8 +4,8 @@ import { promises as fs } from "fs";
 import path from "path";
 import { existsSync } from "fs";
 import os from "os";
-import { ActionState } from "@/types";
-import { normalizePath } from "@/lib/path-utils";
+import { ActionState } from '@core/types';
+import { normalizePath } from '@core/lib/path-utils';
 
 /**
  * Directory information returned by the list directories action

@@ -1,6 +1,6 @@
-import { ActionState, ApiType, TaskType, TaskSettings } from "@/types";
-import { getModelSettingsForProject } from "@/actions/project-settings-actions";
-import { DEFAULT_TASK_SETTINGS } from '@/lib/constants';
+import { ActionState, ApiType, TaskType, TaskSettings } from "@core/types";
+import { getModelSettingsForProject } from "@core/actions/project-settings-actions";
+import { DEFAULT_TASK_SETTINGS } from '@core/lib/constants';
 import { 
   streamGeminiContentWithSDK, 
   GeminiSdkRequestPayload, 

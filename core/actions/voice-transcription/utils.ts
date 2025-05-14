@@ -1,9 +1,9 @@
 "use server";
 
-import { ActionState } from "@/types";
-import { BackgroundJob } from "@/types/session-types";
-import { apiClients } from '@/lib/api/client-factory';
-import { handleApiClientError, createApiSuccessResponse } from '@/lib/api/api-error-handling';
+import { ActionState } from '@core/types';
+import { BackgroundJob } from '@core/types/session-types';
+import { apiClients } from '@core/lib/api/client-factory';
+import { handleApiClientError, createApiSuccessResponse } from '@core/lib/api/api-error-handling';
 
 /**
  * Shared utility function to handle transcription using Groq's Whisper API.

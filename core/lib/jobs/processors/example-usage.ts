@@ -2,7 +2,7 @@ import { createBackgroundJob, enqueueJob } from '../job-helpers';
 import { globalJobQueue } from '../global-job-queue';
 import { registerAllProcessors } from './index';
 import { JobScheduler } from '../job-scheduler';
-import { ApiType, TaskType } from '@/types/session-types';
+import { ApiType, TaskType } from '@core/types/session-types';
 
 /**
  * Example of how to use the global job queue system

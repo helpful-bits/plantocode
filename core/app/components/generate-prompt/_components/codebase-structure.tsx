@@ -1,11 +1,11 @@
 "use client";
 
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { useProject } from "@/lib/contexts/project-context";
+import { Textarea } from "@core/components/ui/textarea";
+import { Button } from "@core/components/ui/button";
+import { useProject } from "@core/lib/contexts/project-context";
 import { Loader2, FolderTree } from "lucide-react"; // Replace TreeStructure with FolderTree icon
 import { useState } from "react";
-import { generateDirectoryTree } from "@/lib/directory-tree";
+import { generateDirectoryTree } from "@core/lib/directory-tree";
 interface CodebaseStructureProps { // Keep interface definition
   value: string;
   onChange: (value: string) => void; // Callback for parent state update

@@ -1,12 +1,12 @@
 'use server';
 
-import { ActionState } from "@/types";
-import { BackgroundJob, JobStatus, JOB_STATUSES } from "@/types/session-types";
-import { setupDatabase } from '@/lib/db';
-import streamingRequestPool from '@/lib/api/streaming-request-pool';
-import { backgroundJobRepository } from '@/lib/db/repositories';
-import { globalJobQueue } from '@/lib/jobs/global-job-queue';
-import { updateJobToCancelled } from '@/lib/jobs/job-helpers';
+import { ActionState } from '@core/types';
+import { BackgroundJob, JobStatus, JOB_STATUSES } from '@core/types/session-types';
+import { setupDatabase } from '@core/lib/db';
+import streamingRequestPool from '@core/lib/api/streaming-request-pool';
+import { backgroundJobRepository } from '@core/lib/db/repositories';
+import { globalJobQueue } from '@core/lib/jobs/global-job-queue';
+import { updateJobToCancelled } from '@core/lib/jobs/job-helpers';
 
 // Enhanced validation for server-side execution environment
 const isValidExecutionEnvironment = (): boolean => {

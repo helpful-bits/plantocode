@@ -1,9 +1,9 @@
 import connectionPool from "../connection-pool";
 import Database from 'better-sqlite3';
-import { Session, ApiType, TaskType, JobStatus, BackgroundJob } from '@/types';
-import { hashString } from '@/lib/hash';
+import { Session, ApiType, TaskType, JobStatus, BackgroundJob } from '@core/types';
+import { hashString } from '@core/lib/hash';
 import { normalizePath, normalizePathForComparison } from '../../path-utils';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { GEMINI_FLASH_MODEL } from '@core/lib/constants';
 
 /**
  * Interface representing a row in the sessions table

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from '@core/components/ui/textarea';
 import { X } from "lucide-react";
 
 interface RegexInputProps {

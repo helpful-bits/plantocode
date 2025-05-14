@@ -2,10 +2,10 @@
 
 import { promises as fs } from "fs";
 import path from "path";
-import { BINARY_EXTENSIONS } from "@/lib/file-utils";
-import { ActionState } from "@/types";
-import streamingRequestPool, { RequestType } from "@/lib/api/streaming-request-pool";
-import { getAllNonIgnoredFiles } from "@/lib/git-utils";
+import { BINARY_EXTENSIONS } from '@core/lib/file-utils';
+import { ActionState } from '@core/types';
+import streamingRequestPool, { RequestType } from '@core/lib/api/streaming-request-pool';
+import { getAllNonIgnoredFiles } from '@core/lib/git-utils';
 
 const DEBUG_LOGS = process.env.NODE_ENV === 'development'; // Enable logs in development
 
@@ -213,6 +213,14 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
           console.warn(`[ReadDir] Error scanning subdirectory: ${relativePath}`, error);
         }
       } else if (entry.isFile()) {
+        // Skip binary files based on extension
+        const ext = path.extname(entry.name).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) {
+          if (DEBUG_LOGS) {
+            console.log(`[ReadDirRecursive] Skipping binary file by extension: ${relativePath}`);
+          }
+          continue;
+        }
         // Add file to result
         files.push(relativePath);
       }
@@ -243,6 +251,14 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
             const subFiles = await readDirectoryRecursive(entryPath, relativePath);
             files.push(...subFiles);
           } else if (stat.isFile()) {
+            // Skip binary files based on extension
+            const ext = path.extname(entry).toLowerCase();
+            if (BINARY_EXTENSIONS.has(ext)) {
+              if (DEBUG_LOGS) {
+                console.log(`[ReadDirRecursive] Skipping binary file by extension: ${relativePath}`);
+              }
+              continue;
+            }
             files.push(relativePath);
           }
         } catch {

@@ -11,10 +11,10 @@ import {
   Button,
   Label,
   Separator
-} from "@/components/ui";
+} from '@core/components/ui';
 import { CheckCircle, Loader2 } from "lucide-react";
-import { getProjectSetting, saveProjectSetting } from "@/actions/project-settings-actions";
-import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from "@/lib/constants";
+import { getProjectSetting, saveProjectSetting } from '@core/actions/project-settings-actions';
+import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from '@core/lib/constants';
 
 interface SystemSettingsProps {
   projectDirectory: string;

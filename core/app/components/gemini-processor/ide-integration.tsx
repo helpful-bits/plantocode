@@ -1,9 +1,9 @@
 "use client";
-import { normalizePath } from '@/lib/path-utils';
-import { Button } from '@/components/ui/button';
+import { normalizePath } from '@core/lib/path-utils';
+import { Button } from '@core/components/ui/button';
 import { ExternalLink, Code, AlertTriangle } from 'lucide-react';
 import { useState, useCallback } from 'react';
-import { safeFetch } from '@/lib/utils';
+import { safeFetch } from '@core/lib/utils';
 
 interface IdeIntegrationProps {
   filePath: string;

@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { glob } from 'glob';
-import { getAllNonIgnoredFiles } from '@/lib/git-utils';
+import { getAllNonIgnoredFiles } from '@core/lib/git-utils';
 import { exec } from 'child_process';
-import { normalizePath, makePathRelative, normalizePathForComparison } from '@/lib/path-utils';
+import { normalizePath, makePathRelative, normalizePathForComparison } from '@core/lib/path-utils';
 
 // Helper function to execute shell commands
 const execAsync = (command: string, options?: { cwd?: string }): Promise<{ stdout: string, stderr: string }> => {

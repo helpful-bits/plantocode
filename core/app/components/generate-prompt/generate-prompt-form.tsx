@@ -4,7 +4,7 @@ import React, { Suspense, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { useGeneratePromptState } from "./_hooks/use-generate-prompt-state";
 import { GeneratePromptContext } from "./_contexts/generate-prompt-context";
-import { useSessionContext } from "@/lib/contexts/session-context";
+import { useSessionContext } from '@core/lib/contexts/session-context';
 import ProjectSection from "./_sections/ProjectSection";
 import TaskSection from "./_sections/TaskSection";
 import { FileManagementProvider } from "./_contexts/file-management-provider";

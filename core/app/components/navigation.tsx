@@ -3,18 +3,18 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button } from '@core/components/ui/button';
 import { Home, Settings, MoreHorizontal, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger} from '@/components/ui/dropdown-menu';
+  DropdownMenuTrigger} from '@core/components/ui/dropdown-menu';
 import { ThemeToggle } from './theme-toggle';
-import { useUILayout } from '@/lib/contexts/ui-layout-context';
+import { useUILayout } from '@core/lib/contexts/ui-layout-context';
 import GlobalLoadingIndicator from './global-loading-indicator';
-import { useProject } from '@/lib/contexts/project-context';
-import { useSessionContext } from '@/lib/contexts/session-context';
+import { useProject } from '@core/lib/contexts/project-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
 
 export function Navigation() {
   const pathname = usePathname();

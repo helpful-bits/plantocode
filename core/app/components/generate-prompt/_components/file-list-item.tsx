@@ -2,9 +2,9 @@
 
 import React, { useCallback } from "react";
 import { FileText, Copy } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { FileInfo } from "@/types";
-import { cn } from "@/lib/utils";
+import { Button } from '@core/components/ui/button';
+import { FileInfo } from '@core/types';
+import { cn } from '@core/lib/utils';
 
 interface FileListItemProps {
   file: FileInfo;

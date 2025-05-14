@@ -1,10 +1,10 @@
 "use server";
 
-import { ActionState } from "@/types";
-import { WHISPER_MAX_FILE_SIZE_MB } from '@/lib/constants';
-import { ensureSessionRecord } from '@/lib/db/utils/session-db-utils';
-import { apiClients } from '@/lib/api/client-factory';
-import { handleApiClientError } from '@/lib/api/api-error-handling';
+import { ActionState } from '@core/types';
+import { WHISPER_MAX_FILE_SIZE_MB } from '@core/lib/constants';
+import { ensureSessionRecord } from '@core/lib/db/utils/session-db-utils';
+import { apiClients } from '@core/lib/api/client-factory';
+import { handleApiClientError } from '@core/lib/api/api-error-handling';
 
 /**
  * Transcribe audio data from a base64-encoded string using Groq's Whisper implementation

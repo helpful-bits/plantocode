@@ -3,7 +3,7 @@ import { BaseJobPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
 import fs from 'fs/promises';
 import path from 'path';
-import { generateDirectoryTree } from '@/lib/directory-tree';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
 
 /**
  * Read Directory Payload interface

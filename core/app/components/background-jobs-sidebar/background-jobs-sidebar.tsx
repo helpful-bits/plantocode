@@ -1,20 +1,20 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
-import { useUILayout } from '@/lib/contexts/ui-layout-context';
-import { BackgroundJob } from '@/types/session-types';
+import { useBackgroundJobs } from '@core/lib/contexts/background-jobs-context';
+import { useUILayout } from '@core/lib/contexts/ui-layout-context';
+import { BackgroundJob } from '@core/types/session-types';
 import { RefreshCw, X, Trash2, AlertCircle, ChevronRight, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@core/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@core/components/ui/collapsible';
+import { ScrollArea } from '@core/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@core/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
+} from '@core/components/ui/dropdown-menu';
 import { JobDetailsModal } from './JobDetailsModal';
 import { JobCard } from './JobCard';
 import { EmptyState, LoadingState } from './SidebarStates';

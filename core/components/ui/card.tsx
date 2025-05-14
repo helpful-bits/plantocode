@@ -1,7 +1,7 @@
 "use client"
 // Keep React import
 import * as React from "react" // Keep React import
-import { cn } from "@/lib/utils" // Keep cn import
+import { cn } from "@core/lib/utils" // Keep cn import
 
 const Card = React.forwardRef<
   HTMLDivElement,

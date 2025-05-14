@@ -1,11 +1,11 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { PathFinderPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import { generateDirectoryTree } from '@/lib/directory-tree';
-import { backgroundJobRepository, sessionRepository } from '@/lib/db/repositories';
-import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@/lib/prompts/path-finder-prompts';
-import geminiClient from '@/lib/api/clients/gemini';
-import { normalizePathForComparison, parseFilePathsFromAIResponse } from '@/lib/path-utils';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
+import { backgroundJobRepository, sessionRepository } from '@core/lib/db/repositories';
+import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@core/lib/prompts/path-finder-prompts';
+import geminiClient from '@core/lib/api/clients/gemini';
+import { normalizePathForComparison, parseFilePathsFromAIResponse } from '@core/lib/path-utils';
 
 /**
  * Path Finder Processor

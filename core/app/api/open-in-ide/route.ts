@@ -4,8 +4,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { existsSync } from 'fs';
-import { getProjectSetting } from '@/actions/project-settings-actions';
-import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from '@/lib/constants';
+import { getProjectSetting } from '@core/actions/project-settings-actions';
+import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from '@core/lib/constants';
 
 export async function POST(request: NextRequest) {
   try {

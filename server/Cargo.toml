@@ -1,0 +1,74 @@
+[package]
+name = "vibe-manager-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies.bigdecimal]
+version = "0.4"
+features = ["serde"]
+
+[dependencies]
+# Web framework
+actix-web = "4.10.2"
+actix-cors = "0.7.1"
+actix-rt = "2.10.0"
+actix-multipart = "0.7.2"
+
+# Database
+sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono", "macros", "bigdecimal"] }
+tokio = { version = "1.44.1", features = ["full"] }
+
+# Authentication
+jsonwebtoken = "9.3.1"
+argon2 = "0.5.3"
+base64 = "0.22.1"
+
+# Serialization/Deserialization
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde_cbor = "0.11.2"
+
+# Environment variables
+dotenv = "0.15.0"
+
+# Logging
+log = "0.4.26"
+log4rs = "1.3.0"
+env_logger = "0.11.7"
+
+# UUID
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
+# Date and time
+chrono = { version = "0.4.40", features = ["serde"] }
+
+# Async traits
+async-trait = "0.1.77"
+
+# HTTP client
+reqwest = { version = "0.12.15", features = ["json", "multipart"] }
+
+# Error handling
+thiserror = "2.0.12"
+anyhow = "1.0.97"
+
+# Utils
+futures-util = "0.3.31"
+sha2 = "0.10.8"
+once_cell = "1.21.3"
+lazy_static = "1.5.0"
+regex = "1.10.5"
+rand = "0.9.1"
+url = "2.5.2"
+
+# Stripe
+stripe-rust = { version = "0.12.3", optional = true }
+hmac = { version = "0.12.1", optional = true }
+hex = { version = "0.4.3", optional = true }
+
+[features]
+prepare-db = []
+stripe = ["stripe-rust", "hmac", "hex"]
+
+[dev-dependencies]
+mockito = "1.0.2"
+pretty_assertions = "1.3.0"

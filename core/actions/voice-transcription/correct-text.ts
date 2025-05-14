@@ -1,9 +1,9 @@
 "use server";
 
-import { ActionState } from "@/types";
-import claudeClient from "@/lib/api/claude-client";
-import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
-import { ensureSessionRecord } from '@/lib/db/utils/session-db-utils';
+import { ActionState } from '@core/types';
+import claudeClient from '@core/lib/api/claude-client';
+import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@core/lib/jobs/job-helpers';
+import { ensureSessionRecord } from '@core/lib/db/utils/session-db-utils';
 
 /**
  * Action to improve and correct transcribed text using Claude.

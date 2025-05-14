@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { Loader2, ClipboardCopy, FileCode, Eye } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useNotification } from "@/lib/contexts/notification-context";
-import { estimateTokens } from "@/lib/token-estimator";
-import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@core/components/ui/dialog";
+import { useNotification } from "@core/lib/contexts/notification-context";
+import { estimateTokens } from "@core/lib/token-estimator";
+import { useToast } from "@core/components/ui/use-toast";
 
 /**
  * Reusable dialog component for displaying implementation plan prompts

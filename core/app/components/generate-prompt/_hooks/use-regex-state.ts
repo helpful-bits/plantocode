@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { generateRegexPatternsAction } from "@/actions/generate-regex-actions";
-import { useNotification } from '@/lib/contexts/notification-context';
-import { useBackgroundJob } from '@/lib/contexts/background-jobs-context';
-import { useSessionContext } from '@/lib/contexts/session-context';
+import { generateRegexPatternsAction } from "@core/actions/generate-regex-actions";
+import { useNotification } from '@core/lib/contexts/notification-context';
+import { useBackgroundJob } from '@core/lib/contexts/background-jobs-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
 
 interface UseRegexStateProps {
   activeSessionId: string | null;
@@ -109,7 +109,12 @@ export function useRegexState({
     }
   }, [
     sessionContext.currentSession,
-    isSwitchingSession
+    isSwitchingSession,
+    internalTitleRegex,
+    internalContentRegex,
+    internalNegativeTitleRegex,
+    internalNegativeContentRegex,
+    internalIsRegexActive
   ]);
 
   // Handler for title regex changes - now updates local state immediately and debounces context updates
@@ -500,7 +505,7 @@ export function useRegexState({
   // Apply the callback in useEffect
   useEffect(() => {
     handleJobStatusChanges();
-  }, [handleJobStatusChanges]);
+  }, [handleJobStatusChanges, internalContentRegex, internalIsRegexActive, internalNegativeContentRegex, internalNegativeTitleRegex, internalTitleRegex]);
 
   // Generate regex from task description - stabilized with useCallback
   const handleGenerateRegexFromTask = useCallback(async () => {

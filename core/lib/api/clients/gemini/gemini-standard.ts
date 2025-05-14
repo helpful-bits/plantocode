@@ -1,11 +1,11 @@
-import { DEFAULT_TASK_SETTINGS } from "@/lib/constants";
-import { ActionState, TaskSettings } from "@/types";
-import { RequestType } from "@/lib/api/streaming-request-pool-types";
-import { updateJobToRunning, updateJobToCompleted, createBackgroundJob, handleApiError } from "@/lib/jobs/job-helpers";
-import { BackgroundJob, TaskType } from "@/types/session-types";
-import { backgroundJobRepository } from '@/lib/db/repositories';
+import { DEFAULT_TASK_SETTINGS } from '@core/lib/constants';
+import { ActionState, TaskSettings } from '@core/types';
+import { RequestType } from '@core/lib/api/streaming-request-pool-types';
+import { updateJobToRunning, updateJobToCompleted, createBackgroundJob, handleApiError } from '@core/lib/jobs/job-helpers';
+import { BackgroundJob, TaskType } from '@core/types/session-types';
+import { backgroundJobRepository } from '@core/lib/db/repositories';
 import { GoogleGenerativeAI, GenerateContentRequest } from '@google/generative-ai';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
 
 // Types for request and response
 export interface GeminiResponse {

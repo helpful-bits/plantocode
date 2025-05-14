@@ -1,15 +1,15 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useVoiceRecording } from "@/lib/hooks/useVoiceRecording";
+import { useVoiceRecording } from "@core/lib/hooks/useVoiceRecording";
 import { Mic, MicOff, Loader2, RefreshCw, ChevronDown } from "lucide-react";
 // Replaced custom Select with native select
-import { useProject } from "@/lib/contexts/project-context"; // Add useProject context
-import { useSessionContext } from "@/lib/contexts/session-context"; // Add useSessionContext
+import { useProject } from "@core/lib/contexts/project-context"; // Add useProject context
+import { useSessionContext } from "@core/lib/contexts/session-context"; // Add useSessionContext
 import { TaskDescriptionHandle } from "./task-description";
-import { toast } from "@/components/ui/use-toast";
-import { createTranscriptionErrorMessage } from "@/lib/utils/error-handling"; // Import error handling utility
+import { toast } from "@core/components/ui/use-toast";
+import { createTranscriptionErrorMessage } from "@core/lib/utils/error-handling"; // Import error handling utility
 
 
 interface VoiceTranscriptionProps {

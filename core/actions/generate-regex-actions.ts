@@ -1,8 +1,8 @@
 "use server";
-import { ActionState } from "@/types";
-import { generateRegexPatternPrompt } from "@/lib/prompts/regex-prompts";
-import { createBackgroundJob, enqueueJob } from "@/lib/jobs/job-helpers";
-import { JobType } from "@/lib/jobs/job-types";
+import { ActionState } from "@core/types";
+import { generateRegexPatternPrompt } from "@core/lib/prompts/regex-prompts";
+import { createBackgroundJob, enqueueJob } from "@core/lib/jobs/job-helpers";
+import { JobType } from "@core/lib/jobs/job-types";
 
 export async function generateRegexPatternsAction(
   taskDescription: string,

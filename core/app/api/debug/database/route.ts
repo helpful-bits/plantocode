@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Database from 'better-sqlite3';
-import { db, connectionPool } from '@/lib/db';
-import { resetDatabase } from '@/lib/db/setup'; // Keep resetDatabase import
-import { hashString } from '@/lib/hash';
+import { db, connectionPool } from '@core/lib/db';
+import { resetDatabase } from '@core/lib/db/setup'; // Keep resetDatabase import
+import { hashString } from '@core/lib/hash';
 // GET /api/debug/database?action=...
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@core/lib/utils";
 
 // Extended TextareaProps with loading states
 export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {

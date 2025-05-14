@@ -3,9 +3,9 @@
 import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog" // Keep AlertDialogPrimitive import
  
-import { cn } from "@/lib/utils" // Keep cn import
-import { buttonVariants } from "@/components/ui/button"
-import { Button } from "@/components/ui/button"; // Import Button component
+import { cn } from "@core/lib/utils" // Keep cn import
+import { buttonVariants } from "@core/components/ui/button"
+import { Button } from "@core/components/ui/button"; // Import Button component
 const AlertDialog = AlertDialogPrimitive.Root
 
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger

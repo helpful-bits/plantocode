@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@core/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { sendPromptToGeminiAction } from '@/actions/gemini-actions';
-import { useProject } from '@/lib/contexts/project-context';
-import { toast } from '@/components/ui/use-toast';
+import { sendPromptToGeminiAction } from '@core/actions/gemini-actions';
+import { useProject } from '@core/lib/contexts/project-context';
+import { toast } from '@core/components/ui/use-toast';
 
 interface GeminiProcessorProps {
     prompt: string;

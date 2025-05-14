@@ -1,0 +1,88 @@
+# API Proxy for Desktop Application
+
+The server component of Vibe Manager includes API proxy functionality to support the desktop application. This document explains how the proxy works and how to configure it.
+
+## Overview
+
+The desktop application needs to access various AI services (Gemini, Claude, Groq, etc.) but cannot store API keys securely. The server acts as a proxy, adding the necessary API keys and authentication before forwarding requests to these services.
+
+## Architecture
+
+```
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+│                 │      │                 │      │                 │
+│  Desktop App    │─────▶│  Rust Server    │─────▶│  AI Services    │
+│                 │      │                 │      │                 │
+└─────────────────┘      └─────────────────┘      └─────────────────┘
+      │                        │
+      │                        │
+      ▼                        ▼
+┌─────────────────┐      ┌─────────────────┐
+│                 │      │                 │
+│  SQLite         │      │  PostgreSQL     │
+│  (Local Data)   │      │  (User Data)    │
+│                 │      │                 │
+└─────────────────┘      └─────────────────┘
+```
+
+## Proxy Endpoints
+
+The server exposes the following proxy endpoints:
+
+- `/api/proxy/gemini` - Google Gemini API
+- `/api/proxy/claude` - Anthropic Claude API
+- `/api/proxy/groq` - Groq API
+
+## Authentication Flow
+
+1. The desktop app authenticates with Firebase
+2. The Firebase token is sent to the server's `/auth/firebase/token` endpoint
+3. The server verifies the Firebase token and issues a JWT
+4. This JWT is used for all subsequent requests to the proxy endpoints
+
+## Request Flow
+
+1. The desktop app sends a request to a proxy endpoint with its JWT
+2. The server validates the JWT and extracts the user ID
+3. The server checks the user's subscription status and rate limits
+4. If the user has access, the server adds the appropriate API key to the request
+5. The server forwards the request to the actual AI service
+6. The server receives the response from the AI service
+7. The server records usage information for billing/tracking
+8. The server streams/returns the response to the desktop app
+
+## Usage Tracking
+
+Each API request is tracked in the `api_usage` table with:
+
+- `user_id`: The ID of the user making the request
+- `service_name`: The API service being used (e.g., "gemini", "claude")
+- `tokens_input`: Number of input tokens used
+- `tokens_output`: Number of output tokens generated
+- `cost`: Calculated cost of the request
+- `timestamp`: When the request was made
+
+## Configuration
+
+The server needs the following environment variables:
+
+```
+# API Keys
+GEMINI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GROQ_API_KEY=...
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=60000  # 1 minute
+RATE_LIMIT_MAX_REQUESTS=60  # 60 requests per minute
+
+# Subscription Defaults
+DEFAULT_TRIAL_DAYS=7
+```
+
+## Implementation Notes
+
+- Each proxy endpoint has its own handler in `src/handlers/proxy_handlers.rs`
+- The actual proxy logic is in `src/services/proxy_service.rs`
+- Subscription status is checked in `src/services/billing_service.rs`
+- Rate limiting is handled by middleware in `src/middleware/rate_limiter.rs`

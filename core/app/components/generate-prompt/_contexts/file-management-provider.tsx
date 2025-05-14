@@ -3,8 +3,8 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { useFileManagementState } from "../_hooks/use-file-management-state";
 import { FileManagementContext } from "./file-management-context";
-import { useSessionContext } from "@/lib/contexts/session-context";
-import { Session } from "@/types/session-types";
+import { useSessionContext } from "@core/lib/contexts/session-context";
+import { Session } from "@core/types/session-types";
 import { useStableRef } from "../_hooks/use-stable-refs";
 
 interface FileManagementProviderProps {

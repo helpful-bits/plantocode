@@ -2,7 +2,7 @@
 
 import React, { Suspense } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import VoiceTranscription from "../_components/voice-transcription";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { useGeneratePrompt } from "../_contexts/generate-prompt-context";

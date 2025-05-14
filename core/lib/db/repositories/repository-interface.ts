@@ -5,7 +5,7 @@
  * ensuring consistent error handling, connection management, and interface patterns.
  */
 
-import { ActionState } from "@/types";
+import { ActionState } from '@core/types';
 
 /**
  * Base Repository Interface

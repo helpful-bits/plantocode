@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getActiveJobsAction } from '@/actions/background-job-actions';
-import { setupDatabase } from '@/lib/db/setup';
+import { getActiveJobsAction } from '@core/actions/background-job-actions';
+import { setupDatabase } from '@core/lib/db/setup';
 
 /**
  * GET /api/background-jobs

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import { Loader2, Sparkles, Undo2, Redo2 } from "lucide-react";
 import RegexAccordion from "../_components/regex-accordion";
 import FindModeToggle from "../_components/find-mode-toggle";

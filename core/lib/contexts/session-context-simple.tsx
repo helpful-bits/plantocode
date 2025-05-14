@@ -8,8 +8,8 @@ import React, {
   useEffect,
   useRef
 } from 'react';
-import { Session } from '@/types';
-import { useActiveSession } from '@/lib/hooks/use-active-session';
+import { Session } from '@core/types';
+import { useActiveSession } from '@core/lib/hooks/use-active-session';
 import { useProject } from './project-context';
 import { useUILayout } from './ui-layout-context';
 import {
@@ -18,8 +18,8 @@ import {
   saveSessionAction,
   deleteSessionAction,
   renameSessionAction
-} from '@/actions/session-actions';
-import { DatabaseError, DatabaseErrorCategory, DatabaseErrorSeverity } from '@/lib/db/database-errors';
+} from '@core/actions/session-actions';
+import { DatabaseError, DatabaseErrorCategory, DatabaseErrorSeverity } from '@core/lib/db/database-errors';
 
 interface SessionContextType {
   // Session state

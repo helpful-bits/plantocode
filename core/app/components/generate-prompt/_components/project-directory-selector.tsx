@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AlertCircle, Check, FolderOpen, Loader2, X, XCircle } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { validateDirectoryAction } from "@/actions/validate-directory-action";
-import { normalizePath, normalizePathForComparison } from "@/lib/path-utils";
-import { useProject } from "@/lib/contexts/project-context";
-import { cn } from "@/lib/utils";
+import { Input } from "@core/components/ui/input";
+import { Button } from "@core/components/ui/button";
+import { validateDirectoryAction } from "@core/actions/validate-directory-action";
+import { normalizePath, normalizePathForComparison } from "@core/lib/path-utils";
+import { useProject } from "@core/lib/contexts/project-context";
+import { cn } from "@core/lib/utils";
 import DirectoryBrowser from "./directory-browser";
-import { useNotification } from "@/lib/contexts/notification-context";
+import { useNotification } from "@core/lib/contexts/notification-context";
 
 enum ValidationType {
   Success = 'success',

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { findRelevantFilesAction } from "@/actions/path-finder/index";
-import { useBackgroundJob } from "@/lib/contexts/background-jobs-context";
+import { findRelevantFilesAction } from "@core/actions/path-finder/index";
+import { useBackgroundJob } from "@core/lib/contexts/background-jobs-context";
 import { useAsyncAction } from "../use-async-state";
-import { normalizePath, parseFilePathsFromAIResponse } from "@/lib/path-utils";
-import { JOB_STATUSES, JobStatus } from "@/types/session-types";
+import { normalizePath, parseFilePathsFromAIResponse } from "@core/lib/path-utils";
+import { JOB_STATUSES, JobStatus } from "@core/types/session-types";
 
 interface UseRelevantFilesFinderProps {
   activeSessionId: string | null;

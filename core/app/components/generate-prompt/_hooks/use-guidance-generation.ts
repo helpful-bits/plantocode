@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useNotification } from "@/lib/contexts/notification-context";
-import { generateGuidanceForPathsAction } from "@/actions/guidance-generation-actions";
-import { useBackgroundJob } from "@/lib/contexts/background-jobs-context";
+import { useNotification } from "@core/lib/contexts/notification-context";
+import { generateGuidanceForPathsAction } from "@core/actions/guidance-generation-actions";
+import { useBackgroundJob } from "@core/lib/contexts/background-jobs-context";
 
 export interface UseGuidanceGenerationProps {
   projectDirectory: string | null;

@@ -5,8 +5,8 @@
  * to ensure consistent error handling, response structure, and background job integration.
  */
 
-import { ActionState } from "@/types";
-import { ApiType, TaskType } from "@/types/session-types";
+import { ActionState } from "@core/types";
+import { ApiType, TaskType } from "@core/types/session-types";
 // Import the centralized error handling functions
 import { handleApiClientError, createApiSuccessResponse } from './api-error-handling';
 

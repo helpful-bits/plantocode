@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Info, Loader2, FolderClosed, AlertCircle, X, RefreshCw, Filter, Files } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useProject } from "@/lib/contexts/project-context";
-import { FileInfo } from "@/types";
+import { cn } from "@core/lib/utils";
+import { Button } from "@core/components/ui/button";
+import { Input } from "@core/components/ui/input";
+import { useProject } from "@core/lib/contexts/project-context";
+import { FileInfo } from "@core/types";
 import FileListItem from "./_components/file-list-item";
 import FilterModeToggle from "./_components/filter-mode-toggle";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runMigrations } from '@/lib/db/setup/migrations'; // Import from setup/migrations instead
-import { setupDatabase } from '@/lib/db/setup'; // Keep setupDatabase import
-import { db } from '@/lib/db'; // Import db
+import { runMigrations } from '@core/lib/db/setup/migrations'; // Import from setup/migrations instead
+import { setupDatabase } from '@core/lib/db/setup'; // Keep setupDatabase import
+import { db } from '@core/lib/db'; // Import db
 
 /**
  * API endpoint to explicitly run database migrations

@@ -3,15 +3,15 @@ import { ImplementationPlanPayload } from '../job-types';
 import {
   generateImplementationPlanSystemPrompt,
   generateImplementationPlanUserPrompt
-} from '@/lib/prompts/implementation-plan-prompts';
+} from '@core/lib/prompts/implementation-plan-prompts';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import { generateDirectoryTree } from '@/lib/directory-tree';
-import { loadFileContents } from '@/lib/file-utils';
-import { ActionState } from '@/types';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
+import { loadFileContents } from '@core/lib/file-utils';
+import { ActionState } from '@core/types';
 // Import SDK-based streaming handler
-import { streamGeminiCompletionWithSDK, GeminiSdkRequestPayload } from '@/lib/api/clients/gemini/gemini-sdk-handler';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { RequestType } from '@/lib/api/streaming-request-pool-types';
+import { streamGeminiCompletionWithSDK, GeminiSdkRequestPayload } from '@core/lib/api/clients/gemini/gemini-sdk-handler';
+import { GEMINI_FLASH_MODEL } from '@core/lib/constants';
+import { RequestType } from '@core/lib/api/streaming-request-pool-types';
 
 /**
  * Lazy-load the background job repository to avoid circular dependencies
@@ -19,7 +19,7 @@ import { RequestType } from '@/lib/api/streaming-request-pool-types';
  */
 async function getBackgroundJobRepository() {
   // Dynamic import to avoid circular dependencies
-  const { backgroundJobRepository } = await import('@/lib/db/repositories/background-job-repository');
+  const { backgroundJobRepository } = await import('@core/lib/db/repositories/background-job-repository');
   return backgroundJobRepository;
 }
 
@@ -297,7 +297,8 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
     xmlContent: string,
     model: string | undefined,
     maxOutputTokens: number | undefined,
-    tokenCount: number
+    tokenCount: number,
+    temperature: number | undefined
   ): Promise<void> {
     // Extract a brief summary from the parsed XML content
     let planSummary = '';
@@ -344,7 +345,7 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
       outputFilePath: undefined,
       modelUsed: model,
       maxOutputTokens: maxOutputTokens,
-      temperatureUsed: temperature // Use the temperature passed in the payload
+      temperatureUsed: temperature // Use the temperature passed in as parameter
     });
 
     // Update job with additional metadata in a separate call
@@ -574,7 +575,8 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
         xmlContent,
         model,
         maxOutputTokens,
-        streamResult.tokenCount
+        streamResult.tokenCount,
+        temperature
       );
 
       // Return success result

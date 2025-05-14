@@ -1,11 +1,11 @@
 "use client";
 
 import { createContext, useContext, useState, ReactNode, useEffect, useRef, useCallback, useMemo } from "react";
-import { normalizePath } from "@/lib/path-utils";
-import { GLOBAL_PROJECT_DIR_KEY } from "@/lib/constants";
+import { normalizePath } from "@core/lib/path-utils";
+import { GLOBAL_PROJECT_DIR_KEY } from "@core/lib/constants";
 import { useNotification } from "./notification-context";
 import { useUILayout } from "./ui-layout-context";
-import { getGenericCachedStateAction, saveGenericCachedStateAction } from "@/actions/project-settings-actions";
+import { getGenericCachedStateAction, saveGenericCachedStateAction } from "@core/actions/project-settings-actions";
 
 interface ProjectContextType {
   projectDirectory: string;

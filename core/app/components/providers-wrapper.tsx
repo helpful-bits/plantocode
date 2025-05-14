@@ -20,34 +20,34 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
 const loadingFallback = { loading: () => null };
 
 const ProjectProvider = dynamic(
-  () => import("@/lib/contexts/project-context").then(mod => ({ default: mod.ProjectProvider })),
+  () => import("@core/lib/contexts/project-context").then(mod => ({ default: mod.ProjectProvider })),
   { ...loadingFallback, ssr: false }
 );
 
 const DatabaseProvider = dynamic(
-  () => import("@/lib/contexts/database-context").then(mod => ({ default: mod.DatabaseProvider })),
+  () => import("@core/lib/contexts/database-context").then(mod => ({ default: mod.DatabaseProvider })),
   { ...loadingFallback, ssr: false }
 );
 
 const BackgroundJobsProvider = dynamic(
-  () => import("@/lib/contexts/background-jobs-context").then(mod => ({ default: mod.BackgroundJobsProvider })),
+  () => import("@core/lib/contexts/background-jobs-context").then(mod => ({ default: mod.BackgroundJobsProvider })),
   { ...loadingFallback, ssr: false }
 );
 
 // Use the safe version of SessionProvider to prevent initial freezing
 const SessionProvider = dynamic(
-  () => import("@/lib/contexts/session-init").then(mod => ({ default: mod.SessionProviderSafe })),
+  () => import("@core/lib/contexts/session-init").then(mod => ({ default: mod.SessionProviderSafe })),
   { ...loadingFallback, ssr: false }
 );
 
 const UILayoutProvider = dynamic(
-  () => import("@/lib/contexts/ui-layout-context").then(mod => ({ default: mod.UILayoutProvider })),
+  () => import("@core/lib/contexts/ui-layout-context").then(mod => ({ default: mod.UILayoutProvider })),
   { ...loadingFallback, ssr: false }
 );
 
 // Simple notification provider with hydration safety
 const NotificationProvider = dynamic(
-  () => import("@/lib/contexts/notification-context").then(mod => ({ default: mod.NotificationProvider })),
+  () => import("@core/lib/contexts/notification-context").then(mod => ({ default: mod.NotificationProvider })),
   { ...loadingFallback, ssr: false }
 );
 

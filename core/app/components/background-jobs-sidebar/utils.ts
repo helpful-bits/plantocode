@@ -1,5 +1,5 @@
-import { ApiType, TaskType, JOB_STATUSES } from '@/types/session-types';
-import { formatTimeAgo as formatTimeAgoUtil } from '@/lib/utils/date-utils';
+import { ApiType, TaskType, JOB_STATUSES } from '@core/types/session-types';
+import { formatTimeAgo as formatTimeAgoUtil } from '@core/lib/utils/date-utils';
 
 /**
  * Returns the icon name for a job status

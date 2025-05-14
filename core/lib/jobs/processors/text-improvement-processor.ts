@@ -1,7 +1,7 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { TextImprovementPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import claudeClient from '@/lib/api/claude-client';
+import claudeClient from '@core/lib/api/claude-client';
 
 /**
  * Text Improvement Processor

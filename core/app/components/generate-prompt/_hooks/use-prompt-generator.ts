@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { readDirectoryAction, readExternalFileAction } from "@/actions/read-directory-actions";
-import { enhanceTaskDescriptionAction, generateTaskPromptTemplateAction } from "@/actions/task-enhancement-actions";
-import { estimateTokens } from "@/lib/token-estimator";
-import { normalizePath, makePathRelative } from "@/lib/path-utils";
+import { readDirectoryAction, readExternalFileAction } from "@core/actions/read-directory-actions";
+import { enhanceTaskDescriptionAction, generateTaskPromptTemplateAction } from "@core/actions/task-enhancement-actions";
+import { estimateTokens } from "@core/lib/token-estimator";
+import { normalizePath, makePathRelative } from "@core/lib/path-utils";
 import { FilesMap, FileInfo } from "./file-management/use-project-file-list";
 
 interface UsePromptGeneratorProps {

@@ -5,6 +5,6 @@ export type FileInfo = {
   size?: number; 
   included: boolean; 
   forceExcluded: boolean;
-  comparablePath?: string; // Added to match the project-file-list.ts definition
+  comparablePath: string; // Required to match the project-file-list.ts definition
 }; // Keep FileInfo type
 

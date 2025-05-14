@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "lint:all": "tsc --noEmit && next lint",
+    "export-for-desktop": "next build && next export -o ../desktop/dist",
     "workers": "tsx scripts/start-workers.ts",
     "migrate": "tsx scripts/run-migrations.ts",
     "migrate:consolidated": "tsx scripts/apply-consolidated-migration.ts",

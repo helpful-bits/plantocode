@@ -1,8 +1,8 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { TextCorrectionPostTranscriptionPayload } from '../job-types';
-import claudeClient from '@/lib/api/claude-client';
+import claudeClient from '@core/lib/api/claude-client';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import { backgroundJobRepository } from '@/lib/db/repositories';
+import { backgroundJobRepository } from '@core/lib/db/repositories';
 
 /**
  * Text Correction Processor

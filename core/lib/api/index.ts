@@ -5,7 +5,7 @@
  * with standardized interfaces and error handling.
  *
  * USAGE RECOMMENDATIONS:
- * 1. Always import from '@/lib/api' instead of direct client imports
+ * 1. Always import from '@core/lib/api' instead of direct client imports
  * 2. Use apiClients.gemini or apiClients.claude to access specific clients
  * 3. Use getApiClient(apiType) when the client type is dynamic
  */

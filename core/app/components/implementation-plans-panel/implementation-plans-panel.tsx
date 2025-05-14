@@ -1,18 +1,18 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Progress } from "@/components/ui/progress";
+import { useBackgroundJobs } from '@core/lib/contexts/background-jobs-context';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@core/components/ui/card";
+import { ScrollArea } from "@core/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@core/components/ui/collapsible";
+import { Progress } from "@core/components/ui/progress";
 import { ChevronDown, ClipboardCopy, Loader2, Info, Eye } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
-import { useProject } from '@/lib/contexts/project-context';
-import { toast } from "@/components/ui/use-toast";
-import { JOB_STATUSES, BackgroundJob } from "@/types/session-types";
-import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/JobDetailsModal";
+import { useProject } from '@core/lib/contexts/project-context';
+import { toast } from "@core/components/ui/use-toast";
+import { JOB_STATUSES, BackgroundJob } from "@core/types/session-types";
+import { JobDetailsModal } from "@core/app/components/background-jobs-sidebar/JobDetailsModal";
 
 interface ImplementationPlansPanelProps {
   sessionId?: string | null;

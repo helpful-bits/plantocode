@@ -1,14 +1,14 @@
 "use client";
 
-import { useProject } from "@/lib/contexts/project-context";
+import { useProject } from '@core/lib/contexts/project-context';
 import { useEffect, useState } from "react";
-import { TaskSettings } from "@/types";
+import { TaskSettings } from '@core/types';
 import TaskModelSettings from "./task-model-settings";
 import SystemSettings from "./system-settings";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui";
+import { Card, CardDescription, CardHeader, CardTitle } from '@core/components/ui';
 import { CheckCircle, Loader2 } from "lucide-react";
-import { getModelSettingsForProject, saveModelSettingsForProject } from "@/actions/project-settings-actions";
-import { DEFAULT_TASK_SETTINGS } from "@/lib/constants";
+import { getModelSettingsForProject, saveModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { DEFAULT_TASK_SETTINGS } from '@core/lib/constants';
 
 export default function SettingsForm() {
   const { projectDirectory } = useProject();

@@ -1,7 +1,7 @@
 "use server";
 
-import { ActionState } from "@/types";
-import claudeClient from "@/lib/api/claude-client";
+import { ActionState } from '@core/types';
+import claudeClient from '@core/lib/api/claude-client';
 
 export interface ImproveTextOptions {
   text: string;

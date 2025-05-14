@@ -10,7 +10,7 @@
  * 2. The getApiClient function for dynamic client selection
  */
 
-import { ApiType } from '@/types/session-types';
+import { ApiType } from '@core/types/session-types';
 import { ApiClient } from './api-client-interface';
 import geminiClient from './clients/gemini';
 import claudeClient from './claude-client';

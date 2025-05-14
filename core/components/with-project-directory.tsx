@@ -1,12 +1,12 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@core/components/ui/card";
+import { Button } from "@core/components/ui/button";
 import { FolderOpen } from "lucide-react";
-import { useProject } from "@/lib/contexts/project-context";
-import DirectoryBrowser from "@/app/components/generate-prompt/_components/directory-browser";
-import ProjectNotFound from "@/components/project-not-found";
+import { useProject } from "@core/lib/contexts/project-context";
+import DirectoryBrowser from "@core/app/components/generate-prompt/_components/directory-browser";
+import ProjectNotFound from "@core/components/project-not-found";
 
 interface RequireProjectDirectoryProps {
   children: ReactNode;

@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useTransition, memo, useMemo } from "react";
-import { Session } from '@/types/session-types';
+import { Session } from '@core/types/session-types';
 import { Save, Trash2, Plus, Loader2, Pencil, Check, X, RefreshCw, Copy } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@core/components/ui/button";
+import { Input } from "@core/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,15 +15,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { useProject } from "@/lib/contexts/project-context";
-import { normalizePath } from "@/lib/path-utils";
-import { useNotification } from '@/lib/contexts/notification-context';
+} from "@core/components/ui/alert-dialog";
+import { useProject } from "@core/lib/contexts/project-context";
+import { normalizePath } from "@core/lib/path-utils";
+import { useNotification } from '@core/lib/contexts/notification-context';
 import { useGeneratePrompt } from '../_contexts/generate-prompt-context';
-import { useSessionContext } from '@/lib/contexts/session-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
 import { 
   getSessionsAction 
-} from '@/actions/session-actions';
+} from '@core/actions/session-actions';
 
 export interface SessionManagerProps {
   projectDirectory: string;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { setupDatabase } from '@/lib/db';
-import { errorResponse } from '@/lib/api/api-error-handling';
+import { setupDatabase } from '@core/lib/db';
+import { errorResponse } from '@core/lib/api/api-error-handling';
 
 /**
  * API endpoint to read an implementation plan from the database based on the job ID
@@ -25,7 +25,7 @@ export async function GET(
     await setupDatabase();
 
     // Dynamically import the background job repository
-    const { backgroundJobRepository } = await import('@/lib/db/repositories');
+    const { backgroundJobRepository } = await import('@core/lib/db/repositories');
 
     // Fetch the background job details
     const backgroundJob = await backgroundJobRepository.getBackgroundJob(jobId);

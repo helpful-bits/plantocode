@@ -1,11 +1,11 @@
 "use server";
 
-import { ActionState } from '@/types';
-import { setupDatabase } from '@/lib/db';
-import geminiClient from '@/lib/api/gemini-client';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { generatePathCorrectionPrompt } from '@/lib/prompts/path-correction-prompts';
+import { ActionState } from '@core/types';
+import { setupDatabase } from '@core/lib/db';
+import geminiClient from '@core/lib/api/gemini-client';
+import { GEMINI_FLASH_MODEL } from '@core/lib/constants';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { generatePathCorrectionPrompt } from '@core/lib/prompts/path-correction-prompts';
 
 /**
  * Correct paths based on task description and project structure

@@ -1,14 +1,14 @@
 "use server";
 
-import { ActionState } from "@/types";
-import { geminiClient } from '@/lib/api'; // Import from centralized API module
-import { GEMINI_PRO_PREVIEW_MODEL } from '@/lib/constants';
-import { generateDirectoryTree } from '@/lib/directory-tree';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
+import { ActionState } from "@core/types";
+import { geminiClient } from '@core/lib/api'; // Import from centralized API module
+import { GEMINI_PRO_PREVIEW_MODEL } from '@core/lib/constants';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
 import {
   generateImplementationPlanSystemPrompt,
   generateImplementationPlanUserPrompt
-} from '@/lib/prompts/implementation-plan-prompts';
+} from '@core/lib/prompts/implementation-plan-prompts';
 
 const TASK_ENHANCER_MODEL_ID = GEMINI_PRO_PREVIEW_MODEL; // Use Pro model
 

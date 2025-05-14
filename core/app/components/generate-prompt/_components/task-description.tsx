@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from "react";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Textarea } from "@core/components/ui/textarea";
+import { Button } from "@core/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
-import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
-import { useBackgroundJobs, useBackgroundJob } from "@/lib/contexts/background-jobs-context";
+import { improveSelectedTextAction } from "@core/actions/text-improvement-actions";
+import { useBackgroundJobs, useBackgroundJob } from "@core/lib/contexts/background-jobs-context";
 import { useTextareaResize } from '../_hooks/use-textarea-resize';
-import { useSessionContext } from "@/lib/contexts/session-context";
-import { cn } from "@/lib/utils";
+import { useSessionContext } from "@core/lib/contexts/session-context";
+import { cn } from "@core/lib/utils";
 
-import { useNotification } from '@/lib/contexts/notification-context';
+import { useNotification } from '@core/lib/contexts/notification-context';
 
 export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;

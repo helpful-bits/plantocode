@@ -1,6 +1,6 @@
 import { Metadata } from "next";
-import SettingsForm from "@/app/components/settings/settings-form";
-import { RequireProjectDirectory } from "@/components/with-project-directory";
+import SettingsForm from '@core/app/components/settings/settings-form';
+import { RequireProjectDirectory } from '@core/components/with-project-directory';
 
 export const metadata: Metadata = {
   title: "Settings | Vibe Manager",

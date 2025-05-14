@@ -1,4 +1,4 @@
-import { BackgroundJob, ApiType, TaskType, JobStatus, Session, JOB_STATUSES } from '@/types';
+import { BackgroundJob, ApiType, TaskType, JobStatus, Session, JOB_STATUSES } from '@core/types';
 import Database from 'better-sqlite3';
 import connectionPool from "../connection-pool";
 import crypto from 'crypto';

@@ -1,7 +1,7 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { GuidanceGenerationPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import geminiClient from '@/lib/api/clients/gemini';
+import geminiClient from '@core/lib/api/clients/gemini';
 
 /**
  * Guidance Generation Processor

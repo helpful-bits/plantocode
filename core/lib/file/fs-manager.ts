@@ -2,7 +2,7 @@ import { promises as fs, existsSync, createWriteStream, WriteStream } from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { getAppOutputFilesDirectory, getProjectOutputFilesDirectory, getProjectImplementationPlansDirectory, IMPLEMENTATION_PLANS_DIR_NAME } from '@/lib/path-utils';
+import { getAppOutputFilesDirectory, getProjectOutputFilesDirectory, getProjectImplementationPlansDirectory, IMPLEMENTATION_PLANS_DIR_NAME } from '@core/lib/path-utils';
 
 // File operation lock map
 interface FileLock {
