@@ -1,8 +1,8 @@
 "use client";
 
 import React from "react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { cn } from "@core/lib/utils";
+import { Button } from "@core/components/ui/button";
 import { Files, FileCheck, FilterX } from "lucide-react";
 
 interface FilterModeToggleProps {

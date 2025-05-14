@@ -1,0 +1,61 @@
+---
+description: Rules and guidelines for working with database schema in PostgreSQL. Apply these rules when modifying the database structure.
+globs: ["*.sql", "*/server/**/*.sql"]
+alwaysApply: false
+---
+# Database Schema Rules
+
+## Schema Management
+### schema.sql Approach
+- The database schema is defined in a single schema.sql file
+- All schema changes must be made in this file
+- Schema updates are applied externally using psql, not within the application
+- No migration files are used within the application
+
+### Schema Content
+- Organize schema by logical entities
+- Include clear, descriptive comments for each table
+- Add table creation in dependency order (referenced tables first)
+- Each entity section should include:
+  - CREATE TABLE statement
+  - Indexes
+  - Constraints
+  - Triggers (e.g., for updated_at)
+  - Comments
+
+## Schema Design
+### Table Design
+- Use snake_case for all database identifiers
+- Every table must have a primary key
+- Prefer UUIDs for primary keys over sequential integers
+- Add appropriate indexes for frequently queried columns
+- Use proper foreign key constraints for relationships
+- Use timestamptz for all timestamp fields (not timestamp)
+- Include created_at and updated_at columns on all tables
+
+### Column Types
+- Use appropriate PostgreSQL types:
+  - TEXT for variable-length strings (not VARCHAR unless size limit needed)
+  - JSONB for structured data (not JSON)
+  - INTEGER or BIGINT for numeric IDs (when not using UUID)
+  - TIMESTAMPTZ for all date/time fields (not TIMESTAMP)
+  - BOOLEAN for flags (not smallint or char)
+
+### Indexing
+- Always create indexes for:
+  - Foreign keys
+  - Columns used in WHERE clauses
+  - Columns used for sorting (ORDER BY)
+- Use partial indexes for filtered queries
+- Use appropriate index types:
+  - B-tree for equality and range queries
+  - GIN for JSONB and full-text search
+  - GiST for spatial data
+
+## PostgreSQL Best Practices
+- Document table and column purposes with COMMENT ON statements
+- Follow PostgreSQL 17.2 best practices
+- Use UTF8 encoding and proper collation
+- Use TEXT/VARCHAR with CHECK constraints instead of ENUMs
+- Write efficient queries that can utilize indexes
+- Use appropriate constraints (NOT NULL, UNIQUE, CHECK) to enforce data integrity 

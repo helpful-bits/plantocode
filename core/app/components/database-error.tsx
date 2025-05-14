@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@core/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@core/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@core/components/ui/alert';
 import { AlertTriangle, Loader2, RefreshCw, Wrench, AlertCircle, Trash2, Database, FileDown, HardDrive } from 'lucide-react';
 
 type DatabaseHealthData = {

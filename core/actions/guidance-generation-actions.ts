@@ -1,14 +1,14 @@
 "use server";
 
-import { ActionState } from '@/types';
-import { setupDatabase } from '@/lib/db';
-import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { generateDirectoryTree } from '@/lib/directory-tree';
-import { generateGuidanceForPathsPrompt } from '@/lib/prompts/guidance-prompts';
-import { loadFileContents } from '@/lib/file-utils';
-import { createBackgroundJob, enqueueJob } from '@/lib/jobs/job-helpers';
-import { ApiType, TaskType } from '@/types/session-types';
+import { ActionState } from '@core/types';
+import { setupDatabase } from '@core/lib/db';
+import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@core/lib/constants';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
+import { generateGuidanceForPathsPrompt } from '@core/lib/prompts/guidance-prompts';
+import { loadFileContents } from '@core/lib/file-utils';
+import { createBackgroundJob, enqueueJob } from '@core/lib/jobs/job-helpers';
+import { ApiType, TaskType } from '@core/types/session-types';
 
 /**
  * Generate guidance for specific file paths
@@ -126,7 +126,7 @@ export async function generateGuidanceForPathsAction(
 
 // Helper function to get session with background jobs
 async function getSessionWithBackgroundJobs(sessionId: string) {
-  const { getSessionWithBackgroundJobs } = await import('@/lib/db');
+  const { getSessionWithBackgroundJobs } = await import('@core/lib/db');
   return getSessionWithBackgroundJobs(sessionId);
 }
 

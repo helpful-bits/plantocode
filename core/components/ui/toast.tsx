@@ -3,7 +3,7 @@ import * as ToastPrimitives from "@radix-ui/react-toast"
 import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
-import { cn } from "@/lib/utils"
+import { cn } from "@core/lib/utils"
 
 // Create a custom provider wrapper to prevent infinite re-renders
 const ToastProvider = React.memo(({ children, ...props }: React.ComponentPropsWithoutRef<typeof ToastPrimitives.Provider>) => {

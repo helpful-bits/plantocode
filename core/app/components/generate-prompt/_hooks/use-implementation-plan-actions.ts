@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useSessionContext } from "@/lib/contexts/session-context";
-import { useProject } from "@/lib/contexts/project-context";
-import { useNotification } from '@/lib/contexts/notification-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
+import { useProject } from '@core/lib/contexts/project-context';
+import { useNotification } from '@core/lib/contexts/notification-context';
 import {
   createImplementationPlanAction,
   getImplementationPlanPromptAction
-} from '@/actions/implementation-plan-actions';
-import { generateImplementationPlanSystemPrompt } from '@/lib/prompts/implementation-plan-prompts';
-import { estimateTokens } from '@/lib/token-estimator';
+} from '@core/actions/implementation-plan-actions';
+import { generateImplementationPlanSystemPrompt } from '@core/lib/prompts/implementation-plan-prompts';
+import { estimateTokens } from '@core/lib/token-estimator';
 
 /**
  * Hook for managing implementation plan related actions

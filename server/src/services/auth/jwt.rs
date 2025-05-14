@@ -1,0 +1,200 @@
+use crate::config::settings::AppSettings;
+use crate::error::AppError;
+use crate::models::auth_jwt_claims::Claims;
+use crate::security::token_binding::hash_token_binding_value;
+use chrono::{Duration, Utc};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use log::{debug, error, info, trace};
+use uuid::Uuid;
+use std::sync::{Arc, Mutex, OnceLock};
+
+// Default JWT duration in days
+pub const DEFAULT_JWT_DURATION_DAYS: i64 = 30;
+
+// Issuer name for JWT tokens
+pub const JWT_ISSUER: &str = "vibe-manager";
+
+// Global static holders for JWT keys
+static JWT_ENCODING_KEY: OnceLock<Arc<Mutex<Option<EncodingKey>>>> = OnceLock::new();
+static JWT_DECODING_KEY: OnceLock<Arc<Mutex<Option<DecodingKey>>>> = OnceLock::new();
+
+/// Initialize the JWT keys from the secret
+/// This should be called once at application startup
+pub fn init_jwt_keys(settings: &AppSettings) -> Result<(), AppError> {
+    info!("Initializing JWT keys from configuration");
+    
+    // Get the JWT secret from settings
+    let jwt_secret = settings.auth.jwt_secret.as_bytes();
+    
+    // Initialize global static variables if not already done
+    JWT_ENCODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
+    JWT_DECODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
+    
+    // Set the encoding key
+    let encoding_key = EncodingKey::from_secret(jwt_secret);
+    if let Some(key_holder) = JWT_ENCODING_KEY.get() {
+        let mut key = key_holder.lock().unwrap();
+        *key = Some(encoding_key);
+    }
+    
+    // Set the decoding key
+    let decoding_key = DecodingKey::from_secret(jwt_secret);
+    if let Some(key_holder) = JWT_DECODING_KEY.get() {
+        let mut key = key_holder.lock().unwrap();
+        *key = Some(decoding_key);
+    }
+    
+    info!("JWT keys initialized successfully");
+    Ok(())
+}
+
+/// Get the JWT encoding key, initializing if necessary
+fn get_encoding_key() -> Result<EncodingKey, AppError> {
+    // Get the key holder, initializing if needed
+    let key_holder = JWT_ENCODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
+    
+    // Get the key from the holder
+    let key_guard = key_holder.lock().unwrap();
+    
+    // Clone the key if it exists
+    if let Some(key) = &*key_guard {
+        // Clone the key (this will make a copy)
+        Ok(key.clone())
+    } else {
+        Err(AppError::Configuration("JWT encoding key not initialized".to_string()))
+    }
+}
+
+/// Get the JWT decoding key, initializing if necessary
+fn get_decoding_key() -> Result<DecodingKey, AppError> {
+    // Get the key holder, initializing if needed
+    let key_holder = JWT_DECODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
+    
+    // Get the key from the holder
+    let key_guard = key_holder.lock().unwrap();
+    
+    // Clone the key if it exists
+    if let Some(key) = &*key_guard {
+        // Extract a reference to the key
+        Ok(key.clone())
+    } else {
+        Err(AppError::Configuration("JWT decoding key not initialized".to_string()))
+    }
+}
+
+/// Generate a JWT token for a user
+pub fn generate_token(user_id: Uuid, email: &str) -> Result<String, AppError> {
+    // Get token duration from environment or use default
+    let duration_days = std::env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
+        .ok()
+        .and_then(|days| days.parse::<i64>().ok())
+        .unwrap_or(DEFAULT_JWT_DURATION_DAYS);
+
+    // Calculate timestamps
+    let iat = Utc::now();
+    let exp = iat
+        .checked_add_signed(Duration::try_days(duration_days).unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS)))
+        .expect("Failed to calculate expiration time");
+
+    // Create claims
+    let claims = Claims {
+        sub: user_id.to_string(),
+        exp: exp.timestamp() as usize,
+        iat: iat.timestamp() as usize,
+        iss: Some(JWT_ISSUER.to_string()),
+        email: email.to_string(),
+        role: "user".to_string(), // Default role
+        tbh: None, // No token binding by default
+    };
+
+    // Get the JWT signing key
+    let encoding_key = get_encoding_key()?;
+
+    // Use HS256 algorithm for symmetric key
+    let header = Header::new(Algorithm::HS256);
+
+    // Encode the token
+    debug!("Generating JWT token for user {} (exp: {})", user_id, exp);
+    encode(&header, &claims, &encoding_key)
+        .map_err(|e| {
+            error!("Failed to generate JWT token: {}", e);
+            AppError::Internal(format!("Token generation failed: {}", e))
+        })
+}
+
+/// Verify a JWT token and extract the claims
+pub fn verify_token(token: &str) -> Result<Claims, AppError> {
+    trace!("Verifying JWT token");
+    
+    // Get the JWT verification key
+    let decoding_key = get_decoding_key()?;
+    
+    // Use HS256 algorithm for symmetric key
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.set_issuer(&[JWT_ISSUER]); // Trust only our issuer
+
+    // Decode and validate the token
+    let token_data = decode::<Claims>(token, &decoding_key, &validation)
+        .map_err(|err| {
+            error!("JWT validation failed: {}", err);
+            match err.kind() {
+                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
+                    AppError::Auth("Token has expired".to_string())
+                },
+                jsonwebtoken::errors::ErrorKind::InvalidToken => AppError::Auth("Invalid token format".to_string()),
+                jsonwebtoken::errors::ErrorKind::InvalidSignature => AppError::Auth("Invalid token signature".to_string()),
+                jsonwebtoken::errors::ErrorKind::InvalidIssuer => AppError::Auth("Invalid token issuer".to_string()),
+                _ => AppError::Auth("Token validation failed".to_string()),
+            }
+        })?;
+    
+    // Return the claims
+    debug!("JWT token verified successfully for user {}", token_data.claims.sub);
+    Ok(token_data.claims)
+}
+
+/// Creates a JWT token with customizable role and optional token binding.
+pub fn create_token(
+    user_id: Uuid,
+    role: &str,
+    email: &str,
+    token_binding_value: Option<&str>,
+) -> Result<String, AppError> {
+    // Get token duration from environment or use default
+    let duration_days = std::env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
+        .ok()
+        .and_then(|days| days.parse::<i64>().ok())
+        .unwrap_or(DEFAULT_JWT_DURATION_DAYS);
+
+    // Calculate timestamps
+    let iat_dt = Utc::now();
+    let exp_dt = iat_dt + Duration::try_days(duration_days).unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS));
+
+    let iat = iat_dt.timestamp() as usize;
+    let exp = exp_dt.timestamp() as usize;
+
+    // Create claims
+    let claims = Claims {
+        sub: user_id.to_string(),
+        exp,
+        iat,
+        email: email.to_string(),
+        role: role.to_string(),
+        iss: Some(JWT_ISSUER.to_string()),
+        // Add token binding hash if value is provided
+        tbh: token_binding_value.map(hash_token_binding_value),
+    };
+
+    // Get the JWT signing key
+    let encoding_key = get_encoding_key()?;
+
+    // Use HS256 algorithm for symmetric key
+    let header = Header::new(Algorithm::HS256);
+    
+    // Encode the token
+    encode(&header, &claims, &encoding_key)
+        .map_err(|e| {
+            error!("Failed to create JWT token: {}", e);
+            AppError::Internal(format!("Token creation failed: {}", e))
+        })
+}

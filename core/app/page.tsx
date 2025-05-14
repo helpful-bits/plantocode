@@ -1,9 +1,9 @@
 "use client";
 import { Suspense } from "react";
-import { useProject } from "@/lib/contexts/project-context";
-import { useSessionContext } from "@/lib/contexts/session-context";
-import { RequireProjectDirectory } from "@/components/with-project-directory";
-import { ImplementationPlansPanel } from "@/app/components/implementation-plans-panel";
+import { useProject } from '@core/lib/contexts/project-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
+import { RequireProjectDirectory } from '@core/components/with-project-directory';
+import { ImplementationPlansPanel } from '@core/app/components/implementation-plans-panel';
 import GeneratePromptForm from './components/generate-prompt/generate-prompt-form';
 
 export default function Home() {

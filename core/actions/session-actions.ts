@@ -1,13 +1,13 @@
 "use server";
 
-import { sessionRepository, backgroundJobRepository } from '@/lib/db/repositories';
-import { setupDatabase } from '@/lib/db';
-import { ActionState } from '@/types';
+import { sessionRepository, backgroundJobRepository } from '@core/lib/db/repositories';
+import { setupDatabase } from '@core/lib/db';
+import { ActionState } from '@core/types';
 import { revalidatePath } from 'next/cache';
-import { type Session } from '@/types';
-import { handleActionError } from '@/lib/action-utils';
-import { normalizePath } from '@/lib/path-utils';
-import { hashString } from '@/lib/hash';
+import { type Session } from '@core/types';
+import { handleActionError } from '@core/lib/action-utils';
+import { normalizePath } from '@core/lib/path-utils';
+import { hashString } from '@core/lib/hash';
 
 /**
  * Set the active session for a project

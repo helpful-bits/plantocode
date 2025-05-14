@@ -1,10 +1,10 @@
 "use server";
 
-import { claudeClient } from "@/lib/api"; // Import from centralized API module
-import { ActionState } from "@/types";
-import { JOB_STATUSES } from "@/types/session-types";
-import { setupDatabase } from "@/lib/db";
-import { sessionRepository, backgroundJobRepository } from "@/lib/db/repositories";
+import { claudeClient } from '@core/lib/api'; // Import from centralized API module
+import { ActionState } from '@core/types';
+import { JOB_STATUSES } from '@core/types/session-types';
+import { setupDatabase } from '@core/lib/db';
+import { sessionRepository, backgroundJobRepository } from '@core/lib/db/repositories';
 
 // Keep track of active correction jobs to prevent duplicates
 const activeCorrections = new Map<string, Promise<ActionState<string | { isBackgroundJob: true; jobId: string }>>>();

@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@core/components/ui/collapsible";
 import RegexInput from "./regex-input";
-import { Button } from "@/components/ui/button";
-// Using custom switch implementation instead of import { Switch } from "@/components/ui/switch";
+import { Button } from "@core/components/ui/button";
+// Using custom switch implementation instead of import { Switch } from '@core/components/ui/switch';
 import { Loader2, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { GeneratePromptContextValue } from "../_contexts/generate-prompt-context";
 

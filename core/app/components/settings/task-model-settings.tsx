@@ -22,9 +22,9 @@ import {
   TabsTrigger,
   Input,
   Separator
-} from "@/components/ui";
-import { TaskSettings, TaskType } from "@/types";
-import { DEFAULT_TASK_SETTINGS } from "@/lib/constants";
+} from "@core/components/ui";
+import { TaskSettings, TaskType } from "@core/types";
+import { DEFAULT_TASK_SETTINGS } from "@core/lib/constants";
 
 // Interface for component props
 interface TaskModelSettingsProps {
@@ -281,7 +281,7 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                               handleMaxTokensChange(taskType, [value]);
                             }
                           }}
-                          className="w-24 font-mono text-sm ml-auto"
+                          className="w-20 font-mono text-sm ml-auto text-right pr-2"
                           min={1000}
                           max={100000}
                         />
@@ -320,7 +320,7 @@ export default function TaskModelSettings({ taskSettings, onSettingsChange, onIn
                                 handleTemperatureChange(taskType, [value]);
                               }
                             }}
-                            className="w-20 font-mono text-sm ml-auto"
+                            className="w-16 font-mono text-sm ml-auto text-right pr-2"
                             min={0}
                             max={1}
                             step={0.05}

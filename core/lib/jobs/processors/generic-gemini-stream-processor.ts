@@ -1,9 +1,9 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { GenericGeminiStreamPayload } from '../job-types';
 import { updateJobToRunning, updateJobToFailed } from '../job-helpers';
-import { DEFAULT_TASK_SETTINGS } from '@/lib/constants';
-import { getApiClient } from '@/lib/api';
-import { handleApiClientError } from '@/lib/api/api-error-handling';
+import { DEFAULT_TASK_SETTINGS } from '@core/lib/constants';
+import { getApiClient } from '@core/lib/api';
+import { handleApiClientError } from '@core/lib/api/api-error-handling';
 
 /**
  * Generic Gemini Stream Processor

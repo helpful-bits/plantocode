@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { shouldIncludeByDefault } from "../../_utils/file-selection";
-import { useNotification } from "@/lib/contexts/notification-context";
-import { normalizePath, normalizePathForComparison, makePathRelative } from "@/lib/path-utils";
+import { useNotification } from '@core/lib/contexts/notification-context';
+import { normalizePath, normalizePathForComparison, makePathRelative } from '@core/lib/path-utils';
 
 // Types
 export type FileInfo = { 

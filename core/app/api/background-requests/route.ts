@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { backgroundJobRepository } from '@/lib/db/repositories';
-import { setupDatabase } from '@/lib/db';
+import { backgroundJobRepository } from '@core/lib/db/repositories';
+import { setupDatabase } from '@core/lib/db';
 
 /**
  * GET /api/background-requests

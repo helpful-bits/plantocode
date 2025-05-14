@@ -1,0 +1,240 @@
+---
+description: Rules and guidelines for Rust backend development. Apply these rules when working on server-side code.
+globs: ["*.rs", "*/server/**/*"]
+alwaysApply: false
+---
+# Server Development Rules
+
+## Implementation
+- Always implement and apply changes without asking for permission
+- Never ask if changes should be made - implement them immediately to save time
+- This includes:
+  - Implement missing route handlers immediately
+  - Add missing features as soon as identified
+
+## Database Operations
+- All database operations must be in /server/src/db/ modules, never in routes
+- Use SQLx for all database operations
+- Good:
+  - `use crate::db::prompt::create_sequence;`
+  - `create_sequence(pool, user_id, sequence).await?`
+- Bad:
+  - `sqlx::query!()` directly in routes
+  - Database logic mixed with route handlers
+
+- Never use raw SQL strings in application code
+- Use SQLx compile-time verification when possible
+- Update schema.json for compile-time query checking:
+  - Run `cargo sqlx prepare -- --merged` after schema changes
+  - Keep the generated sqlx-data.json file in version control
+
+### Transaction Handling
+- Use direct pool operations instead of explicit transactions unless atomic operations are required
+- Preferred patterns:
+  - Use pool directly for single operations:
+    - `sqlx::query!().fetch_one(pool).await?`
+    - `sqlx::query_as!(Story, ...).fetch_one(pool).await?`
+- Avoid patterns:
+  - Don't wrap single operations in transactions
+  - Unnecessary transaction usage: `let mut tx = pool.begin().await?;`
+
+#### When to Use Transactions
+- Multiple related database operations that must be atomic
+- Operations that must be rolled back together on failure
+- Complex data integrity requirements across multiple tables
+
+#### Transaction Implementation
+- Use direct begin/commit pattern:
+  ```rust
+  let mut tx = pool.begin().await?;
+  // Perform operations with &mut *tx
+  tx.commit().await?
+  ```
+
+#### Executor Handling
+- Use `&mut *tx` when passing transaction as executor
+- Good:
+  - `query.execute(&mut *tx).await?`
+  - `query.fetch_one(&mut *tx).await?`
+- Bad:
+  - `query.execute(tx).await?`
+  - `query.execute(&mut tx).await?`
+
+## Routing
+### Absolute Paths
+- Always use absolute paths in route handlers, never use web::scope
+- Good:
+  - `#[get("/api/prompts")] fn get_prompts()`
+  - `#[post("/api/prompts/create")] fn create_prompt()`
+- Bad:
+  - `web::scope("/api").service(prompts::routes())`
+  - `web::scope("/prompts").service(create_prompt)`
+
+## Rust Practices
+### Error Handling
+- Use the ? operator for error propagation instead of match/map_err chains
+- Define specific error variants in AppError for different failure cases
+- Prefer Result over Option when the absence of a value is an error condition
+- Good:
+  - `let user = get_user(pool, id).await?;`
+  - `Err(AppError::NotFound("User not found".to_string()))`
+- Bad:
+  - `get_user(pool, id).await.map_err(|e| handle_error(e))?;`
+  - `None`
+
+### Async Practices
+- Use proper async traits (e.g., Stream, Future)
+- Use async fn over manually implementing Future
+- Use join!/try_join! for concurrent operations instead of sequential awaits
+
+### Serialization
+- All JSON serialization must use camelCase
+- Database types must use snake_case
+- JSON structs: `#[serde(rename_all = "camelCase")]` for all request/response structs
+- Database types: `#[sqlx(type_name = "type_name", rename_all = "lowercase")]` for database enums
+- Good:
+  - `#[serde(rename_all = "camelCase")] pub struct UserResponse`
+  - `#[sqlx(type_name = "user_role", rename_all = "lowercase")] pub enum UserRole`
+- Bad:
+  - `pub struct user_response // No casing attribute`
+  - `#[serde(rename_all = "snake_case")] pub struct ApiResponse // Wrong casing for JSON`
+
+### Type Safety
+- Use newtype pattern for type-safe wrappers around primitive types
+- Prefer strong typing over stringly-typed interfaces
+- Always derive Debug for better error messages
+
+### Performance
+- Use unwrap_or_else over unwrap_or for lazy evaluation
+- Avoid unnecessary clones, use references where possible
+- Pre-allocate strings with known capacity
+- Good:
+  - `value.unwrap_or_else(|| expensive_computation())`
+  - `String::with_capacity(expected_size)`
+- Bad:
+  - `value.unwrap_or(expensive_computation())`
+  - `format!("{}", s)`
+
+### Model Organization Rules
+- **Model Directory Structure**:
+  - All models must be in the `server/src/models/` directory organized into the following subdirectories:
+    - `domain/`: Core business entities and value objects
+    - `db/`: Database-specific models for SQLx
+    - `handlers/`: Request/response DTOs for API endpoints
+
+- **Model Types and Their Purposes**:
+  - **Domain Models** (`models/domain/`):
+    - Core business entities independent of presentation or persistence
+    - Define the conceptual model of the application
+    - Example: `models/domain/device_attestation.rs` for device attestation core types
+
+  - **Database Models** (`models/db/`):
+    - SQL database entity representations with SQLx annotations
+    - Map directly to database tables and include database-specific attributes like table names
+    - Example: `models/db/device_attestation.rs` for database-specific attestation types
+
+  - **Handler Models** (`models/handlers/`):
+    - Request/response DTOs for API endpoints with JSON serialization
+    - Flat structure organized by feature
+    - Example: `models/handlers/security_device_attestation.rs` for attestation API models
+
+- **Model Relationships**:
+  - Domain models should be free of database or API concerns
+  - Database models should include conversion to/from domain models
+  - Handler models should convert to/from domain models
+  - Implement `From` trait for conversions where logical.
+  - Business logic should operate only on domain models
+
+- **Example Model Flow** (Device Attestation):
+  ```rust
+  // API handler receives a request DTO
+  async fn verify_attestation(
+      request: web::Json<AttestationVerifyRequest>, // From models/handlers/security_device_attestation.rs
+      pool: web::Data<PgPool>,
+  ) -> Result<HttpResponse, AppError> {
+      // Convert request to domain parameters and call service
+      let service = DeviceAttestationService::new(pool.get_ref().clone());
+      let result = service.verify_attestation(
+          &request.key_id,
+          &request.attestation_object,
+          &base64::decode(&request.client_data_hash)?,
+      ).await?;
+
+      // Convert domain result to response DTO
+      let response = AttestationVerifyResponse {
+          success: result.success,
+          error_message: result.failure_reason,
+      };
+
+      Ok(HttpResponse::Ok().json(response))
+  }
+  ```
+
+### Module Rules
+- **Domain-Based Organization**:
+  - **Handlers**: `/server/src/handlers/` - HTTP request handlers
+    - Organized by feature (e.g., `security/device_attestation.rs`)
+    - Responsible for HTTP request/response processing
+    - Uses services for business logic and calls DB functions indirectly via services
+
+  - **Services**: `/server/src/services/` - Business logic
+    - Organized by domain (e.g., `security/device_attestation.rs`)
+    - Implements core application logic
+    - Works with domain models
+
+  - **Database**: `/server/src/db/` - Data access
+    - Organized by entity/table (e.g., `device_attestation.rs`)
+    - Handles database operations
+    - Converts between domain and database models
+
+- **Common Module Structure**:
+  ```
+  server/src/
+    ├── handlers/
+    │   ├── security/
+    │   │   └── device_attestation.rs
+    │   └── mod.rs
+    ├── services/
+    │   ├── security/
+    │   │   └── device_attestation.rs
+    │   └── mod.rs
+    ├── db/
+    │   ├── device_attestation.rs
+    │   └── mod.rs
+    └── models/
+        ├── domain/
+        │   ├── device_attestation.rs
+        │   └── mod.rs
+        ├── db/
+        │   ├── device_attestation.rs
+        │   └── mod.rs
+        ├── handlers/
+        │   ├── security_device_attestation.rs
+        │   └── mod.rs
+        └── mod.rs
+  ```
+
+### Service Naming
+- Service modules should reside under `server/src/services/`
+- If a service is directly related to a security concept (like `rate_limiter` or `device_attestation_validation`), it should reside under `server/src/security/`. This differs from general business logic services.
+  - Good: `server/src/security/rate_limiter.rs`
+  - Good: `server/src/services/ai/text_enhancement.rs`
+  - Good: `server/src/services/audio/transcription.rs`
+  - Bad: `server/src/ai/services/text_enhancement.rs`
+  - Bad: `server/src/handlers/ai/service.rs`
+  - Bad: Putting service logic directly in handlers or db modules.
+  - Bad: Mixing unrelated services in the same module (e.g., `server/src/services/misc.rs`)
+  - Good: `server/src/services/auth/secure_oauth.rs` (Authentication business logic)
+
+### Authorization Implementation - Placeholder
+- Fine-grained authorization logic must be implemented beyond basic authentication.
+- Placeholder functions like `check_permissions` should be replaced with actual permission checks based on user roles or attributes.
+- Authorization checks should be applied in middleware or service layers as appropriate.
+
+### Naming Conventions
+- Files: Use snake_case for all file names
+- Modules: Use snake_case for module names
+- Structs: Use PascalCase for struct names
+- Enums: Use PascalCase for enum names
+- Functions: Use snake_case for function names
+- Constants: Use SCREAMING_SNAKE_CASE for constants

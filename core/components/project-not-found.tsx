@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@core/components/ui/card";
+import { Button } from "@core/components/ui/button";
 import { FolderOpen, Loader2 } from "lucide-react";
 
 interface ProjectNotFoundProps {

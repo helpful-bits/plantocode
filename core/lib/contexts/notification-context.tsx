@@ -1,8 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, ReactNode } from "react";
-import { toast } from "@/components/ui/use-toast";
-import type { ToastOptions } from "@/components/ui/use-toast";
+import { toast } from '@core/components/ui/use-toast';
+import type { ToastOptions } from '@core/components/ui/use-toast';
 
 // Re-export ToastOptions for use elsewhere
 export type { ToastOptions };

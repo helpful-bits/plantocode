@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */ // Keep JSDoc comment
 const nextConfig = {
+    // Static export configuration for Tauri
+    output: 'export',
+    
+    // Required for static export
+    images: {
+      unoptimized: true,
+    },
 
     // Ensures 'sqlite3' is treated as an external module
     // and not bundled by Webpack for server-side code.

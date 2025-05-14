@@ -1,4 +1,4 @@
-import { BackgroundJob, JobStatus, ApiType, TaskType, JOB_STATUSES } from '@/types';
+import { BackgroundJob, JobStatus, ApiType, TaskType, JOB_STATUSES } from '@core/types';
 
 /**
  * Helper to convert SQLite timestamps (seconds) to JS timestamps (milliseconds)

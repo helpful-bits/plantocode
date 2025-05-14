@@ -1,7 +1,7 @@
 "use client";
 
-import { ActionState } from "@/types";
-import { BackgroundJob, JOB_STATUSES } from "@/types/session-types";
+import { ActionState } from '@core/types';
+import { BackgroundJob, JOB_STATUSES } from '@core/types/session-types';
 
 // Validation function to check if transcription text is valid
 /**
@@ -268,7 +268,7 @@ export async function handleTranscription(
     console.log(`[Transcription] Using MIME type: ${mimeType}`);
 
     // Import dynamically to avoid Next.js server component issues
-    const { transcribeVoiceAction } = await import('@/actions/voice-transcription/transcribe-blob');
+    const { transcribeVoiceAction } = await import('@core/actions/voice-transcription/transcribe-blob');
 
     // Call the server action with sessionId parameter (which can be null)
     // The server-side ensureSessionRecord utility will handle session validation
@@ -360,7 +360,7 @@ export async function handleCorrection(
 
     try {
       // Try to import the module
-      const { correctTextAction } = await import('@/actions/voice-transcription/correct-text');
+      const { correctTextAction } = await import('@core/actions/voice-transcription/correct-text');
 
       // Call the server action with sessionId, transcriptionJobId, and projectDirectory
       // The server-side ensureSessionRecord utility will handle session validation

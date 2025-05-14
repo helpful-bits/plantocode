@@ -1,7 +1,7 @@
 // Server-side only database connection
 import { setupDatabase } from './setup';
 import { sessionRepository, backgroundJobRepository } from './repositories';
-import { Session } from '@/types';
+import { Session } from '@core/types';
 import connectionPool from "./connection-pool";
 import { ensureDbPermissions } from './connection-manager';
 import crypto from 'crypto';

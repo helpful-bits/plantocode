@@ -1,0 +1,34 @@
+---
+description: General rules and guidelines that apply across the entire codebase. These rules help coordinate the use of more specific project rules.
+globs: ["**/*"]
+alwaysApply: false
+---
+# Global Project Rules
+
+## Rule Selection
+- Select the appropriate rule based on file context
+  - For Swift files: Apply apple_development rules
+  - For Rust files: Apply server_development rules
+  - For SQL schema file: Apply database_migrations rules
+
+## General Practices
+- Always format code according to language-specific standards
+- Add appropriate comments for complex logic
+- Do not add unnecessary comments, but explain complex sections clearly.
+- Use descriptive variable names
+- Keep functions and methods small and focused
+- Use proper error handling for the target language
+- Handle edge cases explicitly
+
+## Repository Organization
+- Keep related code together in appropriate directories
+- Follow the established project structure
+- Put new files in the correct locations based on their purpose:
+  - Apple-related code in the `/apple` directory
+  - Server-related code in the `/server` directory, organized by domain/feature
+  - Database migrations in `/server/migrations`
+
+## Version Control
+- Make atomic commits with clear commit messages
+- Follow conventional commit message format when possible
+- Reference issues in commit messages where applicable 

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { FileInfo } from "@/types";
+import { FileInfo } from "@core/types";
 import { FilesMap } from "./use-project-file-list";
-import { makePathRelative, normalizePathForComparison } from "@/lib/path-utils";
+import { makePathRelative, normalizePathForComparison } from "@core/lib/path-utils";
 
 // Define a selection history item type
 interface SelectionHistoryItem {
@@ -249,6 +249,31 @@ export function useFileSelectionManager({
   const isSessionDeletionRef = useRef<boolean>(false);
 
   // Core effect to update managedFilesMap based on props
+  // Helper function to check if maps are effectively equal
+  const areFileMapsEqual = (map1: FilesMap, map2: FilesMap): boolean => {
+    const keys1 = Object.keys(map1);
+    const keys2 = Object.keys(map2);
+    
+    if (keys1.length !== keys2.length) return false;
+    
+    for (const key of keys1) {
+      if (!map2[key]) return false;
+      
+      const file1 = map1[key];
+      const file2 = map2[key];
+      
+      // Only compare the relevant state properties that affect rendering
+      if (file1.included !== file2.included || file1.forceExcluded !== file2.forceExcluded) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+  
+  // Store previous calculated map to avoid unnecessary updates
+  const prevCalculatedMapRef = useRef<FilesMap>({});
+  
   useEffect(() => {
     // Check if we might be in a session deletion scenario
     // Session deletion typically results in both arrays becoming empty at once
@@ -365,8 +390,12 @@ export function useFileSelectionManager({
       }
     }
 
-    // Update state with the new managed files map
-    setManagedFilesMap(newManagedFilesMap);
+    // Only update state if the map has actually changed
+    // This prevents infinite update loops by avoiding unnecessary state updates
+    if (!areFileMapsEqual(newManagedFilesMap, managedFilesMap)) {
+      prevCalculatedMapRef.current = newManagedFilesMap;
+      setManagedFilesMap(newManagedFilesMap);
+    }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawFilesMap, currentIncludedFiles, currentExcludedFiles, isTransitioningSession]);

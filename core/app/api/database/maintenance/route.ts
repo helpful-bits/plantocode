@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DB_FILE, isServer } from '@/lib/db';
-import { checkDatabaseIntegrity, backupDatabase, recreateDatabaseStructure } from '@/lib/db/integrity-check';
-import { resetDatabase, setupDatabase } from '@/lib/db/setup';
-import { closeDatabase } from '@/lib/db/connection-close';
+import { DB_FILE, isServer } from '@core/lib/db';
+import { checkDatabaseIntegrity, backupDatabase, recreateDatabaseStructure } from '@core/lib/db/integrity-check';
+import { resetDatabase, setupDatabase } from '@core/lib/db/setup';
+import { closeDatabase } from '@core/lib/db/connection-close';
 import fs from 'fs';
-import { humanFileSize } from '@/lib/utils/file-size';
+import { humanFileSize } from '@core/lib/utils/file-size';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 

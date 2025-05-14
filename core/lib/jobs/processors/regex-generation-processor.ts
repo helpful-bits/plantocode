@@ -34,7 +34,7 @@ export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPay
       }
 
       // Retrieve the job to get the raw prompt and metadata
-      const { backgroundJobRepository } = await import('@/lib/db/repositories');
+      const { backgroundJobRepository } = await import('@core/lib/db/repositories');
       const job = await backgroundJobRepository.getBackgroundJob(backgroundJobId);
 
       if (!job) {

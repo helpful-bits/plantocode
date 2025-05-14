@@ -6,15 +6,15 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { formatTimestamp, formatJobDuration } from '@/lib/utils/date-utils';
-import { BackgroundJob } from '@/types/session-types';
+} from '@core/components/ui/dialog';
+import { Button } from '@core/components/ui/button';
+import { Progress } from '@core/components/ui/progress';
+import { formatTimestamp, formatJobDuration } from '@core/lib/utils/date-utils';
+import { BackgroundJob } from '@core/types/session-types';
 import { formatTokenCount } from './utils';
 import { Loader2, AlertCircle, RefreshCw, FileCode, ClipboardCopy } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
-import { useProject } from '@/lib/contexts/project-context';
+import { toast } from '@core/components/ui/use-toast';
+import { useProject } from '@core/lib/contexts/project-context';
 
 interface JobDetailsModalProps {
   job: BackgroundJob | null;
@@ -126,7 +126,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       clearTimeout(timeoutId);
       setIsLoadingFile(false);
     }
-  }, []);
+  }, [projectDirectory]);
 
   useEffect(() => {
     if (job &&

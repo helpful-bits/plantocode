@@ -1,4 +1,4 @@
-import { ActionState } from "@/types";
+import { ActionState } from '@core/types';
 
 /**
  * Helper function to handle errors in server actions

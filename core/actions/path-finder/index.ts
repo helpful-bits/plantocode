@@ -1,22 +1,22 @@
 "use server";
 
-import { ActionState } from '@/types';
+import { ActionState } from '@core/types';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { getAllNonIgnoredFiles } from '@/lib/git-utils';
-import { isBinaryFile, BINARY_EXTENSIONS, validateFilePath } from '@/lib/file-utils';
-import { estimateTokens } from '@/lib/token-estimator';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
-import geminiClient from '@/lib/api/clients/gemini';
-import { RequestType } from '@/lib/api/streaming-request-pool-types';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { backgroundJobRepository, sessionRepository } from '@/lib/db/repositories';
-import { generateDirectoryTree } from '@/lib/directory-tree';
-import { ApiType, TaskType } from '@/types/session-types';
-import { handleActionError } from '@/lib/action-utils';
-import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@/lib/jobs/job-helpers';
-import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@/lib/prompts/path-finder-prompts';
-import { normalizePathForComparison, makePathRelative, parseFilePathsFromAIResponse } from '@/lib/path-utils';
+import { getAllNonIgnoredFiles } from '@core/lib/git-utils';
+import { isBinaryFile, BINARY_EXTENSIONS, validateFilePath } from '@core/lib/file-utils';
+import { estimateTokens } from '@core/lib/token-estimator';
+import { GEMINI_FLASH_MODEL } from '@core/lib/constants';
+import geminiClient from '@core/lib/api/clients/gemini';
+import { RequestType } from '@core/lib/api/streaming-request-pool-types';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { backgroundJobRepository, sessionRepository } from '@core/lib/db/repositories';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
+import { ApiType, TaskType } from '@core/types/session-types';
+import { handleActionError } from '@core/lib/action-utils';
+import { createBackgroundJob, updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '@core/lib/jobs/job-helpers';
+import { generatePathFinderSystemPrompt, generatePathFinderUserPrompt } from '@core/lib/prompts/path-finder-prompts';
+import { normalizePathForComparison, makePathRelative, parseFilePathsFromAIResponse } from '@core/lib/path-utils';
 
 // Flash model limits
 const MAX_INPUT_TOKENS = 1000000; // 1M tokens input limit

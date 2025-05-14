@@ -11,7 +11,7 @@
  * - Validation result helpers for standardized error responses
  */
 
-import { ActionState } from '@/types';
+import { ActionState } from '@core/types';
 
 /**
  * Interface for validation result

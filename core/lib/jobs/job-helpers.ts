@@ -1,10 +1,10 @@
-import { backgroundJobRepository } from '@/lib/db/repositories';
-import { BackgroundJob, ApiType, TaskType, JobStatus, JOB_STATUSES } from '@/types/session-types';
-import { GEMINI_FLASH_MODEL } from '@/lib/constants';
+import { backgroundJobRepository } from '@core/lib/db/repositories';
+import { BackgroundJob, ApiType, TaskType, JobStatus, JOB_STATUSES } from '@core/types/session-types';
+import { GEMINI_FLASH_MODEL } from '@core/lib/constants';
 import { BaseJobPayload, JobType, AnyJobPayload } from './job-types';
 import { globalJobQueue } from './global-job-queue';
-import { estimateTokens } from '@/lib/token-estimator';
-import { ApiErrorType, mapStatusCodeToErrorType } from '@/lib/api/api-error-handling';
+import { estimateTokens } from '@core/lib/token-estimator';
+import { ApiErrorType, mapStatusCodeToErrorType } from '@core/lib/api/api-error-handling';
 
 /**
  * Creates a background job in the database

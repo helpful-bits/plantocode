@@ -1,9 +1,9 @@
 "use server";
 
-import { ActionState } from "@/types";
-import { WHISPER_MAX_FILE_SIZE_MB } from '@/lib/constants';
-import { ensureSessionRecord } from '@/lib/db/utils/session-db-utils';
-import { apiClients } from '@/lib/api/client-factory';
+import { ActionState } from '@core/types';
+import { WHISPER_MAX_FILE_SIZE_MB } from '@core/lib/constants';
+import { ensureSessionRecord } from '@core/lib/db/utils/session-db-utils';
+import { apiClients } from '@core/lib/api/client-factory';
 
 /**
  * Transcribe a voice recording from a Blob using Groq's Whisper implementation

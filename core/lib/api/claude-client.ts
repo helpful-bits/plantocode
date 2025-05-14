@@ -10,14 +10,14 @@
  * - Specialized methods for text improvement and voice correction
  */
 
-import { ActionState, BackgroundJob } from "@/types";
+import { ActionState, BackgroundJob } from "@core/types";
 import crypto from 'crypto';
-import { setupDatabase } from "@/lib/db";
-import { backgroundJobRepository } from '@/lib/db/repositories';
-import { getModelSettingsForProject } from "@/actions/project-settings-actions";
-import { TaskType } from "@/types/session-types";
-import streamingRequestPool, { RequestType } from '@/lib/api/streaming-request-pool';
-import { ApiType } from '@/types/session-types';
+import { setupDatabase } from "@core/lib/db";
+import { backgroundJobRepository } from '@core/lib/db/repositories';
+import { getModelSettingsForProject } from "@core/actions/project-settings-actions";
+import { TaskType } from "@core/types/session-types";
+import streamingRequestPool, { RequestType } from '@core/lib/api/streaming-request-pool';
+import { ApiType } from '@core/types/session-types';
 import {
   createBackgroundJob,
   updateJobToRunning,
@@ -25,12 +25,12 @@ import {
   updateJobToFailed,
   handleApiError,
   cancelAllSessionJobs
-} from '@/lib/jobs/job-helpers';
+} from '@core/lib/jobs/job-helpers';
 import {
   generateVoiceCorrectionSystemPrompt,
   generateVoiceCorrectionUserPrompt
-} from '@/lib/prompts/voice-correction-prompts';
-import { generateTextImprovementPrompt } from '@/lib/prompts/text-improvement-prompts';
+} from '@core/lib/prompts/voice-correction-prompts';
+import { generateTextImprovementPrompt } from '@core/lib/prompts/text-improvement-prompts';
 import { ApiClient, ApiClientOptions } from './api-client-interface';
 import {
   ApiErrorType,

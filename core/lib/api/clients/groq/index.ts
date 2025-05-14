@@ -5,9 +5,9 @@
  * specifically their Whisper implementation for audio transcription.
  */
 
-import { ActionState } from "@/types";
+import { ActionState } from "@core/types";
 import { ApiClient, ApiClientOptions } from "../../api-client-interface";
-import { WHISPER_MODEL } from "@/lib/constants";
+import { WHISPER_MODEL } from "@core/lib/constants";
 import { 
   handleApiClientError, 
   createApiSuccessResponse,
@@ -18,7 +18,7 @@ import {
   updateJobToRunning, 
   updateJobToCompleted, 
   updateJobToFailed 
-} from "@/lib/jobs/job-helpers";
+} from "@core/lib/jobs/job-helpers";
 
 /**
  * GroqApiClient specific options

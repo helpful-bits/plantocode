@@ -4,6 +4,7 @@ import { exec } from "child_process";
 import { promises as fs } from "fs";
 import path from "path";
 import { normalizePathForComparison, normalizePath } from "./path-utils";
+import { BINARY_EXTENSIONS } from "./file-utils";
 
 // Custom exec function with promise interface instead of using promisify
 const execAsync = (command: string, options?: { cwd?: string }): Promise<{ stdout: string, stderr: string }> => {
@@ -175,8 +176,17 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
 
       // Split by newline and filter out empty entries
       const gitFiles = stdout.split('\n').filter(Boolean);
+      
+      // Filter out binary files based on their extensions
+      const nonBinaryGitFiles = gitFiles.filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        return !BINARY_EXTENSIONS.has(ext);
+      });
 
-      if (DEBUG_LOGS) console.log(`[Git Utils] Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`);
+      if (DEBUG_LOGS) {
+        console.log(`[Git Utils] Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`);
+        console.log(`[Git Utils] Filtered out ${gitFiles.length - nonBinaryGitFiles.length} binary files based on extensions`);
+      }
 
       // Verify each file exists on disk as an additional check
       // This helps ensure deleted files don't appear in the list
@@ -185,8 +195,8 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
 
       // Process files in batches to avoid file handle exhaustion
       const BATCH_SIZE = 100;
-      for (let i = 0; i < gitFiles.length; i += BATCH_SIZE) {
-        const batch = gitFiles.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < nonBinaryGitFiles.length; i += BATCH_SIZE) {
+        const batch = nonBinaryGitFiles.slice(i, i + BATCH_SIZE);
 
         // Process batch in parallel
         const batchResults = await Promise.all(
@@ -217,7 +227,7 @@ export async function getAllNonIgnoredFiles(dir: string): Promise<{ files: strin
 
       if (DEBUG_LOGS) {
         if (missingFiles.length > 0) {
-          console.log(`[Git Utils] Filtered out ${missingFiles.length} missing files of ${gitFiles.length} total`);
+          console.log(`[Git Utils] Filtered out ${missingFiles.length} missing files of ${nonBinaryGitFiles.length} non-binary files`);
           if (missingFiles.length <= 5) {
             console.log(`[Git Utils] Missing files: ${missingFiles.join(', ')}`);
           } else {

@@ -2,7 +2,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { ActionState } from '@/types';
+import { ActionState } from '@core/types';
 import { existsSync } from 'fs'; // Keep existsSync import
 
 /**

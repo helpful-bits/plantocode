@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { FileInfo } from "@/types";
+import { FileInfo } from '@core/types';
 import { FilesMap } from "./use-project-file-list";
 
 interface RegexPatterns {

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css"; // Keep globals.css import
 import { Suspense } from 'react';
 import React from 'react';
-import { ThemeProvider } from "@/components/theme-provider"; // Keep ThemeProvider import
-import { Toaster } from "@/components/ui/toaster";
-import { ProvidersWrapper } from "@/app/components/providers-wrapper";
+import { ThemeProvider } from "@core/components/theme-provider"; // Keep ThemeProvider import
+import { Toaster } from "@core/components/ui/toaster";
+import { ProvidersWrapper } from "@core/app/components/providers-wrapper";
 import { AppShell } from './components/app-shell';
 
 export const metadata: Metadata = {
@@ -68,4 +68,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-

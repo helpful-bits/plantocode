@@ -9,7 +9,7 @@ import { ActionState } from './index';
 import { ApiType } from './session-types';
 
 // Declare the module for the API client interface
-declare module '@/lib/api/api-client-interface' {
+declare module '@core/lib/api/api-client-interface' {
   export interface ApiClient {
     // Improved typing for sendRequest
     sendRequest(
@@ -46,8 +46,8 @@ declare module '@/lib/api/api-client-interface' {
     systemPrompt?: string;
     topP?: number;
     topK?: number;
-    taskType?: import('@/types/session-types').TaskType;
-    apiType?: import('@/types/session-types').ApiType;
+    taskType?: import('@core/types/session-types').TaskType;
+    apiType?: import('@core/types/session-types').ApiType;
     forceBackgroundJob?: boolean;
     projectDirectory?: string;
     metadata?: Record<string, any>;
@@ -66,14 +66,14 @@ declare module '@/lib/api/api-client-interface' {
 }
 
 // Instead of declaration merging, use interface merging which is safer
-declare module '@/lib/api/clients/gemini' {
-  export default interface GeminiClientModule extends import('@/lib/api/api-client-interface').ApiClient {}
+declare module '@core/lib/api/clients/gemini' {
+  export default interface GeminiClientModule extends import('@core/lib/api/api-client-interface').ApiClient {}
   const client: GeminiClientModule;
   export default client;
 }
 
-declare module '@/lib/api/claude-client' {
-  export default interface ClaudeClientModule extends import('@/lib/api/api-client-interface').ApiClient {}
+declare module '@core/lib/api/claude-client' {
+  export default interface ClaudeClientModule extends import('@core/lib/api/api-client-interface').ApiClient {}
   const client: ClaudeClientModule;
   export default client;
 }

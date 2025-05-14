@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { Session } from "@/types/session-types";
+import { Session } from "@core/types/session-types";
 import { LoadedSessionFilePrefs } from "../_hooks/use-generate-prompt-state";
 
 // Define the structure of the context value
