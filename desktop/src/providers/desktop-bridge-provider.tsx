@@ -13,6 +13,7 @@ import { useAuth } from '@/auth/auth-context';
 import { SessionRepositoryAdapter } from '@/adapters/session-repository-adapter';
 import { jobQueueAdapter } from '@/adapters/job-queue-adapter';
 import { GeminiClientAdapter, ClaudeClientAdapter, GroqClientAdapter } from '@/adapters/api-client-adapter';
+import * as fsAdapter from '@/adapters/fs-adapter';
 import { message } from '@tauri-apps/plugin-dialog';
 
 // Define the shape of the context
@@ -22,6 +23,7 @@ interface DesktopBridgeContextType {
   geminiClient: GeminiClientAdapter;
   claudeClient: ClaudeClientAdapter;
   groqClient: GroqClientAdapter;
+  fsAdapter: typeof fsAdapter;
   isDesktop: boolean;
 }
 
@@ -172,8 +174,39 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
       };
       
       console.log('[Desktop] API client factory patched successfully');
+      
+      // Patch the Node.js path/fs modules with browser-compatible versions
+      patchNodeModules();
     } catch (error) {
       console.error('[Desktop] Failed to patch API client factory:', error);
+    }
+  };
+  
+  // Function to patch Node.js modules with browser-compatible versions
+  const patchNodeModules = async () => {
+    try {
+      // Patch path-utils.ts module to use our browser-compatible version
+      const pathUtilsModule = await import('@core/lib/path-utils');
+      const fsManagerModule = await import('@core/lib/file/fs-manager');
+      
+      // Monkey patch the path utility functions
+      pathUtilsModule.normalizePath = fsAdapter.normalizePath;
+      pathUtilsModule.getAppOutputFilesDirectory = fsAdapter.getAppDirectory;
+      pathUtilsModule.resolveOutputFilePath = fsAdapter.createUniqueFilePath;
+      pathUtilsModule.join = fsAdapter.joinPaths;
+      pathUtilsModule.basename = fsAdapter.getBasename;
+      pathUtilsModule.dirname = fsAdapter.getDirname;
+      pathUtilsModule.extname = fsAdapter.getExtname;
+      
+      // Replace the fs-manager with our version
+      Object.defineProperty(fsManagerModule, 'default', {
+        value: fsAdapter.getFsManager(),
+        writable: false
+      });
+      
+      console.log('[Desktop] Node.js modules patched successfully with browser-compatible versions');
+    } catch (error) {
+      console.error('[Desktop] Failed to patch Node.js modules:', error);
     }
   };
   
@@ -184,6 +217,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
     geminiClient,
     claudeClient,
     groqClient,
+    fsAdapter,
     isDesktop: true
   };
   

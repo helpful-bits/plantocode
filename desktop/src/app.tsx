@@ -19,6 +19,7 @@ import SubscriptionManager from './components/billing/SubscriptionManager';
 // Import core components - these are what we want to reuse from the core app
 import { AppShell } from '@core/app/components/app-shell';
 import { ProvidersWrapper } from '@core/app/components/providers-wrapper';
+import CoreHomePage from '@core/app/page';
 
 // Custom provider for desktop-specific functionality
 import { DesktopBridgeProvider } from './providers/desktop-bridge-provider';
@@ -73,7 +74,8 @@ export default function App() {
             <ProvidersWrapper>
               {/* Reuse the AppShell from core */}
               <AppShell>
-                {/* The core app will render its content here */}
+                {/* Render the core home page component */}
+                <CoreHomePage />
                 {/* Add subscription manager in a fixed position */}
                 <div className="fixed top-4 right-4 z-50 w-80">
                   <SubscriptionManager />
