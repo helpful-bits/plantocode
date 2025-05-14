@@ -3,10 +3,10 @@ use tauri::{command, State};
 use serde::{Serialize};
 use std::sync::{Mutex};
 use tauri_plugin_stronghold::stronghold::Stronghold;
+use log::{info, warn, error, debug};
 
 // Stronghold constants for secure token storage
-const STRONGHOLD_CLIENT_NAME: &str = "vibe_manager_client";
-const STRONGHOLD_TOKEN_KEY: &str = "auth_token";
+const TOKEN_KEY: &str = "com.vibe-manager.auth.token.v1";
 
 
 // Type to hold application state
@@ -42,17 +42,21 @@ pub async fn store_token(
     // Store in memory
     *app_state.token.lock().unwrap() = Some(token.clone());
     
-    // Store in Stronghold
-    let mut client = match stronghold.get_client(STRONGHOLD_CLIENT_NAME) {
-        Ok(client) => client,
-        Err(_) => stronghold.create_client(STRONGHOLD_CLIENT_NAME).map_err(CommandError::from)?,
-    };
-    client.store.insert(STRONGHOLD_TOKEN_KEY.into(), token.as_bytes().to_vec(), None).map_err(CommandError::from)?;
-    stronghold.write_client(STRONGHOLD_CLIENT_NAME).map_err(CommandError::from)?;
+    // Get the store handler from Stronghold
+    let store_handler = stronghold.store();
     
-    println!("Token stored in Stronghold and memory");
+    // Insert the token using the store handler
+    store_handler.insert(TOKEN_KEY.as_bytes().to_vec(), token.as_bytes().to_vec(), None)
+        .map_err(|e| CommandError { message: format!("Failed to store token in Stronghold: {}", e) })?;
+    
+    // Save Stronghold state to ensure persistence
+    stronghold.save()
+        .map_err(|e| CommandError { message: format!("Failed to save token to Stronghold: {}", e) })?;
+    
+    info!("Token stored in Stronghold and memory. Stronghold state saved.");
     Ok(())
 }
+
 
 // Retrieve token from Stronghold
 #[command]
@@ -66,26 +70,29 @@ pub async fn get_stored_token(
         return Ok(Some(token.clone()));
     }
     
-    // If not in memory, try to load from Stronghold
-    match stronghold.get_client(STRONGHOLD_CLIENT_NAME) {
-        Ok(client) => {
-            match client.store.get(STRONGHOLD_TOKEN_KEY.as_bytes()).map_err(CommandError::from)? {
-                Some(bytes) => {
-                    match String::from_utf8(bytes) {
-                        Ok(loaded_token) => {
-                            // Update in-memory cache
-                            drop(token_guard); // Explicitly drop guard to avoid deadlock
-                            *app_state.token.lock().unwrap() = Some(loaded_token.clone());
-                            Ok(Some(loaded_token))
-                        }
-                        Err(e) => Err(CommandError::from(e)),
-                    }
-                }
-                None => Ok(None), // Key not found in Stronghold
-            }
-        }
-        Err(_) => {
-            // Client not found or other error loading, treat as token not found
+    // If not in memory, try to load from Stronghold directly
+    drop(token_guard); // Explicitly drop guard to avoid deadlock
+    
+    // Get the store handler from Stronghold
+    let store_handler = stronghold.store();
+    
+    // Get the token using the store handler
+    match store_handler.get(TOKEN_KEY.as_bytes()) {
+        Ok(Some(bytes)) => {
+            // Convert bytes to string
+            let token = String::from_utf8(bytes)
+                .map_err(|e| CommandError { message: format!("Invalid UTF-8 data stored in Stronghold: {}", e) })?;
+            
+            // Update in-memory cache
+            *app_state.token.lock().unwrap() = Some(token.clone());
+            Ok(Some(token))
+        },
+        Ok(None) => {
+            // Token not found in Stronghold
+            Ok(None)
+        },
+        Err(e) => {
+            error!("Error retrieving token from Stronghold: {}", e);
             Ok(None)
         }
     }
@@ -100,18 +107,27 @@ pub async fn clear_stored_token(
     // Clear from memory
     *app_state.token.lock().unwrap() = None;
     
-    // Clear from Stronghold
-    match stronghold.get_client(STRONGHOLD_CLIENT_NAME) {
-        Ok(mut client) => {
-            client.store.delete(STRONGHOLD_TOKEN_KEY.as_bytes()).map_err(CommandError::from)?;
-            stronghold.write_client(STRONGHOLD_CLIENT_NAME).map_err(CommandError::from)?;
-        }
-        Err(_) => {
-            // Client not found, effectively token is already cleared from Stronghold or was never there
-        }
-    }
+    // Get the store handler from Stronghold
+    let store_handler = stronghold.store();
     
-    println!("Token cleared from Stronghold and memory");
-    Ok(())
+    // Delete the token using the store handler
+    let delete_result = match store_handler.delete(TOKEN_KEY.as_bytes()) {
+        Ok(_) => {
+            info!("Token cleared from Stronghold and memory");
+            Ok(())
+        },
+        Err(e) => {
+            // Handle "not found" errors gracefully
+            warn!("Could not clear token from Stronghold: {}", e);
+            Ok(()) // Consider this a soft error, since we've cleared from memory
+        }
+    };
+    
+    // Save Stronghold state to ensure persistence, regardless of deletion success
+    stronghold.save()
+        .map_err(|e| CommandError { message: format!("Failed to save Stronghold state after clearing token: {}", e) })?;
+    
+    info!("Stronghold state saved after token clearance.");
+    delete_result
 }
 

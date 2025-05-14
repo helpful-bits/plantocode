@@ -13,12 +13,6 @@
     "sql:allow-select",
     "sql:allow-close",
     "stronghold:default",
-    "stronghold:allow-create-client",
-    "stronghold:allow-load-client",
-    "stronghold:allow-get-store-record",
-    "stronghold:allow-save-store-record",
-    "stronghold:allow-remove-store-record",
-    "stronghold:allow-save",
     "deep-link:default",
     "deep-link:allow-register"
   ]

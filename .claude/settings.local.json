@@ -65,7 +65,10 @@
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"import.*from.*@core.*\\\";\" --files-with-matches core/actions/ core/lib/)",
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"import.*from.*@core.*\\\\\\\";\" --files-with-matches core/actions/ core/lib/)",
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -l \"import.*from.*@core.*\\\\\\\";\" core/actions/ core/lib/)",
-      "Bash(/opt/homebrew/bin/rg -l \"import.*from.* '@core.*\\\";\" core/actions/ core/lib/)"
+      "Bash(/opt/homebrew/bin/rg -l \"import.*from.* '@core.*\\\";\" core/actions/ core/lib/)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:v2.tauri.app)",
+      "Bash(pnpm remove:*)"
     ],
     "deny": []
   }
