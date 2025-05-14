@@ -6,8 +6,8 @@ import {
   processBackgroundJob,
   processDirectTranscriptionResult
 } from './voice-transcription-handler';
-import { useBackgroundJob } from '@/lib/contexts/background-jobs-context';
-import { ActionState } from "@/types";
+import { useBackgroundJob } from '@core/lib/contexts/background-jobs-context';
+import { ActionState } from '@core/types';
 
 interface UseVoiceRecordingProps {
   sessionId?: string | null;

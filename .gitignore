@@ -3,6 +3,12 @@ node_modules
 .pnp
 .pnp.js
 
+# Package managers
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+.npm
+
 # Testing
 coverage
 
@@ -15,16 +21,30 @@ core/out/
 # Production
 build
 dist
+core/build
+core/dist
+desktop/dist
+desktop/build
+server/target/
+
+# Build artifacts
+*.tsbuildinfo
+next-env.d.ts
 
 # Misc
 .DS_Store
 *.pem
+Thumbs.db
+.cache/
 
-# Debug
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+debug.log
+.log/
+*.log
 
 # Local env files
 .env
@@ -32,21 +52,121 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.backup
 core/.env
 core/.env.local
+server/.env
+desktop/.env
 
 # Vercel
 .vercel
-
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
 
 # SQLite
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Rust
+server/target/
+desktop/src-tauri/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# Tauri
+.tauri/
+
+# IDE and editors
 .idea/
 .vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
 *.iml
-pnpm-lock.yaml
+.vs/
+
+# Claude
+**/.claude/settings.local.json
+
+# Libxmljs prebuilds
+**/libxmljs/build/
+**/libxmljs/vendor/
+
+# Temp folders
+tmp/
+.tmp/
+temp/
+
+# OS generated files
+.directory
+.trash/
+
+# Secrets
+*.key
+*.pem
+*.pfx
+*.p12
+/desktop/src-tauri/gen/
+/desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png
+/desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png
+/desktop/src-tauri/icons/android/mipmap-hdpi/ic_launcher_round.png
+/desktop/src-tauri/icons/android/mipmap-mdpi/ic_launcher.png
+/desktop/src-tauri/icons/android/mipmap-mdpi/ic_launcher_foreground.png
+/desktop/src-tauri/icons/android/mipmap-mdpi/ic_launcher_round.png
+/desktop/src-tauri/icons/android/mipmap-xhdpi/ic_launcher.png
+/desktop/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_foreground.png
+/desktop/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_round.png
+/desktop/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher.png
+/desktop/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_foreground.png
+/desktop/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_round.png
+/desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher.png
+/desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png
+/desktop/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png
+/desktop/src-tauri/icons/ios/AppIcon-20x20@1x.png
+/desktop/src-tauri/icons/ios/AppIcon-20x20@2x.png
+/desktop/src-tauri/icons/ios/AppIcon-20x20@2x-1.png
+/desktop/src-tauri/icons/ios/AppIcon-20x20@3x.png
+/desktop/src-tauri/icons/ios/AppIcon-29x29@1x.png
+/desktop/src-tauri/icons/ios/AppIcon-29x29@2x.png
+/desktop/src-tauri/icons/ios/AppIcon-29x29@2x-1.png
+/desktop/src-tauri/icons/ios/AppIcon-29x29@3x.png
+/desktop/src-tauri/icons/ios/AppIcon-40x40@1x.png
+/desktop/src-tauri/icons/ios/AppIcon-40x40@2x.png
+/desktop/src-tauri/icons/ios/AppIcon-40x40@2x-1.png
+/desktop/src-tauri/icons/ios/AppIcon-40x40@3x.png
+/desktop/src-tauri/icons/ios/AppIcon-60x60@2x.png
+/desktop/src-tauri/icons/ios/AppIcon-60x60@3x.png
+/desktop/src-tauri/icons/ios/AppIcon-76x76@1x.png
+/desktop/src-tauri/icons/ios/AppIcon-76x76@2x.png
+/desktop/src-tauri/icons/ios/AppIcon-83.5x83.5@2x.png
+/desktop/src-tauri/icons/ios/AppIcon-512@2x.png
+/desktop/src-tauri/icons/32x32.png
+/desktop/src-tauri/icons/64x64.png
+/desktop/src-tauri/icons/128x128.png
+/desktop/src-tauri/icons/128x128@2x.png
+/desktop/src-tauri/icons/icon.icns
+/desktop/src-tauri/icons/icon.ico
+/desktop/src-tauri/icons/icon.png
+/desktop/src-tauri/icons/Square30x30.png
+/desktop/src-tauri/icons/Square30x30Logo.png
+/desktop/src-tauri/icons/Square44x44.png
+/desktop/src-tauri/icons/Square44x44Logo.png
+/desktop/src-tauri/icons/Square71x71.png
+/desktop/src-tauri/icons/Square71x71Logo.png
+/desktop/src-tauri/icons/Square89x89.png
+/desktop/src-tauri/icons/Square89x89Logo.png
+/desktop/src-tauri/icons/Square107x107.png
+/desktop/src-tauri/icons/Square107x107Logo.png
+/desktop/src-tauri/icons/Square142x142.png
+/desktop/src-tauri/icons/Square142x142Logo.png
+/desktop/src-tauri/icons/Square150x150.png
+/desktop/src-tauri/icons/Square150x150Logo.png
+/desktop/src-tauri/icons/Square284x284.png
+/desktop/src-tauri/icons/Square284x284Logo.png
+/desktop/src-tauri/icons/Square310x310.png
+/desktop/src-tauri/icons/Square310x310Logo.png
+/desktop/src-tauri/icons/StoreLogo.png

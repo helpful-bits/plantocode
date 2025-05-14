@@ -1,4 +1,4 @@
-import { ApiType, TaskType } from '@/types/session-types';
+import { ApiType, TaskType } from '@core/types/session-types';
 
 /**
  * Define the types of jobs that can be processed by the job system

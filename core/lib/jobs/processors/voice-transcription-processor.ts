@@ -1,9 +1,9 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { TranscriptionPayload } from '../job-types';
 import { updateJobToRunning, updateJobToCompleted, updateJobToFailed } from '../job-helpers';
-import streamingRequestPool, { RequestType } from '@/lib/api/streaming-request-pool';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { DEFAULT_TASK_SETTINGS } from '@/lib/constants';
+import streamingRequestPool, { RequestType } from '@core/lib/api/streaming-request-pool';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { DEFAULT_TASK_SETTINGS } from '@core/lib/constants';
 
 /**
  * Voice Transcription Processor

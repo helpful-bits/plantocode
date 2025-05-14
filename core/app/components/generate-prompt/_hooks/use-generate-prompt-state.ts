@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useProject } from "@/lib/contexts/project-context";
-import { useSessionContext } from "@/lib/contexts/session-context";
+import { useProject } from '@core/lib/contexts/project-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
 import { usePromptGenerator } from "./use-prompt-generator";
-import { useNotification } from '@/lib/contexts/notification-context';
-import { useBackgroundJobs } from '@/lib/contexts/background-jobs-context';
-import { Session } from '@/types/session-types';
+import { useNotification } from '@core/lib/contexts/notification-context';
+import { useBackgroundJobs } from '@core/lib/contexts/background-jobs-context';
+import { Session } from '@core/types/session-types';
 
 // Import the hooks
 import { useTaskDescriptionState } from "./use-task-description-state";

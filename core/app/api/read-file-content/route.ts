@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import { getProjectImplementationPlansDirectory } from '@/lib/path-utils';
+import { getProjectImplementationPlansDirectory } from '@core/lib/path-utils';
 
 /**
  * API Route to read file content from a specific path

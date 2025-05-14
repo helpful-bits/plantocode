@@ -6,7 +6,7 @@ import {
   PoolStats
 } from './streaming-request-pool-types';
 import { RequestHandler } from './streaming-request-pool/request-handler';
-import { ActionState } from "@/types";
+import { ActionState } from '@core/types';
 
 /**
  * Pool for managing concurrent streaming requests

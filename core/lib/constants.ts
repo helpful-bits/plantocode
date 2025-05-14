@@ -19,8 +19,8 @@ export const AUTO_SAVE_INTERVAL = 5000;
 export const AUTO_RETRY_INTERVAL = 5000;
 export const GEMINI_MODEL = GEMINI_FLASH_MODEL;
 
+import { TaskSettings } from '@core/types';
 // Default task settings for all task types
-import { TaskSettings } from "@/types";
 
 export const DEFAULT_TASK_SETTINGS: TaskSettings = {
   pathfinder: {

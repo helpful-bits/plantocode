@@ -1,10 +1,10 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
-import { BackgroundJob, JobStatus, ApiType, TaskType, JOB_STATUSES } from '@/types/session-types';
-import { getActiveJobsAction, clearJobHistoryAction, cancelBackgroundJobAction } from '@/actions/background-job-actions';
+import { BackgroundJob, JobStatus, ApiType, TaskType, JOB_STATUSES } from '@core/types/session-types';
+import { getActiveJobsAction, clearJobHistoryAction, cancelBackgroundJobAction } from '@core/actions/background-job-actions';
 import streamingRequestPool from "../api/streaming-request-pool";
-import { safeFetch } from '@/lib/utils';
+import { safeFetch } from '@core/lib/utils';
 
 // Polling interval (ms)
 // Background jobs are polled every 1.5 seconds to provide more responsive updates in the UI

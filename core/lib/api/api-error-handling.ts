@@ -6,12 +6,12 @@
  */
 
 import { NextResponse } from "next/server";
-import { ActionState } from "@/types";
+import { ActionState } from '@core/types';
 import { 
   handleApiError, 
   updateJobToFailed 
-} from "@/lib/jobs/job-helpers";
-import { ApiType } from "@/types/session-types";
+} from '@core/lib/jobs/job-helpers';
+import { ApiType } from '@core/types/session-types';
 
 /**
  * Common error types used across API clients

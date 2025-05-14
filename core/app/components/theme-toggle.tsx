@@ -2,13 +2,13 @@
 
 import React, { useCallback } from "react";
 import { useTheme } from "next-themes";
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@core/components/ui/dropdown-menu";
 import { Moon, Sun, SunMoon } from "lucide-react";
 
 export function ThemeToggle() {

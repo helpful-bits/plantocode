@@ -1,9 +1,9 @@
 "use server";
 
-import { setupDatabase } from "@/lib/db";
-import { getCachedState, saveCachedState } from "@/lib/db";
-import { ActionState, TaskSettings } from "@/types";
-import { MODEL_SETTINGS_KEY, DEFAULT_TASK_SETTINGS } from "@/lib/constants";
+import { setupDatabase } from '@core/lib/db';
+import { getCachedState, saveCachedState } from '@core/lib/db';
+import { ActionState, TaskSettings } from '@core/types';
+import { MODEL_SETTINGS_KEY, DEFAULT_TASK_SETTINGS } from '@core/lib/constants';
 import { revalidatePath } from "next/cache";
 
 /**

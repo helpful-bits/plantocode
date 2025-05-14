@@ -1,5 +1,5 @@
 import { sessionRepository } from "../repositories";
-import { hashString } from '@/lib/hash';
+import { hashString } from '@core/lib/hash';
 
 /**
  * Ensures a session record exists in the database.

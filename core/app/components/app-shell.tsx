@@ -3,9 +3,9 @@
 import React from 'react';
 import { Suspense } from 'react';
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
-import { DatabaseErrorHandler } from "@/app/components/client-wrappers";
+import { DatabaseErrorHandler } from "./client-wrappers";
 import { AppInitializingScreen } from './app-initializing-screen';
-import { useUILayout } from '@/lib/contexts/ui-layout-context';
+import { useUILayout } from '@core/lib/contexts/ui-layout-context';
 
 /**
  * AppShell component that conditionally renders either the initialization screen

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { existsSync } from 'fs';
-import { getProjectImplementationPlansDirectory } from '@/lib/path-utils';
+import { getProjectImplementationPlansDirectory } from '@core/lib/path-utils';
 
 export async function POST(request: NextRequest) {
   try {

@@ -1,20 +1,20 @@
 "use server";
 
-import { ActionState } from '@/types';
-import { setupDatabase } from '@/lib/db';
-import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { generateDirectoryTree } from '@/lib/directory-tree';
+import { ActionState } from '@core/types';
+import { setupDatabase } from '@core/lib/db';
+import { GEMINI_PRO_PREVIEW_MODEL, GEMINI_FLASH_MODEL } from '@core/lib/constants';
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { generateDirectoryTree } from '@core/lib/directory-tree';
 import { 
   generateImplementationPlanSystemPrompt, 
   generateImplementationPlanUserPrompt 
-} from '@/lib/prompts/implementation-plan-prompts';
+} from '@core/lib/prompts/implementation-plan-prompts';
 import { 
   generateImplementationPlanTitleSystemPrompt,
   generateImplementationPlanTitleUserPrompt
-} from '@/lib/prompts/implementation-plan-title-prompts';
-import { createBackgroundJob, enqueueJob } from '@/lib/jobs/job-helpers';
-import { loadFileContents } from '@/lib/file-utils';
+} from '@core/lib/prompts/implementation-plan-title-prompts';
+import { createBackgroundJob, enqueueJob } from '@core/lib/jobs/job-helpers';
+import { loadFileContents } from '@core/lib/file-utils';
 import { generateSimpleTextAction } from './gemini-actions';
 
 /**
@@ -63,7 +63,7 @@ export async function createImplementationPlanAction(params: {
     console.log(`[createImplementationPlanAction] Successfully loaded file contents. Map contains ${Object.keys(actualFileContents).length} files.`);
 
     // Get the session repository to look up the session name
-    const { sessionRepository } = await import('@/lib/db/repositories');
+    const { sessionRepository } = await import('@core/lib/db/repositories');
 
     // Get the session name
     let sessionName = '';

@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useUILayout } from '@/lib/contexts/ui-layout-context';
-import { useProject } from '@/lib/contexts/project-context';
-import { useSessionContext } from '@/lib/contexts/session-context';
+import { useUILayout } from '@core/lib/contexts/ui-layout-context';
+import { useProject } from '@core/lib/contexts/project-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
 
 /**
  * EnhancedGlobalLoadingIndicator

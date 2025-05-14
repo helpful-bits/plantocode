@@ -1,16 +1,16 @@
 import { sendStreamingRequest } from './gemini-streaming';
 import { sendRequest } from './gemini-standard';
-import { cancelAllSessionJobs } from '@/lib/jobs/job-helpers';
-import { ActionState } from '@/types';
-import { RequestType } from '@/lib/api/streaming-request-pool-types';
-import streamingRequestPool from '@/lib/api/streaming-request-pool';
-import { ApiType } from '@/types/session-types';
-import { ApiClient, ApiClientOptions } from '@/lib/api/api-client-interface';
+import { cancelAllSessionJobs } from '@core/lib/jobs/job-helpers';
+import { ActionState } from '@core/types';
+import { RequestType } from '@core/lib/api/streaming-request-pool-types';
+import streamingRequestPool from '@core/lib/api/streaming-request-pool';
+import { ApiType } from '@core/types/session-types';
+import { ApiClient, ApiClientOptions } from '@core/lib/api/api-client-interface';
 import {
   ApiErrorType,
   handleApiClientError,
   createApiSuccessResponse
-} from '@/lib/api/api-error-handling';
+} from '@core/lib/api/api-error-handling';
 
 interface RequestOptions {
   sessionId?: string;

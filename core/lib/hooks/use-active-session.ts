@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { setActiveSessionAction, getActiveSessionIdAction } from '@/actions/session-actions';
+import { setActiveSessionAction, getActiveSessionIdAction } from '@core/actions/session-actions';
 
 /**
  * Hook to manage the active session ID for a specific project directory

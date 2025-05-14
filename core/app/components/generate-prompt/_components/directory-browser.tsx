@@ -14,7 +14,7 @@ import {
   SkipBack,
   Lock
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@core/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -22,15 +22,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "@core/components/ui/dialog";
+import { ScrollArea } from "@core/components/ui/scroll-area";
 import {
   getHomeDirectoryAction,
   listDirectoriesAction,
   getCommonPaths
-} from "@/actions/directory-actions";
-import { cn } from "@/lib/utils";
-import { normalizePath, normalizePathForComparison } from "@/lib/path-utils";
+} from "@core/actions/directory-actions";
+import { cn } from "@core/lib/utils";
+import { normalizePath, normalizePathForComparison } from "@core/lib/path-utils";
 
 // Fallback paths in case the server action fails
 const DEFAULT_COMMON_PATHS: Array<{ name: string, path: string }> = [

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { BackgroundJob, JOB_STATUSES } from '@/types/session-types';
+import { BackgroundJob, JOB_STATUSES } from '@core/types/session-types';
 
 // Enable this for extensive logging of job filtering and sorting
 // Define this outside of the hook entirely to avoid it being included in dependency arrays

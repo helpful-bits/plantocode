@@ -5,9 +5,9 @@ import { useProjectFileList, FileInfo } from "./file-management/use-project-file
 import { useFileSelectionManager } from "./file-management/use-file-selection-manager";
 import { useRelevantFilesFinder } from "./file-management/use-relevant-files-finder";
 import { FileManagementContextValue } from "../_contexts/file-management-context";
-import { normalizePathForComparison, makePathRelative } from "@/lib/path-utils";
-import { JOB_STATUSES, Session } from "@/types/session-types";
-import { useSessionContext } from "@/lib/contexts/session-context";
+import { normalizePathForComparison, makePathRelative } from "@core/lib/path-utils";
+import { JOB_STATUSES, Session } from "@core/types/session-types";
+import { useSessionContext } from "@core/lib/contexts/session-context";
 import { useStableRef } from "./use-stable-refs";
 
 interface UseFileManagementStateProps {
@@ -323,8 +323,7 @@ export function useFileManagementState({
   
   // Automatically switch to "selected" filter mode ONLY when files are NEWLY selected (0 to N)
   useEffect(() => {
-    const { includedPaths } = fileSelectionManager;
-    const currentLength = includedPaths.length;
+    const currentLength = fileSelectionManager.includedPaths.length;
     
     // Only switch to "selected" mode if:
     // 1. We previously had no files AND now we have files (newly selected)
@@ -335,7 +334,7 @@ export function useFileManagementState({
     
     // Update our reference for next render
     prevIncludedPathsLengthRef.current = currentLength;
-  }, [fileSelectionManager.includedPaths.length, filterMode]);
+  }, [fileSelectionManager, filterMode, setFilterModeState]);
 
   // Calculate if regex is available based on patterns
   const isRegexAvailable = Boolean(currentSession?.titleRegex?.trim() ||

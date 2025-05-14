@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
-import { BackgroundJob, ApiType, TaskType, JOB_STATUSES } from '@/types/session-types';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { BackgroundJob, ApiType, TaskType, JOB_STATUSES } from '@core/types/session-types';
+import { Button } from '@core/components/ui/button';
+import { Badge } from '@core/components/ui/badge';
+import { Progress } from '@core/components/ui/progress';
 import {
   CheckCircle,
   AlertCircle,

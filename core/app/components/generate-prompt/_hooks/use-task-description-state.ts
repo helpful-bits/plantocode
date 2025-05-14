@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useBackgroundJob } from "@/lib/contexts/background-jobs-context";
-import { improveSelectedTextAction } from "@/actions/text-improvement-actions";
-import { useNotification } from '@/lib/contexts/notification-context';
-import { useProject } from "@/lib/contexts/project-context";
-import { useSessionContext } from "@/lib/contexts/session-context";
+import { useBackgroundJob } from '@core/lib/contexts/background-jobs-context';
+import { improveSelectedTextAction } from '@core/actions/text-improvement-actions';
+import { useNotification } from '@core/lib/contexts/notification-context';
+import { useProject } from '@core/lib/contexts/project-context';
+import { useSessionContext } from '@core/lib/contexts/session-context';
 import { useAsyncAction } from "./use-async-state";
 
 interface UseTaskDescriptionStateProps {

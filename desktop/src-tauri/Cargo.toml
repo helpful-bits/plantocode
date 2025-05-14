@@ -1,0 +1,26 @@
+[package]
+name = "vibe-manager"
+version = "0.1.0"
+description = "Vibe Manager Desktop"
+authors = ["You"]
+license = ""
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "=2.2.0", features = [] }
+
+[dependencies]
+tauri = { version = "=2.5.1", features = ["config-json5"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+tauri-plugin-sql = { version = "2.2.0", features = ["sqlite"] }
+tauri-plugin-http = "2.4.3"
+tauri-plugin-deep-link = "2.2.1"
+tauri-plugin-stronghold = "2.2.0"
+tauri-plugin-single-instance = "2.2.3"
+tauri-plugin-dialog = "2.2.1"
+blake2b_simd = "1.0.3"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

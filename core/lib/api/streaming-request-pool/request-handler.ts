@@ -1,5 +1,5 @@
 import { RequestType, RequestInfo, FetchOptions, Response, ActiveRequest } from '../streaming-request-pool-types';
-import { safeFetch } from '@/lib/utils';
+import { safeFetch } from '@core/lib/utils';
 
 /**
  * Lazy-load the background job repository to avoid circular dependencies
@@ -7,7 +7,7 @@ import { safeFetch } from '@/lib/utils';
  */
 async function getBackgroundJobRepository() {
   // Dynamic import to avoid circular dependencies
-  const { backgroundJobRepository } = await import('@/lib/db/repositories/background-job-repository');
+  const { backgroundJobRepository } = await import('@core/lib/db/repositories/background-job-repository');
   return backgroundJobRepository;
 }
 

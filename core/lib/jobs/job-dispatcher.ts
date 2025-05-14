@@ -3,7 +3,7 @@ import { jobRegistry } from './job-registry';
 import { globalJobQueue } from './global-job-queue';
 import { JobProcessResult } from './job-processor-interface';
 import { updateJobToFailed } from '../jobs/job-helpers';
-import { ApiErrorType } from '@/lib/api/api-error-handling';
+import { ApiErrorType } from '@core/lib/api/api-error-handling';
 
 /**
  * Dispatch a job to its appropriate processor.

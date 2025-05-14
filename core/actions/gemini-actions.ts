@@ -1,13 +1,13 @@
 "use server";
 
-import { ActionState, TaskType } from '@/types';
-import { sessionRepository } from '@/lib/db/repositories';
-import { setupDatabase } from '@/lib/db'; // Use index export
-import { geminiClient } from '@/lib/api'; // Import from centralized API module
-import { getModelSettingsForProject } from '@/actions/project-settings-actions';
-import { createBackgroundJob, enqueueJob } from '@/lib/jobs/job-helpers';
-import { DEFAULT_TASK_SETTINGS, GEMINI_FLASH_MODEL } from '@/lib/constants';
-import { getApiClient } from '@/lib/api/client-factory';
+import { ActionState, TaskType } from '@core/types';
+import { sessionRepository } from '@core/lib/db/repositories';
+import { setupDatabase } from '@core/lib/db'; // Use index export
+import { geminiClient } from '@core/lib/api'; // Import from centralized API module
+import { getModelSettingsForProject } from '@core/actions/project-settings-actions';
+import { createBackgroundJob, enqueueJob } from '@core/lib/jobs/job-helpers';
+import { DEFAULT_TASK_SETTINGS, GEMINI_FLASH_MODEL } from '@core/lib/constants';
+import { getApiClient } from '@core/lib/api/client-factory';
 
 /**
  * Send a prompt to Gemini and receive streaming response
@@ -188,7 +188,7 @@ export async function initiateGenericGeminiStreamAction(params: {
     }
     
     // Get the session repository to look up the session name for better job labeling
-    const { sessionRepository } = await import('@/lib/db/repositories');
+    const { sessionRepository } = await import('@core/lib/db/repositories');
     
     // Get the session name
     let sessionName = '';
