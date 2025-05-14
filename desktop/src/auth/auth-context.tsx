@@ -4,7 +4,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { firebaseAuth } from './firebase-client';
-import { invoke } from '@tauri-apps/api/core';
+import { initStronghold, storeToken, getToken as getStoredToken, clearToken } from './token-storage';
 
 /**
  * User interface
@@ -44,6 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Initialize Stronghold vault
+        await initStronghold();
+        
         // Try to retrieve token from secure storage
         const savedToken = await retrieveTokenFromStorage();
         
@@ -89,8 +92,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sign out from Firebase
       await firebaseAuth.signOut();
       
-      // Clear token from secure storage
-      await invoke('clear_stored_token');
+      // Clear token from Stronghold secure storage
+      try {
+        await clearToken();
+      } catch (err) {
+        console.error('Error clearing token from secure storage:', err);
+      }
       
       // Reset state
       setUser(null);
@@ -126,10 +133,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Helper to retrieve token from secure storage
   const retrieveTokenFromStorage = async (): Promise<string | null> => {
     try {
-      const token = await invoke<string>('get_stored_token');
-      return token || null;
+      // Use Stronghold to get the token
+      const token = await getStoredToken();
+      return token;
     } catch (err) {
-      console.error('Error retrieving token from storage:', err);
+      console.error('Error retrieving token from secure storage:', err);
       return null;
     }
   };
@@ -185,8 +193,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           const { access_token } = await response.json();
           
-          // Store token securely
-          await invoke('store_token', { token: access_token });
+          // Store token securely using Stronghold
+          try {
+            await storeToken(access_token);
+          } catch (err) {
+            console.error('Error storing token in secure storage:', err);
+          }
           
           // Update state
           setToken(access_token);
