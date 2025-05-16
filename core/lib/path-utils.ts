@@ -363,13 +363,15 @@ export function getProjectOutputFilesDirectory(projectDirectory: string): string
 }
 
 /**
- * Directory name for implementation plans
+ * Directory name for implementation plans (DEPRECATED - kept for backwards compatibility)
+ * @deprecated Implementation plans are now stored in the database
  */
 export const IMPLEMENTATION_PLANS_DIR_NAME = 'implementation_plans';
 
 /**
  * Returns the absolute path to the implementation plans directory in the project directory
- * This directory is used for generated implementation plans
+ * This directory is deprecated as implementation plans are now stored in the database
+ * @deprecated Implementation plans are now stored in the database
  * @param projectDirectory Absolute path to the project directory
  * @returns Absolute path to the implementation plans directory within the project
  */
@@ -377,6 +379,7 @@ export function getProjectImplementationPlansDirectory(projectDirectory: string)
   if (!projectDirectory) {
     throw new Error('Project directory is required');
   }
+  console.warn('DEPRECATED: Implementation plans are now stored in the database, not in files');
   return path.join(projectDirectory, IMPLEMENTATION_PLANS_DIR_NAME);
 }
 

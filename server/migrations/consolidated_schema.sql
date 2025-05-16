@@ -47,15 +47,20 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 -- API usage tracking
 CREATE TABLE IF NOT EXISTS api_usage (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    service_name VARCHAR(50) NOT NULL, -- 'gemini', 'claude', 'groq', etc.
+    service_name TEXT NOT NULL, -- e.g., model_id or a general service identifier
     tokens_input INTEGER NOT NULL DEFAULT 0,
     tokens_output INTEGER NOT NULL DEFAULT 0,
-    cost DECIMAL(10, 6) NOT NULL DEFAULT 0,
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    cost DECIMAL(12, 6) NOT NULL, -- Sufficient precision for cost
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    request_id TEXT, -- Optional: for tracing back to provider
+    metadata JSONB, -- Optional: for additional details
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_api_usage_user_id_timestamp ON api_usage(user_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_api_usage_service_name ON api_usage(service_name);
 
 -- API rate limiting and quotas
 CREATE TABLE IF NOT EXISTS api_quotas (
@@ -73,14 +78,33 @@ CREATE TABLE IF NOT EXISTS api_quotas (
 
 -- Service pricing configuration
 CREATE TABLE IF NOT EXISTS service_pricing (
-    id SERIAL PRIMARY KEY,
-    service_name VARCHAR(50) NOT NULL,
-    input_token_price DECIMAL(10, 8) NOT NULL, -- Price per 1K input tokens
-    output_token_price DECIMAL(10, 8) NOT NULL, -- Price per 1K output tokens
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CONSTRAINT unique_service_pricing UNIQUE (service_name)
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_name TEXT NOT NULL UNIQUE, -- e.g., 'anthropic/claude-3-opus-20240229'
+    input_token_price DECIMAL(10, 8) NOT NULL, -- Price per 1000 tokens
+    output_token_price DECIMAL(10, 8) NOT NULL, -- Price per 1000 tokens
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    unit VARCHAR(50) NOT NULL DEFAULT 'per_1000_tokens',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Optional: Add an index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_service_pricing_service_name ON service_pricing(service_name);
+
+-- Optional: Add a trigger to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $update_updated_at_column$
+BEGIN
+   NEW.updated_at = NOW();
+   RETURN NEW;
+END;
+$update_updated_at_column$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS set_timestamp_service_pricing ON service_pricing;
+CREATE TRIGGER set_timestamp_service_pricing
+BEFORE UPDATE ON service_pricing
+FOR EACH ROW
+EXECUTE PROCEDURE update_updated_at_column();
 
 -- Subscription plan configuration
 CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -118,36 +142,45 @@ CREATE TABLE IF NOT EXISTS project_members (
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
-CREATE INDEX IF NOT EXISTS idx_api_usage_user_id ON api_usage(user_id);
-CREATE INDEX IF NOT EXISTS idx_api_usage_service_name ON api_usage(service_name);
-CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage(timestamp);
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_api_quotas_user_id ON api_quotas(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_quotas_service_name ON api_quotas(service_name);
 
--- Insert default service pricing
-INSERT INTO service_pricing (service_name, input_token_price, output_token_price) 
+-- Insert default service pricing for OpenRouter models
+INSERT INTO service_pricing (service_name, input_token_price, output_token_price, currency, unit) 
 VALUES 
-('gemini', 0.00025, 0.00075),  -- $0.00025 per 1K input tokens, $0.00075 per 1K output tokens
-('claude', 0.008, 0.024),      -- $0.008 per 1K input tokens, $0.024 per 1K output tokens
-('groq', 0.0005, 0.0015)       -- $0.0005 per 1K input tokens, $0.0015 per 1K output tokens
-ON CONFLICT (service_name) DO NOTHING;
+('anthropic/claude-3-opus-20240229', 0.015, 0.075, 'USD', 'per_1000_tokens'),     -- $0.015 per 1K input tokens, $0.075 per 1K output tokens
+('anthropic/claude-3-sonnet-20240229', 0.003, 0.015, 'USD', 'per_1000_tokens'),   -- $0.003 per 1K input tokens, $0.015 per 1K output tokens
+('anthropic/claude-3-haiku-20240307', 0.00025, 0.00125, 'USD', 'per_1000_tokens'), -- $0.00025 per 1K input tokens, $0.00125 per 1K output tokens
+('openai/gpt-4-turbo', 0.01, 0.03, 'USD', 'per_1000_tokens'),                     -- $0.01 per 1K input tokens, $0.03 per 1K output tokens
+('openai/gpt-3.5-turbo', 0.0005, 0.0015, 'USD', 'per_1000_tokens'),               -- $0.0005 per 1K input tokens, $0.0015 per 1K output tokens
+('openai/whisper-1', 0.0, 0.006, 'USD', 'per_1000_tokens')                        -- $0.006 per 1K tokens for transcription (OpenRouter charges only for output)
+ON CONFLICT (service_name) DO UPDATE SET
+  input_token_price = EXCLUDED.input_token_price,
+  output_token_price = EXCLUDED.output_token_price,
+  updated_at = CURRENT_TIMESTAMP;
+
+-- Update pricing if any models have changed pricing
+UPDATE service_pricing SET input_token_price = 0.0, output_token_price = 0.006, updated_at = CURRENT_TIMESTAMP
+WHERE service_name = 'openai/whisper-1' 
+AND (input_token_price != 0.0 OR output_token_price != 0.006);
 
 -- Insert default subscription plans
 INSERT INTO subscription_plans (id, name, description, price_monthly, price_yearly, features)
 VALUES 
 ('free', 'Free Tier', 'Basic access with limited usage', 0.00, 0.00, 
- '{"monthly_tokens": 100000, "services": ["gemini"], "concurrency": 1}'::jsonb),
+ '{"monthly_tokens": 100000, "services": ["anthropic/claude-3-haiku-20240307", "openai/gpt-3.5-turbo"], "concurrency": 1}'::jsonb),
  
 ('pro', 'Pro', 'Full access with higher usage limits', 9.99, 99.99, 
- '{"monthly_tokens": 1000000, "services": ["gemini", "claude", "groq"], "concurrency": 3}'::jsonb),
+ '{"monthly_tokens": 1000000, "services": ["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"], "concurrency": 3}'::jsonb),
  
 ('enterprise', 'Enterprise', 'Custom solutions for teams', 49.99, 499.99, 
- '{"monthly_tokens": 10000000, "services": ["gemini", "claude", "groq"], "concurrency": 10, "team_members": 5}'::jsonb)
+ '{"monthly_tokens": 10000000, "services": ["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "anthropic/claude-3-opus-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"], "concurrency": 10, "team_members": 5}'::jsonb)
 ON CONFLICT (id) DO NOTHING;

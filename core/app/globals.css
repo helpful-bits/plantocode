@@ -119,7 +119,7 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
-    --sidebar-width: 256px; /* Default sidebar width when expanded */
+    --sidebar-width: 320px; /* Increased sidebar width when expanded */
   }
 
   .dark {

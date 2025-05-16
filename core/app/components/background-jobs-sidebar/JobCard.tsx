@@ -3,6 +3,7 @@ import { BackgroundJob, ApiType, TaskType, JOB_STATUSES } from '@core/types/sess
 import { Button } from '@core/components/ui/button';
 import { Badge } from '@core/components/ui/badge';
 import { Progress } from '@core/components/ui/progress';
+import { ScrollArea } from '@core/components/ui/scroll-area';
 import {
   CheckCircle,
   AlertCircle,
@@ -20,7 +21,8 @@ import {
   formatApiType,
   formatTaskType, 
   formatTimeAgo,
-  formatTokenCount
+  formatTokenCount,
+  getStreamingProgressValue
 } from './utils';
 
 export interface JobCardProps {
@@ -64,7 +66,8 @@ export const JobCard = React.memo(({
     }
 
     if (job.response) {
-      return job.response.substring(0, 100) + (job.response.length > 100 ? '...' : '');
+      // No need to truncate since we're using scroll area
+      return job.response;
     }
     return '';
   };
@@ -72,17 +75,20 @@ export const JobCard = React.memo(({
   // Format error text for preview
   const getErrorPreview = () => {
     if (!job.errorMessage) return '';
-    return job.errorMessage.substring(0, 100) + (job.errorMessage.length > 100 ? '...' : '');
+    // No need to truncate since we're using scroll area
+    return job.errorMessage;
   };
   
   // Render the appropriate status icon
   const renderStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
+      case 'completed_by_tag':
         return <CheckCircle className={getStatusIconClass(status)} />;
       case 'failed':
         return <AlertCircle className={getStatusIconClass(status)} />;
       case 'running':
+      case 'processing_stream':
         return <Loader2 className={getStatusIconClass(status)} />;
       case 'canceled':
         return <XCircle className={getStatusIconClass(status)} />;
@@ -90,6 +96,8 @@ export const JobCard = React.memo(({
       case 'created':
       case 'queued':
       case 'idle':
+      case 'preparing_input':
+      case 'generating_stream':
         return <Clock className={getStatusIconClass(status)} />;
       default:
         return <Clock className={getStatusIconClass(status)} />;
@@ -99,11 +107,21 @@ export const JobCard = React.memo(({
   // Get user-friendly status display
   const getStatusDisplay = () => {
     // Use constants for all status checks
-    if (job.status === 'running') {
+    if (job.status === 'running' || job.status === 'processing_stream') {
       return 'Processing';
-    } else if (job.status === 'preparing' || job.status === 'created' || job.status === 'queued') {
+    } else if (
+      job.status === 'preparing' || 
+      job.status === 'created' || 
+      job.status === 'queued' || 
+      job.status === 'preparing_input' || 
+      job.status === 'generating_stream'
+    ) {
       return 'Preparing';
     } else if (JOB_STATUSES.COMPLETED.includes(job.status)) {
+      // Handle different completed states
+      if (job.status === 'completed_by_tag') {
+        return 'Completed';
+      }
       return 'Completed';
     } else if (job.status === 'failed') {
       return 'Failed';
@@ -118,26 +136,28 @@ export const JobCard = React.memo(({
   // Render card content
   return (
     <div
-      className="border bg-card p-3 rounded-md text-xs cursor-pointer hover:bg-accent/10 transition-colors"
+      className="border bg-card p-3 rounded-md text-xs cursor-pointer hover:bg-accent/10 transition-colors w-full"
       style={{
         height: '160px', // Fixed height for better layout stability
-        overflow: 'hidden'
+        overflow: 'hidden',
+        maxWidth: '100%', // Ensure card doesn't overflow sidebar
+        boxSizing: 'border-box' // Include padding in width calculation
       }}
       onClick={() => onSelect(job)}
       data-testid={`job-card-${job.id}`}
       data-status={job.status}
     >
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 w-full">
         <div className="flex items-center gap-2 font-medium">
           <span className="w-4 h-4 inline-flex items-center justify-center">
             {renderStatusIcon(job.status)}
           </span>
-          <span>
+          <span className="truncate">
             {getStatusDisplay()}
           </span>
         </div>
         
-        <div className="w-6 h-6">
+        <div className="w-6 h-6 flex-shrink-0">
           {canCancel && (
             <Button
               variant="ghost"
@@ -157,7 +177,7 @@ export const JobCard = React.memo(({
         </div>
       </div>
       
-      <div className="flex gap-2 mb-2 min-h-[20px]">
+      <div className="flex flex-wrap gap-2 mb-2 min-h-[20px]">
         {job.apiType && (
           <Badge className={getApiTypeBadgeClasses(job.apiType)}>
             {formatApiType(job.apiType)}
@@ -179,16 +199,9 @@ export const JobCard = React.memo(({
         <div className="mt-2 mb-1">
           <Progress
             value={
-              // Calculate progress with improved handling for implementation plans
+              // Use the standardized helper function for calculating progress
               job.taskType === 'implementation_plan' && job.metadata?.isStreaming === true
-                ? // For implementation plans with streaming
-                  typeof job.metadata.streamProgress === 'number'
-                    ? Math.min(job.metadata.streamProgress, 98)
-                    : typeof job.metadata.responseLength === 'number' && 
-                      typeof job.metadata.estimatedTotalLength === 'number' && 
-                      job.metadata.estimatedTotalLength > 0
-                      ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 98)
-                      : Math.min(Math.floor((Date.now() - (job.startTime || Date.now())) / 150), 95)
+                ? getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens)
                 // For other streaming jobs
                 : job.metadata?.isStreaming
                   ? (job.metadata.responseLength && job.metadata.estimatedTotalLength)
@@ -220,8 +233,8 @@ export const JobCard = React.memo(({
       )}
 
       {/* Token count and model display */}
-      <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px]">
-        <div className="flex flex-col gap-0.5">
+      <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full">
+        <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden">
           {/* Display token counts with better formatting */}
         {(job.tokensSent > 0 || job.tokensReceived > 0 || job.totalTokens > 0) ? (
             <span className="flex items-center gap-1.5">
@@ -251,11 +264,11 @@ export const JobCard = React.memo(({
 
         {/* Show duration for completed jobs or empty placeholder */}
         {job.endTime && job.startTime ? (
-          <span className="text-[9px] text-gray-500">
+          <span className="text-[9px] text-gray-500 flex-shrink-0 ml-1">
             {Math.round((job.endTime - job.startTime) / 1000)}s
           </span>
         ) : (
-          <span className="h-3"></span> /* Empty placeholder to maintain height */
+          <span className="h-3 flex-shrink-0"></span> /* Empty placeholder to maintain height */
         )}
       </div>
 
@@ -272,12 +285,7 @@ export const JobCard = React.memo(({
           </div>
         )}
         
-        {job.status === 'completed' && job.outputFilePath && job.taskType !== 'implementation_plan' && (
-          <div className="text-[10px] mt-2 border-t pt-2 flex items-center gap-1.5 text-muted-foreground">
-            <FileCode className="h-3.5 w-3.5 text-primary" />
-            <span className="font-medium">Output saved to file</span>
-          </div>
-        )}
+        {/* Legacy file output is no longer supported */}
 
         {/* For path finder jobs, show path count from metadata if available */}
         {job.taskType === 'pathfinder' && job.status === 'completed' && job.metadata?.pathCount && (
@@ -290,21 +298,25 @@ export const JobCard = React.memo(({
         {job.response &&
          !(job.status === 'completed' && job.outputFilePath) &&
          !(job.taskType === 'pathfinder' && job.status === 'completed' && job.metadata?.pathCount) && (
-          <div className="text-[10px] mt-2 border-t pt-2 text-muted-foreground line-clamp-2 overflow-hidden break-words text-balance">
-            {getResponsePreview()}
+          <div className="text-[10px] mt-2 border-t pt-2 text-muted-foreground break-words text-balance">
+            <ScrollArea className="h-[40px]">
+              {getResponsePreview()}
+            </ScrollArea>
           </div>
         )}
 
         {/* Show error message if job failed or canceled */}
         {(job.status === 'failed' || job.status === 'canceled') && job.errorMessage && (
-          <div className="text-[10px] mt-2 border-t pt-2 text-red-500 line-clamp-2 overflow-hidden break-words text-balance">
-            {getErrorPreview()}
+          <div className="text-[10px] mt-2 border-t pt-2 text-red-500 break-words text-balance">
+            <ScrollArea className="h-[40px]">
+              {getErrorPreview()}
+            </ScrollArea>
           </div>
         )}
 
         {/* Empty placeholder element when no special content is present, to maintain consistent height */}
-        {!(job.status === 'completed' && job.outputFilePath) &&
-         !(job.taskType === 'pathfinder' && job.status === 'completed' && job.metadata?.pathCount) &&
+        {/* All jobs now store output in the response field */}
+        {!(job.taskType === 'pathfinder' && job.status === 'completed' && job.metadata?.pathCount) &&
          !job.response &&
          !(job.status === 'failed' || job.status === 'canceled') && (
           <div className="h-[42px]"></div>

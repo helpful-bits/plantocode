@@ -7,9 +7,9 @@ import { apiClients } from '@core/lib/api/client-factory';
 import { handleApiClientError } from '@core/lib/api/api-error-handling';
 
 /**
- * Transcribe audio data from a base64-encoded string using Groq's Whisper implementation
+ * Transcribe audio data from a base64-encoded string using OpenRouter's Whisper implementation
  *
- * This version uses the standardized GroqApiClient directly for better error handling
+ * This version uses the standardized OpenRouter API client directly for better error handling
  * and consistency with other API clients.
  */
 export async function transcribeAudioAction(
@@ -63,11 +63,11 @@ export async function transcribeAudioAction(
     // Create a Blob from the binary data
     const audioBlob = new Blob([binaryData], { type: mimeType });
 
-    // Get the Groq API client
-    const groqClient = apiClients.groq;
+    // Get the OpenRouter API client
+    const openRouterClient = apiClients.get('openrouter');
 
     // Call the client with direct request instead of using the utility function
-    const result = await groqClient.sendRequest(audioBlob, {
+    const result = await openRouterClient.sendRequest(audioBlob, {
       sessionId: dbSafeSessionId,
       projectDirectory,
       language,
@@ -120,7 +120,7 @@ export async function transcribeAudioAction(
 
     // Use the standardized error handling for the outer catch block
     const errorResult = await handleApiClientError(error, {
-      apiType: 'groq',
+      apiType: 'openrouter',
       logPrefix: '[Voice Transcription]'
     });
 

@@ -30,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
 
         {/* Main content area with dynamic margin based on sidebar state */}
-        <div className="flex-1 transition-all duration-300 ease-in-out" style={{ marginLeft: "var(--sidebar-width, 256px)" }}>
+        <div className="flex-1 transition-all duration-300 ease-in-out" style={{ marginLeft: "var(--sidebar-width, 320px)" }}>
           <div className="container mx-auto px-6 py-8">
             <Suspense fallback={<div className="h-16 flex items-center justify-center text-muted-foreground">Loading navigation...</div>}>
               <Navigation />

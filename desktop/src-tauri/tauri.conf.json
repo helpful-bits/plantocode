@@ -41,10 +41,13 @@
   },
 
   "plugins": {
-    "sql": {},
     "http": null,
     "deep-link": {
-      "customSchemes": ["vibe-manager"]
+      "domains": [
+        "vibe-manager.app",
+        "localhost"
+      ],
+      "customProtocol": "vibe-manager"
     },
     "stronghold": null,
     "dialog": null

@@ -71,7 +71,7 @@ export const BackgroundJobsSidebar: React.FC = () => {
     // Update CSS variable for the sidebar width
     document.documentElement.style.setProperty(
       '--sidebar-width',
-      activeCollapsed ? '48px' : '256px'
+      activeCollapsed ? '48px' : '320px' // 320px when expanded
     );
 
     // Update the context state
@@ -174,7 +174,7 @@ export const BackgroundJobsSidebar: React.FC = () => {
 
   // Fixed container style for consistent width
   const containerStyle = {
-    width: activeCollapsed ? '48px' : '256px',
+    width: activeCollapsed ? '48px' : '320px', // Increased from 256px to 320px to fit job cards better
     transition: 'width 300ms ease-in-out',
     transform: 'translate3d(0, 0, 0)',
     backfaceVisibility: 'hidden' as const,
@@ -291,8 +291,8 @@ export const BackgroundJobsSidebar: React.FC = () => {
             </div>
           )}
 
-          <ScrollArea className="px-4 py-3 pb-24 h-full min-h-[calc(100vh-8rem)]">
-            <div className="min-h-[calc(100vh-10rem)]">
+          <ScrollArea className="px-4 py-3 pb-24 h-full min-h-[calc(100vh-8rem)]" style={{ width: '100%' }}>
+            <div className="min-h-[calc(100vh-10rem)] w-full">
               {shouldShowLoading ? (
                 <LoadingState />
               ) : shouldShowEmpty ? (
@@ -301,9 +301,9 @@ export const BackgroundJobsSidebar: React.FC = () => {
               <>
                 {/* Active Jobs Section */}
                 {activeJobsToShow.length > 0 && (
-                  <div className="mb-6">
+                  <div className="mb-6 w-full">
                     <h4 className="text-xs font-semibold text-muted-foreground mb-2">Active</h4>
-                    <div className="space-y-3">
+                    <div className="space-y-3 w-full">
                       {activeJobsToShow.map(job => (
                         <JobCard
                           key={job.id}
@@ -319,9 +319,9 @@ export const BackgroundJobsSidebar: React.FC = () => {
 
                 {/* Completed Jobs Section */}
                 {completedJobs.length > 0 && (
-                  <div className="mb-6">
+                  <div className="mb-6 w-full">
                     <h4 className="text-xs font-semibold text-muted-foreground mb-2">Completed</h4>
-                    <div className="space-y-3">
+                    <div className="space-y-3 w-full">
                       {completedJobs.map(job => (
                         <JobCard
                           key={job.id}
@@ -337,9 +337,9 @@ export const BackgroundJobsSidebar: React.FC = () => {
 
                 {/* Failed/Canceled Jobs Section */}
                 {failedJobs.length > 0 && (
-                  <div>
+                  <div className="w-full">
                     <h4 className="text-xs font-semibold text-muted-foreground mb-2">Failed/Canceled</h4>
-                    <div className="space-y-3">
+                    <div className="space-y-3 w-full">
                       {failedJobs.map(job => (
                         <JobCard
                           key={job.id}

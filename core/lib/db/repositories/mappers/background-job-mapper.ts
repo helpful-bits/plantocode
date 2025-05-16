@@ -25,11 +25,20 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
   let metadataObj = {};
   try {
     if (row.metadata) {
-      metadataObj = JSON.parse(row.metadata);
+      if (typeof row.metadata === 'string') {
+        metadataObj = JSON.parse(row.metadata);
+      } else if (typeof row.metadata === 'object') {
+        // Already an object, just use it directly
+        metadataObj = row.metadata;
+      }
     }
   } catch (e) {
     console.warn(`[Repo] Could not parse metadata for job ${jobId}:`, e);
     // Continue with empty metadata rather than failing
+    // If metadata was a string but couldn't be parsed as JSON, store it as raw string
+    if (typeof row.metadata === 'string') {
+      metadataObj = { rawMetadata: row.metadata };
+    }
   }
   
   // Extract projectDirectory first from the dedicated column, then fallback to metadata
@@ -237,7 +246,7 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
     lastUpdate: lastUpdate,
     
     // Input content with validation
-    prompt: row.prompt || '',
+    prompt: row.prompt === null || row.prompt === undefined ? '' : row.prompt,
     // Output content - always use the normalized values
     response: responseText,
     

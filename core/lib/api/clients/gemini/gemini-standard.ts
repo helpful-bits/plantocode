@@ -53,7 +53,7 @@ export async function sendRequest(
     maxOutputTokens?: number;
     topP?: number;
     topK?: number;
-    apiType?: 'gemini' | 'claude' | 'whisper' | 'groq';
+    apiType?: 'gemini' | 'claude' | 'whisper' | 'openrouter';
     requestType?: RequestType;
     requestId?: string;
     description?: string;

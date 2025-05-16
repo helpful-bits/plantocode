@@ -5,6 +5,7 @@ use std::env;
 use std::net::TcpListener;
 use reqwest::Client;
 
+mod clients;
 mod db;
 mod handlers;
 mod services;
@@ -43,6 +44,13 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
+    
+    // Initialize global key config
+    if let Err(e) = security::key_management::init_global_key_config() {
+        log::error!("Failed to initialize global key config: {}", e);
+        std::process::exit(1);
+    }
+    log::info!("Global key config initialized successfully");
     
     // Initialize JWT keys with app settings
     if let Err(e) = jwt::init_jwt_keys(&app_settings) {
@@ -94,12 +102,12 @@ async fn main() -> std::io::Result<()> {
         let api_usage_repository = ApiUsageRepository::new(db_pool.clone());
         
         // Initialize services
-        let billing_service = std::sync::Arc::new(BillingService::new(db_pool.clone()));
+        let billing_service = std::sync::Arc::new(BillingService::new(db_pool.clone(), app_settings.clone()));
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let proxy_service = match ProxyService::new(
             billing_service.clone(),
             api_usage_repository.clone(),
-            &app_settings.api_keys
+            &app_settings
         ) {
             Ok(service) => {
                 log::info!("Proxy service initialized successfully");
@@ -166,13 +174,3 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-impl Clone for FirebaseOAuthService {
-    fn clone(&self) -> Self {
-        Self {
-            client: Client::new(),
-            api_key: self.api_key.clone(),
-            project_id: self.project_id.clone(),
-            db_pool: self.db_pool.clone(),
-        }
-    }
-}

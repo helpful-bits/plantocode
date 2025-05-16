@@ -21,7 +21,6 @@ export {
 // Re-export the clients directly for better discoverability and auto-completion
 export { default as geminiClient } from './clients/gemini';
 export { default as claudeClient } from './claude-client';
-export { default as groqClient } from './clients/groq';
 
 // Export the API interfaces
 export type { ApiClient, ApiClientOptions } from './api-client-interface';

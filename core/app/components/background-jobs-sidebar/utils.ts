@@ -1,4 +1,4 @@
-import { ApiType, TaskType, JOB_STATUSES } from '@core/types/session-types';
+import { ApiType, TaskType, JOB_STATUSES, BackgroundJob } from '@core/types/session-types';
 import { formatTimeAgo as formatTimeAgoUtil } from '@core/lib/utils/date-utils';
 
 /**
@@ -7,10 +7,12 @@ import { formatTimeAgo as formatTimeAgoUtil } from '@core/lib/utils/date-utils';
 export function getStatusIconName(status: string): string {
   switch (status) {
     case 'completed':
+    case 'completed_by_tag':
       return 'check-circle';
     case 'failed':
       return 'alert-circle';
     case 'running':
+    case 'processing_stream':
       return 'loader';
     case 'canceled':
       return 'x-circle';
@@ -18,6 +20,8 @@ export function getStatusIconName(status: string): string {
     case 'created':
     case 'queued':
     case 'idle':
+    case 'preparing_input':
+    case 'generating_stream':
       return 'clock';
     default:
       return 'clock';
@@ -30,10 +34,12 @@ export function getStatusIconName(status: string): string {
 export function getStatusIconClass(status: string): string {
   switch (status) {
     case 'completed':
+    case 'completed_by_tag':
       return 'h-3 w-3 text-green-500';
     case 'failed':
       return 'h-3 w-3 text-red-500';
     case 'running':
+    case 'processing_stream':
       return 'h-3 w-3 text-blue-500 animate-spin';
     case 'canceled':
       return 'h-3 w-3 text-amber-500';
@@ -41,6 +47,8 @@ export function getStatusIconClass(status: string): string {
     case 'created':
     case 'queued':
     case 'idle':
+    case 'preparing_input':
+    case 'generating_stream':
       return 'h-3 w-3 text-blue-400';
     default:
       return 'h-3 w-3 text-muted-foreground';
@@ -160,4 +168,52 @@ export function truncateText(text: string, maxLength = 50): string {
   if (!text) return "";
   if (text.length <= maxLength) return text;
   return `${text.substring(0, maxLength)}...`;
+}
+
+/**
+ * Calculate streaming progress value based on available metadata
+ * Used for progress bars to show consistent progress across components
+ */
+export function getStreamingProgressValue(
+  metadata: BackgroundJob['metadata'] | undefined,
+  startTime?: number | null,
+  jobMaxOutputTokens?: number | null
+): number | undefined {
+  // No progress if metadata is undefined
+  if (!metadata) return undefined;
+  
+  // Priority 1: Use explicit streamProgress if available
+  if (typeof metadata.streamProgress === 'number' && !isNaN(metadata.streamProgress)) {
+    return Math.min(metadata.streamProgress, 99);
+  }
+  
+  // Priority 2: Calculate based on responseLength and estimatedTotalLength
+  if (
+    typeof metadata.responseLength === 'number' && 
+    typeof metadata.estimatedTotalLength === 'number' && 
+    metadata.estimatedTotalLength > 0
+  ) {
+    return Math.min((metadata.responseLength / metadata.estimatedTotalLength) * 100, 99);
+  }
+  
+  // Priority 3: Calculate based on responseLength and jobMaxOutputTokens with chars-per-token heuristic
+  if (
+    typeof metadata.responseLength === 'number' && 
+    typeof jobMaxOutputTokens === 'number' && 
+    jobMaxOutputTokens > 0
+  ) {
+    const estimatedTotalLengthFromTokens = jobMaxOutputTokens * 3.5; // 3.5 chars per token heuristic
+    if (estimatedTotalLengthFromTokens > 0) {
+      return Math.min((metadata.responseLength / estimatedTotalLengthFromTokens) * 100, 99);
+    }
+  }
+  
+  // Priority 4: Time-based fallback for initial animation
+  if (typeof startTime === 'number' && startTime > 0) {
+    // Show small progress (max 5%) based on elapsed time to indicate activity
+    return Math.min((Date.now() - startTime) / 1000 * 0.5, 5);
+  }
+  
+  // No valid progress data available
+  return undefined;
 }

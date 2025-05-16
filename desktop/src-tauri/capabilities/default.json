@@ -7,13 +7,9 @@
     "core:default",
     "http:default",
     "http:allow-fetch",
-    "sql:default",
-    "sql:allow-execute",
-    "sql:allow-load",
-    "sql:allow-select",
-    "sql:allow-close",
     "stronghold:default",
     "deep-link:default",
-    "deep-link:allow-register"
+    "deep-link:allow-register",
+    "dialog:default"
   ]
 }

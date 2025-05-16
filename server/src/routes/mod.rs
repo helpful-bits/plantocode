@@ -13,12 +13,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Proxy routes (/api/proxy/*)
     cfg.service(
         web::scope("/proxy")
-            .service(crate::handlers::proxy_handlers::gemini_proxy)
-            .service(crate::handlers::proxy_handlers::claude_proxy)
-            .service(crate::handlers::proxy_handlers::groq_proxy)
-            .service(crate::handlers::proxy_handlers::gemini_stream_proxy)
-            .service(crate::handlers::proxy_handlers::claude_stream_proxy)
-            .service(crate::handlers::proxy_handlers::groq_stream_proxy)
+            .service(crate::handlers::proxy_handlers::openrouter_chat_completions_proxy)
+            .service(crate::handlers::proxy_handlers::openrouter_audio_transcriptions_proxy)
     );
     
     // Billing routes (/api/billing/*)
@@ -30,13 +26,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(crate::handlers::billing_handlers::get_usage_summary)
     );
     
-    // Background job routes (/api/background-jobs/*)
+    
+    // Configuration routes (/api/config/*)
     cfg.service(
-        web::scope("/background-jobs")
-            .service(crate::handlers::background_job_handlers::update_job)
-            .service(crate::handlers::background_job_handlers::list_jobs)
-            .service(crate::handlers::background_job_handlers::get_job)
+        web::resource("/config/runtime").route(web::get().to(crate::handlers::config_handlers::get_runtime_ai_config))
     );
+    
+    // Background jobs are handled entirely on the desktop client side
 }
 
 // Configure public auth routes (no authentication required - /auth/*)

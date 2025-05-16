@@ -1,6 +1,6 @@
 use actix_web::{web, HttpResponse};
 use crate::error::AppError;
-use crate::middleware::UserId;
+use crate::middleware::secure_auth::UserId;
 use crate::db::repositories::UserRepository;
 use sqlx::PgPool;
 

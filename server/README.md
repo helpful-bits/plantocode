@@ -41,9 +41,22 @@ createdb vibe_manager
 
 5. Run database migrations:
 
+You can use the SQLx CLI or the consolidated migration script:
+
+**Using SQLx CLI:**
 ```bash
 sqlx migrate run
 ```
+
+**Using consolidated migration script:**
+```bash
+npm install
+npm run apply-migration
+# Or directly:
+npx tsx scripts/apply-consolidated-migration.ts
+```
+
+The consolidated migration script applies all database schema changes at once, which is useful for initial setup or resetting the database to a known state.
 
 6. Build and run the server:
 

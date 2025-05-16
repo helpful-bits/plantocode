@@ -19,12 +19,12 @@ import {
 
 // Firebase configuration loaded from environment variables
 const firebaseConfig = {
-  apiKey: import.meta.env.FIREBASE_API_KEY,
-  authDomain: import.meta.env.FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.FIREBASE_APP_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Firebase app singleton
@@ -132,14 +132,23 @@ const signIn = async (providerName: 'google' | 'github' | 'microsoft' | 'apple' 
 /**
  * Set up deep link handler for Tauri
  */
-const setupDeepLinkHandler = async () => {
+const setupDeepLinkHandler = async (callback: (url: string) => void) => {
   try {
     const { listen } = await import('@tauri-apps/api/event');
-    const unlisten = await listen('deep-link', (data: any) => {
-      console.log('Received deep link event:', data);
-      // Process the deep link URL
-      // This will be relevant for handling OAuth redirects
+    const unlisten = await listen('deep-link', (event: any) => {
+      console.log('Received deep link event:', event);
+      
+      // Check if event contains a URL
+      if (event && event.payload) {
+        const url = event.payload.url || event.payload;
+        console.log('Deep link URL:', url);
+        
+        // Process the deep link URL through the provided callback
+        callback(url);
+      }
     });
+    
+    console.log('Deep link handler setup complete');
     return unlisten;
   } catch (error) {
     console.error('Failed to set up deep link handler:', error);

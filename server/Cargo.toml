@@ -1,7 +1,7 @@
 [package]
 name = "vibe-manager-server"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies.bigdecimal]
 version = "0.4"
@@ -15,7 +15,7 @@ actix-rt = "2.10.0"
 actix-multipart = "0.7.2"
 
 # Database
-sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono", "macros", "bigdecimal"] }
+sqlx = { version = "0.8.5", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono", "macros", "bigdecimal"] }
 tokio = { version = "1.44.1", features = ["full"] }
 
 # Authentication
@@ -45,7 +45,7 @@ chrono = { version = "0.4.40", features = ["serde"] }
 async-trait = "0.1.77"
 
 # HTTP client
-reqwest = { version = "0.12.15", features = ["json", "multipart"] }
+reqwest = { version = "0.12.15", features = ["json", "multipart", "stream"] }
 
 # Error handling
 thiserror = "2.0.12"
@@ -59,15 +59,17 @@ lazy_static = "1.5.0"
 regex = "1.10.5"
 rand = "0.9.1"
 url = "2.5.2"
+tokio-util = { version = "0.7", features = ["codec"] }
+bytes = "0.5"
 
 # Stripe
-stripe-rust = { version = "0.12.3", optional = true }
+async-stripe = { version = "1.0.0-alpha.2", optional = true }
 hmac = { version = "0.12.1", optional = true }
 hex = { version = "0.4.3", optional = true }
 
 [features]
 prepare-db = []
-stripe = ["stripe-rust", "hmac", "hex"]
+stripe = ["async-stripe", "hmac", "hex"]
 
 [dev-dependencies]
 mockito = "1.0.2"

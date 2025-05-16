@@ -1,0 +1,30 @@
+use tauri::{command, State, AppHandle, Manager};
+use std::sync::Arc;
+use crate::AppState;
+use crate::error::{AppError, AppResult};
+use crate::models::DatabaseInfo;
+use crate::db_utils;
+use log::info;
+
+#[command]
+pub fn get_app_info() -> String {
+    "Vibe Manager Desktop".to_string()
+}
+
+#[command]
+pub fn get_config_load_error(app_state: State<'_, AppState>) -> AppResult<Option<String>> {
+    let error = app_state.config_load_error.lock()
+        .map_err(|e| AppError::InternalError(format!("Failed to acquire config_load_error lock: {}", e)))?;
+    Ok(error.clone())
+}
+
+#[command]
+pub async fn get_database_info_command(app_handle: AppHandle) -> AppResult<DatabaseInfo> {
+    info!("Fetching database information");
+    let db: sqlx::SqlitePool = app_handle.state::<sqlx::SqlitePool>().inner().clone();
+    let db_arc = Arc::new(db);
+
+    db_utils::get_database_info(db_arc)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get database info: {}", e)))
+}

@@ -19,6 +19,7 @@ pub struct Subscription {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug)]
 pub struct SubscriptionRepository {
     db_pool: PgPool,
 }

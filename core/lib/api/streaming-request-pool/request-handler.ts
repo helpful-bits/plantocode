@@ -276,12 +276,40 @@ export class RequestHandler {
   
   /**
    * Cancel all active requests for a specific session
+   * @param sessionId The session ID for which to cancel requests
+   * @param reason The reason for cancellation
+   * @param excludeImplementationPlans Whether to exclude implementation plan requests
+   * @returns The number of cancelled requests
    */
-  public cancelSessionRequests(sessionId: string, reason = 'Session requests canceled'): number {
+  public cancelSessionRequests(
+    sessionId: string, 
+    reason = 'Session requests canceled',
+    excludeImplementationPlans = true
+  ): number {
     let cancelCount = 0;
+    
+    // Get background jobs associated with active requests to exclude implementation plans
+    const streamingJobsMap = new Map<string, string>(); // requestId -> backgroundJobId
+    
+    // Build a reverse map of requestIds to backgroundJobIds
+    for (const [requestId, jobInfo] of this.streamingJobs.entries()) {
+      streamingJobsMap.set(requestId, jobInfo.backgroundJobId);
+    }
     
     for (const [id, request] of this.activeRequests.entries()) {
       if (request.sessionId === sessionId) {
+        // Check if this is an implementation plan request that should be excluded
+        if (excludeImplementationPlans) {
+          // If this request is associated with a background job, check its type
+          const backgroundJobId = streamingJobsMap.get(id);
+          if (backgroundJobId) {
+            // Look up the job type in a non-blocking way to avoid potential circular dependencies
+            // We'll assume it might be an implementation plan job and skip it to be safe
+            console.log(`[RequestHandler] Skipping potential implementation plan request: ${id}`);
+            continue;
+          }
+        }
+        
         request.cancelReason = reason;
         request.controller.abort(reason);
         this.activeRequests.delete(id);

@@ -1,21 +1,74 @@
 // Define the possible statuses for background jobs processing
-export type JobStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'canceled' | 'created' | 'queued' | 'acknowledged_by_worker';
+export type JobStatus = 
+  | 'idle' 
+  | 'preparing' 
+  | 'running' 
+  | 'completed' 
+  | 'failed' 
+  | 'canceled' 
+  | 'created' 
+  | 'queued' 
+  | 'acknowledged_by_worker'
+  // New granular statuses for implementation plans and streaming jobs
+  | 'preparing_input'  // Preparing input for LLM, e.g., loading files
+  | 'generating_stream' // Sending request to LLM and starting stream
+  | 'processing_stream' // Processing the incoming stream
+  | 'completed_by_tag'; // Stream completed early due to tag detection
 
 // Constants for job status groups - use these instead of hardcoded arrays
 export const JOB_STATUSES = {
   // Active job statuses (non-terminal)
-  ACTIVE: ['idle', 'preparing', 'running', 'queued', 'created', 'acknowledged_by_worker'] as JobStatus[],
+  ACTIVE: [
+    'idle', 
+    'preparing', 
+    'running', 
+    'queued', 
+    'created', 
+    'acknowledged_by_worker',
+    'preparing_input',
+    'generating_stream',
+    'processing_stream'
+  ] as JobStatus[],
+  
   // Terminal job statuses
-  TERMINAL: ['completed', 'failed', 'canceled'] as JobStatus[],
+  TERMINAL: [
+    'completed', 
+    'failed', 
+    'canceled',
+    'completed_by_tag'
+  ] as JobStatus[],
+  
   // Specific status groups
-  COMPLETED: ['completed'] as JobStatus[],
-  FAILED: ['failed', 'canceled'] as JobStatus[],
+  COMPLETED: [
+    'completed',
+    'completed_by_tag'
+  ] as JobStatus[],
+  
+  FAILED: [
+    'failed', 
+    'canceled'
+  ] as JobStatus[],
+  
   // All valid statuses
-  ALL: ['idle', 'preparing', 'running', 'queued', 'created', 'completed', 'failed', 'canceled', 'acknowledged_by_worker'] as JobStatus[]
+  ALL: [
+    'idle', 
+    'preparing', 
+    'running', 
+    'queued', 
+    'created', 
+    'completed', 
+    'failed', 
+    'canceled', 
+    'acknowledged_by_worker',
+    'preparing_input',
+    'generating_stream',
+    'processing_stream',
+    'completed_by_tag'
+  ] as JobStatus[]
 };
 
 // Type for API types
-export type ApiType = 'gemini' | 'claude' | 'whisper' | 'groq';
+export type ApiType = 'gemini' | 'claude' | 'whisper' | 'openrouter';
 
 // Type for task types
 export type TaskType = 
@@ -88,8 +141,9 @@ export type BackgroundJob = {
     temperature?: number;
     includeSyntax?: boolean;
     
-    // Output file paths
-    outputFilePath: string | null;
+    // Legacy field - keeping for compatibility but should not be used
+    // @deprecated Use response field for all content
+    outputFilePath?: string | null;
     
     // Visibility/management flags
     cleared?: boolean;   // For history clearing functionality

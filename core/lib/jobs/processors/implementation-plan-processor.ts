@@ -1,5 +1,6 @@
 import { JobProcessor, JobProcessResult } from '../job-processor-interface';
 import { ImplementationPlanPayload } from '../job-types';
+import { JOB_STATUSES } from '@core/types/session-types';
 import {
   generateImplementationPlanSystemPrompt,
   generateImplementationPlanUserPrompt
@@ -122,6 +123,47 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
 
         // Update job response and streaming metadata in the database
         await backgroundJobRepo.appendToJobResponse(backgroundJobId, textChunk, chunkTokens, charCount);
+        
+        // Check if we've received the closing tag for implementation_plan
+        if (aggregatedText.includes("</implementation_plan>")) {
+          console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Detected closing tag, ending stream early`);
+          
+          // Extract and validate the XML content before saving
+          try {
+            // Use the validation function to extract the proper XML content
+            const validatedXmlContent = this._validatePlanContent(aggregatedText, backgroundJobId);
+            
+            // First update the job response with the validated XML content
+            await backgroundJobRepo.updateBackgroundJobResponse(backgroundJobId, validatedXmlContent);
+            console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Saved validated XML content (${validatedXmlContent.length} chars) to job response`);
+            
+            // Then update job status to indicate completion by tag detection
+            await backgroundJobRepo.updateBackgroundJobStatus({
+              jobId: backgroundJobId,
+              status: 'completed_by_tag',
+              metadata: {
+                isStreaming: false,
+                tokensReceived: tokenCount,
+                charsReceived: charCount,
+                streamProgress: 100,
+                planSize: validatedXmlContent.length,
+                hasSteps: (validatedXmlContent.match(/<step\s/ig) || []).length > 0,
+                stepCount: (validatedXmlContent.match(/<step\s/ig) || []).length
+              },
+              statusMessage: 'Implementation plan complete (closing tag detected)'
+            });
+          } catch (validationError) {
+            console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Error validating early-completed content:`, validationError);
+            // Continue streaming to get more content since validation failed
+            console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Continuing to stream after validation error`);
+            // Don't abort or break - let streaming continue
+            continue;
+          }
+          
+          // Cancel the stream since we have the complete implementation plan
+          abortController.abort();
+          break;
+        }
 
         // Calculate estimated total length and progress percentage
         const estimatedTotalLength = (apiPayload.generationConfig?.maxOutputTokens || 60000) * 3.5;
@@ -130,7 +172,7 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
         // Update streaming progress indicators
         await backgroundJobRepo.updateBackgroundJobStatus({
           jobId: backgroundJobId,
-          status: 'running',
+          status: 'processing_stream',
           metadata: {
             isStreaming: true,
             streamProgress: calculatedProgress,
@@ -138,7 +180,7 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
             lastStreamUpdateTime: Date.now(),
             estimatedTotalLength
           },
-          statusMessage: `Streaming implementation plan... ${calculatedProgress}% complete`
+          statusMessage: `Streaming plan... ${calculatedProgress}% complete`
         });
 
         // Increment chunk counter
@@ -300,6 +342,8 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
     tokenCount: number,
     temperature: number | undefined
   ): Promise<void> {
+    // Get the background job repository
+    const backgroundJobRepo = await getBackgroundJobRepository();
     // Extract a brief summary from the parsed XML content
     let planSummary = '';
     // Match the content between opening and closing implementation plan tags
@@ -336,22 +380,36 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
 
     console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Updating job status to completed`);
 
-    // Get the background job repository
-    const backgroundJobRepo = await getBackgroundJobRepository();
+    // Check if job has already been completed by tag detection
+    const currentJob = await backgroundJobRepo.getBackgroundJob(backgroundJobId);
+    
+    // Always save the XML content to the job's response field, even if already in a terminal state
+    if (currentJob) {
+      if (JOB_STATUSES.TERMINAL.includes(currentJob.status)) {
+        // For jobs already in a terminal state (like completed_by_tag), update just the response content
+        await backgroundJobRepo.updateBackgroundJobResponse(backgroundJobId, xmlContent);
+        console.log(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Updated response content for job in terminal state: ${currentJob.status}`);
+      } else {
+        // For non-terminal states, update to completed with all standard fields
+        await updateJobToCompleted(backgroundJobId, xmlContent, {
+          tokensReceived: tokenCount,
+          modelUsed: model,
+          maxOutputTokens: maxOutputTokens,
+          temperatureUsed: temperature
+        });
+      }
+    } else {
+      console.error(`[ImplementationPlanProcessor] Job ${backgroundJobId}: Job not found when finalizing`);
+    }
 
-    // Update job to completed status with standard fields
-    await updateJobToCompleted(backgroundJobId, xmlContent, {
-      tokensReceived: tokenCount,
-      outputFilePath: undefined,
-      modelUsed: model,
-      maxOutputTokens: maxOutputTokens,
-      temperatureUsed: temperature // Use the temperature passed in as parameter
-    });
-
-    // Update job with additional metadata in a separate call
+    // Update job with additional metadata regardless of current status
+    // This ensures we always have complete metadata
     await backgroundJobRepo.updateBackgroundJobStatus({
       jobId: backgroundJobId,
-      status: 'completed', // Required status property
+      // Don't change status if already in terminal state
+      status: currentJob && JOB_STATUSES.TERMINAL.includes(currentJob.status) 
+        ? currentJob.status 
+        : 'completed',
       metadata: {
         planSize: aggregatedText.length,
         hasSteps: stepCount > 0,
@@ -467,40 +525,40 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
       // Calculate initial estimated total length
       const initialEstimatedTotalLength = (payload.maxOutputTokens || 60000) * 3.5;
       
-      await updateJobToRunning(backgroundJobId, 'gemini', 'Preparing implementation plan generation');
-
-      // Update with streaming metadata separately
+      // Get the background job repository
       const backgroundJobRepo = await getBackgroundJobRepository();
+      
       await backgroundJobRepo.updateBackgroundJobStatus({
         jobId: backgroundJobId,
-        status: 'running',
+        status: 'preparing_input',
+        statusMessage: 'Preparing implementation plan generation'
+      });
+
+      // Update with streaming metadata
+      await backgroundJobRepo.updateBackgroundJobStatus({
+        jobId: backgroundJobId,
+        status: 'preparing_input',
         metadata: { 
           isStreaming: true, 
           estimatedTotalLength: initialEstimatedTotalLength
         },
-        statusMessage: 'Initializing implementation plan generation...'
+        statusMessage: 'Preparing prompts...'
       });
 
       // Step 1: Prepare the prompts
-      await updateJobToRunning(backgroundJobId, 'gemini', 'Generating prompts and context from project structure');
-      
-      // Update with more detailed status message
       await backgroundJobRepo.updateBackgroundJobStatus({
         jobId: backgroundJobId,
-        status: 'running',
-        statusMessage: 'Preparing prompts and project context...'
+        status: 'preparing_input',
+        statusMessage: 'Analyzing project context...'
       });
       
       const { systemPrompt, userPrompt } = await this._preparePrompts(payload);
 
       // Step 2: Update job status to reflect API request is about to start
-      await updateJobToRunning(backgroundJobId, 'gemini', 'Sending request to Gemini API and streaming plan');
-      
-      // Update with more detailed status message
       await backgroundJobRepo.updateBackgroundJobStatus({
         jobId: backgroundJobId,
-        status: 'running',
-        statusMessage: 'Connecting to AI model and streaming plan...'
+        status: 'generating_stream',
+        statusMessage: 'Connecting to AI model...'
       });
 
       // Get API key from environment
@@ -533,11 +591,11 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
       }
 
       // Step 3: Stream plan to the database
-      // Update with more detailed status message
+      // Update status to indicate stream processing has started
       await backgroundJobRepo.updateBackgroundJobStatus({
         jobId: backgroundJobId,
-        status: 'running',
-        statusMessage: 'Streaming implementation plan from AI model...'
+        status: 'processing_stream',
+        statusMessage: 'Streaming plan...'
       });
       
       const streamResult = await this._streamPlanToDatabase(
@@ -550,13 +608,10 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
       aggregatedText = streamResult.aggregatedText;
 
       // Step 4: Validate the plan content
-      await updateJobToRunning(backgroundJobId, 'gemini', 'Validating implementation plan');
-      
-      // Update with more detailed status message
       await backgroundJobRepo.updateBackgroundJobStatus({
         jobId: backgroundJobId,
-        status: 'running',
-        statusMessage: 'Validating generated plan structure...'
+        status: 'processing_stream',
+        statusMessage: 'Validating plan...'
       });
       
       const xmlContent = this._validatePlanContent(aggregatedText, backgroundJobId);
@@ -564,8 +619,8 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
       // Before finalizing, update with one more status message
       await backgroundJobRepo.updateBackgroundJobStatus({
         jobId: backgroundJobId,
-        status: 'running',
-        statusMessage: 'Finalizing and saving plan...'
+        status: 'processing_stream',
+        statusMessage: 'Finalizing plan...'
       });
 
       // Step 5: Finalize the job as successful
@@ -603,4 +658,4 @@ export class ImplementationPlanProcessor implements JobProcessor<ImplementationP
 }
 
 // Export the job type this processor handles
-export const PROCESSOR_TYPE = 'IMPLEMENTATION_PLAN_GENERATION';
+export const PROCESSOR_TYPE = 'IMPLEMENTATION_PLAN';

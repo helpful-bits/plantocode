@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "desktop:check": "cd src-tauri && cargo check --message-format=json | jq -r 'select(.reason == \"compiler-message\" and .message.level == \"error\") | .message.rendered // .message.message' > gen/cargo-check.log",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

@@ -68,9 +68,16 @@ class StreamingRequestPool {
   
   /**
    * Cancel all queued session requests
+   * @param sessionId The session ID to cancel requests for
+   * @param excludeImplementationPlans Whether to exclude implementation plan requests
+   * @returns The number of cancelled requests
    */
-  cancelQueuedSessionRequests(sessionId: string): number {
-    return this.requestHandler.cancelSessionRequests(sessionId, `Session ${sessionId} requests cancelled`);
+  cancelQueuedSessionRequests(sessionId: string, excludeImplementationPlans: boolean = true): number {
+    return this.requestHandler.cancelSessionRequests(
+      sessionId, 
+      `Session ${sessionId} requests cancelled`,
+      excludeImplementationPlans
+    );
   }
   
   /**

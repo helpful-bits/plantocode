@@ -203,7 +203,7 @@ export async function enqueueJob<T extends BaseJobPayload>(
  * but no endTime as it's still in progress.
  * 
  * @param jobId Unique identifier for the job
- * @param apiType The API being used (gemini, claude, groq, etc.)
+ * @param apiType The API being used (gemini, claude, openrouter, etc.)
  * @param statusMessage Optional message describing the current processing stage
  */
 export async function updateJobToRunning(
@@ -268,8 +268,7 @@ export async function updateJobToCompleted(
     totalTokens?: number;
     modelUsed?: string;
     maxOutputTokens?: number;
-    outputFilePath?: string;
-    temperatureUsed?: number; // Add new parameter for final temperature
+    temperatureUsed?: number; // Parameter for final temperature
   } = {}
 ): Promise<void> {
   // Validate jobId
@@ -278,18 +277,10 @@ export async function updateJobToCompleted(
   }
 
   // Ensure we have a proper response text for the job
-  // For jobs that primarily write to files, this needs special handling
   if (responseText === null || responseText === undefined) {
-    // Check if this is a job that outputs to a file
-    if (tokens.outputFilePath) {
-      console.log(`[JobHelper] Completing job ${jobId} with output file path: ${tokens.outputFilePath}`);
-      // Set a helpful message stating that content is stored in a file
-      responseText = `Content stored in file: ${tokens.outputFilePath}`;
-    } else {
-      console.warn(`[JobHelper] Completing job ${jobId} with null response and no output file path`);
-      // Provide a default message to indicate completion but no textual output
-      responseText = "Job completed with no output content.";
-    }
+    console.warn(`[JobHelper] Completing job ${jobId} with null response`);
+    // Provide a default message to indicate completion but no textual output
+    responseText = "Job completed with no output content.";
   }
 
   const now = Date.now();
@@ -335,7 +326,6 @@ export async function updateJobToCompleted(
         duration: now - startTime, // Calculate duration in ms
         modelUsed: tokens.modelUsed || existingJob.modelUsed || undefined,
         maxOutputTokens: tokens.maxOutputTokens || existingJob.maxOutputTokens || undefined,
-        outputFilePath: tokens.outputFilePath || existingJob.outputFilePath || undefined,
         temperature: temperature, // Include the temperature in metadata
       }
     });
@@ -650,7 +640,12 @@ export async function cancelAllSessionJobs(
     const jobs = await backgroundJobRepository.findBackgroundJobsBySessionId(sessionId);
 
     // Filter for active jobs that can be cancelled using the standard constants
-    const activeJobs = jobs.filter(job => job.status && JOB_STATUSES.ACTIVE.includes(job.status));
+    // Explicitly exclude implementation plan jobs
+    const activeJobs = jobs.filter(job => 
+      job.status && 
+      JOB_STATUSES.ACTIVE.includes(job.status) && 
+      job.taskType !== 'implementation_plan'
+    );
 
     if (activeJobs.length === 0) {
       return 0;

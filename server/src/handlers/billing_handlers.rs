@@ -1,7 +1,8 @@
-use actix_web::{web, HttpResponse, get, post, HttpRequest};
+use actix_web::{web, HttpResponse, get, post, HttpRequest, HttpMessage};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
+use chrono::Duration;
 use log::{debug, error, info};
 use uuid::Uuid;
 
@@ -27,11 +28,11 @@ pub async fn get_subscription(
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().ok_or(AppError::Auth("Unauthorized".to_string()))?;
+    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
     debug!("Getting subscription for user: {}", user_id);
     
     // Get subscription details
-    let subscription = billing_service.get_subscription_details(user_id).await?;
+    let subscription = billing_service.get_subscription_details(&user_id).await?;
     
     // Return the subscription details
     Ok(HttpResponse::Ok().json(subscription))
@@ -45,12 +46,12 @@ pub async fn create_checkout_session(
     checkout_request: web::Json<CheckoutRequest>,
 ) -> Result<HttpResponse, AppError> {
     // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().ok_or(AppError::Auth("Unauthorized".to_string()))?;
+    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
     debug!("Creating checkout session for user: {} with plan: {}", user_id, checkout_request.plan);
     
     // Create the checkout session
     #[cfg(feature = "stripe")]
-    let url = billing_service.create_checkout_session(user_id, &checkout_request.plan).await?;
+    let url = billing_service.create_checkout_session(&user_id, &checkout_request.plan).await?;
     
     #[cfg(not(feature = "stripe"))]
     let url = "https://example.com/checkout-placeholder".to_string();
@@ -66,12 +67,12 @@ pub async fn create_billing_portal(
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().ok_or(AppError::Auth("Unauthorized".to_string()))?;
+    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
     debug!("Creating billing portal for user: {}", user_id);
     
     // Create the billing portal session
     #[cfg(feature = "stripe")]
-    let url = billing_service.create_billing_portal_session(user_id).await?;
+    let url = billing_service.create_billing_portal_session(&user_id).await?;
     
     #[cfg(not(feature = "stripe"))]
     let url = "https://example.com/portal-placeholder".to_string();
@@ -87,11 +88,11 @@ pub async fn get_usage_summary(
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
     // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().ok_or(AppError::Auth("Unauthorized".to_string()))?;
+    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
     debug!("Getting API usage for user: {}", user_id);
     
     // Get subscription details which includes usage
-    let details = billing_service.get_subscription_details(user_id).await?;
+    let details = billing_service.get_subscription_details(&user_id).await?;
     
     // Extract just the usage part
     let usage = details.get("usage").ok_or(AppError::Internal("Failed to get usage from subscription details".to_string()))?;
@@ -122,11 +123,11 @@ pub async fn stripe_webhook(
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
         
-        // Get webhook secret from settings
-        let webhook_secret = match env::var("STRIPE_WEBHOOK_SECRET") {
-            Ok(secret) => secret,
-            Err(_) => return Err(AppError::Configuration("Stripe webhook secret not configured".to_string())),
-        };
+        // Get webhook secret from app_settings
+        let app_settings = crate::config::settings::AppSettings::from_env()
+            .map_err(|e| AppError::Configuration(format!("Failed to load app settings: {}", e)))?;
+            
+        let webhook_secret = app_settings.stripe.webhook_secret.clone();
         
         // Parse the signature header
         let mut timestamp: Option<&str> = None;

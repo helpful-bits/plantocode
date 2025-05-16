@@ -26,6 +26,7 @@ interface AuthContextType {
   signIn: (providerName?: 'google' | 'github' | 'microsoft' | 'apple') => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
+  handleRedirectResult: (url?: string) => Promise<void>;
 }
 
 // Create context
@@ -46,6 +47,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Initialize Stronghold vault
         await initStronghold();
+        
+        // Set up deep link handler for OAuth redirects
+        const unlistenDeepLink = await firebaseAuth.setupDeepLinkHandler((url) => {
+          console.log('Auth context received deep link:', url);
+          handleRedirectResult(url);
+        });
         
         // Try to retrieve token from secure storage
         const savedToken = await retrieveTokenFromStorage();
@@ -145,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Helper to validate token with server
   const validateToken = async (token: string): Promise<User> => {
     // Get server URL from environment
-    const serverUrl = import.meta.env.SERVER_URL || 'http://localhost:8080';
+    const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:8080';
     
     // Call server to validate token
     const response = await fetch(`${serverUrl}/api/auth/validate`, {
@@ -176,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const firebaseToken = await result.user.getIdToken();
           
           // Get server URL from environment
-          const serverUrl = import.meta.env.SERVER_URL || 'http://localhost:8080';
+          const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:8080';
           
           // Exchange Firebase token for server JWT
           const response = await fetch(`${serverUrl}/auth/firebase/token`, {
@@ -218,6 +225,101 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     handleRedirectResult();
   }, []);
 
+  // Handle redirect result explicitly (useful for deep links)
+  const handleRedirectResult = async (url?: string) => {
+    try {
+      setLoading(true);
+      
+      // If URL is provided, parse it for auth parameters
+      if (url) {
+        // Extract code and state from URL
+        const urlObj = new URL(url);
+        const code = urlObj.searchParams.get('code');
+        const state = urlObj.searchParams.get('state');
+        
+        if (code && state) {
+          // Process OAuth redirect
+          const result = await firebaseAuth.processRedirect(code, state);
+          
+          if (result && result.user) {
+            // Get Firebase ID token
+            const firebaseToken = await result.user.getIdToken();
+            
+            // Get server URL from environment
+            const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:8080';
+            
+            // Exchange Firebase token for server JWT
+            const response = await fetch(`${serverUrl}/auth/firebase/token`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ id_token: firebaseToken })
+            });
+            
+            if (!response.ok) {
+              throw new Error('Failed to exchange token');
+            }
+            
+            const { access_token } = await response.json();
+            
+            // Store token securely using Stronghold
+            await storeToken(access_token);
+            
+            // Update state
+            setToken(access_token);
+            
+            // Get user info from token
+            const userData = await validateToken(access_token);
+            setUser(userData);
+          }
+        }
+      } else {
+        // No URL provided, check for pending auth result
+        const result = await firebaseAuth.handleRedirect();
+        
+        if (result) {
+          // Process as regular redirect
+          // Get Firebase ID token
+          const firebaseToken = await result.user.getIdToken();
+          
+          // Get server URL from environment
+          const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:8080';
+          
+          // Exchange Firebase token for server JWT
+          const response = await fetch(`${serverUrl}/auth/firebase/token`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ id_token: firebaseToken })
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to exchange token');
+          }
+          
+          const { access_token } = await response.json();
+          
+          // Store token securely using Stronghold
+          await storeToken(access_token);
+          
+          // Update state
+          setToken(access_token);
+          
+          // Get user info from token
+          const userData = await validateToken(access_token);
+          setUser(userData);
+        }
+      }
+    } catch (err) {
+      console.error('Auth redirect handling error:', err);
+      setError('Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Context value
   const value = {
     user,
@@ -227,6 +329,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signOut,
     getToken,
+    handleRedirectResult, // Expose this method for deep link handling
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

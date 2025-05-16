@@ -1,499 +1,338 @@
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
-use reqwest::{Client, header};
-use serde_json::{json, Value};
-use std::env;
-use uuid::Uuid;
+use crate::clients::{OpenRouterClient, open_router_client::OpenRouterUsage};
+use actix_web::web::{self, Bytes};
+use futures_util::{Stream, StreamExt};
 use log::{debug, error, info, warn};
-use futures::{Stream, StreamExt};
+use serde_json::{json, Value};
 use std::pin::Pin;
-use actix_web::web::Bytes;
-use tokio::sync::Mutex;
 use std::sync::Arc;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 
+/// Helper struct to track usage information during streaming
+#[derive(Clone, Debug)]
+struct StreamUsageTracker {
+    prompt_tokens: i32,
+    completion_tokens: i32,
+    cost: Option<f64>,
+    has_final_update: bool, // Flag to indicate we've received the final usage information
+}
+
+impl StreamUsageTracker {
+    fn new() -> Self {
+        Self {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            cost: None,
+            has_final_update: false,
+        }
+    }
+    
+    /// Update the tracker from OpenRouter usage data 
+    /// This is typically sent in the final chunk of a stream
+    fn update_from_usage(&mut self, usage: &OpenRouterUsage) {
+        // OpenRouter sends complete usage information in the last chunk
+        // so we can simply replace our tracking with their provided data
+        self.prompt_tokens = usage.prompt_tokens;
+        self.completion_tokens = usage.completion_tokens;
+        self.cost = usage.cost;
+        self.has_final_update = true;
+        
+        debug!("Updated usage tracker with final data: prompt={}, completion={}, cost={:?}", 
+            self.prompt_tokens, self.completion_tokens, self.cost);
+    }
+    
+    /// Accumulate output tokens from content in a stream chunk
+    /// This is a fallback method in case OpenRouter doesn't send usage information
+    fn accumulate_output_from_chunk(&mut self, chunk_str: &str) {
+        // Only accumulate if we haven't received the final usage update
+        if self.has_final_update {
+            return;
+        }
+        
+        // Try to extract content from the stream chunk to estimate token count
+        // This is a rough estimate and should be replaced by OpenRouter's final usage data
+        if let Ok(chunk) = serde_json::from_str::<serde_json::Value>(chunk_str.trim()) {
+            if let Some(choices) = chunk.get("choices").and_then(|c| c.as_array()) {
+                for choice in choices {
+                    if let Some(delta) = choice.get("delta") {
+                        if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+                            // Very rough token estimation - approximately 4 chars per token
+                            // This is just a fallback and will be overwritten by the final usage data
+                            let estimated_tokens = (content.len() as f32 / 4.0).ceil() as i32;
+                            self.completion_tokens += estimated_tokens;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Proxy service that routes requests through OpenRouter
 pub struct ProxyService {
-    client: Client,
+    openrouter_client: OpenRouterClient,
     billing_service: Arc<BillingService>,
     api_usage_repository: Arc<ApiUsageRepository>,
-    gemini_api_key: String,
-    claude_api_key: String,
-    groq_api_key: String,
 }
 
 impl ProxyService {
     pub fn new(
         billing_service: Arc<BillingService>,
         api_usage_repository: Arc<ApiUsageRepository>,
-        api_keys_config: &crate::config::settings::ApiKeysConfig,
+        app_settings: &crate::config::settings::AppSettings,
     ) -> Result<Self, AppError> {
-        // Initialize HTTP client
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
-            .build()
-            .map_err(|e| AppError::Internal(format!("Failed to create HTTP client: {}", e)))?;
-        
-        // Get API keys from config
-        let gemini_api_key = api_keys_config.gemini_api_key.clone();
-        let claude_api_key = api_keys_config.anthropic_api_key.clone();
-        let groq_api_key = api_keys_config.groq_api_key.clone();
+        // Initialize OpenRouter client with app settings
+        let openrouter_client = OpenRouterClient::new(app_settings);
         
         Ok(Self {
-            client,
+            openrouter_client,
             billing_service,
             api_usage_repository,
-            gemini_api_key,
-            claude_api_key,
-            groq_api_key,
         })
     }
     
-    // Forward a request to the appropriate service
-    pub async fn forward_request(
+    /// Forward a request to OpenRouter for chat completions
+    pub async fn forward_chat_completions_request(
         &self,
         user_id: &Uuid,
-        service: &str,
         payload: Value,
     ) -> Result<Value, AppError> {
-        // Check if user has access to this service
-        self.billing_service.check_service_access(user_id, service).await?;
-        
-        // Get the appropriate API key and endpoint
-        let (api_key, endpoint) = self.get_service_config(service)?;
-        
-        // Prepare request headers
-        let mut headers = header::HeaderMap::new();
-        
-        match service {
-            "gemini" => {
-                // Gemini uses query parameter for API key
-                let endpoint = format!("{}?key={}", endpoint, api_key);
-                
-                // Make request to Gemini
-                let response = self.client.post(&endpoint)
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::External(format!("Gemini API request failed: {}", e)))?;
-                
-                // Check response status
-                if !response.status().is_success() {
-                    let error_text = response.text().await
-                        .unwrap_or_else(|_| "Failed to read error response".to_string());
-                    
-                    return Err(AppError::External(format!("Gemini API error: {}", error_text)));
-                }
-                
-                // Parse response
-                let response_json = response.json::<Value>().await
-                    .map_err(|e| AppError::External(format!("Failed to parse Gemini response: {}", e)))?;
-                
-                // Record usage
-                self.record_usage(user_id, service, &payload, &response_json).await?;
-                
-                Ok(response_json)
-            },
-            "claude" => {
-                // Claude uses Authorization header
-                headers.insert(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", api_key).parse().unwrap(),
-                );
-                
-                // Make request to Claude
-                let response = self.client.post(endpoint)
-                    .headers(headers)
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::External(format!("Claude API request failed: {}", e)))?;
-                
-                // Check response status
-                if !response.status().is_success() {
-                    let error_text = response.text().await
-                        .unwrap_or_else(|_| "Failed to read error response".to_string());
-                    
-                    return Err(AppError::External(format!("Claude API error: {}", error_text)));
-                }
-                
-                // Parse response
-                let response_json = response.json::<Value>().await
-                    .map_err(|e| AppError::External(format!("Failed to parse Claude response: {}", e)))?;
-                
-                // Record usage
-                self.record_usage(user_id, service, &payload, &response_json).await?;
-                
-                Ok(response_json)
-            },
-            "groq" => {
-                // Groq uses Authorization header
-                headers.insert(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", api_key).parse().unwrap(),
-                );
-                
-                // Make request to Groq
-                let response = self.client.post(endpoint)
-                    .headers(headers)
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::External(format!("Groq API request failed: {}", e)))?;
-                
-                // Check response status
-                if !response.status().is_success() {
-                    let error_text = response.text().await
-                        .unwrap_or_else(|_| "Failed to read error response".to_string());
-                    
-                    return Err(AppError::External(format!("Groq API error: {}", error_text)));
-                }
-                
-                // Parse response
-                let response_json = response.json::<Value>().await
-                    .map_err(|e| AppError::External(format!("Failed to parse Groq response: {}", e)))?;
-                
-                // Record usage
-                self.record_usage(user_id, service, &payload, &response_json).await?;
-                
-                Ok(response_json)
-            },
-            _ => Err(AppError::InvalidArgument(format!("Unsupported service: {}", service))),
-        }
-    }
-    
-    // Forward a streaming request
-    pub async fn forward_stream_request(
-        &self,
-        user_id: &Uuid,
-        service: &str,
-        payload: Value,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes, actix_web::Error>>>>, AppError> {
-        // Check if user has access to this service
-        self.billing_service.check_service_access(user_id, service).await?;
-        
-        // Get the appropriate API key and endpoint
-        let (api_key, endpoint) = self.get_service_config(service)?;
-        
-        // Create usage counters
-        let tokens_input = Arc::new(Mutex::new(0));
-        let tokens_output = Arc::new(Mutex::new(0));
-        let user_id_clone = user_id.clone();
-        let service_clone = service.to_string();
-        let self_clone = Arc::new(self.clone());
-        
-        match service {
-            "gemini" => {
-                // Gemini uses query parameter for API key
-                let endpoint = format!("{}?key={}", endpoint, api_key);
-                
-                // Add streaming parameter to payload
-                let mut streaming_payload = payload.clone();
-                streaming_payload["stream"] = json!(true);
-                
-                // Make streaming request to Gemini
-                let response = self.client.post(&endpoint)
-                    .json(&streaming_payload)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::External(format!("Gemini streaming request failed: {}", e)))?;
-                
-                // Check response status
-                if !response.status().is_success() {
-                    let error_text = response.text().await
-                        .unwrap_or_else(|_| "Failed to read error response".to_string());
-                    
-                    return Err(AppError::External(format!("Gemini API error: {}", error_text)));
-                }
-                
-                // Estimate input tokens
-                if let Some(prompt) = payload.get("contents") {
-                    let input_tokens = self.estimate_tokens(prompt.to_string());
-                    *tokens_input.lock().await = input_tokens;
-                }
-                
-                // Create the stream
-                let stream = response.bytes_stream().map(move |chunk| {
-                    match chunk {
-                        Ok(bytes) => {
-                            // Process chunk and update token count
-                            let bytes_clone = bytes.clone();
-                            let tokens_output_clone = tokens_output.clone();
-                            let user_id_clone = user_id_clone.clone();
-                            let service_clone = service_clone.clone();
-                            let self_clone = self_clone.clone();
-                            let tokens_input_clone = tokens_input.clone();
-                            
-                            tokio::spawn(async move {
-                                // Parse chunk as JSON
-                                if let Ok(text) = String::from_utf8(bytes_clone.to_vec()) {
-                                    if let Ok(json) = serde_json::from_str::<Value>(&text) {
-                                        // Extract token count if available
-                                        if let Some(candidates) = json.get("candidates") {
-                                            if let Some(candidate) = candidates.get(0) {
-                                                if let Some(content) = candidate.get("content") {
-                                                    let chunk_tokens = self_clone.estimate_tokens(content.to_string());
-                                                    let mut counter = tokens_output_clone.lock().await;
-                                                    *counter += chunk_tokens;
-                                                }
-                                            }
-                                        }
-                                        
-                                        // If this is the final chunk, record usage
-                                        if json.get("promptFeedback").is_some() {
-                                            let input_tokens = *tokens_input_clone.lock().await;
-                                            let output_tokens = *tokens_output_clone.lock().await;
-                                            
-                                            if let Err(e) = self_clone.api_usage_repository.record_usage(
-                                                &user_id_clone,
-                                                &service_clone,
-                                                input_tokens,
-                                                output_tokens,
-                                            ).await {
-                                                error!("Failed to record API usage: {}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                            });
-                            
-                            Ok(bytes)
-                        },
-                        Err(e) => Err(actix_web::error::ErrorInternalServerError(format!("Stream error: {}", e))),
-                    }
-                });
-                
-                Ok(Box::pin(stream))
-            },
-            "claude" => {
-                // Claude uses Authorization header
-                let mut headers = header::HeaderMap::new();
-                headers.insert(
-                    header::AUTHORIZATION,
-                    format!("Bearer {}", api_key).parse().unwrap(),
-                );
-                
-                // Add streaming parameter to payload
-                let mut streaming_payload = payload.clone();
-                streaming_payload["stream"] = json!(true);
-                
-                // Make streaming request to Claude
-                let response = self.client.post(endpoint)
-                    .headers(headers)
-                    .json(&streaming_payload)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::External(format!("Claude streaming request failed: {}", e)))?;
-                
-                // Check response status
-                if !response.status().is_success() {
-                    let error_text = response.text().await
-                        .unwrap_or_else(|_| "Failed to read error response".to_string());
-                    
-                    return Err(AppError::External(format!("Claude API error: {}", error_text)));
-                }
-                
-                // Estimate input tokens
-                if let Some(messages) = payload.get("messages") {
-                    let input_tokens = self.estimate_tokens(messages.to_string());
-                    *tokens_input.lock().await = input_tokens;
-                }
-                
-                // Create the stream
-                let stream = response.bytes_stream().map(move |chunk| {
-                    match chunk {
-                        Ok(bytes) => {
-                            // Process chunk and update token count
-                            let bytes_clone = bytes.clone();
-                            let tokens_output_clone = tokens_output.clone();
-                            let user_id_clone = user_id_clone.clone();
-                            let service_clone = service_clone.clone();
-                            let self_clone = self_clone.clone();
-                            let tokens_input_clone = tokens_input.clone();
-                            
-                            tokio::spawn(async move {
-                                // Parse chunk as JSON
-                                if let Ok(text) = String::from_utf8(bytes_clone.to_vec()) {
-                                    // Claude sends "data: " prefix for each chunk
-                                    let text = text.trim().strip_prefix("data: ").unwrap_or(&text);
-                                    
-                                    if let Ok(json) = serde_json::from_str::<Value>(text) {
-                                        // Extract token count if available
-                                        if let Some(delta) = json.get("delta") {
-                                            if let Some(text) = delta.get("text") {
-                                                let chunk_tokens = self_clone.estimate_tokens(text.to_string());
-                                                let mut counter = tokens_output_clone.lock().await;
-                                                *counter += chunk_tokens;
-                                            }
-                                        }
-                                        
-                                        // If this is the final chunk, record usage
-                                        if json.get("type") == Some(&json!("message_stop")) {
-                                            let input_tokens = *tokens_input_clone.lock().await;
-                                            let output_tokens = *tokens_output_clone.lock().await;
-                                            
-                                            if let Err(e) = self_clone.api_usage_repository.record_usage(
-                                                &user_id_clone,
-                                                &service_clone,
-                                                input_tokens,
-                                                output_tokens,
-                                            ).await {
-                                                error!("Failed to record API usage: {}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                            });
-                            
-                            Ok(bytes)
-                        },
-                        Err(e) => Err(actix_web::error::ErrorInternalServerError(format!("Stream error: {}", e))),
-                    }
-                });
-                
-                Ok(Box::pin(stream))
-            },
-            _ => Err(AppError::InvalidArgument(format!("Streaming not supported for service: {}", service))),
-        }
-    }
-    
-    // Get API key and endpoint for a service
-    fn get_service_config(&self, service: &str) -> Result<(String, String), AppError> {
-        match service {
-            "gemini" => Ok((
-                self.gemini_api_key.clone(),
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent".to_string(),
-            )),
-            "claude" => Ok((
-                self.claude_api_key.clone(),
-                "https://api.anthropic.com/v1/messages".to_string(),
-            )),
-            "groq" => Ok((
-                self.groq_api_key.clone(),
-                "https://api.groq.com/openai/v1/chat/completions".to_string(),
-            )),
-            _ => Err(AppError::InvalidArgument(format!("Unsupported service: {}", service))),
-        }
-    }
-    
-    // Record API usage
-    async fn record_usage(
-        &self,
-        user_id: &Uuid,
-        service: &str,
-        request: &Value,
-        response: &Value,
-    ) -> Result<(), AppError> {
-        // Extract input and output token counts based on service
-        let (input_tokens, output_tokens) = match service {
-            "gemini" => {
-                let input_tokens = self.estimate_gemini_input_tokens(request);
-                let output_tokens = self.extract_gemini_output_tokens(response);
-                (input_tokens, output_tokens)
-            },
-            "claude" => {
-                let input_tokens = self.extract_claude_input_tokens(response);
-                let output_tokens = self.extract_claude_output_tokens(response);
-                (input_tokens, output_tokens)
-            },
-            "groq" => {
-                let input_tokens = self.extract_groq_input_tokens(response);
-                let output_tokens = self.extract_groq_output_tokens(response);
-                (input_tokens, output_tokens)
-            },
-            _ => (0, 0),
+        // Extract model ID for billing checks
+        let model_id = match payload.get("model") {
+            Some(model) => model.as_str().unwrap_or("anthropic/claude-3-sonnet-20240229"),
+            None => "anthropic/claude-3-sonnet-20240229", // Default if model not specified
         };
         
-        // Record usage in database
+        // Check if user has access to this model
+        self.billing_service.check_service_access(user_id, model_id).await?;
+        
+        // Convert payload to OpenRouter chat request
+        let request = self.openrouter_client.convert_to_chat_request(payload.clone())?;
+        
+        // Make the request to OpenRouter
+        let response = self.openrouter_client.chat_completion(request).await?;
+        
+        // Extract usage data from response
+        let input_tokens = response.usage.prompt_tokens;
+        let output_tokens = response.usage.completion_tokens;
+        let provided_cost = response.usage.cost;
+        
+        // Record API usage in the database
         self.api_usage_repository.record_usage(
             user_id,
-            service,
+            model_id,
             input_tokens,
             output_tokens,
+            provided_cost,
         ).await?;
         
-        Ok(())
+        // Return the raw JSON response - actix-web will convert it to JSON
+        Ok(serde_json::to_value(response)?)
     }
     
-    // Extract token counts from different APIs
-    
-    fn extract_gemini_output_tokens(&self, response: &Value) -> i32 {
-        if let Some(usage) = response.get("usageMetadata") {
-            if let Some(tokens) = usage.get("candidatesTokenCount") {
-                if let Some(count) = tokens.as_i64() {
-                    return count as i32;
-                }
+    /// Forward a streaming request to OpenRouter for chat completions
+    pub async fn forward_chat_completions_stream_request(
+        self: Arc<Self>,
+        user_id: Uuid,
+        payload: Value,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes, actix_web::Error>> + Send + 'static>>, AppError> {
+        // Extract model ID for billing checks
+        let model_id = match payload.get("model") {
+            Some(model) => model.as_str().unwrap_or("anthropic/claude-3-sonnet-20240229"),
+            None => "anthropic/claude-3-sonnet-20240229", // Default if model not specified
+        };
+        
+        // Check if user has access to this model
+        self.billing_service.check_service_access(&user_id, model_id).await?;
+        
+        // Convert payload to OpenRouter chat request
+        let request = self.openrouter_client.convert_to_chat_request(payload.clone())?;
+        
+        // Create independently owned copies of all required components
+        let openrouter_client_owned = self.openrouter_client.clone();
+        let api_usage_repository_clone = self.api_usage_repository.clone();
+        let model_id_string = model_id.to_string();
+        
+        // Create a new owned boxed stream with static lifetime
+        // We'll create the response in a more direct way that ensures 'static lifetime
+        let stream = Box::pin(
+            // First, perform the request and get a result
+            async move {
+                // This is now an owned client inside this async block
+                let stream_result = openrouter_client_owned.stream_chat_completion(request).await?;
+                
+                // We'll track usage information as we process the stream
+                let usage_tracking = Arc::new(Mutex::new(StreamUsageTracker::new()));
+                let usage_tracking_clone = usage_tracking.clone();
+                
+                // Spawn a task to record usage after the stream is done
+                let usage_tracking_for_task = usage_tracking.clone();
+                let user_id_for_task = user_id;
+                let model_id_for_task = model_id_string.clone();
+                
+                tokio::spawn(async move {
+                    // After stream completes, record the usage
+                    let tracker = {
+                        let locked_tracker = usage_tracking_for_task.lock().await;
+                        locked_tracker.clone()
+                    };
+                    
+                    // If the tracker has accumulated usage information
+                    if tracker.has_final_update || tracker.completion_tokens > 0 {
+                        info!("Recording stream usage for model {} (prompt tokens: {}, completion tokens: {}, cost: {:?})",
+                              model_id_for_task, tracker.prompt_tokens, tracker.completion_tokens, tracker.cost);
+                        
+                        if let Err(e) = api_usage_repository_clone.record_usage(
+                            &user_id_for_task,
+                            &model_id_for_task,
+                            tracker.prompt_tokens,
+                            tracker.completion_tokens,
+                            tracker.cost,
+                        ).await {
+                            error!("Failed to record API usage: {}", e);
+                        }
+                    } else {
+                        // If no usage data was found in the stream at all, use minimal values 
+                        // to ensure we have a record of the API call
+                        warn!("No usage data found in stream, recording minimal usage values");
+                        if let Err(e) = api_usage_repository_clone.record_usage(
+                            &user_id_for_task,
+                            &model_id_for_task,
+                            1, // Minimal value to ensure a record exists
+                            1, // Minimal value to ensure a record exists
+                            None, // No cost information, will use pricing table
+                        ).await {
+                            error!("Failed to record API usage: {}", e);
+                        }
+                    }
+                });
+                
+                // Transform the raw stream to a 'static stream with usage tracking
+                // We need to manually type the stream to ensure proper 'static lifetime
+                let tracked_stream: Pin<Box<dyn Stream<Item = Result<Bytes, actix_web::Error>> + Send + 'static>> = 
+                    Box::pin(stream_result.map(move |result| {
+                        match result {
+                            Ok(bytes) => {
+                                let chunk_str = String::from_utf8_lossy(&bytes);
+                                
+                                // Extract usage data if available and update our tracking
+                                if let Some(usage) = OpenRouterClient::extract_usage_from_stream_chunk(&chunk_str) {
+                                    // Since OpenRouter sends the full usage in the last chunk, we want to capture it
+                                    match usage_tracking_clone.try_lock() {
+                                        Ok(mut guard) => {
+                                            // Update with the final usage data which contains accumulated totals
+                                            guard.update_from_usage(&usage);
+                                            debug!("Updated streaming usage tracking: prompt={}, completion={}, cost={:?}", 
+                                                usage.prompt_tokens, usage.completion_tokens, usage.cost);
+                                        },
+                                        Err(e) => {
+                                            // Just log the error but don't block the stream
+                                            warn!("Failed to acquire lock for usage tracking: {}. Will try again on next chunk.", e);
+                                        }
+                                    };
+                                } else {
+                                    // If no usage data in this chunk, still try to track token counts
+                                    // This is a fallback but OpenRouter typically only sends usage at the end
+                                    if let Ok(mut guard) = usage_tracking_clone.try_lock() {
+                                        guard.accumulate_output_from_chunk(&chunk_str);
+                                    }
+                                }
+                                
+                                // Return the original chunk
+                                Ok(Bytes::from(chunk_str.to_string()))
+                            },
+                            Err(e) => {
+                                error!("Stream error: {}", e);
+                                // Convert AppError to actix_web::Error
+                                Err(actix_web::error::ErrorInternalServerError(e.to_string()))
+                            }
+                        }
+                    }));
+                
+                Ok(tracked_stream)
             }
-        }
-        0
+            .await
+            .unwrap_or_else(|e: AppError| {
+                // If there's an error during stream creation, return an empty stream with the error
+                error!("Error creating stream: {}", e);
+                
+                // Create a simple error that is Send + 'static
+                let error_message = e.to_string();
+                
+                // Use a specific type that implements Send
+                let error_stream: Pin<Box<dyn Stream<Item = Result<Bytes, actix_web::Error>> + Send + 'static>> = {
+                    Box::pin(futures_util::stream::once(async move {
+                        // Using boxed error type to ensure Send is implemented
+                        let err = actix_web::error::InternalError::new(
+                            error_message,
+                            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        );
+                        Err(err.into())
+                    }))
+                };
+                
+                error_stream
+            })
+        );
+        
+        // Return the stream directly
+        Ok(stream)
     }
     
-    fn estimate_gemini_input_tokens(&self, request: &Value) -> i32 {
-        if let Some(contents) = request.get("contents") {
-            return self.estimate_tokens(contents.to_string());
-        }
-        0
-    }
-    
-    fn extract_claude_input_tokens(&self, response: &Value) -> i32 {
-        if let Some(usage) = response.get("usage") {
-            if let Some(tokens) = usage.get("input_tokens") {
-                if let Some(count) = tokens.as_i64() {
-                    return count as i32;
-                }
+    /// Forward a transcription request to OpenRouter
+    pub async fn forward_transcription_request(
+        &self,
+        user_id: &Uuid,
+        audio_data: &[u8],
+        filename: &str,
+        model: &str, // model ID like "openai/whisper-1"
+    ) -> Result<Value, AppError> {
+        // Check if user has access to this model
+        self.billing_service.check_service_access(user_id, model).await?;
+        
+        // Make the transcription request
+        let response = self.openrouter_client.transcribe(audio_data, filename, model).await?;
+        
+        // Extract usage data if available, or use minimal fallback values
+        let (input_tokens, output_tokens) = match &response.usage {
+            Some(usage) => (usage.prompt_tokens, usage.completion_tokens),
+            None => {
+                // For whisper, OpenRouter typically bills by minute rather than tokens
+                // but includes token counts in the usage field. If for some reason they're
+                // missing, we'll use minimal values until they provide better data.
+                warn!("No usage data provided by OpenRouter for transcription. Using minimal values.");
+                (0, 1) // Minimal non-zero values to create a record
             }
-        }
-        0
+        };
+        
+        // Get cost if provided by OpenRouter
+        let cost = self.openrouter_client.extract_cost_from_transcription(&response);
+        
+        // Record API usage
+        self.api_usage_repository.record_usage(
+            user_id,
+            model,
+            input_tokens,
+            output_tokens,
+            cost,
+        ).await?;
+        
+        // Return as JSON
+        Ok(serde_json::to_value(response)?)
     }
     
-    fn extract_claude_output_tokens(&self, response: &Value) -> i32 {
-        if let Some(usage) = response.get("usage") {
-            if let Some(tokens) = usage.get("output_tokens") {
-                if let Some(count) = tokens.as_i64() {
-                    return count as i32;
-                }
-            }
-        }
-        0
-    }
-    
-    fn extract_groq_input_tokens(&self, response: &Value) -> i32 {
-        if let Some(usage) = response.get("usage") {
-            if let Some(tokens) = usage.get("prompt_tokens") {
-                if let Some(count) = tokens.as_i64() {
-                    return count as i32;
-                }
-            }
-        }
-        0
-    }
-    
-    fn extract_groq_output_tokens(&self, response: &Value) -> i32 {
-        if let Some(usage) = response.get("usage") {
-            if let Some(tokens) = usage.get("completion_tokens") {
-                if let Some(count) = tokens.as_i64() {
-                    return count as i32;
-                }
-            }
-        }
-        0
-    }
-    
-    // Simple token estimation (4 characters per token)
-    fn estimate_tokens(&self, text: String) -> i32 {
-        // Very rough estimate: 4 characters per token
-        (text.len() / 4) as i32
-    }
+    // OpenRouter provides accurate token usage information, so no estimation is needed
 }
 
 impl Clone for ProxyService {
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
+            openrouter_client: self.openrouter_client.clone(),
             billing_service: self.billing_service.clone(),
             api_usage_repository: self.api_usage_repository.clone(),
-            gemini_api_key: self.gemini_api_key.clone(),
-            claude_api_key: self.claude_api_key.clone(),
-            groq_api_key: self.groq_api_key.clone(),
         }
     }
 }

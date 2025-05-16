@@ -9,9 +9,10 @@ import {
 } from '@core/components/ui/dialog';
 import { Button } from '@core/components/ui/button';
 import { Progress } from '@core/components/ui/progress';
+import { ScrollArea } from '@core/components/ui/scroll-area';
 import { formatTimestamp, formatJobDuration } from '@core/lib/utils/date-utils';
-import { BackgroundJob } from '@core/types/session-types';
-import { formatTokenCount } from './utils';
+import { BackgroundJob, TaskType } from '@core/types/session-types';
+import { formatTokenCount, getStreamingProgressValue } from './utils';
 import { Loader2, AlertCircle, RefreshCw, FileCode, ClipboardCopy } from 'lucide-react';
 import { toast } from '@core/components/ui/use-toast';
 import { useProject } from '@core/lib/contexts/project-context';
@@ -128,51 +129,13 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     }
   }, [projectDirectory]);
 
+  // File-based content loading has been removed
+  // All job output content is now stored directly in the job.response field
   useEffect(() => {
-    if (job &&
-        job.status === 'completed' &&
-        job.outputFilePath) {
-
-      if (job.taskType === 'implementation_plan') {
-        return;
-      }
-
-      const hasOutputFileReference = job.response &&
-                                    job.response.includes('Content stored in file') &&
-                                    job.outputFilePath;
-
-      if (hasOutputFileReference) {
-        console.log(`[JobDetailsModal] Auto-loading file content from: ${job.outputFilePath}`);
-
-        const loadWithRetry = async () => {
-          try {
-            await loadFileContent(job.outputFilePath!);
-          } catch (error) {
-            console.error('[JobDetailsModal] Initial file load failed, retrying once:', error);
-
-            setTimeout(async () => {
-              try {
-                await loadFileContent(job.outputFilePath!);
-              } catch (retryError) {
-                console.error('[JobDetailsModal] Retry file load also failed:', retryError);
-              }
-            }, 1000);
-          }
-        };
-
-        loadWithRetry();
-
-        return () => {
-          setIsLoadingFile(false);
-          console.log('[JobDetailsModal] Cleaning up file loading on unmount');
-        };
-      }
-    }
-
+    // Reset file content state when job changes
     setFileContent(null);
     setFileError(null);
-
-  }, [job, loadFileContent, projectDirectory]);
+  }, [job]);
   
   // Format JSON data for display
   const formatMetadata = (metadata: any) => {
@@ -253,14 +216,23 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   const promptContent = job.prompt || 'No prompt data available';
 
   const getResponseContent = () => {
+    // For Content View - show EXACTLY what would be copied with the copy button
+    if (job.taskType === 'implementation_plan' && job.metadata?.showPureContent === true) {
+      // Always return the raw response for implementation plans in content view
+      // This is EXACTLY what gets copied by the copy button
+      return job.response || 'No content available yet.';
+    }
+    
+    // Standard streaming response handling for details view
     if (job.taskType === 'implementation_plan' && job.status === 'running' && job.metadata?.isStreaming === true) {
       if (job.response) {
-        return `${job.response}\n\n[Streaming implementation plan content...]`;
+        return job.response;
       } else {
         return 'Waiting for implementation plan content to stream...';
       }
     }
     
+    // Standard completed response handling for details view
     if (job.taskType === 'implementation_plan' && job.status === 'completed') {
       if (job.response) {
         return job.response;
@@ -356,15 +328,30 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     <Dialog open={!!job} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-6">
         <DialogHeader>
-          <DialogTitle>
-            {job.taskType === 'implementation_plan' && job.metadata?.sessionName ? (
+          <DialogTitle className={job.taskType === 'implementation_plan' ? 'text-xl' : ''}>
+            {job.taskType === 'implementation_plan' && job.metadata?.showPureContent === true ? (
+              <div className="flex items-center gap-2">
+                <span>Implementation Plan Content</span>
+                {job.status === 'running' && job.metadata?.isStreaming && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+              </div>
+            ) : job.taskType === 'implementation_plan' && job.metadata?.sessionName ? (
               <>Implementation Plan: {job.metadata.sessionName}</>
             ) : (
               <>Job Details</>
             )}
           </DialogTitle>
           <DialogDescription className="text-balance">
-            Details for job ID: {job.id}
+            {job.metadata?.showPureContent === true ? (
+              job.status === 'running' && job.metadata?.isStreaming ? (
+                <>Live updates in progress</>
+              ) : (
+                <>Content View</>
+              )
+            ) : (
+              <>Details for job ID: {job.id}</>
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col space-y-6 overflow-y-auto pr-2 mt-4 w-full" style={{ maxHeight: 'calc(90vh - 150px)' }}>
@@ -432,16 +419,9 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                         <div className="mt-2">
                           <Progress
                             value={
-                              // Calculate progress with improved handling for implementation plans
+                              // Calculate progress with unified handling for implementation plans
                               job.taskType === 'implementation_plan' && job.metadata?.isStreaming === true
-                                ? // For implementation plans with streaming
-                                  typeof job.metadata.streamProgress === 'number'
-                                    ? Math.min(job.metadata.streamProgress, 98)
-                                    : typeof job.metadata.responseLength === 'number' && 
-                                      typeof job.metadata.estimatedTotalLength === 'number' && 
-                                      job.metadata.estimatedTotalLength > 0
-                                      ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 98)
-                                      : Math.min(Math.floor((Date.now() - job.startTime) / 200), 95)
+                                ? getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens)
                                 // For other streaming jobs
                                 : job.metadata?.isStreaming
                                   ? job.metadata.responseLength && job.metadata.estimatedTotalLength
@@ -553,12 +533,28 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             <div className="flex flex-col space-y-6 w-full">
               <div className="p-5 bg-gray-50 dark:bg-muted/10 rounded-md">
                 <h4 className="font-semibold mb-3 text-xs text-muted-foreground uppercase">Prompt</h4>
-                <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full">{promptContent}</pre>
+                <ScrollArea className="max-h-[300px]">
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full">{promptContent}</pre>
+                </ScrollArea>
               </div>
 
               <div className="p-5 bg-gray-50 dark:bg-muted/10 rounded-md">
                 <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-semibold text-xs text-muted-foreground uppercase">Response</h4>
+                  <h4 className="font-semibold text-xs text-muted-foreground uppercase">
+                    {job.taskType === 'implementation_plan' && job.metadata?.showPureContent === true ? (
+                      <div className="flex items-center gap-2">
+                        <span>Content</span>
+                        {job.status === 'running' && job.metadata?.isStreaming && (
+                          <div className="flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Live Updates</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span>Response</span>
+                    )}
+                  </h4>
                   {job.taskType === 'implementation_plan' && job.response && (
                     <Button 
                       size="sm" 
@@ -584,15 +580,9 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                   <div className="mb-3">
                     <Progress
                       value={
-                        // Calculate progress with improved handling for implementation plans
+                        // Calculate progress with unified handling for implementation plans
                         job.taskType === 'implementation_plan'
-                          ? typeof job.metadata.streamProgress === 'number'
-                            ? Math.min(job.metadata.streamProgress, 97)
-                            : typeof job.metadata.responseLength === 'number' && 
-                              typeof job.metadata.estimatedTotalLength === 'number' && 
-                              job.metadata.estimatedTotalLength > 0
-                              ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 97)
-                              : Math.min(Math.floor((Date.now() - (job.startTime || Date.now())) / 150), 90)
+                          ? getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens)
                           : job.metadata.responseLength && job.metadata.estimatedTotalLength
                             ? Math.min((job.metadata.responseLength / job.metadata.estimatedTotalLength) * 100, 97)
                             : Math.min(Math.floor((Date.now() - (job.startTime || Date.now())) / 150), 90)
@@ -600,7 +590,10 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                       className="h-1 mb-2"
                     />
                     <div className="flex justify-between items-center text-xs text-muted-foreground">
-                      <span>Streaming in progress...</span>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">Streaming in progress...</span>
+                      </div>
                       <div className="flex items-center gap-2">
                         {job.metadata.responseLength && (
                           <span>{Math.floor(job.metadata.responseLength / 1024)} KB received</span>
@@ -634,9 +627,19 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                     </div>
                   </div>
                 ) : (
-                  <pre className={`whitespace-pre-wrap font-mono text-balance w-full ${job.taskType === 'implementation_plan' ? 'text-xs p-4 bg-muted/20 rounded-md' : 'text-xs'}`}>
-                    {responseContent}
-                  </pre>
+                  <ScrollArea className="max-h-[70vh]">
+                    <pre className={`whitespace-pre-wrap font-mono text-balance w-full ${
+                      job.taskType === 'implementation_plan' && job.metadata?.showPureContent === true
+                        ? job.status === 'running' && job.metadata?.isStreaming
+                          ? 'text-xs p-6 bg-blue-50/30 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md animate-pulse'
+                          : 'text-xs p-6 bg-green-50/50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-md'
+                        : job.taskType === 'implementation_plan' 
+                          ? 'text-xs p-6 bg-muted/20 rounded-md' 
+                          : 'text-xs'
+                    }`}>
+                      {responseContent}
+                    </pre>
+                  </ScrollArea>
                 )}
               </div>
 
@@ -654,14 +657,18 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                   {job.metadata.regexPatterns && (
                     <div className="mb-3">
                       <h5 className="text-xs text-muted-foreground mb-1">Regex Patterns</h5>
-                      <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md">
-                        {formatRegexPatterns(job.metadata.regexPatterns)}
-                      </pre>
+                      <ScrollArea className="max-h-[200px]">
+                        <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md">
+                          {formatRegexPatterns(job.metadata.regexPatterns)}
+                        </pre>
+                      </ScrollArea>
                     </div>
                   )}
 
                   {/* Other metadata */}
-                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full">{formatMetadata(job.metadata)}</pre>
+                  <ScrollArea className="max-h-[200px]">
+                    <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full">{formatMetadata(job.metadata)}</pre>
+                  </ScrollArea>
                 </div>
               )}
             </div>

@@ -5,7 +5,7 @@ use sqlx::error::Error as SqlxError;
 
 #[derive(Debug)]
 pub enum AppError {
-    Database(sqlx::Error),
+    Database(String),
     Internal(String),
     Auth(String),
     NotFound(String),
@@ -85,7 +85,19 @@ impl From<SqlxError> for AppError {
     fn from(error: SqlxError) -> Self {
         match error {
             SqlxError::RowNotFound => AppError::NotFound("Record not found".to_string()),
-            _ => AppError::Database(error),
+            _ => AppError::Database(error.to_string()),
         }
+    }
+}
+
+impl From<actix_multipart::MultipartError> for AppError {
+    fn from(error: actix_multipart::MultipartError) -> Self {
+        AppError::BadRequest(format!("Multipart error: {}", error))
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(error: serde_json::Error) -> Self {
+        AppError::Internal(format!("JSON deserialization/serialization error: {}", error))
     }
 }

@@ -1,5 +1,3 @@
-"use server";
-
 import { promises as fs } from "fs";
 import path from "path";
 import { BINARY_EXTENSIONS } from '@core/lib/file-utils';
@@ -59,13 +57,47 @@ export async function readExternalFileAction(filePath: string): Promise<ActionSt
   }
 }
 
-export async function readDirectoryAction(projectDirectory: string): Promise<ActionState<{ files: string[] }>> {
-  // Direct implementation using the job system's createBackgroundJob and enqueueJob
-  // would be the proper approach here, but for now to minimize changes,
-  // we'll just directly execute the implementation
+/**
+ * Interface for read directory job request arguments
+ */
+export interface ReadDirectoryRequestArgs {
+  sessionId: string;
+  directoryPath: string;
+  excludePatterns?: string[];
+}
+
+/**
+ * Interface for read directory job response
+ */
+export interface ReadDirectoryCommandResponse {
+  jobId: string;
+}
+
+/**
+ * Interface for read directory job result data
+ */
+export interface ReadDirectoryResultData {
+  directory: string;
+  files: string[];
+  count: number;
+}
+
+/**
+ * Creates a background job to read a directory structure
+ * @param sessionId The session ID
+ * @param directoryPath The directory path to read
+ * @param excludePatterns Optional patterns to exclude from results
+ * @returns A promise resolving to an ActionState with file list
+ */
+export async function readDirectoryAction(
+  sessionId: string,
+  directoryPath: string,
+  excludePatterns?: string[]
+): Promise<ActionState<{ files?: string[] }>> {
   try {
-    // Simply run the implementation directly
-    return await readDirectoryImplementation(projectDirectory);
+    // Execute the server-side implementation
+    const result = await readDirectoryImplementation(directoryPath);
+    return result;
   } catch (error) {
     return {
       isSuccess: false,
@@ -277,4 +309,18 @@ async function readDirectoryRecursive(directoryPath: string, basePath: string = 
 // Remove this function as it's no longer needed
 export async function invalidateDirectoryCache(): Promise<void> {
   // No-op
+}
+
+/**
+ * Parses the job response data from a read directory job
+ * @param responseData The response data from the background job
+ * @returns The parsed result data
+ */
+export function parseReadDirectoryJobData(responseData: string): ReadDirectoryResultData {
+  try {
+    return JSON.parse(responseData) as ReadDirectoryResultData;
+  } catch (error) {
+    console.error('Error parsing read directory job data:', error);
+    throw new Error('Failed to parse read directory job data');
+  }
 }

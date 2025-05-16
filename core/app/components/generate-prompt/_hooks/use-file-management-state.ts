@@ -72,37 +72,20 @@ export function useFileManagementState({
   const handleUpdateSearchTerm = useCallback((term: string) => {
     // Update local state
     setSearchTermState(term);
-
-    // Use setTimeout to defer the state update to the next microtask
-    setTimeout(() => {
-      updateCurrentSessionFields({ searchTerm: term });
-      setSessionModified(true);
-    }, 0);
+    updateCurrentSessionFields({ searchTerm: term });
+    setSessionModified(true);
   }, [updateCurrentSessionFields, setSessionModified]);
-
-  // Add debounce ref for search selected files only
-  const searchSelectedFilesOnlyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleUpdateSearchSelectedOnly = useCallback((value?: boolean) => {
     // Handle undefined by toggling the current value
     const newValue = value === undefined ? !searchSelectedFilesOnly : value;
 
-    // Clear any pending timeouts
-    if (searchSelectedFilesOnlyTimeoutRef.current) {
-      clearTimeout(searchSelectedFilesOnlyTimeoutRef.current);
-    }
+    // Update local state first
+    setSearchSelectedFilesOnlyState(newValue);
 
-    // Use a single debounced update to prevent flickering
-    searchSelectedFilesOnlyTimeoutRef.current = setTimeout(() => {
-      // Update local state first
-      setSearchSelectedFilesOnlyState(newValue);
-
-      // Then update session state
-      updateCurrentSessionFields({ searchSelectedFilesOnly: newValue });
-      setSessionModified(true);
-
-      searchSelectedFilesOnlyTimeoutRef.current = null;
-    }, 50); // Small delay to debounce rapid changes
+    // Then update session state
+    updateCurrentSessionFields({ searchSelectedFilesOnly: newValue });
+    setSessionModified(true);
   }, [updateCurrentSessionFields, setSessionModified, searchSelectedFilesOnly]);
 
   const fileSelectionManager = useFileSelectionManager({
@@ -244,29 +227,17 @@ export function useFileManagementState({
       return;
     }
 
-    // Update local state when session changes (but only from session load, not from local edits)
+    // Update local state when session changes
     if (currentSession) {
-      // Only update if values are different to avoid unnecessary renders
-      if (searchTerm !== currentSession.searchTerm) {
-        setSearchTermState(currentSession.searchTerm || '');
-      }
-
-      // For searchSelectedFilesOnly, debounce the update to avoid flickering
-      if (searchSelectedFilesOnly !== currentSession.searchSelectedFilesOnly &&
-          // Only update if we don't have a pending timeout (prevents conflicts with user-initiated changes)
-          !searchSelectedFilesOnlyTimeoutRef.current) {
-
-        if (searchSelectedFilesOnlyTimeoutRef.current) {
-          clearTimeout(searchSelectedFilesOnlyTimeoutRef.current);
-        }
-
-        searchSelectedFilesOnlyTimeoutRef.current = setTimeout(() => {
-          setSearchSelectedFilesOnlyState(currentSession.searchSelectedFilesOnly || false);
-          searchSelectedFilesOnlyTimeoutRef.current = null;
-        }, 50);
-      }
+      // Directly set states from current session
+      setSearchTermState(currentSession.searchTerm || '');
+      setSearchSelectedFilesOnlyState(currentSession.searchSelectedFilesOnly || false);
+    } else {
+      // Reset to defaults if no session is active
+      setSearchTermState('');
+      setSearchSelectedFilesOnlyState(false);
     }
-  }, [currentSession?.id, isTransitioningSession, currentSession, searchTerm, searchSelectedFilesOnly]);
+  }, [activeSessionId, currentSession, isTransitioningSession]);
 
 
   const findRelevantFilesCallback = useCallback(async (): Promise<void> => {

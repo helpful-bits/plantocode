@@ -7,6 +7,40 @@ import { ErrorType, createError, createErrorState, createSuccessState } from "./
 import { withTimeout } from "./async-utils";
 
 /**
+ * Validates that the execution environment is a valid server context
+ * 
+ * This check ensures that the code is running in a server-side Node.js environment
+ * and not in a client browser. It's used by server actions to prevent execution
+ * in the wrong context.
+ * 
+ * @param actionName Optional name of the action for logging purposes
+ * @returns boolean indicating if the environment is valid
+ */
+export function ensureServerContext(actionName?: string): boolean {
+  const source = actionName ? `[${actionName}]` : '[Server Action]';
+  
+  // First, ensure we're in a server environment
+  if (typeof window !== 'undefined') {
+    console.warn(`${source} Called from client environment`);
+    return false;
+  }
+  
+  // Check if we have necessary globals
+  if (typeof global === 'undefined' || !global.process || !global.process.env) {
+    console.warn(`${source} Missing required Node.js globals`);
+    return false;
+  }
+  
+  // Ensure we're in a Next.js server action context (simplified check)
+  if (!process.env.NEXT_RUNTIME) {
+    console.warn(`${source} Not running in Next.js server runtime`);
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Standard response codes and messages used across the application
  */
 export const ApiResponseCode = {

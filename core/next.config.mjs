@@ -1,6 +1,6 @@
-/** @type {import('next').NextConfig} */ // Keep JSDoc comment
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-    // Static export configuration for Tauri
+    // Static export configuration
     output: 'export',
     
     // Required for static export
