@@ -7,29 +7,7 @@ import streamingRequestPool from '@core/lib/api/streaming-request-pool';
 import { backgroundJobRepository } from '@core/lib/db/repositories';
 import { globalJobQueue } from '@core/lib/jobs/global-job-queue';
 import { updateJobToCancelled } from '@core/lib/jobs/job-helpers';
-
-// Enhanced validation for server-side execution environment
-const isValidExecutionEnvironment = (): boolean => {
-  // First, ensure we're in a server environment
-  if (typeof window !== 'undefined') {
-    console.warn("Server action called from client environment");
-    return false;
-  }
-  
-  // Check if we have necessary globals
-  if (typeof global === 'undefined' || !global.process || !global.process.env) {
-    console.warn("Missing required Node.js globals");
-    return false;
-  }
-  
-  // Ensure we're in a Next.js server action context (simplified check)
-  if (!process.env.NEXT_RUNTIME) {
-    console.warn("Not running in Next.js server runtime");
-    return false;
-  }
-  
-  return true;
-};
+import { ensureServerContext } from '@core/lib/utils/api-helpers';
 
 /**
  * Get all active (non-cleared) background jobs
@@ -49,8 +27,7 @@ export async function getActiveJobsAction(): Promise<ActionState<BackgroundJob[]
   }
 
   // Immediately check if we're in a valid execution context
-  if (!isValidExecutionEnvironment()) {
-    console.warn(`[getActiveJobsAction][${requestId}] Invalid execution environment`);
+  if (!ensureServerContext('getActiveJobsAction')) {
     return {
       isSuccess: false,
       message: "Cannot fetch jobs: Invalid execution environment",
@@ -150,8 +127,7 @@ export async function cancelBackgroundJobAction(
   jobId: string
 ): Promise<ActionState<null>> {
   // Immediately check if we're in a valid execution context
-  if (!isValidExecutionEnvironment()) {
-    console.warn("[cancelBackgroundJobAction] Invalid execution environment");
+  if (!ensureServerContext('cancelBackgroundJobAction')) {
     return {
       isSuccess: false,
       message: "Cannot cancel job: Invalid execution environment",
@@ -266,8 +242,7 @@ export async function cancelBackgroundJobAction(
  */
 export async function clearJobHistoryAction(daysToKeep: number = 0): Promise<ActionState<null>> {
   // Immediately check if we're in a valid execution context
-  if (!isValidExecutionEnvironment()) {
-    console.warn("[clearJobHistoryAction] Invalid execution environment");
+  if (!ensureServerContext('clearJobHistoryAction')) {
     return {
       isSuccess: false,
       message: "Cannot clear job history: Invalid execution environment",
@@ -321,6 +296,75 @@ export async function clearJobHistoryAction(daysToKeep: number = 0): Promise<Act
 }
 
 /**
+ * Permanently delete a specific background job
+ */
+export async function deleteBackgroundJobAction(jobId: string): Promise<ActionState<null>> {
+  // Immediately check if we're in a valid execution context
+  if (!ensureServerContext('deleteBackgroundJobAction')) {
+    return {
+      isSuccess: false,
+      message: "Cannot delete job: Invalid execution environment",
+      error: new Error("Invalid execution environment"),
+      data: null
+    };
+  }
+  
+  // Validate job ID is present
+  if (!jobId || typeof jobId !== 'string' || jobId.trim() === '') {
+    return {
+      isSuccess: false,
+      message: "Invalid job ID provided",
+      error: new Error("Invalid job ID"),
+      data: null
+    };
+  }
+  
+  try {
+    // Initialize database with error handling
+    try {
+      await setupDatabase();
+    } catch (dbError) {
+      console.error("Database initialization error during job deletion:", dbError);
+      return {
+        isSuccess: false,
+        message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
+        error: dbError instanceof Error ? dbError : new Error("Database initialization failed"),
+        data: null
+      };
+    }
+    
+    // Get the job to check if it exists
+    const job = await backgroundJobRepository.getBackgroundJob(jobId);
+    
+    if (!job) {
+      return {
+        isSuccess: false,
+        message: `Job with ID ${jobId} not found`,
+        data: null
+      };
+    }
+    
+    // Delete the job from the database
+    await backgroundJobRepository.deleteBackgroundJob(jobId);
+    
+    return {
+      isSuccess: true,
+      message: "Background job permanently deleted",
+      data: null
+    };
+  } catch (error) {
+    console.error(`Error deleting background job ${jobId}:`, error);
+    
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Unknown error deleting job",
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: null
+    };
+  }
+}
+
+/**
  * Update the cleared status of a specific job
  */
 export async function updateJobClearedStatusAction(
@@ -328,8 +372,7 @@ export async function updateJobClearedStatusAction(
   cleared: boolean
 ): Promise<ActionState<null>> {
   // Immediately check if we're in a valid execution context
-  if (!isValidExecutionEnvironment()) {
-    console.warn("[updateJobClearedStatusAction] Invalid execution environment");
+  if (!ensureServerContext('updateJobClearedStatusAction')) {
     return {
       isSuccess: false,
       message: "Cannot update job: Invalid execution environment",
@@ -396,8 +439,7 @@ export async function updateJobClearedStatusAction(
  */
 export async function cancelSessionBackgroundJobsAction(sessionId: string): Promise<ActionState<null>> {
   // Immediately check if we're in a valid execution context
-  if (!isValidExecutionEnvironment()) {
-    console.warn("[cancelSessionBackgroundJobsAction] Invalid execution environment");
+  if (!ensureServerContext('cancelSessionBackgroundJobsAction')) {
     return {
       isSuccess: false,
       message: "Cannot cancel session jobs: Invalid execution environment",
@@ -441,19 +483,20 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
       // Continue even if queue removal fails - we'll still cancel the jobs in the database
     }
     
-    // Then cancel any running requests for this session
+    // Then cancel any running requests for this session, excluding implementation plans
     try {
-      const cancelledCount = streamingRequestPool.cancelQueuedSessionRequests(sessionId);
+      const cancelledCount = streamingRequestPool.cancelQueuedSessionRequests(sessionId, true); // true = exclude implementation plans
       if (cancelledCount > 0) {
-        console.log(`[cancelSessionBackgroundJobsAction] Cancelled ${cancelledCount} active requests for session ${sessionId}`);
+        console.log(`[cancelSessionBackgroundJobsAction] Cancelled ${cancelledCount} active requests for session ${sessionId} (excluding implementation plans)`);
       }
     } catch (cancelError) {
       console.warn(`[cancelSessionBackgroundJobsAction] Error canceling session requests:`, cancelError);
       // Continue even if request cancellation fails - we'll still cancel the jobs in the database
     }
     
-    // Finally, cancel all session jobs in the database
-    await backgroundJobRepository.cancelAllSessionBackgroundJobs(sessionId);
+    // Finally, cancel all session jobs in the database, but exclude implementation plans
+    // This prevents implementation plans from being canceled when other jobs in the session are canceled
+    await backgroundJobRepository.cancelAllSessionBackgroundJobs(sessionId, true); // true = exclude implementation plans
     
     return {
       isSuccess: true,
@@ -466,6 +509,77 @@ export async function cancelSessionBackgroundJobsAction(sessionId: string): Prom
     return {
       isSuccess: false,
       message: error instanceof Error ? error.message : "Unknown error canceling session jobs",
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: null
+    };
+  }
+}
+
+/**
+ * Get a single background job by its ID
+ */
+export async function getBackgroundJobAction(
+  jobId: string
+): Promise<ActionState<BackgroundJob | null>> {
+  // Track request for debugging
+  const requestId = Math.random().toString(36).substring(2, 10);
+  
+  // Immediately check if we're in a valid execution context
+  if (!ensureServerContext('getBackgroundJobAction')) {
+    return {
+      isSuccess: false,
+      message: "Cannot fetch job: Invalid execution environment",
+      error: new Error("Invalid execution environment"),
+      data: null
+    };
+  }
+  
+  // Validate job ID is present
+  if (!jobId || typeof jobId !== 'string' || jobId.trim() === '') {
+    return {
+      isSuccess: false,
+      message: "Invalid job ID provided",
+      error: new Error("Invalid job ID"),
+      data: null
+    };
+  }
+
+  try {
+    // Initialize database with error handling
+    try {
+      await setupDatabase();
+    } catch (dbError) {
+      console.error(`[getBackgroundJobAction][${requestId}] Database initialization error:`, dbError);
+      return {
+        isSuccess: false,
+        message: "Failed to initialize database: " + (dbError instanceof Error ? dbError.message : "Unknown error"),
+        error: dbError instanceof Error ? dbError : new Error("Database initialization failed"),
+        data: null
+      };
+    }
+    
+    // Fetch the job from the repository
+    const job = await backgroundJobRepository.getBackgroundJob(jobId);
+    
+    if (!job) {
+      return {
+        isSuccess: false,
+        message: `Job with ID ${jobId} not found`,
+        data: null
+      };
+    }
+    
+    return {
+      isSuccess: true,
+      message: "Background job retrieved successfully",
+      data: job as BackgroundJob
+    };
+  } catch (error) {
+    console.error(`[getBackgroundJobAction][${requestId}] Error fetching background job ${jobId}:`, error);
+    
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Unknown error fetching job",
       error: error instanceof Error ? error : new Error("Unknown error"),
       data: null
     };

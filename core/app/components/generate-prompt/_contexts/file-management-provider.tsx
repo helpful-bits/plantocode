@@ -30,12 +30,6 @@ export function FileManagementProvider({
     console.log(`[DEBUG][FileManagementProvider] Mounting - project: ${projectDirectory}, session: ${activeSessionId}, transitioning: ${isTransitioningSession}`);
   }
 
-  // Create stable refs for props to prevent unnecessary re-renders
-  const stableProps = useStableRef({
-    projectDirectory,
-    taskDescription,
-    isTransitioningSession,
-  });
 
   // Create the file management state by passing stable props
   // Use a ref to avoid passing the props directly during render

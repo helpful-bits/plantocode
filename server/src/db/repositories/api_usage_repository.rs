@@ -3,6 +3,8 @@ use sqlx::{PgPool, query, query_as};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use crate::error::AppError;
+use std::str::FromStr;
+use log::debug;
 
 #[derive(Debug)]
 pub struct ApiUsage {
@@ -11,6 +13,7 @@ pub struct ApiUsage {
     pub total_cost: BigDecimal,
 }
 
+#[derive(Debug)]
 pub struct ApiUsageRepository {
     db_pool: PgPool,
 }
@@ -19,24 +22,81 @@ impl ApiUsageRepository {
     pub fn new(db_pool: PgPool) -> Self {
         Self { db_pool }
     }
+    
+    /// Fetch pricing information for a specific model
+    pub async fn get_model_pricing(&self, model_id: &str) -> Result<Option<(f64, f64)>, AppError> {
+        let result = query!(
+            r#"
+            SELECT input_token_price, output_token_price
+            FROM service_pricing
+            WHERE service_name = $1
+            "#,
+            model_id
+        )
+        .fetch_optional(&self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get model pricing: {}", e)))?;
+        
+        match result {
+            Some(pricing) => {
+                // Directly convert BigDecimal to f64
+                let input_price = pricing.input_token_price.to_string().parse::<f64>()
+                    .map_err(|e| AppError::Internal(format!("Failed to parse input_token_price: {}", e)))?;
+                
+                let output_price = pricing.output_token_price.to_string().parse::<f64>()
+                    .map_err(|e| AppError::Internal(format!("Failed to parse output_token_price: {}", e)))?;
+                
+                Ok(Some((input_price, output_price)))
+            },
+            None => Ok(None),
+        }
+    }
+    
+    /// Fetch pricing information for a list of models
+    pub async fn get_models_pricing(&self, model_ids: &[String]) -> Result<Vec<(String, Option<(f64, f64)>)>, AppError> {
+        let mut results = Vec::new();
+        
+        for model_id in model_ids {
+            let pricing = self.get_model_pricing(model_id).await?;
+            results.push((model_id.clone(), pricing));
+        }
+        
+        Ok(results)
+    }
 
     /// Records API usage for billing purposes
     /// 
     /// # Arguments
     /// * `user_id` - The ID of the user making the request
-    /// * `service_name` - The name of the AI service being used (e.g., "gemini", "claude", "groq")
+    /// * `model_id` - The OpenRouter model ID being used (e.g., "anthropic/claude-3-opus-20240229")
     /// * `tokens_input` - Number of input tokens used
     /// * `tokens_output` - Number of output tokens generated
+    /// * `provided_cost` - Optional cost value provided by OpenRouter
     pub async fn record_usage(
         &self,
         user_id: &Uuid,
-        service_name: &str,
+        model_id: &str,
         tokens_input: i32,
         tokens_output: i32,
+        provided_cost: Option<f64>,
     ) -> Result<(), AppError> {
-        // Calculate cost based on service and token counts
-        // This is a simplified calculation and should be based on actual pricing
-        let cost = self.calculate_cost(service_name, tokens_input, tokens_output)?;
+        // Use provided cost if available, otherwise calculate based on model and token counts
+        // OpenRouter provides accurate cost information so prioritize it when available
+        let cost = match provided_cost {
+            Some(cost) => {
+                // Convert to BigDecimal with 6 decimal precision
+                let cost_string = format!("{:.6}", cost);
+                let parsed_cost = cost_string.parse::<BigDecimal>()
+                    .map_err(|e| AppError::Internal(format!("Failed to parse provided cost: {}", e)))?;
+                debug!("Using OpenRouter-provided cost ({}) for model {}", cost, model_id);
+                parsed_cost
+            },
+            None => {
+                // Fallback to our calculation if OpenRouter doesn't provide cost
+                debug!("No cost provided by OpenRouter for model {}, calculating locally", model_id);
+                self.calculate_cost(model_id, tokens_input, tokens_output).await?
+            },
+        };
         
         // Insert into api_usage table
         query!(
@@ -45,7 +105,7 @@ impl ApiUsageRepository {
             VALUES ($1, $2, $3, $4, $5)
             "#,
             user_id,
-            service_name,
+            model_id,
             tokens_input,
             tokens_output,
             cost
@@ -83,7 +143,7 @@ impl ApiUsageRepository {
 
         let total_input = result.total_input.unwrap_or(0);
         let total_output = result.total_output.unwrap_or(0);
-        let total_cost = result.total_cost.unwrap_or(BigDecimal::from(0));
+        let total_cost = result.total_cost.unwrap_or_else(|| BigDecimal::from_str("0").unwrap());
 
         Ok((total_input, total_output, total_cost))
     }
@@ -117,23 +177,55 @@ impl ApiUsageRepository {
         Ok(ApiUsage {
             tokens_input: result.tokens_input.unwrap_or(0),
             tokens_output: result.tokens_output.unwrap_or(0),
-            total_cost: result.total_cost.unwrap_or(BigDecimal::from(0)),
+            total_cost: result.total_cost.unwrap_or_else(|| BigDecimal::from_str("0").unwrap()),
         })
     }
 
-    /// Calculates the cost for API usage based on service and token counts
-    fn calculate_cost(
+    /// Calculates the cost for API usage based on model ID and token counts
+    async fn calculate_cost(
         &self,
-        service_name: &str,
+        model_id: &str,
         tokens_input: i32,
         tokens_output: i32,
     ) -> Result<BigDecimal, AppError> {
-        // Token prices per 1K tokens (these should come from configuration)
-        let (input_price, output_price) = match service_name {
-            "gemini" => (0.00025, 0.00050),  // $0.25/1M input, $0.50/1M output
-            "claude" => (0.00080, 0.00240),  // $0.80/1M input, $2.40/1M output
-            "groq"   => (0.00020, 0.00030),  // $0.20/1M input, $0.30/1M output
-            _ => return Err(AppError::InvalidArgument(format!("Unknown service: {}", service_name))),
+        // Lookup model prices from the service_pricing table
+        let result = query!(
+            r#"
+            SELECT input_token_price, output_token_price
+            FROM service_pricing
+            WHERE service_name = $1
+            "#,
+            model_id
+        )
+        .fetch_optional(&self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get model pricing: {}", e)))?;
+
+        // Get the pricing for this model, or use default pricing if not found
+        let (input_price, output_price) = match result {
+            Some(pricing) => {
+                let default_input_price_str = "0.001";
+                let default_output_price_str = "0.002";
+
+                // Directly convert BigDecimal to string and then parse
+                let input_price = pricing.input_token_price.to_string().parse::<f64>()
+                    .unwrap_or_else(|e| {
+                        log::warn!("Failed to parse input_token_price '{}', using default: {}", pricing.input_token_price.to_string(), e);
+                        default_input_price_str.parse::<f64>().unwrap()
+                    });
+
+                let output_price = pricing.output_token_price.to_string().parse::<f64>()
+                    .unwrap_or_else(|e| {
+                        log::warn!("Failed to parse output_token_price '{}', using default: {}", pricing.output_token_price.to_string(), e);
+                        default_output_price_str.parse::<f64>().unwrap()
+                    });
+                (input_price, output_price)
+            },
+            None => {
+                // Default prices if model not found in the database
+                // Conservative defaults slightly higher than typical rates
+                (0.001, 0.002) // $1/1M input, $2/1M output
+            }
         };
 
         // Calculate cost: (tokens / 1000) * price_per_1k

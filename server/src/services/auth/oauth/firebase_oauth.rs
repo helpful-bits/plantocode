@@ -181,3 +181,14 @@ impl FirebaseOAuthService {
         })
     }
 }
+
+impl Clone for FirebaseOAuthService {
+    fn clone(&self) -> Self {
+        Self {
+            client: Client::new(),
+            api_key: self.api_key.clone(),
+            project_id: self.project_id.clone(),
+            db_pool: self.db_pool.clone(),
+        }
+    }
+}

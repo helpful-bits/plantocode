@@ -1,0 +1,401 @@
+use async_trait::async_trait;
+use std::pin::Pin;
+use std::sync::Arc;
+use futures::{Stream, StreamExt};
+use reqwest::{Client, header, multipart};
+use serde_json::{json, Value};
+use log::{debug, error, info, trace};
+use tauri::{AppHandle, Manager};
+
+use crate::constants::{SERVER_API_URL, APP_HTTP_REFERER, APP_X_TITLE};
+use crate::error::{AppError, AppResult};
+use crate::models::{
+    OpenRouterRequest, OpenRouterRequestMessage, OpenRouterContent,
+    OpenRouterResponse, OpenRouterStreamChunk
+};
+use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
+use super::error_handling::{map_api_error, map_server_proxy_error};
+
+/// Server proxy API client for LLM requests
+pub struct ServerProxyClient {
+    http_client: Client,
+    app_handle: AppHandle,
+    server_url: String,
+}
+
+impl ServerProxyClient {
+    /// Create a new server proxy client
+    pub fn new(app_handle: AppHandle, server_url: String) -> Self {
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(300)) // 5 minute timeout
+            .build()
+            .expect("Failed to create HTTP client");
+            
+        Self {
+            http_client,
+            app_handle,
+            server_url,
+        }
+    }
+    
+    /// Get the server URL
+    pub fn server_url(&self) -> &str {
+        &self.server_url
+    }
+    
+    /// Get runtime AI configuration from the server
+    pub async fn get_runtime_ai_config(&self) -> AppResult<Value> {
+        info!("Fetching runtime AI configuration from server");
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Create the config endpoint URL
+        let config_url = format!("{}/api/config/runtime", self.server_url);
+        
+        let response = self.http_client
+            .get(&config_url)
+            .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(format!("Failed to fetch runtime AI config: {}", e)))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server runtime config API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        // Parse the response
+        let config: Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse runtime AI config response: {}", e)))?;
+            
+        info!("Successfully fetched runtime AI configuration from server");
+        trace!("Runtime AI config: {:?}", config);
+        
+        Ok(config)
+    }
+    
+    /// Get MIME type from file extension
+    fn get_mime_type_from_filename(filename: &str) -> AppResult<&'static str> {
+        let extension = std::path::Path::new(filename)
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("").to_lowercase();
+            
+        match extension.as_str() {
+            "mp3" => Ok("audio/mpeg"),
+            "wav" => Ok("audio/wav"),
+            "m4a" => Ok("audio/x-m4a"),
+            "ogg" => Ok("audio/ogg"),
+            "webm" => Ok("audio/webm"),
+            "flac" => Ok("audio/flac"),
+            "aac" => Ok("audio/aac"),
+            "mp4" => Ok("audio/mp4"),
+            "" => Err(AppError::ValidationError("Audio file has no extension".to_string())),
+            _ => Err(AppError::ValidationError(format!("Unsupported audio file extension for transcription: .{}", extension))),
+        }
+    }
+    
+    /// Create a request to the server proxy
+    fn create_request(&self, prompt: &str, options: &ApiClientOptions) -> OpenRouterRequest {
+        // Create a simple text-only message
+        let message = OpenRouterRequestMessage {
+            role: "user".to_string(),
+            content: vec![
+                OpenRouterContent::Text {
+                    content_type: "text".to_string(),
+                    text: prompt.to_string(),
+                },
+            ],
+        };
+        
+        OpenRouterRequest {
+            model: options.model.clone(),
+            messages: vec![message],
+            stream: options.stream,
+            max_tokens: options.max_tokens,
+            temperature: options.temperature,
+        }
+    }
+    
+    /// Get auth token from Stronghold storage
+    async fn get_auth_token(&self) -> AppResult<String> {
+        // First, check the app state for the token (in-memory cache)
+        let app_state = self.app_handle.state::<crate::AppState>();
+        
+        // Try to get token from state first
+        let token_lock = app_state.token.lock().map_err(|e| 
+            AppError::InternalError(format!("Failed to acquire token lock: {}", e))
+        )?;
+        
+        if let Some(token) = token_lock.clone() {
+            debug!("Using cached auth token from app state");
+            return Ok(token);
+        }
+        
+        // Token not in app state, load from Stronghold
+        drop(token_lock); // Drop lock before using Stronghold
+        
+        // Get Stronghold instance from app state
+        let stronghold = self.app_handle.state::<tauri_plugin_stronghold::stronghold::Stronghold>();
+        let store = stronghold.store();
+        
+        // Try to get the token from Stronghold using the TOKEN_KEY
+        match store.get(crate::constants::TOKEN_KEY.as_bytes()) {
+            Ok(Some(bytes)) => {
+                // Convert bytes to string
+                let token = String::from_utf8(bytes)
+                    .map_err(|e| AppError::InternalError(format!("Invalid UTF-8 data in token: {}", e)))?;
+                
+                // Update token in app state
+                let mut token_lock = app_state.token.lock().map_err(|e| 
+                    AppError::InternalError(format!("Failed to acquire token lock for update: {}", e))
+                )?;
+                *token_lock = Some(token.clone());
+                
+                debug!("Successfully retrieved auth token from Stronghold");
+                Ok(token)
+            },
+            Ok(None) => {
+                debug!("No token found in Stronghold");
+                Err(AppError::AuthError("Authentication token not found in secure storage".to_string()))
+            },
+            Err(e) => {
+                error!("Error accessing Stronghold: {}", e);
+                Err(AppError::StrongholdError(format!("Failed to access token in Stronghold: {}", e)))
+            }
+        }
+    }
+    
+    // No longer need to determine service name as all requests go to the OpenRouter endpoint
+}
+
+#[async_trait]
+impl TranscriptionClient for ServerProxyClient {
+    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str) -> AppResult<String> {
+        info!("Sending transcription request through server proxy with model: {}", model);
+        debug!("Audio file: {}, size: {} bytes", filename, audio_data.len());
+
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Use the OpenRouter audio transcriptions endpoint
+        let transcription_url = format!("{}/api/proxy/openrouter/audio/transcriptions", self.server_url);
+
+        let mime_type_str = Self::get_mime_type_from_filename(filename)?;
+
+        let form = multipart::Form::new()
+            .text("model", model.to_string())
+            .part("file", multipart::Part::bytes(audio_data.to_vec())
+                .file_name(filename.to_string())
+                .mime_str(mime_type_str).map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?); 
+
+        let response = self.http_client
+            .post(&transcription_url)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server proxy transcription API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+
+        // Parse the response
+        let transcription_response: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse transcription response: {}", e)))?;
+        
+        let text = transcription_response["text"].as_str().unwrap_or_default().to_string();
+
+        info!("Transcription through server proxy successful");
+        Ok(text)
+    }
+}
+
+#[async_trait]
+impl ApiClient for ServerProxyClient {
+    /// Send a completion request and get a response
+    async fn complete(&self, prompt: &str, options: ApiClientOptions) -> AppResult<OpenRouterResponse> {
+        info!("Sending completion request to server proxy with model: {}", options.model);
+        debug!("Proxy options: {:?}", options);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Create the request payload
+        let request = self.create_request(prompt, &options);
+        
+        // Create the server proxy endpoint URL for OpenRouter
+        let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
+        
+        let response = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            
+            // Use map_server_proxy_error to handle server proxy errors
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        let server_response: OpenRouterResponse = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
+            
+        trace!("Server proxy response: {:?}", server_response);
+        Ok(server_response)
+    }
+    
+    /// Send a chat completion request with messages and get a response
+    async fn chat_completion(
+        &self, 
+        messages: Vec<crate::models::OpenRouterRequestMessage>, 
+        options: ApiClientOptions
+    ) -> AppResult<OpenRouterResponse> {
+        info!("Sending chat completion request to server proxy with model: {}", options.model);
+        debug!("Proxy options: {:?}", options);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Create request with the provided messages
+        let request = OpenRouterRequest {
+            model: options.model.clone(),
+            messages,
+            stream: options.stream,
+            max_tokens: options.max_tokens,
+            temperature: options.temperature,
+        };
+        
+        // Create the server proxy endpoint URL for OpenRouter
+        let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
+        
+        let response = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            
+            // Use map_server_proxy_error to handle server proxy errors
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        let server_response: OpenRouterResponse = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e)))?;
+            
+        trace!("Server proxy chat completion response: {:?}", server_response);
+        Ok(server_response)
+    }
+    
+    /// Send a streaming completion request and get a stream of chunks
+    async fn stream_complete(
+        &self,
+        prompt: &str,
+        options: ApiClientOptions,
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>> {
+        info!("Sending streaming completion request to server proxy with model: {}", options.model);
+        debug!("Proxy options: {:?}", options);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Ensure streaming is enabled
+        let mut options = options;
+        options.stream = true;
+        
+        let request = self.create_request(prompt, &options);
+        
+        // Create the server proxy endpoint URL for streaming OpenRouter chat
+        let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
+        
+        let response = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            
+            // Use map_server_proxy_error to handle server proxy errors
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        // Get the stream and process it
+        let stream = response.bytes_stream().map(move |result| {
+            match result {
+                Ok(bytes) => {
+                    // Parse the bytes as SSE (Server-Sent Events)
+                    let text = String::from_utf8_lossy(&bytes);
+                    let lines = text.split('\n').collect::<Vec<&str>>();
+                    
+                    // Process each line
+                    let mut chunks = Vec::new();
+                    for line in lines {
+                        if line.is_empty() || !line.starts_with("data: ") {
+                            continue;
+                        }
+                        
+                        let data = &line[6..]; // Remove "data: " prefix
+                        
+                        // Check for [DONE] message
+                        if data == "[DONE]" {
+                            continue;
+                        }
+                        
+                        // Parse as JSON
+                        match serde_json::from_str::<OpenRouterStreamChunk>(data) {
+                            Ok(chunk) => {
+                                chunks.push(Ok(chunk));
+                            },
+                            Err(e) => {
+                                error!("Failed to parse streaming chunk: {}", e);
+                                chunks.push(Err(AppError::ServerProxyError(format!("Failed to parse chunk: {}", e))));
+                            }
+                        }
+                    }
+                    
+                    futures::stream::iter(chunks)
+                },
+                Err(e) => {
+                    futures::stream::iter(vec![Err(AppError::HttpError(e.to_string()))])
+                }
+            }
+        }).flatten();
+        
+        Ok(Box::pin(stream))
+    }
+}

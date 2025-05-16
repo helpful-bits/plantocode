@@ -262,7 +262,7 @@ export async function handleTranscription(
       console.warn(`[Transcription] No project directory provided, using fallback: ${effectiveProjectDirectory}`);
     }
 
-    // Determine MIME type - use a standardized value that Groq can process
+    // Determine MIME type - use a standardized value that OpenRouter can process
     // The server's extensionMap supports these types
     const mimeType = audioBlob.type || 'audio/webm';
     console.log(`[Transcription] Using MIME type: ${mimeType}`);

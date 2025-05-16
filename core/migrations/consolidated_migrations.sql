@@ -118,10 +118,10 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   prompt TEXT NOT NULL,
-  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker')),
+  status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker', 'preparing_input', 'generating_stream', 'processing_stream', 'completed_by_tag')),
   start_time INTEGER,
   end_time INTEGER,
-  output_file_path TEXT,
+  output_file_path TEXT, -- DEPRECATED: All content is now stored in response field
   status_message TEXT,
   tokens_received INTEGER DEFAULT 0,
   tokens_sent INTEGER DEFAULT 0,
@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   response TEXT,
   error_message TEXT,
   metadata TEXT,
+  project_directory TEXT,
+  visible BOOLEAN DEFAULT 1,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -149,8 +151,7 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_api_type ON background_jobs(api_t
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_output_file_path ON background_jobs(output_file_path);
 
--- Add project_directory column to background_jobs table if it doesn't exist
-ALTER TABLE background_jobs ADD COLUMN project_directory TEXT;
+-- project_directory column is already included in the background_jobs table creation
 
 -- Create index for project_directory if it doesn't exist
 CREATE INDEX IF NOT EXISTS idx_background_jobs_project_directory ON background_jobs(project_directory);
@@ -191,3 +192,7 @@ VALUES ('add_project_directory_to_background_jobs', strftime('%s', 'now'));
 -- Add the create_key_value_store migration record
 INSERT INTO migrations (name, applied_at) 
 VALUES ('create_key_value_store', strftime('%s', 'now'));
+
+-- Add the update_job_status_constraint migration record
+INSERT INTO migrations (name, applied_at) 
+VALUES ('update_job_status_constraint', strftime('%s', 'now'));

@@ -160,13 +160,13 @@ export class BackgroundJobRepository {
     // Use withTransaction for better lock handling
     return connectionPool.withTransaction((db: Database.Database) => {
       try {
-        // Create table if it doesn't exist
+        // Create table if it doesn't exist with support for all valid job statuses
         db.prepare(`
           CREATE TABLE IF NOT EXISTS background_jobs (
             id TEXT PRIMARY KEY,
             session_id TEXT NOT NULL,
             prompt TEXT NOT NULL,
-            status TEXT DEFAULT 'idle' NOT NULL,
+            status TEXT DEFAULT 'idle' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker', 'preparing_input', 'generating_stream', 'processing_stream', 'completed_by_tag')),
             start_time INTEGER,
             end_time INTEGER,
             output_file_path TEXT,
@@ -185,6 +185,8 @@ export class BackgroundJobRepository {
             response TEXT,
             error_message TEXT,
             metadata TEXT,
+            project_directory TEXT,
+            visible BOOLEAN DEFAULT 1,
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
           )
         `).run();
@@ -853,9 +855,12 @@ export class BackgroundJobRepository {
   /**
    * Clear old background job history
    * This function has three modes:
-   * 1. When daysToKeep is -1, it deletes ALL completed, failed, and canceled jobs
+   * 1. When daysToKeep is -1, it deletes ALL completed, failed, and canceled jobs (except implementation plans)
    * 2. When daysToKeep is 0, it ONLY performs hard deletion of very old jobs (90+ days) to maintain database size
    * 3. When daysToKeep > 0, it will ALSO mark completed jobs older than daysToKeep as cleared
+   * 
+   * IMPORTANT: Implementation plan jobs are NEVER deleted or cleared by this function
+   * to preserve historical implementation plans, regardless of their age.
    *
    * @param daysToKeep Number of days to keep completed jobs visible (0 = keep all visible, -1 = delete all completed/failed/canceled)
    */
@@ -879,6 +884,7 @@ export class BackgroundJobRepository {
           const countResult = db.prepare(`
             SELECT COUNT(*) as count FROM background_jobs
             WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
+            AND task_type <> 'IMPLEMENTATION_PLAN'
           `).get();
 
           const jobCount = (countResult as any)?.count || 0;
@@ -890,6 +896,7 @@ export class BackgroundJobRepository {
             const result = db.prepare(`
               DELETE FROM background_jobs
               WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
+              AND task_type <> 'IMPLEMENTATION_PLAN'
             `).run();
 
             const deletedCount = result?.changes || 0;
@@ -904,6 +911,7 @@ export class BackgroundJobRepository {
         const oldJobIdsResult = db.prepare(`
           SELECT id FROM background_jobs
           WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
+          AND task_type <> 'IMPLEMENTATION_PLAN'
           AND created_at < ?
           LIMIT 1000
         `).all(ninetyDaysAgo);
@@ -938,6 +946,7 @@ export class BackgroundJobRepository {
             SET cleared = 1
             WHERE (status = 'completed' OR status = 'failed' OR status = 'canceled')
             AND cleared = 0
+            AND task_type <> 'IMPLEMENTATION_PLAN'
             AND created_at < ?
           `).run(daysAgoTimestamp);
 
@@ -1012,6 +1021,102 @@ export class BackgroundJobRepository {
   }
   
   /**
+   * Permanently delete a background job by ID
+   * @param jobId The ID of the job to delete
+   */
+  async deleteBackgroundJob(jobId: string): Promise<void> {
+    // Validate jobId
+    if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
+      throw new Error('Invalid job ID provided for job deletion');
+    }
+    
+    // Use withTransaction for the delete operation
+    return connectionPool.withTransaction((db: Database.Database) => {
+      try {
+        // Check if the 'background_jobs' table exists
+        const tableExists = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table' AND name='background_jobs'
+        `).get();
+        
+        if (!tableExists) {
+          return;
+        }
+        
+        // Delete the job
+        const result = db.prepare(`
+          DELETE FROM background_jobs
+          WHERE id = ?
+        `).run(jobId);
+        
+        const deletedCount = result?.changes || 0;
+        if (deletedCount > 0) {
+          console.log(`[Repo] Permanently deleted job ${jobId}`);
+        } else {
+          console.warn(`[Repo] No job found with ID ${jobId} to delete`);
+        }
+      } catch (error) {
+        console.error(`[Repo] Error deleting job ${jobId}:`, error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Update only the response field of a background job
+   * This method is optimized for updating just the response content without changing other fields
+   * Useful for streaming responses or for updating responses in a terminal state
+   * @param jobId The ID of the job to update
+   * @param response The new response content
+   */
+  async updateBackgroundJobResponse(
+    jobId: string,
+    response: string
+  ): Promise<void> {
+    // Validate jobId
+    if (!jobId || typeof jobId !== 'string' || !jobId.trim()) {
+      throw new Error('Invalid job ID provided for updating job response');
+    }
+    
+    // Validate response
+    if (response === undefined) {
+      throw new Error('Response content is required');
+    }
+    
+    // Always use connectionPool.withTransaction for write operations
+    return connectionPool.withTransaction((db: Database.Database) => {
+      try {
+        // Check if the 'background_jobs' table exists
+        const tableExists = db.prepare(`
+          SELECT name FROM sqlite_master WHERE type='table' AND name='background_jobs'
+        `).get();
+        
+        if (!tableExists) {
+          return;
+        }
+        
+        // Update just the response field and updated_at timestamp
+        db.prepare(`
+          UPDATE background_jobs
+          SET response = ?,
+              updated_at = ?
+          WHERE id = ?
+        `).run(
+          response,
+          Math.floor(Date.now() / 1000), // Update timestamp
+          jobId
+        );
+        
+        console.log(`[Repo] Updated response content for job ${jobId} (${response.length} chars)`);
+      } catch (error) {
+        console.error(`[Repo] Error updating response for job ${jobId}:`, error);
+        throw error;
+      }
+    });
+  }
+
+  // The appendToJobResponse method is defined below
+
+  /**
    * Update the cleared status of a background job
    */
   async updateBackgroundJobClearedStatus(
@@ -1055,8 +1160,13 @@ export class BackgroundJobRepository {
   
   /**
    * Cancel all active background jobs for a session
+   * @param sessionId The session ID to cancel jobs for
+   * @param excludeImplementationPlans When true, implementation plan jobs will not be canceled
    */
-  async cancelAllSessionBackgroundJobs(sessionId: string): Promise<void> {
+  async cancelAllSessionBackgroundJobs(
+    sessionId: string, 
+    excludeImplementationPlans: boolean = true
+  ): Promise<void> {
     // Validate sessionId
     if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) {
       throw new Error('Invalid session ID provided for background job cancellation');
@@ -1073,20 +1183,41 @@ export class BackgroundJobRepository {
           return;
         }
         
-        // Find all active jobs for this session
-        const activeJobIdsResult = db.prepare(`
-          SELECT id FROM background_jobs
+        // Define the SQL query for active jobs
+        let query = `
+          SELECT id, task_type FROM background_jobs
           WHERE session_id = ?
-          AND (status = 'running' OR status = 'preparing' OR status = 'queued' OR status = 'created' OR status = 'idle')
+          AND (
+            status = 'running' OR 
+            status = 'preparing' OR 
+            status = 'queued' OR 
+            status = 'created' OR 
+            status = 'idle' OR
+            status = 'PREPARING_INPUT' OR
+            status = 'GENERATING_STREAM' OR
+            status = 'PROCESSING_STREAM'
+          )
           AND cleared = 0
-        `).all(sessionId);
+        `;
+        
+        // Add filter to exclude implementation plans if requested
+        if (excludeImplementationPlans) {
+          query += ` AND task_type <> 'IMPLEMENTATION_PLAN'`;
+        }
+        
+        // Find all matching active jobs for this session
+        const activeJobsResult = db.prepare(query).all(sessionId);
         
         // Extract job IDs from result
-        const jobIds = activeJobIdsResult.map(row => (row as any).id);
+        const jobIds = activeJobsResult.map(row => (row as any).id);
         
         if (jobIds.length === 0) {
+          console.log(`[Repo] No active jobs found to cancel for session ${sessionId} ${excludeImplementationPlans ? "(excluding implementation plans)" : ""}`);
           return;
         }
+        
+        // Log what we're about to do
+        console.log(`[Repo] Canceling ${jobIds.length} active jobs for session ${sessionId} ${excludeImplementationPlans ? "(excluding implementation plans)" : ""}`);
         
         // Get current timestamp
         const now = Math.floor(Date.now() / 1000);
@@ -1153,9 +1284,11 @@ export class BackgroundJobRepository {
       console.log(`[TEMP_DEBUG_IMPL_PLAN] Appending to job ${jobId}, chunk length: ${chunk.length}, newTokens: ${newTokensReceived}, currentLength: ${currentTotalResponseLength}`);
     }
 
-    // Only append to jobs in 'running' status
-    if (job.status !== 'running') {
-      console.warn(`[Repo] Cannot append to job ${jobId} with status '${job.status}', job must be in 'running' status`);
+    // Allow appending to jobs in 'running' and related streaming statuses
+    const APPENDABLE_STATUSES = ['running', 'processing_stream', 'generating_stream'];
+    
+    if (!APPENDABLE_STATUSES.includes(job.status)) {
+      console.warn(`[Repo] Cannot append to job ${jobId} with status '${job.status}', job must be in one of these statuses: ${APPENDABLE_STATUSES.join(', ')}`);
       return;
     }
 
@@ -1191,7 +1324,7 @@ export class BackgroundJobRepository {
                 '$.responseLength', ?,
                 '$.totalTokens', ?
               )
-          WHERE id = ? AND status = 'running'
+          WHERE id = ? AND (status = 'running' OR status = 'processing_stream' OR status = 'generating_stream')
         `);
 
         const result = stmt.run(

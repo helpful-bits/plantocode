@@ -39,7 +39,7 @@ pub async fn create_pool() -> Result<PgPool, AppError> {
                 if e.to_string().contains("authentication failed") {
                     log::debug!("Database URL: {:?}", &database_url);
                     log::error!("Database authentication failed. Please check your DATABASE_URL credentials.");
-                    return Err(AppError::Database(e));
+                    return Err(AppError::Database(e.to_string()));
                 }
                 
                 // Check if this is a connection refused error
@@ -67,7 +67,7 @@ pub async fn create_pool() -> Result<PgPool, AppError> {
     log::error!("All database connection attempts failed: {}", error);
     log::error!("Please check your database configuration and ensure the database server is running.");
     
-    Err(AppError::Database(error))
+    Err(AppError::Database(error.to_string()))
 }
 
 /// Verifies the database connection by executing a simple query.
@@ -83,7 +83,7 @@ pub async fn verify_connection(pool: &PgPool) -> Result<(), AppError> {
         })
         .map_err(|e| {
             log::error!("Database connection verification failed: {}", e);
-            AppError::Database(e)
+            AppError::Database(e.to_string())
         })?;
 
     log::info!("Database connection verified successfully");

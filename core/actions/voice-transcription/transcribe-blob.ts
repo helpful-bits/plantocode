@@ -6,9 +6,9 @@ import { ensureSessionRecord } from '@core/lib/db/utils/session-db-utils';
 import { apiClients } from '@core/lib/api/client-factory';
 
 /**
- * Transcribe a voice recording from a Blob using Groq's Whisper implementation
+ * Transcribe a voice recording from a Blob using OpenRouter's Whisper implementation
  *
- * This version uses the standardized GroqApiClient directly rather than the utility function,
+ * This version uses the OpenRouter API client directly rather than the utility function,
  * providing better error handling and consistency with other API clients.
  */
 export async function transcribeVoiceAction(
@@ -62,12 +62,12 @@ export async function transcribeVoiceAction(
       };
     }
 
-    // Get the Groq API client
-    const groqClient = apiClients.groq;
+    // Get the OpenRouter API client
+    const openRouterClient = apiClients.get('openrouter');
 
     // Make the API request using the standardized client
     // This will create a background job and handle all the API interaction
-    const result = await groqClient.sendRequest(audioBlob, {
+    const result = await openRouterClient.sendRequest(audioBlob, {
       sessionId: dbSafeSessionId,
       projectDirectory,
       language,

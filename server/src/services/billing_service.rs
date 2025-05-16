@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
 use std::env;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Duration, Datelike};
 use std::sync::Arc;
 use sqlx::PgPool;
 
@@ -37,11 +37,13 @@ pub struct BillingService {
     stripe_client: Option<StripeClient>,
     plans: Vec<PlanInfo>,
     default_trial_days: i64,
+    app_settings: crate::config::settings::AppSettings,
 }
 
 impl BillingService {
     pub fn new(
         db_pool: PgPool,
+        app_settings: crate::config::settings::AppSettings,
     ) -> Self {
         // Create repositories
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pool.clone()));
@@ -112,15 +114,21 @@ impl BillingService {
             stripe_client,
             plans,
             default_trial_days,
+            app_settings,
         }
     }
     
-    // Check if a user has access to a service
+    // Check if a user has access to a specific model
     pub async fn check_service_access(
         &self,
         user_id: &Uuid,
-        service: &str,
+        model_id: &str,
     ) -> Result<bool, AppError> {
+        // Validate model_id structure (simple check)
+        if !model_id.contains("/") && model_id != "openai/whisper-1" {
+            return Err(AppError::InvalidArgument(format!("Invalid model_id format: {}", model_id)));
+        }
+    
         // Get user's subscription
         let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
         
@@ -151,6 +159,23 @@ impl BillingService {
                         debug!("Subscription expired for user {}", user_id);
                         return Err(AppError::Payment("Subscription has expired".to_string()));
                     }
+                }
+                
+                // Check if the model is allowed for this plan based on subscription settings
+                // TODO: In a future update, make this dynamic by using subscription_plans.features column in the database
+                // For now, use the hardcoded approach for simplicity
+                let allowed_model_patterns = match subscription.plan_id.as_str() {
+                    "free" => vec!["anthropic/claude-3-haiku-20240307", "openai/gpt-3.5-turbo"],
+                    "pro" => vec!["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"],
+                    "enterprise" => vec!["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "anthropic/claude-3-opus-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"],
+                    _ => vec!["anthropic/claude-3-haiku-20240307", "openai/gpt-3.5-turbo"], // Default models for unknown plans
+                };
+                
+                // Check if the model is allowed
+                let model_allowed = allowed_model_patterns.iter().any(|pattern| *pattern == model_id);
+                if !model_allowed {
+                    debug!("Model {} not available on plan {} for user {}", model_id, subscription.plan_id, user_id);
+                    return Err(AppError::Payment(format!("Model {} not available on your current plan", model_id)));
                 }
                 
                 // Check usage limits
@@ -242,13 +267,20 @@ impl BillingService {
         // Get or create Stripe customer
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
         
-        // Get price ID for the plan
-        let price_id = match env::var(format!("STRIPE_PRICE_{}", plan_id.to_uppercase())) {
-            Ok(id) => id,
-            Err(_) => return Err(AppError::Configuration(
-                format!("Price ID not configured for plan: {}", plan_id)
-            )),
-        };
+        // Get price ID for the plan from AppSettings
+        let price_id = match plan_id {
+            "free" => self.app_settings.stripe.price_id_free.clone(),
+            "pro" => self.app_settings.stripe.price_id_pro.clone(),
+            "enterprise" => self.app_settings.stripe.price_id_enterprise.clone(),
+            _ => None,
+        }.ok_or_else(|| AppError::Configuration(
+            format!("Price ID not configured for plan: {}", plan_id)
+        ))?;
+        
+        // Add metadata to track which plan the user is subscribing to
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("plan_id".to_string(), plan_id.to_string());
+        metadata.insert("user_id".to_string(), user_id.to_string());
         
         // Create checkout session
         let session_params = CheckoutSessionCreateParams {
@@ -262,13 +294,14 @@ impl BillingService {
             mode: Some(stripe::CheckoutSessionMode::Subscription),
             success_url: Some(format!(
                 "{}://auth-success?session_id={{CHECKOUT_SESSION_ID}}",
-                env::var("APP_DEEP_LINK_SCHEME").unwrap_or_else(|_| "vibe-manager".to_string())
+                self.app_settings.deep_link.scheme
             )),
             cancel_url: Some(format!(
                 "{}://auth-cancelled",
-                env::var("APP_DEEP_LINK_SCHEME").unwrap_or_else(|_| "vibe-manager".to_string())
+                self.app_settings.deep_link.scheme
             )),
             customer: Some(customer_id),
+            metadata: Some(metadata),
             ..Default::default()
         };
         
@@ -347,7 +380,7 @@ impl BillingService {
                 customer: customer_id,
                 return_url: Some(format!(
                     "{}://billing-return",
-                    env::var("APP_DEEP_LINK_SCHEME").unwrap_or_else(|_| "vibe-manager".to_string())
+                    self.app_settings.deep_link.scheme
                 )),
                 ..Default::default()
             },
@@ -391,12 +424,15 @@ impl BillingService {
             .get_usage_for_period(user_id, Some(start_of_month), None)
             .await?;
         
-        // Calculate cost (for non-free plans)
+        // Get the total cost from the api_usage records
+        // This is the actual recorded cost from OpenRouter or our cost calculations
         let cost = if subscription.plan_id != "free" {
-            // Simple cost calculation
-            let input_cost = (usage.tokens_input as f64) * 0.00001; // $0.01 per 1000 input tokens
-            let output_cost = (usage.tokens_output as f64) * 0.00003; // $0.03 per 1000 output tokens
-            input_cost + output_cost
+            // Get the cost directly from the api_usage repository
+            // The total_cost is already in BigDecimal format from the database
+            let cost_decimal = &usage.total_cost;
+            // Convert to f64 for the JSON response
+            let cost_str = cost_decimal.to_string();
+            cost_str.parse::<f64>().unwrap_or(0.0)
         } else {
             0.0
         };

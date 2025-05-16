@@ -1,5 +1,13 @@
 {
-	"devDependencies": {
-		"@types/argon2": "^0.15.4"
+	"scripts": {
+		"server:check": "cd server && cargo check --message-format=json | jq -r 'select(.reason == \"compiler-message\" and .message.level == \"error\") | .message.rendered // .message.message' > gen/cargo-check.log",
+		"desktop:check": "cd desktop/src-tauri && cargo check --message-format=json | jq -r 'select(.reason == \"compiler-message\" and .message.level == \"error\") | .message.rendered // .message.message' > gen/cargo-check.log",
+		"dev:core": "cd core && pnpm dev",
+		"dev:desktop": "cd desktop && pnpm tauri dev",
+		"dev:server": "cd server && cargo run",
+		"build:core": "cd core && pnpm build",
+		"build:desktop": "cd desktop && pnpm tauri build",
+		"build:server": "cd server && cargo build --release",
+		"dev": "echo \"Running all components in dev mode is not supported yet. Run each component separately.\""
 	}
 }

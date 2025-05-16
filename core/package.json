@@ -30,7 +30,8 @@
     "fix:output-file-path": "tsx scripts/apply-column-fix.ts",
     "migrate:remove-pasted-paths": "tsx scripts/remove-pasted-paths-column.ts",
     "test:job-polling": "tsx scripts/test-job-polling.ts",
-    "update-job-status-constraint": "tsx scripts/update-job-status-constraint.ts"
+    "update-job-status-constraint": "tsx scripts/update-job-status-constraint.ts",
+    "migrate-job-statuses-to-lowercase": "tsx scripts/migrate-job-statuses-to-lowercase.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

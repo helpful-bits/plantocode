@@ -68,7 +68,25 @@
       "Bash(/opt/homebrew/bin/rg -l \"import.*from.* '@core.*\\\";\" core/actions/ core/lib/)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:v2.tauri.app)",
-      "Bash(pnpm remove:*)"
+      "Bash(pnpm remove:*)",
+      "Bash(if [ -f /Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/commands.rs.new ])",
+      "Bash(then cat /Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/commands.rs.new)",
+      "Bash(tsc:*)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"expect.*String, found PathBuf\" /Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/jobs/processors/path_finder_processor.rs)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"mismatched types.*expected.*found\" desktop/src-tauri/src/jobs/processors/path_finder_processor.rs)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"mismatched types\" desktop/src-tauri/src)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"time_utils\" desktop/src-tauri/src)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"row_to_session\" desktop/src-tauri/src/db_utils/session_repository.rs)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"ManagerExt\" desktop/src-tauri/src)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"impl (From|Into)<.*> for\" desktop/src-tauri/src/commands)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"IpcResponse\" desktop/src-tauri/src)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"#\\[command\\]\" desktop/src-tauri/src)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"ApiClient\" desktop/src-tauri/src/api_clients)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(cargo update:*)",
+      "Bash(cargo:*)",
+      "Bash(createdb:*)",
+      "Bash(psql:*)"
     ],
     "deny": []
   }
