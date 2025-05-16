@@ -71,42 +71,10 @@ export class JobQueueAdapter {
         return originalDispatch.call(this, job);
       };
       
-      // Override the updateJob method to report to server
+      // Override the updateJob method
       jobDispatcher.updateJob = async function(job: Job) {
-        // Update the job locally
+        // Update the job locally - all job management is done in the desktop app
         const updatedJob = await originalUpdateJob.call(this, job);
-        
-        // Report job progress to server if this involves a model (Gemini, Claude, etc.)
-        if (job.type.includes('gemini') || job.type.includes('claude') || job.type.includes('groq')) {
-          try {
-            // Get the auth token
-            const token = await getToken();
-            if (!token) return updatedJob;
-            
-            // Report job progress to server
-            const SERVER_URL = import.meta.env.SERVER_URL || 'http://localhost:8080';
-            
-            fetch(`${SERVER_URL}/api/background-jobs/update`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                jobId: job.id,
-                status: job.status,
-                progress: job.progress || 0,
-                result: job.result,
-                error: job.error
-              })
-            }).catch(err => {
-              console.error('[Desktop] Failed to report job progress to server:', err);
-            });
-          } catch (error) {
-            console.error('[Desktop] Error reporting job progress:', error);
-          }
-        }
-        
         return updatedJob;
       };
 

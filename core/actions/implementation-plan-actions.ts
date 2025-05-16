@@ -134,7 +134,7 @@ export async function createImplementationPlanAction(params: {
 
     console.log(`[createImplementationPlanAction] Enqueuing job for implementation plan generation`);
     await enqueueJob(
-      'IMPLEMENTATION_PLAN_GENERATION',
+      'IMPLEMENTATION_PLAN',
       {
         backgroundJobId: job.id,
         sessionId,

@@ -25,7 +25,15 @@ Ignore irrelevant configuration files, assets, or generated code unless they're 
 Don't include node_modules or other dependency directories.
 Do not hallucinate or make up file paths.
 All returned file paths must be relative to the project root.
-Focus on files needed to FULLY understand the dataflow and context.`;
+Focus on files needed to FULLY understand the dataflow and context.
+
+To control inference cost, you **MUST** keep the resulting list as concise as possible **while still providing enough information** for the downstream model to succeed.
+
+• Start with the highest-impact files (entry points, shared data models, core logic).
+• Add further paths only when omitting them would risk an incorrect or incomplete implementation.
+• Each extra file increases context size and cost, so favor brevity while safeguarding completeness.
+
+Return the final list using the same formatting rules described above.`;
 }
 
 /**
@@ -59,8 +67,7 @@ export function generatePathFinderUserPrompt(
     src/components/Button.tsx
     src/hooks/useAPI.ts
     src/styles/theme.css
-  </output_format_instruction>
-</path_finder_query>`;
+  </output_format_instruction>`;
   
   return prompt;
 }

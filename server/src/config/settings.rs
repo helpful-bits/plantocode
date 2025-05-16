@@ -1,4 +1,5 @@
 use std::env;
+use std::collections::HashMap;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,7 @@ pub struct AppSettings {
     pub subscription: SubscriptionConfig,
     pub stripe: StripeConfig,
     pub deep_link: DeepLinkConfig,
+    pub ai_models: AiModelSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,9 +38,7 @@ pub struct ServerConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiKeysConfig {
-    pub gemini_api_key: String,
-    pub anthropic_api_key: String,
-    pub groq_api_key: String,
+    pub openrouter_api_key: Option<String>,
     pub firebase_api_key: String,
     pub firebase_project_id: String,
 }
@@ -64,11 +64,54 @@ pub struct SubscriptionConfig {
 pub struct StripeConfig {
     pub secret_key: String,
     pub webhook_secret: String,
+    pub price_id_free: Option<String>,
+    pub price_id_pro: Option<String>,
+    pub price_id_enterprise: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DeepLinkConfig {
     pub scheme: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TaskSpecificModelConfigEntry {
+    pub model: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ModelInfoEntry {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    pub description: Option<String>,
+    pub context_window: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_input_per_1k_tokens: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_output_per_1k_tokens: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PathFinderSettingsEntry {
+    pub max_files_with_content: Option<u32>,
+    pub include_file_contents: Option<bool>,
+    pub max_content_size_per_file: Option<u32>,
+    pub max_file_count: Option<u32>,
+    pub file_content_truncation_chars: Option<u32>,
+    pub token_limit_buffer: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AiModelSettings {
+    pub default_llm_model_id: String,
+    pub default_voice_model_id: String,
+    pub default_transcription_model_id: String,
+    pub task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry>,
+    pub available_models: Vec<ModelInfoEntry>,
+    pub path_finder_settings: PathFinderSettingsEntry,
 }
 
 impl AppSettings {
@@ -100,14 +143,7 @@ impl AppSettings {
             .unwrap_or_else(|_| format!("http://{}:{}", server_host, server_port));
         
         // API keys
-        let gemini_api_key = env::var("GEMINI_API_KEY")
-            .map_err(|_| AppError::Configuration("GEMINI_API_KEY must be set".to_string()))?;
-        
-        let anthropic_api_key = env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| AppError::Configuration("ANTHROPIC_API_KEY must be set".to_string()))?;
-        
-        let groq_api_key = env::var("GROQ_API_KEY")
-            .map_err(|_| AppError::Configuration("GROQ_API_KEY must be set".to_string()))?;
+        let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         
         let firebase_api_key = env::var("FIREBASE_API_KEY")
             .map_err(|_| AppError::Configuration("FIREBASE_API_KEY must be set".to_string()))?;
@@ -147,10 +183,45 @@ impl AppSettings {
             
         let stripe_webhook_secret = env::var("STRIPE_WEBHOOK_SECRET")
             .map_err(|_| AppError::Configuration("STRIPE_WEBHOOK_SECRET must be set".to_string()))?;
+            
+        let stripe_price_id_free = env::var("STRIPE_PRICE_ID_FREE").ok();
+        let stripe_price_id_pro = env::var("STRIPE_PRICE_ID_PRO").ok();
+        let stripe_price_id_enterprise = env::var("STRIPE_PRICE_ID_ENTERPRISE").ok();
 
         // Deep link configuration
         let app_deep_link_scheme = env::var("APP_DEEP_LINK_SCHEME")
             .unwrap_or_else(|_| "vibe-manager".to_string());
+            
+        // AI model settings
+        let default_llm_model_id = env::var("DEFAULT_LLM_MODEL_ID")
+            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
+            
+        let default_voice_model_id = env::var("DEFAULT_VOICE_MODEL_ID")
+            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
+            
+        let default_transcription_model_id = env::var("DEFAULT_TRANSCRIPTION_MODEL_ID")
+            .unwrap_or_else(|_| "openai/whisper-1".to_string());
+            
+        // Parse task specific configs
+        let task_specific_configs_json_str = env::var("TASK_SPECIFIC_CONFIGS_JSON")
+            .unwrap_or_else(|_| r#"{"ImplementationPlan":{"model":"anthropic/claude-3-opus-20240229","max_tokens":16384,"temperature":0.5},"GuidanceGeneration":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.7},"PathFinder":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.2},"RegexGeneration":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":2048,"temperature":0.2},"TaskEnhancement":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.7},"TextImprovement":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.7},"VoiceCorrection":{"model":"anthropic/claude-3-sonnet-20240229","max_tokens":8192,"temperature":0.3},"PathCorrection":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.2}}"#.to_string());
+
+        let task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry> = serde_json::from_str(&task_specific_configs_json_str)
+            .map_err(|e| AppError::Configuration(format!("Failed to parse TASK_SPECIFIC_CONFIGS_JSON: {}", e)))?;
+            
+        // Parse available models
+        let available_models_json_str = env::var("AVAILABLE_MODELS_JSON")
+            .unwrap_or_else(|_| r#"[{"id":"anthropic/claude-3-opus-20240229","name":"Claude 3 Opus (OpenRouter)","provider":"openrouter","description":"Most powerful model for complex tasks"},{"id":"anthropic/claude-3-sonnet-20240229","name":"Claude 3 Sonnet (OpenRouter)","provider":"openrouter","description":"Balanced model for most tasks"},{"id":"anthropic/claude-3-haiku-20240307","name":"Claude 3 Haiku (OpenRouter)","provider":"openrouter","description":"Fast model for simpler tasks"},{"id":"openai/whisper-1","name":"Whisper-1 (OpenAI)","provider":"openai","description":"Speech to text transcription model"}]"#.to_string());
+
+        let available_models: Vec<ModelInfoEntry> = serde_json::from_str(&available_models_json_str)
+            .map_err(|e| AppError::Configuration(format!("Failed to parse AVAILABLE_MODELS_JSON: {}", e)))?;
+            
+        // Parse path finder settings
+        let path_finder_settings_json_str = env::var("PATH_FINDER_SETTINGS_JSON")
+            .unwrap_or_else(|_| r#"{"max_files_with_content":10,"include_file_contents":true,"max_content_size_per_file":5000,"max_file_count":50,"file_content_truncation_chars":2000,"token_limit_buffer":1000}"#.to_string());
+            
+        let path_finder_settings: PathFinderSettingsEntry = serde_json::from_str(&path_finder_settings_json_str)
+            .map_err(|e| AppError::Configuration(format!("Failed to parse PATH_FINDER_SETTINGS_JSON: {}", e)))?;
         
         Ok(Self {
             app: AppConfig {
@@ -167,9 +238,7 @@ impl AppSettings {
                 url: server_url,
             },
             api_keys: ApiKeysConfig {
-                gemini_api_key,
-                anthropic_api_key,
-                groq_api_key,
+                openrouter_api_key,
                 firebase_api_key,
                 firebase_project_id,
             },
@@ -187,9 +256,20 @@ impl AppSettings {
             stripe: StripeConfig {
                 secret_key: stripe_secret_key,
                 webhook_secret: stripe_webhook_secret,
+                price_id_free: stripe_price_id_free,
+                price_id_pro: stripe_price_id_pro,
+                price_id_enterprise: stripe_price_id_enterprise,
             },
             deep_link: DeepLinkConfig {
                 scheme: app_deep_link_scheme,
+            },
+            ai_models: AiModelSettings {
+                default_llm_model_id,
+                default_voice_model_id,
+                default_transcription_model_id,
+                task_specific_configs,
+                available_models,
+                path_finder_settings,
             },
         })
     }

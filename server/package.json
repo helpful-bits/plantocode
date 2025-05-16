@@ -1,0 +1,21 @@
+{
+  "name": "vibe-manager-server",
+  "version": "0.1.0",
+  "description": "Vibe Manager Server Component",
+  "main": "index.js",
+  "scripts": {
+    "apply-migration": "npx tsx scripts/apply-consolidated-migration.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.8.1",
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/pg": "^8.10.9",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

@@ -73,7 +73,10 @@ For the full desktop experience, you need to run both the server and desktop app
 
 1. First, set up environment variables:
    - Create a `.env` file in the `server` directory using `.env.example` as a template
-   - Make sure to include the required API keys (GEMINI_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY)
+   - Make sure to include the required API keys:
+     - `OPENROUTER_API_KEY` - API key for OpenRouter (used for all AI model access)
+     - `FIREBASE_API_KEY` and `FIREBASE_PROJECT_ID` - For authentication
+     - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` - For billing/subscription functionality
 
 2. Start the server:
    ```bash
@@ -118,7 +121,17 @@ The application follows a modular architecture:
 
 1. The core web app contains all the UI components and business logic
 2. The desktop app reuses the core app's components but provides native features through Tauri
-3. The server provides authentication, proxying, and data persistence
+3. The server provides authentication, billing, AI model proxying, and data persistence
+
+### AI Integration Architecture
+
+Vibe Manager uses a server-proxy architecture for all AI model access:
+
+1. The desktop application communicates with the server through a `ServerProxyClient`
+2. The server handles authentication, billing, and rate limiting
+3. The server proxies all AI requests to OpenRouter, which provides access to various AI models
+4. OpenRouter handles routing to the appropriate model provider (Anthropic, OpenAI, etc.)
+5. Usage data and costs are tracked in the server's database for billing purposes
 
 ## License
 

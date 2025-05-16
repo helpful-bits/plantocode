@@ -14,13 +14,13 @@ import { ApiType } from '@core/types/session-types';
 import { ApiClient } from './api-client-interface';
 import geminiClient from './clients/gemini';
 import claudeClient from './claude-client';
-import groqApiClient from './clients/groq';
 
 // Type the client registry with a union type that allows undefined for unavailable clients
 type ApiClientRegistry = {
   [K in ApiType]: K extends 'gemini' ? typeof geminiClient :
                   K extends 'claude' ? typeof claudeClient :
-                  K extends 'groq' ? typeof groqApiClient :
+                  K extends 'openrouter' ? ApiClient :
+                  K extends 'whisper' ? ApiClient :
                   undefined;
 };
 
@@ -29,7 +29,7 @@ const clientRegistry: ApiClientRegistry = {
   'gemini': geminiClient,
   'claude': claudeClient,
   'whisper': undefined, // Placeholder for future implementation
-  'groq': groqApiClient, // Groq API client for Whisper transcription
+  'openrouter': undefined, // This will be provided by the desktop bridge
 };
 
 /**
@@ -89,12 +89,6 @@ export const apiClients = {
     return claudeClient;
   },
 
-  /**
-   * Get the Groq API client (primarily for Whisper transcription)
-   */
-  get groq() {
-    return groqApiClient;
-  },
 
   /**
    * Get an API client by type (alias for getApiClient with appropriate typing)

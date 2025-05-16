@@ -1,0 +1,451 @@
+use tauri::{AppHandle, Manager};
+use serde_json::json;
+use std::collections::HashMap;
+use log::{info, error};
+
+use crate::error::{AppError, AppResult};
+use crate::models::FetchResponse;
+
+// Background job management handlers
+pub async fn handle_get_jobs(app_handle: AppHandle) -> AppResult<FetchResponse> {
+    info!("Handling get_jobs command");
+    
+    let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+        .inner().clone();
+    
+    match job_repo.get_all_jobs().await {
+        Ok(jobs) => {
+            let mut headers = HashMap::new();
+            headers.insert("Content-Type".to_string(), "application/json".to_string());
+            
+            Ok(FetchResponse {
+                status: 200,
+                headers,
+                body: json!(jobs),
+            })
+        },
+        Err(e) => {
+            error!("Failed to get jobs: {}", e);
+            let mut headers = HashMap::new();
+            headers.insert("Content-Type".to_string(), "application/json".to_string());
+            
+            Ok(FetchResponse {
+                status: 500,
+                headers,
+                body: json!({
+                    "error": format!("Failed to get jobs: {}", e)
+                }),
+            })
+        }
+    }
+}
+
+pub async fn handle_get_job(app_handle: AppHandle, job_id: Option<&str>) -> AppResult<FetchResponse> {
+    if let Some(id) = job_id {
+        info!("Handling get_job command for job_id: {}", id);
+        
+        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner().clone();
+        
+        match job_repo.get_job_by_id(id).await {
+            Ok(Some(job)) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!(job),
+                })
+            },
+            Ok(None) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 404,
+                    headers,
+                    body: json!({
+                        "error": format!("Job not found: {}", id)
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to get job {}: {}", id, e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to get job: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        
+        Ok(FetchResponse {
+            status: 400,
+            headers,
+            body: json!({
+                "error": "Job ID is required"
+            }),
+        })
+    }
+}
+
+pub async fn handle_get_jobs_by_session(app_handle: AppHandle, session_id: Option<&str>) -> AppResult<FetchResponse> {
+    if let Some(id) = session_id {
+        info!("Handling get_jobs_by_session command for session_id: {}", id);
+        
+        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner().clone();
+        
+        match job_repo.get_jobs_by_session_id(id).await {
+            Ok(jobs) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!(jobs),
+                })
+            },
+            Err(e) => {
+                error!("Failed to get jobs for session {}: {}", id, e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to get jobs for session: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        
+        Ok(FetchResponse {
+            status: 400,
+            headers,
+            body: json!({
+                "error": "Session ID is required"
+            }),
+        })
+    }
+}
+
+pub async fn handle_get_active_jobs(app_handle: AppHandle) -> AppResult<FetchResponse> {
+    info!("Handling get_active_jobs command");
+    
+    let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+        .inner().clone();
+    
+    match job_repo.get_active_jobs().await {
+        Ok(jobs) => {
+            let mut headers = HashMap::new();
+            headers.insert("Content-Type".to_string(), "application/json".to_string());
+            
+            Ok(FetchResponse {
+                status: 200,
+                headers,
+                body: json!(jobs),
+            })
+        },
+        Err(e) => {
+            error!("Failed to get active jobs: {}", e);
+            let mut headers = HashMap::new();
+            headers.insert("Content-Type".to_string(), "application/json".to_string());
+            
+            Ok(FetchResponse {
+                status: 500,
+                headers,
+                body: json!({
+                    "error": format!("Failed to get active jobs: {}", e)
+                }),
+            })
+        }
+    }
+}
+
+pub async fn handle_cancel_job(app_handle: AppHandle, job_id: Option<&str>) -> AppResult<FetchResponse> {
+    if let Some(id) = job_id {
+        info!("Handling cancel_job command for job_id: {}", id);
+        
+        // Use job_helpers to cancel the job
+        match crate::jobs::job_helpers::cancel_job(&app_handle, id).await {
+            Ok(_) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!({
+                        "success": true
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to cancel job {}: {}", id, e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to cancel job: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        
+        Ok(FetchResponse {
+            status: 400,
+            headers,
+            body: json!({
+                "error": "Job ID is required"
+            }),
+        })
+    }
+}
+
+pub async fn handle_cancel_session_jobs(app_handle: AppHandle, session_id: Option<&str>) -> AppResult<FetchResponse> {
+    if let Some(id) = session_id {
+        info!("Handling cancel_session_jobs command for session_id: {}", id);
+        
+        // Use job_helpers to cancel all jobs for the session
+        match crate::jobs::job_helpers::cancel_session_jobs(&app_handle, id).await {
+            Ok(_) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!({
+                        "success": true
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to cancel jobs for session {}: {}", id, e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to cancel session jobs: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        
+        Ok(FetchResponse {
+            status: 400,
+            headers,
+            body: json!({
+                "error": "Session ID is required"
+            }),
+        })
+    }
+}
+
+pub async fn handle_update_job_cleared_status(app_handle: AppHandle, args: &crate::models::FetchRequestArgs) -> AppResult<FetchResponse> {
+    info!("Handling update_job_cleared_status command");
+    
+    if let Some(body) = &args.body {
+        // Parse job ID and cleared status from request body
+        let job_id = body.get("jobId").and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::ValidationError("jobId is required".to_string()))?;
+        
+        let cleared = body.get("cleared").and_then(|v| v.as_bool())
+            .ok_or_else(|| AppError::ValidationError("cleared status is required".to_string()))?;
+        
+        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner().clone();
+        
+        match job_repo.update_job_cleared_status(job_id, cleared).await {
+            Ok(_) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!({
+                        "success": true
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to update job cleared status: {}", e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to update job cleared status: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        
+        Ok(FetchResponse {
+            status: 400,
+            headers,
+            body: json!({
+                "error": "Request body is required"
+            }),
+        })
+    }
+}
+
+pub async fn handle_clear_job_history(app_handle: AppHandle, args: &crate::models::FetchRequestArgs) -> AppResult<FetchResponse> {
+    info!("Handling clear_job_history command");
+    
+    if let Some(body) = &args.body {
+        // Parse session ID from request body (optional)
+        let session_id = body.get("sessionId").and_then(|v| v.as_str());
+        
+        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner().clone();
+        
+        match if let Some(sid) = session_id {
+            job_repo.clear_completed_jobs_for_session(sid).await
+        } else {
+            job_repo.clear_all_completed_jobs().await
+        } {
+            Ok(count) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!({
+                        "success": true,
+                        "count": count
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to clear job history: {}", e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to clear job history: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        // No body provided, clear all completed jobs
+        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner().clone();
+        
+        match job_repo.clear_all_completed_jobs().await {
+            Ok(count) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!({
+                        "success": true,
+                        "count": count
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to clear job history: {}", e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to clear job history: {}", e)
+                    }),
+                })
+            }
+        }
+    }
+}
+
+pub async fn handle_delete_job(app_handle: AppHandle, job_id: Option<&str>) -> AppResult<FetchResponse> {
+    if let Some(id) = job_id {
+        info!("Handling delete_job command for job_id: {}", id);
+        
+        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
+            .inner().clone();
+        
+        match job_repo.delete_job(id).await {
+            Ok(_) => {
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 200,
+                    headers,
+                    body: json!({
+                        "success": true
+                    }),
+                })
+            },
+            Err(e) => {
+                error!("Failed to delete job {}: {}", id, e);
+                let mut headers = HashMap::new();
+                headers.insert("Content-Type".to_string(), "application/json".to_string());
+                
+                Ok(FetchResponse {
+                    status: 500,
+                    headers,
+                    body: json!({
+                        "error": format!("Failed to delete job: {}", e)
+                    }),
+                })
+            }
+        }
+    } else {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        
+        Ok(FetchResponse {
+            status: 400,
+            headers,
+            body: json!({
+                "error": "Job ID is required"
+            }),
+        })
+    }
+}

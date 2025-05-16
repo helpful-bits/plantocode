@@ -170,3 +170,5 @@ temp/
 /desktop/src-tauri/icons/Square310x310.png
 /desktop/src-tauri/icons/Square310x310Logo.png
 /desktop/src-tauri/icons/StoreLogo.png
+/server/gen/
+/server/.sqlx/

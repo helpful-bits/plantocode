@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { BackgroundJob, JobStatus, ApiType, TaskType, JOB_STATUSES } from '@core/types/session-types';
-import { getActiveJobsAction, clearJobHistoryAction, cancelBackgroundJobAction } from '@core/actions/background-job-actions';
+import { getActiveJobsAction, clearJobHistoryAction, cancelBackgroundJobAction, deleteBackgroundJobAction } from '@core/actions/background-job-actions';
 import streamingRequestPool from "../api/streaming-request-pool";
 import { safeFetch } from '@core/lib/utils';
 
@@ -63,6 +63,44 @@ function areJobsEqual(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
         console.debug(`[BackgroundJobs] Streaming status changed for job ${jobA.id}`);
       }
       return false;
+    }
+    
+    // Special check for implementation plan jobs - these need to be checked more carefully
+    if (jobA.taskType === 'implementation_plan') {
+      // Always check these critical fields for implementation plans
+      const streamProgressA = jobA.metadata?.streamProgress;
+      const streamProgressB = jobB.metadata?.streamProgress;
+      
+      if (streamProgressA !== streamProgressB) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Implementation plan streaming progress changed: ${streamProgressA} → ${streamProgressB}`);
+        }
+        return false;
+      }
+      
+      // Check response length for implementation plans specifically
+      const responseLengthA = jobA.metadata?.responseLength;
+      const responseLengthB = jobB.metadata?.responseLength;
+      
+      if (responseLengthA !== responseLengthB) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Implementation plan response length changed: ${responseLengthA} → ${responseLengthB}`);
+        }
+        return false;
+      }
+      
+      // Special handling for when we have response content that has been updated
+      if (jobA.response !== jobB.response) {
+        const lengthA = jobA.response?.length || 0;
+        const lengthB = jobB.response?.length || 0;
+        
+        if (lengthA !== lengthB) {
+          if (DEBUG_POLLING) {
+            console.debug(`[BackgroundJobs] Implementation plan response content length changed: ${lengthA} → ${lengthB}`);
+          }
+          return false;
+        }
+      }
     }
 
     // For streaming jobs, check crucial streaming indicators
@@ -286,6 +324,36 @@ function hasMetadataChanged(jobA: BackgroundJob, jobB: BackgroundJob): boolean {
       }
       return true;
     }
+    
+    // Special handling for implementation plan jobs
+    if (jobA.taskType === 'implementation_plan') {
+      // Check all relevant streaming fields for implementation plans specifically
+      // These are all critical for proper UI updates
+      
+      // Check streamProgress
+      if (jobA.metadata.streamProgress !== jobB.metadata.streamProgress) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Implementation plan stream progress differs: ${jobA.metadata.streamProgress} !== ${jobB.metadata.streamProgress}`);
+        }
+        return true;
+      }
+      
+      // Check response length (critically important for UI updates)
+      if (jobA.metadata.responseLength !== jobB.metadata.responseLength) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Implementation plan response length differs: ${jobA.metadata.responseLength} !== ${jobB.metadata.responseLength}`);
+        }
+        return true;
+      }
+      
+      // Check session name for implementation plans (used for display)
+      if (jobA.metadata.sessionName !== jobB.metadata.sessionName) {
+        if (DEBUG_POLLING) {
+          console.debug(`[BackgroundJobs] Implementation plan session name differs`);
+        }
+        return true;
+      }
+    }
 
     // For active streaming jobs, check critical streaming indicators
     if (jobAIsStreaming) {
@@ -462,6 +530,7 @@ type BackgroundJobsContextType = {
   isLoading: boolean;
   error: Error | null;
   cancelJob: (jobId: string) => Promise<void>;
+  deleteJob: (jobId: string) => Promise<void>;
   clearHistory: (daysToKeep?: number) => Promise<void>;
   refreshJobs: () => Promise<void>;
 };
@@ -472,6 +541,7 @@ const BackgroundJobsContext = createContext<BackgroundJobsContextType>({
   isLoading: false,
   error: null,
   cancelJob: async () => {},
+  deleteJob: async () => {},
   clearHistory: async (daysToKeep?: number) => {},
   refreshJobs: async () => {}
 });
@@ -981,6 +1051,32 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
       throw err;
     }
   }, [refreshJobs]);
+
+  // Delete a job permanently from the database
+  const deleteJob = useCallback(async (jobId: string): Promise<void> => {
+    try {
+      // Call the server action to permanently delete the job
+      const result = await deleteBackgroundJobAction(jobId);
+      
+      if (!result.isSuccess) {
+        throw new Error(result.message || "Failed to delete job");
+      }
+      
+      // Update local state by removing the job
+      setJobs(prev => prev.filter(job => job.id !== jobId));
+      
+      // Remove from active jobs if it was active
+      setActiveJobs(prev => prev.filter(job => job.id !== jobId));
+      
+      // Refresh jobs to get the updated state
+      await refreshJobs();
+    } catch (err) {
+      console.error('[BackgroundJobs] Error deleting job:', err);
+      // Refresh to get current state if error occurred
+      await refreshJobs();
+      throw err;
+    }
+  }, [refreshJobs]);
   
   // Clear job history
   // daysToKeep parameter controls job retention:
@@ -1018,6 +1114,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         cancelJob,
+        deleteJob,
         clearHistory,
         refreshJobs
       }}

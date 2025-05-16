@@ -12,7 +12,7 @@ import React, { createContext, useContext, ReactNode, useEffect } from 'react';
 import { useAuth } from '@/auth/auth-context';
 import { SessionRepositoryAdapter } from '@/adapters/session-repository-adapter';
 import { jobQueueAdapter } from '@/adapters/job-queue-adapter';
-import { GeminiClientAdapter, ClaudeClientAdapter, GroqClientAdapter } from '@/adapters/api-client-adapter';
+import { OpenRouterClientAdapter } from '@/adapters/api-client-adapter';
 import * as fsAdapter from '@/adapters/fs-adapter';
 import { message } from '@tauri-apps/plugin-dialog';
 
@@ -20,9 +20,7 @@ import { message } from '@tauri-apps/plugin-dialog';
 interface DesktopBridgeContextType {
   sessionRepository: SessionRepositoryAdapter;
   jobQueue: typeof jobQueueAdapter;
-  geminiClient: GeminiClientAdapter;
-  claudeClient: ClaudeClientAdapter;
-  groqClient: GroqClientAdapter;
+  openRouterClient: OpenRouterClientAdapter;
   fsAdapter: typeof fsAdapter;
   isDesktop: boolean;
 }
@@ -37,9 +35,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
   
   // Create repository and service instances
   const sessionRepository = new SessionRepositoryAdapter();
-  const geminiClient = new GeminiClientAdapter();
-  const claudeClient = new ClaudeClientAdapter();
-  const groqClient = new GroqClientAdapter();
+  const openRouterClient = new OpenRouterClientAdapter();
   
   // Handle deep link URL
   const handleDeepLink = async (url: string) => {
@@ -58,6 +54,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
         console.log('[Desktop] Processing OAuth redirect URL');
         
         if (auth && typeof auth.handleRedirectResult === 'function') {
+          // Use the new explicit method that handles URL parameters
           auth.handleRedirectResult(url).catch((err: any) => {
             console.error('[Desktop] Failed to handle OAuth redirect:', err);
           });
@@ -157,16 +154,9 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
       clientFactory.getApiClient = function(type: string) {
         // If we're in the desktop app, return our adapters
         if (typeof window !== 'undefined' && (window as any).isDesktopApp) {
-          switch (type) {
-            case 'gemini':
-              return geminiClient;
-            case 'claude':
-              return claudeClient;
-            case 'groq':
-              return groqClient;
-            default:
-              return originalGetApiClient.call(this, type);
-          }
+          // Always return OpenRouterClient regardless of the requested type
+          // All AI calls will be routed through OpenRouter
+          return openRouterClient;
         }
         
         // Otherwise, use the original method
@@ -214,9 +204,7 @@ export function DesktopBridgeProvider({ children }: { children: ReactNode }) {
   const value = {
     sessionRepository,
     jobQueue: jobQueueAdapter,
-    geminiClient,
-    claudeClient,
-    groqClient,
+    openRouterClient,
     fsAdapter,
     isDesktop: true
   };
