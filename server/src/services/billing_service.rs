@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::SubscriptionRepository;
+use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepository;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -32,6 +33,7 @@ pub struct PlanInfo {
 #[derive(Debug, Clone)]
 pub struct BillingService {
     subscription_repository: Arc<SubscriptionRepository>,
+    subscription_plan_repository: Arc<SubscriptionPlanRepository>,
     api_usage_repository: Arc<ApiUsageRepository>,
     #[cfg(feature = "stripe")]
     stripe_client: Option<StripeClient>,
@@ -47,6 +49,7 @@ impl BillingService {
     ) -> Self {
         // Create repositories
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pool.clone()));
+        let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pool.clone()));
         let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pool));
         // Initialize plans
         let plans = vec![
@@ -109,6 +112,7 @@ impl BillingService {
         
         Self {
             subscription_repository,
+            subscription_plan_repository,
             api_usage_repository,
             #[cfg(feature = "stripe")]
             stripe_client,
@@ -161,15 +165,15 @@ impl BillingService {
                     }
                 }
                 
-                // Check if the model is allowed for this plan based on subscription settings
-                // TODO: In a future update, make this dynamic by using subscription_plans.features column in the database
-                // For now, use the hardcoded approach for simplicity
-                let allowed_model_patterns = match subscription.plan_id.as_str() {
-                    "free" => vec!["anthropic/claude-3-haiku-20240307", "openai/gpt-3.5-turbo"],
-                    "pro" => vec!["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"],
-                    "enterprise" => vec!["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "anthropic/claude-3-opus-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"],
-                    _ => vec!["anthropic/claude-3-haiku-20240307", "openai/gpt-3.5-turbo"], // Default models for unknown plans
-                };
+                // Determine allowed models dynamically from subscription_plans.features
+                let allowed_model_patterns = self
+                    .subscription_plan_repository
+                    .get_allowed_models(&subscription.plan_id)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to load allowed models for plan {}: {}", subscription.plan_id, e);
+                        Vec::new()
+                    });
                 
                 // Check if the model is allowed
                 let model_allowed = allowed_model_patterns.iter().any(|pattern| *pattern == model_id);

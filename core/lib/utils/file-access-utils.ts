@@ -251,7 +251,7 @@ export async function safeReadDirectory(
     let results: string[] = [];
     
     for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
+      const fullPath = path.join(safePath, entry.name);
       
       if (entry.isDirectory()) {
         if (includeDirectories) {
