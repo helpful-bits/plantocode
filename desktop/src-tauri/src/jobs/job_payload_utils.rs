@@ -177,8 +177,7 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
             Ok(JobPayload::OpenRouterTranscription(payload))
         },
         
-        // For other task types that might be added in the future
-        // TODO: Add more task types as they are implemented
+        // For other task types not yet implemented
         
         // Unsupported task type
         _ => {

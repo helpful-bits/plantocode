@@ -109,12 +109,7 @@ export function useRegexState({
     }
   }, [
     sessionContext.currentSession,
-    isSwitchingSession,
-    internalTitleRegex,
-    internalContentRegex,
-    internalNegativeTitleRegex,
-    internalNegativeContentRegex,
-    internalIsRegexActive
+    isSwitchingSession
   ]);
 
   // Handler for title regex changes - now updates local state immediately and debounces context updates

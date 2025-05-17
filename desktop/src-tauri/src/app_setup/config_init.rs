@@ -3,6 +3,7 @@ use crate::error::AppError;
 use log::{info, error};
 use crate::models::RuntimeAiConfig;
 use crate::config;
+use crate::constants::SERVER_API_URL;
 use crate::AppState;
 
 pub async fn initialize_application_configuration(app_handle: &AppHandle) -> Result<(), AppError> {
@@ -25,8 +26,8 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
     // Fetch RuntimeAiConfig from server
     info!("Fetching RuntimeAiConfig from server");
     let http_client = app_handle.state::<tauri_plugin_http::reqwest::Client>();
-    // TODO: Replace with actual server URL from environment or configuration
-    let server_url = "http://localhost:8000/api/config/runtime";
+    let base_url = std::env::var("SERVER_URL").unwrap_or_else(|_| SERVER_API_URL.to_string());
+    let server_url = format!("{}/api/config/runtime", base_url);
     
     let response = http_client.get(server_url).send().await
         .map_err(|e| AppError::HttpError(e.to_string()))?;
