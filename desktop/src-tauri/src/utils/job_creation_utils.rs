@@ -103,7 +103,6 @@ pub async fn create_and_queue_background_job(
         max_output_tokens: Some(max_tokens as i32),
         temperature: Some(temperature),
         include_syntax: None,
-        output_file_path: None,
         cleared: Some(false),
         visible: Some(true),
         metadata: Some(metadata_str),

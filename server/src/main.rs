@@ -19,7 +19,7 @@ mod utils;
 
 use crate::config::AppSettings;
 use crate::db::connection::{create_pool, verify_connection};
-use crate::db::repositories::{ApiUsageRepository, SubscriptionRepository, UserRepository};
+use crate::db::repositories::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository};
 use crate::middleware::SecureAuthentication;
 use crate::services::auth::jwt;
 use crate::services::auth::oauth::FirebaseOAuthService;
@@ -78,6 +78,27 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
+    
+    // Initialize SettingsRepository
+    let settings_repo = SettingsRepository::new(db_pool.clone());
+
+    // Load AI model settings from the database
+    let loaded_ai_model_settings = match settings_repo.get_ai_model_settings().await {
+        Ok(settings) => {
+            log::info!("Successfully loaded AI model settings from database.");
+            settings
+        }
+        Err(e) => {
+            log::error!("Failed to load AI model settings from database: {}. Check 'application_configurations' table. Exiting.", e);
+            // Optionally, could fall back to env vars or defaults here if desired, but requirement is DB first.
+            std::process::exit(1); // Or handle more gracefully
+        }
+    };
+
+    // Update the app_settings instance with the loaded AI model settings
+    let mut app_settings = app_settings; // app_settings is already declared above
+    app_settings.ai_models = loaded_ai_model_settings;
+    log::info!("Application settings updated with database-loaded AI model settings");
     
     // Initialize Firebase OAuth service
     let firebase_oauth_service = FirebaseOAuthService::new(&app_settings, db_pool.clone());

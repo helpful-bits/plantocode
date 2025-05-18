@@ -29,7 +29,17 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     
     // Configuration routes (/api/config/*)
     cfg.service(
-        web::resource("/config/runtime").route(web::get().to(crate::handlers::config_handlers::get_runtime_ai_config))
+        web::scope("/config")
+            // Legacy endpoint for web app
+            .route("/runtime", web::get().to(crate::handlers::config_handlers::get_runtime_ai_config))
+            // New endpoint for desktop app
+            .route("/runtime-ai-config", web::get().to(crate::handlers::config_handlers::get_desktop_runtime_ai_config))
+    );
+    
+    // AI proxy endpoint for direct model access (/api/ai-proxy/*)
+    cfg.service(
+        web::scope("/ai-proxy")
+            .route("/{endpoint:.*}", web::post().to(crate::handlers::proxy_handlers::ai_proxy_endpoint))
     );
     
     // Background jobs are handled entirely on the desktop client side

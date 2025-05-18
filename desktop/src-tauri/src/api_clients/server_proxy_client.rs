@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use log::{debug, error, info, trace};
 use tauri::{AppHandle, Manager};
 
+use crate::auth::TokenManager;
 use crate::constants::{SERVER_API_URL, APP_HTTP_REFERER, APP_X_TITLE};
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -14,18 +15,19 @@ use crate::models::{
     OpenRouterResponse, OpenRouterStreamChunk
 };
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
-use super::error_handling::{map_api_error, map_server_proxy_error};
+use super::error_handling::map_server_proxy_error;
 
 /// Server proxy API client for LLM requests
 pub struct ServerProxyClient {
     http_client: Client,
     app_handle: AppHandle,
     server_url: String,
+    token_manager: Arc<TokenManager>,
 }
 
 impl ServerProxyClient {
     /// Create a new server proxy client
-    pub fn new(app_handle: AppHandle, server_url: String) -> Self {
+    pub fn new(app_handle: AppHandle, server_url: String, token_manager: Arc<TokenManager>) -> Self {
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(300)) // 5 minute timeout
             .build()
@@ -35,6 +37,7 @@ impl ServerProxyClient {
             http_client,
             app_handle,
             server_url,
+            token_manager,
         }
     }
     
@@ -77,6 +80,45 @@ impl ServerProxyClient {
         trace!("Runtime AI config: {:?}", config);
         
         Ok(config)
+    }
+    
+    /// Helper method to invoke AI requests via the server proxy
+    pub async fn invoke_ai_request<T: serde::Serialize, R: serde::de::DeserializeOwned>(
+        &self, 
+        endpoint: &str, 
+        payload: &T,
+        model_id: Option<&str>
+    ) -> AppResult<R> {
+        let auth_token = self.get_auth_token().await?;
+        
+        let proxy_url = format!("{}/v1/ai-proxy/{}", self.server_url, endpoint);
+        
+        let mut request_builder = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE);
+            
+        // Add model ID header if provided
+        if let Some(model) = model_id {
+            request_builder = request_builder.header("X-Model-Id", model);
+        }
+        
+        let response = request_builder
+            .json(payload)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        response.json::<R>().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse response: {}", e)))
     }
     
     /// Get MIME type from file extension
@@ -122,56 +164,19 @@ impl ServerProxyClient {
         }
     }
     
-    /// Get auth token from Stronghold storage
+    /// Get auth token from TokenManager
     async fn get_auth_token(&self) -> AppResult<String> {
-        // First, check the app state for the token (in-memory cache)
-        let app_state = self.app_handle.state::<crate::AppState>();
-        
-        // Try to get token from state first
-        let token_lock = app_state.token.lock().map_err(|e| 
-            AppError::InternalError(format!("Failed to acquire token lock: {}", e))
-        )?;
-        
-        if let Some(token) = token_lock.clone() {
-            debug!("Using cached auth token from app state");
-            return Ok(token);
-        }
-        
-        // Token not in app state, load from Stronghold
-        drop(token_lock); // Drop lock before using Stronghold
-        
-        // Get Stronghold instance from app state
-        let stronghold = self.app_handle.state::<tauri_plugin_stronghold::stronghold::Stronghold>();
-        let store = stronghold.store();
-        
-        // Try to get the token from Stronghold using the TOKEN_KEY
-        match store.get(crate::constants::TOKEN_KEY.as_bytes()) {
-            Ok(Some(bytes)) => {
-                // Convert bytes to string
-                let token = String::from_utf8(bytes)
-                    .map_err(|e| AppError::InternalError(format!("Invalid UTF-8 data in token: {}", e)))?;
-                
-                // Update token in app state
-                let mut token_lock = app_state.token.lock().map_err(|e| 
-                    AppError::InternalError(format!("Failed to acquire token lock for update: {}", e))
-                )?;
-                *token_lock = Some(token.clone());
-                
-                debug!("Successfully retrieved auth token from Stronghold");
+        match self.token_manager.get().await {
+            Some(token) => {
+                debug!("Using auth token from TokenManager");
                 Ok(token)
             },
-            Ok(None) => {
-                debug!("No token found in Stronghold");
-                Err(AppError::AuthError("Authentication token not found in secure storage".to_string()))
-            },
-            Err(e) => {
-                error!("Error accessing Stronghold: {}", e);
-                Err(AppError::StrongholdError(format!("Failed to access token in Stronghold: {}", e)))
+            None => {
+                debug!("No auth token found in TokenManager");
+                Err(AppError::AuthError("Authentication token not found".to_string()))
             }
         }
     }
-    
-    // No longer need to determine service name as all requests go to the OpenRouter endpoint
 }
 
 #[async_trait]

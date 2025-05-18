@@ -191,7 +191,7 @@ export class RegexGenerationProcessor implements JobProcessor<RegexGenerationPay
       await backgroundJobRepository.updateBackgroundJobStatus({
         jobId: backgroundJobId,
         status: 'completed',
-        response: responseText,
+        responseText: responseText,
         endTime: Date.now(),
         statusMessage: 'Completed successfully',
         metadata: finalMetadata

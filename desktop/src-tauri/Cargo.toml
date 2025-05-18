@@ -41,3 +41,31 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 async-recursion = "1.0.5"
 
 [features]
+
+[lints.rust]
+unsafe_code = "warn"
+unused_imports = "warn"
+unused_variables = "warn"
+unreachable_code = "warn"
+dead_code = "warn"
+# Temporarily remove missing_docs until codebase is fully documented
+# missing_docs = "warn"
+unused_must_use = "warn"
+deprecated = "warn"
+
+[lints.clippy]
+pedantic = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+nursery = "warn"
+clone_on_ref_ptr = "warn"
+cognitive_complexity = "warn"
+match_same_arms = "warn"
+needless_pass_by_value = "warn"
+needless_update = "warn"
+redundant_closure_for_method_calls = "warn"
+enum_glob_use = "warn"
+if_not_else = "warn"
+
+# Remove incorrect workspace.lints section
+# rustflags should be set in .cargo/config.toml instead

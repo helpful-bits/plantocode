@@ -200,7 +200,6 @@ pub struct BackgroundJob {
     pub max_output_tokens: Option<i32>,
     pub temperature: Option<f32>,
     pub include_syntax: Option<bool>,
-    pub output_file_path: Option<String>,
     pub cleared: Option<bool>,
     pub visible: Option<bool>,
     pub metadata: Option<String>,

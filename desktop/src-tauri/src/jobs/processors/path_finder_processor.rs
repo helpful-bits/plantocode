@@ -371,8 +371,8 @@ impl JobProcessor for PathFinderProcessor {
         let repo_state = app_handle.state::<Arc<BackgroundJobRepository>>();
         let repo = repo_state.inner().clone();
         
-        // Get the API client from app state
-        let llm_client = crate::api_clients::get_llm_client(&app_handle)?;
+        // Get the API client from factory
+        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
         // Ensure job is visible
         self.ensure_job_visible(&repo, &payload.background_job_id).await?;

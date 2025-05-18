@@ -175,26 +175,8 @@ pub async fn read_implementation_plan_command(
     let created_at = job.created_at;
     let job_response = job.response.clone().unwrap_or_default();
     
-    // Check if the job has output file path
-    let output_file_path = job.output_file_path.clone();
-    
-    // If there's an output file, read it
-    let implementation_plan_content = if let Some(path) = output_file_path {
-        if path.is_empty() {
-            job_response  // Fall back to job response if path is empty
-        } else {
-            // Try to read the implementation plan file
-            match std::fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(e) => {
-                    info!("Failed to read implementation plan file, falling back to job response: {}", e);
-                    job_response
-                }
-            }
-        }
-    } else {
-        job_response
-    };
+    // Use the job response directly as the implementation plan content
+    let implementation_plan_content = job_response;
     
     // Try to parse the title from metadata or response
     let title = if let Some(metadata) = job.metadata.as_ref() {

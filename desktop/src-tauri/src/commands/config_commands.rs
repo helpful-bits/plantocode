@@ -30,25 +30,20 @@ pub async fn get_default_task_configurations(app_handle: AppHandle) -> AppResult
 /// Fetches the runtime AI configuration from the server and updates the local cache
 #[tauri::command]
 pub async fn fetch_runtime_ai_config(
-    app_handle: AppHandle, 
-    client_factory: State<'_, ClientFactory>
+    app_handle: AppHandle,
 ) -> AppResult<RuntimeAiConfig> {
-    info!("Fetching runtime AI configuration from server");
+    info!("Fetching runtime AI configuration from server via command");
     
-    // Get a server proxy client
-    let client = client_factory.get_server_proxy_client(app_handle.clone())?;
+    // Use our new config module to fetch and update the runtime AI configuration
+    crate::app_setup::config::fetch_and_update_runtime_ai_config(&app_handle).await?;
     
-    // Fetch the configuration from the server
-    let config_json = client.get_runtime_ai_config().await?;
-    
-    // Convert to RuntimeAiConfig
-    let runtime_config: RuntimeAiConfig = serde_json::from_value(config_json)
-        .map_err(|e| AppError::ConfigError(format!("Failed to deserialize runtime AI config: {}", e)))?;
-    
-    // Update the in-memory configuration
-    crate::config::update_runtime_ai_config(runtime_config.clone())?;
-    
-    info!("Runtime AI configuration updated from server");
-    Ok(runtime_config)
+    // Return the updated configuration
+    match crate::config::get_runtime_ai_config() {
+        Ok(Some(config)) => {
+            info!("Runtime AI configuration fetched and updated successfully");
+            Ok(config)
+        },
+        Ok(None) => Err(AppError::ConfigError("Runtime AI configuration not found after update".to_string())),
+        Err(e) => Err(AppError::ConfigError(format!("Failed to get runtime AI configuration: {}", e))),
+    }
 }
-

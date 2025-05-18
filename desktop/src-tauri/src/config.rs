@@ -27,6 +27,15 @@ pub async fn init_config(_stronghold: &Stronghold) -> Result<(), String> {
     Ok(())
 }
 
+// Mock version of init_config that doesn't require Stronghold
+pub async fn init_config_without_stronghold() -> Result<(), String> {
+    info!("Initializing application configuration (without Stronghold)");
+    
+    // Initialize with default configuration
+    info!("Application configuration initialized with defaults");
+    Ok(())
+}
+
 // Note: The get_model_context_window function is implemented below
 
 

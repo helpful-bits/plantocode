@@ -61,7 +61,13 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
             "provider_error" => AppError::ServerProxyError(format!("AI provider error: {}", message)),
             "database_error" => AppError::ServerProxyError(format!("Server database error: {}", message)),
             "validation_error" => AppError::ValidationError(message),
-            _ => AppError::ServerProxyError(format!("{} ({})", message, status_code)),
+            _ => {
+                if let Some(code_val) = error_response.code {
+                    AppError::ServerProxyError(format!("{} (HTTP Status: {}, Server Code: {})", message, status_code, code_val))
+                } else {
+                    AppError::ServerProxyError(format!("{} (HTTP Status: {})", message, status_code))
+                }
+            },
         }
     } else {
         // Fallback based on HTTP status code if we can't parse the server's error format
@@ -78,8 +84,4 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
     }
 }
 
-// For backward compatibility
-pub fn map_api_error(status_code: u16, response_text: &str) -> AppError {
-    map_direct_openrouter_error(status_code, response_text)
-}
 

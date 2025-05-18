@@ -1,5 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Enable easier debugging
+#[cfg(debug_assertions)]
+use std::env;
+
 mod commands;
 pub mod config;
 pub mod constants;
@@ -12,6 +16,7 @@ pub mod services;
 pub mod api_clients;
 pub mod prompts;
 pub mod app_setup;
+pub mod auth;
 
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
@@ -22,6 +27,7 @@ use crate::db_utils::{
 };
 use crate::error::AppError;
 use crate::utils::FileLockManager;
+use crate::auth::TokenManager;
 
 // App state struct for Tauri
 #[derive(Default)]
@@ -39,6 +45,12 @@ static SETTINGS_REPO: OnceCell<Arc<SettingsRepository>> = OnceCell::const_new();
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 
 fn main() {
+    // Enable extended backtrace for debugging issues
+    #[cfg(debug_assertions)]
+    {
+        env::set_var("RUST_BACKTRACE", "1");
+    }
+    
     // Initialize logger with environment variables
     // RUST_LOG=debug,vibe_manager=trace
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -48,54 +60,48 @@ fn main() {
     
     info!("Starting Vibe Manager Desktop application");
     
-    // Generate tauri context for config access
     let tauri_context = tauri::generate_context!();
-    
-    // Get app identifier for data directory path
     let app_identifier = &tauri_context.config().identifier;
-    
-    // Determine app data directory for salt path
-    let app_local_data_dir = dirs::data_local_dir()
-        .map(|p| p.join(app_identifier))
-        .expect("Could not resolve app local data path via dirs crate. Ensure 'dirs' crate is available or adjust path logic.");
-    
-    // Create app data directory if it doesn't exist
-    if !app_local_data_dir.exists() {
-        std::fs::create_dir_all(&app_local_data_dir)
-            .expect("Failed to create app data directory for salt path");
+
+    // Determine salt path for Stronghold plugin *before* builder
+    let app_local_data_base_path = dirs::data_local_dir()
+        .expect("Could not resolve app local data path for Stronghold.")
+        .join(app_identifier); // This path is specific to the app, e.g., .../Application Support/com.vibe-manager.app
+
+    if !app_local_data_base_path.exists() {
+        std::fs::create_dir_all(&app_local_data_base_path)
+            .expect("Failed to create app local data directory for Stronghold salt path");
     }
-    
-    let salt_path_for_stronghold_plugin = app_local_data_dir.join("salt.txt");
+    let salt_path_for_stronghold_plugin = app_local_data_base_path.join("salt.txt");
     info!("Stronghold salt file path determined: {:?}", salt_path_for_stronghold_plugin);
-    
+
+    // Build the Stronghold plugin instance
+    let stronghold_plugin = tauri_plugin_stronghold::Builder::with_argon2(&salt_path_for_stronghold_plugin).build();
+
+    // Create a TokenManager before building the app
+    let token_manager = Arc::new(TokenManager::new());
+
     tauri::Builder::default()
         .manage(AppState {
             token: Mutex::new(None),
             config_load_error: Mutex::new(None),
         })
+        .manage(token_manager.clone())
+        // IMPORTANT: Load Stronghold plugin first before all other plugins
+        .plugin(stronghold_plugin)
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
-        // Register Stronghold plugin with the builder chain before setup
-        // Note: The stronghold plugin initialization is synchronous and completes
-        // before the setup hook runs.
-        .plugin(tauri_plugin_stronghold::Builder::with_argon2(&salt_path_for_stronghold_plugin)
-            .build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
             
-            // Verify Stronghold plugin is initialized
-            if app.try_state::<tauri_plugin_stronghold::stronghold::Stronghold>().is_none() {
-                error!("Stronghold plugin not properly initialized. This will cause errors in configuration loading.");
-            } else {
-                info!("Stronghold plugin initialized successfully.");
-            }
+            // Stronghold plugin is now initialized via the builder chain.
+            // No need to initialize it here.
             
-            // Get app handle for the async initialization
             let app_handle_clone = app.handle().clone();
             
             // Run the async initialization in the sync context and explicitly map the error

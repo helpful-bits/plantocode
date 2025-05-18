@@ -1,13 +1,24 @@
 use tauri::AppHandle;
 use crate::error::AppError;
-use log::{info, error};
+use log::{info, error, warn};
 
 pub mod database;
 pub mod services;
-pub mod config_init;
+pub mod config;
 pub mod job_system;
 pub mod file_management;
 
+/// Run asynchronous initialization steps for the application
+/// 
+/// This function initializes various subsystems in the following order:
+/// 1. Database (critical path)
+/// 2. Application configuration 
+/// 3. API clients
+/// 4. File lock manager
+/// 5. Job system
+///
+/// Runtime AI configuration is no longer loaded during startup.
+/// It will be triggered from the renderer layer after Firebase login completes.
 pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
     info!("Starting asynchronous application initialization...");
 
@@ -17,12 +28,12 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
 
-    // Initialize configuration
-    match config_init::initialize_application_configuration(app_handle).await {
+    // Initialize configuration - non-critical path
+    match config::secure_store::initialize_secure_storage(app_handle).await {
         Ok(_) => info!("Application configuration initialized successfully"),
         Err(e) => {
-            error!("Application configuration initialization failed: {}. Continuing with initialization...", e);
-            // Not returning here to allow the app to continue with default configuration
+            warn!("Application configuration (Stronghold dependent) initialization issue: {}. Continuing with limited functionality.", e);
+            // Continue execution instead of returning error
         }
     }
 
@@ -30,15 +41,6 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
     if let Err(e) = services::initialize_api_clients(app_handle).await {
         error!("API client initialization failed: {}", e);
         return Err(e);
-    }
-
-    // Fetch runtime AI config - this is optional, so we don't fail if it fails
-    match config_init::fetch_and_update_runtime_ai_config(app_handle).await {
-        Ok(_) => info!("Runtime AI configuration updated successfully"),
-        Err(e) => {
-            error!("Failed to fetch runtime AI config: {}. Continuing with default configuration...", e);
-            // Not returning here to allow the app to continue with default configuration
-        }
     }
 
     // Initialize file lock manager

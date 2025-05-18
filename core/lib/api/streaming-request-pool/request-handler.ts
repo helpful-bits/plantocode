@@ -7,7 +7,7 @@ import { safeFetch } from '@core/lib/utils';
  */
 async function getBackgroundJobRepository() {
   // Dynamic import to avoid circular dependencies
-  const { backgroundJobRepository } = await import('@core/lib/db/repositories/background-job-repository');
+  const { backgroundJobRepository } = await import('@core/lib/db/repositories');
   return backgroundJobRepository;
 }
 

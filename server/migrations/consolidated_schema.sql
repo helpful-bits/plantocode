@@ -153,6 +153,56 @@ CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_api_quotas_user_id ON api_quotas(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_quotas_service_name ON api_quotas(service_name);
 
+-- Create models table for storing AI model metadata
+CREATE TABLE IF NOT EXISTS models (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    context_window INTEGER NOT NULL DEFAULT 4096,
+    price_input DECIMAL(10,6) NOT NULL DEFAULT 0,
+    price_output DECIMAL(10,6) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add index for faster lookup by name
+CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
+
+-- Create table for tracking API usage (tokens, cost, etc.)
+CREATE TABLE IF NOT EXISTS api_usage (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    model_id VARCHAR(255) NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    cost DECIMAL(10,6) NOT NULL DEFAULT 0,
+    processing_ms INTEGER,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_id) REFERENCES models(id)
+);
+
+-- Add indexes for faster reporting
+CREATE INDEX IF NOT EXISTS idx_api_usage_user ON api_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_usage_model ON api_usage(model_id);
+CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage(timestamp);
+
+-- Initial seed data for models
+INSERT INTO models (id, name, context_window, price_input, price_output)
+VALUES 
+    ('openai/gpt-3.5-turbo', 'GPT-3.5 Turbo', 16385, 0.000500, 0.001500),
+    ('openai/gpt-4-turbo', 'GPT-4 Turbo', 128000, 0.010000, 0.030000),
+    ('anthropic/claude-3-opus', 'Claude 3 Opus', 200000, 0.015000, 0.075000),
+    ('anthropic/claude-3-sonnet', 'Claude 3 Sonnet', 200000, 0.003000, 0.015000),
+    ('anthropic/claude-3-haiku', 'Claude 3 Haiku', 200000, 0.000250, 0.001250),
+    ('google/gemini-pro', 'Gemini Pro', 32768, 0.000125, 0.000375),
+    ('google/gemini-1.5-pro', 'Gemini 1.5 Pro', 1000000, 0.000700, 0.002100),
+    ('groq/llama-3-70b-8192', 'Llama 3 70B (Groq)', 8192, 0.000700, 0.000900),
+    ('groq/mixtral-8x7b-32768', 'Mixtral 8x7B (Groq)', 32768, 0.000200, 0.000300)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    context_window = EXCLUDED.context_window,
+    price_input = EXCLUDED.price_input,
+    price_output = EXCLUDED.price_output;
+
 -- Insert default service pricing for OpenRouter models
 INSERT INTO service_pricing (service_name, input_token_price, output_token_price, currency, unit) 
 VALUES 
@@ -171,6 +221,16 @@ ON CONFLICT (service_name) DO UPDATE SET
 UPDATE service_pricing SET input_token_price = 0.0, output_token_price = 0.006, updated_at = CURRENT_TIMESTAMP
 WHERE service_name = 'openai/whisper-1' 
 AND (input_token_price != 0.0 OR output_token_price != 0.006);
+
+-- Store application-wide configurations, especially those managed dynamically
+CREATE TABLE IF NOT EXISTS application_configurations (
+config_key TEXT PRIMARY KEY,    -- e.g., 'ai_settings_default_llm_model_id', 'ai_settings_available_models'
+config_value JSONB NOT NULL,    -- Store complex configurations as JSONB
+description TEXT,               -- Optional description of the configuration
+updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_application_configurations_config_key ON application_configurations(config_key);
 
 -- Insert default subscription plans
 INSERT INTO subscription_plans (id, name, description, price_monthly, price_yearly, features)

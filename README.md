@@ -92,6 +92,27 @@ For the full desktop experience, you need to run both the server and desktop app
 
 The desktop app will automatically connect to the server, which will handle authentication and proxy requests to the AI services.
 
+## Running the Server with OpenRouter
+
+The server now acts as a proxy for all AI requests using OpenRouter. To set this up:
+
+1. Get an API key from [OpenRouter](https://openrouter.ai/)
+2. Add `OPENROUTER_API_KEY=<your-key>` to your server's `.env` file
+3. The server will automatically route all AI requests through OpenRouter's unified API
+4. Usage data is tracked for each user in the `api_usage` table
+
+## Desktop Login Flow
+
+The desktop app now uses a simplified login flow:
+
+1. User authenticates with Firebase (Google, GitHub, etc.)
+2. The Firebase token is exchanged for a server JWT
+3. The token is stored in the new `TokenManager` (not directly in Stronghold)
+4. After successful login, the app fetches runtime configuration
+5. The token is used for authenticating all server requests
+
+This approach avoids Stronghold-dependent startup crashes and makes authentication more robust.
+
 ## Building
 
 ### Build the core web application:
@@ -132,6 +153,7 @@ Vibe Manager uses a server-proxy architecture for all AI model access:
 3. The server proxies all AI requests to OpenRouter, which provides access to various AI models
 4. OpenRouter handles routing to the appropriate model provider (Anthropic, OpenAI, etc.)
 5. Usage data and costs are tracked in the server's database for billing purposes
+6. Models, pricing, and usage data are stored in dedicated database tables
 
 ## License
 

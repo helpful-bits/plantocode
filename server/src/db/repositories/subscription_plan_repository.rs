@@ -15,7 +15,7 @@ impl SubscriptionPlanRepository {
 
     pub async fn get_allowed_models(&self, plan_id: &str) -> Result<Vec<String>, AppError> {
         let record = query!(
-            r#"SELECT features as \"features!: Value\" FROM subscription_plans WHERE id = $1"#,
+            r#"SELECT features FROM subscription_plans WHERE id = $1"#,
             plan_id
         )
         .fetch_optional(&self.db_pool)
@@ -23,8 +23,10 @@ impl SubscriptionPlanRepository {
         .map_err(|e| AppError::Database(format!("Failed to fetch plan features: {}", e)))?;
 
         if let Some(r) = record {
-            let services = r
-                .features
+            let features: Value = serde_json::from_value(r.features)
+                .map_err(|e| AppError::Internal(format!("Failed to parse features: {}", e)))?;
+                
+            let services = features
                 .get("services")
                 .and_then(|v| v.as_array())
                 .ok_or_else(|| AppError::Internal("services not found in plan features".to_string()))?;

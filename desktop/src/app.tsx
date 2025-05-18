@@ -10,11 +10,13 @@
  */
 
 import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
 import { AuthProvider, useAuth } from './auth/auth-context';
 import LoginPage from './pages/login';
 import { ThemeProvider } from '@core/components/theme-provider';
 import { Toaster } from '@core/components/ui/toaster';
 import SubscriptionManager from './components/billing/SubscriptionManager';
+import { loadRuntimeConfigAfterLogin } from './bridge/runtime-config';
 
 // Import core components - these are what we want to reuse from the core app
 import { AppShell } from '@core/app/components/app-shell';
@@ -38,9 +40,31 @@ function LoadingScreen() {
 
 // Authentication gate component
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, token } = useAuth();
+  const [configLoading, setConfigLoading] = useState(false);
   
-  if (loading) {
+  // Load runtime configuration after successful login
+  useEffect(() => {
+    if (user && token) {
+      const fetchConfig = async () => {
+        try {
+          setConfigLoading(true);
+          // Load the runtime AI configuration
+          await loadRuntimeConfigAfterLogin();
+          // Store token in Rust's TokenManager
+          await invoke('store_token', { token });
+        } catch (err) {
+          console.error('Failed to load runtime config:', err);
+        } finally {
+          setConfigLoading(false);
+        }
+      };
+      
+      fetchConfig();
+    }
+  }, [user, token]);
+  
+  if (loading || configLoading) {
     return <LoadingScreen />;
   }
   
@@ -55,9 +79,21 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [appReady, setAppReady] = useState(false);
   
-  // Set app as ready immediately
+  // Set app as ready after ensuring environment is initialized
   useEffect(() => {
-    setAppReady(true);
+    const initializeApp = async () => {
+      try {
+        // Any app-wide initialization can go here
+        // The heavy lifting is now done in the AuthGate after login
+        
+        setAppReady(true);
+      } catch (err) {
+        console.error('Failed to initialize app:', err);
+        setAppReady(true); // Still allow app to proceed to login screen
+      }
+    };
+    
+    initializeApp();
   }, []);
   
   if (!appReady) {

@@ -12,7 +12,7 @@ use crate::api_clients::server_proxy_client::ServerProxyClient;
 use crate::prompts::task_enhancement::{generate_task_enhancement_system_prompt, generate_task_enhancement_user_prompt};
 use crate::db_utils::BackgroundJobRepository;
 use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
-use crate::api_clients::get_llm_client;
+use crate::api_clients::client_factory;
 
 // Define structs for parsing the XML response
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -84,7 +84,7 @@ impl JobProcessor for TaskEnhancementProcessor {
         );
         
         // Get the LLM client using the standardized factory function
-        let client = get_llm_client(&app_handle)?;
+        let client = client_factory::get_api_client(&app_handle)?;
         
         // Create the message objects for the OpenRouter request
         let system_message = OpenRouterRequestMessage {
