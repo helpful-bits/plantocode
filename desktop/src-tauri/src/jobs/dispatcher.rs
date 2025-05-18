@@ -12,8 +12,7 @@ use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{JobStatus, BackgroundJob};
 use crate::jobs::job_helpers;
 
-// Maximum retry count for jobs
-const MAX_RETRIES: u32 = 3;
+// No need for a local MAX_RETRIES as we use job_helpers::MAX_RETRY_COUNT
 
 /// Dispatch a job to be processed
 pub async fn dispatch_job(job: Job, app_handle: AppHandle) -> AppResult<()> {
@@ -321,8 +320,10 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         }
     };
     
-    // Reset retry count
-    queue.reset_retry_count(&job_id);
+    // Reset retry count and log any errors
+    if let Err(e) = queue.reset_retry_count(&job_id) {
+        error!("Failed to reset retry count for job {}: {}", job_id, e);
+    }
     
     // Update job status based on result
     match result.status {

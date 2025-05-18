@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   status TEXT DEFAULT 'created' NOT NULL CHECK(status IN ('idle', 'running', 'completed', 'failed', 'canceled', 'preparing', 'created', 'queued', 'acknowledged_by_worker', 'preparing_input', 'generating_stream', 'processing_stream', 'completed_by_tag')),
   start_time INTEGER,
   end_time INTEGER,
-  output_file_path TEXT, -- DEPRECATED: All content is now stored in response field
+  -- output_file_path column has been removed, all content is now stored in response field
   status_message TEXT,
   tokens_received INTEGER DEFAULT 0,
   tokens_sent INTEGER DEFAULT 0,
@@ -139,6 +139,9 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   metadata TEXT,
   project_directory TEXT,
   visible BOOLEAN DEFAULT 1,
+  temperature REAL,
+  include_syntax INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -149,7 +152,7 @@ CREATE INDEX IF NOT EXISTS idx_background_jobs_cleared ON background_jobs(cleare
 CREATE INDEX IF NOT EXISTS idx_background_jobs_status_cleared ON background_jobs(status, cleared);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_api_type ON background_jobs(api_type);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
-CREATE INDEX IF NOT EXISTS idx_background_jobs_output_file_path ON background_jobs(output_file_path);
+-- index on output_file_path has been removed
 
 -- project_directory column is already included in the background_jobs table creation
 

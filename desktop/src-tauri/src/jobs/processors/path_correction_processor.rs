@@ -45,7 +45,7 @@ impl JobProcessor for PathCorrectionProcessor {
         
         // Get repository and LLM client
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
-        let llm_client = crate::api_clients::get_llm_client(&app_handle)?;
+        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
         // Ensure job is visible in UI
         ensure_job_visible(&repo, &job.id).await?;

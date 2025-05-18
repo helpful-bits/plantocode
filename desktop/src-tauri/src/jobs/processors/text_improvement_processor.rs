@@ -83,7 +83,7 @@ impl JobProcessor for TextImprovementProcessor {
         let user_prompt_text = generate_text_improvement_user_prompt(&payload.text_to_improve);
         
         // Get the LLM client using the standardized factory function
-        let client = crate::api_clients::get_llm_client(&app_handle)?;
+        let client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
         // Create the message objects for the OpenRouter request
         let system_message = OpenRouterRequestMessage {

@@ -157,7 +157,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
         
         // Get LLM client using the standardized factory function
-        let llm_client = crate::api_clients::get_llm_client(&app_handle)?;
+        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
         // Ensure job is visible
         self.ensure_job_visible(&repo, &payload.background_job_id).await?;
@@ -417,8 +417,6 @@ impl JobProcessor for ImplementationPlanProcessor {
         job.end_time = Some(timestamp);
         job.model_used = Some(payload.model.clone());
         
-        // Set output file path
-        job.output_file_path = Some(file_path.clone());
         
         // Set token usage from streaming
         job.tokens_received = Some(accumulated_tokens as i32);

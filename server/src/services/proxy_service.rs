@@ -76,6 +76,7 @@ pub struct ProxyService {
     openrouter_client: OpenRouterClient,
     billing_service: Arc<BillingService>,
     api_usage_repository: Arc<ApiUsageRepository>,
+    app_settings: crate::config::settings::AppSettings,
 }
 
 impl ProxyService {
@@ -91,6 +92,7 @@ impl ProxyService {
             openrouter_client,
             billing_service,
             api_usage_repository,
+            app_settings: app_settings.clone(),
         })
     }
     
@@ -113,12 +115,34 @@ impl ProxyService {
         let request = self.openrouter_client.convert_to_chat_request(payload.clone())?;
         
         // Make the request to OpenRouter
-        let response = self.openrouter_client.chat_completion(request).await?;
+        let response = self.openrouter_client.chat_completion(request, &user_id.to_string()).await?;
         
         // Extract usage data from response
         let input_tokens = response.usage.prompt_tokens;
         let output_tokens = response.usage.completion_tokens;
-        let provided_cost = response.usage.cost;
+        
+        // Calculate the final cost
+        let final_cost_bd = if let Some(cost_f64) = response.usage.cost {
+            // If OpenRouter provides a cost, use it
+            bigdecimal::BigDecimal::try_from(cost_f64)
+                .map_err(|_| AppError::Internal("Invalid cost from OpenRouter".to_string()))?
+        } else {
+            // Fallback: find model in AppSettings and calculate
+            let model_info = self.app_settings.ai_models.available_models.iter()
+                .find(|m| m.id == model_id);
+                
+            if let Some(info) = model_info {
+                if let (Some(in_price), Some(out_price)) = (info.price_input_per_1k_tokens, info.price_output_per_1k_tokens) {
+                    ApiUsageRepository::calculate_cost(input_tokens, output_tokens, in_price, out_price)?
+                } else {
+                    log::warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model_id);
+                    bigdecimal::BigDecimal::from(0)
+                }
+            } else {
+                log::warn!("Model {} not found in AppSettings for pricing. Cost will be zero.", model_id);
+                bigdecimal::BigDecimal::from(0)
+            }
+        };
         
         // Record API usage in the database
         self.api_usage_repository.record_usage(
@@ -126,7 +150,7 @@ impl ProxyService {
             model_id,
             input_tokens,
             output_tokens,
-            provided_cost,
+            final_cost_bd,
         ).await?;
         
         // Return the raw JSON response - actix-web will convert it to JSON
@@ -162,7 +186,7 @@ impl ProxyService {
             // First, perform the request and get a result
             async move {
                 // This is now an owned client inside this async block
-                let stream_result = openrouter_client_owned.stream_chat_completion(request).await?;
+                let stream_result = openrouter_client_owned.stream_chat_completion(request, &user_id.to_string()).await?;
                 
                 // We'll track usage information as we process the stream
                 let usage_tracking = Arc::new(Mutex::new(StreamUsageTracker::new()));
@@ -185,12 +209,26 @@ impl ProxyService {
                         info!("Recording stream usage for model {} (prompt tokens: {}, completion tokens: {}, cost: {:?})",
                               model_id_for_task, tracker.prompt_tokens, tracker.completion_tokens, tracker.cost);
                         
+                        let final_cost_bd = if let Some(cost_f64) = tracker.cost {
+                            // If OpenRouter provides a cost, use it
+                            match bigdecimal::BigDecimal::try_from(cost_f64) {
+                                Ok(bd) => bd,
+                                Err(e) => {
+                                    error!("Failed to convert OpenRouter cost to BigDecimal: {}", e);
+                                    bigdecimal::BigDecimal::from(0)
+                                }
+                            }
+                        } else {
+                            // Default to zero cost if not provided
+                            bigdecimal::BigDecimal::from(0)
+                        };
+                        
                         if let Err(e) = api_usage_repository_clone.record_usage(
                             &user_id_for_task,
                             &model_id_for_task,
                             tracker.prompt_tokens,
                             tracker.completion_tokens,
-                            tracker.cost,
+                            final_cost_bd,
                         ).await {
                             error!("Failed to record API usage: {}", e);
                         }
@@ -198,12 +236,15 @@ impl ProxyService {
                         // If no usage data was found in the stream at all, use minimal values 
                         // to ensure we have a record of the API call
                         warn!("No usage data found in stream, recording minimal usage values");
+                        // Use a minimal default cost of zero
+                        let minimal_cost = bigdecimal::BigDecimal::from(0);
+                        
                         if let Err(e) = api_usage_repository_clone.record_usage(
                             &user_id_for_task,
                             &model_id_for_task,
                             1, // Minimal value to ensure a record exists
                             1, // Minimal value to ensure a record exists
-                            None, // No cost information, will use pricing table
+                            minimal_cost,
                         ).await {
                             error!("Failed to record API usage: {}", e);
                         }
@@ -294,7 +335,7 @@ impl ProxyService {
         self.billing_service.check_service_access(user_id, model).await?;
         
         // Make the transcription request
-        let response = self.openrouter_client.transcribe(audio_data, filename, model).await?;
+        let response = self.openrouter_client.transcribe(audio_data, filename, model, &user_id.to_string()).await?;
         
         // Extract usage data if available, or use minimal fallback values
         let (input_tokens, output_tokens) = match &response.usage {
@@ -309,7 +350,30 @@ impl ProxyService {
         };
         
         // Get cost if provided by OpenRouter
-        let cost = self.openrouter_client.extract_cost_from_transcription(&response);
+        let openrouter_cost = self.openrouter_client.extract_cost_from_transcription(&response);
+        
+        // Calculate the final cost
+        let final_cost_bd = if let Some(cost_f64) = openrouter_cost {
+            // If OpenRouter provides a cost, use it
+            bigdecimal::BigDecimal::try_from(cost_f64)
+                .map_err(|_| AppError::Internal("Invalid cost from OpenRouter transcription".to_string()))?
+        } else {
+            // Fallback: find model in AppSettings and calculate
+            let model_info = self.app_settings.ai_models.available_models.iter()
+                .find(|m| m.id == model);
+                
+            if let Some(info) = model_info {
+                if let (Some(in_price), Some(out_price)) = (info.price_input_per_1k_tokens, info.price_output_per_1k_tokens) {
+                    ApiUsageRepository::calculate_cost(input_tokens, output_tokens, in_price, out_price)?
+                } else {
+                    log::warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model);
+                    bigdecimal::BigDecimal::from(0)
+                }
+            } else {
+                log::warn!("Model {} not found in AppSettings for pricing. Cost will be zero.", model);
+                bigdecimal::BigDecimal::from(0)
+            }
+        };
         
         // Record API usage
         self.api_usage_repository.record_usage(
@@ -317,7 +381,7 @@ impl ProxyService {
             model,
             input_tokens,
             output_tokens,
-            cost,
+            final_cost_bd,
         ).await?;
         
         // Return as JSON
@@ -333,6 +397,7 @@ impl Clone for ProxyService {
             openrouter_client: self.openrouter_client.clone(),
             billing_service: self.billing_service.clone(),
             api_usage_repository: self.api_usage_repository.clone(),
+            app_settings: self.app_settings.clone(),
         }
     }
 }

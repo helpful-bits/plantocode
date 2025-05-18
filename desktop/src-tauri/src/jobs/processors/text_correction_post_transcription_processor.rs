@@ -62,7 +62,7 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
         };
         
         // Get the API client
-        let llm_client = app_handle.state::<Arc<dyn ApiClient>>();
+        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
         // Update job status to running
         let repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();

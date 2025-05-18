@@ -47,7 +47,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
         
         // Get LLM client using the standardized factory function
-        let llm_client = crate::api_clients::get_llm_client(&app_handle)?;
+        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
         // Ensure job is visible in UI
         job_helpers::ensure_job_visible(&repo, &job.id).await?;

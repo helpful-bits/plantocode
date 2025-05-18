@@ -101,3 +101,6 @@ impl From<serde_json::Error> for AppError {
         AppError::Internal(format!("JSON deserialization/serialization error: {}", error))
     }
 }
+
+// Define AppResult type alias for Result<T, AppError>
+pub type AppResult<T> = Result<T, AppError>;

@@ -4,7 +4,7 @@ use crate::error::AppError;
 use crate::services::proxy_service::ProxyService;
 use futures_util::StreamExt;
 use actix_multipart::Multipart;
-use log::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -145,4 +145,87 @@ pub async fn openrouter_audio_transcriptions_proxy(
     
     // Return the response
     Ok(HttpResponse::Ok().json(result))
+}
+
+/// Generic AI proxy endpoint for desktop app
+/// 
+/// This handler forwards requests to the appropriate OpenRouter endpoint
+/// based on the specified model. It extracts the model from either the 
+/// X-Model-Id header or from the request payload.
+#[instrument(skip(req, proxy_service, body))]
+pub async fn ai_proxy_endpoint(
+    req: HttpRequest,
+    proxy_service: web::Data<ProxyService>,
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>,
+) -> Result<HttpResponse, AppError> {
+    let start = Instant::now();
+    
+    // Get the endpoint from the path
+    let endpoint = path.into_inner();
+    
+    // Get the user ID from authentication middleware
+    let user_id = req.extensions().get::<uuid::Uuid>().cloned()
+        .ok_or(AppError::Auth("Unauthorized".to_string()))?;
+    
+    // Get the model ID from the X-Model-Id header or from the request payload
+    let model_id = req.headers()
+        .get("X-Model-Id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            body.get("model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "anthropic/claude-3-sonnet".to_string());
+    
+    info!("AI proxy request: endpoint={}, model={}, user_id={}", endpoint, model_id, user_id);
+    
+    // Get the request payload
+    let payload = body.into_inner();
+    
+    // Check if this is a streaming request
+    let is_streaming = payload.get("stream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    // Forward the request to the proxy service based on the endpoint
+    match endpoint.as_str() {
+        "chat/completions" => {
+            if is_streaming {
+                // For streaming requests
+                let proxy_arc = Arc::clone(&proxy_service);
+                
+                // Create a payload with the model explicitly set
+                let mut new_payload = payload.clone();
+                new_payload["model"] = serde_json::Value::String(model_id.clone());
+                
+                let stream = proxy_arc.forward_chat_completions_stream_request(user_id, new_payload).await?;
+                
+                info!("AI proxy streaming request initiated in {:?}", start.elapsed());
+                
+                Ok(HttpResponse::Ok()
+                    .insert_header(header::ContentType::plaintext())
+                    .insert_header((header::CACHE_CONTROL, "no-cache"))
+                    .insert_header((header::CONNECTION, "keep-alive"))
+                    .streaming(stream))
+            } else {
+                // For non-streaming requests
+                // Create a payload with the model explicitly set
+                let mut new_payload = payload.clone();
+                new_payload["model"] = serde_json::Value::String(model_id.clone());
+                
+                let result = proxy_service.forward_chat_completions_request(&user_id, new_payload).await?;
+                
+                info!("AI proxy request completed in {:?}", start.elapsed());
+                
+                Ok(HttpResponse::Ok().json(result))
+            }
+        },
+        // Add other endpoints as needed
+        _ => {
+            Err(AppError::InvalidArgument(format!("Unsupported endpoint: {}", endpoint)))
+        }
+    }
 }
