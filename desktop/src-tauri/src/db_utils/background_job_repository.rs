@@ -382,8 +382,8 @@ impl BackgroundJobRepository {
                 prompt, response, project_directory, tokens_sent, tokens_received,
                 total_tokens, chars_received, status_message, error_message,
                 model_used, max_output_tokens, temperature, include_syntax,
-                output_file_path, cleared, visible, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+                cleared, visible, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -408,7 +408,6 @@ impl BackgroundJobRepository {
             .bind(job.max_output_tokens.map(|v| v as i64))
             .bind(job.temperature.map(|v| v as f64))
             .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(&job.output_file_path)
             .bind(job.cleared.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(job.visible.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
@@ -445,11 +444,10 @@ impl BackgroundJobRepository {
                 max_output_tokens = $19,
                 temperature = $20,
                 include_syntax = $21,
-                output_file_path = $22,
-                cleared = $23,
-                visible = $24,
-                metadata = $25
-            WHERE id = $26
+                cleared = $22,
+                visible = $23,
+                metadata = $24
+            WHERE id = $25
             "#)
             .bind(&job.session_id)
             .bind(&job.api_type)
@@ -472,7 +470,6 @@ impl BackgroundJobRepository {
             .bind(job.max_output_tokens.map(|v| v as i64))
             .bind(job.temperature.map(|v| v as f64))
             .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(&job.output_file_path)
             .bind(job.cleared.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(job.visible.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
@@ -887,7 +884,6 @@ impl BackgroundJobRepository {
         let max_output_tokens: Option<i32> = row.try_get::<'_, Option<i64>, _>("max_output_tokens").map(|v| v.map(|val| val as i32)).unwrap_or(None);
         let temperature: Option<f32> = row.try_get::<'_, Option<f64>, _>("temperature").map(|v| v.map(|val| val as f32)).unwrap_or(None);
         let include_syntax: Option<bool> = row.try_get::<'_, Option<i64>, _>("include_syntax").map(|v| v.map(|val| val == 1)).unwrap_or(None);
-        let output_file_path: Option<String> = row.try_get::<'_, Option<String>, _>("output_file_path").unwrap_or(None);
         let cleared: Option<bool> = row.try_get::<'_, Option<i64>, _>("cleared").map(|v| v.map(|val| val == 1)).unwrap_or(None);
         let visible: Option<bool> = row.try_get::<'_, Option<i64>, _>("visible").map(|v| v.map(|val| val == 1)).unwrap_or(None);
         let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
@@ -916,7 +912,6 @@ impl BackgroundJobRepository {
             max_output_tokens,
             temperature,
             include_syntax,
-            output_file_path,
             cleared,
             visible,
             metadata,

@@ -24,12 +24,31 @@ type ApiClientRegistry = {
                   undefined;
 };
 
+// Create dummy clients for types that are not yet implemented
+const dummyWhisperClient: ApiClient = {
+  sendRequest: async () => ({ isSuccess: false, message: "Whisper API client not implemented" }),
+  cancelAllSessionRequests: async () => ({ 
+    isSuccess: false, 
+    message: "Whisper API client not implemented",
+    data: { cancelledQueueRequests: 0, cancelledBackgroundJobs: 0 }
+  }),
+};
+
+const dummyOpenRouterClient: ApiClient = {
+  sendRequest: async () => ({ isSuccess: false, message: "OpenRouter API client not implemented" }),
+  cancelAllSessionRequests: async () => ({ 
+    isSuccess: false, 
+    message: "OpenRouter API client not implemented",
+    data: { cancelledQueueRequests: 0, cancelledBackgroundJobs: 0 }
+  }),
+};
+
 // A registry of available clients with proper type assertions
 const clientRegistry: ApiClientRegistry = {
   'gemini': geminiClient,
   'claude': claudeClient,
-  'whisper': undefined, // Placeholder for future implementation
-  'openrouter': undefined, // This will be provided by the desktop bridge
+  'whisper': dummyWhisperClient,
+  'openrouter': dummyOpenRouterClient,
 };
 
 /**

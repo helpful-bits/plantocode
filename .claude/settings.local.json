@@ -86,7 +86,8 @@
       "Bash(cargo update:*)",
       "Bash(cargo:*)",
       "Bash(createdb:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "WebFetch(domain:crates.io)"
     ],
     "deny": []
   }

@@ -44,18 +44,17 @@ export async function correctTaskDescriptionAction(
         // Find any active voice_correction jobs
         const activeJobs = await backgroundJobRepository.findActiveBackgroundJobsByType(
           'voice_correction',
-          null,
-          100
+          { limit: 100 }
         );
         
         // Filter by session ID manually
-        const sessionActiveJobs = activeJobs.filter(job => job.sessionId === sessionId);
+        const sessionActiveJobs = activeJobs.filter((job: any) => job.sessionId === sessionId);
         
         if (sessionActiveJobs.length > 0) {
           console.log(`Found ${sessionActiveJobs.length} active voice correction jobs, skipping duplicate request`);
           
           // Find the most recent active job (running, preparing, queued, created, or idle)
-          const activeJob = sessionActiveJobs.find(job => 
+          const activeJob = sessionActiveJobs.find((job: any) => 
             job.status && JOB_STATUSES.ACTIVE.includes(job.status)
           );
           
@@ -75,7 +74,7 @@ export async function correctTaskDescriptionAction(
           // Add extra check for any jobs created in the last 5 seconds with the same input
           // This prevents race conditions if multiple requests come in very quickly
           const recentTime = Date.now() - 5000; // 5 seconds ago
-          const recentJob = sessionActiveJobs.find(job => 
+          const recentJob = sessionActiveJobs.find((job: any) => 
             job.createdAt && (job.createdAt > recentTime) && 
             job.prompt && 
             job.prompt.substring(0, 50) === rawText.substring(0, 50)

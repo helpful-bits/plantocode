@@ -2,7 +2,7 @@ use crate::error::AppError;
 use bytes::Bytes;
 use actix_web::{web, HttpResponse};
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use reqwest::{Client, Body, multipart};
+use reqwest::{Client, Body, multipart, Response, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::pin::Pin;
@@ -12,6 +12,9 @@ use std::io::Cursor;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use uuid::Uuid;
 use crate::config::settings::AppSettings;
+use crate::db::repositories::model_repository::{ModelRepository, ApiUsageCreateDto};
+use tracing::{debug, info, warn, error, instrument};
+use chrono::Utc;
 
 // Base URL for OpenRouter API
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -129,6 +132,7 @@ pub struct OpenRouterClient {
     api_key: String,
     base_url: String,
     request_id_counter: Arc<Mutex<u64>>,
+    model_repository: Option<Arc<ModelRepository>>,
 }
 
 impl OpenRouterClient {
@@ -143,11 +147,17 @@ impl OpenRouterClient {
             api_key,
             base_url: OPENROUTER_BASE_URL.to_string(),
             request_id_counter: Arc::new(Mutex::new(0)),
+            model_repository: None,
         }
     }
 
     pub fn with_base_url(mut self, base_url: String) -> Self {
         self.base_url = base_url;
+        self
+    }
+
+    pub fn with_model_repository(mut self, repository: Arc<ModelRepository>) -> Self {
+        self.model_repository = Some(repository);
         self
     }
 
@@ -158,7 +168,8 @@ impl OpenRouterClient {
     }
 
     // Chat Completions
-    pub async fn chat_completion(&self, request: OpenRouterChatRequest) -> Result<OpenRouterChatResponse, AppError> {
+    #[instrument(skip(self, request), fields(model = %request.model))]
+    pub async fn chat_completion(&self, request: OpenRouterChatRequest, user_id: &str) -> Result<OpenRouterChatResponse, AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/chat/completions", self.base_url);
         
@@ -175,6 +186,8 @@ impl OpenRouterClient {
             .map_err(|e| AppError::External(format!("OpenRouter request failed: {}", e.to_string())))?;
         
         let status = response.status();
+        let headers = response.headers().clone();
+        
         if !status.is_success() {
             let error_text = response.text().await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
@@ -184,14 +197,21 @@ impl OpenRouterClient {
             )));
         }
         
-        response.json::<OpenRouterChatResponse>().await
-            .map_err(|e| AppError::Internal(format!("OpenRouter deserialization failed: {}", e.to_string())))
+        let result = response.json::<OpenRouterChatResponse>().await
+            .map_err(|e| AppError::Internal(format!("OpenRouter deserialization failed: {}", e.to_string())))?;
+            
+        // Track token usage
+        self.record_usage(&headers, &result, user_id, &request.model).await;
+        
+        Ok(result)
     }
 
     // Streaming Chat Completions for actix-web compatibility
+    #[instrument(skip(self, request), fields(model = %request.model))]
     pub async fn stream_chat_completion(
         &self, 
-        request: OpenRouterChatRequest
+        request: OpenRouterChatRequest,
+        user_id: &str
     ) -> Result<impl Stream<Item = Result<web::Bytes, AppError>>, AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/chat/completions", self.base_url);
@@ -213,6 +233,8 @@ impl OpenRouterClient {
             .map_err(|e| AppError::External(format!("OpenRouter request failed: {}", e.to_string())))?;
         
         let status = response.status();
+        let headers = response.headers().clone();
+        
         if !status.is_success() {
             let error_text = response.text().await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
@@ -220,6 +242,20 @@ impl OpenRouterClient {
                 "OpenRouter streaming request failed with status {}: {}",
                 status, error_text
             )));
+        }
+        
+        // Track the streaming request usage (async)
+        let model_id = request.model.clone();
+        let user_id = user_id.to_string();
+        let model_repo = self.model_repository.clone();
+        
+        // Capture the usage data from headers for streaming requests
+        if let Some(repo) = model_repo {
+            tokio::spawn(async move {
+                if let Err(e) = Self::record_streaming_usage_from_headers(&headers, &user_id, &model_id, repo).await {
+                    error!("Failed to record streaming usage: {}", e);
+                }
+            });
         }
         
         // Return a stream that can be consumed by actix-web
@@ -259,11 +295,13 @@ impl OpenRouterClient {
     }
 
     // Audio Transcription
+    #[instrument(skip(self, audio_data), fields(model = %model, filename = %filename))]
     pub async fn transcribe(
         &self,
         audio_data: &[u8],
         filename: &str,
         model: &str,
+        user_id: &str,
     ) -> Result<OpenRouterTranscriptionResponse, AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/audio/transcriptions", self.base_url);
@@ -315,6 +353,8 @@ impl OpenRouterClient {
             .map_err(|e| AppError::External(format!("OpenRouter request failed: {}", e.to_string())))?;
         
         let status = response.status();
+        let headers = response.headers().clone();
+        
         if !status.is_success() {
             let error_text = response.text().await
                 .unwrap_or_else(|_| "Failed to get error response".to_string());
@@ -324,8 +364,13 @@ impl OpenRouterClient {
             )));
         }
         
-        response.json::<OpenRouterTranscriptionResponse>().await
-            .map_err(|e| AppError::Internal(format!("OpenRouter deserialization failed: {}", e.to_string())))
+        let result = response.json::<OpenRouterTranscriptionResponse>().await
+            .map_err(|e| AppError::Internal(format!("OpenRouter deserialization failed: {}", e.to_string())))?;
+         
+        // Track token usage
+        self.record_transcription_usage(&headers, &result, user_id, model).await;
+            
+        Ok(result)
     }
     
     // Convert a generic JSON Value into an OpenRouterChatRequest
@@ -353,6 +398,157 @@ impl OpenRouterClient {
     pub fn extract_cost_from_transcription(&self, response: &OpenRouterTranscriptionResponse) -> Option<f64> {
         response.usage.as_ref().and_then(|usage| usage.cost)
     }
+    
+    // Record usage from response headers and body
+    #[instrument(skip(self, headers, response), fields(user_id = %user_id, model_id = %model_id))]
+    async fn record_usage(&self, headers: &HeaderMap, response: &OpenRouterChatResponse, user_id: &str, model_id: &str) {
+        if let Some(repo) = &self.model_repository {
+            // Extract token usage from response
+            let (input_tokens, output_tokens) = self.extract_tokens_from_response(response);
+            let total_tokens = input_tokens + output_tokens;
+            
+            // Extract cost from response or calculate from model price
+            let cost = response.usage.cost.unwrap_or_else(|| {
+                // If cost is not provided, we'll need to calculate it later
+                0.0
+            });
+            
+            // Extract processing time from headers
+            let processing_ms = headers
+                .get("openai-processing-ms")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<i32>().ok());
+            
+            // Create usage record
+            let usage = ApiUsageCreateDto {
+                user_id: user_id.to_string(),
+                model_id: model_id.to_string(),
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                cost,
+                processing_ms,
+            };
+            
+            // Record usage in database
+            match repo.record_usage(usage).await {
+                Ok(_) => debug!("Recorded API usage for user {}: {} tokens", user_id, total_tokens),
+                Err(e) => error!("Failed to record API usage: {}", e),
+            }
+        }
+    }
+    
+    // Record transcription usage
+    #[instrument(skip(self, headers, response), fields(user_id = %user_id, model_id = %model_id))]
+    async fn record_transcription_usage(&self, headers: &HeaderMap, response: &OpenRouterTranscriptionResponse, user_id: &str, model_id: &str) {
+        if let Some(repo) = &self.model_repository {
+            // Extract token usage from response
+            let (input_tokens, output_tokens) = self.extract_tokens_from_transcription(response);
+            let total_tokens = input_tokens + output_tokens;
+            
+            // Extract cost from response or calculate from model price
+            let cost = self.extract_cost_from_transcription(response).unwrap_or(0.0);
+            
+            // Extract processing time from headers
+            let processing_ms = headers
+                .get("openai-processing-ms")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<i32>().ok());
+            
+            // Create usage record
+            let usage = ApiUsageCreateDto {
+                user_id: user_id.to_string(),
+                model_id: model_id.to_string(),
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                cost,
+                processing_ms,
+            };
+            
+            // Record usage in database
+            match repo.record_usage(usage).await {
+                Ok(_) => debug!("Recorded transcription usage for user {}: {} tokens", user_id, total_tokens),
+                Err(e) => error!("Failed to record transcription usage: {}", e),
+            }
+        }
+    }
+    
+    // Record streaming usage from headers (for streaming requests)
+    #[instrument(skip(headers, repository), fields(user_id = %user_id, model_id = %model_id))]
+    async fn record_streaming_usage_from_headers(
+        headers: &HeaderMap, 
+        user_id: &str, 
+        model_id: &str,
+        repository: Arc<ModelRepository>
+    ) -> Result<(), AppError> {
+        // Extract usage from x-ratelimit-limit-tokens and x-ratelimit-reset-tokens headers
+        let ratelimit_usage = headers
+            .get("x-ratelimit-usage")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_string());
+            
+        // Extract tokens from headers if available
+        let (input_tokens, output_tokens) = if let Some(usage) = ratelimit_usage {
+            // Parse usage string like "prompt_tokens=15,completion_tokens=10"
+            let mut prompt_tokens = 0;
+            let mut completion_tokens = 0;
+            
+            for part in usage.split(',') {
+                if let Some((key, value)) = part.split_once('=') {
+                    match key.trim() {
+                        "prompt_tokens" => {
+                            if let Ok(tokens) = value.trim().parse::<i32>() {
+                                prompt_tokens = tokens;
+                            }
+                        },
+                        "completion_tokens" => {
+                            if let Ok(tokens) = value.trim().parse::<i32>() {
+                                completion_tokens = tokens;
+                            }
+                        },
+                        _ => {},
+                    }
+                }
+            }
+            
+            (prompt_tokens, completion_tokens)
+        } else {
+            // Default values if headers are not available
+            (0, 0)
+        };
+        
+        let total_tokens = input_tokens + output_tokens;
+        
+        // Extract processing time
+        let processing_ms = headers
+            .get("openai-processing-ms")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<i32>().ok());
+            
+        // Create usage record with cost calculated later
+        let usage = ApiUsageCreateDto {
+            user_id: user_id.to_string(),
+            model_id: model_id.to_string(),
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            cost: 0.0, // We'll calculate this based on model prices later
+            processing_ms,
+        };
+        
+        // Record usage in database
+        match repository.record_usage(usage).await {
+            Ok(_) => {
+                debug!("Recorded streaming API usage for user {}: {} tokens", user_id, total_tokens);
+                Ok(())
+            },
+            Err(e) => {
+                error!("Failed to record streaming API usage: {}", e);
+                Err(AppError::Internal(format!("Failed to record streaming API usage: {}", e)))
+            }
+        }
+    }
 }
 
 impl Clone for OpenRouterClient {
@@ -362,6 +558,7 @@ impl Clone for OpenRouterClient {
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             request_id_counter: self.request_id_counter.clone(),
+            model_repository: self.model_repository.clone(),
         }
     }
 }

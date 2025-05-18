@@ -73,10 +73,9 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
   let responseText = '';
   let errorMessageText = '';
 
-  // First, extract the raw values from the database
+  // Extract the raw values from the database
   const rawResponse = row.response;
   const rawErrorMessage = row.error_message;
-  const outputFilePath = row.output_file_path;
 
   // Process response field - We want normalized string values for the UI
   if (typeof rawResponse === 'string') {
@@ -90,36 +89,14 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
       console.warn(`[Repo] Could not convert response to string for job ${jobId}`);
     }
   } else {
-    // For completed jobs with missing response but with outputFilePath,
-    // set a helpful message stating content is in a file
-    if (row.status === 'completed' && outputFilePath) {
-      responseText = `Content stored in file: ${outputFilePath}`;
-      console.log(`[Repo] Setting placeholder response for job ${jobId} with outputFilePath ${outputFilePath}`);
-    } else if (row.status === 'completed') {
-      // For completed jobs with no response and no file, set a notification
-      console.warn(`[Repo] Completed job ${jobId} has no response and no outputFilePath`);
+    // For completed jobs with missing response, set a generic message
+    if (row.status === 'completed') {
+      // For completed jobs with no response, set a notification
+      console.warn(`[Repo] Completed job ${jobId} has no response`);
       responseText = "Job completed with no output content.";
     } else {
       // For other statuses, safe to leave as empty string
       responseText = '';
-    }
-  }
-
-  // Handle special case for streamed responses that might be incomplete but have an output file
-  // This ensures that if we have both a partial streamed response AND an output file,
-  // the user gets notified about the file where complete content can be found
-  if (outputFilePath && responseText && !responseText.includes(`file: ${outputFilePath}`)) {
-    // Check if this appears to be a partial/incomplete streamed response
-    const isIncompleteStreamingResponse = (
-      row.status === 'completed' &&
-      responseText.length > 0 &&
-      (row.task_type === 'implementation_plan' || row.task_type === 'guidance_generation')
-    );
-
-    if (isIncompleteStreamingResponse) {
-      // Append file reference to the end of the response
-      responseText += `\n\n---\n\nFull content available in file: ${outputFilePath}`;
-      console.log(`[Repo] Added file reference to streamed response for job ${jobId}`);
     }
   }
 
@@ -212,7 +189,7 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
 
   // Detect active jobs with invalid end_time set
   if (JOB_STATUSES.ACTIVE.includes(status) && row.end_time) {
-    console.warn(`[Repo] Found active job ${jobId} with incorrectly set end_time (${row.end_time}), clearing end_time`);
+    console.warn(`[Repo] Found active job ${jobId} with incorrectly set end_time (${row.end_time}), clearing endTime`);
     // Will be handled when building the job object
   }
   
@@ -274,8 +251,8 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
     includeSyntax: (metadataObj as any)?.includeSyntax ?? false,
     temperature: (metadataObj as any)?.temperature ?? 0.7,
     
-    // Output file paths
-    outputFilePath: row.output_file_path || null,
+    // Output file paths - required by the BackgroundJob type interface
+    outputFilePath: null,
     
     // Project directory (important for filtering jobs by project)
     projectDirectory: projectDirectory,
@@ -318,20 +295,10 @@ export function rowToBackgroundJob(row: any): BackgroundJob | null {
     job.endTime = null;
   }
 
-  // Ensure completed jobs with outputFilePath have a helpful response
-  if (job.status === 'completed' && job.outputFilePath && !job.response) {
-    job.response = `Content stored in file: ${job.outputFilePath}`;
-    console.info(`[Repo] Adding helpful reference to output file path for completed job ${jobId}`);
-  }
-
   // Ensure all completed jobs have at least some response text
   if (job.status === 'completed' && (!job.response || job.response.trim() === '')) {
-    if (job.outputFilePath) {
-      job.response = `Content stored in file: ${job.outputFilePath}`;
-    } else {
-      job.response = "Job completed with no output content.";
-      console.warn(`[Repo] Completed job ${jobId} had empty response and no outputFilePath, adding placeholder message`);
-    }
+    job.response = "Job completed with no output content.";
+    console.warn(`[Repo] Completed job ${jobId} had empty response, adding placeholder message`);
   }
 
   // Double check implementation plan responses for accuracy

@@ -5,7 +5,7 @@
  * ensuring consistent initialization and database connection management.
  */
 
-import { backgroundJobRepository } from "./background-job-repository";
+import { BackgroundJobRepository } from "./background-job-repository";
 import { sessionRepository } from "./session-repository";
 
 /**
@@ -13,7 +13,7 @@ import { sessionRepository } from "./session-repository";
  */
 export class RepositoryFactory {
   // Repositories are lazily initialized when first accessed
-  private static _backgroundJobRepository = backgroundJobRepository;
+  private static _backgroundJobRepository = new BackgroundJobRepository();
   private static _sessionRepository = sessionRepository;
   
   /**

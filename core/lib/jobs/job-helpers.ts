@@ -311,7 +311,7 @@ export async function updateJobToCompleted(
       status: 'completed',
       startTime: startTime, // Ensure startTime is set before completing
       endTime: now,         // Always set endTime on completion
-      response: responseText,
+      responseText: responseText,
       statusMessage: `Completed successfully`,
       // Clear any error messages that might have been set earlier
       errorMessage: '',
@@ -336,7 +336,7 @@ export async function updateJobToCompleted(
       jobId,
       status: 'completed',
       endTime: now,
-      response: responseText,
+      responseText: responseText,
       statusMessage: `Completed successfully`,
     });
   }
@@ -637,7 +637,11 @@ export async function cancelAllSessionJobs(
   }
 
   try {
-    const jobs = await backgroundJobRepository.findBackgroundJobsBySessionId(sessionId);
+    // Use the session repository's getSessionBackgroundJobs method to get jobs for the session
+    const jobs = await backgroundJobRepository.getSessionBackgroundJobs(sessionId, {
+      includeClearedJobs: false,
+      includeResponses: false
+    });
 
     // Filter for active jobs that can be cancelled using the standard constants
     // Explicitly exclude implementation plan jobs

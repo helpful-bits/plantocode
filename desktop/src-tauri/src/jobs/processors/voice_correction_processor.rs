@@ -12,7 +12,7 @@ use crate::api_clients::server_proxy_client::ServerProxyClient;
 use crate::prompts::voice_correction::generate_voice_correction_prompt;
 use crate::db_utils::BackgroundJobRepository;
 use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
-use crate::api_clients::get_llm_client;
+use crate::api_clients::client_factory;
 
 // Define structs for parsing the XML response
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -75,7 +75,7 @@ impl JobProcessor for VoiceCorrectionProcessor {
         );
         
         // Get the LLM client using the standardized factory function
-        let client = get_llm_client(&app_handle)?;
+        let client = client_factory::get_api_client(&app_handle)?;
         
         // Estimate the tokens in the prompt
         let prompt_tokens = crate::utils::token_estimator::estimate_tokens(&correction_prompt);

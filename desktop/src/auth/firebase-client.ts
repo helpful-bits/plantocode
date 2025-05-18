@@ -156,11 +156,30 @@ const setupDeepLinkHandler = async (callback: (url: string) => void) => {
   }
 };
 
+/**
+ * Process OAuth redirect with explicit code and state
+ * This is used when deep linking provides the auth code and state directly
+ */
+const processRedirect = async (code: string, state: string): Promise<UserCredential | null> => {
+  console.log('Processing OAuth redirect with code and state');
+  initFirebase();
+  
+  // The Firebase SDK should handle the pending redirect automatically through getRedirectResult
+  // when the app restarts, but we can manually check after receiving a deep link
+  try {
+    return await getRedirectResult(auth);
+  } catch (error) {
+    console.error('Error processing redirect code/state:', error);
+    throw error;
+  }
+};
+
 // Export Firebase functions
 export const firebaseAuth = {
   signIn,
   signOut,
   handleRedirect: handleRedirectResult,
+  processRedirect,
   getCurrentUser,
   setupDeepLinkHandler
 };

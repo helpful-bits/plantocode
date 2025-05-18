@@ -192,36 +192,23 @@ impl AppSettings {
         let app_deep_link_scheme = env::var("APP_DEEP_LINK_SCHEME")
             .unwrap_or_else(|_| "vibe-manager".to_string());
             
-        // AI model settings
-        let default_llm_model_id = env::var("DEFAULT_LLM_MODEL_ID")
-            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
-            
-        let default_voice_model_id = env::var("DEFAULT_VOICE_MODEL_ID")
-            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
-            
-        let default_transcription_model_id = env::var("DEFAULT_TRANSCRIPTION_MODEL_ID")
-            .unwrap_or_else(|_| "openai/whisper-1".to_string());
-            
-        // Parse task specific configs
-        let task_specific_configs_json_str = env::var("TASK_SPECIFIC_CONFIGS_JSON")
-            .unwrap_or_else(|_| r#"{"ImplementationPlan":{"model":"anthropic/claude-3-opus-20240229","max_tokens":16384,"temperature":0.5},"GuidanceGeneration":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.7},"PathFinder":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.2},"RegexGeneration":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":2048,"temperature":0.2},"TaskEnhancement":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.7},"TextImprovement":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.7},"VoiceCorrection":{"model":"anthropic/claude-3-sonnet-20240229","max_tokens":8192,"temperature":0.3},"PathCorrection":{"model":"anthropic/claude-3-haiku-20240307","max_tokens":4096,"temperature":0.2}}"#.to_string());
-
-        let task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry> = serde_json::from_str(&task_specific_configs_json_str)
-            .map_err(|e| AppError::Configuration(format!("Failed to parse TASK_SPECIFIC_CONFIGS_JSON: {}", e)))?;
-            
-        // Parse available models
-        let available_models_json_str = env::var("AVAILABLE_MODELS_JSON")
-            .unwrap_or_else(|_| r#"[{"id":"anthropic/claude-3-opus-20240229","name":"Claude 3 Opus (OpenRouter)","provider":"openrouter","description":"Most powerful model for complex tasks"},{"id":"anthropic/claude-3-sonnet-20240229","name":"Claude 3 Sonnet (OpenRouter)","provider":"openrouter","description":"Balanced model for most tasks"},{"id":"anthropic/claude-3-haiku-20240307","name":"Claude 3 Haiku (OpenRouter)","provider":"openrouter","description":"Fast model for simpler tasks"},{"id":"openai/whisper-1","name":"Whisper-1 (OpenAI)","provider":"openai","description":"Speech to text transcription model"}]"#.to_string());
-
-        let available_models: Vec<ModelInfoEntry> = serde_json::from_str(&available_models_json_str)
-            .map_err(|e| AppError::Configuration(format!("Failed to parse AVAILABLE_MODELS_JSON: {}", e)))?;
-            
-        // Parse path finder settings
-        let path_finder_settings_json_str = env::var("PATH_FINDER_SETTINGS_JSON")
-            .unwrap_or_else(|_| r#"{"max_files_with_content":10,"include_file_contents":true,"max_content_size_per_file":5000,"max_file_count":50,"file_content_truncation_chars":2000,"token_limit_buffer":1000}"#.to_string());
-            
-        let path_finder_settings: PathFinderSettingsEntry = serde_json::from_str(&path_finder_settings_json_str)
-            .map_err(|e| AppError::Configuration(format!("Failed to parse PATH_FINDER_SETTINGS_JSON: {}", e)))?;
+        // AI model settings - will be loaded from DB after initialization
+        // Create placeholder values that will be replaced by DB values
+        let default_llm_model_id = String::new(); // Will be loaded from DB
+        let default_voice_model_id = String::new(); // Will be loaded from DB
+        let default_transcription_model_id = String::new(); // Will be loaded from DB
+        let task_specific_configs = HashMap::new(); // Will be loaded from DB
+        let available_models = Vec::new(); // Will be loaded from DB
+        
+        // Default PathFinderSettings with sensible defaults
+        let path_finder_settings = PathFinderSettingsEntry {
+            max_files_with_content: Some(10),
+            include_file_contents: Some(true),
+            max_content_size_per_file: Some(5000),
+            max_file_count: Some(50),
+            file_content_truncation_chars: Some(2000),
+            token_limit_buffer: Some(1000),
+        };
         
         Ok(Self {
             app: AppConfig {
