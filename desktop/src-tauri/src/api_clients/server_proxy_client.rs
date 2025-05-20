@@ -16,6 +16,7 @@ use crate::models::{
 };
 use super::client_trait::{ApiClient, ApiClientOptions, TranscriptionClient};
 use super::error_handling::map_server_proxy_error;
+use super::proxy_request_helper;
 
 /// Server proxy API client for LLM requests
 pub struct ServerProxyClient {
@@ -142,28 +143,6 @@ impl ServerProxyClient {
         }
     }
     
-    /// Create a request to the server proxy
-    fn create_request(&self, prompt: &str, options: &ApiClientOptions) -> OpenRouterRequest {
-        // Create a simple text-only message
-        let message = OpenRouterRequestMessage {
-            role: "user".to_string(),
-            content: vec![
-                OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: prompt.to_string(),
-                },
-            ],
-        };
-        
-        OpenRouterRequest {
-            model: options.model.clone(),
-            messages: vec![message],
-            stream: options.stream,
-            max_tokens: options.max_tokens,
-            temperature: options.temperature,
-        }
-    }
-    
     /// Get auth token from TokenManager
     async fn get_auth_token(&self) -> AppResult<String> {
         match self.token_manager.get().await {
@@ -237,8 +216,8 @@ impl ApiClient for ServerProxyClient {
         // Get auth token
         let auth_token = self.get_auth_token().await?;
         
-        // Create the request payload
-        let request = self.create_request(prompt, &options);
+        // Create the request payload using the helper
+        let request = proxy_request_helper::create_open_router_request(prompt, &options);
         
         // Create the server proxy endpoint URL for OpenRouter
         let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
@@ -335,7 +314,8 @@ impl ApiClient for ServerProxyClient {
         let mut options = options;
         options.stream = true;
         
-        let request = self.create_request(prompt, &options);
+        // Create the request payload using the helper
+        let request = proxy_request_helper::create_open_router_request(prompt, &options);
         
         // Create the server proxy endpoint URL for streaming OpenRouter chat
         let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);

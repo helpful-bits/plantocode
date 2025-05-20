@@ -11,6 +11,19 @@ const __dirname = path.dirname(__filename);
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), tsconfigPaths()],
+  
+  // Set root to the desktop/ directory (parent of src/)
+  root: path.resolve(__dirname, ".."),
+
+  // Enable public directory and assets
+  publicDir: path.resolve(__dirname, "../public"),
+  
+  // Ensure CSS is properly processed
+  css: {
+    modules: {
+      localsConvention: "camelCase",
+    },
+  },
 
   // Vite alias configuration
   resolve: {

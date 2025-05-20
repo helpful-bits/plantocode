@@ -19,8 +19,9 @@ mod utils;
 
 use crate::config::AppSettings;
 use crate::db::connection::{create_pool, verify_connection};
-use crate::db::repositories::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository};
+use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository};
 use crate::middleware::SecureAuthentication;
+use crate::models::runtime_config::AppState;
 use crate::services::auth::jwt;
 use crate::services::auth::oauth::FirebaseOAuthService;
 use crate::services::billing_service::BillingService;
@@ -35,11 +36,11 @@ async fn main() -> std::io::Result<()> {
     // Initialize logger
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     
-    // Load application settings
-    let app_settings = match AppSettings::from_env() {
+    // Load application settings from environment (as initial defaults)
+    let env_app_settings = match AppSettings::from_env() {
         Ok(settings) => settings,
         Err(e) => {
-            log::error!("Failed to load application settings: {}", e);
+            log::error!("Failed to load application settings from environment: {}", e);
             log::error!("Cannot start server without valid settings");
             std::process::exit(1);
         }
@@ -53,7 +54,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("Global key config initialized successfully");
     
     // Initialize JWT keys with app settings
-    if let Err(e) = jwt::init_jwt_keys(&app_settings) {
+    if let Err(e) = jwt::init_jwt_keys(&env_app_settings) {
         log::error!("Failed to initialize JWT keys: {}", e);
         log::error!("Cannot start server without working JWT keys");
         std::process::exit(1);
@@ -81,22 +82,28 @@ async fn main() -> std::io::Result<()> {
     
     // Initialize SettingsRepository
     let settings_repo = SettingsRepository::new(db_pool.clone());
-
-    // Load AI model settings from the database
+    
+    // Initialize database with default settings if needed (using environment values as fallback)
+    if let Err(e) = settings_repo.initialize_default_settings(&env_app_settings.ai_models).await {
+        log::error!("Failed to initialize default settings in database: {}", e);
+        log::warn!("Will attempt to continue with environment-based settings, but database-stored settings are preferred");
+    }
+    
+    // Load AI model settings from the database - this should now work since we've initialized if needed
     let loaded_ai_model_settings = match settings_repo.get_ai_model_settings().await {
         Ok(settings) => {
             log::info!("Successfully loaded AI model settings from database.");
             settings
         }
         Err(e) => {
-            log::error!("Failed to load AI model settings from database: {}. Check 'application_configurations' table. Exiting.", e);
-            // Optionally, could fall back to env vars or defaults here if desired, but requirement is DB first.
-            std::process::exit(1); // Or handle more gracefully
+            log::error!("Failed to load AI model settings from database even after initialization: {}", e);
+            log::warn!("Using environment-based AI settings as fallback (not recommended in production)");
+            env_app_settings.ai_models.clone()
         }
     };
-
-    // Update the app_settings instance with the loaded AI model settings
-    let mut app_settings = app_settings; // app_settings is already declared above
+    
+    // Create the final app_settings with database-loaded AI model settings
+    let mut app_settings = env_app_settings;
     app_settings.ai_models = loaded_ai_model_settings;
     log::info!("Application settings updated with database-loaded AI model settings");
     
@@ -159,6 +166,25 @@ async fn main() -> std::io::Result<()> {
             .allow_any_method()
             .allow_any_header();
         
+        // Create app state for shared access to repositories
+        let user_repository = std::sync::Arc::new(UserRepository::new(db_pool.clone()));
+        let model_repository = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pool.clone())));
+        let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pool.clone()));
+        let subscription_repository = std::sync::Arc::new(SubscriptionRepository::new(db_pool.clone()));
+        let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pool.clone()));
+        
+        // Create application state
+        let app_state = web::Data::new(AppState {
+            settings: std::sync::Arc::new(app_settings.clone()),
+            api_usage_repository: api_usage_repository.clone(),
+            model_repository,
+            subscription_repository,
+            subscription_plan_repository,
+            user_repository,
+            settings_repository,
+            free_tier_token_limit: Some(100_000), // Default free tier limit
+        });
+        
         // Create the App with common middleware and data
         App::new()
             .wrap(Logger::default())
@@ -168,6 +194,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(firebase_oauth_service)
             .app_data(billing_service.clone())
             .app_data(proxy_service.clone())
+            .app_data(app_state.clone())
             // Register health check endpoint without auth
             .service(
                 web::resource("/health")
@@ -194,4 +221,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-

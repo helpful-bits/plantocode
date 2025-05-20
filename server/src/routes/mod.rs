@@ -8,7 +8,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
             .route("/userinfo", web::get().to(userinfo_handler::get_user_info))
-            .route("/validate", web::get().to(userinfo_handler::validate_token))
     );
     
     // Proxy routes (/api/proxy/*)

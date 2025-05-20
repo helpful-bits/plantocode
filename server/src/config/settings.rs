@@ -192,23 +192,32 @@ impl AppSettings {
         let app_deep_link_scheme = env::var("APP_DEEP_LINK_SCHEME")
             .unwrap_or_else(|_| "vibe-manager".to_string());
             
-        // AI model settings - will be loaded from DB after initialization
+        // AI model settings - will be loaded from DB during app initialization
         // Create placeholder values that will be replaced by DB values
-        let default_llm_model_id = String::new(); // Will be loaded from DB
-        let default_voice_model_id = String::new(); // Will be loaded from DB
-        let default_transcription_model_id = String::new(); // Will be loaded from DB
-        let task_specific_configs = HashMap::new(); // Will be loaded from DB
-        let available_models = Vec::new(); // Will be loaded from DB
+        let default_llm_model_id = env::var("DEFAULT_LLM_MODEL_ID")
+            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
+        let default_voice_model_id = env::var("DEFAULT_VOICE_MODEL_ID")
+            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
+        let default_transcription_model_id = env::var("DEFAULT_TRANSCRIPTION_MODEL_ID")
+            .unwrap_or_else(|_| "openai/whisper-1".to_string());
         
-        // Default PathFinderSettings with sensible defaults
-        let path_finder_settings = PathFinderSettingsEntry {
-            max_files_with_content: Some(10),
-            include_file_contents: Some(true),
-            max_content_size_per_file: Some(5000),
-            max_file_count: Some(50),
-            file_content_truncation_chars: Some(2000),
-            token_limit_buffer: Some(1000),
-        };
+        // Task specific configs - parse from environment if available
+        let task_specific_configs_json = env::var("TASK_SPECIFIC_CONFIGS_JSON").unwrap_or_else(|_| "{}".to_string());
+        let task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry> = 
+            serde_json::from_str(&task_specific_configs_json)
+                .map_err(|e| AppError::Configuration(format!("Invalid TASK_SPECIFIC_CONFIGS_JSON: {}", e)))?;
+
+        // Available models will be loaded from database, start with empty vector
+        let available_models = Vec::new();
+        
+        // Path finder settings - parse from environment if available
+        let path_finder_settings_json = env::var("PATH_FINDER_SETTINGS_JSON").unwrap_or_else(|_| 
+            r#"{"max_files_with_content":10,"include_file_contents":true,"max_content_size_per_file":5000,"max_file_count":50,"file_content_truncation_chars":2000,"token_limit_buffer":1000}"#.to_string()
+        );
+        
+        let path_finder_settings: PathFinderSettingsEntry = 
+            serde_json::from_str(&path_finder_settings_json)
+                .map_err(|e| AppError::Configuration(format!("Invalid PATH_FINDER_SETTINGS_JSON: {}", e)))?;
         
         Ok(Self {
             app: AppConfig {
@@ -255,7 +264,7 @@ impl AppSettings {
                 default_voice_model_id,
                 default_transcription_model_id,
                 task_specific_configs,
-                available_models,
+                available_models,  // Empty vector, will be filled from database
                 path_finder_settings,
             },
         })

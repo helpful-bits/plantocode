@@ -1,6 +1,7 @@
 use actix_web::{error::ResponseError, http::StatusCode, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::error::Error as StdError;
 use sqlx::error::Error as SqlxError;
 
 #[derive(Debug)]
@@ -15,6 +16,7 @@ pub enum AppError {
     External(String),
     InvalidArgument(String),
     Payment(String),
+    Serialization(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -37,9 +39,12 @@ impl fmt::Display for AppError {
             AppError::External(e) => write!(f, "External service error: {}", e),
             AppError::InvalidArgument(e) => write!(f, "Invalid argument: {}", e),
             AppError::Payment(e) => write!(f, "Payment error: {}", e),
+            AppError::Serialization(e) => write!(f, "Serialization error: {}", e),
         }
     }
 }
+
+impl StdError for AppError {}
 
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
@@ -54,6 +59,7 @@ impl ResponseError for AppError {
             AppError::External(_) => (StatusCode::BAD_GATEWAY, "external_service_error"),
             AppError::InvalidArgument(_) => (StatusCode::BAD_REQUEST, "invalid_argument"),
             AppError::Payment(_) => (StatusCode::PAYMENT_REQUIRED, "payment_required"),
+            AppError::Serialization(_) => (StatusCode::INTERNAL_SERVER_ERROR, "serialization_error"),
         };
 
         let error_response = ErrorResponse {
@@ -77,6 +83,7 @@ impl ResponseError for AppError {
             AppError::External(_) => StatusCode::BAD_GATEWAY,
             AppError::InvalidArgument(_) => StatusCode::BAD_REQUEST,
             AppError::Payment(_) => StatusCode::PAYMENT_REQUIRED,
+            AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

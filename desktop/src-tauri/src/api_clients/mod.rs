@@ -3,6 +3,7 @@ pub mod client_trait;
 pub mod server_proxy_client;
 pub mod error_handling;
 pub mod client_factory;
+pub mod proxy_request_helper;
 
 // Re-export API client components
 pub use client_trait::*;

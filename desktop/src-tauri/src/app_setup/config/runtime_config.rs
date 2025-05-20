@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Manager};
 use crate::error::AppError;
-use log::{info, error};
+use log::{info, error, warn};
 use crate::models::RuntimeAiConfig;
 use crate::config;
 use crate::AppState;
@@ -21,13 +21,16 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
         .clone();
     
     // Call the get_runtime_ai_config method on ServerProxyClient
+    // This endpoint now gets model information from the database instead of environment variables
     let runtime_config_value = server_proxy_client.get_runtime_ai_config().await?;
     
     // Deserialize the Value into RuntimeAiConfig
-    let runtime_config: RuntimeAiConfig = serde_json::from_value(runtime_config_value)
-        .map_err(|e| {
+    let runtime_config: RuntimeAiConfig = match serde_json::from_value(runtime_config_value.clone()) {
+        Ok(config) => config,
+        Err(e) => {
             let error_msg = format!("Failed to deserialize runtime AI config: {}", e);
             error!("{}", &error_msg);
+            error!("Raw value: {:?}", runtime_config_value);
             
             // Store error in app state
             let app_state = app_handle.state::<AppState>();
@@ -37,8 +40,16 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
                 error!("Failed to acquire lock on config_load_error");
             }
             
-            AppError::SerializationError(e.to_string())
-        })?;
+            return Err(AppError::SerializationError(e.to_string()));
+        }
+    };
+    
+    // Validate that we have models available
+    if runtime_config.available_models.is_empty() {
+        warn!("No available models found in runtime AI configuration from server");
+    } else {
+        info!("Loaded {} models from server", runtime_config.available_models.len());
+    }
     
     if let Err(e) = config::update_runtime_ai_config(runtime_config) {
         let error_msg = format!("Failed to update runtime AI config: {}", e);

@@ -3,6 +3,20 @@ use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use tauri_plugin_stronghold::stronghold::Stronghold;
 use log::{info, warn, error};
+use crate::constants::SERVER_API_URL;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    pub server_url: String,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            server_url: std::env::var("SERVER_URL").unwrap_or_else(|_| SERVER_API_URL.to_string()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
