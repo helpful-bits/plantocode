@@ -5,11 +5,10 @@ use reqwest::{Client, StatusCode};
 use serde_json::json;
 use crate::error::{AppError, AppResult};
 use crate::AppState;
-use crate::constants::TOKEN_KEY;
 use crate::auth::TokenManager;
 use crate::models::{FrontendUser, AuthDataResponse};
 
-// Exchange Firebase ID token for application JWT and store it
+// Exchange Firebase ID token for application JWT, update Rust's in-memory cache, and return it
 #[command]
 pub async fn exchange_and_store_firebase_token(
     firebase_id_token: String,
@@ -52,58 +51,38 @@ pub async fn exchange_and_store_firebase_token(
         AppError::SerdeError(format!("Failed to parse server response: {}", e))
     })?;
     
-    // Store the application JWT in TokenManager
-    token_manager.set(Some(auth_details.token.clone())).await;
-    info!("Application JWT stored in TokenManager");
+    // Store the application JWT in TokenManager's in-memory cache
+    token_manager.set(Some(auth_details.token.clone())).await
+        .map_err(|e| {
+            error!("Failed to store token in memory: {}", e);
+            AppError::StorageError(format!("Failed to store token in memory: {}", e))
+        })?;
     
+    info!("Application JWT stored in TokenManager's in-memory cache");
+    
+    // Return the complete auth response to the frontend, which is responsible for
+    // storing the token in Stronghold
     Ok(auth_details)
 }
 
-// Retrieve token from TokenManager
-#[command]
-pub async fn get_stored_token(
-    token_manager: State<'_, Arc<TokenManager>>,
-) -> AppResult<Option<String>> {
-    // Get token from TokenManager
-    let token = token_manager.get().await;
-    Ok(token)
-}
+// This function was removed as per implementation plan
+// Token is now retrieved directly from Stronghold in the frontend
 
-// Clear token from TokenManager
+// Get user info from server using provided app JWT (not from TokenManager)
 #[command]
-pub async fn clear_stored_token(
-    token_manager: State<'_, Arc<TokenManager>>,
-) -> AppResult<()> {
-    // Clear from TokenManager
-    token_manager.set(None).await;
-
-    info!("Token cleared from TokenManager");
-    Ok(())
-}
-
-// Get user info from server using stored application JWT
-#[command]
-pub async fn get_user_info_from_stored_app_jwt(
+pub async fn get_user_info_with_app_jwt(
     app_state: State<'_, AppState>,
-    token_manager: State<'_, Arc<TokenManager>>,
+    _token_manager: State<'_, Arc<TokenManager>>,
+    app_token: String,
 ) -> AppResult<FrontendUser> {
-    // Get token from TokenManager
-    let token = match token_manager.get().await {
-        Some(token) => token,
-        None => {
-            error!("No stored token found when attempting to get user info");
-            return Err(AppError::AuthError("No stored token".into()));
-        }
-    };
-    
     let server_url = &app_state.settings.server_url;
     let client = &app_state.client;
     let url = format!("{}/api/auth/userinfo", server_url);
     
-    info!("Fetching user info from stored app JWT");
+    info!("Fetching user info with provided app JWT");
     
     let response = client.get(&url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {}", app_token))
         .send()
         .await
         .map_err(|e| {
@@ -116,13 +95,6 @@ pub async fn get_user_info_from_stored_app_jwt(
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
         error!("Server returned error during user info fetch. Status: {}, Error: {}", status, error_text);
         
-        // If token is unauthorized, clear it
-        if status == StatusCode::UNAUTHORIZED {
-            info!("Clearing invalid token from storage");
-            token_manager.set(None).await;
-            return Err(AppError::AuthError("Invalid or expired token".into()));
-        }
-        
         return Err(AppError::ExternalServiceError(format!("Server error: {}", error_text)));
     }
     
@@ -133,4 +105,23 @@ pub async fn get_user_info_from_stored_app_jwt(
     })?;
     
     Ok(user_info)
+}
+
+// Set in-memory token in Rust - called by frontend after loading from Stronghold
+#[command]
+pub async fn set_in_memory_token(
+    token_manager: State<'_, Arc<TokenManager>>,
+    token: String
+) -> AppResult<()> {
+    info!("Setting token in TokenManager's in-memory cache from frontend");
+    token_manager.set(Some(token)).await
+}
+
+// Clear in-memory token in Rust - called by frontend during logout
+#[command]
+pub async fn clear_in_memory_token(
+    token_manager: State<'_, Arc<TokenManager>>
+) -> AppResult<()> {
+    info!("Clearing token from TokenManager's in-memory cache");
+    token_manager.set(None).await
 }

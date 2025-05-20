@@ -2,25 +2,16 @@ import type { Config } from "tailwindcss";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Create __dirname equivalent for ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/**
- * Shared Tailwind configuration for Vibe Manager
- * Provides consistent theme and styling across core and desktop applications
- */
 const config: Config = {
   darkMode: "class",
   content: [
-    // Use explicit paths to absolutely prevent scanning node_modules
     path.join(__dirname, "app", "**", "*.{ts,tsx}"),
     path.join(__dirname, "ui", "**", "*.{ts,tsx}"),
     path.join(__dirname, "*.{ts,tsx}"),
-    // Avoid the temptation of using any relative paths whatsoever
   ],
-  // Explicitly disable node_modules warning
-  hideNodeModulesWarning: true,
   theme: {
     container: {
       center: true,

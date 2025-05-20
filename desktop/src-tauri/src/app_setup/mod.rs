@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use crate::error::AppError;
 use log::{info, error, warn};
 
@@ -28,12 +28,30 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
 
-    // Initialize configuration - non-critical path
-    match crate::commands::initialize_secure_storage(app_handle.clone()).await {
-        Ok(_) => info!("Application configuration initialized successfully"),
-        Err(e) => {
-            warn!("Application configuration (Stronghold dependent) initialization issue: {}. Continuing with limited functionality.", e);
-            // Continue execution instead of returning error
+    // Initialize configuration with Stronghold if available
+    info!("Initializing secure configuration storage...");
+    match app_handle.try_state::<tauri_plugin_stronghold::stronghold::Stronghold>() {
+        Some(stronghold) => {
+            // Initialize configuration with Stronghold
+            match crate::config::init_config(stronghold.inner()).await {
+                Ok(_) => info!("Application configuration initialized with Stronghold successfully"),
+                Err(e) => {
+                    warn!("Failed to initialize configuration with Stronghold: {}. Falling back to non-secure storage.", e);
+                    // Try the fallback method
+                    if let Err(e) = crate::config::init_config_without_stronghold().await {
+                        warn!("Failed to initialize configuration without Stronghold: {}. Some features may be limited.", e);
+                    }
+                }
+            }
+        },
+        None => {
+            warn!("Stronghold state not available for configuration. Using development fallback.");
+            // Use the non-Stronghold version
+            if let Err(e) = crate::config::init_config_without_stronghold().await {
+                warn!("Failed to initialize configuration without Stronghold: {}. Some features may be limited.", e);
+            } else {
+                info!("Successfully initialized with development configuration (without secure storage)");
+            }
         }
     }
 

@@ -10,6 +10,7 @@ import {
 
 import { useGenerateFormState } from "./use-generate-form-state";
 import { useSessionMetadata } from "./use-session-metadata";
+import { generateDirectoryTree } from "@/utils/directory-tree";
 
 // Import type properly
 import type { TaskDescriptionHandle } from "../_components/task-description";
@@ -105,14 +106,31 @@ export function useGeneratePromptCoreState({
     sessionActions,
   ]);
 
-  // Handler for generating codebase (placeholder function)
+  // Handler for generating a directory tree for the current project
   const handleGenerateCodebase = async () => {
-    showNotification({
-      title: "Generate Codebase",
-      message: "This feature is not yet implemented",
-      type: "info",
-    });
-    return Promise.resolve();
+    if (!projectDirectory) {
+      showNotification({
+        title: "Generate Codebase",
+        message: "Select a project directory first",
+        type: "error",
+      });
+      return;
+    }
+
+    const jobId = await generateDirectoryTree(projectDirectory);
+    if (!jobId) {
+      showNotification({
+        title: "Generate Codebase",
+        message: "Failed to start directory tree generation",
+        type: "error",
+      });
+    } else {
+      showNotification({
+        title: "Generate Codebase",
+        message: "Directory tree generation started",
+        type: "success",
+      });
+    }
   };
 
   // Simplified handler for user interaction that modifies session

@@ -3,7 +3,7 @@
  */
 
 // Set to false to disable all console logs in production
-const isLoggingEnabled = process.env.NODE_ENV !== "production";
+const isLoggingEnabled = import.meta.env.DEV;
 
 // Define log levels for type safety
 export type LogLevel = "debug" | "info" | "log" | "warn" | "error";

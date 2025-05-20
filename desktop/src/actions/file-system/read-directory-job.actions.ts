@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { type BackgroundJob } from "@/types/session-types";
 
 const DEBUG_LOGS = import.meta.env.DEV; // Enable logs in development
 
@@ -164,40 +165,31 @@ export async function getReadDirectoryResultAction(
       };
     }
 
-    // This command may need to be implemented in the Rust backend or replaced with a generic job result retrieval
-    console.warn(
-      "getReadDirectoryResultAction uses a command that may not be implemented in the Rust backend."
-    );
-    console.warn(
-      "Consider using the background job system to fetch the job result directly."
+    // Retrieve the background job using the generic command
+    const job = await invoke<BackgroundJob>(
+      "get_background_job_by_id_command",
+      { jobId }
     );
 
-    // Get the job result
-    try {
-      const result = await invoke<{
-        directory: string;
-        files: string[];
-        count: number;
-      }>("get_read_directory_result_command", { jobId });
-
-      return {
-        isSuccess: true,
-        message: `Found ${result.count} files in directory`,
-        data: result,
-      };
-    } catch (error) {
-      // If specific command is not implemented, this should be handled gracefully
-      console.error(
-        "Error with get_read_directory_result_command, this may not be implemented:",
-        error
-      );
+    if (!job || !job.response) {
       return {
         isSuccess: false,
-        message:
-          "Failed to get directory reading results - command not implemented",
+        message: "Job not found or no response available",
         data: { files: [], directory: "", count: 0 },
       };
     }
+
+    const result = JSON.parse(job.response) as {
+      directory: string;
+      files: string[];
+      count: number;
+    };
+
+    return {
+      isSuccess: true,
+      message: `Found ${result.count} files in directory`,
+      data: result,
+    };
   } catch (error) {
     console.error("[getReadDirectoryResultAction] Error:", error);
     return {
