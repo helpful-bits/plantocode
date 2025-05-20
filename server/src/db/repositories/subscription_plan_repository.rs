@@ -1,5 +1,4 @@
-use uuid::Uuid;
-use sqlx::{PgPool, query};
+use sqlx::{PgPool, query, postgres::PgRow, Row};
 use serde_json::Value;
 use crate::error::AppError;
 
@@ -14,18 +13,19 @@ impl SubscriptionPlanRepository {
     }
 
     pub async fn get_allowed_models(&self, plan_id: &str) -> Result<Vec<String>, AppError> {
-        let record = query!(
-            r#"SELECT features FROM subscription_plans WHERE id = $1"#,
-            plan_id
-        )
-        .fetch_optional(&self.db_pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to fetch plan features: {}", e)))?;
+        let query_str = "SELECT features FROM subscription_plans WHERE id = $1";
+        
+        let record = sqlx::query(query_str)
+            .bind(plan_id)
+            .map(|row: PgRow| {
+                let features: Value = row.get("features");
+                features
+            })
+            .fetch_optional(&self.db_pool)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to fetch plan features: {}", e)))?;
 
-        if let Some(r) = record {
-            let features: Value = serde_json::from_value(r.features)
-                .map_err(|e| AppError::Internal(format!("Failed to parse features: {}", e)))?;
-                
+        if let Some(features) = record {
             let services = features
                 .get("services")
                 .and_then(|v| v.as_array())

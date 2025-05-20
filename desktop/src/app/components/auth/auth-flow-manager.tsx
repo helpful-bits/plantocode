@@ -10,7 +10,13 @@ interface AuthFlowManagerProps {
 }
 
 export function AuthFlowManager({ children }: AuthFlowManagerProps) {
-  const { user, loading, token } = useAuth();
+  const { 
+    user, 
+    loading, 
+    token,
+    initializeStrongholdAndResumeSession
+  } = useAuth();
+  
   const {
     isLoading: configLoading,
     error: configError,
@@ -18,9 +24,19 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     clearError,
   } = useRuntimeConfigLoader();
 
+  // Initialize Stronghold and load runtime configuration
+  useEffect(() => {
+    // On mount, make sure Stronghold is initialized
+    initializeStrongholdAndResumeSession().catch(error => 
+      console.error("[AuthFlow] Failed to initialize Stronghold:", error)
+    );
+  }, [initializeStrongholdAndResumeSession]);
+
   // Load runtime configuration after successful login
   useEffect(() => {
     console.log("[AuthFlow] Effect triggered. User:", user, "Token:", !!token);
+    
+    // Only load config if we have a user and token
     if (user && token) {
       const initializeConfig = async () => {
         try {
@@ -37,7 +53,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
       void initializeConfig();
     } else if (user && !token) {
-      console.error("[AuthFlow] User authenticated but no token available. This should ideally not happen.");
+      console.error("[AuthFlow] User authenticated but token unavailable. Waiting for resolution.");
     } else {
       console.log("[AuthFlow] No user or token, awaiting authentication.");
     }

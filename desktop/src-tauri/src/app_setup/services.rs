@@ -7,19 +7,10 @@ use crate::api_clients::{ApiClient, TranscriptionClient, server_proxy_client::Se
 use crate::auth::TokenManager;
 
 pub async fn initialize_api_clients(app_handle: &AppHandle) -> Result<(), AppError> {
-    // Verify that Stronghold access works
-    match app_handle.try_state::<Arc<tauri_plugin_stronghold::stronghold::Stronghold>>() {
-        Some(_) => {
-            info!("Stronghold state found - will be used for secure token storage");
-        },
-        None => {
-            warn!("Stronghold state not available - TokenManager will operate in memory-only mode");
-        }
-    };
-    
-    // Initialize TokenManager with app_handle for Stronghold access
-    let token_manager = Arc::new(TokenManager::new(app_handle.clone()));
-    info!("TokenManager initialized");
+   
+    // Initialize TokenManager as an in-memory cache only
+    let token_manager = Arc::new(TokenManager::new());
+    info!("TokenManager initialized as in-memory cache");
     
     // Initialize Server Proxy API client
     let server_url = std::env::var("SERVER_URL").unwrap_or_else(|_| SERVER_API_URL.to_string());

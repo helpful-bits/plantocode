@@ -71,29 +71,14 @@ fn main() {
     let tauri_context = tauri::generate_context!();
     let app_identifier = &tauri_context.config().identifier;
 
-    // Determine salt path for Stronghold plugin *before* builder
     let app_local_data_base_path = dirs::data_local_dir()
         .expect("Could not resolve app local data path for Stronghold.")
-        .join(app_identifier); // This path is specific to the app, e.g., .../Application Support/com.vibe-manager.app
+        .join(app_identifier);
 
     if !app_local_data_base_path.exists() {
         std::fs::create_dir_all(&app_local_data_base_path)
             .expect("Failed to create app local data directory for Stronghold salt path");
     }
-    let salt_path_for_stronghold_plugin = app_local_data_base_path.join("salt.txt");
-    info!("Stronghold salt file path determined: {:?}", salt_path_for_stronghold_plugin);
-
-    // Generate a machine-specific password for Stronghold
-    // This approach uses the app identifier to ensure consistency across restarts
-    // In a production environment, this would need to be more secure
-    let stronghold_password = format!("vibe-manager-stronghold-{}", app_identifier);
-    
-    // Build the Stronghold plugin with Argon2 hashing
-    // Use a custom password hash function that incorporates the app identifier for consistency
-    let stronghold_plugin = tauri_plugin_stronghold::Builder::with_argon2(&salt_path_for_stronghold_plugin)
-        .build();
-    
-    info!("Stronghold plugin built with Argon2 hashing");
 
     tauri::Builder::default()
         .manage(AppState {
@@ -101,8 +86,6 @@ fn main() {
             client: reqwest::Client::new(),
             settings: config::RuntimeConfig::default(),
         })
-        // IMPORTANT: Load Stronghold plugin first before all other plugins
-        .plugin(stronghold_plugin)
         // TokenManager will be created in initialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
@@ -114,29 +97,47 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
-            
-            // Stronghold plugin is now initialized via the builder chain.
-            // No need to initialize it here.
-            
-            let app_handle_clone = app.handle().clone();
-            
-            // Verify Stronghold state is available
-            match app.try_state::<Arc<tauri_plugin_stronghold::stronghold::Stronghold>>() {
-                Some(_) => {
-                    info!("Stronghold plugin state verified during setup");
-                },
-                None => {
-                    // Log warning but don't stop app initialization
-                    // The app will fall back to memory-only token storage
-                    warn!("Stronghold state not available during setup. Secure storage will be limited.");
+
+            // Resolve the app-specific local data directory for Stronghold's salt file.
+            let app_local_data_dir_for_salt = match app.path().app_local_data_dir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    error!("Fatal: Could not resolve app local data path for Stronghold salt: {}. App identifier might be missing or invalid in tauri.conf.json.", e);
+                    return Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, e.to_string())));
                 }
             };
-            
-            // Run the async initialization in the sync context and explicitly map the error
-            tauri::async_runtime::block_on(async move {
-                app_setup::run_async_initialization(&app_handle_clone).await
-            })
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + 'static>)
+
+            // Ensure this directory exists.
+            if !app_local_data_dir_for_salt.exists() {
+                match std::fs::create_dir_all(&app_local_data_dir_for_salt) {
+                    Ok(_) => info!("Created app local data directory for Stronghold salt at: {:?}", app_local_data_dir_for_salt),
+                    Err(e) => {
+                        error!("Fatal: Failed to create app local data directory {:?} for Stronghold salt: {}", app_local_data_dir_for_salt, e);
+                        return Err(Box::new(e));
+                    }
+                }
+            }
+
+            // Define the path for the salt file.
+            let salt_path = app_local_data_dir_for_salt.join("user.salt"); // Using a slightly more descriptive name.
+            info!("Stronghold salt path configured at: {:?}", salt_path);
+
+            // Build and initialize the Stronghold plugin.
+            let plugin = tauri_plugin_stronghold::Builder::with_argon2(&salt_path).build();
+            app.handle().plugin(plugin)?;
+            info!("Tauri Stronghold plugin initialized successfully.");
+
+            let app_handle_clone = app.handle().clone();
+
+            // Spawn asynchronous initialization so plugins can finish loading
+            tauri::async_runtime::spawn(async move {
+                // wait for 1 seconds
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if let Err(e) = app_setup::run_async_initialization(&app_handle_clone).await {
+                    error!("Async initialization failed: {}", e);
+                }
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             // App commands
@@ -146,15 +147,14 @@ fn main() {
             
             // Auth commands
             commands::auth_commands::exchange_and_store_firebase_token,
-            commands::auth_commands::get_stored_token,
-            commands::auth_commands::clear_stored_token,
-            commands::auth_commands::get_user_info_from_stored_app_jwt,
+            commands::auth_commands::get_user_info_with_app_jwt,
+            commands::auth_commands::set_in_memory_token,
+            commands::auth_commands::clear_in_memory_token,
             
             // Config commands
             commands::config_commands::get_available_ai_models,
             commands::config_commands::get_default_task_configurations,
             commands::config_commands::fetch_runtime_ai_config,
-            commands::config_commands::initialize_secure_storage,
             commands::config_commands::get_runtime_firebase_config,
             commands::config_commands::get_server_url,
             

@@ -6,7 +6,7 @@
 // Custom logger to replace console calls
 const logger = {
   // Default to no logging in production
-  isEnabled: process.env.NODE_ENV !== 'production',
+  isEnabled: import.meta.env.DEV,
   
   log: (...args: unknown[]): void => {
     if (logger.isEnabled) {
@@ -145,7 +145,7 @@ export class TrackedFetch {
 
     if (isPostRequest || isRootPath) {
       // Get debug info if needed for detailed logging
-      const debug = process.env.DEBUG_FETCH === "true" ? getDebugInfo() : null;
+      const debug = import.meta.env.VITE_DEBUG_FETCH === "true" ? getDebugInfo() : null;
 
       // Logging request information
       logger.log(
