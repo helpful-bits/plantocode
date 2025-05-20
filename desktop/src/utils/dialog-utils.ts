@@ -1,20 +1,20 @@
 /**
  * Dialog Utilities
- * 
+ *
  * This file contains utility functions for working with the Tauri dialog plugin.
  * These functions provide a convenient interface for showing native dialogs in the desktop app.
  */
 
-import { 
+import {
   message,
   ask,
   confirm,
   open,
   save,
-  OpenDialogOptions,
-  SaveDialogOptions,
-  MessageDialogOptions
-} from '@tauri-apps/plugin-dialog';
+  type OpenDialogOptions,
+  type SaveDialogOptions,
+  type MessageDialogOptions,
+} from "@tauri-apps/plugin-dialog";
 
 /**
  * Shows a simple message dialog with an "Ok" button
@@ -24,13 +24,13 @@ import {
  * @returns Promise that resolves when the dialog is closed
  */
 export async function showMessage(
-  content: string, 
-  title?: string, 
+  content: string,
+  title?: string,
   options: Partial<MessageDialogOptions> = {}
 ): Promise<void> {
   await message(content, {
     title,
-    ...options
+    ...options,
   });
 }
 
@@ -42,14 +42,14 @@ export async function showMessage(
  * @returns Promise that resolves to true if "Yes" was clicked, false otherwise
  */
 export async function showConfirmation(
-  content: string, 
-  title?: string, 
+  content: string,
+  title?: string,
   options: Partial<MessageDialogOptions> = {}
 ): Promise<boolean> {
   return await ask(content, {
     title,
-    kind: 'info',
-    ...options
+    kind: "info",
+    ...options,
   });
 }
 
@@ -61,13 +61,13 @@ export async function showConfirmation(
  * @returns Promise that resolves to true if "Ok" was clicked, false otherwise
  */
 export async function showOkCancel(
-  content: string, 
-  title?: string, 
+  content: string,
+  title?: string,
   options: Partial<MessageDialogOptions> = {}
 ): Promise<boolean> {
   return await confirm(content, {
     title,
-    ...options
+    ...options,
   });
 }
 
@@ -76,11 +76,13 @@ export async function showOkCancel(
  * @param options Dialog options
  * @returns Promise that resolves to the selected file path(s) or null if canceled
  */
-export async function selectFile(options: Partial<OpenDialogOptions> = {}): Promise<string | null> {
+export async function selectFile(
+  options: Partial<OpenDialogOptions> = {}
+): Promise<string | null> {
   return await open({
     multiple: false,
     directory: false,
-    ...options
+    ...options,
   });
 }
 
@@ -89,11 +91,13 @@ export async function selectFile(options: Partial<OpenDialogOptions> = {}): Prom
  * @param options Dialog options
  * @returns Promise that resolves to the selected directory path or null if canceled
  */
-export async function selectDirectory(options: Partial<OpenDialogOptions> = {}): Promise<string | null> {
+export async function selectDirectory(
+  options: Partial<OpenDialogOptions> = {}
+): Promise<string | null> {
   return await open({
     multiple: false,
     directory: true,
-    ...options
+    ...options,
   });
 }
 
@@ -102,12 +106,14 @@ export async function selectDirectory(options: Partial<OpenDialogOptions> = {}):
  * @param options Dialog options
  * @returns Promise that resolves to the selected file paths or null if canceled
  */
-export async function selectMultipleFiles(options: Partial<OpenDialogOptions> = {}): Promise<string[] | null> {
-  return await open({
+export async function selectMultipleFiles(
+  options: Partial<OpenDialogOptions> = {}
+): Promise<string[] | null> {
+  return (await open({
     multiple: true,
     directory: false,
-    ...options
-  }) as string[] | null;
+    ...options,
+  })) as string[] | null;
 }
 
 /**
@@ -115,7 +121,9 @@ export async function selectMultipleFiles(options: Partial<OpenDialogOptions> = 
  * @param options Dialog options
  * @returns Promise that resolves to the selected file path or null if canceled
  */
-export async function saveFile(options: Partial<SaveDialogOptions> = {}): Promise<string | null> {
+export async function saveFile(
+  options: Partial<SaveDialogOptions> = {}
+): Promise<string | null> {
   return await save(options);
 }
 
@@ -127,7 +135,7 @@ export async function saveFile(options: Partial<SaveDialogOptions> = {}): Promis
 export async function showError(title: string, content: string): Promise<void> {
   await message(content, {
     title,
-    kind: 'error'
+    kind: "error",
   });
 }
 
@@ -136,9 +144,12 @@ export async function showError(title: string, content: string): Promise<void> {
  * @param title Warning title
  * @param content Warning details
  */
-export async function showWarning(title: string, content: string): Promise<void> {
+export async function showWarning(
+  title: string,
+  content: string
+): Promise<void> {
   await message(content, {
     title,
-    kind: 'warning'
+    kind: "warning",
   });
 }

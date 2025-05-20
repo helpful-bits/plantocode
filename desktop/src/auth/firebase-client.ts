@@ -3,32 +3,32 @@
  * Manages Firebase authentication for the desktop application
  */
 
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithRedirect, 
-  GoogleAuthProvider, 
+import { initializeApp, type FirebaseApp } from "firebase/app";
+import {
+  getAuth,
+  signInWithRedirect,
+  GoogleAuthProvider,
   GithubAuthProvider,
   OAuthProvider,
   getRedirectResult,
   signOut as fbSignOut,
-  User,
-  Auth,
-  UserCredential
-} from 'firebase/auth';
+  type User,
+  type Auth,
+  type UserCredential,
+} from "firebase/auth";
 
 // Firebase configuration loaded from environment variables
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID as string,
 };
 
 // Firebase app singleton
-let app: any;
+let app: FirebaseApp | undefined;
 let auth: Auth;
 
 /**
@@ -37,7 +37,7 @@ let auth: Auth;
 const initFirebase = () => {
   if (!app) {
     app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
+    if (app) auth = getAuth(app);
   }
 };
 
@@ -64,7 +64,7 @@ const signInWithGithub = async () => {
  */
 const signInWithMicrosoft = async () => {
   initFirebase();
-  const provider = new OAuthProvider('microsoft.com');
+  const provider = new OAuthProvider("microsoft.com");
   await signInWithRedirect(auth, provider);
 };
 
@@ -73,7 +73,7 @@ const signInWithMicrosoft = async () => {
  */
 const signInWithApple = async () => {
   initFirebase();
-  const provider = new OAuthProvider('apple.com');
+  const provider = new OAuthProvider("apple.com");
   await signInWithRedirect(auth, provider);
 };
 
@@ -85,9 +85,9 @@ const handleRedirectResult = async (): Promise<UserCredential | null> => {
   try {
     const result = await getRedirectResult(auth);
     return result;
-  } catch (error) {
-    console.error('Error handling redirect:', error);
-    throw error;
+  } catch (err) {
+    console.error("Error handling redirect:", err);
+    throw err;
   }
 };
 
@@ -110,18 +110,20 @@ const getCurrentUser = (): User | null => {
 /**
  * Sign in (default to Google)
  */
-const signIn = async (providerName: 'google' | 'github' | 'microsoft' | 'apple' = 'google'): Promise<void> => {
+const signIn = async (
+  providerName: "google" | "github" | "microsoft" | "apple" = "google"
+): Promise<void> => {
   switch (providerName) {
-    case 'google':
+    case "google":
       await signInWithGoogle();
       break;
-    case 'github':
+    case "github":
       await signInWithGithub();
       break;
-    case 'microsoft':
+    case "microsoft":
       await signInWithMicrosoft();
       break;
-    case 'apple':
+    case "apple":
       await signInWithApple();
       break;
     default:
@@ -134,24 +136,23 @@ const signIn = async (providerName: 'google' | 'github' | 'microsoft' | 'apple' 
  */
 const setupDeepLinkHandler = async (callback: (url: string) => void) => {
   try {
-    const { listen } = await import('@tauri-apps/api/event');
-    const unlisten = await listen('deep-link', (event: any) => {
-      console.log('Received deep link event:', event);
-      
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlisten = await listen("deep-link", (event: { payload: string | { url: string } }) => {
       // Check if event contains a URL
       if (event && event.payload) {
-        const url = event.payload.url || event.payload;
-        console.log('Deep link URL:', url);
+        const url = typeof event.payload === 'string' 
+          ? event.payload 
+          : 'url' in event.payload ? event.payload.url : '';
         
-        // Process the deep link URL through the provided callback
-        callback(url);
+        if (url) {
+          // Process the deep link URL through the provided callback
+          callback(url);
+        }
       }
     });
-    
-    console.log('Deep link handler setup complete');
+
     return unlisten;
-  } catch (error) {
-    console.error('Failed to set up deep link handler:', error);
+  } catch (_) {
     return () => {};
   }
 };
@@ -160,18 +161,15 @@ const setupDeepLinkHandler = async (callback: (url: string) => void) => {
  * Process OAuth redirect with explicit code and state
  * This is used when deep linking provides the auth code and state directly
  */
-const processRedirect = async (code: string, state: string): Promise<UserCredential | null> => {
-  console.log('Processing OAuth redirect with code and state');
+const processRedirect = async (
+  _code: string,
+  _state: string
+): Promise<UserCredential | null> => {
   initFirebase();
-  
+
   // The Firebase SDK should handle the pending redirect automatically through getRedirectResult
   // when the app restarts, but we can manually check after receiving a deep link
-  try {
-    return await getRedirectResult(auth);
-  } catch (error) {
-    console.error('Error processing redirect code/state:', error);
-    throw error;
-  }
+  return await getRedirectResult(auth);
 };
 
 // Export Firebase functions
@@ -181,5 +179,5 @@ export const firebaseAuth = {
   handleRedirect: handleRedirectResult,
   processRedirect,
   getCurrentUser,
-  setupDeepLinkHandler
+  setupDeepLinkHandler,
 };

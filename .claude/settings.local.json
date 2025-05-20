@@ -87,7 +87,14 @@
       "Bash(cargo:*)",
       "Bash(createdb:*)",
       "Bash(psql:*)",
-      "WebFetch(domain:crates.io)"
+      "WebFetch(domain:crates.io)",
+      "Bash(pnpm:*)",
+      "Bash([ -f /Users/kirylkazlovich/dev/vibe-manager/desktop/src/postcss.config.js ])",
+      "Bash([ -f /Users/kirylkazlovich/dev/vibe-manager/desktop/src/postcss.config.mjs ])",
+      "Bash(test:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx eslint:*)",
+      "Bash(./node_modules/.bin/eslint desktop/src/hooks/use-voice-recording/use-voice-transcription-processing.ts)"
     ],
     "deny": []
   }

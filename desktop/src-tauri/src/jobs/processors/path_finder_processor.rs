@@ -890,11 +890,11 @@ impl JobProcessor for PathFinderProcessor {
         // Check if job has been canceled before calling the LLM
         let job_id = &payload.background_job_id;
         let job_status = match repo.get_job_by_id(job_id).await {
-            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Pending),
-            _ => crate::models::JobStatus::Pending,
+            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
+            _ => crate::models::JobStatus::Created,
         };
         
-        if job_status == crate::models::JobStatus::Cancelled {
+        if job_status == crate::models::JobStatus::Canceled {
             info!("Job {} has been canceled before processing", job_id);
             return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
         }
@@ -933,11 +933,11 @@ impl JobProcessor for PathFinderProcessor {
         // Check if job has been canceled after LLM processing
         let job_id = &payload.background_job_id;
         let job_status = match repo.get_job_by_id(job_id).await {
-            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Pending),
-            _ => crate::models::JobStatus::Pending,
+            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
+            _ => crate::models::JobStatus::Created,
         };
         
-        if job_status == crate::models::JobStatus::Cancelled {
+        if job_status == crate::models::JobStatus::Canceled {
             info!("Job {} has been canceled after LLM processing", job_id);
             return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
         }
@@ -1161,11 +1161,11 @@ impl JobProcessor for PathFinderProcessor {
         // Final check if job has been canceled
         let job_id = &payload.background_job_id;
         let job_status = match repo.get_job_by_id(job_id).await {
-            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Pending),
-            _ => crate::models::JobStatus::Pending,
+            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
+            _ => crate::models::JobStatus::Created,
         };
         
-        if job_status == crate::models::JobStatus::Cancelled {
+        if job_status == crate::models::JobStatus::Canceled {
             info!("Job {} was canceled before completion", job_id);
             return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
         }

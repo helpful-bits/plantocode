@@ -9,8 +9,7 @@ use tokio::sync::RwLock;
 #[derive(Debug)]
 pub struct TokenManager {
     token: RwLock<Option<String>>,
-    // Will hold optional secure storage reference in future
-    // secure_backend: Option<Arc<dyn SecureStorage>>,
+    secure_backend: Option<Arc<dyn SecureStorage>>,
 }
 
 impl TokenManager {
@@ -18,7 +17,7 @@ impl TokenManager {
     pub fn new() -> Self {
         Self {
             token: RwLock::new(None),
-            // secure_backend: None,
+            secure_backend: None,
         }
     }
 
@@ -37,9 +36,8 @@ impl TokenManager {
     /// Sets a secure backend for persistent token storage
     /// 
     /// This would be used when Stronghold is fully ready
-    pub fn set_secure_backend(&self, _backend: ()) {
-        // Will be implemented once Stronghold is fully ready
-        // self.secure_backend = Some(Arc::new(backend));
+    pub fn set_secure_backend(&self, backend: ()) {
+        self.secure_backend = Some(Arc::new(backend));
     }
 }
 

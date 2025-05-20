@@ -25,19 +25,23 @@ pub struct Session {
     pub excluded_files: Option<Vec<String>>,
 }
 
-// Job status enum
+// Job status enum that matches the SQL schema CHECK constraint
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JobStatus {
     Idle,
     Created,
-    Pending,
     Queued,
     AcknowledgedByWorker,
+    Preparing,
+    PreparingInput,
+    GeneratingStream,
+    ProcessingStream,
     Running,
+    CompletedByTag,
     Completed,
     Failed,
-    Cancelled,
+    Canceled,
 }
 
 impl ToString for JobStatus {
@@ -45,20 +49,24 @@ impl ToString for JobStatus {
         match self {
             JobStatus::Idle => "idle".to_string(),
             JobStatus::Created => "created".to_string(),
-            JobStatus::Pending => "pending".to_string(),
             JobStatus::Queued => "queued".to_string(),
             JobStatus::AcknowledgedByWorker => "acknowledged_by_worker".to_string(),
+            JobStatus::Preparing => "preparing".to_string(),
+            JobStatus::PreparingInput => "preparing_input".to_string(),
+            JobStatus::GeneratingStream => "generating_stream".to_string(),
+            JobStatus::ProcessingStream => "processing_stream".to_string(),
             JobStatus::Running => "running".to_string(),
+            JobStatus::CompletedByTag => "completed_by_tag".to_string(),
             JobStatus::Completed => "completed".to_string(),
             JobStatus::Failed => "failed".to_string(),
-            JobStatus::Cancelled => "cancelled".to_string(),
+            JobStatus::Canceled => "canceled".to_string(),
         }
     }
 }
 
 impl JobStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled)
+        matches!(self, JobStatus::Completed | JobStatus::Failed | JobStatus::Canceled | JobStatus::CompletedByTag)
     }
 
     pub fn is_active(&self) -> bool {
@@ -66,9 +74,12 @@ impl JobStatus {
             self,
             JobStatus::Idle
                 | JobStatus::Created
-                | JobStatus::Pending
                 | JobStatus::Queued
                 | JobStatus::AcknowledgedByWorker
+                | JobStatus::Preparing
+                | JobStatus::PreparingInput
+                | JobStatus::GeneratingStream
+                | JobStatus::ProcessingStream
                 | JobStatus::Running
         )
     }
@@ -81,13 +92,17 @@ impl FromStr for JobStatus {
         match s.to_lowercase().as_str() {
             "idle" => Ok(JobStatus::Idle),
             "created" => Ok(JobStatus::Created),
-            "pending" => Ok(JobStatus::Pending),
             "queued" => Ok(JobStatus::Queued),
             "acknowledged_by_worker" => Ok(JobStatus::AcknowledgedByWorker),
+            "preparing" => Ok(JobStatus::Preparing),
+            "preparing_input" => Ok(JobStatus::PreparingInput),
+            "generating_stream" => Ok(JobStatus::GeneratingStream),
+            "processing_stream" => Ok(JobStatus::ProcessingStream),
             "running" => Ok(JobStatus::Running),
+            "completed_by_tag" => Ok(JobStatus::CompletedByTag),
             "completed" => Ok(JobStatus::Completed),
             "failed" => Ok(JobStatus::Failed),
-            "canceled" | "cancelled" => Ok(JobStatus::Cancelled),
+            "canceled" | "cancelled" => Ok(JobStatus::Canceled),
             _ => Err(format!("Invalid job status: {}", s)),
         }
     }
@@ -252,6 +267,15 @@ pub struct FetchResponse {
     pub status: u16,
     pub headers: HashMap<String, String>,
     pub body: serde_json::Value,
+}
+
+// Models for streaming request handlers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamRequestArgs {
+    pub url: String,
+    pub method: String,
+    pub headers: Option<serde_json::Value>,
+    pub body: Option<String>,
 }
 
 // DTO for file operations
@@ -443,6 +467,18 @@ pub struct RuntimeAiConfig {
     // PathFinder specific configuration with optional fields (uses constants as fallbacks)
     #[serde(default)]
     pub path_finder_settings: PathFinderSettings,
+    
+    // Limits for token usage
+    #[serde(default)]
+    pub limits: TokenLimits,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TokenLimits {
+    // Maximum tokens per request
+    pub max_tokens_per_request: Option<u32>,
+    // Maximum tokens per month
+    pub max_tokens_per_month: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
