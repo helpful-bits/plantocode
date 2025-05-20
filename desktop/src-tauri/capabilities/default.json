@@ -7,11 +7,14 @@
     "core:default",
     "http:default",
     "http:allow-fetch",
+    "http:allow-fetch-read-body",
+    "http:allow-fetch-send",
     "stronghold:default",
     "deep-link:default",
     "deep-link:allow-register",
     "dialog:default",
     "fs:default",
-    "shell:default"
+    "shell:default",
+    "shell:allow-open"
   ]
 }

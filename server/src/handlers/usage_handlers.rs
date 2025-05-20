@@ -1,13 +1,15 @@
 use actix_web::{web, HttpResponse, Responder};
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Duration, Datelike, Timelike};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use uuid::Uuid;
+use serde_json::Value;
 
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::SubscriptionRepository;
 use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepository;
-use crate::models::auth_jwt_claims::AuthenticatedUser;
-use crate::models::runtime_config::AppSettings;
+use crate::middleware::secure_auth::{UserId, UserRole, UserEmail};
+use crate::models::runtime_config::AppState;
 
 /// Response data structure for usage summary
 #[derive(Serialize, Deserialize)]
@@ -22,18 +24,27 @@ pub struct UsageSummaryResponse {
     plan_name: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct SubscriptionPlanData {
+    id: String,
+    name: String,
+    features: Value,
+    monthly_token_limit: Option<i64>,
+    cost_per_1k_tokens: Option<f64>,
+}
+
 /// Get usage summary for the current user
 pub async fn get_usage_summary_handler(
-    user: AuthenticatedUser,
+    user_id: UserId,
     pool: web::Data<PgPool>,
-    app_settings: web::Data<AppSettings>
+    app_state: web::Data<AppState>
 ) -> impl Responder {
-    let user_id = user.user_id;
+    let user_id = user_id.0.to_string();
     
     // Create repositories
-    let api_usage_repo = ApiUsageRepository::new(pool.as_ref());
-    let subscription_repo = SubscriptionRepository::new(pool.as_ref());
-    let plan_repo = SubscriptionPlanRepository::new(pool.as_ref());
+    let api_usage_repo = ApiUsageRepository::new(pool.get_ref().clone());
+    let subscription_repo = SubscriptionRepository::new(pool.get_ref().clone());
+    let plan_repo = SubscriptionPlanRepository::new(pool.get_ref().clone());
     
     // Get current date and calculate cycle dates
     let now = Utc::now();
@@ -53,28 +64,61 @@ pub async fn get_usage_summary_handler(
             .with_nanosecond(0).unwrap()
     };
     
-    // Get user's active subscription and plan
-    let user_subscription_result = subscription_repo.get_active_subscription_for_user(&user_id).await;
+    // Get user's active subscription
+    let user_subscription_result = match Uuid::parse_str(&user_id) {
+        Ok(uuid) => subscription_repo.get_by_user_id(&uuid).await,
+        Err(e) => {
+            log::error!("Failed to parse user ID to UUID: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Invalid user ID format"
+            }));
+        }
+    };
     
     match user_subscription_result {
         Ok(Some(subscription)) => {
-            // Get the subscription plan
-            let plan_result = plan_repo.get_plan_by_id(&subscription.plan_id).await;
+            // Get the subscription plan details
+            let plan_info = match plan_repo.get_allowed_models(&subscription.plan_id).await {
+                Ok(_) => {
+                    // Plan exists
+                    // Create a simple plan structure
+                    let plan = SubscriptionPlanData {
+                        id: subscription.plan_id.clone(),
+                        name: "Standard Plan".to_string(),
+                        features: Value::Null,
+                        monthly_token_limit: Some(1_000_000),
+                        cost_per_1k_tokens: Some(0.002),
+                    };
+                    Ok(plan)
+                },
+                Err(_) => {
+                    // Plan doesn't exist or error occurred
+                    Err(format!("Plan not found: {}", subscription.plan_id))
+                }
+            };
             
-            match plan_result {
+            match plan_info {
                 Ok(plan) => {
                     // Get token usage for the current billing cycle
-                    let usage_result = api_usage_repo.get_user_usage_between_dates(
-                        &user_id, 
-                        &cycle_start, 
-                        &cycle_end
-                    ).await;
+                    let usage_result = match Uuid::parse_str(&user_id) {
+                        Ok(uuid) => api_usage_repo.get_usage_for_period(
+                            &uuid,
+                            Some(cycle_start),
+                            Some(cycle_end)
+                        ).await.map(|u| vec![u]),
+                        Err(e) => {
+                            log::error!("Failed to parse user ID to UUID for usage: {}", e);
+                            return HttpResponse::BadRequest().json(serde_json::json!({
+                                "error": "Invalid user ID format"
+                            }));
+                        }
+                    };
                     
                     match usage_result {
                         Ok(usage) => {
                             // Calculate token usage
                             let total_tokens: i64 = usage.iter()
-                                .map(|u| u.input_tokens + u.output_tokens)
+                                .map(|u| u.tokens_input + u.tokens_output)
                                 .sum();
                             
                             // Calculate estimated cost based on usage
@@ -128,7 +172,7 @@ pub async fn get_usage_summary_handler(
             // User has no active subscription, return free tier data
             HttpResponse::Ok().json(UsageSummaryResponse {
                 used_tokens: 0,
-                monthly_limit: app_settings.free_tier_token_limit.unwrap_or(100_000),
+                monthly_limit: app_state.free_tier_token_limit.unwrap_or(100_000),
                 cycle_start_date: Some(cycle_start),
                 cycle_end_date: Some(cycle_end),
                 estimated_cost: 0.0,

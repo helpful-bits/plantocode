@@ -72,9 +72,10 @@ pub use generic_task_commands::{
 
 // Re-exports from auth commands module
 pub use auth_commands::{
-    store_token,
+    exchange_and_store_firebase_token,
     get_stored_token,
     clear_stored_token,
+    get_user_info_from_stored_app_jwt,
 };
 
 // Re-exports from config commands module
@@ -82,6 +83,9 @@ pub use config_commands::{
     get_available_ai_models,
     get_default_task_configurations,
     fetch_runtime_ai_config,
+    initialize_secure_storage,
+    get_runtime_firebase_config,
+    get_server_url,
 };
 
 // Re-exports from fetch handler module

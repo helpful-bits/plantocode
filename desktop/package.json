@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite --config src/vite.config.mts",
     "desktop:check": "cd src-tauri && cargo check --message-format=json | jq -r 'select(.reason == \"compiler-message\" and .message.level == \"error\") | .message.rendered // .message.message' > gen/cargo-check.log && echo 'file desktop/src-tauri/gen/cargo-check.log created'",
-    "build": "vite build",
-    "preview": "vite preview",
+    "build": "vite build --config src/vite.config.mts",
+    "preview": "vite preview --config src/vite.config.mts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

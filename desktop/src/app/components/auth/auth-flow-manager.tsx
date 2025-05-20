@@ -20,17 +20,26 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
   // Load runtime configuration after successful login
   useEffect(() => {
+    console.log("[AuthFlow] Effect triggered. User:", user, "Token:", !!token);
     if (user && token) {
       const initializeConfig = async () => {
         try {
-          // Load runtime configuration (this also stores the token)
+          console.log("[AuthFlow] User authenticated, loading runtime configuration");
+          // Load runtime configuration (this also stores the token in Rust backend)
           await loadConfig(token);
+          console.log("[AuthFlow] Runtime configuration loaded successfully");
         } catch (err) {
-          console.error("Error during auth flow initialization:", err);
+          console.error("[AuthFlow] Error during auth flow initialization:", err);
+          // We don't handle the error here because the loadConfig function
+          // already updates the error state in the runtime config loader hook
         }
       };
 
       void initializeConfig();
+    } else if (user && !token) {
+      console.error("[AuthFlow] User authenticated but no token available. This should ideally not happen.");
+    } else {
+      console.log("[AuthFlow] No user or token, awaiting authentication.");
     }
   }, [user, token, loadConfig]);
 
