@@ -2,23 +2,40 @@
  * Login Page Component for Vibe Manager Desktop
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../../contexts/auth-context";
 
 export default function LoginPage() {
   const { signIn, loading, error } = useAuth();
   const appName = "Vibe Manager";
   const [authInProgress, setAuthInProgress] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  // Effect to update the local error state when the auth error changes
+  useEffect(() => {
+    if (error) {
+      setLastError(error);
+      // Auto-clear auth in progress state if there's an error
+      setAuthInProgress(false);
+    }
+  }, [error]);
 
   // Handle sign-in with a specific provider
   const handleSignIn = async (provider: "google" | "github" | "microsoft" | "apple") => {
+    // Clear any previous errors
+    setLastError(null);
     setAuthInProgress(true);
+    
     try {
+      console.log(`[LoginPage] Initiating sign in with ${provider}`);
       await signIn(provider);
       // We don't immediately set authInProgress to false since we're waiting for a callback
       // The external browser will be opened and we expect a deep link later
+      console.log(`[LoginPage] Sign in with ${provider} initiated, waiting for redirect`);
     } catch (error) {
-      console.error(`Sign in with ${provider} failed:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[LoginPage] Sign in with ${provider} failed:`, error);
+      setLastError(`Sign in failed: ${errorMessage}`);
       setAuthInProgress(false);
     }
   };
@@ -35,9 +52,9 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {error && (
+        {(error || lastError) && (
           <div className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 p-3 rounded-md text-sm">
-            {error}
+            {error || lastError}
           </div>
         )}
 

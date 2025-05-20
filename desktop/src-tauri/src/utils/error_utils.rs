@@ -33,6 +33,7 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::NetworkError(msg) => format!("Network error: {}", msg),
         AppError::ExternalServiceError(msg) => format!("External service error: {}", msg),
         AppError::InvalidResponse(msg) => format!("Invalid response: {}", msg),
+        AppError::StorageError(msg) => format!("Storage error: {}", msg),
     }
 }
 

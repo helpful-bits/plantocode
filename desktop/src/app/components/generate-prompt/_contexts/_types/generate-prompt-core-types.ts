@@ -26,7 +26,6 @@ export interface CorePromptContextActions {
   handleInteraction: () => void;
   getCurrentSessionState: () => Record<string, unknown>;
 
-  // Generate codebase (placeholder)
   handleGenerateCodebase: () => Promise<void>;
 }
 

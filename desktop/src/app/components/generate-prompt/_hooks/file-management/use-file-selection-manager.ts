@@ -212,7 +212,16 @@ export function useFileSelectionManager({
     canRedo: fileSelectionHistory.canRedo,
 
     // Cleanup
-    flushPendingOperations: useCallback(() => {}, []), // Simplified placeholder
+    flushPendingOperations: useCallback(() => {
+      fileSelectionHistory.pushHistory(
+        fileSelectionCore.includedPaths,
+        fileSelectionCore.excludedPaths
+      );
+    }, [
+      fileSelectionHistory.pushHistory,
+      fileSelectionCore.includedPaths,
+      fileSelectionCore.excludedPaths,
+    ]),
     reset,
   };
 }

@@ -19,6 +19,7 @@ import { useImplementationPlanActions } from "../_hooks/use-implementation-plan-
 import { useRegexState } from "../_hooks/use-regex-state";
 import { useSessionMetadata } from "../_hooks/use-session-metadata";
 import { useTaskDescriptionState } from "../_hooks/use-task-description-state";
+import { generateDirectoryTree } from "@/utils/directory-tree";
 
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
@@ -115,15 +116,32 @@ export const GeneratePromptFeatureProvider: React.FC<{
     regexState.reset();
   }, [sessionMetadata, formState, sessionActions, taskState, regexState]);
 
-  // Handler for generating codebase (placeholder function)
+  // Handler for generating codebase directory tree
   const handleGenerateCodebase = useCallback(async () => {
-    showNotification({
-      title: "Generate Codebase",
-      message: "This feature is not yet implemented",
-      type: "info",
-    });
-    return Promise.resolve();
-  }, [showNotification]);
+    if (!projectDirectory) {
+      showNotification({
+        title: "Generate Codebase",
+        message: "Select a project directory first",
+        type: "error",
+      });
+      return;
+    }
+
+    const jobId = await generateDirectoryTree(projectDirectory);
+    if (!jobId) {
+      showNotification({
+        title: "Generate Codebase",
+        message: "Failed to start directory tree generation",
+        type: "error",
+      });
+    } else {
+      showNotification({
+        title: "Generate Codebase",
+        message: "Directory tree generation started",
+        type: "success",
+      });
+    }
+  }, [projectDirectory, showNotification]);
 
   // Create memoized context values
   const coreContextValue = useMemo<CorePromptContextValue>(

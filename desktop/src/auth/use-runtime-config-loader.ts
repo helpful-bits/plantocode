@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 
 import {
@@ -21,15 +20,19 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
 
   const loadConfig = async (token: string): Promise<RuntimeAiConfig | null> => {
     if (isLoading) return null;
+    if (!token) {
+      console.error("Cannot load config without a valid token");
+      setError("Authentication token not available.");
+      return null;
+    }
 
     try {
       setIsLoading(true);
       setError(null);
 
-      // Load the runtime AI configuration
+      // The token is already set in memory by the auth flow at this point,
+      // so we don't need to pass it to loadRuntimeConfigAfterLogin
       const config = await loadRuntimeConfigAfterLogin();
-
-      // Update the global runtime config context
       updateConfig(config);
 
       return config;

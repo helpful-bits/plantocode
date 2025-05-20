@@ -1,8 +1,9 @@
 "use client";
 
-import { invoke } from "@tauri-apps/api/core";
 import { Loader2, FolderTree } from "lucide-react";
 import { useState, useEffect } from "react";
+
+import { generateDirectoryTree } from "@/utils/directory-tree";
 
 import { useBackgroundJobs } from "@/contexts/background-jobs";
 import { useProject } from "@/contexts/project-context";
@@ -40,7 +41,7 @@ export default function CodebaseStructure({
     onChange(e.target.value);
   };
 
-  // Generate directory tree from backend
+  // Generate directory tree using the background job system
   const handleGenerateStructure = async () => {
     if (!projectDirectory) {
       setError(
@@ -49,21 +50,18 @@ export default function CodebaseStructure({
       return;
     }
 
-    // Reset state
     setError(null);
     setIsGenerating(true);
 
     try {
-      // Call the Tauri command directly
-      const result = await invoke<{ job_id: string }>(
-        "generate_directory_tree_command",
-        {
-          projectDirectory,
-        }
-      );
+      // Create the background job and store the returned job ID
+      const newJobId = await generateDirectoryTree(projectDirectory);
 
-      // Store job ID to track progress
-      setJobId(result.job_id);
+      if (!newJobId) {
+        throw new Error("Failed to create directory tree job");
+      }
+
+      setJobId(newJobId);
     } catch (_error) {
       setError("Failed to generate directory tree.");
       setIsGenerating(false);
@@ -82,19 +80,19 @@ export default function CodebaseStructure({
     }
 
     if (job.status === "completed" && job.response) {
-      // Extract tree from response
-      const treeResponse = typeof job.response === "string" ? job.response : "";
-
-      if (treeResponse.trim()) {
-        // Update tree value
-        onChange(treeResponse);
-        setIsExpanded(true);
-        setError(null);
-      } else {
-        setError("Could not generate a meaningful directory tree.");
+      try {
+        const parsed = JSON.parse(job.response) as { directory: string; tree: string };
+        if (parsed.tree && parsed.tree.trim()) {
+          onChange(parsed.tree);
+          setIsExpanded(true);
+          setError(null);
+        } else {
+          setError("Could not generate a meaningful directory tree.");
+        }
+      } catch (_err) {
+        setError("Failed to parse directory tree result");
       }
 
-      // Reset UI state
       setIsGenerating(false);
       setJobId(null);
     } else if (job.status === "failed" || job.status === "canceled") {

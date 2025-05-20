@@ -1,11 +1,3 @@
-/**
- * Shared interfaces for authentication context
- *
- * These interfaces define the common shape of authentication contexts
- * across different platforms (web, desktop). They should be implemented
- * by platform-specific auth providers.
- */
-
 export interface User {
   id: string;
   email: string | null;
@@ -18,6 +10,8 @@ export interface AuthContextType {
   loading: boolean;
   error: string | null;
   token: string | null;
+  signIn: (provider?: "google" | "github" | "microsoft" | "apple") => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
+  initializeStrongholdAndResumeSession: () => Promise<void>;
 }

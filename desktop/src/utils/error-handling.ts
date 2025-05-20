@@ -310,16 +310,31 @@ export function createTranscriptionErrorMessage(error: unknown): string {
 /**
  * Safely logs errors with standardized format
  */
-export function logError(
+export async function logError(
   error: unknown,
   context: string = "",
   metadata: Record<string, unknown> = {}
-): void {
+): Promise<void> {
   // Error logging is disabled by default. This is a placeholder for future implementation.
   // In a production setting, this would send errors to a monitoring service.
-  if (process.env.NODE_ENV !== "production") {
-    // Only log in development
+  if (import.meta.env.DEV) {
     console.error(`[ERROR] ${context}:`, error, metadata);
+    return;
+  }
+
+  const serverUrl = import.meta.env.VITE_SERVER_URL;
+  if (!serverUrl) {
+    return;
+  }
+
+  try {
+    await fetch(`${serverUrl}/api/error`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: String(error), context, metadata }),
+    });
+  } catch (_e) {
+    // Swallow errors in production logging to avoid recursive failures
   }
 }
 

@@ -43,16 +43,9 @@ export function useDeepLinkHandler() {
           // eslint-disable-next-line no-console
           console.log("[Desktop] Processing OAuth redirect URL");
   
-          if (auth && typeof auth.handleRedirectResult === "function") {
-            // Use the method that handles URL parameters
-            auth.handleRedirectResult(url).catch((err: Error) => {
-              console.error("[Desktop] Failed to handle OAuth redirect:", err);
-            });
-          } else {
-            console.warn(
-              "[Desktop] Auth context not available for handling OAuth redirect"
-            );
-          }
+          // Firebase auth now handles redirects automatically via deep link handler
+          // No need to manually pass the URL anymore
+          console.log("[Desktop] Deep link will be processed by Firebase SDK");
           return;
         }
   

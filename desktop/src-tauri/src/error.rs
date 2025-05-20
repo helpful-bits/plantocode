@@ -87,6 +87,9 @@ pub enum AppError {
     
     #[error("Invalid response: {0}")]
     InvalidResponse(String),
+    
+    #[error("Storage error: {0}")]
+    StorageError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -183,6 +186,7 @@ impl From<AppError> for SerializableError {
             AppError::NetworkError(_) => "NETWORK_ERROR",
             AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
             AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
+            AppError::StorageError(_) => "STORAGE_ERROR",
         }.to_string();
         
         SerializableError {
