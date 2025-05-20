@@ -7,7 +7,7 @@ This is the desktop version of Vibe Manager, built using Tauri.
 The desktop app consists of:
 
 1. **Frontend**: A Vite/React application that imports and reuses components from the `core` directory
-2. **Backend**: A Tauri application with Rust 
+2. **Backend**: A Tauri application with Rust
 3. **Database**: SQLite database managed by Tauri
 4. **Server Proxy**: A Rust server that proxies API requests to LLM services
 
@@ -46,11 +46,12 @@ The desktop app uses module aliases to import code from the core application:
 - `@core/types` - Imports core/types
 
 For example:
+
 ```tsx
 // Import from core
-import { ThemeProvider } from '@core/components/theme-provider';
-import { AppShell } from '@core/app/components/app-shell';
-import { Session } from '@core/types';
+import { ThemeProvider } from "@core/components/theme-provider";
+import { AppShell } from "@core/app/components/app-shell";
+import { Session } from "@core/types";
 ```
 
 ## Prerequisites
@@ -63,6 +64,7 @@ import { Session } from '@core/types';
 ## Development
 
 1. Install dependencies:
+
 ```bash
 # Install all dependencies (core and desktop)
 pnpm install:all
@@ -72,11 +74,13 @@ pnpm install -r
 ```
 
 2. Install Tauri CLI v2:
+
 ```bash
 npm install -g @tauri-apps/cli@^2
 ```
 
 3. Run the development server:
+
 ```bash
 pnpm tauri:dev
 ```

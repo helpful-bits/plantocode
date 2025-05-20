@@ -358,4 +358,16 @@ impl SessionRepository {
             None => Ok(None)
         }
     }
+
+    /// Delete all sessions for a project
+    pub async fn delete_all_sessions(&self, project_hash: &str) -> AppResult<()> {
+        // Delete all sessions with the given project hash
+        sqlx::query("DELETE FROM sessions WHERE project_hash = $1")
+            .bind(project_hash)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete sessions for project: {}", e)))?;
+            
+        Ok(())
+    }
 }

@@ -1,6 +1,6 @@
 /**
  * Main App Component for Vibe Manager Desktop
- * 
+ *
  * This component serves as the entry point for the desktop application.
  * It wraps the core app with desktop-specific functionality:
  * - Authentication via Firebase
@@ -9,119 +9,95 @@
  * - Subscription management
  */
 
-import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
-import { AuthProvider, useAuth } from './auth/auth-context';
-import LoginPage from './pages/login';
-import { ThemeProvider } from '@core/components/theme-provider';
-import { Toaster } from '@core/components/ui/toaster';
-import SubscriptionManager from './components/billing/SubscriptionManager';
-import { loadRuntimeConfigAfterLogin } from './bridge/runtime-config';
+import { useEffect, useState } from "react";
 
-// Import core components - these are what we want to reuse from the core app
-import { AppShell } from '@core/app/components/app-shell';
-import { ProvidersWrapper } from '@core/app/components/providers-wrapper';
-import CoreHomePage from '@core/app/page';
+import { AppShell } from "@/app/components/app-shell";
+import { AuthFlowManager } from "@/app/components/auth/auth-flow-manager";
+import SubscriptionManager from "@/app/components/billing/subscription-manager";
+import { ProvidersWrapper } from "@/app/components/providers-wrapper";
+import { ThemeProvider } from "@/app/components/theme-provider";
+import CoreHomePage from "@/app/page";
+import { AuthProvider } from "@/contexts/auth-context";
+import { EmptyState, LoadingScreen } from "@/ui";
+import { Toaster } from "@/ui/toaster";
 
+import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
-import { DesktopBridgeProvider } from './providers/desktop-bridge-provider';
-
-// Loading indicator component
-function LoadingScreen() {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background">
-      <div className="text-center">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-        <p className="mt-4 text-muted-foreground">Loading Vibe Manager...</p>
-      </div>
-    </div>
-  );
-}
-
-// Authentication gate component
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading, token } = useAuth();
-  const [configLoading, setConfigLoading] = useState(false);
-  
-  // Load runtime configuration after successful login
-  useEffect(() => {
-    if (user && token) {
-      const fetchConfig = async () => {
-        try {
-          setConfigLoading(true);
-          // Load the runtime AI configuration
-          await loadRuntimeConfigAfterLogin();
-          // Store token in Rust's TokenManager
-          await invoke('store_token', { token });
-        } catch (err) {
-          console.error('Failed to load runtime config:', err);
-        } finally {
-          setConfigLoading(false);
-        }
-      };
-      
-      fetchConfig();
-    }
-  }, [user, token]);
-  
-  if (loading || configLoading) {
-    return <LoadingScreen />;
-  }
-  
-  if (!user) {
-    return <LoginPage />;
-  }
-  
-  return <>{children}</>;
-}
+import { DesktopEnvironmentProvider } from "./providers/desktop-bridge-provider";
 
 // Main application with authentication wrapper
 export default function App() {
   const [appReady, setAppReady] = useState(false);
-  
+  const [initError, setInitError] = useState<string | null>(null);
+
   // Set app as ready after ensuring environment is initialized
   useEffect(() => {
-    const initializeApp = async () => {
+    const initializeApp = () => {
       try {
-        // Any app-wide initialization can go here
-        // The heavy lifting is now done in the AuthGate after login
-        
+        // Check if there are deep links waiting to be processed
+        if (typeof window !== "undefined" && window.__TAURI_IPC__) {
+          // Use a logger that can be configured instead of console.log
+          // eslint-disable-next-line no-console
+          console.log("[App] Checking for pending deep links...");
+        }
+
         setAppReady(true);
       } catch (err) {
-        console.error('Failed to initialize app:', err);
-        setAppReady(true); // Still allow app to proceed to login screen
+        console.error("Failed to initialize app:", err);
+        setInitError(
+          err instanceof Error
+            ? `Initialization Error: ${err.message}`
+            : "Failed to initialize application"
+        );
       }
     };
-    
-    initializeApp();
+
+    void initializeApp();
   }, []);
-  
-  if (!appReady) {
-    return <LoadingScreen />;
+
+  if (initError) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="max-w-md w-full p-8">
+          <EmptyState
+            variant="error"
+            title="Initialization Error"
+            description={initError}
+            actionText="Retry"
+            onAction={() => window.location.reload()}
+          />
+        </div>
+      </div>
+    );
   }
-  
+
+  if (!appReady) {
+    return <LoadingScreen loadingType="initializing" />;
+  }
+
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <ThemeProvider defaultTheme="system" enableSystem>
       <AuthProvider>
-        <AuthGate>
-          {/* Desktop bridge provider to inject desktop adapters */}
-          <DesktopBridgeProvider>
-            {/* Reuse the ProvidersWrapper from core */}
-            <ProvidersWrapper>
-              {/* Reuse the AppShell from core */}
-              <AppShell>
-                {/* Render the core home page component */}
-                <CoreHomePage />
-                {/* Add subscription manager in a fixed position */}
-                <div className="fixed top-4 right-4 z-50 w-80">
-                  <SubscriptionManager />
-                </div>
-              </AppShell>
-            </ProvidersWrapper>
-          </DesktopBridgeProvider>
-        </AuthGate>
+        <AuthFlowManager>
+          <DesktopEnvironmentProvider>
+            <RuntimeConfigProvider>
+              <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
+                {/* App Shell Component */}
+                <AppShell>
+                  {/* Core Home Page */}
+                  <CoreHomePage />
+                  {/* Subscription Manager (fixed position) */}
+                  <div className="fixed top-4 right-4 z-50 w-80">
+                    <SubscriptionManager />
+                  </div>
+                </AppShell>
+                {/* Toaster needs to be within ProvidersWrapper to access notification context */}
+                <Toaster />
+              </ProvidersWrapper>
+            </RuntimeConfigProvider>
+          </DesktopEnvironmentProvider>
+        </AuthFlowManager>
       </AuthProvider>
-      <Toaster />
     </ThemeProvider>
   );
 }

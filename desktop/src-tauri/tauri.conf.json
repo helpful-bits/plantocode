@@ -43,10 +43,7 @@
   "plugins": {
     "http": null,
     "deep-link": {
-      "domains": [
-        "vibe-manager.app",
-        "localhost"
-      ],
+      "domains": ["vibe-manager.app", "localhost"],
       "customProtocol": "vibe-manager"
     },
     "stronghold": null,

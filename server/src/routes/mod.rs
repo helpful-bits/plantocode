@@ -1,5 +1,6 @@
 use actix_web::web;
 use crate::handlers::auth::{firebase_handlers, userinfo_handler};
+use crate::handlers::usage_handlers;
 
 // Configure protected API routes (requires authentication)
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
@@ -26,7 +27,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(crate::handlers::billing_handlers::get_usage_summary)
     );
     
-    
     // Configuration routes (/api/config/*)
     cfg.service(
         web::scope("/config")
@@ -34,6 +34,12 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/runtime", web::get().to(crate::handlers::config_handlers::get_runtime_ai_config))
             // New endpoint for desktop app
             .route("/runtime-ai-config", web::get().to(crate::handlers::config_handlers::get_desktop_runtime_ai_config))
+    );
+    
+    // Usage routes (/api/usage/*)
+    cfg.service(
+        web::scope("/usage")
+            .route("/summary", web::get().to(usage_handlers::get_usage_summary_handler))
     );
     
     // AI proxy endpoint for direct model access (/api/ai-proxy/*)

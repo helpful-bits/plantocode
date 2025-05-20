@@ -18,6 +18,19 @@ pub async fn update_job_cleared_status_command(job_id: String, cleared: bool, ap
 }
 
 #[command]
+pub async fn get_background_job_by_id_command(job_id: String, app_handle: AppHandle) -> AppResult<Option<crate::models::BackgroundJob>> {
+    info!("Fetching background job by ID: {}", job_id);
+
+    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+        .inner()
+        .clone();
+
+    repo.get_job_by_id(&job_id)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get job by ID: {}", e)))
+}
+
+#[command]
 pub async fn clear_job_history_command(days_to_keep: i64, app_handle: AppHandle) -> AppResult<()> {
     info!("Clearing job history with days_to_keep={}", days_to_keep);
 

@@ -1,0 +1,14 @@
+# Generated files
+dist/
+build/
+coverage/
+node_modules/
+
+# Tauri specific
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# Lockfiles
+package-lock.json
+pnpm-lock.yaml
+yarn.lock

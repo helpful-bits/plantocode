@@ -5,9 +5,19 @@
 		"dev:core": "cd core && pnpm dev",
 		"dev:desktop": "cd desktop && pnpm tauri dev",
 		"dev:server": "cd server && cargo run",
+		"dev:shared": "cd shared && pnpm dev",
 		"build:core": "cd core && pnpm build",
 		"build:desktop": "cd desktop && pnpm tauri build",
 		"build:server": "cd server && cargo build --release",
-		"dev": "echo \"Running all components in dev mode is not supported yet. Run each component separately.\""
-	}
+		"build:shared": "cd shared && pnpm build",
+		"dev": "echo \"Running all components in dev mode is not supported yet. Run each component separately.\"",
+		"lint": "pnpm -r lint",
+		"typecheck": "pnpm -r typecheck"
+	},
+	"workspaces": [
+		"core",
+		"desktop",
+		"server",
+		"shared"
+	]
 }
