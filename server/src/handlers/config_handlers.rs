@@ -1,10 +1,10 @@
 use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tracing::{debug, info, instrument};
 
 use crate::config::settings::AppSettings;
-use crate::db::repositories::ModelRepository;
+use crate::db::repositories::model_repository::ModelRepository;
 use crate::error::AppError;
 use crate::models::runtime_config::{RuntimeAiConfig, TaskSpecificModelConfig, ModelInfo, PathFinderSettings};
 use serde::{Serialize, Deserialize};
@@ -12,13 +12,23 @@ use serde::{Serialize, Deserialize};
 // Legacy handler for compatibility
 #[instrument(skip(app_settings))]
 pub async fn get_runtime_ai_config(
-    app_settings: web::Data<AppSettings>,
+    app_settings: web::Data<Arc<RwLock<AppSettings>>>,
+    model_repository: web::Data<Arc<ModelRepository>>,
 ) -> Result<HttpResponse, AppError> {
     info!("Generating runtime AI configuration from database-loaded settings");
     
-    // Construct RuntimeAiConfig from app_settings.ai_models (which are now DB-sourced)
-    let ai_conf = &app_settings.ai_models; // This is AiModelSettings
-
+    // Refresh models from database first
+    // This ensures we always have the latest models when the config is requested
+    let models = model_repository.get_all().await?;
+    
+    // Get a read lock on the app settings
+    let app_settings_guard = app_settings.read().map_err(|_| {
+        AppError::Internal("Failed to acquire read lock on app settings".to_string())
+    })?;
+    
+    // Get the AI settings
+    let ai_conf = &app_settings_guard.ai_models;
+    
     // Convert AiModelSettings variants to RuntimeAiConfig variants
     let runtime_tasks: HashMap<String, TaskSpecificModelConfig> = ai_conf.task_specific_configs.iter().map(|(k, v_entry)| {
         (k.clone(), TaskSpecificModelConfig {
@@ -28,15 +38,16 @@ pub async fn get_runtime_ai_config(
         })
     }).collect();
 
-    let runtime_available_models: Vec<ModelInfo> = ai_conf.available_models.iter().map(|m_entry| {
+    // Convert database models to the format needed for RuntimeAiConfig
+    let runtime_available_models: Vec<ModelInfo> = models.iter().map(|model| {
         ModelInfo {
-            id: m_entry.id.clone(),
-            name: m_entry.name.clone(),
-            provider: m_entry.provider.clone(),
-            description: m_entry.description.clone(),
-            context_window: m_entry.context_window,
-            price_input_per_1k_tokens: m_entry.price_input_per_1k_tokens,
-            price_output_per_1k_tokens: m_entry.price_output_per_1k_tokens,
+            id: model.id.clone(),
+            name: model.name.clone(),
+            provider: "database".to_string(),
+            description: Some(format!("{} - Database Model", model.name)),
+            context_window: Some(model.context_window as u32),
+            price_input_per_1k_tokens: Some(model.price_input),
+            price_output_per_1k_tokens: Some(model.price_output),
         }
     }).collect();
 
@@ -58,7 +69,7 @@ pub async fn get_runtime_ai_config(
         path_finder_settings: runtime_path_finder_settings,
     };
     
-    info!("Runtime AI configuration generated successfully");
+    info!("Runtime AI configuration generated successfully with {} models", runtime_config.available_models.len());
     Ok(HttpResponse::Ok().json(runtime_config))
 }
 

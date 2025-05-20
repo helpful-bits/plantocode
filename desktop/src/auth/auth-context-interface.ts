@@ -18,7 +18,6 @@ export interface AuthContextType {
   loading: boolean;
   error: string | null;
   token: string | null;
-  signIn: (providerName?: string) => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
 }

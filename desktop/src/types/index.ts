@@ -19,3 +19,17 @@ export type * from "./error-types";
 
 // Export task settings types
 export type * from "./task-settings-types";
+
+// Authentication types
+export interface FrontendUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: string;
+}
+
+export interface AuthDataResponse {
+  user: FrontendUser;
+  token: string;
+  expires_in: number;
+}

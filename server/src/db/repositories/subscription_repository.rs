@@ -13,6 +13,7 @@ pub struct Subscription {
     pub stripe_subscription_id: Option<String>,
     pub plan_id: String,
     pub status: String,
+    pub is_trial: bool,
     pub trial_ends_at: Option<DateTime<Utc>>,
     pub current_period_ends_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -79,6 +80,7 @@ impl SubscriptionRepository {
             SELECT id, user_id, 
                    stripe_customer_id, stripe_subscription_id,
                    plan_id, status, 
+                   (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
                    created_at, updated_at
             FROM subscriptions
@@ -101,6 +103,7 @@ impl SubscriptionRepository {
             SELECT id, user_id, 
                    stripe_customer_id, stripe_subscription_id,
                    plan_id, status, 
+                   (trial_ends_at IS NOT NULL AND trial_ends_at > now()) as "is_trial!: bool",
                    trial_ends_at, current_period_ends_at,
                    created_at, updated_at
             FROM subscriptions

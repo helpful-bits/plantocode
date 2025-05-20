@@ -2,6 +2,21 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FrontendUser {
+    pub id: String,
+    pub email: String,
+    pub name: Option<String>,
+    pub role: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AuthDataResponse {
+    pub user: FrontendUser,
+    pub token: String, // This will be the application JWT
+    pub expires_in: i64, // Token lifetime in seconds
+}
+
 // Session model that matches the TypeScript Session interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {

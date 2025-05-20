@@ -73,6 +73,18 @@ pub struct TokenExchangeResponse {
     pub expires_in: i64,
 }
 
+// Full auth details response including user information
+#[derive(Debug, Serialize)]
+pub struct FullAuthDetailsResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: i64,
+    pub user_id: String,
+    pub email: String,
+    pub name: Option<String>,
+    pub role: String,
+}
+
 pub struct FirebaseOAuthService {
     client: Client,
     api_key: String,
@@ -122,7 +134,7 @@ impl FirebaseOAuthService {
     }
     
     // Generate a JWT token based on Firebase user info
-    pub async fn generate_token_from_firebase(&self, firebase_token: &str) -> Result<TokenExchangeResponse, AppError> {
+    pub async fn generate_token_from_firebase(&self, firebase_token: &str) -> Result<FullAuthDetailsResponse, AppError> {
         // Verify the Firebase token
         let user_info = self.verify_id_token(firebase_token).await?;
         
@@ -173,11 +185,18 @@ impl FirebaseOAuthService {
             .and_then(|days| days.parse::<i64>().ok())
             .unwrap_or(jwt::DEFAULT_JWT_DURATION_DAYS);
         
-        // Create token response
-        Ok(TokenExchangeResponse {
+        // Convert days to seconds for expires_in
+        let expires_in = duration_days * 24 * 60 * 60;
+        
+        // Create full auth details response
+        Ok(FullAuthDetailsResponse {
             access_token: token,
             token_type: "Bearer".to_string(),
-            expires_in: duration_days * 24 * 60 * 60, // Convert days to seconds
+            expires_in,
+            user_id: user.id.to_string(),
+            email: user.email,
+            name: user.full_name,
+            role: user.role,
         })
     }
 }

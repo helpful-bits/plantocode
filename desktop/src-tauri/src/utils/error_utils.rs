@@ -1,7 +1,6 @@
-use std::fmt;
 use log::error;
 
-use crate::error::{AppError, SerializableError};
+use crate::error::AppError;
 
 /// Format an error message for user display
 pub fn format_user_error(error: &AppError) -> String {
@@ -42,50 +41,10 @@ pub fn log_error(error: &AppError, context: &str) {
     error!("{}: {}", context, error);
 }
 
-/// Create a SerializableError from an AppError
-pub fn to_serializable_error(error: &AppError, details: Option<&str>) -> SerializableError {
-    let code = match error {
-        AppError::IoError(_) => "IO_ERROR",
-        AppError::SerdeError(_) => "SERDE_ERROR",
-        AppError::DatabaseError(_) => "DATABASE_ERROR",
-        AppError::OpenRouterError(_) => "OPENROUTER_ERROR",
-        AppError::ServerProxyError(_) => "SERVER_PROXY_ERROR",
-        AppError::HttpError(_) => "HTTP_ERROR",
-        AppError::TauriError(_) => "TAURI_ERROR",
-        AppError::StrongholdError(_) => "STRONGHOLD_ERROR",
-        AppError::ConfigError(_) => "CONFIG_ERROR",
-        AppError::JobError(_) => "JOB_ERROR",
-        AppError::FileSystemError(_) => "FILE_SYSTEM_ERROR",
-        AppError::GitError(_) => "GIT_ERROR",
-        AppError::ValidationError(_) => "VALIDATION_ERROR",
-        AppError::NotFoundError(_) => "NOT_FOUND_ERROR",
-        AppError::AuthError(_) => "AUTH_ERROR",
-        AppError::SecurityError(_) => "SECURITY_ERROR",
-        AppError::InternalError(_) => "INTERNAL_ERROR",
-        AppError::FileLockError(_) => "FILE_LOCK_ERROR",
-        AppError::InitializationError(_) => "INITIALIZATION_ERROR", 
-        AppError::ApplicationError(_) => "APPLICATION_ERROR",
-        AppError::SerializationError(_) => "SERIALIZATION_ERROR",
-        AppError::SqlxError(_) => "SQLX_ERROR",
-        AppError::AccessDenied(_) => "ACCESS_DENIED_ERROR",
-        AppError::BillingError(_) => "BILLING_ERROR",
-        AppError::InvalidArgument(_) => "INVALID_ARGUMENT_ERROR",
-        AppError::NetworkError(_) => "NETWORK_ERROR",
-        AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
-        AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
-    }.to_string();
-    
-    SerializableError {
-        code,
-        message: error.to_string(),
-        details: details.map(|s| s.to_string()),
-    }
-}
-
 /// Convert a serialized error string back to a SerializableError
-pub fn parse_error_string(error_string: &str) -> SerializableError {
+pub fn parse_error_string(error_string: &str) -> crate::error::SerializableError {
     serde_json::from_str(error_string).unwrap_or_else(|_| {
-        SerializableError {
+        crate::error::SerializableError {
             code: "UNKNOWN_ERROR".to_string(),
             message: error_string.to_string(),
             details: None,

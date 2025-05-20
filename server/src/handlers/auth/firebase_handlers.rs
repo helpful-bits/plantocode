@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::models::auth_jwt_claims::Claims;
 use crate::services::auth::jwt;
-use crate::services::auth::oauth::firebase_oauth::{FirebaseOAuthService, TokenExchangeResponse};
+use crate::services::auth::oauth::firebase_oauth::{FirebaseOAuthService, FullAuthDetailsResponse};
 use log::{debug, error, info};
 
 #[derive(Debug, Deserialize)]
@@ -54,79 +54,6 @@ pub async fn exchange_firebase_token(
     }
 }
 
-/// Get user information from the JWT token
-#[get("/validate")]
-pub async fn validate_token(req: HttpRequest) -> impl Responder {
-    // Extract the Bearer token from the Authorization header
-    let auth_header = match req.headers().get("Authorization") {
-        Some(header) => header.to_str().unwrap_or_default(),
-        None => return HttpResponse::Unauthorized().json("Missing Authorization header"),
-    };
-    
-    // Check if the header starts with "Bearer "
-    if !auth_header.starts_with("Bearer ") {
-        return HttpResponse::Unauthorized().json("Invalid Authorization header format");
-    }
-    
-    // Extract the token
-    let token = &auth_header[7..]; // Skip "Bearer " prefix
-    
-    // Validate the token
-    match jwt::verify_token(token) {
-        Ok(claims) => {
-            // Create a user info response
-            let user_info = UserInfoResponse {
-                id: claims.sub.clone(),
-                email: claims.email.clone(),
-                name: None, // User name is not stored in the token
-                role: claims.role.clone(),
-            };
-            
-            HttpResponse::Ok().json(user_info)
-        },
-        Err(e) => {
-            error!("Token validation failed: {}", e);
-            HttpResponse::Unauthorized().json("Invalid token")
-        },
-    }
-}
 
-/// Get the current user's information
-#[get("/userinfo")]
-pub async fn get_user_info(req: HttpRequest) -> impl Responder {
-    // This middleware assumes the secure_auth middleware has already verified the token
-    // and added the user ID as an extension to the request
-    
-    // Extract the Bearer token from the Authorization header
-    let auth_header = match req.headers().get("Authorization") {
-        Some(header) => header.to_str().unwrap_or_default(),
-        None => return HttpResponse::Unauthorized().json("Missing Authorization header"),
-    };
-    
-    // Check if the header starts with "Bearer "
-    if !auth_header.starts_with("Bearer ") {
-        return HttpResponse::Unauthorized().json("Invalid Authorization header format");
-    }
-    
-    // Extract the token
-    let token = &auth_header[7..]; // Skip "Bearer " prefix
-    
-    // Validate the token
-    match jwt::verify_token(token) {
-        Ok(claims) => {
-            // Create a user info response
-            let user_info = UserInfoResponse {
-                id: claims.sub.clone(),
-                email: claims.email.clone(),
-                name: None, // User name is not stored in the token
-                role: claims.role.clone(),
-            };
-            
-            HttpResponse::Ok().json(user_info)
-        },
-        Err(e) => {
-            error!("Token validation failed: {}", e);
-            HttpResponse::Unauthorized().json("Invalid token")
-        },
-    }
-}
+// The userinfo endpoint has been consolidated in userinfo_handler.rs
+// which uses middleware-extracted UserId and provides user details from the database

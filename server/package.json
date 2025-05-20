@@ -7,8 +7,5 @@
     "server:check": "cargo check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:scripts": "tsc -p tsconfig.json"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.3"
   }
 }

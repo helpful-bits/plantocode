@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::db::repositories::{
+    ApiUsageRepository, ModelRepository, SubscriptionRepository, 
+    SubscriptionPlanRepository, UserRepository, SettingsRepository
+};
+use crate::config::AppSettings;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskSpecificModelConfig {
@@ -40,4 +47,17 @@ pub struct RuntimeAiConfig {
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
     pub available_models: Vec<ModelInfo>,
     pub path_finder_settings: PathFinderSettings,
+}
+
+/// Application state shared across request handlers
+#[derive(Clone)]
+pub struct AppState {
+    pub settings: Arc<AppSettings>,
+    pub api_usage_repository: Arc<ApiUsageRepository>,
+    pub model_repository: Arc<ModelRepository>,
+    pub subscription_repository: Arc<SubscriptionRepository>,
+    pub subscription_plan_repository: Arc<SubscriptionPlanRepository>,
+    pub user_repository: Arc<UserRepository>,
+    pub settings_repository: Arc<SettingsRepository>,
+    pub free_tier_token_limit: Option<i64>,
 }

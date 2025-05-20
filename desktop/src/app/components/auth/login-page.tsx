@@ -2,11 +2,26 @@
  * Login Page Component for Vibe Manager Desktop
  */
 
+import { useState } from "react";
 import { useAuth } from "../../../contexts/auth-context";
 
 export default function LoginPage() {
   const { signIn, loading, error } = useAuth();
   const appName = "Vibe Manager";
+  const [authInProgress, setAuthInProgress] = useState(false);
+
+  // Handle sign-in with a specific provider
+  const handleSignIn = async (provider: "google" | "github" | "microsoft" | "apple") => {
+    setAuthInProgress(true);
+    try {
+      await signIn(provider);
+      // We don't immediately set authInProgress to false since we're waiting for a callback
+      // The external browser will be opened and we expect a deep link later
+    } catch (error) {
+      console.error(`Sign in with ${provider} failed:`, error);
+      setAuthInProgress(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
@@ -26,34 +41,41 @@ export default function LoginPage() {
           </div>
         )}
 
+        {authInProgress && !loading && (
+          <div className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 p-3 rounded-md text-sm">
+            Authentication in progress. Please complete the sign-in in your browser.
+            You'll be redirected back to the app automatically after signing in.
+          </div>
+        )}
+
         <div className="mt-8 space-y-4">
           <button
-            onClick={() => signIn("google")}
-            disabled={loading}
+            onClick={() => handleSignIn("google")}
+            disabled={loading || authInProgress}
             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             {loading ? "Signing in..." : "Sign in with Google"}
           </button>
 
           <button
-            onClick={() => signIn("github")}
-            disabled={loading}
+            onClick={() => handleSignIn("github")}
+            disabled={loading || authInProgress}
             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700 disabled:opacity-50"
           >
             {loading ? "Signing in..." : "Sign in with GitHub"}
           </button>
 
           <button
-            onClick={() => signIn("microsoft")}
-            disabled={loading}
+            onClick={() => handleSignIn("microsoft")}
+            disabled={loading || authInProgress}
             className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
           >
             {loading ? "Signing in..." : "Sign in with Microsoft"}
           </button>
 
           <button
-            onClick={() => signIn("apple")}
-            disabled={loading}
+            onClick={() => handleSignIn("apple")}
+            disabled={loading || authInProgress}
             className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-900 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
           >
             {loading ? "Signing in..." : "Sign in with Apple"}

@@ -26,9 +26,6 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
       setIsLoading(true);
       setError(null);
 
-      // Store token in Rust's TokenManager
-      await invoke("store_token", { token });
-
       // Load the runtime AI configuration
       const config = await loadRuntimeConfigAfterLogin();
 

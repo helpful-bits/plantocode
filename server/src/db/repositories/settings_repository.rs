@@ -3,6 +3,9 @@ use serde_json::Value as JsonValue;
 use crate::error::AppError;
 use crate::config::settings::{AiModelSettings, TaskSpecificModelConfigEntry, ModelInfoEntry, PathFinderSettingsEntry}; // Ensure these are pub
 use std::collections::HashMap;
+use serde::Serialize;
+use std::sync::Arc;
+use tracing::{info, error, instrument};
 
 pub struct SettingsRepository {
     db_pool: PgPool,
@@ -22,6 +25,32 @@ impl SettingsRepository {
         .await
         .map_err(|e| AppError::Database(format!("Failed to fetch config for key {}: {}", key, e)))?;
         Ok(record.map(|r| r.config_value))
+    }
+
+    async fn set_config_value<T: Serialize>(&self, key: &str, value: &T, description: Option<&str>) -> Result<(), AppError> {
+        // Convert the value to JSON
+        let json_value = serde_json::to_value(value)
+            .map_err(|e| AppError::Serialization(format!("Failed to serialize config value for {}: {}", key, e)))?;
+        
+        // Insert or update the configuration
+        sqlx::query!(
+            r#"
+            INSERT INTO application_configurations (config_key, config_value, description, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (config_key) DO UPDATE SET
+            config_value = EXCLUDED.config_value,
+            description = EXCLUDED.description,
+            updated_at = NOW()
+            "#,
+            key,
+            json_value,
+            description
+        )
+        .execute(&self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to upsert config for {}: {}", key, e)))?;
+        
+        Ok(())
     }
 
     pub async fn get_ai_model_settings(&self) -> Result<AiModelSettings, AppError> {
@@ -63,6 +92,53 @@ impl SettingsRepository {
             available_models,
             path_finder_settings,
         })
+    }
+
+    pub async fn update_ai_model_settings(&self, settings: &AiModelSettings) -> Result<(), AppError> {
+        // Update each component of the AI model settings
+        self.set_config_value("ai_settings_default_llm_model_id", &settings.default_llm_model_id, 
+            Some("Default LLM model ID for general AI tasks")).await?;
+        
+        self.set_config_value("ai_settings_default_voice_model_id", &settings.default_voice_model_id, 
+            Some("Default model ID for voice-related tasks")).await?;
+        
+        self.set_config_value("ai_settings_default_transcription_model_id", &settings.default_transcription_model_id, 
+            Some("Default model ID for audio transcription")).await?;
+        
+        self.set_config_value("ai_settings_task_specific_configs", &settings.task_specific_configs, 
+            Some("Task-specific model configurations including model, tokens, and temperature")).await?;
+        
+        self.set_config_value("ai_settings_available_models", &settings.available_models, 
+            Some("List of available AI models with their properties")).await?;
+        
+        self.set_config_value("ai_settings_path_finder_settings", &settings.path_finder_settings, 
+            Some("Settings for the PathFinder agent functionality")).await?;
+        
+        // Also update the service pricing table
+        self.update_service_pricing_table(&settings.available_models).await?;
+        
+        info!("AI model settings updated in database");
+        
+        Ok(())
+    }
+
+    // Initialize the database with default AI model settings if they don't exist
+    #[instrument(skip(self))]
+    pub async fn initialize_default_settings(&self, env_settings: &AiModelSettings) -> Result<(), AppError> {
+        info!("Initializing default AI model settings in database");
+        
+        // Check if settings already exist
+        let default_llm_exists = self.get_config_value("ai_settings_default_llm_model_id").await?.is_some();
+        
+        if !default_llm_exists {
+            info!("No existing AI settings found in database, initializing with environment defaults");
+            self.update_ai_model_settings(env_settings).await?;
+            info!("Successfully initialized default AI settings in database");
+        } else {
+            info!("AI settings already exist in database, skipping initialization");
+        }
+        
+        Ok(())
     }
 
     async fn update_service_pricing_table(&self, models: &[ModelInfoEntry]) -> Result<(), AppError> {

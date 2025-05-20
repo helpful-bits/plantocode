@@ -5,6 +5,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { type AuthContextType } from "../auth/auth-context-interface";
 import { useFirebaseAuthHandler } from "../auth/use-firebase-auth-handler";
@@ -29,32 +30,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     token,
-    signIn: firebaseSignIn,
+    signIn,
     signOut: firebaseSignOut,
     handleRedirectResult: firebaseHandleRedirect,
   } = useFirebaseAuthHandler();
 
-  // Get the current token for API calls - updated to return Promise to match interface
+  // Get the current token for API calls - from Tauri backend
   const getToken = (): Promise<string | null> => {
-    return Promise.resolve(token);
-  };
-
-  // Wrap the signIn method with a more flexible parameter type to match interface
-  const signIn = async (providerName?: string): Promise<void> => {
-    // Default to Google if no provider specified
-    let provider: "google" | "github" | "microsoft" | "apple" = "google";
-    
-    if (providerName && ["google", "github", "microsoft", "apple"].includes(providerName)) {
-      provider = providerName as "google" | "github" | "microsoft" | "apple";
-    }
-    
-    await firebaseSignIn(provider);
+    return invoke("get_stored_token");
   };
 
   // Wrap the handleRedirectResult method
   const handleRedirectResult = async (url?: string): Promise<void> => {
+    // When we receive a deep link URL, we process it as an authentication redirect
     if (url) {
+      console.log("[AuthContext] Received deep link to process:", url);
       await firebaseHandleRedirect(url);
+    } else {
+      console.warn("[AuthContext] handleRedirectResult called without URL");
     }
   };
 

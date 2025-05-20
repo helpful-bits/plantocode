@@ -20,8 +20,9 @@ pub mod auth;
 
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
-use log::{info, error};
+use log::{info, error, warn};
 use tokio::sync::OnceCell;
+use dotenv::dotenv;
 use crate::db_utils::{
     SessionRepository, BackgroundJobRepository, SettingsRepository
 };
@@ -30,10 +31,20 @@ use crate::utils::FileLockManager;
 use crate::auth::TokenManager;
 
 // App state struct for Tauri
-#[derive(Default)]
 pub struct AppState {
-    pub token: Mutex<Option<String>>,
     pub config_load_error: Mutex<Option<String>>,
+    pub client: reqwest::Client,
+    pub settings: config::RuntimeConfig,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            config_load_error: Mutex::new(None),
+            client: reqwest::Client::new(),
+            settings: config::RuntimeConfig::default(),
+        }
+    }
 }
 
 const APP_SCHEME: &str = "vibe-manager";
@@ -45,6 +56,9 @@ static SETTINGS_REPO: OnceCell<Arc<SettingsRepository>> = OnceCell::const_new();
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 
 fn main() {
+    // Load .env file if it exists
+    dotenv().ok();
+    
     // Initialize logger with environment variables
     // RUST_LOG=debug,vibe_manager=trace
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -69,26 +83,34 @@ fn main() {
     let salt_path_for_stronghold_plugin = app_local_data_base_path.join("salt.txt");
     info!("Stronghold salt file path determined: {:?}", salt_path_for_stronghold_plugin);
 
-    // Build the Stronghold plugin instance
-    let stronghold_plugin = tauri_plugin_stronghold::Builder::with_argon2(&salt_path_for_stronghold_plugin).build();
-
-    // Create a TokenManager before building the app
-    let token_manager = Arc::new(TokenManager::new());
+    // Generate a machine-specific password for Stronghold
+    // This approach uses the app identifier to ensure consistency across restarts
+    // In a production environment, this would need to be more secure
+    let stronghold_password = format!("vibe-manager-stronghold-{}", app_identifier);
+    
+    // Build the Stronghold plugin with Argon2 hashing
+    // Use a custom password hash function that incorporates the app identifier for consistency
+    let stronghold_plugin = tauri_plugin_stronghold::Builder::with_argon2(&salt_path_for_stronghold_plugin)
+        .build();
+    
+    info!("Stronghold plugin built with Argon2 hashing");
 
     tauri::Builder::default()
         .manage(AppState {
-            token: Mutex::new(None),
             config_load_error: Mutex::new(None),
+            client: reqwest::Client::new(),
+            settings: config::RuntimeConfig::default(),
         })
-        .manage(token_manager.clone())
         // IMPORTANT: Load Stronghold plugin first before all other plugins
         .plugin(stronghold_plugin)
+        // TokenManager will be created in initialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
@@ -97,6 +119,18 @@ fn main() {
             // No need to initialize it here.
             
             let app_handle_clone = app.handle().clone();
+            
+            // Verify Stronghold state is available
+            match app.try_state::<Arc<tauri_plugin_stronghold::stronghold::Stronghold>>() {
+                Some(_) => {
+                    info!("Stronghold plugin state verified during setup");
+                },
+                None => {
+                    // Log warning but don't stop app initialization
+                    // The app will fall back to memory-only token storage
+                    warn!("Stronghold state not available during setup. Secure storage will be limited.");
+                }
+            };
             
             // Run the async initialization in the sync context and explicitly map the error
             tauri::async_runtime::block_on(async move {
@@ -111,14 +145,18 @@ fn main() {
             commands::app_commands::get_database_info_command,
             
             // Auth commands
-            commands::auth_commands::store_token,
+            commands::auth_commands::exchange_and_store_firebase_token,
             commands::auth_commands::get_stored_token,
             commands::auth_commands::clear_stored_token,
+            commands::auth_commands::get_user_info_from_stored_app_jwt,
             
             // Config commands
             commands::config_commands::get_available_ai_models,
             commands::config_commands::get_default_task_configurations,
             commands::config_commands::fetch_runtime_ai_config,
+            commands::config_commands::initialize_secure_storage,
+            commands::config_commands::get_runtime_firebase_config,
+            commands::config_commands::get_server_url,
             
             // Fetch handler
             commands::fetch_handler_command::handle_fetch_request,

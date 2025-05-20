@@ -1,33 +1,11 @@
 /**
  * Token Storage for Desktop App
  *
- * Provides functions for storing and retrieving authentication tokens
+ * Provides functions for retrieving and clearing authentication tokens
  * using Tauri's Stronghold plugin through Rust commands.
  */
 
 import { invoke } from "@tauri-apps/api/core";
-
-/**
- * Initialize Stronghold vault via Rust command
- * This uses the Rust-side implementation for secure storage handling
- */
-export async function initStronghold(): Promise<void> {
-  try {
-    await invoke("initialize_secure_storage");
-  } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error("Failed to initialize secure storage via Rust command");
-  }
-}
-
-/**
- * Store a token securely using Rust command
- */
-export async function storeToken(token: string): Promise<void> {
-  // Use the Rust command to store token in Stronghold
-  await invoke("store_token", { token });
-}
 
 /**
  * Get the stored token using Rust command

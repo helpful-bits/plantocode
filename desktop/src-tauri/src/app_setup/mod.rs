@@ -29,7 +29,7 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
     }
 
     // Initialize configuration - non-critical path
-    match config::secure_store::initialize_secure_storage(app_handle).await {
+    match crate::commands::initialize_secure_storage(app_handle.clone()).await {
         Ok(_) => info!("Application configuration initialized successfully"),
         Err(e) => {
             warn!("Application configuration (Stronghold dependent) initialization issue: {}. Continuing with limited functionality.", e);

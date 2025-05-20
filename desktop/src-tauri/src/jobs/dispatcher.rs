@@ -11,6 +11,7 @@ use crate::jobs::registry::get_job_registry;
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{JobStatus, BackgroundJob};
 use crate::jobs::job_helpers;
+use crate::jobs::processor_trait;
 
 // No need for a local MAX_RETRIES as we use job_helpers::MAX_RETRY_COUNT
 
@@ -44,7 +45,6 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     let job = match queue.dequeue().await {
         Some(job) => job,
         None => {
-            debug!("No jobs in queue");
             // Drop the permit
             drop(permit);
             return Ok(None);
@@ -74,263 +74,103 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         Err(e) => {
             error!("Error finding processor for job {}: {}", job_id, e);
             let error_message = format!("Error finding processor: {}", e);
-             background_job_repo.update_job_status(
-                &job_id,
-                &JobStatus::Failed.to_string(),
-                Some(&error_message),
-            ).await?;
-            emit_job_status_change(
+            handle_job_failure(
                 &app_handle,
+                &background_job_repo,
                 &job_id,
-                &JobStatus::Failed.to_string(),
-                Some(&error_message),
-            )?;
+                &error_message,
+                None,
+            ).await?;
             drop(permit);
             return Ok(Some(JobProcessResult::failure(job_id, error_message)));
         }
     };
     
     // Process the job with timeout
+    let job_result = execute_job_with_processor(
+        &job_id, 
+        processor.as_ref(), 
+        job, 
+        app_handle.clone()
+    ).await;
+    
+    match job_result {
+        Ok(result) => {
+            // Reset retry count and log any errors
+            if let Err(e) = queue.reset_retry_count(&job_id) {
+                error!("Failed to reset retry count for job {}: {}", job_id, e);
+            }
+            
+            // Handle successful job completion
+            handle_job_success(
+                &app_handle,
+                &background_job_repo,
+                &job_id,
+                &result,
+            ).await?;
+            
+            drop(permit);
+            Ok(Some(result))
+        },
+        Err(e) => {
+            // Handle job failure or retry
+            let handled = handle_job_failure_or_retry(
+                &app_handle,
+                &background_job_repo,
+                &job_id,
+                &e.to_string(),
+            ).await?;
+            
+            drop(permit);
+            
+            // Return None if the job is being retried, or Some with failure result if job permanently failed
+            match handled {
+                JobFailureHandlingResult::Retrying => Ok(None),
+                JobFailureHandlingResult::PermanentFailure(failure_reason) => {
+                    Ok(Some(JobProcessResult::failure(job_id, failure_reason)))
+                }
+            }
+        }
+    }
+}
+
+/// Execute a job with the given processor and handle timeout
+async fn execute_job_with_processor(
+    job_id: &str,
+    processor: &dyn processor_trait::JobProcessor,
+    job: Job,
+    app_handle: AppHandle,
+) -> AppResult<JobProcessResult> {
+    // Process the job with timeout
     let timeout_result = timeout(
         Duration::from_secs(DEFAULT_JOB_TIMEOUT_SECONDS),
         processor.process(job, app_handle.clone())
     ).await;
     
-    let result = match timeout_result {
+    match timeout_result {
         // Job completed within timeout
-        Ok(process_result) => match process_result {
-            Ok(result) => result,
-            Err(e) => {
-                let error_message = format!("Failed to process job {}: {}", job_id, e);
-                error!("{}", error_message);
-                
-                // Get a copy of the job to access its metadata
-                let job_copy_result = background_job_repo.get_job_by_id(&job_id).await;
-                let job_copy: BackgroundJob = match job_copy_result {
-                    Ok(Some(j)) => j,
-                    Ok(None) => {
-                        error!("Job {} not found in DB for retry logic. Failing permanently.", job_id);
-                        // Emit job status change event for failure
-                        emit_job_status_change(
-                            &app_handle,
-                            &job_id,
-                            &JobStatus::Failed.to_string(),
-                            Some("Job data not found for retry processing."),
-                        )?;
-                        drop(permit); // Release permit before returning
-                        return Ok(Some(JobProcessResult::failure(job_id, "Job data not found for retry processing.".to_string())));
-                    }
-                    Err(e) => {
-                        error!("Failed to fetch job {} from DB for retry logic: {}. Failing permanently.", job_id, e);
-                        // Emit job status change event for failure
-                        emit_job_status_change(
-                            &app_handle,
-                            &job_id,
-                            &JobStatus::Failed.to_string(),
-                            Some("Database error during retry processing."),
-                        )?;
-                        drop(permit); // Release permit before returning
-                        return Ok(Some(JobProcessResult::failure(job_id, "Database error during retry processing.".to_string())));
-                    }
-                };
-                
-                // Check if this error type is retryable and get current retry count
-                let (is_retryable, current_retry_count) = job_helpers::get_retry_info(&job_copy).await;
-                
-                // Check if we can retry this job
-                if is_retryable && current_retry_count < job_helpers::MAX_RETRY_COUNT {
-                    // Calculate exponential backoff delay
-                    let retry_delay = job_helpers::calculate_retry_delay(current_retry_count);
-                    let next_retry_count = current_retry_count + 1;
-                    
-                    warn!("Job {} failed with retryable error. Scheduling retry #{} in {} seconds: {}", 
-                        job_id, next_retry_count, retry_delay, error_message);
-                    
-                    // Prepare metadata for the retry
-                    let retry_metadata = job_helpers::prepare_retry_metadata(&job_copy, next_retry_count, &error_message).await;
-                    
-                    // Update job status to queued with retry metadata
-                    let retry_message = format!("Retry #{} scheduled (will retry in {} seconds). Last error: {}", 
-                        next_retry_count, retry_delay, e);
-                        
-                    if let Err(e) = background_job_repo.update_job_status_with_metadata(
-                        &job_id,
-                        &JobStatus::Queued.to_string(),
-                        Some(&retry_message),
-                        retry_metadata
-                    ).await {
-                        error!("Failed to schedule job for retry: {}", e);
-                    }
-                    
-                    // Emit job status change event
-                    emit_job_status_change(
-                        &app_handle,
-                        &job_id,
-                        &JobStatus::Queued.to_string(),
-                        Some(&retry_message)
-                    )?;
-                    
-                    // Drop the permit
-                    drop(permit);
-                    
-                    // Sleep to implement the backoff delay
-                    tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay as u64)).await;
-                    
-                    return Ok(None);
-                } else {
-                    // Job is not retryable or max retries reached
-                    let failure_reason = if !is_retryable {
-                        format!("Non-retryable error: {}", error_message)
-                    } else {
-                        format!("Failed after {} retries. Last error: {}", current_retry_count, error_message)
-                    };
-                    
-                    error!("Job {} permanently failed: {}", job_id, failure_reason);
-                    
-                    // Update job status to failed
-                    if let Err(e) = background_job_repo.update_job_status(
-                        &job_id,
-                        &JobStatus::Failed.to_string(),
-                        Some(&failure_reason)
-                    ).await {
-                        error!("Failed to update job status to failed: {}", e);
-                    }
-                    
-                    // Emit job status change event
-                    emit_job_status_change(
-                        &app_handle,
-                        &job_id,
-                        &JobStatus::Failed.to_string(),
-                        Some(&failure_reason)
-                    )?;
-                    
-                    // Drop the permit
-                    drop(permit);
-                    
-                    return Ok(Some(JobProcessResult::failure(job_id, failure_reason)));
-                }
-            }
-        },
+        Ok(process_result) => process_result,
         // Job timed out
         Err(_elapsed) => {
             let timeout_message = format!("Job {} timed out after {} seconds", job_id, DEFAULT_JOB_TIMEOUT_SECONDS);
             error!("{}", timeout_message);
-            
-            // Get a copy of the job to access its metadata
-            let job_copy_result = background_job_repo.get_job_by_id(&job_id).await;
-            let job_copy: BackgroundJob = match job_copy_result {
-                Ok(Some(j)) => j,
-                Ok(None) => {
-                    error!("Job {} not found in DB for timeout retry logic. Failing permanently.", job_id);
-                    // Emit job status change event for failure
-                    emit_job_status_change(
-                        &app_handle,
-                        &job_id,
-                        &JobStatus::Failed.to_string(),
-                        Some("Job data not found for timeout retry processing."),
-                    )?;
-                    drop(permit); // Release permit before returning
-                    return Ok(Some(JobProcessResult::failure(job_id, "Job data not found for timeout retry processing.".to_string())));
-                }
-                Err(e) => {
-                    error!("Failed to fetch job {} from DB for timeout retry logic: {}. Failing permanently.", job_id, e);
-                    // Emit job status change event for failure
-                    emit_job_status_change(
-                        &app_handle,
-                        &job_id,
-                        &JobStatus::Failed.to_string(),
-                        Some("Database error during timeout retry processing."),
-                    )?;
-                    drop(permit); // Release permit before returning
-                    return Ok(Some(JobProcessResult::failure(job_id, "Database error during timeout retry processing.".to_string())));
-                }
-            };
-            
-            // Timeouts are generally retryable - check retry count
-            let (_, current_retry_count) = job_helpers::get_retry_info(&job_copy).await;
-            
-            // Check if we can retry this job
-            if current_retry_count < job_helpers::MAX_RETRY_COUNT {
-                // Calculate exponential backoff delay
-                let retry_delay = job_helpers::calculate_retry_delay(current_retry_count);
-                let next_retry_count = current_retry_count + 1;
-                
-                warn!("Job {} timed out. Scheduling retry #{} in {} seconds", 
-                    job_id, next_retry_count, retry_delay);
-                
-                // Prepare metadata for the retry
-                let retry_metadata = job_helpers::prepare_retry_metadata(&job_copy, next_retry_count, &timeout_message).await;
-                
-                // Update job status to queued with retry metadata
-                let retry_message = format!("Retry #{} scheduled after timeout", next_retry_count);
-                    
-                if let Err(e) = background_job_repo.update_job_status_with_metadata(
-                    &job_id,
-                    &JobStatus::Queued.to_string(),
-                    Some(&retry_message),
-                    retry_metadata
-                ).await {
-                    error!("Failed to schedule job for retry after timeout: {}", e);
-                }
-                
-                // Emit job status change event
-                emit_job_status_change(
-                    &app_handle,
-                    &job_id,
-                    &JobStatus::Queued.to_string(),
-                    Some(&retry_message)
-                )?;
-                
-                // Drop the permit
-                drop(permit);
-                
-                // Sleep to implement the backoff delay
-                tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay as u64)).await;
-                
-                return Ok(None);
-            } else {
-                // Max retries reached
-                let failure_reason = format!("Failed after {} retries. Job timed out after {} seconds", 
-                    current_retry_count, DEFAULT_JOB_TIMEOUT_SECONDS);
-                
-                error!("Job {} permanently failed due to timeout: {}", job_id, failure_reason);
-                
-                // Update job status to failed
-                if let Err(e) = background_job_repo.update_job_status(
-                    &job_id,
-                    &JobStatus::Failed.to_string(),
-                    Some(&failure_reason)
-                ).await {
-                    error!("Failed to update job status to failed after timeout: {}", e);
-                }
-                
-                // Emit job status change event
-                emit_job_status_change(
-                    &app_handle,
-                    &job_id,
-                    &JobStatus::Failed.to_string(),
-                    Some(&failure_reason)
-                )?;
-                
-                // Drop the permit
-                drop(permit);
-                
-                return Ok(Some(JobProcessResult::failure(job_id, failure_reason)));
-            }
+            Err(AppError::JobError(timeout_message))
         }
-    };
-    
-    // Reset retry count and log any errors
-    if let Err(e) = queue.reset_retry_count(&job_id) {
-        error!("Failed to reset retry count for job {}: {}", job_id, e);
     }
-    
-    // Update job status based on result
+}
+
+/// Handle a successful job completion
+async fn handle_job_success(
+    app_handle: &AppHandle,
+    background_job_repo: &Arc<BackgroundJobRepository>,
+    job_id: &str,
+    result: &JobProcessResult,
+) -> AppResult<()> {
     match result.status {
         JobStatus::Completed => {
             // Update job status to completed
             background_job_repo.update_job_status(
-                &job_id,
+                job_id,
                 &JobStatus::Completed.to_string(),
                 None,
             ).await?;
@@ -338,7 +178,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             // Update job response
             if let Some(response) = &result.response {
                 background_job_repo.update_job_response(
-                    &job_id, 
+                    job_id, 
                     response, 
                     Some(JobStatus::Completed), 
                     None, 
@@ -351,8 +191,8 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             
             // Emit job status change event
             emit_job_status_change(
-                &app_handle,
-                &job_id,
+                app_handle,
+                job_id,
                 &JobStatus::Completed.to_string(),
                 None,
             )?;
@@ -361,15 +201,15 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             // Update job status to failed
             let error_message = result.error.clone().unwrap_or_else(|| "Unknown error".to_string());
             background_job_repo.update_job_status(
-                &job_id,
+                job_id,
                 &JobStatus::Failed.to_string(),
                 Some(&error_message),
             ).await?;
             
             // Emit job status change event
             emit_job_status_change(
-                &app_handle,
-                &job_id,
+                app_handle,
+                job_id,
                 &JobStatus::Failed.to_string(),
                 Some(&error_message),
             )?;
@@ -379,10 +219,159 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         }
     }
     
-    // Drop the permit
-    drop(permit);
+    Ok(())
+}
+
+/// Result of handling a job failure
+enum JobFailureHandlingResult {
+    Retrying,
+    PermanentFailure(String),
+}
+
+/// Handle a job failure, determining if it should be retried
+async fn handle_job_failure(
+    app_handle: &AppHandle,
+    background_job_repo: &Arc<BackgroundJobRepository>,
+    job_id: &str,
+    error_message: &str,
+    job_copy: Option<BackgroundJob>,
+) -> AppResult<JobFailureHandlingResult> {
+    // Get a copy of the job to access its metadata if not provided
+    let job_copy = match job_copy {
+        Some(job) => job,
+        None => {
+            match background_job_repo.get_job_by_id(job_id).await {
+                Ok(Some(j)) => j,
+                Ok(None) => {
+                    let msg = format!("Job {} not found in DB for retry logic. Failing permanently.", job_id);
+                    error!("{}", msg);
+                    // Emit job status change event for failure
+                    emit_job_status_change(
+                        app_handle,
+                        job_id,
+                        &JobStatus::Failed.to_string(),
+                        Some("Job data not found for retry processing."),
+                    )?;
+                    return Ok(JobFailureHandlingResult::PermanentFailure(
+                        "Job data not found for retry processing.".to_string()
+                    ));
+                }
+                Err(e) => {
+                    let msg = format!("Failed to fetch job {} from DB for retry logic: {}. Failing permanently.", job_id, e);
+                    error!("{}", msg);
+                    // Emit job status change event for failure
+                    emit_job_status_change(
+                        app_handle,
+                        job_id,
+                        &JobStatus::Failed.to_string(),
+                        Some("Database error during retry processing."),
+                    )?;
+                    return Ok(JobFailureHandlingResult::PermanentFailure(
+                        "Database error during retry processing.".to_string()
+                    ));
+                }
+            }
+        }
+    };
     
-    Ok(Some(result))
+    handle_job_failure_or_retry_internal(
+        app_handle,
+        background_job_repo,
+        job_id,
+        error_message,
+        &job_copy,
+    ).await
+}
+
+/// Handle a job failure by checking if it can be retried
+async fn handle_job_failure_or_retry(
+    app_handle: &AppHandle,
+    background_job_repo: &Arc<BackgroundJobRepository>,
+    job_id: &str,
+    error_message: &str,
+) -> AppResult<JobFailureHandlingResult> {
+    handle_job_failure(app_handle, background_job_repo, job_id, error_message, None).await
+}
+
+/// Internal implementation of failure handling and retry logic
+async fn handle_job_failure_or_retry_internal(
+    app_handle: &AppHandle,
+    background_job_repo: &Arc<BackgroundJobRepository>,
+    job_id: &str,
+    error_message: &str,
+    job_copy: &BackgroundJob,
+) -> AppResult<JobFailureHandlingResult> {
+    error!("Failed to process job {}: {}", job_id, error_message);
+    
+    // Check if this error type is retryable and get current retry count
+    let (is_retryable, current_retry_count) = job_helpers::get_retry_info(job_copy).await;
+    
+    // Check if we can retry this job
+    if is_retryable && current_retry_count < job_helpers::MAX_RETRY_COUNT {
+        // Calculate exponential backoff delay
+        let retry_delay = job_helpers::calculate_retry_delay(current_retry_count);
+        let next_retry_count = current_retry_count + 1;
+        
+        warn!("Job {} failed with retryable error. Scheduling retry #{} in {} seconds: {}", 
+            job_id, next_retry_count, retry_delay, error_message);
+        
+        // Prepare metadata for the retry
+        let retry_metadata = job_helpers::prepare_retry_metadata(job_copy, next_retry_count, error_message).await;
+        
+        // Update job status to queued with retry metadata
+        let retry_message = format!("Retry #{} scheduled (will retry in {} seconds). Last error: {}", 
+            next_retry_count, retry_delay, error_message);
+            
+        if let Err(e) = background_job_repo.update_job_status_with_metadata(
+            job_id,
+            &JobStatus::Queued.to_string(),
+            Some(&retry_message),
+            retry_metadata
+        ).await {
+            error!("Failed to schedule job for retry: {}", e);
+        }
+        
+        // Emit job status change event
+        emit_job_status_change(
+            app_handle,
+            job_id,
+            &JobStatus::Queued.to_string(),
+            Some(&retry_message)
+        )?;
+        
+        // Sleep to implement the backoff delay
+        tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay as u64)).await;
+        
+        Ok(JobFailureHandlingResult::Retrying)
+    } else {
+        // Job is not retryable or max retries reached
+        let failure_reason = if !is_retryable {
+            format!("Non-retryable error: {}", error_message)
+        } else {
+            format!("Failed after {} retries. Last error: {}", current_retry_count, error_message)
+        };
+        
+        error!("Job {} permanently failed: {}", job_id, failure_reason);
+        
+        // Update job status to failed
+        if let Err(e) = background_job_repo.update_job_status(
+            job_id,
+            &JobStatus::Failed.to_string(),
+            Some(&failure_reason)
+        ).await {
+            error!("Failed to update job status to failed: {}", e);
+        }
+        
+        // Emit job status change event
+        emit_job_status_change(
+            app_handle,
+            job_id,
+            &JobStatus::Failed.to_string(),
+            Some(&failure_reason)
+        )?;
+        
+        Ok(JobFailureHandlingResult::PermanentFailure(failure_reason))
+    }
 }
 
 /// Emit a job status change event

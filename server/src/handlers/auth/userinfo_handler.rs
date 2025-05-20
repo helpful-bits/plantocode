@@ -27,18 +27,3 @@ pub async fn get_user_info(
     })))
 }
 
-/// Handler for validating a JWT token
-/// This handler simply returns a success response if the request passes the SecureAuthentication middleware
-/// The middleware handles the JWT validation, so if this handler is reached, the token is valid
-pub async fn validate_token(
-    user_id: web::ReqData<UserId>,
-) -> Result<HttpResponse, AppError> {
-    // Extract user ID from the JWT (already validated by middleware)
-    let user_id = user_id.into_inner().0;
-    
-    // Return simple validation response with user ID
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "valid": true,
-        "user_id": user_id
-    })))
-}

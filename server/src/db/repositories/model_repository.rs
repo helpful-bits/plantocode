@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tracing::{info, error, instrument};
 use uuid::Uuid;
 
-use crate::error::AppResult;
+use crate::error::{AppResult, AppError};
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct Model {
@@ -51,6 +51,7 @@ pub struct ApiUsageCreateDto {
 }
 
 /// Repository for managing AI models and tracking API usage
+#[derive(Debug, Clone)]
 pub struct ModelRepository {
     pool: Arc<Pool<Postgres>>,
 }
