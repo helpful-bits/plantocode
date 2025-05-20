@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "noEmit": true,
+    "incremental": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "types/**/*.d.ts",
+    "./types/env.d.ts",
+    "./types/node-globals.d.ts",
+    "./types/timeout.d.ts",
+    "./types/tauri-commands.d.ts",
+    "vite.config.mts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}

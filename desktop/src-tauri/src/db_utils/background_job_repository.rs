@@ -23,7 +23,7 @@ impl BackgroundJobRepository {
             .ok_or_else(|| AppError::NotFoundError(format!("Job with ID {} not found", job_id)))?;
 
         // If job is already in a terminal state, no action needed
-        let current_status = JobStatus::from_str(&job.status).unwrap_or(JobStatus::Pending);
+        let current_status = JobStatus::from_str(&job.status).unwrap_or(JobStatus::Idle);
         if current_status.is_terminal() {
             info!("Job {} is already in a terminal state: {}", job_id, job.status);
             return Ok(());
@@ -56,14 +56,14 @@ impl BackgroundJobRepository {
                 last_update = $4
             WHERE id = $5 AND status NOT IN ($6, $7, $8)
             "#)
-            .bind(JobStatus::Cancelled.to_string())
+            .bind(JobStatus::Canceled.to_string())
             .bind(now)
             .bind(now)
             .bind(now)
             .bind(job_id)
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
-            .bind(JobStatus::Cancelled.to_string())
+            .bind(JobStatus::Canceled.to_string())
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to update job {} to canceled: {}", job_id, e)))?;
@@ -225,7 +225,7 @@ impl BackgroundJobRepository {
             sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3)")
                 .bind(JobStatus::Completed.to_string())
                 .bind(JobStatus::Failed.to_string())
-                .bind(JobStatus::Cancelled.to_string())
+                .bind(JobStatus::Canceled.to_string())
                 .execute(&*self.pool)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete job history: {}", e)))?;
@@ -236,7 +236,7 @@ impl BackgroundJobRepository {
             sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4")
                 .bind(JobStatus::Completed.to_string())
                 .bind(JobStatus::Failed.to_string())
-                .bind(JobStatus::Cancelled.to_string())
+                .bind(JobStatus::Canceled.to_string())
                 .bind(ninety_days_ago_ts)
                 .execute(&*self.pool)
                 .await
@@ -250,7 +250,7 @@ impl BackgroundJobRepository {
                     .bind(current_ts)
                     .bind(JobStatus::Completed.to_string())
                     .bind(JobStatus::Failed.to_string())
-                    .bind(JobStatus::Cancelled.to_string())
+                    .bind(JobStatus::Canceled.to_string())
                     .bind(target_date_ts)
                     .execute(&*self.pool)
                     .await
@@ -316,7 +316,7 @@ impl BackgroundJobRepository {
     /// Get active jobs (pending or running)
     pub async fn get_active_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
         let rows = sqlx::query("SELECT * FROM background_jobs WHERE status IN ($1, $2) ORDER BY created_at ASC")
-            .bind(JobStatus::Pending.to_string())
+            .bind(JobStatus::Queued.to_string())
             .bind(JobStatus::Running.to_string())
             .fetch_all(&*self.pool)
             .await
@@ -615,7 +615,7 @@ impl BackgroundJobRepository {
             final_query.push_str(&format!(", status = ${}", param_index));
             param_index += 1;
             
-            if *s == JobStatus::Completed || *s == JobStatus::Failed || *s == JobStatus::Cancelled {
+            if *s == JobStatus::Completed || *s == JobStatus::Failed || *s == JobStatus::Canceled {
                 final_query.push_str(&format!(", end_time = ${}", param_index));
                 param_index += 1;
             }
@@ -659,7 +659,7 @@ impl BackgroundJobRepository {
         if let Some(s) = &status {
             query_obj = query_obj.bind(s.to_string());
             
-            if *s == JobStatus::Completed || *s == JobStatus::Failed || *s == JobStatus::Cancelled {
+            if *s == JobStatus::Completed || *s == JobStatus::Failed || *s == JobStatus::Canceled {
                 query_obj = query_obj.bind(now);
             }
         }
@@ -1051,16 +1051,16 @@ impl BackgroundJobRepository {
             AND status IN ($5, $6, $7, $8, $9, $10)
             AND task_type <> $11
             "#)
-            .bind(JobStatus::Cancelled.to_string())
+            .bind(JobStatus::Canceled.to_string())
             .bind(current_ts)
             .bind(current_ts)
             .bind(session_id)
-            .bind(JobStatus::Pending.to_string())
+            .bind(JobStatus::Created.to_string())
             .bind(JobStatus::Running.to_string())
             .bind(JobStatus::Queued.to_string())
             .bind(JobStatus::AcknowledgedByWorker.to_string())
-            .bind(JobStatus::Created.to_string())
             .bind(JobStatus::Idle.to_string())
+            .bind(JobStatus::Preparing.to_string())
             .bind(TaskType::ImplementationPlan.to_string())
             .execute(&*self.pool)
             .await
@@ -1085,7 +1085,7 @@ impl BackgroundJobRepository {
             .bind(current_ts)
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
-            .bind(JobStatus::Cancelled.to_string())
+            .bind(JobStatus::Canceled.to_string())
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to clear all completed jobs: {}", e)))?;
@@ -1111,7 +1111,7 @@ impl BackgroundJobRepository {
             .bind(session_id)
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
-            .bind(JobStatus::Cancelled.to_string())
+            .bind(JobStatus::Canceled.to_string())
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to clear completed jobs for session: {}", e)))?;

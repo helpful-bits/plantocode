@@ -8,6 +8,8 @@ pub mod config_commands;
 pub mod fetch_handler_command;
 pub mod job_commands;
 pub mod db_commands;
+pub mod settings_commands;
+pub mod session_commands;
 
 // New modular task command modules
 pub mod text_commands;
@@ -93,6 +95,7 @@ pub use job_commands::{
     delete_background_job_command,
     cancel_background_job_command,
     cancel_session_jobs_command,
+    get_background_job_by_id_command,
 };
 
 // Re-exports from db commands module
@@ -101,6 +104,29 @@ pub use db_commands::{
     db_select_query,
     db_execute_transaction,
     db_table_exists,
+};
+
+// Re-exports from settings commands module
+pub use settings_commands::{
+    get_key_value_command,
+    set_key_value_command,
+    get_project_task_model_settings_command,
+    set_project_task_model_settings_command,
+    get_default_task_model_settings_command,
+    get_all_task_model_settings_for_project_command,
+};
+
+// Re-exports from session commands module
+pub use session_commands::{
+    create_session_command,
+    get_session_command,
+    get_sessions_for_project_command,
+    update_session_command,
+    delete_session_command,
+    rename_session_command,
+    update_session_project_directory_command,
+    clear_all_project_sessions_command,
+    update_session_fields_command,
 };
 
 // All command functions will return AppResult<T> directly

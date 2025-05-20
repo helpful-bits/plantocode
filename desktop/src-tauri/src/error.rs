@@ -75,6 +75,18 @@ pub enum AppError {
 
     #[error("Billing error: {0}")]
     BillingError(String),
+    
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+    
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    
+    #[error("External service error: {0}")]
+    ExternalServiceError(String),
+    
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -167,6 +179,10 @@ impl From<AppError> for SerializableError {
             AppError::SqlxError(_) => "SQLX_ERROR",
             AppError::AccessDenied(_) => "ACCESS_DENIED_ERROR",
             AppError::BillingError(_) => "BILLING_ERROR",
+            AppError::InvalidArgument(_) => "INVALID_ARGUMENT_ERROR",
+            AppError::NetworkError(_) => "NETWORK_ERROR",
+            AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
+            AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
         }.to_string();
         
         SerializableError {

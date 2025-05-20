@@ -3,6 +3,7 @@ use log::info;
 use serde::{Serialize, Deserialize};
 use crate::error::{AppError, AppResult};
 use crate::utils::fs_utils;
+use crate::utils::path_utils;
 use ::dirs;
 
 #[command]
@@ -158,6 +159,7 @@ pub async fn create_directory_command(args: CreateDirectoryArgs, app_handle: App
 pub struct ReadFileContentArgs {
     pub path: String,
     pub project_directory: Option<String>,
+    pub encoding: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -322,4 +324,101 @@ pub async fn move_file_command(args: MoveFileArgs, app_handle: AppHandle) -> App
         .map_err(|e| AppError::FileSystemError(format!("Failed to move file: {}", e)))?;
 
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PathArgs {
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PathJoinArgs {
+    pub paths: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NormalizePathArgs {
+    pub path: String,
+    pub add_trailing_slash: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SanitizeFilenameArgs {
+    pub name: String,
+}
+
+#[command]
+pub fn path_join_command(args: PathJoinArgs) -> AppResult<String> {
+    let result = args.paths.iter()
+        .fold(std::path::PathBuf::new(), |acc, path| acc.join(path));
+    
+    Ok(result.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn path_dirname_command(args: PathArgs) -> AppResult<String> {
+    let path = std::path::Path::new(&args.path);
+    let parent = path.parent()
+        .ok_or_else(|| AppError::ValidationError("Path has no parent directory".to_string()))?;
+    
+    Ok(parent.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn path_basename_command(args: PathArgs) -> AppResult<String> {
+    let path = std::path::Path::new(&args.path);
+    let file_name = path.file_name()
+        .ok_or_else(|| AppError::ValidationError("Path has no file name component".to_string()))?;
+    
+    Ok(file_name.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn path_extname_command(args: PathArgs) -> AppResult<String> {
+    let path = std::path::Path::new(&args.path);
+    let extension = path.extension()
+        .map(|ext| format!(".{}", ext.to_string_lossy()))
+        .unwrap_or_default();
+    
+    Ok(extension)
+}
+
+#[command] 
+pub async fn get_app_data_directory_command() -> AppResult<String> {
+    let dir = path_utils::get_app_data_root_dir().await?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn sanitize_filename_command(args: SanitizeFilenameArgs) -> AppResult<String> {
+    let sanitized = path_utils::sanitize_filename(&args.name);
+    Ok(sanitized)
+}
+
+#[command]
+pub fn normalize_path_command(args: NormalizePathArgs) -> AppResult<String> {
+    let path = std::path::Path::new(&args.path);
+    let normalized = path_utils::normalize_path(path);
+    
+    let mut result = normalized.to_string_lossy().to_string();
+    
+    // Add trailing slash if requested
+    if args.add_trailing_slash.unwrap_or(false) && !result.ends_with('/') && !result.ends_with('\\') {
+        #[cfg(windows)]
+        {
+            result.push('\\');
+        }
+        #[cfg(not(windows))]
+        {
+            result.push('/');
+        }
+    }
+    
+    Ok(result)
+}
+
+#[command]
+pub async fn get_temp_dir_command() -> AppResult<String> {
+    let temp_dir = fs_utils::get_app_temp_dir().await?;
+    Ok(temp_dir.to_string_lossy().to_string())
 }

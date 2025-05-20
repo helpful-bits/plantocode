@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for main window", 
+  "description": "Default capability for main window",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -10,6 +10,8 @@
     "stronghold:default",
     "deep-link:default",
     "deep-link:allow-register",
-    "dialog:default"
+    "dialog:default",
+    "fs:default",
+    "shell:default"
   ]
 }

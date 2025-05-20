@@ -45,12 +45,6 @@ static SETTINGS_REPO: OnceCell<Arc<SettingsRepository>> = OnceCell::const_new();
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 
 fn main() {
-    // Enable extended backtrace for debugging issues
-    #[cfg(debug_assertions)]
-    {
-        env::set_var("RUST_BACKTRACE", "1");
-    }
-    
     // Initialize logger with environment variables
     // RUST_LOG=debug,vibe_manager=trace
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -136,6 +130,7 @@ fn main() {
             commands::job_commands::cancel_background_job_command,
             commands::job_commands::cancel_session_jobs_command,
             commands::job_commands::delete_background_job_command,
+            commands::job_commands::get_background_job_by_id_command,
             
             // File system commands
             commands::file_system_commands::get_home_directory_command,
@@ -147,6 +142,14 @@ fn main() {
             commands::file_system_commands::create_unique_filepath_command,
             commands::file_system_commands::delete_file_command,
             commands::file_system_commands::move_file_command,
+            commands::file_system_commands::path_join_command,
+            commands::file_system_commands::path_dirname_command,
+            commands::file_system_commands::path_basename_command,
+            commands::file_system_commands::path_extname_command,
+            commands::file_system_commands::get_app_data_directory_command,
+            commands::file_system_commands::sanitize_filename_command,
+            commands::file_system_commands::normalize_path_command,
+            commands::file_system_commands::get_temp_dir_command,
             
             // Text commands
             commands::text_commands::improve_text_command,
@@ -179,6 +182,23 @@ fn main() {
             commands::db_commands::db_select_query,
             commands::db_commands::db_execute_transaction,
             commands::db_commands::db_table_exists,
+            
+            // Settings commands
+            commands::settings_commands::get_key_value_command,
+            commands::settings_commands::set_key_value_command,
+            commands::settings_commands::get_project_task_model_settings_command,
+            commands::settings_commands::set_project_task_model_settings_command,
+            
+            // Session commands
+            commands::session_commands::create_session_command,
+            commands::session_commands::get_session_command,
+            commands::session_commands::get_sessions_for_project_command,
+            commands::session_commands::update_session_command,
+            commands::session_commands::delete_session_command,
+            commands::session_commands::rename_session_command,
+            commands::session_commands::update_session_project_directory_command,
+            commands::session_commands::clear_all_project_sessions_command,
+            commands::session_commands::update_session_fields_command,
         ])
         // Use the context we created earlier
         .run(tauri_context)

@@ -36,6 +36,7 @@ next-env.d.ts
 *.pem
 Thumbs.db
 .cache/
+desktop/src-tauri/.cargo
 
 # Debug logs
 npm-debug.log*
@@ -172,3 +173,5 @@ temp/
 /desktop/src-tauri/icons/StoreLogo.png
 /server/gen/
 /server/.sqlx/
+/desktop/src-tauri/.cargo/
+/desktop/pnpm-workspace.yaml

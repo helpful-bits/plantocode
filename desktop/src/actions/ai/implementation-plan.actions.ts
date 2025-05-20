@@ -1,0 +1,149 @@
+import { invoke } from "@tauri-apps/api/core";
+
+import { type ActionState } from "@/types";
+
+interface ImplementationPlanDataResponse {
+  id: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  content_format?: string;
+  created_at: string;
+}
+
+/**
+ * Create an implementation plan for a given task
+ */
+export async function createImplementationPlanAction(params: {
+  projectDirectory: string;
+  taskDescription: string;
+  relevantFiles: string[];
+  sessionId: string;
+  projectStructure?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<ActionState<{ jobId?: string }>> {
+  const {
+    projectDirectory,
+    taskDescription,
+    relevantFiles,
+    sessionId,
+    projectStructure,
+    model,
+    temperature,
+    maxTokens,
+  } = params;
+
+  if (!taskDescription.trim()) {
+    return { isSuccess: false, message: "Task description cannot be empty" };
+  }
+
+  if (!relevantFiles.length) {
+    return { isSuccess: false, message: "No relevant files provided" };
+  }
+
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    return { isSuccess: false, message: "Invalid or missing session ID" };
+  }
+
+  try {
+    // Call the Tauri command to create the implementation plan
+    // The backend now handles dynamic title generation and all prompt construction
+    const result = await invoke<{ job_id: string }>(
+      "create_implementation_plan_command",
+      {
+        sessionId,
+        taskDescription,
+        projectDirectory,
+        relevantFiles,
+        projectStructure,
+        modelOverride: model,
+        temperatureOverride: temperature,
+        maxTokensOverride: maxTokens,
+      }
+    );
+
+    return {
+      isSuccess: true,
+      message: "Implementation plan generation started",
+      data: { jobId: result.job_id },
+      metadata: {
+        jobId: result.job_id,
+      },
+    };
+  } catch (error) {
+    console.error("[createImplementationPlanAction]", error);
+    return {
+      isSuccess: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unknown error creating implementation plan",
+      error: error instanceof Error ? error : new Error("Unknown error"),
+    };
+  }
+}
+
+/**
+ * Read an implementation plan by its job ID
+ */
+export async function readImplementationPlanAction(jobId: string): Promise<
+  ActionState<{
+    id: string;
+    title?: string;
+    description?: string;
+    content?: string;
+    contentFormat?: string;
+    createdAt: string;
+  }>
+> {
+  if (!jobId || typeof jobId !== "string" || jobId.trim() === "") {
+    return {
+      isSuccess: false,
+      message: "Invalid job ID provided",
+      data: {
+        id: "",
+        createdAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  try {
+    // Call the Tauri command to read the implementation plan
+    const result = await invoke<ImplementationPlanDataResponse>(
+      "read_implementation_plan_command",
+      {
+        jobId,
+      }
+    );
+
+    return {
+      isSuccess: true,
+      message: "Implementation plan retrieved successfully",
+      data: {
+        id: result.id,
+        title: result.title,
+        description: result.description,
+        content: result.content,
+        contentFormat: result.content_format,
+        createdAt: result.created_at,
+      },
+    };
+  } catch (error) {
+    console.error("[readImplementationPlanAction]", error);
+
+    return {
+      isSuccess: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unknown error reading implementation plan",
+      error: error instanceof Error ? error : new Error("Unknown error"),
+      data: {
+        id: jobId,
+        createdAt: new Date().toISOString(),
+      },
+    };
+  }
+}

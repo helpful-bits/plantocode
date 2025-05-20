@@ -1,137 +1,176 @@
-/**
- * Desktop-specific path utilities to replace Node.js path module functionality
- * These utilities are compatible with browser environments
- */
+import * as tauriFs from "@/utils/tauri-fs";
 
 /**
- * Simplifies a path by normalizing slashes and removing redundant parts.
- * This is the core normalization function focusing ONLY on formatting, not path relationships.
- *
- * @param filePath The file path to normalize
- * @param addTrailingSlash If true, ensures the path ends with a slash
- * @returns A normalized path with consistent slash formatting
+ * Normalize a path to a consistent format
+ * - Converts backslashes to forward slashes
+ * - Removes trailing slashes
+ * - On Windows, makes drive letters lowercase
  */
-export function normalizePath(filePath: string, addTrailingSlash = false): string {
-  if (!filePath) return filePath;
+export async function normalizePath(inputPath: string): Promise<string> {
+  if (!inputPath) return "";
 
-  let normalizedPath = filePath;
+  // Use the Rust-backed normalization function
+  return await tauriFs.normalizePath(inputPath);
+}
 
-  // Convert backslashes to forward slashes
-  normalizedPath = normalizedPath.replace(/\\/g, '/');
+/**
+ * Make a path relative to a base directory
+ * For display purposes, the base directory is usually the project root
+ */
+export async function makePathRelative(
+  absolutePath: string,
+  baseDirectory?: string
+): Promise<string> {
+  if (!absolutePath) return "";
+  if (!baseDirectory) return absolutePath;
 
-  // Replace multiple consecutive slashes with a single one
-  normalizedPath = normalizedPath.replace(/\/\/+/g, '/');
+  const normalizedBase = await normalizePath(baseDirectory);
+  const normalizedPath = await normalizePath(absolutePath);
 
-  // Add trailing separator if requested and not already present
-  if (addTrailingSlash && !normalizedPath.endsWith('/')) {
-    normalizedPath += '/';
+  // Skip if base is not a prefix of the path (allowing trailing slash differences)
+  const baseWithTrailingSlash = normalizedBase.endsWith("/")
+    ? normalizedBase
+    : `${normalizedBase}/`;
+
+  if (normalizedPath === normalizedBase) {
+    return ".";
+  } else if (normalizedPath.startsWith(baseWithTrailingSlash)) {
+    return normalizedPath.slice(baseWithTrailingSlash.length);
+  } else if (normalizedPath.startsWith(normalizedBase + "/")) {
+    return normalizedPath.slice(normalizedBase.length + 1);
   }
 
-  return normalizedPath;
+  return absolutePath;
 }
 
 /**
- * Browser-compatible replacement for path.join
- * Joins path segments together and normalizes the resulting path
- * 
- * @param paths Path segments to join
- * @returns Joined path with normalized slashes
+ * Normalize a path for comparison purposes
+ * - Returns a fully normalized, absolute path
+ * - Resolves '.' and '..' segments
  */
-export function join(...paths: string[]): string {
-  // Filter out empty segments
-  const segments = paths.filter(segment => segment !== '');
-  
-  if (segments.length === 0) return '';
-  
-  // Join with forward slashes and normalize
-  const joined = segments.join('/');
-  
-  // Replace consecutive slashes with a single one
-  return normalizePath(joined);
+export async function normalizePathForComparison(
+  inputPath: string
+): Promise<string> {
+  if (!inputPath) return "";
+
+  try {
+    // Use the Rust-backed normalizer, which should handle resolving path segments
+    // More reliably than the Node.js path.resolve we used previously
+    return await tauriFs.normalizePath(inputPath);
+  } catch (error) {
+    console.error(`Error normalizing path: ${inputPath}`, error);
+    // Fallback in case of error, but still use the async normalizer
+    return await normalizePath(inputPath);
+  }
 }
 
 /**
- * Browser-compatible replacement for path.basename
- * Gets the file name portion of a path
- * 
- * @param filePath The file path
- * @returns The file name
+ * Parse file paths from AI-generated response text
+ * Handles various formats that might be returned by AI
  */
-export function basename(filePath: string): string {
-  if (!filePath) return '';
-  
-  // Normalize the path first
-  const normalizedPath = normalizePath(filePath);
-  
-  // Split by slashes and get the last part
-  const parts = normalizedPath.split('/');
-  return parts[parts.length - 1] || '';
-}
+export async function parseFilePathsFromAIResponse(
+  response: string,
+  projectDirectory?: string
+): Promise<string[]> {
+  if (!response || typeof response !== "string") {
+    return [];
+  }
 
-/**
- * Browser-compatible replacement for path.extname
- * Gets the file extension of a path
- * 
- * @param filePath The file path
- * @returns The file extension with the leading dot
- */
-export function extname(filePath: string): string {
-  const fileName = basename(filePath);
-  const dotIndex = fileName.lastIndexOf('.');
-  
-  if (dotIndex === -1 || dotIndex === 0) return '';
-  
-  return fileName.substring(dotIndex);
-}
+  // Try to find paths in the text, preferring paths on their own lines
+  const paths: string[] = [];
 
-/**
- * Browser-compatible replacement for path.dirname
- * Gets the directory name of a path
- * 
- * @param filePath The file path
- * @returns The directory name
- */
-export function dirname(filePath: string): string {
-  if (!filePath) return '';
-  
-  // Normalize the path
-  const normalizedPath = normalizePath(filePath);
-  
-  // Remove trailing slashes
-  const withoutTrailing = normalizedPath.replace(/\/+$/, '');
-  
-  // Find the last slash
-  const lastSlashIndex = withoutTrailing.lastIndexOf('/');
-  
-  if (lastSlashIndex === -1) return '.';
-  
-  // If the last slash is the first character, return "/"
-  if (lastSlashIndex === 0) return '/';
-  
-  // Return everything before the last slash
-  return withoutTrailing.substring(0, lastSlashIndex);
-}
+  // Common patterns for file paths in AI responses
+  const patterns = [
+    // Paths on their own lines or with numbers
+    /^\s*(?:\d+\.\s*)?([^:\n\r]+\.[a-zA-Z0-9]+)\s*$/gm,
 
-/**
- * Returns a fixed app directory for use in place of process.cwd()
- * In a real Tauri app, this would be replaced with Tauri's path API calls
- * 
- * @returns A placeholder directory path
- */
-export function getAppDirectory(): string {
-  // In a real implementation, this would use Tauri's API to get app directory
-  // For now, just return a placeholder that won't break existing code
-  return '/app';
-}
+    // Paths in markdown lists
+    /^\s*[-*]\s+([^:\n\r]+\.[a-zA-Z0-9]+)\s*$/gm,
 
-/**
- * A browser-compatible replacement for requiring the file system path resolution
- * For Tauri apps, you would implement this using Tauri's filesystem API
- * 
- * @param outputType The type of output (e.g., 'patches', 'implementation_plans')
- * @param filename The output filename
- * @returns The resolved path for the output file
- */
-export function resolveOutputFilePath(filename: string, outputType: string): string {
-  return join(getAppDirectory(), 'generated_outputs', outputType, filename);
+    // Paths in markdown code blocks
+    /`([^`\n\r]+\.[a-zA-Z0-9]+)`/g,
+
+    // Paths with relative prefixes (./something.js)
+    /(?:^|\s)(\.{1,2}\/[^\s,:"']+\.[a-zA-Z0-9]+)/g,
+
+    // More complex paths with directory structure
+    /(?:^|\s)([a-zA-Z0-9_\-/.]+\/[a-zA-Z0-9_\-/.]+\.[a-zA-Z0-9]+)/g,
+  ];
+
+  // Apply each pattern and collect results
+  for (const pattern of patterns) {
+    let match;
+    // Reset pattern for each iteration
+    pattern.lastIndex = 0;
+
+    while ((match = pattern.exec(response)) !== null) {
+      const foundPath = match[1].trim();
+
+      // Skip if it's just a file extension or too short
+      if (foundPath.length < 3 || /^\.\w+$/.test(foundPath)) {
+        continue;
+      }
+
+      // Skip if it seems to be a URL or absolute Windows path with drive letter
+      if (foundPath.startsWith("http") || /^[a-zA-Z]:/.test(foundPath)) {
+        continue;
+      }
+
+      // If we have a project directory and the path is relative, make it absolute using Rust pathJoin
+      const processedPath = projectDirectory
+        ? await tauriFs.pathJoin(projectDirectory, foundPath)
+        : foundPath;
+
+      // Normalize the path and add if not already included
+      const normalizedPath = await normalizePath(processedPath);
+      if (!paths.includes(normalizedPath)) {
+        paths.push(normalizedPath);
+      }
+    }
+  }
+
+  // Look for paths in specialized formats like bulleted or numbered lists
+  if (paths.length === 0) {
+    const lines = response.split("\n").map((line) => line.trim());
+
+    for (const line of lines) {
+      // Skip empty lines
+      if (!line) continue;
+
+      // Look for numbered lists (1. path/to/file.js)
+      const numberedMatch = line.match(/^\d+\.\s*(.+)$/);
+      if (
+        numberedMatch &&
+        numberedMatch[1].includes(".") &&
+        !numberedMatch[1].includes(" ")
+      ) {
+        const extractedPath = numberedMatch[1].trim();
+        const joinedPath = projectDirectory
+          ? await tauriFs.pathJoin(projectDirectory, extractedPath)
+          : extractedPath;
+        paths.push(await normalizePath(joinedPath));
+        continue;
+      }
+
+      // Look for bulleted lists (- path/to/file.js)
+      const bulletMatch = line.match(/^[-*•]\s*(.+)$/);
+      if (
+        bulletMatch &&
+        bulletMatch[1].includes(".") &&
+        !bulletMatch[1].includes(" ")
+      ) {
+        const extractedPath = bulletMatch[1].trim();
+        const joinedPath = projectDirectory
+          ? await tauriFs.pathJoin(projectDirectory, extractedPath)
+          : extractedPath;
+        paths.push(await normalizePath(joinedPath));
+      }
+    }
+  }
+
+  // Return the deduplicated, normalized list of paths
+  const normalizedPaths = await Promise.all(
+    [...new Set(paths)].map((p) => normalizePath(p))
+  );
+  return [...new Set(normalizedPaths)];
 }

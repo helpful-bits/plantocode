@@ -30,6 +30,10 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::SqlxError(msg) => format!("Database error: {}", msg),
         AppError::AccessDenied(msg) => format!("Access denied: {}", msg),
         AppError::BillingError(msg) => format!("Billing error: {}", msg),
+        AppError::InvalidArgument(msg) => format!("Invalid argument: {}", msg),
+        AppError::NetworkError(msg) => format!("Network error: {}", msg),
+        AppError::ExternalServiceError(msg) => format!("External service error: {}", msg),
+        AppError::InvalidResponse(msg) => format!("Invalid response: {}", msg),
     }
 }
 
@@ -65,6 +69,10 @@ pub fn to_serializable_error(error: &AppError, details: Option<&str>) -> Seriali
         AppError::SqlxError(_) => "SQLX_ERROR",
         AppError::AccessDenied(_) => "ACCESS_DENIED_ERROR",
         AppError::BillingError(_) => "BILLING_ERROR",
+        AppError::InvalidArgument(_) => "INVALID_ARGUMENT_ERROR",
+        AppError::NetworkError(_) => "NETWORK_ERROR",
+        AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
+        AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
     }.to_string();
     
     SerializableError {

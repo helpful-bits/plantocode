@@ -1,1 +1,1 @@
-declare module 'argon2';
+declare module "argon2";
