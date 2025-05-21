@@ -116,18 +116,21 @@ fn main() {
             commands::app_commands::get_database_info_command,
             
             // Auth commands
-            commands::auth_commands::exchange_and_store_firebase_token,
+            commands::auth_commands::exchange_main_server_tokens_and_store_app_jwt,
+            commands::auth_commands::initiate_oauth_flow_on_main_server,
+            commands::auth_commands::trigger_firebase_id_token_refresh_on_main_server,
             commands::auth_commands::get_user_info_with_app_jwt,
             commands::auth_commands::get_stored_app_jwt,
             commands::auth_commands::get_app_jwt,
             commands::auth_commands::set_app_jwt,
             commands::auth_commands::clear_stored_app_jwt,
+            // Keep the old command name for backward compatibility but it will redirect to the new one
+            commands::auth_commands::exchange_and_store_firebase_token,
             
             // Config commands
             commands::config_commands::get_available_ai_models,
             commands::config_commands::get_default_task_configurations,
             commands::config_commands::fetch_runtime_ai_config,
-            commands::config_commands::get_runtime_firebase_config,
             commands::config_commands::get_server_url,
             
             // Fetch handler
