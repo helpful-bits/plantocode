@@ -44,18 +44,25 @@ pub async fn exchange_firebase_token(
     // Extract the Firebase ID token
     let firebase_token = &token_request.id_token;
     
+    // Extract the client ID for token binding if present
+    use crate::security::token_binding::TOKEN_BINDING_HEADER;
+    let client_id_header_value: Option<String> = req.headers()
+        .get(TOKEN_BINDING_HEADER)
+        .and_then(|hv| hv.to_str().ok().map(String::from));
+        
     // Generate a JWT token and get full auth details
-    match auth_service.generate_token_from_firebase(firebase_token).await {
+    match auth_service.generate_token_from_firebase(firebase_token, client_id_header_value.as_deref()).await {
         Ok(auth_details) => {
             // Map Firebase OAuth response to desktop app format
             let response = FullAuthDetailsResponse {
                 access_token: auth_details.access_token,
                 token_type: "Bearer".to_string(), // Always set token_type to Bearer
                 expires_in: auth_details.expires_in,
-                user_id: auth_details.user_id,
+                user_id: auth_details.user_id.clone(),
                 email: auth_details.email,
                 name: auth_details.name,
                 role: auth_details.role,
+                firebase_uid: auth_details.user_id,
             };
             
             HttpResponse::Ok().json(response)

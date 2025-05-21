@@ -12,7 +12,9 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            server_url: std::env::var("SERVER_URL").unwrap_or_else(|_| SERVER_API_URL.to_string()),
+            server_url: std::env::var("MAIN_SERVER_BASE_URL")
+                .or_else(|_| std::env::var("SERVER_URL"))
+                .unwrap_or_else(|_| SERVER_API_URL.to_string()),
         }
     }
 }

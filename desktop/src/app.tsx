@@ -75,29 +75,35 @@ export default function App() {
     return <LoadingScreen loadingType="initializing" />;
   }
 
-  return (
-    <ThemeProvider defaultTheme="system" enableSystem>
-      <AuthProvider>
-        <AuthFlowManager>
-          <DesktopEnvironmentProvider>
-            <RuntimeConfigProvider>
-              <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
-                {/* App Shell Component */}
-                <AppShell>
-                  {/* Core Home Page */}
-                  <CoreHomePage />
-                  {/* Subscription Manager (fixed position) */}
-                  <div className="fixed top-4 right-4 z-50 w-80">
-                    <SubscriptionManager />
-                  </div>
-                </AppShell>
-                {/* Toaster needs to be within ProvidersWrapper to access notification context */}
-                <Toaster />
-              </ProvidersWrapper>
-            </RuntimeConfigProvider>
-          </DesktopEnvironmentProvider>
-        </AuthFlowManager>
-      </AuthProvider>
-    </ThemeProvider>
-  );
+  // Create a safe app structure to ensure proper provider nesting
+  const SafeAppContent = () => {
+    // Only render the auth-dependent components when needed
+    return (
+      <ThemeProvider defaultTheme="system" enableSystem>
+        <RuntimeConfigProvider>
+          <AuthProvider>
+            <DesktopEnvironmentProvider>
+              <AuthFlowManager>
+                <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
+                  {/* App Shell Component */}
+                  <AppShell>
+                    {/* Core Home Page */}
+                    <CoreHomePage />
+                    {/* Subscription Manager (fixed position) */}
+                    <div className="fixed top-4 right-4 z-50 w-80">
+                      <SubscriptionManager />
+                    </div>
+                  </AppShell>
+                  {/* Toaster needs to be within ProvidersWrapper to access notification context */}
+                  <Toaster />
+                </ProvidersWrapper>
+              </AuthFlowManager>
+            </DesktopEnvironmentProvider>
+          </AuthProvider>
+        </RuntimeConfigProvider>
+      </ThemeProvider>
+    );
+  };
+
+  return <SafeAppContent />;
 }

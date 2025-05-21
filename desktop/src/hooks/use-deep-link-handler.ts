@@ -29,6 +29,10 @@ export function useDeepLinkHandler() {
     const handleDeepLink = async (url: string) => {
       // eslint-disable-next-line no-console
       console.log("[Desktop] Deep link received:", url);
+      
+      // Add more debug information
+      console.log("[Desktop] Deep link DEBUG - Current URL:", window.location.href);
+      console.log("[Desktop] Deep link DEBUG - auth context:", auth ? "Available" : "Not available");
   
       try {
         // Parse the URL to get the path and query params
@@ -38,46 +42,9 @@ export function useDeepLinkHandler() {
   
         // Check for different types of deep links
   
-        // OAuth redirect (contains code and state params)
-        if (params.has("code") && params.has("state")) {
-          // eslint-disable-next-line no-console
-          console.log("[Desktop] Processing OAuth redirect URL");
-          
-          try {
-            // We need to get the authDomain that was used to initialize Firebase
-            // This is the same value set in get_runtime_firebase_config
-            const { invoke } = await import("@tauri-apps/api/core");
-            const firebaseConfig = await invoke<any>('get_runtime_firebase_config');
-            const authDomain = firebaseConfig.authDomain;
-            
-            console.log(`[Desktop] Using authDomain: ${authDomain}`);
-            
-            // Add protocol if missing - authDomain should be a full URL
-            const authUrl = authDomain.startsWith('http') 
-              ? authDomain 
-              : `https://${authDomain}`;
-            
-            // Construct the target URL that Firebase SDK expects
-            // This must be in the format: https://authDomain/__/auth/handler?code=...&state=...
-            const queryParams = new URLSearchParams();
-            
-            // Copy all params from the deep link URL to the new URL
-            for (const [key, value] of params.entries()) {
-              queryParams.append(key, value);
-            }
-            
-            // Construct the Firebase handler URL
-            const firebaseHandlerUrl = `${authUrl}/__/auth/handler?${queryParams.toString()}`;
-            console.log(`[Desktop] Redirecting to Firebase handler URL: ${firebaseHandlerUrl}`);
-            
-            // Navigate to the Firebase handler URL
-            // This ensures getRedirectResult() works correctly in the same origin context
-            window.location.href = firebaseHandlerUrl;
-            return;
-          } catch (error) {
-            console.error("[Desktop] Error redirecting to Firebase handler:", error);
-          }
-        }
+        // OAuth redirect handling code has been removed
+        // The new authentication flow uses a web-based approach
+        // with server-side token exchange and polling
   
         // Stripe checkout session success
         if (pathParts[0] === "auth-success" && params.has("session_id")) {
@@ -138,23 +105,38 @@ export function useDeepLinkHandler() {
           const url = event.payload;
           void handleDeepLink(url);
         });
+        
+        // Also listen for simulated deep link events from test button
+        const handleSimulatedDeepLink = (e: CustomEvent<string>) => {
+          console.log("[Desktop] Received simulated deep link:", e.detail);
+          void handleDeepLink(e.detail);
+        };
+        
+        window.addEventListener("deep-link" as any, handleSimulatedDeepLink as any);
 
         // Clean up listener on unmount
-        return unlistenDeepLink;
+        return () => {
+          unlistenDeepLink();
+          window.removeEventListener("deep-link" as any, handleSimulatedDeepLink as any);
+        };
       } catch (error) {
         console.error("[Desktop] Failed to set up deep link handler:", error);
         return undefined;
       }
     };
 
-    const unlisten = setupDeepLinkHandler();
+    const unlistenPromise = setupDeepLinkHandler();
     
     return () => {
-      unlisten.then(unlistenFn => {
-        if (unlistenFn) unlistenFn();
-      }).catch(err => {
-        console.error("[Desktop] Error cleaning up deep link handler:", err);
-      });
+      if (unlistenPromise) {
+        unlistenPromise.then(unlistenFn => {
+          if (unlistenFn && typeof unlistenFn === 'function') {
+            unlistenFn();
+          }
+        }).catch(err => {
+          console.error("[Desktop] Error cleaning up deep link handler:", err);
+        });
+      }
     };
   }, [auth]); // Only depends on auth context now that handleDeepLink is inside
 }
