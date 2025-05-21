@@ -19,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     token,
+    firebaseUid,
     signIn,
     signOut: firebaseSignOut,
   } = useFirebaseAuthHandler();
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     token,
+    firebaseUid,
     signIn,
     signOut: firebaseSignOut,
     getToken: getAppToken,

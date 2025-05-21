@@ -8,11 +8,12 @@ use crate::AppState;
 use crate::auth::TokenManager;
 use crate::models::{FrontendUser, AuthDataResponse};
 
-/// Exchange Firebase ID token for application JWT and store in memory
+/// Exchange main server tokens and store app JWT
+/// Renamed from exchange_and_store_firebase_token to better reflect its new purpose
 /// Can also be used to directly set a token from JavaScript (when token param is provided)
 /// Or to clear the token (when firebaseIdToken is null and token is null)
 #[command]
-pub async fn exchange_and_store_firebase_token(
+pub async fn exchange_main_server_tokens_and_store_app_jwt(
     firebase_id_token: Option<String>,
     token: Option<String>,
     app_state: State<'_, AppState>,
@@ -34,6 +35,7 @@ pub async fn exchange_and_store_firebase_token(
                 role: "user".to_string(),
             },
             expires_in: 3600, // Default 1 hour expiry
+            firebase_uid: None,
         });
     }
     
@@ -53,6 +55,7 @@ pub async fn exchange_and_store_firebase_token(
                 role: "".to_string(),
             },
             expires_in: 0,
+            firebase_uid: None,
         });
     }
     
@@ -109,6 +112,108 @@ pub async fn exchange_and_store_firebase_token(
     
     // Return the auth details to the frontend
     Ok(auth_details)
+}
+
+/// Initiate OAuth flow on main server
+/// This command generates a unique polling ID and CSRF state token,
+/// then constructs the URL for the main server's login page
+#[command]
+pub async fn initiate_oauth_flow_on_main_server(
+    app_handle: AppHandle,
+    provider: String,
+) -> Result<(String, String), String> {
+    // Generate a unique polling ID (UUID v4)
+    let polling_id = uuid::Uuid::new_v4().to_string();
+    
+    // Generate a cryptographically strong CSRF state token
+    let csrf_state = generate_csrf_token()?;
+    
+    // Get the main server base URL from environment
+    let server_url = std::env::var("MAIN_SERVER_BASE_URL")
+        .or_else(|_| std::env::var("SERVER_URL")) // Fallback to older variable name
+        .map_err(|e| format!("Failed to get server URL from environment: {}", e))?;
+    
+    // Construct the auth URL
+    let auth_url = format!(
+        "{}/auth/hybrid/login-via-web?pid={}&state={}&provider={}",
+        server_url, polling_id, csrf_state, provider
+    );
+    
+    info!("Initiated OAuth flow on main server for provider: {}", provider);
+    debug!("Auth URL: {}", auth_url);
+    debug!("Polling ID: {}", polling_id);
+    
+    // Return the auth URL and polling ID to the frontend
+    Ok((auth_url, polling_id))
+}
+
+/// Helper function to generate a secure CSRF token
+fn generate_csrf_token() -> Result<String, String> {
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+    
+    // Create a cryptographically secure RNG
+    let mut rng = StdRng::from_entropy();
+    
+    // Generate 32 random bytes
+    let mut random_bytes = [0u8; 32];
+    rng.fill(&mut random_bytes);
+    
+    // Convert to hexadecimal string
+    let token = random_bytes.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
+    
+    Ok(token)
+}
+
+/// Trigger Firebase ID token refresh on main server
+/// This is used to refresh the Firebase ID token using the stored refresh token on the server
+#[command]
+pub async fn trigger_firebase_id_token_refresh_on_main_server(
+    app_handle: AppHandle,
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<String, String> {
+    // Get the current app JWT
+    let app_jwt = token_manager.get().await
+        .ok_or_else(|| "App JWT not found".to_string())?;
+    
+    // Get the main server base URL from environment
+    let server_url = std::env::var("MAIN_SERVER_BASE_URL")
+        .or_else(|_| std::env::var("SERVER_URL")) // Fallback to older variable name
+        .map_err(|e| format!("Failed to get server URL from environment: {}", e))?;
+    
+    // Prepare the request URL
+    let url = format!("{}/api/auth/refresh-firebase-id-token", server_url);
+    
+    // Get reqwest client from app_handle
+    let client = app_handle.state::<reqwest::Client>().inner();
+    
+    // Make the refresh request
+    let response = client.post(&url)
+        .header("Authorization", format!("Bearer {}", app_jwt))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to server for token refresh: {}", e))?;
+    
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("Server error during token refresh: {}", error_text));
+    }
+    
+    // Parse response to get the new Firebase ID token
+    let refresh_response: serde_json::Value = response.json()
+        .await
+        .map_err(|e| format!("Failed to parse refresh response: {}", e))?;
+    
+    // Extract the new Firebase ID token
+    let firebase_id_token = refresh_response["firebase_id_token"]
+        .as_str()
+        .ok_or_else(|| "Firebase ID token not found in response".to_string())?
+        .to_string();
+    
+    info!("Successfully refreshed Firebase ID token");
+    
+    Ok(firebase_id_token)
 }
 
 /// Get the current JWT from the token manager
@@ -214,6 +319,19 @@ pub async fn refresh_app_jwt(
     
     info!("Successfully refreshed application JWT");
     Ok(())
+}
+
+/// Backward compatibility function for the old exchange_and_store_firebase_token command
+/// This simply calls the new exchange_main_server_tokens_and_store_app_jwt function
+#[command]
+pub async fn exchange_and_store_firebase_token(
+    firebase_id_token: Option<String>,
+    token: Option<String>,
+    app_state: State<'_, AppState>,
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> AppResult<AuthDataResponse> {
+    warn!("Using deprecated exchange_and_store_firebase_token command - please update to exchange_main_server_tokens_and_store_app_jwt");
+    exchange_main_server_tokens_and_store_app_jwt(firebase_id_token, token, app_state, token_manager).await
 }
 
 /// Get user info from server using provided app JWT

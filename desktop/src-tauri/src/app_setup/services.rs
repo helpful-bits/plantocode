@@ -32,7 +32,10 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> Result<(), AppErr
     );
     
     // Initialize Server Proxy API client with client ID binding
-    let server_url = std::env::var("SERVER_URL").unwrap_or_else(|_| SERVER_API_URL.to_string());
+    // Use MAIN_SERVER_BASE_URL environment variable for consistency
+    let server_url = std::env::var("MAIN_SERVER_BASE_URL")
+        .or_else(|_| std::env::var("SERVER_URL"))
+        .unwrap_or_else(|_| SERVER_API_URL.to_string());
     
     // Configure reqwest client with default headers
     let http_client = reqwest::Client::builder()

@@ -5,6 +5,7 @@ use std::env;
 use std::net::TcpListener;
 use reqwest::Client;
 
+mod auth_stores;
 mod clients;
 mod db;
 mod handlers;
@@ -17,6 +18,8 @@ mod config;
 mod security;
 mod utils;
 
+use crate::auth_stores::{PollingStore, StateStore};
+use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_pool, verify_connection};
 use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository};
@@ -26,7 +29,7 @@ use crate::services::auth::jwt;
 use crate::services::auth::oauth::FirebaseOAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::proxy_service::ProxyService;
-use crate::routes::configure_routes;
+use crate::routes::{configure_routes, configure_hybrid_auth_api_routes};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -120,11 +123,41 @@ async fn main() -> std::io::Result<()> {
     let server_addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(server_addr.clone())?;
     
+    // Initialize Tera template engine for HTML templates
+    let tera_path = format!("{}/src/web_auth_assets/**/*.html", env!("CARGO_MANIFEST_DIR"));
+    log::info!("Loading Tera templates from: {}", tera_path);
+    let tera = match tera::Tera::new(&tera_path) {
+        Ok(t) => {
+            log::info!("Tera template engine initialized successfully");
+            t
+        },
+        Err(e) => {
+            log::error!("Failed to initialize Tera template engine: {}", e);
+            log::error!("Cannot start server without working template engine");
+            std::process::exit(1);
+        }
+    };
+    
+    // Initialize auth stores
+    let polling_store = PollingStore::default();
+    let state_store = StateStore::default();
+    
+    // Start cleanup task for polling store
+    store_utils::start_cleanup_task(polling_store.clone());
+    log::info!("Polling store cleanup task started");
+    
+    // Initialize reqwest HTTP client
+    let http_client = reqwest::Client::new();
+
     HttpServer::new(move || {
         // Clone the data for the factory closure
         let db_pool = db_pool.clone();
         let app_settings = app_settings.clone();
         let firebase_oauth_service = web::Data::new(firebase_oauth_service.clone());
+        let tera = web::Data::new(tera.clone());
+        let polling_store = web::Data::new(polling_store.clone());
+        let state_store = web::Data::new(state_store.clone());
+        let http_client = web::Data::new(http_client.clone());
         
         // Initialize repositories
         let api_usage_repository = ApiUsageRepository::new(db_pool.clone());
@@ -180,7 +213,7 @@ async fn main() -> std::io::Result<()> {
             model_repository,
             subscription_repository,
             subscription_plan_repository,
-            user_repository,
+            user_repository: user_repository.clone(),
             settings_repository,
             free_tier_token_limit: Some(100_000), // Default free tier limit
         });
@@ -195,6 +228,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(billing_service.clone())
             .app_data(proxy_service.clone())
             .app_data(app_state.clone())
+            .app_data(tera.clone())
+            .app_data(polling_store.clone())
+            .app_data(state_store.clone())
+            .app_data(http_client.clone())
+            .app_data(web::Data::new(user_repository.clone()))
             // Register health check endpoint without auth
             .service(
                 web::resource("/health")
@@ -204,6 +242,11 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/auth")
                     .configure(routes::configure_public_auth_routes)
+            )
+            // Public API routes for hybrid auth (no authentication)
+            .service(
+                web::scope("/api")
+                    .configure(configure_hybrid_auth_api_routes)
             )
             // Protected API routes with authentication
             .service(

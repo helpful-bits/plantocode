@@ -30,6 +30,7 @@ dotenv = "0.15.0"
 tokio = { version = "1.45.0", features = ["full"] }
 reqwest = { version = "0.12.15", features = ["json", "stream", "multipart"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
+rand = { version = "0.8", features = ["std_rng"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 thiserror = "2.0.12"
 base64 = "0.22.1"

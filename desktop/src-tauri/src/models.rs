@@ -16,6 +16,7 @@ pub struct AuthDataResponse {
     pub token: String, // This will be the application JWT
     pub token_type: String, // Always "Bearer"
     pub expires_in: i64, // Token lifetime in seconds
+    pub firebase_uid: Option<String>, // Added for the new auth flow
 }
 
 // Session model that matches the TypeScript Session interface

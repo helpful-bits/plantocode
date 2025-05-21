@@ -9,6 +9,7 @@ export interface AuthContextType {
   loading: boolean;
   error: string | null;
   token: string | null;
+  firebaseUid: string | null;
   signIn: (provider?: "google" | "github" | "microsoft" | "apple") => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;

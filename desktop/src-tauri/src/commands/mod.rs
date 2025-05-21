@@ -85,7 +85,6 @@ pub use config_commands::{
     get_available_ai_models,
     get_default_task_configurations,
     fetch_runtime_ai_config,
-    get_runtime_firebase_config,
     get_server_url,
 };
 

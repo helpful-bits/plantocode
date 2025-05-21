@@ -25,8 +25,14 @@ pub fn register_deep_links(app_handle: &AppHandle) {
         // Get the payload as a string directly or as an Option if needed
         let payload = event.payload().to_string();
         info!("Deep link received: {}", payload);
+        // Add additional debug info
+        info!("Current application state - handling deep link event");
         // Forward to frontend using updated API
-        app_handle_clone.emit("deep-link", payload).ok();
+        if let Err(err) = app_handle_clone.emit("deep-link", payload.clone()) {
+            warn!("Failed to emit deep-link event: {}", err);
+        } else {
+            info!("Successfully emitted deep-link event to frontend: {}", payload);
+        }
     });
     
     info!("Deep link handler registered for scheme: {}", SCHEME);

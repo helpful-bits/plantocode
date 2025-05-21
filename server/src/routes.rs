@@ -1,6 +1,7 @@
 use actix_web::web;
 use crate::handlers::auth::{firebase_handlers, userinfo_handler};
 use crate::handlers::usage_handlers;
+use crate::handlers::hybrid_auth_handlers;
 
 // Configure protected API routes (requires authentication)
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
@@ -8,6 +9,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
             .route("/userinfo", web::get().to(userinfo_handler::get_user_info))
+            .route("/refresh-firebase-id-token", web::post().to(hybrid_auth_handlers::refresh_firebase_id_token_handler))
     );
     
     // Proxy routes (/api/proxy/*)
@@ -53,6 +55,24 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
 // Configure public auth routes (no authentication required - /auth/*)
 pub fn configure_public_auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(firebase_handlers::exchange_firebase_token);
+    
+    // Configure hybrid auth routes
+    cfg.service(
+        web::scope("/hybrid")
+            .route("/login-via-web", web::get().to(hybrid_auth_handlers::serve_login_page))
+    );
+    
+    // Add route for the login.js asset
+    cfg.service(web::resource("/login.js").route(web::get().to(hybrid_auth_handlers::serve_login_js_asset)));
+}
+
+// Configure hybrid auth API routes (no authentication required - /api/auth/*)
+pub fn configure_hybrid_auth_api_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/auth")
+            .route("/capture-provider-token", web::post().to(hybrid_auth_handlers::capture_provider_token))
+            .route("/get-token", web::get().to(hybrid_auth_handlers::get_firebase_token_for_polling))
+    );
 }
 
 // Configure public webhook routes (no authentication required - /webhooks/*)
@@ -72,6 +92,7 @@ mod tests {
             actix_web::App::new()
                 .configure(configure_routes)
                 .configure(configure_public_auth_routes)
+                .configure(configure_hybrid_auth_api_routes)
                 .configure(configure_webhook_routes)
         );
     }

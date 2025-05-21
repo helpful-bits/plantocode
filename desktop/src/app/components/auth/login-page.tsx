@@ -28,10 +28,23 @@ export default function LoginPage() {
     
     try {
       console.log(`[LoginPage] Initiating sign in with ${provider}`);
+      // Log more details that might help with debugging
+      console.log(`[LoginPage] Current URL: ${window.location.href}`);
+      console.log(`[LoginPage] Auth loading state: ${loading}`);
+      
       await signIn(provider);
       // We don't immediately set authInProgress to false since we're waiting for a callback
-      // The external browser will be opened and we expect a deep link later
-      console.log(`[LoginPage] Sign in with ${provider} initiated, waiting for redirect`);
+      // The external browser will be opened and we'll poll for authentication completion
+      console.log(`[LoginPage] Sign in with ${provider} initiated, browser opened for authentication`);
+      
+      // Add a timeout to detect if polling takes too long
+      setTimeout(() => {
+        if (authInProgress) {
+          console.log("[LoginPage] Still waiting for authentication after 60 seconds");
+          setLastError("Authentication is taking longer than expected. If you've completed sign-in in your browser, please try again.");
+        }
+      }, 60000);
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[LoginPage] Sign in with ${provider} failed:`, error);
@@ -61,7 +74,7 @@ export default function LoginPage() {
         {authInProgress && !loading && (
           <div className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 p-3 rounded-md text-sm">
             Authentication in progress. Please complete the sign-in in your browser.
-            You'll be redirected back to the app automatically after signing in.
+            The app will automatically detect when you've finished signing in.
           </div>
         )}
 
@@ -104,6 +117,7 @@ export default function LoginPage() {
               Policy
             </p>
           </div>
+          
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ actix-web = "4.10.2"
 actix-cors = "0.7.1"
 actix-rt = "2.10.0"
 actix-multipart = "0.7.2"
+actix-files = "0.6.6"
 
 # Database
 sqlx = { version = "0.8.5", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono", "macros", "bigdecimal"] }
@@ -64,6 +65,8 @@ rand = "0.9.1"
 url = "2.5.2"
 tokio-util = { version = "0.7", features = ["codec"] }
 bytes = "0.5"
+dashmap = "5.5.3"
+tera = "1.19.1"
 
 # Stripe
 async-stripe = { version = "1.0.0-alpha.2", optional = true }

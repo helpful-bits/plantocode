@@ -13,6 +13,7 @@ pub struct User {
     pub role: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub firebase_refresh_token: Option<String>,
 }
 
 pub struct UserRepository {
@@ -29,7 +30,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at
+            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at, firebase_refresh_token
             FROM users
             WHERE id = $1
             "#,
@@ -50,7 +51,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at
+            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at, firebase_refresh_token
             FROM users
             WHERE email = $1
             "#,
@@ -71,7 +72,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at
+            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at, firebase_refresh_token
             FROM users
             WHERE firebase_uid = $1
             "#,
@@ -179,7 +180,7 @@ impl UserRepository {
         let users = query_as!(
             User,
             r#"
-            SELECT u.id, u.email, u.password_hash, u.full_name, u.firebase_uid, u.role, u.created_at, u.updated_at
+            SELECT u.id, u.email, u.password_hash, u.full_name, u.firebase_uid, u.role, u.created_at, u.updated_at, u.firebase_refresh_token
             FROM users u
             JOIN subscriptions s ON u.id = s.user_id
             WHERE s.stripe_customer_id = $1
@@ -191,5 +192,137 @@ impl UserRepository {
         .map_err(|e| AppError::Database(format!("Failed to find users by Stripe customer ID: {}", e)))?;
 
         Ok(users)
+    }
+    
+    // Find or create a user based on Firebase details (email and UID)
+    pub async fn find_or_create_by_firebase_details(
+        &self,
+        firebase_uid: &str,
+        email: &str,
+        full_name: Option<&str>,
+    ) -> Result<User, AppError> {
+        // First, try to find by Firebase UID
+        match self.get_by_firebase_uid(firebase_uid).await {
+            Ok(user) => {
+                // User exists with this Firebase UID
+                let mut update_needed = false;
+                let mut updated_email = None;
+                let mut updated_full_name = None;
+                
+                // Check if any details need to be updated
+                if user.email != email {
+                    updated_email = Some(email);
+                    update_needed = true;
+                }
+                
+                if let Some(name) = full_name {
+                    if user.full_name.as_deref() != Some(name) {
+                        updated_full_name = Some(name);
+                        update_needed = true;
+                    }
+                }
+                
+                if update_needed {
+                    // Update user details
+                    self.update(
+                        &user.id,
+                        updated_email,
+                        None, // Don't change password
+                        updated_full_name,
+                        None, // Don't change Firebase UID
+                        None, // Don't change role
+                    ).await?;
+                    
+                    // Return updated user
+                    return self.get_by_id(&user.id).await;
+                }
+                
+                return Ok(user);
+            },
+            Err(AppError::NotFound(_)) => {
+                // User doesn't exist with this Firebase UID
+                // Now try to find by email
+                match self.get_by_email(email).await {
+                    Ok(user) => {
+                        // User exists with this email but not with this Firebase UID
+                        // Update the Firebase UID
+                        self.update(
+                            &user.id,
+                            None, // Don't change email
+                            None, // Don't change password
+                            full_name, // Update name if provided
+                            Some(firebase_uid), // Add Firebase UID
+                            None, // Don't change role
+                        ).await?;
+                        
+                        // Return updated user
+                        return self.get_by_id(&user.id).await;
+                    },
+                    Err(AppError::NotFound(_)) => {
+                        // User doesn't exist with this email either
+                        // Create a new user
+                        let user_id = self.create(
+                            email,
+                            None, // No password for Firebase auth
+                            full_name,
+                            Some(firebase_uid),
+                            None, // Default role
+                        ).await?;
+                        
+                        return self.get_by_id(&user_id).await;
+                    },
+                    Err(e) => return Err(e), // Other database errors
+                }
+            },
+            Err(e) => return Err(e), // Other database errors
+        }
+    }
+    
+    // Store Firebase refresh token
+    pub async fn store_firebase_refresh_token(&self, user_id: &Uuid, refresh_token: &str) -> Result<(), AppError> {
+        // Check if storing Firebase refresh tokens is enabled
+        let store_enabled = std::env::var("FIREBASE_STORE_REFRESH_TOKENS")
+            .unwrap_or_else(|_| "true".to_string())
+            .to_lowercase() == "true";
+            
+        if !store_enabled {
+            return Ok(());
+        }
+        
+        query!(
+            r#"
+            UPDATE users
+            SET firebase_refresh_token = $1,
+                updated_at = now()
+            WHERE id = $2
+            "#,
+            refresh_token,
+            user_id
+        )
+        .execute(&self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to store Firebase refresh token: {}", e)))?;
+        
+        Ok(())
+    }
+    
+    // Get Firebase refresh token
+    pub async fn get_firebase_refresh_token(&self, user_id: &Uuid) -> Result<Option<String>, AppError> {
+        let result = query!(
+            r#"
+            SELECT firebase_refresh_token
+            FROM users
+            WHERE id = $1
+            "#,
+            user_id
+        )
+        .fetch_one(&self.db_pool)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::RowNotFound => AppError::NotFound(format!("User not found: {}", user_id)),
+            _ => AppError::Database(format!("Failed to fetch Firebase refresh token: {}", e)),
+        })?;
+        
+        Ok(result.firebase_refresh_token)
     }
 }

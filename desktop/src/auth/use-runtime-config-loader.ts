@@ -17,7 +17,15 @@ export interface RuntimeConfigLoaderResult {
 export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { updateConfig } = useRuntimeConfig();
+  
+  // Use a try-catch to safely get the context
+  let updateConfigFn: (config: RuntimeAiConfig) => void = () => {};
+  try {
+    const runtimeConfig = useRuntimeConfig();
+    updateConfigFn = runtimeConfig.updateConfig;
+  } catch (e) {
+    console.warn("RuntimeConfigProvider not available yet, updates won't be propagated");
+  }
 
   const loadConfig = async (): Promise<RuntimeAiConfig | null> => {
     if (isLoading) return null;
@@ -37,7 +45,7 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
 
       // Load the runtime config using the backend token
       const config = await loadRuntimeConfigAfterLogin();
-      updateConfig(config);
+      updateConfigFn(config);
 
       return config;
     } catch (err) {

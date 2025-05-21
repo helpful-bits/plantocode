@@ -68,11 +68,13 @@ pub struct VerifyTokenRequest {
 }
 
 // Response for token exchange
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TokenExchangeResponse {
     pub access_token: String,
     pub token_type: String,
     pub expires_in: i64,
+    pub refresh_token: Option<String>,
+    pub id_token: String,
 }
 
 // Full auth details response including user information
@@ -85,6 +87,7 @@ pub struct FullAuthDetailsResponse {
     pub email: String,
     pub name: Option<String>,
     pub role: String,
+    pub firebase_uid: String, // Added for the new auth flow
 }
 
 pub struct FirebaseOAuthService {
@@ -109,6 +112,100 @@ impl FirebaseOAuthService {
             db_pool,
             token_verifier,
         }
+    }
+    
+    // Exchange OAuth provider's ID token for Firebase tokens using signInWithIdp
+    pub async fn sign_in_with_idp(
+        &self,
+        provider_id_token: &str,
+        oauth_provider_id: &str,
+        request_uri: &str,
+        return_secure_token: bool,
+        return_idp_credential: bool
+    ) -> Result<FirebaseAuthResponse, AppError> {
+        info!("Exchanging OAuth provider ID token for Firebase tokens");
+        
+        let url = format!(
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={}",
+            self.api_key
+        );
+        
+        // Construct the postBody parameter
+        let post_body = format!("id_token={}&providerId={}", provider_id_token, oauth_provider_id);
+        
+        #[derive(Serialize)]
+        struct SignInWithIdpRequest<'a> {
+            #[serde(rename = "postBody")]
+            post_body: &'a str,
+            #[serde(rename = "requestUri")]
+            request_uri: &'a str,
+            #[serde(rename = "returnSecureToken")]
+            return_secure_token: bool,
+            #[serde(rename = "returnIdpCredential")]
+            return_idp_credential: bool,
+        }
+        
+        let request_payload = SignInWithIdpRequest {
+            post_body: &post_body,
+            request_uri,
+            return_secure_token,
+            return_idp_credential,
+        };
+        
+        let response = self.client
+            .post(&url)
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to exchange provider token: {}", e)))?;
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("Firebase API error during token exchange: {} - {}", status, text);
+            return Err(AppError::Unauthorized(format!("Failed to exchange provider token: HTTP {}", status)));
+        }
+        
+        let auth_response: FirebaseAuthResponse = response.json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to parse signInWithIdp response: {}", e)))?;
+        
+        debug!("Successfully exchanged provider token for Firebase tokens");
+        Ok(auth_response)
+    }
+    
+    // Refresh Firebase ID token using a refresh token
+    pub async fn refresh_id_token(&self, refresh_token: &str) -> Result<TokenExchangeResponse, AppError> {
+        info!("Refreshing Firebase ID token");
+        
+        let url = format!(
+            "https://securetoken.googleapis.com/v1/token?key={}",
+            self.api_key
+        );
+        
+        let response = self.client
+            .post(&url)
+            .form(&[
+                ("grant_type", "refresh_token"),
+                ("refresh_token", refresh_token),
+            ])
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to refresh token: {}", e)))?;
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            error!("Firebase API error during token refresh: {} - {}", status, text);
+            return Err(AppError::Unauthorized(format!("Failed to refresh token: HTTP {}", status)));
+        }
+        
+        let token_response: TokenExchangeResponse = response.json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to parse token refresh response: {}", e)))?;
+        
+        debug!("Successfully refreshed Firebase ID token");
+        Ok(token_response)
     }
     
     // Verify Firebase ID token and return user information - uses offline verification
@@ -148,7 +245,7 @@ impl FirebaseOAuthService {
     }
     
     // Generate a JWT token based on Firebase user info
-    pub async fn generate_token_from_firebase(&self, firebase_token: &str) -> Result<FullAuthDetailsResponse, AppError> {
+    pub async fn generate_token_from_firebase(&self, firebase_token: &str, client_id_from_header: Option<&str>) -> Result<FullAuthDetailsResponse, AppError> {
         // Verify the Firebase token
         let user_info = self.verify_id_token(firebase_token).await?;
         
@@ -190,20 +287,13 @@ impl FirebaseOAuthService {
         
         info!("Authenticated user {} (ID: {}) via {} provider", email, user.id, provider);
         
-        // Extract client ID from request headers if available
-        // This is for token binding security
-        let client_id_header = match reqwest::header::HeaderMap::new().get("X-Client-ID") {
-            Some(header) => header.to_str().ok().map(|s| s.to_string()),
-            None => None,
-        };
-        
         // Generate JWT token with client binding if available
-        let token = if let Some(client_id) = &client_id_header {
-            debug!("Creating token with client binding");
+        let token = if let Some(client_id) = client_id_from_header {
+            debug!("Creating token with client binding for client_id: {}", client_id);
             jwt::create_token(user.id, &user.role, &email, Some(client_id))?
         } else {
             debug!("Creating token without client binding");
-            jwt::generate_token(user.id, &email)?
+            jwt::create_token(user.id, &user.role, &email, None)?
         };
         
         // Calculate token duration from app settings
@@ -224,6 +314,7 @@ impl FirebaseOAuthService {
             email: user.email,
             name: user.full_name,
             role: user.role,
+            firebase_uid: firebase_uid, // Include Firebase UID in the response
         })
     }
 }
