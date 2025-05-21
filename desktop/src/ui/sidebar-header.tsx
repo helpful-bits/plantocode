@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw, X, Trash2, ChevronRight, Clock } from "lucide-react";
-
+import { FC } from "react";
 
 import { Button } from "@/ui/button";
 import { CollapsibleTrigger } from "@/ui/collapsible";
@@ -17,8 +17,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/ui/tooltip";
-
-import type React from "react";
 
 interface SidebarHeaderProps {
   isCollapsed: boolean;
@@ -36,7 +34,7 @@ interface SidebarHeaderProps {
  * - Clear history dropdown
  * - Collapse toggle
  */
-export const SidebarHeader: React.FC<SidebarHeaderProps> = ({
+export const SidebarHeader: FC<SidebarHeaderProps> = ({
   isCollapsed,
   isRefreshing,
   isClearing,

@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
-use tauri_plugin_stronghold::stronghold::Stronghold;
 use log::{info, warn, error};
 use crate::constants::SERVER_API_URL;
 
@@ -31,22 +30,12 @@ pub static CONFIG: Lazy<RwLock<AppConfig>> = Lazy::new(|| {
 });
 
 // Initialize configuration
-pub async fn init_config(_stronghold: &Stronghold) -> Result<(), String> {
+pub async fn init_config() -> Result<(), String> {
     info!("Initializing application configuration");
     
-    // Nothing to load from Stronghold now, all configuration
-    // comes from the server at runtime
+    // Configuration comes from the server at runtime
     
     info!("Application configuration initialized");
-    Ok(())
-}
-
-// Mock version of init_config that doesn't require Stronghold
-pub async fn init_config_without_stronghold() -> Result<(), String> {
-    info!("Initializing application configuration (without Stronghold)");
-    
-    // Initialize with default configuration
-    info!("Application configuration initialized with defaults");
     Ok(())
 }
 

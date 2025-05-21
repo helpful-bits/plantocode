@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw, Loader2 } from "lucide-react";
-import React, { memo } from "react";
+import { memo, useEffect } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import { type Session } from "@/types/session-types";
@@ -81,13 +81,13 @@ const SessionManager = ({
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
           disabled={isLoading || disabled}
         >
           Cancel
         </AlertDialogCancel>
         <Button
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
             void handleDeleteSession(sessionId);
           }}
@@ -103,7 +103,7 @@ const SessionManager = ({
   );
 
   // Update onSessionStatusChange when sessions list changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (onSessionStatusChange) {
       onSessionStatusChange(!!activeSessionId || sessions.length > 0);
     }

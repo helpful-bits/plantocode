@@ -1,6 +1,5 @@
 import { type Session } from "../../../types/session-types";
-
-import type React from "react";
+import type { Dispatch, SetStateAction } from "react";
 
 
 // Define the state context type (read-only session data)
@@ -20,7 +19,7 @@ export interface SessionStateContextType {
 // Define the actions context type (functions that modify session state)
 export interface SessionActionsContextType {
   // State setters
-  setCurrentSession: React.Dispatch<React.SetStateAction<Session | null>>;
+  setCurrentSession: Dispatch<SetStateAction<Session | null>>;
   setSessionLoading: (loading: boolean) => void;
   setSessionModified: (modified: boolean) => void;
   setActiveSessionId: (sessionId: string | null) => void;

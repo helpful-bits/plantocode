@@ -55,7 +55,7 @@ impl ImplementationPlanProcessor {
         
         // Prepare to extract the content from the implementation_plan tag
         let mut reader = Reader::from_str(response);
-        reader.trim_text(true);
+        reader.config_mut().trim_text(true);
         
         let mut buf = Vec::new();
         let mut in_implementation_plan = false;

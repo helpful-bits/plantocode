@@ -2,11 +2,8 @@
 
 import { Replace, Plus } from "lucide-react";
 
-
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
-
-import type React from "react";
 
 interface FindModeToggleProps {
   currentMode: "replace" | "extend";
@@ -14,11 +11,11 @@ interface FindModeToggleProps {
   disabled?: boolean;
 }
 
-const FindModeToggle: React.FC<FindModeToggleProps> = ({
+const FindModeToggle = ({
   currentMode,
   onModeChange,
   disabled = false,
-}) => {
+}: FindModeToggleProps) => {
   return (
     <div className="flex items-center border rounded-md overflow-hidden dark:border-border">
       <Button

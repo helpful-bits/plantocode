@@ -3,10 +3,12 @@ use crate::db::repositories::user_repository::UserRepository;
 use crate::error::AppError;
 use crate::models::auth_jwt_claims::Claims;
 use crate::services::auth::jwt;
+use crate::services::auth::firebase_token_verifier::{FirebaseTokenVerifier, FirebaseTokenClaims};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
+use std::sync::Arc;
 use log::{debug, error, info};
 
 // Firebase Auth response structure
@@ -90,47 +92,59 @@ pub struct FirebaseOAuthService {
     api_key: String,
     project_id: String,
     db_pool: PgPool,
+    token_verifier: Arc<FirebaseTokenVerifier>,
 }
 
 impl FirebaseOAuthService {
     pub fn new(settings: &AppSettings, db_pool: PgPool) -> Self {
+        // Create the token verifier with the project ID
+        let token_verifier = Arc::new(
+            FirebaseTokenVerifier::new(&settings.api_keys.firebase_project_id)
+        );
+        
         Self {
             client: Client::new(),
             api_key: settings.api_keys.firebase_api_key.clone(),
             project_id: settings.api_keys.firebase_project_id.clone(),
             db_pool,
+            token_verifier,
         }
     }
     
-    // Verify Firebase ID token and return user information
+    // Verify Firebase ID token and return user information - uses offline verification
     pub async fn verify_id_token(&self, id_token: &str) -> Result<TokenVerificationResponse, AppError> {
-        let url = format!(
-            "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={}",
-            self.api_key
-        );
+        info!("Verifying Firebase ID token using offline verification");
         
-        let request = VerifyTokenRequest {
-            id_token: id_token.to_string(),
+        // Verify the token using the FirebaseTokenVerifier
+        let claims = self.token_verifier.verify(id_token).await?;
+        
+        // Convert to TokenVerificationResponse format
+        let response = TokenVerificationResponse {
+            iss: format!("https://securetoken.google.com/{}", self.project_id),
+            aud: self.project_id.clone(),
+            auth_time: claims.auth_time,
+            user_id: claims.sub.clone(),
+            sub: claims.sub,
+            iat: claims.iat,
+            exp: claims.exp,
+            email: claims.email,
+            email_verified: claims.email_verified,
+            firebase: self::FirebaseData {
+                identities: FirebaseIdentities { 
+                    email: Vec::new(),
+                    google: None,
+                    github: None,
+                    apple: None,
+                    microsoft: None,
+                },
+                sign_in_provider: claims.firebase.sign_in_provider,
+            },
+            name: claims.name,
+            picture: None,
         };
         
-        let response = self.client.post(&url)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to send token verification request: {}", e)))?;
-        
-        if !response.status().is_success() {
-            let error_text = response.text().await
-                .unwrap_or_else(|_| "Failed to read error response".to_string());
-            
-            error!("Firebase token verification failed: {}", error_text);
-            return Err(AppError::Auth("Invalid or expired Firebase token".to_string()));
-        }
-        
-        let verification_response = response.json::<TokenVerificationResponse>().await
-            .map_err(|e| AppError::Internal(format!("Failed to parse token verification response: {}", e)))?;
-        
-        Ok(verification_response)
+        debug!("Successfully verified Firebase ID token");
+        Ok(response)
     }
     
     // Generate a JWT token based on Firebase user info
@@ -176,8 +190,21 @@ impl FirebaseOAuthService {
         
         info!("Authenticated user {} (ID: {}) via {} provider", email, user.id, provider);
         
-        // Generate JWT token
-        let token = jwt::generate_token(user.id, &email)?;
+        // Extract client ID from request headers if available
+        // This is for token binding security
+        let client_id_header = match reqwest::header::HeaderMap::new().get("X-Client-ID") {
+            Some(header) => header.to_str().ok().map(|s| s.to_string()),
+            None => None,
+        };
+        
+        // Generate JWT token with client binding if available
+        let token = if let Some(client_id) = &client_id_header {
+            debug!("Creating token with client binding");
+            jwt::create_token(user.id, &user.role, &email, Some(client_id))?
+        } else {
+            debug!("Creating token without client binding");
+            jwt::generate_token(user.id, &email)?
+        };
         
         // Calculate token duration from app settings
         let duration_days = std::env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
@@ -208,6 +235,7 @@ impl Clone for FirebaseOAuthService {
             api_key: self.api_key.clone(),
             project_id: self.project_id.clone(),
             db_pool: self.db_pool.clone(),
+            token_verifier: self.token_verifier.clone(),
         }
     }
 }

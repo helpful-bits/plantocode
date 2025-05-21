@@ -137,7 +137,7 @@ export function useFileSelectionManager({
   );
 
   // Auto-toggle "Show Only Selected" to "All Files" when selection becomes empty
-  const prevIncludedPathsLengthRef = useRef<number | undefined>();
+  const prevIncludedPathsLengthRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     // Use the current prop value instead of derived state to be consistent with the source of truth

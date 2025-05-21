@@ -8,8 +8,6 @@ import { EmptyState, LoadingState } from "../sidebar-states";
 
 import { JobSection } from "./job-section";
 
-import type React from "react";
-
 interface JobContentProps {
   shouldShowLoading: boolean;
   shouldShowEmpty: boolean;
@@ -24,7 +22,7 @@ interface JobContentProps {
 /**
  * Component for rendering the scrollable job content area
  */
-export const JobContent: React.FC<JobContentProps> = ({
+export const JobContent = ({
   shouldShowLoading,
   shouldShowEmpty,
   activeJobsToShow,
@@ -33,7 +31,7 @@ export const JobContent: React.FC<JobContentProps> = ({
   handleCancel,
   isCancelling,
   onSelect,
-}) => {
+}: JobContentProps) => {
   return (
     <ScrollArea
       className="px-4 py-3 pb-24 h-full min-h-[calc(100vh-8rem)]"

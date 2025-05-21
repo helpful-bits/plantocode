@@ -70,7 +70,7 @@ export function useFileSelectionCore({
       // Update last toggle time
       lastToggleTimeRef.current = now;
 
-      setManagedFilesMap((prevMap) => {
+      setManagedFilesMap((prevMap: FilesMap) => {
         const fileInfo = prevMap[path];
         if (!fileInfo) return prevMap;
 
@@ -153,7 +153,7 @@ export function useFileSelectionCore({
       // Update last toggle time
       lastToggleTimeRef.current = now;
 
-      setManagedFilesMap((prevMap) => {
+      setManagedFilesMap((prevMap: FilesMap) => {
         const fileInfo = prevMap[path];
         if (!fileInfo) return prevMap;
 
@@ -229,7 +229,7 @@ export function useFileSelectionCore({
       ) as FileInfo[];
 
       // Process the file map update
-      setManagedFilesMap((prevMap) => {
+      setManagedFilesMap((prevMap: FilesMap) => {
         // Deep clone the previous map to ensure we don't have reference issues
         const newMap = JSON.parse(JSON.stringify(prevMap)) as Record<string, FileSelection>;
 

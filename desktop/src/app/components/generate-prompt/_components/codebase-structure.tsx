@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, FolderTree } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 
 import { generateDirectoryTree } from "@/utils/directory-tree";
 
@@ -37,7 +37,7 @@ export default function CodebaseStructure({
   const { getJobById } = useBackgroundJobs();
 
   // Handle text input change
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   };
 

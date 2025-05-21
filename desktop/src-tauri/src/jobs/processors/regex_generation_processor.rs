@@ -51,7 +51,7 @@ impl RegexGenerationProcessor {
         
         // Prepare to extract pattern information
         let mut reader = Reader::from_str(response);
-        reader.trim_text(true);
+        reader.config_mut().trim_text(true);
         
         let mut buf = Vec::new();
         let mut current_section = "";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useCallback } from "react";
+import { useMemo, useRef, useCallback, type ReactNode } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -35,12 +35,13 @@ import { TaskContextProvider } from "./task-context";
 
 // Import context types
 
-import type React from "react";
 
 // Provider component
-export const GeneratePromptFeatureProvider: React.FC<{
-  children: React.ReactNode;
-}> = ({ children }) => {
+export function GeneratePromptFeatureProvider({ 
+  children 
+}: { 
+  children: ReactNode 
+}) {
   // Access global contexts
   const { projectDirectory } = useProject();
   const sessionState = useSessionStateContext();

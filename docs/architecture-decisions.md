@@ -13,6 +13,22 @@ The application follows a clear separation of concerns in its directory structur
 - `desktop/src/app/`: Application components and feature-specific logic
 - `desktop/src/utils/`: Utility functions and helpers
 
+## Authentication v2
+
+The authentication system has been redesigned with the following key improvements:
+
+1. **Unified Token Storage**: All JWT token storage is now centralized in the Rust backend via Stronghold, eliminating duplicate storage mechanisms and potential sync issues between JavaScript and Rust.
+
+2. **Simplified Firebase Auth Flow**: The Firebase authentication flow follows the canonical redirect pattern with cleaner code and less retry/recovery logic, making it more robust and maintainable.
+
+3. **Dynamic `authDomain` Configuration**: Firebase SDK is configured with the application's actual origin as the `authDomain` to support OAuth redirects even in environments that block third-party cookies/storage.
+
+4. **Stateless Frontend Auth**: The frontend authentication components no longer need to handle token persistence and can focus purely on UI state management. The backend automatically loads persisted tokens during initialization.
+
+5. **Token Propagation**: Authentication tokens are automatically loaded into memory at application startup, ensuring API clients have immediate access to auth credentials when needed.
+
+These changes create a cleaner, more secure, and more reliable authentication system that better handles the complexities of OAuth sign-in within a desktop application.
+
 ## SessionProvider Architecture
 
 The `SessionProvider` in `desktop/src/contexts/session/Provider.tsx` employs a hooks-based composition pattern that balances complexity with maintainability.

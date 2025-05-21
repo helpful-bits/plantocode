@@ -74,8 +74,10 @@ pub use generic_task_commands::{
 pub use auth_commands::{
     exchange_and_store_firebase_token,
     get_user_info_with_app_jwt,
-    set_in_memory_token,
-    clear_in_memory_token,
+    get_stored_app_jwt,
+    get_app_jwt,
+    set_app_jwt,
+    clear_stored_app_jwt,
 };
 
 // Re-exports from config commands module

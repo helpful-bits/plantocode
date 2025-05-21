@@ -71,7 +71,7 @@ const ActionsSection = React.memo(function ActionsSection({
             <div>
               <FindModeToggle
                 currentMode={findFilesMode === "ai" ? "replace" : "extend"}
-                onModeChange={(mode) =>
+                onModeChange={(mode: "replace" | "extend") =>
                   setFindFilesMode(mode === "replace" ? "ai" : "manual")
                 }
                 disabled={disabled || !taskDescription}

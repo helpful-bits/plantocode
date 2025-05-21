@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import { useMemo } from "react";
 
 import {
   Toast,
@@ -15,8 +15,8 @@ import { useToast } from "@/ui/use-toast";
 export function Toaster() {
   const { toasts } = useToast();
 
-  // Use React.useMemo to prevent unnecessary re-renders of toast elements
-  const toastElements = React.useMemo(() => {
+  // Use useMemo to prevent unnecessary re-renders of toast elements
+  const toastElements = useMemo(() => {
     return toasts.map(function ({ id, title, description, action, ...props }) {
       return (
         <Toast key={id} {...props}>

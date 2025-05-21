@@ -35,7 +35,7 @@ export function useFileSelectionHistory({
   const pushHistory = useCallback(
     (currentIncluded: string[], currentExcluded: string[]) => {
       // Only push to history if there are changes to track
-      setPastSelections((prev) => {
+      setPastSelections((prev: SelectionHistoryItem[]) => {
         // Limit history size to 20 entries for performance
         const updatedHistory = [
           ...prev,
@@ -70,7 +70,7 @@ export function useFileSelectionHistory({
     const prevState = prevSelections.pop();
 
     // Save current state to future for redo
-    setFutureSelections((prev) => [currentState, ...prev]);
+    setFutureSelections((prev: SelectionHistoryItem[]) => [currentState, ...prev]);
 
     // Update history
     setPastSelections(prevSelections);
@@ -105,7 +105,7 @@ export function useFileSelectionHistory({
     const nextState = nextSelections.shift();
 
     // Save current state to history for undo
-    setPastSelections((prev) => [...prev, currentState]);
+    setPastSelections((prev: SelectionHistoryItem[]) => [...prev, currentState]);
 
     // Update future history
     setFutureSelections(nextSelections);

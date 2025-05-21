@@ -1,12 +1,10 @@
 import { cn } from "@/utils/utils";
-
-import type { ReactNode } from "react";
-
+import { ReactNode, ElementType } from "react";
 
 interface TypographyProps {
   children: ReactNode;
   className?: string;
-  as?: React.ElementType;
+  as?: ElementType;
   [key: string]: unknown;
 }
 

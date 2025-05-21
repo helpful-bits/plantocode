@@ -1,5 +1,5 @@
 // Inspired by react-hot-toast library
-import * as React from "react";
+import { useState, useEffect, ReactNode } from "react";
 
 import type { ToastActionElement, ToastProps } from "./toast";
 
@@ -8,8 +8,8 @@ const TOAST_REMOVE_DELAY = 1000;
 
 type ToasterToast = ToastProps & {
   id: string;
-  title?: React.ReactNode;
-  description?: React.ReactNode;
+  title?: ReactNode;
+  description?: ReactNode;
   action?: ToastActionElement;
   clipboardFeedback?: boolean;
 };
@@ -155,9 +155,9 @@ function createToast({ ...toastProps }: ToastInput) {
 }
 
 function useToast() {
-  const [state, setState] = React.useState<State>(memoryState);
+  const [state, setState] = useState<State>(memoryState);
 
-  React.useEffect(() => {
+  useEffect(() => {
     // Prevent duplicate listeners
     if (!listeners.includes(setState)) {
       listeners.push(setState);

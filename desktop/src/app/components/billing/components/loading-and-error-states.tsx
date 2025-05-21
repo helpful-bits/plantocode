@@ -3,19 +3,20 @@ import { Button } from "@/ui/button";
 import { EmptyState } from "@/ui/empty-state";
 import { NotificationBanner } from "@/ui/notification-banner";
 
-import type React from "react";
 
 /**
  * Loading skeleton component
  */
-export const LoadingSkeleton: React.FC = () => (
+export function LoadingSkeleton() {
+  return (
   <div className="animate-pulse">
     <div className="h-6 w-32 bg-muted rounded mb-4"></div>
     <div className="h-4 w-24 bg-muted rounded mb-2"></div>
     <div className="h-4 w-40 bg-muted rounded mb-4"></div>
     <div className="h-10 w-full bg-muted rounded"></div>
   </div>
-);
+  );
+}
 
 /**
  * Error state component
@@ -25,7 +26,8 @@ interface ErrorStateProps {
   onRetry: () => void;
 }
 
-export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry }) => (
+export function ErrorState({ message, onRetry }: ErrorStateProps) {
+  return (
   <div>
     <NotificationBanner
       variant="error"
@@ -44,7 +46,8 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry }) => (
       Retry
     </Button>
   </div>
-);
+  );
+}
 
 /**
  * No subscription state component
@@ -53,9 +56,10 @@ interface NoSubscriptionStateProps {
   onUpgrade: () => void;
 }
 
-export const NoSubscriptionState: React.FC<NoSubscriptionStateProps> = ({
+export function NoSubscriptionState({
   onUpgrade,
-}) => (
+}: NoSubscriptionStateProps) {
+  return (
   <EmptyState
     variant="default"
     title="No Subscription"
@@ -64,4 +68,5 @@ export const NoSubscriptionState: React.FC<NoSubscriptionStateProps> = ({
     onAction={onUpgrade}
     className="border-none p-4"
   />
-);
+  );
+}

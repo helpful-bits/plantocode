@@ -9,6 +9,8 @@ pub mod file_lock_types;
 pub mod file_lock_manager;
 pub mod job_creation_utils;
 pub mod date_utils;
+pub mod deep_link_handler;
+pub mod env_utils;
 
 pub use directory_tree::{generate_directory_tree, DirectoryTreeOptions};
 pub use path_utils::{
@@ -28,3 +30,5 @@ pub use file_lock_manager::FileLockManager;
 pub use job_creation_utils::create_and_queue_background_job;
 pub use date_utils::get_timestamp;
 pub use error_utils::*;
+pub use deep_link_handler::register_deep_links;
+pub use env_utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
