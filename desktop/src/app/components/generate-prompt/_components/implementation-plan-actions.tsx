@@ -11,8 +11,6 @@ import { useFileManagement } from "../_contexts/file-management-context";
 import { usePlanContext } from "../_contexts/plan-context";
 import { useTaskContext } from "../_contexts/task-context";
 
-import type React from "react";
-
 export interface ImplementationPlanActionsProps {
   variant?: "default" | "compact";
   className?: string;
@@ -23,9 +21,11 @@ export interface ImplementationPlanActionsProps {
  * UI component for implementation plan generation
  * Pure presentation layer that delegates all business logic to Tauri backend
  */
-export const ImplementationPlanActions: React.FC<
-  ImplementationPlanActionsProps
-> = ({ variant = "default", className = "", disabled = false }) => {
+export const ImplementationPlanActions = ({ 
+  variant = "default", 
+  className = "", 
+  disabled = false 
+}: ImplementationPlanActionsProps) => {
   // Use contexts to get state and actions
   const { state: coreState } = useCorePromptContext();
   const { state: taskState } = useTaskContext();

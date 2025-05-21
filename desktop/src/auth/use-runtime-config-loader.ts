@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import {
   loadRuntimeConfigAfterLogin,
@@ -9,7 +10,7 @@ import {
 export interface RuntimeConfigLoaderResult {
   isLoading: boolean;
   error: string | null;
-  loadConfig: (token: string) => Promise<RuntimeAiConfig | null>;
+  loadConfig: () => Promise<RuntimeAiConfig | null>;
   clearError: () => void;
 }
 
@@ -18,20 +19,23 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
   const [error, setError] = useState<string | null>(null);
   const { updateConfig } = useRuntimeConfig();
 
-  const loadConfig = async (token: string): Promise<RuntimeAiConfig | null> => {
+  const loadConfig = async (): Promise<RuntimeAiConfig | null> => {
     if (isLoading) return null;
-    if (!token) {
-      console.error("Cannot load config without a valid token");
-      setError("Authentication token not available.");
-      return null;
-    }
 
     try {
       setIsLoading(true);
       setError(null);
 
-      // The token is already set in memory by the auth flow at this point,
-      // so we don't need to pass it to loadRuntimeConfigAfterLogin
+      // Get the token from Rust's secure storage
+      const token = await invoke<string | null>('get_app_jwt');
+      
+      if (!token) {
+        console.error("Cannot load config without a valid token");
+        setError("Authentication token not available.");
+        return null;
+      }
+
+      // Load the runtime config using the backend token
       const config = await loadRuntimeConfigAfterLogin();
       updateConfig(config);
 

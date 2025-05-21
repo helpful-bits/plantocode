@@ -42,11 +42,41 @@ export function useDeepLinkHandler() {
         if (params.has("code") && params.has("state")) {
           // eslint-disable-next-line no-console
           console.log("[Desktop] Processing OAuth redirect URL");
-  
-          // Firebase auth now handles redirects automatically via deep link handler
-          // No need to manually pass the URL anymore
-          console.log("[Desktop] Deep link will be processed by Firebase SDK");
-          return;
+          
+          try {
+            // We need to get the authDomain that was used to initialize Firebase
+            // This is the same value set in get_runtime_firebase_config
+            const { invoke } = await import("@tauri-apps/api/core");
+            const firebaseConfig = await invoke<any>('get_runtime_firebase_config');
+            const authDomain = firebaseConfig.authDomain;
+            
+            console.log(`[Desktop] Using authDomain: ${authDomain}`);
+            
+            // Add protocol if missing - authDomain should be a full URL
+            const authUrl = authDomain.startsWith('http') 
+              ? authDomain 
+              : `https://${authDomain}`;
+            
+            // Construct the target URL that Firebase SDK expects
+            // This must be in the format: https://authDomain/__/auth/handler?code=...&state=...
+            const queryParams = new URLSearchParams();
+            
+            // Copy all params from the deep link URL to the new URL
+            for (const [key, value] of params.entries()) {
+              queryParams.append(key, value);
+            }
+            
+            // Construct the Firebase handler URL
+            const firebaseHandlerUrl = `${authUrl}/__/auth/handler?${queryParams.toString()}`;
+            console.log(`[Desktop] Redirecting to Firebase handler URL: ${firebaseHandlerUrl}`);
+            
+            // Navigate to the Firebase handler URL
+            // This ensures getRedirectResult() works correctly in the same origin context
+            window.location.href = firebaseHandlerUrl;
+            return;
+          } catch (error) {
+            console.error("[Desktop] Error redirecting to Firebase handler:", error);
+          }
         }
   
         // Stripe checkout session success

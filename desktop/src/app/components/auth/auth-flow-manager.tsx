@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 
 import LoginPage from "@/app/components/auth/login-page";
 import { useRuntimeConfigLoader } from "@/auth/use-runtime-config-loader";
@@ -6,15 +7,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { EmptyState, LoadingScreen } from "@/ui";
 
 interface AuthFlowManagerProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function AuthFlowManager({ children }: AuthFlowManagerProps) {
   const { 
     user, 
-    loading, 
-    token,
-    initializeStrongholdAndResumeSession
+    loading
   } = useAuth();
   
   const {
@@ -24,26 +23,15 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     clearError,
   } = useRuntimeConfigLoader();
 
-  // Initialize Stronghold and load runtime configuration
-  useEffect(() => {
-    // On mount, make sure Stronghold is initialized
-    initializeStrongholdAndResumeSession().catch(error => 
-      console.error("[AuthFlow] Failed to initialize Stronghold:", error)
-    );
-  }, [initializeStrongholdAndResumeSession]);
 
   // Load runtime configuration after successful login
   useEffect(() => {
-    console.log("[AuthFlow] Effect triggered. User:", user, "Token:", !!token);
-    
-    // Only load config if we have a user and token
-    if (user && token) {
+    // Only load config if we have a user
+    if (user) {
       const initializeConfig = async () => {
         try {
-          console.log("[AuthFlow] User authenticated, loading runtime configuration");
-          // Load runtime configuration (this also stores the token in Rust backend)
-          await loadConfig(token);
-          console.log("[AuthFlow] Runtime configuration loaded successfully");
+          // Load runtime configuration
+          await loadConfig();
         } catch (err) {
           console.error("[AuthFlow] Error during auth flow initialization:", err);
           // We don't handle the error here because the loadConfig function
@@ -52,12 +40,8 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       };
 
       void initializeConfig();
-    } else if (user && !token) {
-      console.error("[AuthFlow] User authenticated but token unavailable. Waiting for resolution.");
-    } else {
-      console.log("[AuthFlow] No user or token, awaiting authentication.");
     }
-  }, [user, token, loadConfig]);
+  }, [user, loadConfig]);
 
   // Show loading screen while authenticating
   if (loading) {
@@ -81,9 +65,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
             actionText="Retry"
             onAction={() => {
               clearError();
-              if (token) {
-                void loadConfig(token);
-              }
+              void loadConfig();
             }}
           />
         </div>

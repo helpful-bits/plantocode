@@ -1,9 +1,8 @@
-export interface User {
-  id: string;
-  email: string | null;
-  name?: string | null;
-  photoURL?: string | null;
-}
+import { FrontendUser } from '../types';
+
+// Local alias for User to maintain backward compatibility 
+// while matching the backend FrontendUser structure
+export type User = FrontendUser;
 
 export interface AuthContextType {
   user: User | null;
@@ -13,5 +12,4 @@ export interface AuthContextType {
   signIn: (provider?: "google" | "github" | "microsoft" | "apple") => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
-  initializeStrongholdAndResumeSession: () => Promise<void>;
 }

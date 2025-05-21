@@ -173,7 +173,7 @@ export const JobCard = React.memo(
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={(e) => {
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.stopPropagation(); // Prevent triggering the card's onClick
                   void handleCancel(job.id);
                 }}

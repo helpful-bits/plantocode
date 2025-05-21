@@ -1,15 +1,15 @@
-import * as React from "react";
+import { forwardRef, TextareaHTMLAttributes, ReactNode } from "react";
 
 import { cn } from "@/utils/utils";
 
 // Extended TextareaProps with loading states
 export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   isLoading?: boolean;
-  loadingIndicator?: React.ReactNode;
+  loadingIndicator?: ReactNode;
 }
 
-const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, isLoading = false, loadingIndicator, ...props }, ref) => {
     // Use a more subtle loading indicator - pulsing border with right-aligned spinner
     const loadingClasses = isLoading

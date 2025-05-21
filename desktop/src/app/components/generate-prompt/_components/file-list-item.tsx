@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText, Copy } from "lucide-react";
-import React, { useCallback } from "react";
+import { useCallback, memo, MouseEvent, KeyboardEvent } from "react";
 
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
@@ -12,7 +12,7 @@ interface FileListItemProps {
   file: FileInfo;
   onToggleSelection: (path: string) => void;
   onToggleExclusion: (path: string) => void;
-  onAddPath: (path: string, e: React.MouseEvent) => void;
+  onAddPath: (path: string, e: MouseEvent) => void;
   copiedPath: string | null;
   disabled?: boolean;
 }
@@ -35,7 +35,7 @@ function FileListItem({
 
   // Handle copying file path to clipboard (memoized)
   const handleCopyPath = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.stopPropagation(); // Prevent selection toggle
       e.preventDefault(); // Prevent form submission
 
@@ -49,9 +49,9 @@ function FileListItem({
 
   // Handle clicking on file name or path (memoized)
   const handlePathClick = useCallback(
-    (eventOrTarget: React.MouseEvent | HTMLElement, keyboardEvent?: React.KeyboardEvent) => {
+    (eventOrTarget: MouseEvent | HTMLElement, keyboardEvent?: KeyboardEvent) => {
       // Handle both mouse events and keyboard events
-      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as React.KeyboardEvent : eventOrTarget as React.MouseEvent;
+      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as KeyboardEvent : eventOrTarget as MouseEvent;
       e.preventDefault();
 
       // Only toggle selection if file is not force excluded and not disabled
@@ -64,9 +64,9 @@ function FileListItem({
 
   // Handle toggle selection with proper prevention
   const handleToggleSelection = useCallback(
-    (eventOrTarget: React.MouseEvent | HTMLElement, keyboardEvent?: React.KeyboardEvent) => {
+    (eventOrTarget: MouseEvent | HTMLElement, keyboardEvent?: KeyboardEvent) => {
       // Handle both mouse events and keyboard events
-      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as React.KeyboardEvent : eventOrTarget as React.MouseEvent;
+      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as KeyboardEvent : eventOrTarget as MouseEvent;
       e.preventDefault();
       e.stopPropagation();
 
@@ -79,9 +79,9 @@ function FileListItem({
 
   // Handle toggle exclusion with proper prevention
   const handleToggleExclusion = useCallback(
-    (eventOrTarget: React.MouseEvent | HTMLElement, keyboardEvent?: React.KeyboardEvent) => {
+    (eventOrTarget: MouseEvent | HTMLElement, keyboardEvent?: KeyboardEvent) => {
       // Handle both mouse events and keyboard events
-      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as React.KeyboardEvent : eventOrTarget as React.MouseEvent;
+      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as KeyboardEvent : eventOrTarget as MouseEvent;
       e.preventDefault();
       e.stopPropagation();
 
@@ -223,4 +223,4 @@ function FileListItem({
 }
 
 // Use React.memo for performance optimization
-export default React.memo(FileListItem);
+export default memo(FileListItem);

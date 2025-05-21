@@ -65,7 +65,7 @@ export default function RegexAccordion({
                 type="button"
                 variant={isOpen ? "secondary" : "outline"}
                 size="sm"
-                onClick={(e) => {
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.stopPropagation();
                   void actions.handleGenerateRegexFromTask();
                   if (!isOpen) setIsOpen(true);
@@ -107,19 +107,19 @@ export default function RegexAccordion({
               contentRegex={state.contentRegex}
               negativeTitleRegex={state.negativeTitleRegex}
               negativeContentRegex={state.negativeContentRegex}
-              onTitleRegexChange={(value) => {
+              onTitleRegexChange={(value: string) => {
                 actions.setTitleRegex(value);
                 onInteraction();
               }}
-              onContentRegexChange={(value) => {
+              onContentRegexChange={(value: string) => {
                 actions.setContentRegex(value);
                 onInteraction();
               }}
-              onNegativeTitleRegexChange={(value) => {
+              onNegativeTitleRegexChange={(value: string) => {
                 actions.setNegativeTitleRegex(value);
                 onInteraction();
               }}
-              onNegativeContentRegexChange={(value) => {
+              onNegativeContentRegexChange={(value: string) => {
                 actions.setNegativeContentRegex(value);
                 onInteraction();
               }}

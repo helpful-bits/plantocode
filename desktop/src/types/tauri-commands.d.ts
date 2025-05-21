@@ -12,18 +12,25 @@ export interface Get_database_info_commandArgs {
 
 // Commands from auth_commands
 export interface Exchange_and_store_firebase_tokenArgs {
-  firebase_id_token: string;
+  firebase_id_token: string | null;
+  token: string | null;
+}
+
+export interface Get_stored_app_jwtArgs {
+}
+
+export interface Get_app_jwtArgs {
+}
+
+export interface Set_app_jwtArgs {
+  token: string | null;
+}
+
+export interface Clear_stored_app_jwtArgs {
 }
 
 export interface Get_user_info_with_app_jwtArgs {
   app_token: string;
-}
-
-export interface Set_in_memory_tokenArgs {
-  token: string;
-}
-
-export interface Clear_in_memory_tokenArgs {
 }
 
 
@@ -204,9 +211,11 @@ export interface Transcribe_audio_direct_commandArgs {
 export type TauriInvoke = {
   "get_database_info_command": () => Promise<any>;
   "exchange_and_store_firebase_token": (args: Exchange_and_store_firebase_tokenArgs) => Promise<any>;
+  "get_stored_app_jwt": () => Promise<any>;
+  "get_app_jwt": () => Promise<any>;
+  "set_app_jwt": (args: Set_app_jwtArgs) => Promise<any>;
+  "clear_stored_app_jwt": () => Promise<any>;
   "get_user_info_with_app_jwt": (args: Get_user_info_with_app_jwtArgs) => Promise<any>;
-  "set_in_memory_token": (args: Set_in_memory_tokenArgs) => Promise<any>;
-  "clear_in_memory_token": () => Promise<any>;
   "db_execute_query": (args: Db_execute_queryArgs) => Promise<any>;
   "db_select_query": (args: Db_select_queryArgs) => Promise<any>;
   "db_execute_transaction": (args: Db_execute_transactionArgs) => Promise<any>;

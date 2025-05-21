@@ -47,7 +47,6 @@ impl Default for AppState {
     }
 }
 
-const APP_SCHEME: &str = "vibe-manager";
 
 // Static repositories to be used across the application
 static SESSION_REPO: OnceCell<Arc<SessionRepository>> = OnceCell::const_new();
@@ -71,14 +70,8 @@ fn main() {
     let tauri_context = tauri::generate_context!();
     let app_identifier = &tauri_context.config().identifier;
 
-    let app_local_data_base_path = dirs::data_local_dir()
-        .expect("Could not resolve app local data path for Stronghold.")
-        .join(app_identifier);
-
-    if !app_local_data_base_path.exists() {
-        std::fs::create_dir_all(&app_local_data_base_path)
-            .expect("Failed to create app local data directory for Stronghold salt path");
-    }
+    // App identifier is available for use
+    info!("App identifier: {}", app_identifier);
 
     tauri::Builder::default()
         .manage(AppState {
@@ -90,42 +83,19 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
         }))
-        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            
+            // Set up cross-platform deep link handling for auth callbacks
+            utils::register_deep_links(&app.handle());
 
-            // Resolve the app-specific local data directory for Stronghold's salt file.
-            let app_local_data_dir_for_salt = match app.path().app_local_data_dir() {
-                Ok(dir) => dir,
-                Err(e) => {
-                    error!("Fatal: Could not resolve app local data path for Stronghold salt: {}. App identifier might be missing or invalid in tauri.conf.json.", e);
-                    return Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, e.to_string())));
-                }
-            };
-
-            // Ensure this directory exists.
-            if !app_local_data_dir_for_salt.exists() {
-                match std::fs::create_dir_all(&app_local_data_dir_for_salt) {
-                    Ok(_) => info!("Created app local data directory for Stronghold salt at: {:?}", app_local_data_dir_for_salt),
-                    Err(e) => {
-                        error!("Fatal: Failed to create app local data directory {:?} for Stronghold salt: {}", app_local_data_dir_for_salt, e);
-                        return Err(Box::new(e));
-                    }
-                }
-            }
-
-            // Define the path for the salt file.
-            let salt_path = app_local_data_dir_for_salt.join("user.salt"); // Using a slightly more descriptive name.
-            info!("Stronghold salt path configured at: {:?}", salt_path);
-
-            // Build and initialize the Stronghold plugin.
-            let plugin = tauri_plugin_stronghold::Builder::with_argon2(&salt_path).build();
-            app.handle().plugin(plugin)?;
-            info!("Tauri Stronghold plugin initialized successfully.");
+            // Keyring is used for secure storage (OS native credential vault)
+            info!("Using OS keyring for secure credential storage.");
 
             let app_handle_clone = app.handle().clone();
 
@@ -148,8 +118,10 @@ fn main() {
             // Auth commands
             commands::auth_commands::exchange_and_store_firebase_token,
             commands::auth_commands::get_user_info_with_app_jwt,
-            commands::auth_commands::set_in_memory_token,
-            commands::auth_commands::clear_in_memory_token,
+            commands::auth_commands::get_stored_app_jwt,
+            commands::auth_commands::get_app_jwt,
+            commands::auth_commands::set_app_jwt,
+            commands::auth_commands::clear_stored_app_jwt,
             
             // Config commands
             commands::config_commands::get_available_ai_models,

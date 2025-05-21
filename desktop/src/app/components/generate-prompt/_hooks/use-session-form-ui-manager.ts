@@ -42,7 +42,7 @@ export function useSessionFormUIManager({
 
   // Toggle the session selector open/closed
   const toggleSessionSelector = useCallback(() => {
-    setIsSessionSelectorOpen((prev) => !prev);
+    setIsSessionSelectorOpen((prev: boolean) => !prev);
   }, []);
 
   // Handle session selection from the UI dropdown

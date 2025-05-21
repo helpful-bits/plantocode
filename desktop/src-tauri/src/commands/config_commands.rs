@@ -3,12 +3,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use log::{info, error, warn};
 use serde_json::Value;
-use std::env;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{ModelInfo, RuntimeAiConfig, TaskSpecificModelConfig};
 use crate::api_clients::client_factory::ClientFactory;
-use tauri_plugin_stronghold::stronghold::Stronghold;
+use crate::utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
 
 /// Retrieves the list of available AI models from the RuntimeAiConfig
 #[tauri::command]
@@ -61,38 +60,31 @@ pub async fn fetch_runtime_ai_config(
 pub async fn get_runtime_firebase_config(_app_handle: AppHandle) -> AppResult<Value> {
     info!("Retrieving Firebase authentication configuration");
     
-    // Get Firebase configuration from environment variables
-    // Prioritize non-prefixed environment variables
+    // Get Firebase configuration using the centralized env_utils
+    // We prefer standard env vars over VITE_ prefixed ones for production builds
+    let fb_auth_domain = read_env("FIREBASE_AUTH_DOMAIN", "", true);
+    
+    // Log the Firebase auth domain for debugging
+    info!("Using Firebase auth domain: {}", fb_auth_domain);
+    
     let firebase_config = serde_json::json!({
-        "apiKey": env::var("FIREBASE_API_KEY").unwrap_or_else(|_| {
-            // Fall back to VITE_ prefixed variables for development compatibility only
-            env::var("VITE_FIREBASE_API_KEY").unwrap_or_default()
-        }),
-        "authDomain": env::var("FIREBASE_AUTH_DOMAIN").unwrap_or_else(|_| {
-            env::var("VITE_FIREBASE_AUTH_DOMAIN").unwrap_or_default()
-        }),
-        "projectId": env::var("FIREBASE_PROJECT_ID").unwrap_or_else(|_| {
-            env::var("VITE_FIREBASE_PROJECT_ID").unwrap_or_default()
-        }),
-        "storageBucket": env::var("FIREBASE_STORAGE_BUCKET").unwrap_or_else(|_| {
-            env::var("VITE_FIREBASE_STORAGE_BUCKET").unwrap_or_default()
-        }),
-        "messagingSenderId": env::var("FIREBASE_MESSAGING_SENDER_ID").unwrap_or_else(|_| {
-            env::var("VITE_FIREBASE_MESSAGING_SENDER_ID").unwrap_or_default()
-        }),
-        "appId": env::var("FIREBASE_APP_ID").unwrap_or_else(|_| {
-            env::var("VITE_FIREBASE_APP_ID").unwrap_or_default()
-        }),
+        "apiKey": read_env("FIREBASE_API_KEY", "", true),
+        "authDomain": fb_auth_domain,
+        "projectId": read_env("FIREBASE_PROJECT_ID", "", true),
+        "storageBucket": read_env("FIREBASE_STORAGE_BUCKET", "", true),
+        "messagingSenderId": read_env("FIREBASE_MESSAGING_SENDER_ID", "", true),
+        "appId": read_env("FIREBASE_APP_ID", "", true),
         // Add any other Firebase config fields that might be needed by the frontend
-        "measurementId": env::var("FIREBASE_MEASUREMENT_ID").unwrap_or_else(|_| {
-            env::var("VITE_FIREBASE_MEASUREMENT_ID").unwrap_or_default()
-        }),
+        "measurementId": read_env("FIREBASE_MEASUREMENT_ID", "", true),
     });
     
     // Validate that we have at least the required fields
     if firebase_config["apiKey"].as_str().map_or(true, |s| s.is_empty()) ||
        firebase_config["authDomain"].as_str().map_or(true, |s| s.is_empty()) {
         error!("Firebase configuration is missing required fields");
+        error!("apiKey: {}, authDomain: {}", 
+            firebase_config["apiKey"].as_str().unwrap_or("MISSING"),
+            firebase_config["authDomain"].as_str().unwrap_or("MISSING"));
         return Err(AppError::ConfigError("Firebase configuration is incomplete or missing. Check environment variables".into()));
     }
     
@@ -107,15 +99,9 @@ pub async fn get_runtime_firebase_config(_app_handle: AppHandle) -> AppResult<Va
 pub async fn get_server_url(_app_handle: AppHandle) -> AppResult<String> {
     info!("Retrieving server URL configuration");
     
-    // Get server URL from environment variables
-    // Prioritize the standard SERVER_URL environment variable
-    let server_url = env::var("SERVER_URL").unwrap_or_else(|_| {
-        // Fall back to VITE_ prefixed variables only for development compatibility
-        env::var("VITE_SERVER_URL").unwrap_or_else(|_| {
-            // Default to localhost if not configured
-            "http://localhost:8080".to_string()
-        })
-    });
+    // Get server URL using the centralized env_utils with a default
+    // Prefer standard SERVER_URL over VITE_SERVER_URL
+    let server_url = read_env("SERVER_URL", "http://localhost:8080", true);
     
     info!("Server URL configuration retrieved: {}", server_url);
     Ok(server_url)

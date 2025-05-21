@@ -183,7 +183,7 @@ export default function SubscriptionManager() {
    * Handle retry action
    */
   const handleRetry = () => {
-    setRefreshCounter((prev) => prev + 1);
+    setRefreshCounter((prev: number) => prev + 1);
   };
 
   // Render appropriate content based on state

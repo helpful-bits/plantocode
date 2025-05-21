@@ -1,8 +1,7 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-
-import type React from "react";
+import { FC } from "react";
 
 interface StatusMessagesProps {
   error: Error | null;
@@ -14,7 +13,7 @@ interface StatusMessagesProps {
  * Component for rendering error and feedback messages
  * Typically used in sidebar or control panels
  */
-export const StatusMessages: React.FC<StatusMessagesProps> = ({
+export const StatusMessages: FC<StatusMessagesProps> = ({
   error,
   clearFeedback,
   isCollapsed,

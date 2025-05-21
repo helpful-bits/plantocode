@@ -1,13 +1,14 @@
 "use client";
 
 import { Sparkles, Loader2 } from "lucide-react";
-import React, {
+import {
   useState,
   useCallback,
   useRef,
   useImperativeHandle,
   forwardRef,
 } from "react";
+import type { SyntheticEvent, ChangeEvent } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
 import {
@@ -44,8 +45,7 @@ interface TaskDescriptionProps {
   disabled?: boolean; // Flag to disable the component
 }
 
-export default React.memo(
-  forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
+export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
     function TaskDescriptionArea(
       {
         value,
@@ -56,7 +56,7 @@ export default React.memo(
         onImproveSelection,
         disabled = false,
       }: TaskDescriptionProps,
-      ref
+      ref: React.ForwardedRef<TaskDescriptionHandle>
     ) {
       // Keep ref parameter
       // Minimal state for selection tracking
@@ -162,7 +162,7 @@ export default React.memo(
       }));
 
       // Track selection in state to properly update the button's disabled status
-      const handleSelect = (_e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+      const handleSelect = (_e: SyntheticEvent<HTMLTextAreaElement>) => {
         if (internalTextareaRef.current) {
           const { selectionStart, selectionEnd } = internalTextareaRef.current;
           setHasActiveSelection(selectionStart !== selectionEnd);
@@ -220,7 +220,7 @@ export default React.memo(
       // The hasSelection const has been replaced by the hasActiveSelection state
 
       // Simplified change handler without localStorage logic
-      const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
         // Call original onChange handler
         onChange(e.target.value);
         onInteraction();
@@ -335,4 +335,3 @@ export default React.memo(
       );
     }
   )
-);

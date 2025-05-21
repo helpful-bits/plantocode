@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback , useContext } from "react";
+import { useState, useRef, useEffect, useCallback, useContext } from "react";
 
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { useUILayout } from "@/contexts/ui-layout-context";
@@ -114,12 +114,12 @@ export function useBackgroundJobsSidebarManager() {
   // Handle job cancellation
   const handleCancel = useCallback(
     async (jobId: string) => {
-      setIsCancelling((prev) => ({ ...prev, [jobId]: true }));
+      setIsCancelling((prev: Record<string, boolean>) => ({ ...prev, [jobId]: true }));
 
       try {
         await cancelJob(jobId);
       } finally {
-        setIsCancelling((prev) => ({ ...prev, [jobId]: false }));
+        setIsCancelling((prev: Record<string, boolean>) => ({ ...prev, [jobId]: false }));
       }
     },
     [cancelJob]

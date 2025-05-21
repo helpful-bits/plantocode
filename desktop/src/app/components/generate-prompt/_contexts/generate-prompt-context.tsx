@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useRef } from "react";
+import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -19,7 +19,6 @@ import { type TaskDescriptionHandle } from "../_components/task-description";
 
 import { useFileManagement } from "./file-management-context";
 
-import type React from "react";
 
 // Define interfaces for each slice of the context value
 export type GeneratePromptCoreContextShape = ReturnType<typeof useGeneratePromptCoreState>;
@@ -50,7 +49,7 @@ const GeneratePromptContext = createContext<
 export function GeneratePromptProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   // Get shared contexts
   const { projectDirectory } = useProject();
@@ -82,6 +81,7 @@ export function GeneratePromptProvider({
     setTaskDescription: (value: string) =>
       sessionActions.updateCurrentSessionFields({ taskDescription: value }),
     handleInteraction: coreApi.handleInteraction,
+    taskDescriptionRef,
   });
 
   // Initialize regex state with required props from session state

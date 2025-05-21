@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 
+import { type TaskDescriptionHandle } from "../_components/task-description";
 import { useGuidanceGeneration } from "./use-guidance-generation";
 import { useTaskDescriptionState } from "./use-task-description-state";
 
@@ -9,6 +10,7 @@ export interface UseGeneratePromptTaskStateProps {
   taskDescription: string;
   setTaskDescription: (description: string) => void;
   handleInteraction?: () => void;
+  taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
 }
 
 /**
@@ -20,16 +22,16 @@ export function useGeneratePromptTaskState({
   taskDescription,
   setTaskDescription,
   handleInteraction,
+  taskDescriptionRef
 }: UseGeneratePromptTaskStateProps) {
   // Initialize task description state for UI-specific concerns, but use the provided state
   const {
-    taskDescriptionRef,
     isImprovingText,
     textImprovementJobId,
     handleImproveSelection,
   } = useTaskDescriptionState({
     activeSessionId: null,
-    taskDescriptionRef: { current: null },
+    taskDescriptionRef,
     onInteraction: handleInteraction,
   });
 

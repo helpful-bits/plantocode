@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, type MutableRefObject } from "react";
 
 import { getSessionAction } from "@/actions";
 import { useProject } from "@/contexts/project-context";
@@ -30,8 +30,8 @@ export function useSessionLoader({
   setSessionLoading: (loading: boolean) => void;
   setSessionModified: (modified: boolean) => void;
   setSessionError: (error: Error | null) => void;
-  hasCompletedInitRef: React.MutableRefObject<boolean>;
-  loadingSessionRef: React.MutableRefObject<{
+  hasCompletedInitRef: MutableRefObject<boolean>;
+  loadingSessionRef: MutableRefObject<{
     id: string | null;
     timestamp: number;
   }>;

@@ -242,7 +242,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   const responseContent = getResponseContent();
 
   return (
-    <Dialog open={!!job} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-6">
         <DialogHeader>
           <DialogTitle

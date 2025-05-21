@@ -21,6 +21,11 @@ pub struct UserInfoResponse {
 }
 
 /// Exchange a Firebase ID token for a JWT token
+/// Returns a standardized OAuth-compliant response with:
+/// - access_token: the application JWT
+/// - token_type: "Bearer"
+/// - expires_in: token lifetime in seconds
+/// - user_id, email, name, role: user details
 #[post("/firebase/token")]
 pub async fn exchange_firebase_token(
     req: HttpRequest,
@@ -39,10 +44,21 @@ pub async fn exchange_firebase_token(
     // Extract the Firebase ID token
     let firebase_token = &token_request.id_token;
     
-    // Generate a JWT token
+    // Generate a JWT token and get full auth details
     match auth_service.generate_token_from_firebase(firebase_token).await {
-        Ok(token_response) => {
-            HttpResponse::Ok().json(token_response)
+        Ok(auth_details) => {
+            // Map Firebase OAuth response to desktop app format
+            let response = FullAuthDetailsResponse {
+                access_token: auth_details.access_token,
+                token_type: "Bearer".to_string(), // Always set token_type to Bearer
+                expires_in: auth_details.expires_in,
+                user_id: auth_details.user_id,
+                email: auth_details.email,
+                name: auth_details.name,
+                role: auth_details.role,
+            };
+            
+            HttpResponse::Ok().json(response)
         },
         Err(e) => {
             error!("Firebase authentication failed: {}", e);

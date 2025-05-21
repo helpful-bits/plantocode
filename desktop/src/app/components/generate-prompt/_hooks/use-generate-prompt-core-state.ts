@@ -21,7 +21,7 @@ export interface UseGeneratePromptCoreStateProps {
   isTransitioningSession: boolean;
   isSessionLoading?: boolean;
   showNotification: ReturnType<typeof useNotification>["showNotification"];
-  taskDescriptionRef: React.RefObject<TaskDescriptionHandle>;
+  taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
   resetTaskState?: () => void;
   resetRegexState?: () => void;
 }

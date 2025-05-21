@@ -1,8 +1,10 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext } from "react";
+import type { ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { type AuthContextType } from "../auth/auth-context-interface";
 import { useFirebaseAuthHandler } from "../auth/use-firebase-auth-handler";
-import { getToken } from "../auth/token-storage";
+import { useAuthTokenRefresher } from "../hooks/use-auth-token-refresher";
 
 // No more need for separate handleRedirectResult in the context
 export type DesktopAuthContextType = AuthContextType;
@@ -17,13 +19,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     token,
-    initializeStrongholdAndResumeSession,
     signIn,
     signOut: firebaseSignOut,
   } = useFirebaseAuthHandler();
+  
+  // Use the token refresher hook to keep the JWT fresh
+  useAuthTokenRefresher();
 
   const getAppToken = async (): Promise<string | null> => {
-    return await getToken();
+    return await invoke<string | null>('get_app_jwt');
   };
 
   const value: DesktopAuthContextType = {
@@ -31,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     token,
-    initializeStrongholdAndResumeSession,
     signIn,
     signOut: firebaseSignOut,
     getToken: getAppToken,

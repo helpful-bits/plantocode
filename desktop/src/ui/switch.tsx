@@ -1,16 +1,16 @@
 "use client";
 
 import * as SwitchPrimitives from "@radix-ui/react-switch";
-import * as React from "react";
+import { forwardRef, ElementRef, ComponentPropsWithoutRef, useCallback } from "react";
 
 import { cn } from "@/utils/utils";
 
-const Switch = React.forwardRef<
-  React.ElementRef<typeof SwitchPrimitives.Root>,
-  React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
+const Switch = forwardRef<
+  ElementRef<typeof SwitchPrimitives.Root>,
+  ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
 >(({ className, onCheckedChange, ...props }, ref) => {
   // Create a stable callback wrapper to prevent infinite update loops
-  const stableOnChange = React.useCallback(
+  const stableOnChange = useCallback(
     (checked: boolean) => {
       if (typeof onCheckedChange === "function") {
         onCheckedChange(checked);

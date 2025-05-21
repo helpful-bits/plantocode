@@ -3,7 +3,12 @@
 import { useState, useCallback, useEffect } from "react";
 
 import { generateTaskPromptTemplateAction } from "@/actions";
-import { estimateTokens } from "@/utils/token-estimator";
+
+// Simple token estimation function
+function estimateTokens(text: string): number {
+  // Estimate based on ~4 chars per token
+  return Math.ceil((text || "").length / 4); // Handle potential null/undefined text
+}
 
 interface UsePromptTemplatingProps {
   taskDescription: string;

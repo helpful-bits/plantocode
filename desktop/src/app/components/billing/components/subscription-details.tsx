@@ -8,9 +8,6 @@ import { TokenUsageIndicator } from "@/ui/token-usage-indicator";
 
 import { type SubscriptionInfo } from "../types";
 
-import type React from "react";
-
-
 
 interface SubscriptionDetailsProps {
   subscription: SubscriptionInfo;
@@ -21,11 +18,11 @@ interface SubscriptionDetailsProps {
 /**
  * Component for displaying subscription details and actions
  */
-export const SubscriptionDetails: React.FC<SubscriptionDetailsProps> = ({
+export function SubscriptionDetails({
   subscription,
   onUpgrade,
   onManage,
-}) => {
+}: SubscriptionDetailsProps) {
   const isTrialing = subscription.status === "trialing";
   const isCancelled = subscription.status === "canceled";
   const isActive = subscription.status === "active";
@@ -52,12 +49,12 @@ export const SubscriptionDetails: React.FC<SubscriptionDetailsProps> = ({
     subscription.usage.tokensInput + subscription.usage.tokensOutput;
 
   // Status badge for subscription status
-  const StatusBadge = () => {
+  function StatusBadge() {
     if (isActive) return <Badge className="bg-green-500/80">Active</Badge>;
     if (isCancelled) return <Badge variant="destructive">Cancelled</Badge>;
     if (isTrialing) return <Badge variant="secondary">Trial</Badge>;
     return <Badge variant="outline">{subscription.status}</Badge>;
-  };
+  }
 
   return (
     <>

@@ -1,8 +1,7 @@
 import { Loader2 } from "lucide-react";
+import type { FC, ReactNode } from "react";
 
 import { Card } from "./card";
-
-import type React from "react";
 
 
 interface DataCardProps {
@@ -11,9 +10,9 @@ interface DataCardProps {
   isLoading?: boolean;
   error?: string | null;
   className?: string;
-  children: React.ReactNode;
-  headerAction?: React.ReactNode;
-  footerAction?: React.ReactNode;
+  children: ReactNode;
+  headerAction?: ReactNode;
+  footerAction?: ReactNode;
 }
 
 /**
@@ -22,7 +21,7 @@ interface DataCardProps {
  * A consistent card pattern for displaying data with loading and error states
  * Includes optional header and footer action slots
  */
-export const DataCard: React.FC<DataCardProps> = ({
+export const DataCard: FC<DataCardProps> = ({
   title,
   description,
   isLoading = false,

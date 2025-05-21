@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, type ReactNode, useEffect } from "react";
+import { createContext, useContext, useEffect } from "react";
+import type { ReactNode } from "react";
 
 import {
   useProjectDirectoryManager,

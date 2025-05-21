@@ -1,6 +1,7 @@
 use blake2b_simd::Params;
 use std::path::Path;
 use std::fs;
+use sha2::{Sha256, Digest};
 
 use crate::error::{AppError, AppResult};
 
@@ -40,4 +41,12 @@ pub fn generate_project_hash(directory: impl AsRef<Path>) -> String {
     let directory_str = directory.to_string_lossy();
     
     hash_string(&directory_str)
+}
+
+/// Hash a string using SHA-256
+pub fn sha256_hash(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    let result = hasher.finalize();
+    format!("{:x}", result)
 }

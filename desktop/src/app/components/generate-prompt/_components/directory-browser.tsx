@@ -11,7 +11,7 @@ import {
   SkipBack,
   Lock,
 } from "lucide-react";
-import React, { useCallback, useRef } from "react";
+import { useCallback, useRef, Fragment } from "react";
 
 import { Button } from "@/ui/button";
 import {
@@ -74,7 +74,7 @@ export default function DirectoryBrowser({
   }, [currentPath, onSelect, onClose]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col overflow-hidden w-[95vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -89,7 +89,7 @@ export default function DirectoryBrowser({
           {/* Shortcut buttons */}
           <div className="flex gap-2 flex-wrap overflow-x-auto pb-2">
             {commonPaths && commonPaths.length > 0 ? (
-              commonPaths.map((item) => (
+              commonPaths.map((item: { name: string; path: string }) => (
                 <Button
                   key={item.path}
                   variant="outline"
@@ -128,8 +128,8 @@ export default function DirectoryBrowser({
             role="navigation"
             aria-label="Directory path breadcrumbs"
           >
-            {pathParts.map((part, index) => (
-              <React.Fragment key={`path-${part.path}`}>
+            {pathParts.map((part: { name: string; path: string }, index: number) => (
+              <Fragment key={`path-${part.path}`}>
                 {index > 0 && (
                   <ChevronRight
                     className="h-3.5 w-3.5 text-muted-foreground"
@@ -148,7 +148,7 @@ export default function DirectoryBrowser({
                     {part.name === "/" ? "Root" : part.name}
                   </span>
                 </Button>
-              </React.Fragment>
+              </Fragment>
             ))}
           </div>
 

@@ -1,7 +1,5 @@
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
-import { useState, useEffect } from "react";
-
-import type React from "react";
+import { useState, useEffect, FC, ReactNode } from "react";
 
 type NotificationVariant = "info" | "success" | "warning" | "error";
 
@@ -14,8 +12,8 @@ interface NotificationBannerProps {
   autoClose?: boolean;
   autoCloseDelay?: number;
   className?: string;
-  icon?: React.ReactNode;
-  children?: React.ReactNode;
+  icon?: ReactNode;
+  children?: ReactNode;
 }
 
 /**
@@ -24,7 +22,7 @@ interface NotificationBannerProps {
  * A consistent banner for displaying various types of notifications
  * with optional auto-close functionality
  */
-export const NotificationBanner: React.FC<NotificationBannerProps> = ({
+export const NotificationBanner: FC<NotificationBannerProps> = ({
   variant = "info",
   title,
   message,

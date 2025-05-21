@@ -42,6 +42,21 @@ impl ServerProxyClient {
         }
     }
     
+    /// Create a new server proxy client with a custom HTTP client
+    pub fn new_with_client(
+        app_handle: AppHandle, 
+        server_url: String, 
+        token_manager: Arc<TokenManager>,
+        http_client: Client
+    ) -> Self {
+        Self {
+            http_client,
+            app_handle,
+            server_url,
+            token_manager,
+        }
+    }
+    
     /// Get the server URL
     pub fn server_url(&self) -> &str {
         &self.server_url

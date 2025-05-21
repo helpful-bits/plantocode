@@ -6,7 +6,8 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState } from "react";
+import type { ReactNode } from "react";
 
 /**
  * Define the runtime AI config type
@@ -75,10 +76,6 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
     // Skip if recently fetched (within 5 minutes) unless forced
     const now = Date.now();
     if (!force && lastFetchTime && now - lastFetchTime < 5 * 60 * 1000) {
-      // Log removed for linting
-      // console.log(
-      //   "Using cached runtime config (fetched within last 5 minutes)"
-      // );
       return config;
     }
 
@@ -102,8 +99,6 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
 
       setConfig(configData);
       setLastFetchTime(now);
-      // Log removed for linting
-      // console.log("Runtime AI config loaded:", configData);
       return configData;
     } catch (err) {
       const errorMessage =
@@ -174,9 +169,6 @@ export function useRuntimeConfig() {
  */
 export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAiConfig> {
   try {
-    // Log removed for linting
-    // console.log("Triggering runtime config load after login...");
-
     // Add retries for better resilience
     let attempts = 0;
     const maxAttempts = 3;
@@ -184,8 +176,6 @@ export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAiConfig> {
     while (attempts < maxAttempts) {
       try {
         const config = await invoke<RuntimeAiConfig>("fetch_runtime_ai_config");
-        // Log removed for linting
-        // console.log("Runtime AI config loaded successfully after login");
         return config;
       } catch (err) {
         attempts++;
@@ -195,10 +185,6 @@ export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAiConfig> {
         }
 
         // Wait before retry (exponential backoff)
-        // Log removed for linting
-        // console.log(
-        //   `Retry attempt ${attempts}/${maxAttempts} for runtime config...`
-        // );
         await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
       }
     }

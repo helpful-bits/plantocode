@@ -16,12 +16,10 @@ import { useCorePromptContext } from "../_contexts/core-prompt-context";
 
 import { type TaskDescriptionHandle } from "./task-description";
 
-import type React from "react";
-
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
   onInteraction?: () => void; // Optional interaction handler
-  textareaRef?: React.RefObject<TaskDescriptionHandle> | null;
+  textareaRef?: React.RefObject<TaskDescriptionHandle | null> | undefined;
   disabled?: boolean; // Added prop to disable the component during session switching
 }
 

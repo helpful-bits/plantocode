@@ -1,15 +1,15 @@
-import * as React from "react";
+import { forwardRef, InputHTMLAttributes, ReactNode } from "react";
 
 import { cn } from "@/utils/utils";
 
 // Extended InputProps with loading states
 export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+  extends InputHTMLAttributes<HTMLInputElement> {
   isLoading?: boolean;
-  loadingIndicator?: React.ReactNode;
+  loadingIndicator?: ReactNode;
 }
 
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
+const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, isLoading = false, loadingIndicator, ...props }, ref) => {
     // Use a more subtle loading indicator - pulsing border
     const loadingClasses = isLoading

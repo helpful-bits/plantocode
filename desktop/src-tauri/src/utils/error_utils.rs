@@ -18,7 +18,7 @@ pub fn format_user_error(error: &AppError) -> String {
         AppError::SerdeError(msg) => format!("Serialization error: {}", msg),
         AppError::HttpError(msg) => format!("HTTP error: {}", msg),
         AppError::TauriError(msg) => format!("Tauri error: {}", msg),
-        AppError::StrongholdError(msg) => format!("Stronghold error: {}", msg),
+        AppError::StrongholdError(msg) => format!("Secure storage error: {}", msg),
         AppError::GitError(msg) => format!("Git error: {}", msg),
         AppError::SecurityError(msg) => format!("Security error: {}", msg),
         AppError::InternalError(msg) => format!("Internal error: {}", msg),

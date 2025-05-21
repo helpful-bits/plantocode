@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import React, { createContext, useContext, type ReactNode } from "react";
 
 import {
   type TaskContextValue,
@@ -10,7 +10,7 @@ import {
 const defaultValue: TaskContextValue = {
   state: {
     taskDescription: "",
-    taskDescriptionRef: null,
+    taskDescriptionRef: React.createRef(), // Create a ref object instead of null
     isGeneratingGuidance: false,
     isImprovingText: false,
     textImprovementJobId: null,

@@ -170,7 +170,7 @@ export function useProjectFileList(
     }
 
     // Load files for new project directory
-    void refreshFiles().catch((_catchError) => {
+    void refreshFiles().catch((_catchError: unknown) => {
       // Error handling is done inside refreshFiles
     });
   }, [projectDirectory, sessionId, refreshFiles]);

@@ -1,8 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback } from "react";
-
-import type React from "react";
+import type { ReactNode } from "react";
 
 // Define the type for our context
 export interface UILayoutContextType {
@@ -29,7 +28,7 @@ const UILayoutContext = createContext<UILayoutContextType | undefined>(
 );
 
 // Provider component that will wrap the app layout
-export function UILayoutProvider({ children }: { children: React.ReactNode }) {
+export function UILayoutProvider({ children }: { children: ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isAppBusy, setIsAppBusy] = useState<boolean>(false);
   const [isAppInitializing, setIsAppInitializing] = useState<boolean>(true); // Start with true to show initialization screen by default

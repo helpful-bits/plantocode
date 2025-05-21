@@ -1,12 +1,10 @@
 "use client";
 
 import { Files, FileCheck, FilterX } from "lucide-react";
-
+import { FC } from "react";
 
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
-
-import type React from "react";
 
 export type FilterMode = "all" | "selected" | "regex";
 
@@ -20,7 +18,7 @@ interface FilterModeToggleProps {
 /**
  * A segmented control toggle for switching between different filter modes
  */
-export const FilterModeToggle: React.FC<FilterModeToggleProps> = ({
+export const FilterModeToggle: FC<FilterModeToggleProps> = ({
   currentMode,
   onModeChange,
   isRegexAvailable,

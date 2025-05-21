@@ -17,7 +17,7 @@ import {
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 
-import type React from "react";
+import type { MouseEvent } from "react";
 
 export interface SessionListItemProps {
   session: Session;
@@ -101,7 +101,7 @@ const SessionListItem = ({
               className="h-6 w-6 rounded-sm"
               isLoading={isLoading}
               disabled={globalIsSwitching || disabled}
-              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+              onClick={(e: MouseEvent<HTMLButtonElement>) => {
                 e.stopPropagation();
                 onUpdateName(session.id);
               }}
@@ -143,7 +143,7 @@ const SessionListItem = ({
             size="icon"
             variant="ghost"
             className="h-7 w-7 rounded-sm"
-            onClick={(e) => onClone(session, e)}
+            onClick={(e: MouseEvent<HTMLButtonElement>) => onClone(session, e)}
             title="Clone session"
             isLoading={isLoading}
             disabled={globalIsSwitching || disabled}
@@ -154,7 +154,7 @@ const SessionListItem = ({
             size="icon"
             variant="ghost"
             className="h-7 w-7 rounded-sm"
-            onClick={(e) => onStartEdit(session, e)}
+            onClick={(e: MouseEvent<HTMLButtonElement>) => onStartEdit(session, e)}
             title="Rename session"
             disabled={globalIsSwitching || isLoading || disabled}
           >
@@ -167,7 +167,7 @@ const SessionListItem = ({
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7 text-destructive rounded-sm"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
+                onClick={(e: MouseEvent<HTMLButtonElement>) =>
                   e.stopPropagation()
                 }
                 title="Delete session"
@@ -187,7 +187,7 @@ const SessionListItem = ({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
+                  onClick={(e: MouseEvent<HTMLButtonElement>) =>
                     e.stopPropagation()
                   }
                   disabled={isLoading || disabled}
@@ -195,7 +195,7 @@ const SessionListItem = ({
                   Cancel
                 </AlertDialogCancel>
                 <Button
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
                     onDelete(session.id);
                   }}

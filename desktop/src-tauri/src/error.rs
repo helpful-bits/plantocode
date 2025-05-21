@@ -25,8 +25,8 @@ pub enum AppError {
     #[error("Tauri error: {0}")]
     TauriError(String),
     
-    #[error("Stronghold error: {0}")]
-    StrongholdError(String),
+    #[error("Secure storage error: {0}")]
+    StrongholdError(String), // Keeping for backwards compatibility, renamed in UI presentation
     
     #[error("Configuration error: {0}")]
     ConfigError(String),
@@ -117,11 +117,7 @@ impl From<git2::Error> for AppError {
 }
 
 
-impl From<tauri_plugin_stronghold::stronghold::Error> for AppError {
-    fn from(error: tauri_plugin_stronghold::stronghold::Error) -> Self {
-        AppError::StrongholdError(error.to_string())
-    }
-}
+// Removed Stronghold From implementation
 
 impl From<tauri::Error> for AppError {
     fn from(error: tauri::Error) -> Self {
