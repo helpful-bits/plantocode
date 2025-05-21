@@ -14,6 +14,7 @@ pub struct FrontendUser {
 pub struct AuthDataResponse {
     pub user: FrontendUser,
     pub token: String, // This will be the application JWT
+    pub token_type: String, // Always "Bearer"
     pub expires_in: i64, // Token lifetime in seconds
 }
 

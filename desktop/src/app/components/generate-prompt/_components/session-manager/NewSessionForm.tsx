@@ -2,11 +2,8 @@
 
 import { Save } from "lucide-react";
 
-
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
-
-import type React from "react";
 
 interface NewSessionFormProps {
   sessionNameInput: string;
@@ -17,14 +14,14 @@ interface NewSessionFormProps {
   globalIsSwitching: boolean;
 }
 
-const NewSessionForm: React.FC<NewSessionFormProps> = ({
+const NewSessionForm = ({
   sessionNameInput,
   onSessionNameInputChange,
   onSave,
   isLoading,
   disabled,
   globalIsSwitching,
-}) => {
+}: NewSessionFormProps) => {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">

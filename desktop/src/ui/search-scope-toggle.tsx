@@ -1,12 +1,10 @@
 "use client";
 
 import { FileCheck, Files } from "lucide-react";
-
+import { FC } from "react";
 
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
-
-import type React from "react";
 
 interface SearchScopeToggleProps {
   searchSelectedFilesOnly: boolean;
@@ -18,7 +16,7 @@ interface SearchScopeToggleProps {
 /**
  * A segmented control toggle for switching between search scopes (all files vs selected files)
  */
-export const SearchScopeToggle: React.FC<SearchScopeToggleProps> = ({
+export const SearchScopeToggle: FC<SearchScopeToggleProps> = ({
   searchSelectedFilesOnly,
   onToggle,
   disabled = false,

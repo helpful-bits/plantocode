@@ -20,9 +20,6 @@ import { cn } from "@/utils/utils";
 
 import DirectoryBrowser from "./directory-browser";
 
-
-import type React from "react";
-
 enum ValidationType {
   Success = "success",
   Error = "error",

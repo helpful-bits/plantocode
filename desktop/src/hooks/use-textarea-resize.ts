@@ -2,7 +2,7 @@ import { useEffect, type RefObject, useCallback } from "react";
 
 // Hook to automatically resize a textarea based on its content
 export function useTextareaResize(
-  textareaRef: RefObject<HTMLTextAreaElement>,
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
   content: string,
   options: {
     minHeight?: number;

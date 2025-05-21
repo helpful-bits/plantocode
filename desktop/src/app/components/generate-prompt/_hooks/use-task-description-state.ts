@@ -16,7 +16,7 @@ import type { TaskDescriptionHandle } from "../_components/task-description";
 
 interface UseTaskDescriptionStateProps {
   activeSessionId: string | null;
-  taskDescriptionRef: React.RefObject<TaskDescriptionHandle>;
+  taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
   isSwitchingSession?: boolean;
   onInteraction?: () => void;
 }

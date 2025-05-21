@@ -38,7 +38,7 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
 
         // Log job status distribution for debugging
         const statusCounts = jobsToUse.reduce(
-          (acc, job) => {
+          (acc: Record<string, number>, job: BackgroundJob) => {
             acc[job.status] = (acc[job.status] || 0) + 1;
             return acc;
           },
@@ -79,22 +79,22 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
 
       // Active jobs - filter for status and sort by most recently updated
       const activeList = jobsToUse
-        .filter((job) => ACTIVE_STATUSES.includes(job.status))
-        .sort((a, b) =>
+        .filter((job: BackgroundJob) => ACTIVE_STATUSES.includes(job.status))
+        .sort((a: BackgroundJob, b: BackgroundJob) =>
           safeCompare(a, b, ["updatedAt", "startTime", "lastUpdate"])
         );
 
       // Completed jobs - filter for status and sort by most recently completed
       const completedList = jobsToUse
-        .filter((job) => COMPLETED_STATUSES.includes(job.status))
-        .sort((a, b) =>
+        .filter((job: BackgroundJob) => COMPLETED_STATUSES.includes(job.status))
+        .sort((a: BackgroundJob, b: BackgroundJob) =>
           safeCompare(a, b, ["endTime", "updatedAt", "lastUpdate"])
         );
 
       // Failed or canceled jobs - filter for status and sort by most recent
       const failedList = jobsToUse
-        .filter((job) => FAILED_STATUSES.includes(job.status))
-        .sort((a, b) =>
+        .filter((job: BackgroundJob) => FAILED_STATUSES.includes(job.status))
+        .sort((a: BackgroundJob, b: BackgroundJob) =>
           safeCompare(a, b, ["endTime", "updatedAt", "lastUpdate"])
         );
 

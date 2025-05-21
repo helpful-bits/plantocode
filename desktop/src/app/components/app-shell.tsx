@@ -9,8 +9,8 @@ import { isDesktopApp, isTauriEnvironment } from "@/utils/platform";
 
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
 
-import type React from "react";
 import { Suspense } from "react";
+import type { ReactNode } from "react";
 
 /**
  * AppShell component that conditionally renders either the initialization screen
@@ -18,7 +18,7 @@ import { Suspense } from "react";
  *
  * This component is designed to work in both web and desktop environments.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const { isAppInitializing } = useUILayout();
   const runningInDesktop = isDesktopApp() || isTauriEnvironment();
 

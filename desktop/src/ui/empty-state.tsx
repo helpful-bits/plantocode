@@ -1,9 +1,7 @@
 import { FolderOpen, Search, AlertCircle } from "lucide-react";
+import { ReactNode } from "react";
 
 import { Button } from "./button";
-
-import type React from "react";
-
 
 type EmptyStateVariant = "default" | "no-data" | "no-results" | "error";
 
@@ -11,7 +9,7 @@ interface EmptyStateProps {
   variant?: EmptyStateVariant;
   title: string;
   description?: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   actionText?: string;
   onAction?: () => void;
   secondaryActionText?: string;
@@ -30,7 +28,7 @@ interface EmptyStateProps {
  *
  * Includes support for primary and secondary actions
  */
-export const EmptyState: React.FC<EmptyStateProps> = ({
+export const EmptyState = ({
   variant = "default",
   title,
   description,
@@ -40,7 +38,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   secondaryActionText,
   onSecondaryAction,
   className = "",
-}) => {
+}: EmptyStateProps) => {
   // Default icons based on variant
   const getDefaultIcon = () => {
     switch (variant) {

@@ -6,7 +6,7 @@ import { type BackgroundJob } from "@/types/session-types";
 
 import { useOrchestratedBackgroundJobsState } from "./_hooks";
 
-import type React from "react";
+import type { ReactNode } from "react";
 
 export type BackgroundJobsContextType = {
   jobs: BackgroundJob[];
@@ -36,7 +36,7 @@ export const BackgroundJobsContext = createContext<BackgroundJobsContextType>({
 export function BackgroundJobsProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   // Use the orchestrated background jobs state hook to manage all job-related state and functions
   const {

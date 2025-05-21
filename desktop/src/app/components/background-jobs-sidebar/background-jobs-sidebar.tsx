@@ -1,5 +1,7 @@
 "use client";
 
+import { useContext } from "react";
+
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { SidebarHeader, StatusMessages } from "@/ui";
 import { Collapsible, CollapsibleContent } from "@/ui/collapsible";
@@ -10,12 +12,6 @@ import { useJobFiltering } from "./hooks/use-job-filtering";
 import { useSidebarStateManager } from "./hooks/use-sidebar-state-manager";
 import { JobDetailsModal } from "./job-details-modal";
 
-
-
-
-import type React from "react";
-import { useContext } from "react";
-
 /**
  * Background Jobs Sidebar component
  *
@@ -23,7 +19,7 @@ import { useContext } from "react";
  * including active, completed, and failed jobs. Allows users to view job details,
  * cancel active jobs, and manage job history.
  */
-export const BackgroundJobsSidebar: React.FC = () => {
+export const BackgroundJobsSidebar = () => {
   const { jobs, isLoading, error } = useContext(BackgroundJobsContext);
 
   // Use the extracted sidebar state manager hook

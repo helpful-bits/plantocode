@@ -28,37 +28,31 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
 
-    // Initialize configuration with Stronghold if available
-    info!("Initializing secure configuration storage...");
-    match app_handle.try_state::<tauri_plugin_stronghold::stronghold::Stronghold>() {
-        Some(stronghold) => {
-            // Initialize configuration with Stronghold
-            match crate::config::init_config(stronghold.inner()).await {
-                Ok(_) => info!("Application configuration initialized with Stronghold successfully"),
-                Err(e) => {
-                    warn!("Failed to initialize configuration with Stronghold: {}. Falling back to non-secure storage.", e);
-                    // Try the fallback method
-                    if let Err(e) = crate::config::init_config_without_stronghold().await {
-                        warn!("Failed to initialize configuration without Stronghold: {}. Some features may be limited.", e);
-                    }
-                }
-            }
-        },
-        None => {
-            warn!("Stronghold state not available for configuration. Using development fallback.");
-            // Use the non-Stronghold version
-            if let Err(e) = crate::config::init_config_without_stronghold().await {
-                warn!("Failed to initialize configuration without Stronghold: {}. Some features may be limited.", e);
-            } else {
-                info!("Successfully initialized with development configuration (without secure storage)");
-            }
-        }
+    // Initialize configuration
+    info!("Initializing configuration storage...");
+    if let Err(e) = crate::config::init_config().await {
+        warn!("Failed to initialize configuration: {}. Some features may be limited.", e);
+    } else {
+        info!("Secure token storage handled by keyring");
     }
 
     // Initialize API clients
     if let Err(e) = services::initialize_api_clients(app_handle).await {
         error!("API client initialization failed: {}", e);
         return Err(e);
+    }
+    
+    // Initialize TokenManager with keyring integration
+    // (this must come after API clients are initialized)
+    if let Some(token_manager) = app_handle.try_state::<std::sync::Arc<crate::auth::TokenManager>>() {
+        if let Err(e) = token_manager.init().await {
+            error!("TokenManager initialization with keyring failed: {}", e);
+            return Err(e);
+        }
+        info!("TokenManager initialized with keyring persistence");
+    } else {
+        error!("TokenManager not found in app state");
+        return Err(AppError::ConfigError("TokenManager not found in app state".to_string()));
     }
 
     // Initialize file lock manager

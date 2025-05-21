@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 
 import { type Session } from "@/types";
 
@@ -12,7 +12,7 @@ interface UseAutoSessionLoaderProps {
   loadSessionById: (sessionId: string) => Promise<void>;
   setAppInitializing: (initializing: boolean) => void;
   setSessionLoading: (loading: boolean) => void;
-  hasCompletedInitRef: React.MutableRefObject<boolean>;
+  hasCompletedInitRef: MutableRefObject<boolean>;
 }
 
 export function useAutoSessionLoader({

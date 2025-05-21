@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect } from "react";
 
-
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
@@ -119,7 +118,7 @@ function FileManagementContent({ hasSession }: FileManagementContentProps) {
           findFilesMode={
             fileState.findFilesMode === "replace" ? "ai" : "manual"
           }
-          setFindFilesMode={(mode) =>
+          setFindFilesMode={(mode: 'ai' | 'manual') =>
             fileState.setFindFilesMode(mode === "ai" ? "replace" : "extend")
           }
           searchSelectedFilesOnly={fileState.searchSelectedFilesOnly}

@@ -52,7 +52,7 @@ export function useSidebarStateManager(): SidebarManager {
   useEffect(() => {
     if (state.clearFeedback) {
       const timer = setTimeout(() => {
-        setState((prev) => ({ ...prev, clearFeedback: null }));
+        setState((prev: SidebarState) => ({ ...prev, clearFeedback: null }));
       }, 5000); // Show for 5 seconds
 
       return () => clearTimeout(timer);
@@ -75,12 +75,12 @@ export function useSidebarStateManager(): SidebarManager {
     if (refreshClickedRef.current || state.isRefreshing) return;
 
     refreshClickedRef.current = true;
-    setState((prev) => ({ ...prev, isRefreshing: true }));
+    setState((prev: SidebarState) => ({ ...prev, isRefreshing: true }));
 
     try {
       await refreshJobs();
     } finally {
-      setState((prev) => ({ ...prev, isRefreshing: false }));
+      setState((prev: SidebarState) => ({ ...prev, isRefreshing: false }));
       // Reset after a delay to prevent rapid clicks
       setTimeout(() => {
         refreshClickedRef.current = false;
@@ -110,7 +110,7 @@ export function useSidebarStateManager(): SidebarManager {
   // - When > 0: Hides jobs older than the specified number of days from view (marks as cleared=1)
   const handleClearHistory = useCallback(
     async (daysToKeep?: number) => {
-      setState((prev) => ({ ...prev, isClearing: true }));
+      setState((prev: SidebarState) => ({ ...prev, isClearing: true }));
 
       try {
         await clearHistory(daysToKeep);
@@ -123,15 +123,15 @@ export function useSidebarStateManager(): SidebarManager {
               ? "Jobs older than 90 days permanently deleted"
               : `Jobs older than ${daysToKeep} day${daysToKeep > 1 ? "s" : ""} have been hidden from view`;
 
-        setState((prev) => ({ ...prev, clearFeedback: feedbackMessage }));
+        setState((prev: SidebarState) => ({ ...prev, clearFeedback: feedbackMessage }));
       } catch (err) {
-        setState((prev) => ({
+        setState((prev: SidebarState) => ({
           ...prev,
           clearFeedback: "Error clearing jobs. Please try again.",
         }));
         console.error("[BackgroundJobsSidebar] Error clearing history:", err);
       } finally {
-        setState((prev) => ({ ...prev, isClearing: false }));
+        setState((prev: SidebarState) => ({ ...prev, isClearing: false }));
       }
     },
     [clearHistory]
@@ -140,7 +140,7 @@ export function useSidebarStateManager(): SidebarManager {
   // Handle job cancellation
   const handleCancelJob = useCallback(
     async (jobId: string) => {
-      setState((prev) => ({
+      setState((prev: SidebarState) => ({
         ...prev,
         isCancelling: { ...prev.isCancelling, [jobId]: true },
       }));
@@ -148,7 +148,7 @@ export function useSidebarStateManager(): SidebarManager {
       try {
         await cancelJob(jobId);
       } finally {
-        setState((prev) => ({
+        setState((prev: SidebarState) => ({
           ...prev,
           isCancelling: { ...prev.isCancelling, [jobId]: false },
         }));
@@ -159,18 +159,18 @@ export function useSidebarStateManager(): SidebarManager {
 
   // Handle sidebar collapse toggle
   const handleCollapseChange = useCallback((open: boolean) => {
-    setState((prev) => ({ ...prev, activeCollapsed: !open }));
+    setState((prev: SidebarState) => ({ ...prev, activeCollapsed: !open }));
     // This will trigger the useEffect which updates both CSS var and context
   }, []);
 
   // Handle selecting a job for details view
   const handleSelectJob = useCallback((job: BackgroundJob) => {
-    setState((prev) => ({ ...prev, selectedJob: job }));
+    setState((prev: SidebarState) => ({ ...prev, selectedJob: job }));
   }, []);
 
   // Set selected job (used for closing modal)
   const setSelectedJob = useCallback((job: BackgroundJob | null) => {
-    setState((prev) => ({ ...prev, selectedJob: job }));
+    setState((prev: SidebarState) => ({ ...prev, selectedJob: job }));
   }, []);
 
   return {

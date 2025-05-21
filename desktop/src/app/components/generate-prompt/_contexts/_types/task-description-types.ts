@@ -1,10 +1,10 @@
 import type { TaskDescriptionHandle } from "../../_components/task-description";
-import type React from "react";
+import type { RefObject } from "react";
 
 export interface TaskContextState {
   // Task description state
   taskDescription: string;
-  taskDescriptionRef: React.RefObject<TaskDescriptionHandle> | null;
+  taskDescriptionRef: RefObject<TaskDescriptionHandle | null>;
   isGeneratingGuidance: boolean;
   isImprovingText: boolean;
   textImprovementJobId: string | null;

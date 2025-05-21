@@ -69,7 +69,7 @@ impl PathFinderProcessor {
         
         // Parse XML response
         let mut reader = Reader::from_str(response_xml);
-        reader.trim_text(true);
+        reader.config_mut().trim_text(true);
         
         let mut buf = Vec::new();
         let mut current_element = String::new();

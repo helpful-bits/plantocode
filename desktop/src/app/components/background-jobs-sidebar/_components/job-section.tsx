@@ -5,8 +5,6 @@ import { type BackgroundJob } from "@/types/session-types";
 
 import { JobCard } from "../job-card";
 
-import type React from "react";
-
 interface JobSectionProps {
   title: string;
   jobs: BackgroundJob[];
@@ -18,13 +16,13 @@ interface JobSectionProps {
 /**
  * Component for rendering a section of jobs (active, completed, or failed)
  */
-export const JobSection: React.FC<JobSectionProps> = ({
+export const JobSection = ({
   title,
   jobs,
   handleCancel,
   isCancelling,
   onSelect,
-}) => {
+}: JobSectionProps) => {
   if (jobs.length === 0) return null;
 
   return (

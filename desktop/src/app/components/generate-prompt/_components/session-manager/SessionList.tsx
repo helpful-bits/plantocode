@@ -2,13 +2,10 @@
 
 import { Loader2, Pencil, Copy, Trash2, Check, X } from "lucide-react";
 
-
 import { type Session } from "@/types/session-types";
 import { AlertDialog, AlertDialogTrigger } from "@/ui/alert-dialog";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
-
-import type React from "react";
 
 interface SessionListProps {
   sessions: Session[];
@@ -27,7 +24,7 @@ interface SessionListProps {
   renderDeleteDialog: (sessionId: string, sessionName: string) => JSX.Element;
 }
 
-const SessionList: React.FC<SessionListProps> = ({
+const SessionList = ({
   sessions,
   activeSessionId,
   editingSessionId,
@@ -43,7 +40,7 @@ const SessionList: React.FC<SessionListProps> = ({
   disabled,
   globalIsSwitching,
   renderDeleteDialog,
-}) => {
+}: SessionListProps) => {
   if (isLoading && sessions.length === 0) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -156,7 +153,7 @@ const SessionList: React.FC<SessionListProps> = ({
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7 rounded-sm"
-                onClick={(e) => onCloneSession(session, e)}
+                onClick={(e: React.MouseEvent) => onCloneSession(session, e)}
                 title="Clone session"
                 isLoading={isLoading}
                 disabled={globalIsSwitching || disabled}
@@ -167,7 +164,7 @@ const SessionList: React.FC<SessionListProps> = ({
                 size="icon"
                 variant="ghost"
                 className="h-7 w-7 rounded-sm"
-                onClick={(e) => onStartEdit(session, e)}
+                onClick={(e: React.MouseEvent) => onStartEdit(session, e)}
                 title="Rename session"
                 disabled={globalIsSwitching || isLoading || disabled}
               >

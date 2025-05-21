@@ -11,7 +11,7 @@ import {
   type SessionActionsContextType,
 } from "./_types/session-context-types";
 
-import type React from "react";
+import type { ReactNode } from "react";
 
 const SessionStateContext = createContext<SessionStateContextType | null>(null);
 const SessionActionsContext = createContext<SessionActionsContextType | null>(
@@ -39,7 +39,7 @@ export function useSessionActionsContext(): SessionActionsContextType {
 }
 
 interface SessionProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function SessionProvider({ children }: SessionProviderProps) {

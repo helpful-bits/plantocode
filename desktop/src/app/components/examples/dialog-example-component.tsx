@@ -10,7 +10,7 @@ import {
   showWarning,
 } from "../../../utils/dialog-utils";
 
-import type React from "react";
+import { FC } from "react";
 
 
 interface ButtonProps {
@@ -18,7 +18,7 @@ interface ButtonProps {
   label: string;
 }
 
-const DialogButton: React.FC<ButtonProps> = ({ onClick, label }) => {
+const DialogButton: FC<ButtonProps> = ({ onClick, label }) => {
   const handleClick = async () => {
     try {
       await onClick();
@@ -37,7 +37,7 @@ const DialogButton: React.FC<ButtonProps> = ({ onClick, label }) => {
   );
 };
 
-export const DialogExampleComponent: React.FC = () => {
+export const DialogExampleComponent: FC = () => {
   const handleShowMessage = async () => {
     await showMessage("This is a simple message dialog.", "Information");
   };

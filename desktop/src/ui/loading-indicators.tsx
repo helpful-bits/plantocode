@@ -1,13 +1,12 @@
 import { Loader2 } from "lucide-react";
-
-import type React from "react";
+import { FC } from "react";
 
 // Note: GlobalLoadingIndicator has been moved to its own file: global-loading-indicator.tsx
 
 /**
  * Inline spinner component for use within buttons or form elements
  */
-export const Spinner: React.FC<{
+export const Spinner: FC<{
   className?: string;
   size?: "xs" | "sm" | "md" | "lg";
 }> = ({ className = "", size = "md" }) => {
