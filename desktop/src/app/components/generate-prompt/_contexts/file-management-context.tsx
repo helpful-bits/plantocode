@@ -50,7 +50,6 @@ export interface FileManagementContextValue {
     includedFiles: string[];
     forceExcludedFiles: string[];
     searchSelectedFilesOnly: boolean;
-    pastedPaths: string;
   };
 }
 

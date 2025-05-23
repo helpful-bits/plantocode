@@ -12,18 +12,23 @@ export function useAudioInputDevices() {
   // Enumerate available audio input devices
   useEffect(() => {
     const enumerateDevices = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter(
-          (device) => device.kind === "audioinput"
-        );
-        // eslint-disable-next-line no-console
-        console.log(
-          `[AudioDevices] Found ${audioInputs.length} audio input devices`
-        );
-        setAvailableAudioInputs(audioInputs);
-      } catch (error) {
-        console.error("[AudioDevices] Error enumerating media devices:", error);
+      if (navigator.mediaDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = devices.filter(
+            (device) => device.kind === "audioinput"
+          );
+          // eslint-disable-next-line no-console
+          console.log(
+            `[AudioDevices] Found ${audioInputs.length} audio input devices`
+          );
+          setAvailableAudioInputs(audioInputs);
+        } catch (error) {
+          console.error("[AudioDevices] Error enumerating media devices:", error);
+        }
+      } else {
+        console.error("[AudioDevices] MediaDevices API is not available.");
+        setAvailableAudioInputs([]);
       }
     };
 
@@ -39,30 +44,36 @@ export function useAudioInputDevices() {
 
   // Re-enumerate devices to ensure labels are populated after permissions
   const refreshDeviceList = useCallback(async () => {
-    try {
-      // Add a small delay to ensure browser has updated device information
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    if (navigator.mediaDevices) {
+      try {
+        // Add a small delay to ensure browser has updated device information
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(
-        (device) => device.kind === "audioinput"
-      );
-
-      // Log detailed device information for debugging
-      audioInputs.forEach((device, idx) => {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[AudioDevices] Device ${idx}: ID=${device.deviceId}, Label=${device.label}`
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(
+          (device) => device.kind === "audioinput"
         );
-      });
 
-      setAvailableAudioInputs(audioInputs);
-      return audioInputs;
-    } catch (error) {
-      console.error(
-        "[AudioDevices] Error re-enumerating devices after permission:",
-        error
-      );
+        // Log detailed device information for debugging
+        audioInputs.forEach((device, idx) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[AudioDevices] Device ${idx}: ID=${device.deviceId}, Label=${device.label}`
+          );
+        });
+
+        setAvailableAudioInputs(audioInputs);
+        return audioInputs;
+      } catch (error) {
+        console.error(
+          "[AudioDevices] Error re-enumerating devices after permission:",
+          error
+        );
+        return [];
+      }
+    } else {
+      console.error("[AudioDevices] MediaDevices API is not available.");
+      setAvailableAudioInputs([]);
       return [];
     }
   }, []);

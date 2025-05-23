@@ -16,11 +16,11 @@ pub struct AuthDataResponse {
     pub token: String, // This will be the application JWT
     pub token_type: String, // Always "Bearer"
     pub expires_in: i64, // Token lifetime in seconds
-    pub firebase_uid: Option<String>, // Added for the new auth flow
 }
 
 // Session model that matches the TypeScript Session interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id: String,
     pub name: String,
@@ -40,6 +40,29 @@ pub struct Session {
     pub updated_at: i64,
     pub included_files: Option<Vec<String>>,
     pub excluded_files: Option<Vec<String>>,
+}
+
+// Request struct for creating a session - only requires essential fields
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSessionRequest {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub project_directory: String,
+    pub project_hash: Option<String>,
+    pub task_description: Option<String>,
+    pub search_term: Option<String>,
+    pub title_regex: Option<String>,
+    pub content_regex: Option<String>,
+    pub negative_title_regex: Option<String>,
+    pub negative_content_regex: Option<String>,
+    pub is_regex_active: Option<bool>,
+    pub codebase_structure: Option<String>,
+    pub search_selected_files_only: Option<bool>,
+    pub model_used: Option<String>,
+    pub created_at: Option<i64>,
+    pub included_files: Option<Vec<String>>,
+    pub force_excluded_files: Option<Vec<String>>,
 }
 
 // Job status enum that matches the SQL schema CHECK constraint
@@ -398,6 +421,7 @@ pub struct DirectoryInfo {
     pub is_accessible: bool,
 }
 
+
 // File statistic information for list_files_command
 // Note: 'path' is expected to be relative to the queried directory
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -471,10 +495,12 @@ pub struct ModelInfo {
     pub description: Option<String>,
     #[serde(default)]
     pub context_window: Option<u32>,
+    pub price_per_input_token: f64,
+    pub price_per_output_token: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeAiConfig {
+pub struct RuntimeAIConfig {
     pub default_llm_model_id: String,
     pub default_voice_model_id: String,
     pub default_transcription_model_id: String,
@@ -541,7 +567,7 @@ pub struct Settings {
     pub recent_directories: Option<Vec<String>>,
     
     // AI models configuration
-    pub api_options: Option<RuntimeAiConfig>,
+    pub api_options: Option<RuntimeAIConfig>,
     
     // UI preferences
     pub sidebar_width: Option<i32>,

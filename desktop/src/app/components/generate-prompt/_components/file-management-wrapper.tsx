@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 
 import { useFileManagement } from "../_contexts/file-management-context";
 
@@ -22,7 +22,16 @@ function FileManagementWrapper({
 }: FileManagementWrapperProps) {
   // Verify context is available - will throw if used outside of FileManagementProvider
   // Just verify the context is available by calling the hook
-  useFileManagement();
+  const fileManagementState = useFileManagement();
+  
+  // Auto-initialize file list when component mounts with valid session
+  useEffect(() => {
+    if (projectDirectory && hasSession && !fileManagementState.isInitialized && !fileManagementState.isLoadingFiles) {
+      fileManagementState.refreshFiles().catch(() => {
+        // Error handled by the hook
+      });
+    }
+  }, [projectDirectory, hasSession, fileManagementState.isInitialized, fileManagementState.isLoadingFiles, fileManagementState.refreshFiles]);
   
   // Return null when no project directory exists
   if (!projectDirectory) return null;

@@ -29,40 +29,23 @@ export async function createSessionAction(
       };
     }
 
-    // Ensure session data has required fields for creation
-    const completeSessionData = {
+    // The backend now handles all defaults, so we only need to pass what we have
+    const sessionRequest = {
       ...sessionData,
-      id:
-        sessionData.id ||
-        `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      name: sessionData.name || "Untitled Session",
-      taskDescription: sessionData.taskDescription || "",
-      searchTerm: sessionData.searchTerm || "",
-      titleRegex: sessionData.titleRegex || "",
-      contentRegex: sessionData.contentRegex || "",
-      negativeTitleRegex: sessionData.negativeTitleRegex || "",
-      negativeContentRegex: sessionData.negativeContentRegex || "",
-      isRegexActive:
-        sessionData.isRegexActive !== undefined
-          ? sessionData.isRegexActive
-          : true,
-      codebaseStructure: sessionData.codebaseStructure || "",
-      includedFiles: sessionData.includedFiles || [],
-      forceExcludedFiles: sessionData.forceExcludedFiles || [],
-      searchSelectedFilesOnly:
-        sessionData.searchSelectedFilesOnly !== undefined
-          ? sessionData.searchSelectedFilesOnly
-          : false,
-      createdAt: sessionData.createdAt || Date.now(),
-      modelUsed: sessionData.modelUsed || "gemini-2.5-flash-preview-04-17",
-      // Add projectHash if it's missing
-      projectHash:
-        sessionData.projectHash || hashString(sessionData.projectDirectory),
-    } as Session;
+      projectDirectory: sessionData.projectDirectory,
+    };
+
+    // Log the data being sent to Tauri for debugging
+    if (DEBUG_LOGS) {
+      console.log("[createSessionAction] Sending to Tauri:", {
+        projectDirectory: sessionRequest.projectDirectory,
+        hasAllRequiredFields: !!sessionRequest.projectDirectory,
+      });
+    }
 
     // Create the session using the Tauri command
     const session = await invoke<Session>("create_session_command", {
-      sessionData: completeSessionData,
+      sessionData: sessionRequest,
     });
 
     if (!session) {

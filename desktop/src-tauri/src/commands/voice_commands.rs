@@ -31,9 +31,18 @@ pub struct TranscribeAudioResponse {
 /// Transcribes audio data to text using OpenRouter's transcription API
 #[command]
 pub async fn create_transcription_job_command(
+    session_id: String,
+    audio_data: String,
+    filename: Option<String>,
+    project_directory: Option<String>,
     app_handle: AppHandle,
-    args: TranscribeAudioArgs,
 ) -> AppResult<TranscribeAudioResponse> {
+    let args = TranscribeAudioArgs {
+        session_id,
+        audio_data,
+        filename,
+        project_directory,
+    };
     info!("Creating audio transcription job");
     
     // Validate required fields
@@ -140,9 +149,20 @@ pub struct CorrectTranscriptionResponse {
 /// Corrects a transcription, typically after voice-to-text conversion
 #[command]
 pub async fn correct_transcription_command(
+    session_id: String,
+    text_to_correct: String,
+    language: String,
+    original_job_id: Option<String>,
+    project_directory: Option<String>,
     app_handle: AppHandle,
-    args: CorrectTranscriptionArgs,
 ) -> AppResult<CorrectTranscriptionResponse> {
+    let args = CorrectTranscriptionArgs {
+        session_id,
+        text_to_correct,
+        language,
+        original_job_id,
+        project_directory,
+    };
     info!("Creating transcription correction job");
     
     // Validate required fields
@@ -251,9 +271,16 @@ pub struct DirectTranscribeAudioResponse {
 /// This is designed to be used by the TypeScript OpenRouterClientAdapter
 #[command]
 pub async fn transcribe_audio_direct_command(
+    audio_data: Vec<u8>,
+    filename: String,
+    model: String,
     app_handle: AppHandle,
-    args: DirectTranscribeAudioArgs,
 ) -> AppResult<DirectTranscribeAudioResponse> {
+    let args = DirectTranscribeAudioArgs {
+        audio_data,
+        filename,
+        model,
+    };
     info!("Directly transcribing audio without background job using server proxy");
     
     // Validate required fields

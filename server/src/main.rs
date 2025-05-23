@@ -18,7 +18,7 @@ mod config;
 mod security;
 mod utils;
 
-use crate::auth_stores::{PollingStore, StateStore};
+use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
 use crate::db::connection::{create_pool, verify_connection};
@@ -26,10 +26,10 @@ use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, Sett
 use crate::middleware::SecureAuthentication;
 use crate::models::runtime_config::AppState;
 use crate::services::auth::jwt;
-use crate::services::auth::oauth::FirebaseOAuthService;
+use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::proxy_service::ProxyService;
-use crate::routes::{configure_routes, configure_hybrid_auth_api_routes};
+use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -110,9 +110,9 @@ async fn main() -> std::io::Result<()> {
     app_settings.ai_models = loaded_ai_model_settings;
     log::info!("Application settings updated with database-loaded AI model settings");
     
-    // Initialize Firebase OAuth service
-    let firebase_oauth_service = FirebaseOAuthService::new(&app_settings, db_pool.clone());
-    log::info!("Firebase OAuth service initialized successfully");
+    // Initialize Auth0 OAuth service
+    let auth0_oauth_service = Auth0OAuthService::new(&app_settings, db_pool.clone());
+    log::info!("Auth0 OAuth service initialized successfully");
     
     // Get server host and port from settings
     let host = &app_settings.server.host;
@@ -140,11 +140,11 @@ async fn main() -> std::io::Result<()> {
     
     // Initialize auth stores
     let polling_store = PollingStore::default();
-    let state_store = StateStore::default();
+    let auth0_state_store = Auth0StateStore::default();
     
     // Start cleanup task for polling store
-    store_utils::start_cleanup_task(polling_store.clone());
-    log::info!("Polling store cleanup task started");
+    store_utils::start_cleanup_task(polling_store.clone(), auth0_state_store.clone());
+    log::info!("Polling store and Auth0 state store cleanup tasks started");
     
     // Initialize reqwest HTTP client
     let http_client = reqwest::Client::new();
@@ -153,20 +153,20 @@ async fn main() -> std::io::Result<()> {
         // Clone the data for the factory closure
         let db_pool = db_pool.clone();
         let app_settings = app_settings.clone();
-        let firebase_oauth_service = web::Data::new(firebase_oauth_service.clone());
+        let auth0_oauth_service = web::Data::new(auth0_oauth_service.clone());
         let tera = web::Data::new(tera.clone());
         let polling_store = web::Data::new(polling_store.clone());
-        let state_store = web::Data::new(state_store.clone());
+        let auth0_state_store = web::Data::new(auth0_state_store.clone());
         let http_client = web::Data::new(http_client.clone());
         
         // Initialize repositories
         let api_usage_repository = ApiUsageRepository::new(db_pool.clone());
         
         // Initialize services
-        let billing_service = std::sync::Arc::new(BillingService::new(db_pool.clone(), app_settings.clone()));
+        let billing_service = BillingService::new(db_pool.clone(), app_settings.clone());
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let proxy_service = match ProxyService::new(
-            billing_service.clone(),
+            std::sync::Arc::new(billing_service.clone()),
             api_usage_repository.clone(),
             &app_settings
         ) {
@@ -222,33 +222,32 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .wrap(cors)
-            .app_data(web::Data::new(app_settings.clone()))
+            .app_data(web::Data::new(std::sync::Arc::new(std::sync::RwLock::new(app_settings.clone()))))
             .app_data(web::Data::new(db_pool.clone()))
-            .app_data(firebase_oauth_service)
-            .app_data(billing_service.clone())
+            .app_data(auth0_oauth_service)
+            .app_data(web::Data::new(billing_service.clone()))
             .app_data(proxy_service.clone())
             .app_data(app_state.clone())
             .app_data(tera.clone())
             .app_data(polling_store.clone())
-            .app_data(state_store.clone())
+            .app_data(auth0_state_store.clone())
             .app_data(http_client.clone())
             .app_data(web::Data::new(user_repository.clone()))
+            .app_data(web::Data::new(app_state.model_repository.clone()))
+            
             // Register health check endpoint without auth
             .service(
                 web::resource("/health")
                     .route(web::get().to(handlers::health::health_check))
             )
-            // Public auth routes
+            // Public auth routes (no /api prefix)
             .service(
                 web::scope("/auth")
-                    .configure(routes::configure_public_auth_routes)
+                    .configure(configure_public_auth_routes)
             )
-            // Public API routes for hybrid auth (no authentication)
-            .service(
-                web::scope("/api")
-                    .configure(configure_hybrid_auth_api_routes)
-            )
-            // Protected API routes with authentication
+            // Public config and auth0 routes (no /api prefix, no authentication)
+            .configure(configure_public_api_routes)
+            // Protected API routes with authentication (under /api)
             .service(
                 web::scope("/api")
                     .wrap(SecureAuthentication)
@@ -257,7 +256,7 @@ async fn main() -> std::io::Result<()> {
             // Public webhook routes (no authentication)
             .service(
                 web::scope("/webhooks")
-                    .configure(routes::configure_webhook_routes)
+                    .configure(configure_webhook_routes)
             )
     })
     .listen(listener)?

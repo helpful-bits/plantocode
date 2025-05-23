@@ -1,13 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect } from "react";
+import React from "react";
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
-import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
-import { useTaskContext } from "../_contexts/task-context";
-import { useFileContentLoader } from "../_hooks/use-file-content-loader";
-import { usePromptTemplating } from "../_hooks/use-prompt-templating";
 import ActionsSection from "../_sections/actions-section";
 import FileSection from "../_sections/file-section";
 import TaskSection from "../_sections/task-section";
@@ -26,78 +22,11 @@ interface FileManagementContentProps {
 function FileManagementContent({ hasSession }: FileManagementContentProps) {
   // Access contexts directly
   const fileState = useFileManagement();
-  const {
-    display: displayState,
-  } = useGeneratePrompt();
+  // Note: regex errors are not currently exposed in the new context structure
+  // For now, we pass null to ActionsSection for regex error props
 
   // Get task data from context
-  const taskContext = useTaskContext();
   const coreContext = useCorePromptContext();
-
-  // Create task section state from contexts
-
-  // Import the session actions context
-  // const sessionActions = useSessionActionsContext(); - Not used
-
-  // Use our new hooks
-  const fileContentLoader = useFileContentLoader({
-    allFilesMap: fileState.managedFilesMap,
-    fileContentsMap: fileState.fileContentsMap,
-    projectDirectory: coreContext.state.projectDirectory || "",
-    pastedPaths: displayState.pastedPaths || "",
-  });
-
-  const promptTemplating = usePromptTemplating({
-    taskDescription: taskContext.state.taskDescription || "",
-    relevantFiles: fileContentLoader.filesToUse,
-    fileContents: fileContentLoader.currentFileContents,
-    projectDirectory: coreContext.state.projectDirectory || "",
-  });
-
-  // Connect file content loader with existing UI state
-  useEffect(() => {
-    if (displayState.externalPathWarnings !== fileContentLoader.warnings) {
-      displayState.setExternalPathWarnings(fileContentLoader.warnings);
-    }
-  }, [fileContentLoader.warnings, displayState]);
-
-  // Connect prompt templating with existing UI state
-  useEffect(() => {
-    if (displayState.prompt !== promptTemplating.prompt) {
-      displayState.setPrompt(promptTemplating.prompt);
-    }
-    if (displayState.tokenCount !== promptTemplating.tokenCount) {
-      displayState.setTokenCount(promptTemplating.tokenCount);
-    }
-    if (displayState.error !== promptTemplating.error) {
-      displayState.setError(promptTemplating.error);
-    }
-  }, [
-    promptTemplating.prompt,
-    promptTemplating.tokenCount,
-    promptTemplating.error,
-    displayState,
-  ]);
-
-  // Handle generate prompt action
-  const handleGeneratePrompt = useCallback(async () => {
-    await fileContentLoader.loadFileContents();
-    await promptTemplating.generatePrompt();
-  }, [fileContentLoader, promptTemplating]);
-
-  // Connect generate prompt to existing UI action
-  useEffect(() => {
-    if (displayState.generatePrompt !== handleGeneratePrompt) {
-      displayState.setGeneratePrompt(handleGeneratePrompt);
-    }
-  }, [handleGeneratePrompt, displayState]);
-
-  // Connect copy prompt to existing UI action
-  useEffect(() => {
-    if (displayState.copyPrompt !== promptTemplating.copyPrompt) {
-      displayState.setCopyPrompt(promptTemplating.copyPrompt);
-    }
-  }, [promptTemplating.copyPrompt, displayState]);
 
   return (
     <>

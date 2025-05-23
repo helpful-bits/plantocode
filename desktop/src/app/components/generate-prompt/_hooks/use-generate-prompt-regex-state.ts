@@ -51,7 +51,7 @@ export function useGeneratePromptRegexState({
     generatingRegexJobId,
     regexGenerationError,
     handleGenerateRegexFromTask: baseHandleGenerateRegexFromTask,
-    applyRegexPatterns,
+    applyRegexPatterns: baseApplyRegexPatterns,
     handleClearPatterns: baseClearPatterns,
   } = useRegexState({
     initialTitleRegex: titleRegex,
@@ -79,6 +79,24 @@ export function useGeneratePromptRegexState({
     }
     return baseClearPatterns();
   }, [baseClearPatterns, handleInteraction]);
+
+  // Create an adapter for applyRegexPatterns to match the expected interface
+  const applyRegexPatterns = useCallback((patterns: {
+    titleRegex?: string;
+    contentRegex?: string;
+    negativeTitleRegex?: string;
+    negativeContentRegex?: string;
+  }) => {
+    if (handleInteraction) {
+      handleInteraction();
+    }
+    baseApplyRegexPatterns({
+      titlePattern: patterns.titleRegex,
+      contentPattern: patterns.contentRegex,
+      negativeTitlePattern: patterns.negativeTitleRegex,
+      negativeContentPattern: patterns.negativeContentRegex,
+    });
+  }, [baseApplyRegexPatterns, handleInteraction]);
 
   // Create a reset function to clear all regex patterns
   const reset = useCallback(() => {
@@ -111,6 +129,13 @@ export function useGeneratePromptRegexState({
     negativeTitleRegex,
     negativeContentRegex,
     isRegexActive,
+    
+    // Regex setters (passed from props)
+    setTitleRegex,
+    setContentRegex,
+    setNegativeTitleRegex,
+    setNegativeContentRegex,
+    setIsRegexActive,
     
     // Regex actions
     handleGenerateRegexFromTask,

@@ -1,7 +1,8 @@
-use actix_web::{web, HttpResponse, post, http::header, HttpRequest, HttpMessage};
+use actix_web::{web, HttpResponse, post, http::header, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::proxy_service::ProxyService;
+use crate::middleware::secure_auth::UserId;
 use futures_util::StreamExt;
 use actix_multipart::Multipart;
 use tracing::{debug, error, info, instrument};
@@ -17,15 +18,13 @@ pub struct ProxyRequest {
 /// OpenRouter Chat Completions Proxy - handles both streaming and non-streaming
 #[post("/openrouter/chat/completions")]
 pub async fn openrouter_chat_completions_proxy(
-    req: HttpRequest,
+    user_id: UserId,
     proxy_service: web::Data<ProxyService>,
     body: web::Json<ProxyRequest>,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
     
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<uuid::Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
-    debug!("OpenRouter chat completions request from user: {}", user_id);
+    debug!("OpenRouter chat completions request from user: {}", user_id.0);
     
     let payload = body.into_inner().payload;
     
@@ -39,7 +38,7 @@ pub async fn openrouter_chat_completions_proxy(
         let proxy_arc = Arc::clone(&proxy_service);
         
         // Handle streaming request
-        let stream = proxy_arc.forward_chat_completions_stream_request(user_id, payload).await?;
+        let stream = proxy_arc.forward_chat_completions_stream_request(user_id.0, payload).await?;
         
         // Log initiation
         info!("OpenRouter streaming chat completions initiated in {:?}", start.elapsed());
@@ -52,7 +51,7 @@ pub async fn openrouter_chat_completions_proxy(
             .streaming(stream))
     } else {
         // Handle non-streaming request
-        let result = proxy_service.forward_chat_completions_request(&user_id, payload).await?;
+        let result = proxy_service.forward_chat_completions_request(&user_id.0, payload).await?;
         
         // Log request duration
         let duration = start.elapsed();
@@ -66,15 +65,13 @@ pub async fn openrouter_chat_completions_proxy(
 /// OpenRouter Transcription API proxy
 #[post("/openrouter/audio/transcriptions")]
 pub async fn openrouter_audio_transcriptions_proxy(
-    req: HttpRequest,
+    user_id: UserId,
     proxy_service: web::Data<ProxyService>,
     payload: Multipart,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
     
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<uuid::Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
-    debug!("OpenRouter audio transcription request from user: {}", user_id);
+    debug!("OpenRouter audio transcription request from user: {}", user_id.0);
     
     // Process the multipart form data to extract the audio file and model
     let mut audio_data = Vec::new();
@@ -133,7 +130,7 @@ pub async fn openrouter_audio_transcriptions_proxy(
     
     // Forward the transcription request to the proxy service
     let result = proxy_service.forward_transcription_request(
-        &user_id, 
+        &user_id.0, 
         &audio_data, 
         &filename, 
         &model
@@ -154,6 +151,7 @@ pub async fn openrouter_audio_transcriptions_proxy(
 /// X-Model-Id header or from the request payload.
 #[instrument(skip(req, proxy_service, body))]
 pub async fn ai_proxy_endpoint(
+    user_id: UserId,
     req: HttpRequest,
     proxy_service: web::Data<ProxyService>,
     path: web::Path<String>,
@@ -163,10 +161,6 @@ pub async fn ai_proxy_endpoint(
     
     // Get the endpoint from the path
     let endpoint = path.into_inner();
-    
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<uuid::Uuid>().cloned()
-        .ok_or(AppError::Auth("Unauthorized".to_string()))?;
     
     // Get the model ID from the X-Model-Id header or from the request payload
     let model_id = req.headers()
@@ -180,7 +174,7 @@ pub async fn ai_proxy_endpoint(
         })
         .unwrap_or_else(|| "anthropic/claude-3-sonnet".to_string());
     
-    info!("AI proxy request: endpoint={}, model={}, user_id={}", endpoint, model_id, user_id);
+    info!("AI proxy request: endpoint={}, model={}, user_id={}", endpoint, model_id, user_id.0);
     
     // Get the request payload
     let payload = body.into_inner();
@@ -201,7 +195,7 @@ pub async fn ai_proxy_endpoint(
                 let mut new_payload = payload.clone();
                 new_payload["model"] = serde_json::Value::String(model_id.clone());
                 
-                let stream = proxy_arc.forward_chat_completions_stream_request(user_id, new_payload).await?;
+                let stream = proxy_arc.forward_chat_completions_stream_request(user_id.0, new_payload).await?;
                 
                 info!("AI proxy streaming request initiated in {:?}", start.elapsed());
                 
@@ -216,7 +210,7 @@ pub async fn ai_proxy_endpoint(
                 let mut new_payload = payload.clone();
                 new_payload["model"] = serde_json::Value::String(model_id.clone());
                 
-                let result = proxy_service.forward_chat_completions_request(&user_id, new_payload).await?;
+                let result = proxy_service.forward_chat_completions_request(&user_id.0, new_payload).await?;
                 
                 info!("AI proxy request completed in {:?}", start.elapsed());
                 

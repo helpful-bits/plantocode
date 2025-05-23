@@ -62,14 +62,14 @@ pub struct DeleteBackgroundJobArgs {
 }
 
 #[command]
-pub async fn delete_background_job_command(args: DeleteBackgroundJobArgs, app_handle: AppHandle) -> AppResult<()> {
-    info!("Deleting background job: {}", args.job_id);
+pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle) -> AppResult<()> {
+    info!("Deleting background job: {}", job_id);
 
     let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
-    repo.delete_job(&args.job_id)
+    repo.delete_job(&job_id)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))
 }
@@ -80,14 +80,14 @@ pub struct CancelJobArgs {
 }
 
 #[command]
-pub async fn cancel_background_job_command(args: CancelJobArgs, app_handle: AppHandle) -> AppResult<()> {
-    info!("Cancelling background job: {}", args.job_id);
+pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle) -> AppResult<()> {
+    info!("Cancelling background job: {}", job_id);
 
     let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
         .inner()
         .clone();
 
-    repo.cancel_job(&args.job_id)
+    repo.cancel_job(&job_id)
         .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel job: {}", e)))?;
 
@@ -100,8 +100,8 @@ pub struct CancelSessionJobsArgs {
 }
 
 #[command]
-pub async fn cancel_session_jobs_command(args: CancelSessionJobsArgs, app_handle: AppHandle) -> AppResult<usize> {
-    info!("Cancelling all jobs for session: {}", args.session_id);
+pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHandle) -> AppResult<usize> {
+    info!("Cancelling all jobs for session: {}", session_id);
 
     // Get the repository
     let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
@@ -111,8 +111,8 @@ pub async fn cancel_session_jobs_command(args: CancelSessionJobsArgs, app_handle
     // Cancel jobs in the in-memory queue
     match crate::jobs::queue::get_job_queue().await {
         Ok(queue) => {
-            match queue.cancel_session_jobs(args.session_id.clone()).await {
-                Ok(count) => info!("Removed {} jobs from queue for session {}", count, args.session_id),
+            match queue.cancel_session_jobs(session_id.clone()).await {
+                Ok(count) => info!("Removed {} jobs from queue for session {}", count, session_id),
                 Err(e) => info!("Failed to cancel session jobs in queue: {}. Proceeding with DB update.", e),
             }
         },
@@ -122,7 +122,7 @@ pub async fn cancel_session_jobs_command(args: CancelSessionJobsArgs, app_handle
     }
 
     // Cancel jobs in the database
-    let updated_count = repo.cancel_session_jobs(&args.session_id)
+    let updated_count = repo.cancel_session_jobs(&session_id)
         .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel session jobs in database: {}", e)))?;
 

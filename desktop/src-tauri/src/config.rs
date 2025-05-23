@@ -21,7 +21,7 @@ impl Default for RuntimeConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub runtime_ai_config: Option<crate::models::RuntimeAiConfig>,
+    pub runtime_ai_config: Option<crate::models::RuntimeAIConfig>,
 }
 
 // Global configuration with RwLock for thread-safe access
@@ -46,10 +46,10 @@ pub async fn init_config() -> Result<(), String> {
 
 // Model configuration helper functions
 use crate::error::{AppResult, AppError};
-use crate::models::{TaskType, RuntimeAiConfig};
+use crate::models::{TaskType, RuntimeAIConfig};
 
 // Update runtime AI configuration
-pub fn update_runtime_ai_config(new_config: RuntimeAiConfig) -> AppResult<()> {
+pub fn update_runtime_ai_config(new_config: RuntimeAIConfig) -> AppResult<()> {
     let mut config = CONFIG.write().map_err(|e| AppError::InternalError(format!("Failed to acquire write lock: {}", e)))?;
     config.runtime_ai_config = Some(new_config);
     info!("Runtime AI configuration updated");
@@ -57,7 +57,7 @@ pub fn update_runtime_ai_config(new_config: RuntimeAiConfig) -> AppResult<()> {
 }
 
 // Get the runtime AI configuration
-pub fn get_runtime_ai_config() -> AppResult<Option<RuntimeAiConfig>> {
+pub fn get_runtime_ai_config() -> AppResult<Option<RuntimeAIConfig>> {
     let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     Ok(config.runtime_ai_config.clone())
 }

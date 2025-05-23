@@ -54,7 +54,15 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::implementation_plan_commands::create_implementation_plan_command(
-                app_handle.clone(), impl_plan_args
+                impl_plan_args.session_id,
+                impl_plan_args.task_description,
+                impl_plan_args.project_directory,
+                impl_plan_args.relevant_files,
+                impl_plan_args.project_structure,
+                impl_plan_args.model,
+                impl_plan_args.temperature,
+                impl_plan_args.max_tokens,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();
@@ -86,7 +94,14 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::path_finding_commands::find_relevant_files_command(
-                app_handle.clone(), path_finder_args
+                path_finder_args.session_id,
+                path_finder_args.task_description,
+                path_finder_args.project_directory,
+                path_finder_args.model_override,
+                path_finder_args.temperature_override,
+                path_finder_args.max_tokens_override,
+                path_finder_args.options,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();
@@ -118,7 +133,16 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::text_commands::improve_text_command(
-                app_handle.clone(), improve_text_args
+                improve_text_args.session_id,
+                improve_text_args.text,
+                improve_text_args.improvement_type,
+                improve_text_args.language,
+                improve_text_args.project_directory,
+                improve_text_args.model_override,
+                improve_text_args.temperature_override,
+                improve_text_args.max_tokens_override,
+                improve_text_args.target_field,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();
@@ -150,7 +174,11 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::voice_commands::create_transcription_job_command(
-                app_handle.clone(), transcribe_args
+                transcribe_args.session_id,
+                transcribe_args.audio_data,
+                transcribe_args.filename,
+                transcribe_args.project_directory,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();
@@ -182,7 +210,12 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::voice_commands::correct_transcription_command(
-                app_handle.clone(), correct_args
+                correct_args.session_id,
+                correct_args.text_to_correct,
+                correct_args.language,
+                correct_args.original_job_id,
+                correct_args.project_directory,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();
@@ -214,7 +247,15 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::regex_commands::generate_regex_command(
-                regex_args, app_handle.clone()
+                regex_args.session_id,
+                regex_args.project_directory,
+                regex_args.description,
+                regex_args.examples,
+                regex_args.target_language,
+                regex_args.model_override,
+                regex_args.temperature_override,
+                regex_args.max_tokens_override,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();
@@ -246,7 +287,16 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             
             // Call the Tauri command directly
             match crate::commands::guidance_commands::generate_guidance_command(
-                guidance_args, app_handle.clone()
+                guidance_args.session_id,
+                guidance_args.project_directory,
+                guidance_args.task_description,
+                guidance_args.paths,
+                guidance_args.file_contents_summary,
+                guidance_args.system_prompt_override,
+                guidance_args.model_override,
+                guidance_args.temperature_override,
+                guidance_args.max_tokens_override,
+                app_handle.clone()
             ).await {
                 Ok(result) => {
                     let mut headers = HashMap::new();

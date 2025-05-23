@@ -1,30 +1,44 @@
 use tauri::{AppHandle, Manager};
 use crate::error::AppResult;
-use crate::models::Session;
+use crate::models::{Session, CreateSessionRequest};
 use serde_json::Value;
 use crate::utils::hash_utils::hash_string;
 use std::sync::Arc;
 
 /// Create a new session in the database
 #[tauri::command]
-pub async fn create_session_command(app_handle: AppHandle, session_data: Session) -> AppResult<Session> {
+pub async fn create_session_command(app_handle: AppHandle, session_data: CreateSessionRequest) -> AppResult<Session> {
     let repo = app_handle.state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
         .inner()
         .clone();
 
-    // Calculate project_hash if not provided
-    let mut session = session_data;
-    if session.project_hash.is_empty() {
-        session.project_hash = hash_string(&session.project_directory);
-    }
-
-    // Set created_at if not provided
-    if session.created_at == 0 {
-        session.created_at = chrono::Utc::now().timestamp_millis();
-    }
-
-    // Set updated_at
-    session.updated_at = chrono::Utc::now().timestamp_millis();
+    let now = chrono::Utc::now().timestamp_millis();
+    
+    // Build the complete session with defaults
+    let session = Session {
+        id: session_data.id.unwrap_or_else(|| {
+            format!("session_{}_{}", now, uuid::Uuid::new_v4().to_string())
+        }),
+        name: session_data.name.unwrap_or_else(|| "Untitled Session".to_string()),
+        project_directory: session_data.project_directory.clone(),
+        project_hash: session_data.project_hash.unwrap_or_else(|| {
+            hash_string(&session_data.project_directory)
+        }),
+        task_description: session_data.task_description,
+        search_term: session_data.search_term,
+        title_regex: session_data.title_regex,
+        content_regex: session_data.content_regex,
+        negative_title_regex: session_data.negative_title_regex,
+        negative_content_regex: session_data.negative_content_regex,
+        is_regex_active: session_data.is_regex_active.unwrap_or(true),
+        codebase_structure: session_data.codebase_structure,
+        search_selected_files_only: session_data.search_selected_files_only.unwrap_or(false),
+        model_used: session_data.model_used,
+        created_at: session_data.created_at.unwrap_or(now),
+        updated_at: now,
+        included_files: session_data.included_files,
+        excluded_files: session_data.force_excluded_files,
+    };
 
     // Create the session
     repo.create_session(&session).await?;

@@ -7,15 +7,19 @@ use crate::models::{FetchRequestArgs, FetchResponse, StreamRequestArgs};
 use reqwest::Client;
 use tokio::sync::Mutex;
 use std::sync::Arc;
+use std::collections::HashMap;
 use futures::StreamExt;
 
 #[command]
-pub async fn handle_fetch_request(args: FetchRequestArgs, app_handle: AppHandle) -> AppResult<FetchResponse> {
+pub async fn handle_fetch_request(method: String, headers: Option<HashMap<String, String>>, body: Option<serde_json::Value>, url: String, app_handle: AppHandle) -> AppResult<FetchResponse> {
     // Parse the URL to extract the command from the path
-    let url_parts: Vec<&str> = args.url.split('/').collect();
+    let url_parts: Vec<&str> = url.split('/').collect();
     let command = url_parts.last().unwrap_or(&"unknown").to_string();
     
-    info!("Handling fetch request: {} {}", args.method, args.url);
+    info!("Handling fetch request: {} {}", method, url);
+    
+    // Create args struct for service call
+    let args = FetchRequestArgs { method, headers, body, url };
     
     // Call the command handler service
     handle_command(command, args, app_handle).await

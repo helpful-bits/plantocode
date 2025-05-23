@@ -3,7 +3,7 @@
  *
  * This component serves as the entry point for the desktop application.
  * It wraps the core app with desktop-specific functionality:
- * - Authentication via Firebase
+ * - Authentication via Auth0
  * - Database access via Tauri SQLite
  * - API access via server proxying
  * - Subscription management
@@ -13,7 +13,6 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/app/components/app-shell";
 import { AuthFlowManager } from "@/app/components/auth/auth-flow-manager";
-import SubscriptionManager from "@/app/components/billing/subscription-manager";
 import { ProvidersWrapper } from "@/app/components/providers-wrapper";
 import { ThemeProvider } from "@/app/components/theme-provider";
 import CoreHomePage from "@/app/page";
@@ -89,10 +88,6 @@ export default function App() {
                   <AppShell>
                     {/* Core Home Page */}
                     <CoreHomePage />
-                    {/* Subscription Manager (fixed position) */}
-                    <div className="fixed top-4 right-4 z-50 w-80">
-                      <SubscriptionManager />
-                    </div>
                   </AppShell>
                   {/* Toaster needs to be within ProvidersWrapper to access notification context */}
                   <Toaster />

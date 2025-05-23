@@ -31,9 +31,17 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
         .map_err(|e| AppError::JobError(format!("Failed to parse job metadata: {}", e)))?;
 
     // Extract jobPayloadForWorker field
-    let payload_json = metadata_json.get("jobPayloadForWorker").ok_or_else(|| 
+    let payload_str = metadata_json.get("jobPayloadForWorker").ok_or_else(|| 
         AppError::JobError("jobPayloadForWorker not found in metadata".to_string())
     )?;
+    
+    // Parse the payload string to JSON (since it's stored as a JSON string)
+    let payload_json = if let Value::String(s) = payload_str {
+        serde_json::from_str::<Value>(s)
+            .map_err(|e| AppError::JobError(format!("Failed to parse jobPayloadForWorker string: {}", e)))?
+    } else {
+        payload_str.clone()
+    };
 
     // Deserialize based on task type
     match task_type {

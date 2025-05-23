@@ -3,15 +3,15 @@ use log::{debug, error};
 use crate::error::{AppError, AppResult};
 
 // Constants for token storage
-const SERVICE_NAME: &str = "vibe-manager";
-const ACCOUNT_NAME: &str = "default";
+pub const SERVICE_NAME_FOR_KEYRING: &str = "vibe-manager";
+pub const ACCOUNT_NAME_FOR_KEYRING: &str = "default";
 
 /// Load a token from the OS keyring
 pub async fn load_token() -> AppResult<Option<String>> {
     debug!("Loading token from keyring");
 
     // Get keyring entry
-    let entry = Entry::new(SERVICE_NAME, ACCOUNT_NAME)
+    let entry = Entry::new(SERVICE_NAME_FOR_KEYRING, ACCOUNT_NAME_FOR_KEYRING)
         .map_err(|e| {
             error!("Failed to create keyring entry: {}", e);
             AppError::StorageError(format!("Failed to create keyring entry: {}", e))
@@ -41,7 +41,7 @@ pub async fn load_token() -> AppResult<Option<String>> {
 /// Set token to None to clear it
 pub async fn save_token(token: Option<String>) -> AppResult<()> {
     // Get keyring entry
-    let entry = Entry::new(SERVICE_NAME, ACCOUNT_NAME)
+    let entry = Entry::new(SERVICE_NAME_FOR_KEYRING, ACCOUNT_NAME_FOR_KEYRING)
         .map_err(|e| {
             error!("Failed to create keyring entry: {}", e);
             AppError::StorageError(format!("Failed to create keyring entry: {}", e))

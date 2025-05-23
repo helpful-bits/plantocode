@@ -34,13 +34,17 @@ pub struct ServerConfig {
     pub port: u16,
     pub cors_origins: Vec<String>,
     pub url: String,
+    pub auth0_callback_url: String,
+    pub auth0_logged_out_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
-    pub firebase_api_key: String,
-    pub firebase_project_id: String,
+    pub auth0_domain: String,
+    pub auth0_api_audience: String,
+    pub auth0_server_client_id: Option<String>,
+    pub auth0_server_client_secret: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -142,14 +146,24 @@ impl AppSettings {
         let server_url = env::var("SERVER_URL")
             .unwrap_or_else(|_| format!("http://{}:{}", server_host, server_port));
         
+        // Auth0 callback URLs
+        let auth0_callback_url = env::var("SERVER_AUTH0_CALLBACK_URL")
+            .map_err(|_| AppError::Configuration("SERVER_AUTH0_CALLBACK_URL must be set".to_string()))?;
+        
+        let auth0_logged_out_url = env::var("SERVER_AUTH0_LOGGED_OUT_URL")
+            .map_err(|_| AppError::Configuration("SERVER_AUTH0_LOGGED_OUT_URL must be set".to_string()))?;
+        
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         
-        let firebase_api_key = env::var("FIREBASE_API_KEY")
-            .map_err(|_| AppError::Configuration("FIREBASE_API_KEY must be set".to_string()))?;
+        let auth0_domain = env::var("AUTH0_DOMAIN")
+            .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
         
-        let firebase_project_id = env::var("FIREBASE_PROJECT_ID")
-            .map_err(|_| AppError::Configuration("FIREBASE_PROJECT_ID must be set".to_string()))?;
+        let auth0_api_audience = env::var("AUTH0_API_AUDIENCE")
+            .map_err(|_| AppError::Configuration("AUTH0_API_AUDIENCE must be set".to_string()))?;
+        
+        let auth0_server_client_id = env::var("AUTH0_SERVER_CLIENT_ID").ok();
+        let auth0_server_client_secret = env::var("AUTH0_SERVER_CLIENT_SECRET").ok();
         
         // Auth config
         let jwt_secret = env::var("JWT_SECRET")
@@ -232,11 +246,15 @@ impl AppSettings {
                 port: server_port,
                 cors_origins,
                 url: server_url,
+                auth0_callback_url,
+                auth0_logged_out_url,
             },
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
-                firebase_api_key,
-                firebase_project_id,
+                auth0_domain,
+                auth0_api_audience,
+                auth0_server_client_id,
+                auth0_server_client_secret,
             },
             auth: AuthConfig {
                 jwt_secret,

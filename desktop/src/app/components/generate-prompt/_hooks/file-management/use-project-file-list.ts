@@ -8,7 +8,6 @@ import { useNotification } from "@/contexts/notification-context";
 import {
   normalizePath,
   normalizePathForComparison,
-  makePathRelative,
 } from "@/utils/path-utils";
 
 // Types
@@ -49,33 +48,33 @@ export function useProjectFileList(
         try {
           // The job result will be in the job.response field
           if (job.response) {
-            const result = JSON.parse(job.response) as { files: string[] };
+            const result = JSON.parse(job.response) as { directory?: string; files: string[]; count?: number };
+            
             if (result && result.files && Array.isArray(result.files)) {
               // Process file paths
               const filesMap: FilesMap = {};
 
-              for (const filePath of result.files) {
+              for (const projectRelativePath of result.files) {
                 try {
-                  if (!filePath) continue;
+                  
+                  if (!projectRelativePath) continue;
 
-                  // Normalize paths - now with await for async functions
-                  const normalizedAbsolutePath = await normalizePath(filePath);
-                  const relativePath = await makePathRelative(
-                    normalizedAbsolutePath,
-                    projectDirectory || ""
-                  );
-                  if (!relativePath) continue;
+                  // Normalize the project-relative path.
+                  // The normalizePath command can handle relative paths and clean them up (e.g. slashes, dots).
+                  const normalizedProjectRelativePath = await normalizePath(projectRelativePath);
+
+                  // If normalizedProjectRelativePath is empty or null after normalization, skip.
+                  if (!normalizedProjectRelativePath) continue;
 
                   // No automatic inclusion
                   const include = false;
 
-                  // Compute comparable path - now with await
-                  const comparablePath =
-                    await normalizePathForComparison(relativePath);
+                  // The comparablePath should be derived from the already relative path.
+                  const comparablePath = await normalizePathForComparison(normalizedProjectRelativePath);
 
                   // Add to file map
-                  filesMap[relativePath] = {
-                    path: relativePath,
+                  filesMap[normalizedProjectRelativePath] = {
+                    path: normalizedProjectRelativePath,
                     size: undefined, // Size not returned from job
                     included: include,
                     forceExcluded: false,
@@ -139,7 +138,8 @@ export function useProjectFileList(
 
       // Store the job ID to track its progress
       if (result.metadata && "jobId" in result.metadata) {
-        setJobId(result.metadata.jobId as string);
+        const jobId = result.metadata.jobId as string;
+        setJobId(jobId);
         return true;
       } else {
         setError("No job ID returned from read directory action");
@@ -156,24 +156,14 @@ export function useProjectFileList(
     }
   }, [projectDirectory, sessionId]);
 
-  // Initial load when project directory changes
+  // Reset state when project directory changes (auto-loading removed to prevent recursive scanning)
   useEffect(() => {
     // Reset state when project directory changes
     setRawFilesMap({});
     setError(null);
     setIsInitialized(false);
     setJobId(null);
-
-    // Skip if no project directory or session ID
-    if (!projectDirectory || !sessionId) {
-      return;
-    }
-
-    // Load files for new project directory
-    void refreshFiles().catch((_catchError: unknown) => {
-      // Error handling is done inside refreshFiles
-    });
-  }, [projectDirectory, sessionId, refreshFiles]);
+  }, [projectDirectory, sessionId]);
 
   return {
     rawFilesMap,

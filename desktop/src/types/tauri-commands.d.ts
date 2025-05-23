@@ -10,13 +10,23 @@ export interface Get_database_info_commandArgs {
 }
 
 
-// Commands from auth_commands
-export interface Exchange_and_store_firebase_tokenArgs {
-  firebase_id_token: string | null;
-  token: string | null;
+// Commands from auth0_commands
+export interface Start_auth0_login_flowArgs {
+  provider_hint: string | null;
 }
 
-export interface Get_stored_app_jwtArgs {
+export interface Check_auth_status_and_exchange_tokenArgs {
+  polling_id: string;
+}
+
+export interface Refresh_app_jwt_auth0Args {
+}
+
+export interface Logout_auth0Args {
+}
+
+export interface Get_user_info_with_app_jwtArgs {
+  app_token: string;
 }
 
 export interface Get_app_jwtArgs {
@@ -27,10 +37,6 @@ export interface Set_app_jwtArgs {
 }
 
 export interface Clear_stored_app_jwtArgs {
-}
-
-export interface Get_user_info_with_app_jwtArgs {
-  app_token: string;
 }
 
 
@@ -56,7 +62,10 @@ export interface Db_table_existsArgs {
 
 // Commands from fetch_handler_command
 export interface Handle_fetch_requestArgs {
-  args: any;
+  method: string;
+  headers: Record<string, any> | null;
+  body: any | null;
+  url: string;
 }
 
 export interface Invoke_fetch_handlerArgs {
@@ -77,31 +86,47 @@ export interface Invoke_stream_handlerArgs {
 
 // Commands from file_system_commands
 export interface List_files_commandArgs {
-  args: any;
+  directory: string;
+  pattern: string | null;
+  include_stats: boolean | null;
+  exclude: Array<string> | null;
 }
 
 export interface Create_directory_commandArgs {
-  args: any;
+  path: string;
+  project_directory: string | null;
 }
 
 export interface Read_file_content_commandArgs {
-  args: any;
+  path: string;
+  project_directory: string | null;
+  encoding: string | null;
 }
 
 export interface Write_file_content_commandArgs {
-  args: any;
+  path: string;
+  content: string;
+  project_directory: string | null;
 }
 
 export interface Create_unique_filepath_commandArgs {
-  args: any;
+  request_id: string;
+  session_name: string;
+  extension: string;
+  project_directory: string | null;
+  target_dir_name: string | null;
 }
 
 export interface Delete_file_commandArgs {
-  args: any;
+  path: string;
+  project_directory: string | null;
 }
 
 export interface Move_file_commandArgs {
-  args: any;
+  source_path: string;
+  destination_path: string;
+  project_directory: string | null;
+  overwrite: boolean | null;
 }
 
 export interface Get_app_data_directory_commandArgs {
@@ -110,30 +135,63 @@ export interface Get_app_data_directory_commandArgs {
 export interface Get_temp_dir_commandArgs {
 }
 
+export interface Open_directory_dialogArgs {
+  default_path: string | null;
+}
+
 
 // Commands from generic_task_commands
 export interface Generic_llm_stream_commandArgs {
-  args: any;
+  session_id: string;
+  prompt_text: string;
+  system_prompt: string | null;
+  model: string | null;
+  temperature: number | null;
+  max_output_tokens: number | null;
+  metadata: any | null;
+  project_directory: string | null;
 }
 
 export interface Enhance_task_description_commandArgs {
-  args: any;
+  session_id: string;
+  task_description: string;
+  project_context: string | null;
+  project_directory: string | null;
+  target_field: string | null;
+  model_override: string | null;
+  temperature_override: number | null;
+  max_tokens_override: number | null;
 }
 
 
 // Commands from guidance_commands
 export interface Generate_guidance_commandArgs {
-  args: any;
+  session_id: string;
+  project_directory: string;
+  task_description: string;
+  paths: Array<string> | null;
+  file_contents_summary: string | null;
+  system_prompt_override: string | null;
+  model_override: string | null;
+  temperature_override: number | null;
+  max_tokens_override: number | null;
 }
 
 
 // Commands from implementation_plan_commands
 export interface Create_implementation_plan_commandArgs {
-  args: any;
+  session_id: string;
+  task_description: string;
+  project_directory: string;
+  relevant_files: Array<string>;
+  project_structure: string | null;
+  model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
 }
 
 export interface Read_implementation_plan_commandArgs {
-  args: any;
+  job_id: string;
 }
 
 
@@ -155,67 +213,105 @@ export interface Get_active_jobs_commandArgs {
 }
 
 export interface Delete_background_job_commandArgs {
-  args: any;
+  job_id: string;
 }
 
 export interface Cancel_background_job_commandArgs {
-  args: any;
+  job_id: string;
 }
 
 export interface Cancel_session_jobs_commandArgs {
-  args: any;
+  session_id: string;
 }
 
 
 // Commands from path_finding_commands
 export interface Find_relevant_files_commandArgs {
-  args: any;
+  session_id: string;
+  task_description: string;
+  project_directory: string | null;
+  model_override: string | null;
+  temperature_override: number | null;
+  max_tokens_override: number | null;
+  options: any | null;
 }
 
 export interface Create_generate_directory_tree_job_commandArgs {
-  args: any;
+  project_directory: string;
+  session_id: string;
+  options: any | null;
 }
 
 
 // Commands from regex_commands
 export interface Generate_regex_commandArgs {
-  args: any;
+  session_id: string;
+  project_directory: string;
+  description: string;
+  examples: Array<string> | null;
+  target_language: string | null;
+  model_override: string | null;
+  temperature_override: number | null;
+  max_tokens_override: number | null;
 }
 
 
 // Commands from text_commands
 export interface Improve_text_commandArgs {
-  args: any;
+  session_id: string;
+  text: string;
+  improvement_type: string;
+  language: string | null;
+  project_directory: string | null;
+  model_override: string | null;
+  temperature_override: number | null;
+  max_tokens_override: number | null;
+  target_field: string | null;
 }
 
 export interface Correct_text_post_transcription_commandArgs {
-  args: any;
+  session_id: string;
+  text_to_correct: string;
+  language: string;
+  original_transcription_job_id: string | null;
+  project_directory: string | null;
 }
 
 
 // Commands from voice_commands
 export interface Create_transcription_job_commandArgs {
-  args: any;
+  session_id: string;
+  audio_data: string;
+  filename: string | null;
+  project_directory: string | null;
 }
 
 export interface Correct_transcription_commandArgs {
-  args: any;
+  session_id: string;
+  text_to_correct: string;
+  language: string;
+  original_job_id: string | null;
+  project_directory: string | null;
 }
 
 export interface Transcribe_audio_direct_commandArgs {
-  args: any;
+  audio_data: Array<number>;
+  filename: string;
+  model: string;
 }
 
 
 // Tauri invoke function type
 export type TauriInvoke = {
   "get_database_info_command": () => Promise<any>;
-  "exchange_and_store_firebase_token": (args: Exchange_and_store_firebase_tokenArgs) => Promise<any>;
-  "get_stored_app_jwt": () => Promise<any>;
+  "start_auth0_login_flow": (args: Start_auth0_login_flowArgs) => Promise<any>;
+  "check_auth_status_and_exchange_token": (args: Check_auth_status_and_exchange_tokenArgs) => Promise<any>;
+  "refresh_app_jwt_auth0": () => Promise<any>;
+  "logout_auth0": () => Promise<any>;
+  "get_user_info_with_app_jwt": (args: Get_user_info_with_app_jwtArgs) => Promise<any>;
   "get_app_jwt": () => Promise<any>;
   "set_app_jwt": (args: Set_app_jwtArgs) => Promise<any>;
   "clear_stored_app_jwt": () => Promise<any>;
-  "get_user_info_with_app_jwt": (args: Get_user_info_with_app_jwtArgs) => Promise<any>;
   "db_execute_query": (args: Db_execute_queryArgs) => Promise<any>;
   "db_select_query": (args: Db_select_queryArgs) => Promise<any>;
   "db_execute_transaction": (args: Db_execute_transactionArgs) => Promise<any>;
@@ -232,6 +328,7 @@ export type TauriInvoke = {
   "move_file_command": (args: Move_file_commandArgs) => Promise<any>;
   "get_app_data_directory_command": () => Promise<any>;
   "get_temp_dir_command": () => Promise<any>;
+  "open_directory_dialog": (args: Open_directory_dialogArgs) => Promise<any>;
   "generic_llm_stream_command": (args: Generic_llm_stream_commandArgs) => Promise<any>;
   "enhance_task_description_command": (args: Enhance_task_description_commandArgs) => Promise<any>;
   "generate_guidance_command": (args: Generate_guidance_commandArgs) => Promise<any>;

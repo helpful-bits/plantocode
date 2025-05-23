@@ -62,6 +62,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSessionError: sessionStateHook.setSessionError,
     hasCompletedInitRef: sessionStateHook.hasCompletedInitRef,
     loadingSessionRef: sessionStateHook.loadingSessionRef,
+    setActiveSessionIdGlobally: activeSessionManager.updateActiveSessionId,
     onNeedsSave: async (sessionId) => {
       if (
         sessionStateHook.isSessionModified &&

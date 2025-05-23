@@ -1,16 +1,16 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 import {
   loadRuntimeConfigAfterLogin,
-  type RuntimeAiConfig,
+  type RuntimeAIConfig,
   useRuntimeConfig,
 } from "../contexts/runtime-config-context";
 
 export interface RuntimeConfigLoaderResult {
   isLoading: boolean;
   error: string | null;
-  loadConfig: () => Promise<RuntimeAiConfig | null>;
+  loadConfig: () => Promise<RuntimeAIConfig | null>;
   clearError: () => void;
 }
 
@@ -19,7 +19,7 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
   const [error, setError] = useState<string | null>(null);
   
   // Use a try-catch to safely get the context
-  let updateConfigFn: (config: RuntimeAiConfig) => void = () => {};
+  let updateConfigFn: (config: RuntimeAIConfig) => void = () => {};
   try {
     const runtimeConfig = useRuntimeConfig();
     updateConfigFn = runtimeConfig.updateConfig;
@@ -27,7 +27,7 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
     console.warn("RuntimeConfigProvider not available yet, updates won't be propagated");
   }
 
-  const loadConfig = async (): Promise<RuntimeAiConfig | null> => {
+  const loadConfig = useCallback(async (): Promise<RuntimeAIConfig | null> => {
     if (isLoading) return null;
 
     try {
@@ -60,11 +60,11 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading, updateConfigFn]);
 
-  const clearError = () => {
+  const clearError = useCallback(() => {
     if (error) setError(null);
-  };
+  }, [error]);
 
   return {
     isLoading,

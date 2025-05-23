@@ -66,15 +66,11 @@ impl ServerProxyClient {
     pub async fn get_runtime_ai_config(&self) -> AppResult<Value> {
         info!("Fetching runtime AI configuration from server");
         
-        // Get auth token
-        let auth_token = self.get_auth_token().await?;
-        
-        // Create the config endpoint URL
-        let config_url = format!("{}/api/config/runtime", self.server_url);
+        // Create the config endpoint URL - this is a public endpoint, no auth required
+        let config_url = format!("{}/config/desktop-runtime-config", self.server_url);
         
         let response = self.http_client
             .get(&config_url)
-            .header(header::AUTHORIZATION, format!("Bearer {}", auth_token))
             .header("HTTP-Referer", APP_HTTP_REFERER)
             .header("X-Title", APP_X_TITLE)
             .send()

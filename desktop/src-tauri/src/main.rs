@@ -29,12 +29,14 @@ use crate::db_utils::{
 use crate::error::AppError;
 use crate::utils::FileLockManager;
 use crate::auth::TokenManager;
+use crate::auth::auth0_state::Auth0StateStore;
 
 // App state struct for Tauri
 pub struct AppState {
     pub config_load_error: Mutex<Option<String>>,
     pub client: reqwest::Client,
     pub settings: config::RuntimeConfig,
+    pub auth0_state_store: Auth0StateStore,
 }
 
 impl Default for AppState {
@@ -43,6 +45,7 @@ impl Default for AppState {
             config_load_error: Mutex::new(None),
             client: reqwest::Client::new(),
             settings: config::RuntimeConfig::default(),
+            auth0_state_store: Auth0StateStore::default(),
         }
     }
 }
@@ -78,6 +81,7 @@ fn main() {
             config_load_error: Mutex::new(None),
             client: reqwest::Client::new(),
             settings: config::RuntimeConfig::default(),
+            auth0_state_store: Auth0StateStore::default(),
         })
         // TokenManager will be created in initialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
@@ -87,6 +91,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
@@ -99,10 +104,7 @@ fn main() {
 
             let app_handle_clone = app.handle().clone();
 
-            // Spawn asynchronous initialization so plugins can finish loading
             tauri::async_runtime::spawn(async move {
-                // wait for 1 seconds
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 if let Err(e) = app_setup::run_async_initialization(&app_handle_clone).await {
                     error!("Async initialization failed: {}", e);
                 }
@@ -115,17 +117,15 @@ fn main() {
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
             
-            // Auth commands
-            commands::auth_commands::exchange_main_server_tokens_and_store_app_jwt,
-            commands::auth_commands::initiate_oauth_flow_on_main_server,
-            commands::auth_commands::trigger_firebase_id_token_refresh_on_main_server,
-            commands::auth_commands::get_user_info_with_app_jwt,
-            commands::auth_commands::get_stored_app_jwt,
-            commands::auth_commands::get_app_jwt,
-            commands::auth_commands::set_app_jwt,
-            commands::auth_commands::clear_stored_app_jwt,
-            // Keep the old command name for backward compatibility but it will redirect to the new one
-            commands::auth_commands::exchange_and_store_firebase_token,
+            // Auth0 commands (includes JWT token management)
+            commands::auth0_commands::start_auth0_login_flow,
+            commands::auth0_commands::check_auth_status_and_exchange_token,
+            commands::auth0_commands::refresh_app_jwt_auth0,
+            commands::auth0_commands::logout_auth0,
+            commands::auth0_commands::get_user_info_with_app_jwt,
+            commands::auth0_commands::get_app_jwt,
+            commands::auth0_commands::set_app_jwt,
+            commands::auth0_commands::clear_stored_app_jwt,
             
             // Config commands
             commands::config_commands::get_available_ai_models,
@@ -147,7 +147,6 @@ fn main() {
             
             // File system commands
             commands::file_system_commands::get_home_directory_command,
-            commands::file_system_commands::get_common_paths_command,
             commands::file_system_commands::list_files_command,
             commands::file_system_commands::create_directory_command,
             commands::file_system_commands::read_file_content_command,
@@ -212,6 +211,9 @@ fn main() {
             commands::session_commands::update_session_project_directory_command,
             commands::session_commands::clear_all_project_sessions_command,
             commands::session_commands::update_session_fields_command,
+            
+            // Setup commands
+            commands::setup_commands::trigger_initial_keychain_access,
         ])
         // Use the context we created earlier
         .run(tauri_context)

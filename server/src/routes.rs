@@ -1,83 +1,94 @@
 use actix_web::web;
-use crate::handlers::auth::{firebase_handlers, userinfo_handler};
-use crate::handlers::usage_handlers;
-use crate::handlers::hybrid_auth_handlers;
+use crate::handlers;
 
-// Configure protected API routes (requires authentication)
+/// Configures API routes that REQUIRE JWT authentication.
+/// Mounted under the "/api" scope and wrapped with SecureAuthentication middleware in main.rs.
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    // Auth routes (protected part - /api/auth/*)
     cfg.service(
-        web::scope("/auth")
-            .route("/userinfo", web::get().to(userinfo_handler::get_user_info))
-            .route("/refresh-firebase-id-token", web::post().to(hybrid_auth_handlers::refresh_firebase_id_token_handler))
+        web::scope("/auth") // Base path: /api/auth
+            .route("/userinfo", web::get().to(handlers::auth::userinfo_handler::get_user_info))
+    );
+    cfg.service(
+        web::scope("/auth0") // Base path: /api/auth0 (protected)
+            .route("/refresh-app-token", web::post().to(handlers::auth0_handlers::refresh_app_token_auth0))
     );
     
     // Proxy routes (/api/proxy/*)
     cfg.service(
         web::scope("/proxy")
-            .service(crate::handlers::proxy_handlers::openrouter_chat_completions_proxy)
-            .service(crate::handlers::proxy_handlers::openrouter_audio_transcriptions_proxy)
+            .service(handlers::proxy_handlers::openrouter_chat_completions_proxy)
+            .service(handlers::proxy_handlers::openrouter_audio_transcriptions_proxy)
     );
     
     // Billing routes (/api/billing/*)
     cfg.service(
         web::scope("/billing")
-            .service(crate::handlers::billing_handlers::get_subscription)
-            .service(crate::handlers::billing_handlers::create_checkout_session)
-            .service(crate::handlers::billing_handlers::create_billing_portal)
-            .service(crate::handlers::billing_handlers::get_usage_summary)
-    );
-    
-    // Configuration routes (/api/config/*)
-    cfg.service(
-        web::scope("/config")
-            // Legacy endpoint for web app
-            .route("/runtime", web::get().to(crate::handlers::config_handlers::get_runtime_ai_config))
-            // New endpoint for desktop app
-            .route("/runtime-ai-config", web::get().to(crate::handlers::config_handlers::get_desktop_runtime_ai_config))
+            .service(handlers::billing_handlers::get_subscription)
+            .service(handlers::billing_handlers::create_checkout_session)
+            .service(handlers::billing_handlers::create_billing_portal)
+            .service(handlers::billing_handlers::get_usage_summary)
     );
     
     // Usage routes (/api/usage/*)
     cfg.service(
         web::scope("/usage")
-            .route("/summary", web::get().to(usage_handlers::get_usage_summary_handler))
+            .route("/summary", web::get().to(handlers::usage_handlers::get_usage_summary_handler))
     );
     
     // AI proxy endpoint for direct model access (/api/ai-proxy/*)
     cfg.service(
         web::scope("/ai-proxy")
-            .route("/{endpoint:.*}", web::post().to(crate::handlers::proxy_handlers::ai_proxy_endpoint))
+            .route("/{endpoint:.*}", web::post().to(handlers::proxy_handlers::ai_proxy_endpoint))
     );
-    
-    // Background jobs are handled entirely on the desktop client side
 }
 
-// Configure public auth routes (no authentication required - /auth/*)
+/// Configures public authentication routes (not part of /api).
+/// These are typically for browser-based parts of the auth flow.
+/// Mounted under the "/auth" scope in main.rs.
 pub fn configure_public_auth_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(firebase_handlers::exchange_firebase_token);
-    
-    // Configure hybrid auth routes
     cfg.service(
-        web::scope("/hybrid")
-            .route("/login-via-web", web::get().to(hybrid_auth_handlers::serve_login_page))
-    );
-    
-    // Add route for the login.js asset
-    cfg.service(web::resource("/login.js").route(web::get().to(hybrid_auth_handlers::serve_login_js_asset)));
-}
-
-// Configure hybrid auth API routes (no authentication required - /api/auth/*)
-pub fn configure_hybrid_auth_api_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/auth")
-            .route("/capture-provider-token", web::post().to(hybrid_auth_handlers::capture_provider_token))
-            .route("/get-token", web::get().to(hybrid_auth_handlers::get_firebase_token_for_polling))
+        web::scope("/auth0") // Base path: /auth/auth0
+            .route("/initiate-login", web::get().to(handlers::auth0_handlers::initiate_auth0_login))
+            .route("/callback", web::get().to(handlers::auth0_handlers::handle_auth0_callback))
+            .route("/logged-out", web::get().to(auth0_logged_out_handler))
     );
 }
 
-// Configure public webhook routes (no authentication required - /webhooks/*)
+// Simple logged out handler
+async fn auth0_logged_out_handler() -> actix_web::Result<actix_web::HttpResponse> {
+    Ok(actix_web::HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(r#"
+<!DOCTYPE html>
+<html>
+<head><title>Logged Out - Vibe Manager</title></head>
+<body>
+    <h1>Successfully Logged Out</h1>
+    <p>You have been logged out from Vibe Manager.</p>
+    <p>You can close this page.</p>
+</body>
+</html>
+        "#))
+}
+
+/// Configures publicly accessible API routes that DO NOT require JWT authentication.
+/// Mounted directly on the app (no /api prefix).
+pub fn configure_public_api_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/auth0") // Base path: /auth0
+            .route("/poll-status", web::get().to(handlers::auth0_handlers::poll_auth_status))
+            .route("/finalize-login", web::post().to(handlers::auth0_handlers::finalize_auth0_login))
+    );
+    cfg.service(
+        web::scope("/config") // Base path: /config
+            .route("/desktop-runtime-config", web::get().to(handlers::config_handlers::get_desktop_runtime_ai_config))
+    );
+}
+
+/// Configures webhook routes that DO NOT require JWT authentication.
+/// Mounted under the "/webhooks" scope in main.rs.
 pub fn configure_webhook_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(crate::handlers::billing_handlers::stripe_webhook);
+    cfg.service(handlers::billing_handlers::stripe_webhook);
 }
 
 // Make sure all modules are properly compiled
@@ -92,7 +103,7 @@ mod tests {
             actix_web::App::new()
                 .configure(configure_routes)
                 .configure(configure_public_auth_routes)
-                .configure(configure_hybrid_auth_api_routes)
+                .configure(configure_public_api_routes)
                 .configure(configure_webhook_routes)
         );
     }

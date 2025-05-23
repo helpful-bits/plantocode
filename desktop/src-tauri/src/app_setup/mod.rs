@@ -18,7 +18,7 @@ pub mod file_management;
 /// 5. Job system
 ///
 /// Runtime AI configuration is no longer loaded during startup.
-/// It will be triggered from the renderer layer after Firebase login completes.
+/// It will be triggered from the renderer layer after Auth0 login completes.
 pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppError> {
     info!("Starting asynchronous application initialization...");
 
@@ -51,8 +51,8 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         }
         info!("TokenManager initialized with keyring persistence");
     } else {
-        error!("TokenManager not found in app state");
-        return Err(AppError::ConfigError("TokenManager not found in app state".to_string()));
+        error!("TokenManager not found in app state after services::initialize_api_clients. This should not happen.");
+        return Err(AppError::ConfigError("TokenManager was not managed correctly during app setup".to_string()));
     }
 
     // Initialize file lock manager

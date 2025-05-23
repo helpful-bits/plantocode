@@ -81,9 +81,7 @@ impl FileLockManager {
                 };
                 
                 path_locks.push(lock_info);
-                
-                debug!("Acquired {:?} lock on {}", mode, path_normalized.display());
-                
+
                 // Create and return the lock guard
                 let guard = FileLockGuard {
                     id: lock_id,
@@ -154,8 +152,7 @@ impl FileLockManager {
             
             // If we removed a lock, log it
             if path_locks.len() < initial_len {
-                debug!("Released lock on {}", path_normalized.display());
-                
+
                 // If no more locks, remove the entry
                 if path_locks.is_empty() {
                     locks.remove(&path_normalized);

@@ -6,11 +6,11 @@ use sqlx::PgPool;
 
 /// Handler for getting user information from a validated JWT token
 pub async fn get_user_info(
-    user_id: web::ReqData<UserId>,
+    user_id: UserId,
     db_pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, AppError> {
     // Extract user ID from the JWT (already validated by middleware)
-    let user_id = user_id.into_inner().0;
+    let user_id = user_id.0;
     
     // Create user repository
     let user_repo = UserRepository::new(db_pool.get_ref().clone());

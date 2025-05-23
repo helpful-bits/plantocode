@@ -114,7 +114,10 @@ lazy_static! {
         set.insert("/api/heartbeat");
         
         // Public auth routes
-        set.insert("/auth/firebase/token");
+        set.insert("/auth/auth0/callback");
+        set.insert("/auth/auth0/initiate");
+        set.insert("/auth/auth0/poll");
+        set.insert("/auth/auth0/finalize");
         set.insert("/webhooks/stripe");
         
         set

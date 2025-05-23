@@ -146,11 +146,8 @@ export function useTaskDescriptionState({
               improvedText +
               currentValue.substring(end);
 
-            // Update internal state and textarea
+            // Update internal state
             setInternalTaskDescription(newValue);
-            if (taskDescriptionRef.current) {
-              taskDescriptionRef.current.value = newValue;
-            }
 
             // Update session
             sessionActions.updateCurrentSessionFields({
@@ -341,11 +338,6 @@ export function useTaskDescriptionState({
       // Update internal state
       setInternalTaskDescription(value);
 
-      // Update textarea if available
-      if (taskDescriptionRef.current) {
-        taskDescriptionRef.current.value = value;
-      }
-
       // Update session
       sessionActions.updateCurrentSessionFields({ taskDescription: value });
 
@@ -354,7 +346,7 @@ export function useTaskDescriptionState({
         onInteraction();
       }
     },
-    [taskDescriptionRef, onInteraction, sessionActions]
+    [onInteraction, sessionActions]
   );
 
   return useMemo(

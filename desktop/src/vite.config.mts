@@ -53,7 +53,7 @@ export default defineConfig({
   // To make use of `TAURI_ENV_PLATFORM`, `TAURI_ENV_ARCH`, `TAURI_ENV_FAMILY`,
   // `TAURI_ENV_PLATFORM_VERSION`, `TAURI_ENV_PLATFORM_TYPE` and `TAURI_ENV_DEBUG`
   // env variables, as well as all our application environment variables
-  envPrefix: ["FIREBASE_", "SERVER_", "TAURI_ENV_"],
+  envPrefix: ["AUTH0_", "SERVER_", "TAURI_ENV_"],
   build: {
     // Tauri uses Chromium on Windows and WebKit on macOS and Linux
     target:

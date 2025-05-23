@@ -28,9 +28,28 @@ pub struct ImproveTextArgs {
 /// Improves text based on the specified improvement type
 #[command]
 pub async fn improve_text_command(
+    session_id: String,
+    text: String,
+    improvement_type: String,
+    language: Option<String>,
+    project_directory: Option<String>,
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
+    max_tokens_override: Option<u32>,
+    target_field: Option<String>,
     app_handle: AppHandle,
-    args: ImproveTextArgs,
 ) -> AppResult<ImproveTextResponse> {
+    let args = ImproveTextArgs {
+        session_id,
+        text,
+        improvement_type,
+        language,
+        project_directory,
+        model_override,
+        temperature_override,
+        max_tokens_override,
+        target_field,
+    };
     crate::services::text_improvement_service::create_text_improvement_job_service(&app_handle, args)
         .await
 }
@@ -54,9 +73,20 @@ pub struct CorrectTextPostTranscriptionArgs {
 // Command to correct text after transcription
 #[command]
 pub async fn correct_text_post_transcription_command(
+    session_id: String,
+    text_to_correct: String,
+    language: String,
+    original_transcription_job_id: Option<String>,
+    project_directory: Option<String>,
     app_handle: AppHandle,
-    args: CorrectTextPostTranscriptionArgs,
 ) -> AppResult<JobCommandResponse> {
+    let args = CorrectTextPostTranscriptionArgs {
+        session_id,
+        text_to_correct,
+        language,
+        original_transcription_job_id,
+        project_directory,
+    };
     info!("Creating text correction post transcription job");
     
     // Validate required fields

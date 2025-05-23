@@ -257,7 +257,12 @@ pub async fn handle_create_unique_filepath(app_handle: AppHandle, args: &crate::
 
         // Call the Tauri command directly
         match crate::commands::file_system_commands::create_unique_filepath_command(
-            unique_path_args, app_handle.clone()
+            unique_path_args.request_id,
+            unique_path_args.session_name,
+            unique_path_args.extension,
+            unique_path_args.project_directory,
+            unique_path_args.target_dir_name,
+            app_handle.clone()
         ).await {
             Ok(unique_path) => {
                 let mut headers = HashMap::new();

@@ -3,43 +3,6 @@ import { type ActionState } from "@/types";
 import * as tauriFs from "../../utils/tauri-fs";
 
 /**
- * Directory information returned by the list directories action
- */
-interface DirectoryInfo {
-  name: string;
-  path: string;
-  isAccessible: boolean;
-}
-
-/**
- * Get common paths from the system
- */
-export async function getCommonPaths(): Promise<DirectoryInfo[]> {
-  try {
-    // Use tauriFs to get common paths
-    const commonPaths = await tauriFs.getCommonPaths();
-    return commonPaths.map(
-      (path: { name: string; path: string; is_accessible: boolean }) => ({
-        name: path.name,
-        path: path.path,
-        isAccessible: path.is_accessible,
-      })
-    );
-  } catch (error) {
-    console.error("[getCommonPaths] Error:", error);
-    // Return minimal fallback common paths if command fails
-    return [
-      {
-        name: "Home",
-        path: await tauriFs.getHomeDirectory(),
-        isAccessible: true,
-      },
-      { name: "Root", path: "/", isAccessible: true },
-    ];
-  }
-}
-
-/**
  * Get the user's home directory
  */
 export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
@@ -73,112 +36,6 @@ export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
   }
 }
 
-/**
- * List subdirectories at a given path
- */
-export async function listDirectoriesAction(directoryPath: string): Promise<
-  ActionState<{
-    currentPath: string;
-    parentPath: string | null;
-    directories: DirectoryInfo[];
-  }>
-> {
-  if (!directoryPath?.trim()) {
-    return {
-      isSuccess: false,
-      message: "Directory path cannot be empty",
-      data: { currentPath: "", parentPath: null, directories: [] },
-    };
-  }
-
-  try {
-
-    // Normalize the path
-    const resolvedPath = await tauriFs.normalizePath(directoryPath);
-
-
-    // Get all files and directories
-    const files = await tauriFs.listFiles(resolvedPath, undefined, true);
-
-    // Get parent directory
-    let parentPath = null;
-    try {
-      // Get parent using path_dirname_command
-      parentPath = await tauriFs.pathDirname(resolvedPath);
-
-      // If parent is the same as current (root case), set to null
-      if (parentPath === resolvedPath) {
-        parentPath = null;
-      } else if (resolvedPath !== "/" && !resolvedPath.match(/^[A-Z]:\\$/i)) {
-        // Special handling for Windows drive roots
-        parentPath = parentPath || "/";
-      }
-    } catch (error) {
-      console.error(
-        `[ListDirs] Error getting parent path for ${resolvedPath}:`,
-        error
-      );
-      // Continue even without parent path
-    }
-
-    // Filter for directories only
-    const directories: DirectoryInfo[] = files
-      .filter((file: { is_dir: boolean }) => file.is_dir)
-      .map(
-        (file: {
-          name: string;
-          path: string;
-          is_readable?: boolean;
-          is_dir: boolean;
-        }) => ({
-          name: file.name,
-          path: file.path,
-          isAccessible:
-            file.is_readable === undefined ? true : file.is_readable,
-        })
-      );
-
-    // Sort directories alphabetically
-    directories.sort((a, b) => a.name.localeCompare(b.name));
-
-    return {
-      isSuccess: true,
-      message: `Found ${directories.length} directories`,
-      data: {
-        currentPath: resolvedPath,
-        parentPath,
-        directories,
-      },
-    };
-  } catch (error) {
-    console.error(`Error listing directories in ${directoryPath}:`, error);
-
-    if (error instanceof Error && error.message.includes("not found")) {
-      return {
-        isSuccess: false,
-        message: "Directory does not exist",
-        data: { currentPath: directoryPath, parentPath: null, directories: [] },
-      };
-    } else if (
-      error instanceof Error &&
-      error.message.includes("permission denied")
-    ) {
-      return {
-        isSuccess: false,
-        message:
-          "Directory exists but cannot be read. Please check permissions.",
-        data: { currentPath: directoryPath, parentPath: null, directories: [] },
-      };
-    }
-
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error ? error.message : "Failed to list directories",
-      data: { currentPath: directoryPath, parentPath: null, directories: [] },
-    };
-  }
-}
 
 /**
  * Validate and select a directory path
@@ -241,3 +98,4 @@ export async function selectDirectoryAction(
     };
   }
 }
+

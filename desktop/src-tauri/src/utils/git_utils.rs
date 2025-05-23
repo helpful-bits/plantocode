@@ -39,38 +39,42 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
         }
     };
     
-    // Get the repository workdir
-    let workdir = match repo.workdir() {
-        Some(w) => w,
-        None => {
-            debug!("Repository at {} has no working directory", path.display());
-            return Ok((Vec::new(), false));
+    let mut files = Vec::new();
+    
+    // Get all tracked files from the index
+    let index = match repo.index() {
+        Ok(i) => i,
+        Err(e) => {
+            debug!("Failed to get git index at {}: {}", path.display(), e);
+            return Ok((Vec::new(), true)); // Still a git repo, but couldn't get index
         }
     };
     
-    // Create status options
+    // Add all tracked files from the index
+    for entry in index.iter() {
+        let path_str = std::str::from_utf8(&entry.path).unwrap_or("");
+        if !path_str.is_empty() {
+            let relative_path = PathBuf::from(path_str);
+            files.push(relative_path);
+        }
+    }
+    
+    // Also get untracked files that are not ignored
     let mut status_opts = StatusOptions::new();
     status_opts
         .include_ignored(false)
         .include_untracked(true)
         .recurse_untracked_dirs(true);
         
-    // Get the status
-    let statuses = match repo.statuses(Some(&mut status_opts)) {
-        Ok(s) => s,
-        Err(e) => {
-            debug!("Failed to get git statuses at {}: {}", path.display(), e);
-            return Ok((Vec::new(), true)); // Still a git repo, but couldn't get statuses
-        }
-    };
-    
-    // Collect the file paths as relative paths
-    let mut files = Vec::new();
-    for entry in statuses.iter() {
-        if let Some(path_str) = entry.path() {
-            // Create PathBuf directly from the relative path string
-            let relative_path = PathBuf::from(path_str);
-            files.push(relative_path);
+    if let Ok(statuses) = repo.statuses(Some(&mut status_opts)) {
+        for entry in statuses.iter() {
+            // Only include untracked files (not already in index)
+            if entry.status().contains(Status::WT_NEW) {
+                if let Some(path_str) = entry.path() {
+                    let relative_path = PathBuf::from(path_str);
+                    files.push(relative_path);
+                }
+            }
         }
     }
     

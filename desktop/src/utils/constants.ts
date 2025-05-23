@@ -3,6 +3,9 @@ export const DEBUG_POLLING =
   typeof window !== "undefined" &&
   (localStorage.getItem("DEBUG_BACKGROUND_JOBS") === "true" || false);
 
+// App store file for persistent application settings
+export const APP_SETTINGS_STORE = ".app-settings.dat";
+
 // Key for storing the *last used* global project directory in the database cache
 export const GLOBAL_PROJECT_DIR_KEY = "global-project-dir";
 // Key for storing project directory history (global scope)

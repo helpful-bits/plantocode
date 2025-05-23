@@ -37,19 +37,11 @@ export interface ListFilesResponse {
   count: number;
 }
 
-export interface DirectoryInfo {
-  name: string;
-  path: string;
-  is_accessible: boolean;
-}
 
 export async function getHomeDirectory(): Promise<string> {
   return tauriInvoke("get_home_directory_command");
 }
 
-export async function getCommonPaths(): Promise<DirectoryInfo[]> {
-  return tauriInvoke("get_common_paths_command");
-}
 
 export async function listFiles(
   directory: string,
@@ -70,7 +62,10 @@ export async function createDirectory(
   path: string,
   projectDirectory?: string
 ): Promise<void> {
-  return tauriInvoke("create_directory_command", { path, projectDirectory });
+  return tauriInvoke("create_directory_command", {
+    path,
+    projectDirectory,
+  });
 }
 
 export async function readFileContent(
@@ -109,14 +104,23 @@ export async function createUniqueFilepath(args: {
   projectDirectory?: string;
   targetDirName?: string;
 }): Promise<string> {
-  return tauriInvoke("create_unique_filepath_command", args);
+  return tauriInvoke("create_unique_filepath_command", {
+    requestId: args.requestId,
+    sessionName: args.sessionName,
+    extension: args.extension,
+    projectDirectory: args.projectDirectory,
+    targetDirName: args.targetDirName,
+  });
 }
 
 export async function deleteFile(
   path: string,
   projectDirectory?: string
 ): Promise<void> {
-  return tauriInvoke("delete_file_command", { path, projectDirectory });
+  return tauriInvoke("delete_file_command", {
+    path,
+    projectDirectory,
+  });
 }
 
 export async function moveFile(
@@ -167,3 +171,4 @@ export async function normalizePath(
 export async function getTempDir(): Promise<string> {
   return tauriInvoke("get_temp_dir_command");
 }
+
