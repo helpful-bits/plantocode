@@ -9,8 +9,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { validateDirectoryAction } from "@/actions/file-system/validation.actions";
+import { getHomeDirectoryAction } from "@/actions";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { Button } from "@/ui/button";
@@ -18,7 +20,6 @@ import { Input } from "@/ui/input";
 import { normalizePath, normalizePathForComparison } from "@/utils/path-utils";
 import { cn } from "@/utils/utils";
 
-import DirectoryBrowser from "./directory-browser";
 
 enum ValidationType {
   Success = "success",
@@ -50,7 +51,6 @@ export default function ProjectDirectorySelector({
     message: string;
   } | null>(null);
   const [inputValue, setInputValue] = useState("");
-  const [isDirectoryBrowserOpen, setIsDirectoryBrowserOpen] = useState(false);
 
   // Refs
   const inputRef = useRef<HTMLInputElement>(null);
@@ -296,58 +296,74 @@ export default function ProjectDirectorySelector({
     inputRef.current?.focus();
   }, []);
 
-  // Open directory browser
-  const handleOpenDirectoryBrowser = useCallback(() => {
-    setIsDirectoryBrowserOpen(true);
-  }, []);
-
-  // Handle selection from directory browser
-  const handleDirectorySelected = useCallback(
-    async (selectedPath: string) => {
-      setIsDirectoryBrowserOpen(false);
-
-      if (!selectedPath) return;
-
-      // Update the input directly (no need to check if it's the same as current value)
-      setInputValue(selectedPath);
-      userEditedRef.current = true; // Mark as user-edited
-
-      // Validate and set if valid
-      const validationResult = await validateDirectory(selectedPath);
-
-      if (validationResult.isValid && validationResult.validatedPath) {
-        try {
-          // Update project directory using context with the validated path from server
-          await setProjectDirectory(validationResult.validatedPath);
-          // Also update the input field to show the canonical path
-          setInputValue(validationResult.validatedPath);
-          // userEditedRef will be reset by the useEffect when input and project directory are in sync
-
-          // Show success notification
-          showNotification({
-            title: "Project Updated",
-            message: "Project directory has been set from browser.",
-            type: "success",
-          });
-        } catch (error) {
-          console.error(
-            "[ProjectDirSelector] Error setting project directory from browser:",
-            error
-          );
-
-          showNotification({
-            title: "Error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to set project directory from browser",
-            type: "error",
-          });
+  // Open native file dialog for directory selection
+  const handleOpenDirectoryBrowser = useCallback(async () => {
+    try {
+      // Get default path - use current input value or home directory
+      let defaultPath = inputValue.trim();
+      if (!defaultPath) {
+        const homeResult = await getHomeDirectoryAction();
+        if (homeResult?.isSuccess && homeResult.data) {
+          defaultPath = homeResult.data;
         }
       }
-    },
-    [validateDirectory, setProjectDirectory, showNotification]
-  );
+
+      // Open native directory picker
+      const selectedPath = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: defaultPath || undefined,
+      });
+
+      // Handle selection
+      if (selectedPath && typeof selectedPath === 'string') {
+        // Update input value
+        setInputValue(selectedPath);
+        userEditedRef.current = true;
+
+        // Validate and set if valid
+        const validationResult = await validateDirectory(selectedPath);
+
+        if (validationResult.isValid && validationResult.validatedPath) {
+          try {
+            // Update project directory using context with the validated path from server
+            await setProjectDirectory(validationResult.validatedPath);
+            // Also update the input field to show the canonical path
+            setInputValue(validationResult.validatedPath);
+
+            // Show success notification
+            showNotification({
+              title: "Project Updated",
+              message: "Project directory has been set from browser.",
+              type: "success",
+            });
+          } catch (error) {
+            console.error(
+              "[ProjectDirSelector] Error setting project directory from browser:",
+              error
+            );
+
+            showNotification({
+              title: "Error",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to set project directory from browser",
+              type: "error",
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[ProjectDirSelector] Error opening directory dialog:", error);
+      showNotification({
+        title: "Error",
+        message: "Failed to open directory picker",
+        type: "error",
+      });
+    }
+  }, [inputValue, validateDirectory, setProjectDirectory, showNotification]);
+
 
   // Render validation icon
   const renderValidationIcon = useCallback(() => {
@@ -457,13 +473,6 @@ export default function ProjectDirectorySelector({
         </div>
       </form>
 
-      {/* Directory browser */}
-      <DirectoryBrowser
-        onClose={() => setIsDirectoryBrowserOpen(false)}
-        onSelect={handleDirectorySelected}
-        initialPath={inputValue || projectDirectory || ""}
-        isOpen={isDirectoryBrowserOpen}
-      />
     </div>
   );
 }

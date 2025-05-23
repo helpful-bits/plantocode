@@ -115,7 +115,6 @@ export function useFileSessionSync() {
       includedFiles: currentSession?.includedFiles || [],
       forceExcludedFiles: currentSession?.forceExcludedFiles || [],
       searchSelectedFilesOnly: currentSession?.searchSelectedFilesOnly || false,
-      pastedPaths: "", // This seems to be always empty, confirm if it's still needed
     };
   }, [currentSession]);
 

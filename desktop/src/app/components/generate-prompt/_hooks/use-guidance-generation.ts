@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect } from "react";
 
 import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
 import { useNotification } from "@/contexts/notification-context";
+import { useSessionStateContext } from "@/contexts/session";
 
 export interface UseGuidanceGenerationProps {
   projectDirectory: string | null;
@@ -30,6 +31,7 @@ export function useGuidanceGeneration({
 }: UseGuidanceGenerationProps): UseGuidanceGenerationReturn {
   // UI state
   const { showNotification } = useNotification();
+  const { activeSessionId } = useSessionStateContext();
   const [isGeneratingGuidance, setIsGeneratingGuidance] = useState(false);
   const [guidanceJobId, setGuidanceJobId] = useState<string | null>(null);
 
@@ -131,17 +133,23 @@ export function useGuidanceGeneration({
 
       try {
         // Call the Tauri command directly
-        const result = await invoke<{ job_id: string }>(
+        const result = await invoke<string>(
           "generate_guidance_command",
           {
+            sessionId: activeSessionId || "",
+            projectDirectory: projectDirectory || "",
             taskDescription,
-            filePaths: selectedPaths,
-            projectDirectory,
+            paths: selectedPaths,
+            fileContentsSummary: undefined,
+            systemPromptOverride: undefined,
+            modelOverride: undefined,
+            temperatureOverride: undefined,
+            maxTokensOverride: undefined,
           }
         );
 
         // Store job ID to track progress
-        setGuidanceJobId(result.job_id);
+        setGuidanceJobId(result);
 
         showNotification({
           title: "Generating Guidance",

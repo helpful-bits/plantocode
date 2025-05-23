@@ -42,7 +42,6 @@ export * from "./file-utils"; // Re-exports from specialized file utility module
 // export * from "./file-binary-utils"; 
 // export * from "./file-content-loader";
 // export * from "./file-path-validator";
-export * from "./input-path-processor"; // Path processing utilities
 export * from "./git-utils";
 
 // UI utilities

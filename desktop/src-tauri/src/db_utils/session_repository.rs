@@ -72,8 +72,16 @@ impl SessionRepository {
         let mut sessions = Vec::new();
         
         for row in rows {
-            let session = self.row_to_session(&row).await?;
-            sessions.push(session);
+            match self.row_to_session(&row).await {
+                Ok(session) => {
+                    sessions.push(session);
+                },
+                Err(e) => {
+                    let session_id_for_log: String = row.try_get("id").unwrap_or_else(|_| "unknown_id".to_string());
+                    log::error!("Failed to process session with id '{}': {}", session_id_for_log, e);
+                    continue;
+                }
+            }
         }
         
         Ok(sessions)

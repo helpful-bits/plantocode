@@ -59,8 +59,12 @@ export function useImplementationPlanActions() {
           {
             sessionId: activeSessionId,
             taskDescription,
-            filePaths: includedPaths,
-            projectDirectory,
+            projectDirectory: projectDirectory || "",
+            relevantFiles: includedPaths,
+            projectStructure: undefined,
+            model: undefined,
+            temperature: undefined,
+            maxTokens: undefined,
           }
         );
 

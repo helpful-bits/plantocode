@@ -32,9 +32,26 @@ pub struct ImplementationPlanResponse {
 /// Creates an implementation plan for a development task
 #[command]
 pub async fn create_implementation_plan_command(
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    relevant_files: Vec<String>,
+    project_structure: Option<String>,
+    model: Option<String>,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
     app_handle: AppHandle,
-    args: CreateImplementationPlanArgs,
 ) -> AppResult<ImplementationPlanResponse> {
+    let args = CreateImplementationPlanArgs {
+        session_id,
+        task_description,
+        project_directory,
+        relevant_files,
+        project_structure,
+        model,
+        temperature,
+        max_tokens,
+    };
     info!("Creating implementation plan job for task: {}", args.task_description);
     
     // Validate required fields
@@ -141,9 +158,10 @@ pub struct ImplementationPlanDataResponse {
 /// Reads an implementation plan from the file system
 #[command]
 pub async fn read_implementation_plan_command(
+    job_id: String,
     app_handle: AppHandle,
-    args: ReadImplementationPlanArgs,
 ) -> AppResult<ImplementationPlanDataResponse> {
+    let args = ReadImplementationPlanArgs { job_id };
     info!("Reading implementation plan for job: {}", args.job_id);
     
     // Get the background job repository

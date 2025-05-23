@@ -40,7 +40,7 @@ pub struct PathFinderSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeAiConfig {
+pub struct RuntimeAIConfig {
     pub default_llm_model_id: String,
     pub default_voice_model_id: String,
     pub default_transcription_model_id: String,

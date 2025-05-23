@@ -6,7 +6,6 @@ import { Suspense } from "react";
 import { MemoizedFileManagementWrapper } from "./_components/file-management-wrapper";
 import { useCorePromptContext } from "./_contexts/core-prompt-context";
 import { FileManagementProvider } from "./_contexts/file-management-provider";
-import { GeneratePromptFeatureProvider } from "./_contexts/generate-prompt-feature-provider";
 import { useTaskContext } from "./_contexts/task-context";
 import ProjectSection from "./_sections/project-section";
 
@@ -18,11 +17,7 @@ import ProjectSection from "./_sections/project-section";
  * The form itself is composed of focused presentational sections.
  */
 export default function GeneratePromptForm() {
-  return (
-    <GeneratePromptFeatureProvider>
-      <GeneratePromptFormContent />
-    </GeneratePromptFeatureProvider>
-  );
+  return <GeneratePromptFormContent />;
 }
 
 // Separate content component that consumes the contexts
@@ -54,13 +49,18 @@ function GeneratePromptFormContent() {
         </Suspense>
 
         {/* FileManagementContent wrapped with its own provider */}
-        {projectDirectory && (
+        {projectDirectory ? (
           <FileManagementProvider projectDirectory={projectDirectory}>
             <MemoizedFileManagementWrapper
               projectDirectory={projectDirectory}
               hasSession={hasSession}
             />
           </FileManagementProvider>
+        ) : (
+          <div className="text-center text-muted-foreground italic p-4 border border-dashed rounded-md border-border bg-card/50">
+            <p>No project directory selected.</p>
+            <p className="text-xs mt-2">Please select a project directory in the Project section above.</p>
+          </div>
         )}
       </div>
     </div>

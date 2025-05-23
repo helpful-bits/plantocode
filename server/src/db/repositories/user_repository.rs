@@ -9,11 +9,11 @@ pub struct User {
     pub email: String,
     pub password_hash: Option<String>,
     pub full_name: Option<String>,
-    pub firebase_uid: Option<String>,
+    pub auth0_user_id: Option<String>,
     pub role: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub firebase_refresh_token: Option<String>,
+    pub auth0_refresh_token: Option<String>,
 }
 
 pub struct UserRepository {
@@ -30,7 +30,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at, firebase_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
             FROM users
             WHERE id = $1
             "#,
@@ -51,7 +51,7 @@ impl UserRepository {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at, firebase_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
             FROM users
             WHERE email = $1
             "#,
@@ -67,24 +67,24 @@ impl UserRepository {
         Ok(user)
     }
 
-    // Get user by Firebase UID
-    pub async fn get_by_firebase_uid(&self, firebase_uid: &str) -> Result<User, AppError> {
+    // Get user by Auth0 user ID
+    pub async fn get_by_auth0_user_id(&self, auth0_user_id: &str) -> Result<User, AppError> {
         let user = query_as!(
             User,
             r#"
-            SELECT id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at, firebase_refresh_token
+            SELECT id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at, auth0_refresh_token
             FROM users
-            WHERE firebase_uid = $1
+            WHERE auth0_user_id = $1
             "#,
-            firebase_uid
+            auth0_user_id
         )
         .fetch_one(&self.db_pool)
         .await
         .map_err(|e| match e {
             sqlx::Error::RowNotFound => {
-                AppError::NotFound(format!("User with Firebase UID not found: {}", firebase_uid))
+                AppError::NotFound(format!("User with Auth0 user ID not found: {}", auth0_user_id))
             }
-            _ => AppError::Database(format!("Failed to fetch user by Firebase UID: {}", e)),
+            _ => AppError::Database(format!("Failed to fetch user by Auth0 user ID: {}", e)),
         })?;
 
         Ok(user)
@@ -96,7 +96,7 @@ impl UserRepository {
         email: &str,
         password_hash: Option<&str>,
         full_name: Option<&str>,
-        firebase_uid: Option<&str>,
+        auth0_user_id: Option<&str>,
         role: Option<&str>,
     ) -> Result<Uuid, AppError> {
         let id = Uuid::new_v4();
@@ -104,14 +104,14 @@ impl UserRepository {
 
         query!(
             r#"
-            INSERT INTO users (id, email, password_hash, full_name, firebase_uid, role, created_at, updated_at)
+            INSERT INTO users (id, email, password_hash, full_name, auth0_user_id, role, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, now(), now())
             "#,
             id,
             email,
             password_hash,
             full_name,
-            firebase_uid,
+            auth0_user_id,
             role
         )
         .execute(&self.db_pool)
@@ -128,7 +128,7 @@ impl UserRepository {
         email: Option<&str>,
         password_hash: Option<&str>,
         full_name: Option<&str>,
-        firebase_uid: Option<&str>,
+        auth0_user_id: Option<&str>,
         role: Option<&str>,
     ) -> Result<(), AppError> {
         // Get current user to preserve fields that are not being updated
@@ -140,7 +140,7 @@ impl UserRepository {
             SET email = $1,
                 password_hash = $2,
                 full_name = $3,
-                firebase_uid = $4,
+                auth0_user_id = $4,
                 role = $5,
                 updated_at = now()
             WHERE id = $6
@@ -148,7 +148,7 @@ impl UserRepository {
             email.unwrap_or(&current_user.email),
             password_hash.or(current_user.password_hash.as_deref()),
             full_name.or(current_user.full_name.as_deref()),
-            firebase_uid.or(current_user.firebase_uid.as_deref()),
+            auth0_user_id.or(current_user.auth0_user_id.as_deref()),
             role.unwrap_or(&current_user.role),
             id
         )
@@ -180,7 +180,7 @@ impl UserRepository {
         let users = query_as!(
             User,
             r#"
-            SELECT u.id, u.email, u.password_hash, u.full_name, u.firebase_uid, u.role, u.created_at, u.updated_at, u.firebase_refresh_token
+            SELECT u.id, u.email, u.password_hash, u.full_name, u.auth0_user_id, u.role, u.created_at, u.updated_at, u.auth0_refresh_token
             FROM users u
             JOIN subscriptions s ON u.id = s.user_id
             WHERE s.stripe_customer_id = $1
@@ -194,17 +194,17 @@ impl UserRepository {
         Ok(users)
     }
     
-    // Find or create a user based on Firebase details (email and UID)
-    pub async fn find_or_create_by_firebase_details(
+    // Find or create a user based on Auth0 details (Auth0 user ID and email)
+    pub async fn find_or_create_by_auth0_details(
         &self,
-        firebase_uid: &str,
+        auth0_user_id: &str,
         email: &str,
         full_name: Option<&str>,
     ) -> Result<User, AppError> {
-        // First, try to find by Firebase UID
-        match self.get_by_firebase_uid(firebase_uid).await {
+        // First, try to find by Auth0 user ID
+        match self.get_by_auth0_user_id(auth0_user_id).await {
             Ok(user) => {
-                // User exists with this Firebase UID
+                // User exists with this Auth0 user ID
                 let mut update_needed = false;
                 let mut updated_email = None;
                 let mut updated_full_name = None;
@@ -229,7 +229,7 @@ impl UserRepository {
                         updated_email,
                         None, // Don't change password
                         updated_full_name,
-                        None, // Don't change Firebase UID
+                        None, // Don't change Auth0 user ID
                         None, // Don't change role
                     ).await?;
                     
@@ -240,18 +240,18 @@ impl UserRepository {
                 return Ok(user);
             },
             Err(AppError::NotFound(_)) => {
-                // User doesn't exist with this Firebase UID
+                // User doesn't exist with this Auth0 user ID
                 // Now try to find by email
                 match self.get_by_email(email).await {
                     Ok(user) => {
-                        // User exists with this email but not with this Firebase UID
-                        // Update the Firebase UID
+                        // User exists with this email but not with this Auth0 user ID
+                        // Update the Auth0 user ID
                         self.update(
                             &user.id,
                             None, // Don't change email
                             None, // Don't change password
                             full_name, // Update name if provided
-                            Some(firebase_uid), // Add Firebase UID
+                            Some(auth0_user_id), // Add Auth0 user ID
                             None, // Don't change role
                         ).await?;
                         
@@ -263,9 +263,9 @@ impl UserRepository {
                         // Create a new user
                         let user_id = self.create(
                             email,
-                            None, // No password for Firebase auth
+                            None, // No password for Auth0 auth
                             full_name,
-                            Some(firebase_uid),
+                            Some(auth0_user_id),
                             None, // Default role
                         ).await?;
                         
@@ -278,21 +278,12 @@ impl UserRepository {
         }
     }
     
-    // Store Firebase refresh token
-    pub async fn store_firebase_refresh_token(&self, user_id: &Uuid, refresh_token: &str) -> Result<(), AppError> {
-        // Check if storing Firebase refresh tokens is enabled
-        let store_enabled = std::env::var("FIREBASE_STORE_REFRESH_TOKENS")
-            .unwrap_or_else(|_| "true".to_string())
-            .to_lowercase() == "true";
-            
-        if !store_enabled {
-            return Ok(());
-        }
-        
+    // Store Auth0 refresh token
+    pub async fn store_auth0_refresh_token(&self, user_id: &Uuid, refresh_token: &str) -> Result<(), AppError> {
         query!(
             r#"
             UPDATE users
-            SET firebase_refresh_token = $1,
+            SET auth0_refresh_token = $1,
                 updated_at = now()
             WHERE id = $2
             "#,
@@ -301,16 +292,16 @@ impl UserRepository {
         )
         .execute(&self.db_pool)
         .await
-        .map_err(|e| AppError::Database(format!("Failed to store Firebase refresh token: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("Failed to store Auth0 refresh token: {}", e)))?;
         
         Ok(())
     }
     
-    // Get Firebase refresh token
-    pub async fn get_firebase_refresh_token(&self, user_id: &Uuid) -> Result<Option<String>, AppError> {
+    // Get Auth0 refresh token
+    pub async fn get_auth0_refresh_token(&self, user_id: &Uuid) -> Result<Option<String>, AppError> {
         let result = query!(
             r#"
-            SELECT firebase_refresh_token
+            SELECT auth0_refresh_token
             FROM users
             WHERE id = $1
             "#,
@@ -320,9 +311,9 @@ impl UserRepository {
         .await
         .map_err(|e| match e {
             sqlx::Error::RowNotFound => AppError::NotFound(format!("User not found: {}", user_id)),
-            _ => AppError::Database(format!("Failed to fetch Firebase refresh token: {}", e)),
+            _ => AppError::Database(format!("Failed to fetch Auth0 refresh token: {}", e)),
         })?;
         
-        Ok(result.firebase_refresh_token)
+        Ok(result.auth0_refresh_token)
     }
 }

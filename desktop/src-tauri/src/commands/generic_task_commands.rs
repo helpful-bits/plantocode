@@ -31,9 +31,26 @@ pub struct JobCommandResponse {
 /// Command to start a generic LLM streaming job
 #[command]
 pub async fn generic_llm_stream_command(
+    session_id: String,
+    prompt_text: String,
+    system_prompt: Option<String>,
+    model: Option<String>,
+    temperature: Option<f32>,
+    max_output_tokens: Option<u32>,
+    metadata: Option<serde_json::Value>,
+    project_directory: Option<String>,
     app_handle: AppHandle,
-    args: GenericLlmStreamArgs,
 ) -> AppResult<JobCommandResponse> {
+    let args = GenericLlmStreamArgs {
+        session_id,
+        prompt_text,
+        system_prompt,
+        model,
+        temperature,
+        max_output_tokens,
+        metadata,
+        project_directory,
+    };
     info!("Creating generic LLM stream job");
     
     // Validate required fields
@@ -160,9 +177,26 @@ pub struct TaskEnhancementCommandResponse {
 /// Enhances a task description with more details and clarity
 #[command]
 pub async fn enhance_task_description_command(
+    session_id: String,
+    task_description: String,
+    project_context: Option<String>,
+    project_directory: Option<String>,
+    target_field: Option<String>,
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
+    max_tokens_override: Option<u32>,
     app_handle: AppHandle,
-    args: TaskEnhancementRequestArgs,
 ) -> AppResult<TaskEnhancementCommandResponse> {
+    let args = TaskEnhancementRequestArgs {
+        session_id,
+        task_description,
+        project_context,
+        project_directory,
+        target_field,
+        model_override,
+        temperature_override,
+        max_tokens_override,
+    };
     info!("Enhancing task description: {}", args.task_description);
     
     // Validate required fields

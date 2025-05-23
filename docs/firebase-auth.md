@@ -68,28 +68,46 @@ This document outlines the refined step-by-step implementation plan for a hybrid
 
 This webpage is responsible for orchestrating the Firebase authentication.
 
-* **Include Firebase SDK:**
+* **Include Firebase SDK and Configuration:**
+
+  For the modular Firebase SDK (v9+), the SDK is imported directly in the JavaScript file as ES modules:
 
   ```html
-  <script src="https://www.gstatic.com/firebasejs/9.X.Y/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.X.Y/firebase-auth.js"></script>
+  <!-- Firebase configuration (populated by server) -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "YOUR_FIREBASE_WEB_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID"
+      // ... other config properties if needed by other services
+    };
+  </script>
+  <script type="module" src="/auth/login.js"></script>
   ```
 
-  *(Replace `9.X.Y` with the desired Firebase SDK version)*
-
-* **JavaScript Logic (executed on page load):**
+* **JavaScript Logic (executed on page load) - Modular SDK:**
 
   ```javascript
-  // Your Firebase project configuration
-  const firebaseConfig = {
-    apiKey: "YOUR_FIREBASE_WEB_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    // ... other config properties
-  };
+  // Import necessary Firebase functions directly from CDN
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    GithubAuthProvider,
+    OAuthProvider,
+    signInWithRedirect,
+    getRedirectResult
+  } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
+
+  // firebaseConfig should be globally available from login.html's script tag
+  if (typeof firebaseConfig === 'undefined') {
+    console.error("CRITICAL: firebaseConfig is not defined");
+    throw new Error("FirebaseConfigNotDefined");
+  }
 
   // Initialize Firebase
-  const app = firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth(app); // Or: const auth = getAuth(app); for v9 modular
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
 
   // Function to extract query parameters
   function getQueryParam(name) {
@@ -101,21 +119,21 @@ This webpage is responsible for orchestrating the Firebase authentication.
   function getFirebaseProvider(providerName) {
     switch (providerName) {
       case "google":
-        return new firebase.auth.GoogleAuthProvider(); // Or: new GoogleAuthProvider(); for v9
+        return new GoogleAuthProvider();
       case "github":
-        return new firebase.auth.GithubAuthProvider(); // Or: new GithubAuthProvider(); for v9
+        return new GithubAuthProvider();
       case "microsoft":
         // For Microsoft, ensure you've configured it as a generic OAuth provider in Firebase
         // and use the correct provider ID (e.g., 'microsoft.com')
-        const microsoftProvider = new firebase.auth.OAuthProvider("microsoft.com"); // Or: new OAuthProvider("microsoft.com");
-        // microsoftProvider.addScope('email'); // Add scopes if needed
-        // microsoftProvider.addScope('profile');
+        const microsoftProvider = new OAuthProvider("microsoft.com");
+        microsoftProvider.addScope('email'); // Add scopes if needed
+        microsoftProvider.addScope('profile');
         return microsoftProvider;
       case "apple":
         // Similar for Apple, ensure 'apple.com' is configured
-        const appleProvider = new firebase.auth.OAuthProvider("apple.com"); // Or: new OAuthProvider("apple.com");
-        // appleProvider.addScope('email');
-        // appleProvider.addScope('name');
+        const appleProvider = new OAuthProvider("apple.com");
+        appleProvider.addScope('email');
+        appleProvider.addScope('name');
         return appleProvider;
       default:
         console.error("Unsupported provider:", providerName);
@@ -127,7 +145,7 @@ This webpage is responsible for orchestrating the Firebase authentication.
   async function handleAuth() {
     try {
       // Attempt to get the redirect result as the page might be loading after redirect from IdP
-      const result = await firebase.auth().getRedirectResult(); // Or: await getRedirectResult(auth);
+      const result = await getRedirectResult(auth);
 
       if (result && result.credential) {
         // User has successfully signed in via redirect
@@ -190,7 +208,7 @@ This webpage is responsible for orchestrating the Firebase authentication.
 
             document.getElementById("status").innerText = `Redirecting to ${providerName} for authentication...`;
             // Start the redirect flow automatically
-            await firebase.auth().signInWithRedirect(provider); // Or: await signInWithRedirect(auth, provider);
+            await signInWithRedirect(auth, provider);
           } else {
             document.getElementById("status").innerText = `Error: Provider "${providerName}" is not supported.`;
           }
@@ -231,7 +249,16 @@ This webpage is responsible for orchestrating the Firebase authentication.
       </head>
       <body>
           <div id="status">Initializing authentication...</div>
-          <script src="YOUR_FIREBASE_CONFIG_AND_LOGIC.js"></script> 
+          
+          <!-- Firebase configuration (populated by server) -->
+          <script>
+              const firebaseConfig = {
+                  apiKey: "YOUR_FIREBASE_WEB_API_KEY",
+                  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+                  projectId: "YOUR_PROJECT_ID"
+              };
+          </script>
+          <script type="module" src="/auth/login.js"></script>
       </body>
       </html>
       ```
@@ -341,6 +368,54 @@ This webpage is responsible for orchestrating the Firebase authentication.
 
 -----
 
+### Addressing Third-Party Storage Restrictions with a Reverse Proxy
+
+**⚠️ BROWSER COMPATIBILITY NOTE:** Modern browsers (especially Safari and Chromium-based browsers in private mode) block third-party storage access, which can cause `signInWithRedirect` to fail when using the default Firebase authDomain (`[PROJECT_ID].firebaseapp.com`). To resolve this, we've implemented a reverse proxy solution.
+
+#### How the Proxy Works:
+
+1. **Modified authDomain**: The `firebaseConfig.authDomain` now points to this application's server domain (e.g., `localhost:8080` for development) instead of `[PROJECT_ID].firebaseapp.com`.
+
+2. **Reverse Proxy**: The server includes a reverse proxy at `/__/auth/*` that forwards all Firebase auth helper requests to `https://[PROJECT_ID].firebaseapp.com/__/auth/*`.
+
+3. **Updated Redirect URIs**: The OAuth provider's "Authorized redirect URIs" now include the application's server domain (e.g., `http://localhost:8080/__/auth/handler`).
+
+#### **Action Required: Update Google Cloud Console Redirect URIs**
+
+1. Go to your Google Cloud Console → APIs & Services → Credentials.
+2. Select the OAuth 2.0 Client ID used for this application.
+3. In the 'Authorized redirect URIs' section, **ADD** a new URI:
+   * For local development: `http://localhost:8080/__/auth/handler` (replace with your actual `SERVER_URL` if different).
+   * For production: `https://[YOUR_PRODUCTION_APP_DOMAIN]/__/auth/handler`.
+4. **IMPORTANT**: The path `/__/auth/handler` is critical.
+5. You may keep the old `https://[PROJECT_ID].firebaseapp.com/__/auth/handler` URI for a transition period or if other flows depend on it, but the new one pointing to your server is now essential for the proxied redirect flow.
+6. Save the changes in Google Cloud Console.
+
+### Critical Configuration Checklist:
+
+**⚠️ IMPORTANT: The most common reason for `firebase.auth().getRedirectResult()` failing to return a credential after redirect is misconfiguration. Please verify ALL of the following settings:**
+
+1. **Firebase Console - Authorized Domains:**
+   * The domain serving the `login.html` page (e.g., `http://localhost:8080` or your production server domain) MUST be listed in the Firebase console under "Authentication" → "Settings" → "Authorized domains".
+
+2. **Firebase Console - OAuth Provider Setup (e.g., Google):**
+   * The OAuth provider (e.g., Google) must be enabled in Firebase Authentication → Sign-in method.
+   * The Client ID and Client Secret from the OAuth provider (e.g., Google Cloud Console) must be correctly entered in the Firebase settings for that provider.
+
+3. **OAuth Provider Console (e.g., Google Cloud Console) - Authorized Redirect URIs:**
+   * **NEW PROXY SETUP**: Add `http://localhost:8080/__/auth/handler` (or your production equivalent) to the "Authorized redirect URIs" in your OAuth 2.0 Client ID settings.
+   * **Legacy Support**: You may also keep `https://[YOUR_PROJECT_ID].firebaseapp.com/__/auth/handler` for compatibility.
+   * **This is the most common point of failure if `getRedirectResult()` doesn't work.**
+
+4. **Firebase Web App Configuration in `login.html`:**
+   * The `firebaseConfig` object now uses the server's own domain as `authDomain` (derived from the `SERVER_URL` environment variable).
+   * Ensure `FIREBASE_API_KEY`, `FIREBASE_PROJECT_ID`, and `SERVER_URL` are correctly set in your server's `.env` file.
+
+5. **Enable Firebase Authentication Library API:**
+   * In some cases, for older projects or specific configurations, you might need to ensure that the "Identity Toolkit API" (for Firebase Authentication) and "Token Service API" (for secure token exchange) are enabled in your Google Cloud Platform project associated with Firebase. Usually, these are enabled automatically when Firebase services are used.
+
+**If these configurations are not correct, the `firebase.auth().getRedirectResult()` call in `login.js` will likely fail to retrieve user credentials, leading to the "Awaiting redirect result..." message and a stuck authentication flow.**
+
 ### Security Considerations:
 
 * **HTTPS:** All communication (Tauri \<-\> Rust Server, Browser \<-\> Rust Server) should be over HTTPS in production. For local development, `http://localhost` is generally acceptable.
@@ -380,3 +455,15 @@ The authentication flow has been fully implemented with the following components
 4. **Token Refresh**: The desktop app uses the server's `/api/auth/refresh-firebase-id-token` endpoint to get a new Firebase ID token when needed, then exchanges it for a new application JWT.
 
 The existing `/api/auth/firebase/token` endpoint on the server is still used for exchanging Firebase ID tokens for application JWTs, maintaining compatibility with both the new web-based flow and any legacy code that might still be using the old approach.
+
+### Enhanced Proxy Architecture
+
+**Updated in January 2025**: To address third-party storage restrictions in modern browsers, the implementation now includes:
+
+1. **Dynamic AuthDomain Configuration**: The `firebaseConfig.authDomain` is dynamically set to the application server's domain (extracted from `SERVER_URL` environment variable) rather than the default Firebase domain.
+
+2. **Transparent Reverse Proxy**: A new proxy handler at `/__/auth/*` forwards all Firebase authentication helper requests to `https://[PROJECT_ID].firebaseapp.com/__/auth/*`, ensuring seamless compatibility with Firebase's authentication flow while bypassing browser restrictions.
+
+3. **Dual Redirect URI Support**: OAuth providers are configured to accept redirect URIs from both the application server domain (for the proxy flow) and the original Firebase domain (for legacy compatibility).
+
+This architecture ensures robust authentication across all modern browsers, including Safari and Chromium-based browsers in private/incognito mode, without requiring any changes to the Tauri desktop application code.

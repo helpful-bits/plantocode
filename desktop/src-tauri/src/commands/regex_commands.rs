@@ -24,10 +24,29 @@ pub struct GenerateRegexArgs {
 /// Command to generate regex based on description and examples
 #[command]
 pub async fn generate_regex_command(
-    args: GenerateRegexArgs, 
+    session_id: String,
+    project_directory: String,
+    description: String,
+    examples: Option<Vec<String>>,
+    target_language: Option<String>,
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
+    max_tokens_override: Option<u32>,
     app_handle: AppHandle
 ) -> AppResult<String> {
-    info!("Creating regex generation job for description: {}", args.description);
+    info!("Creating regex generation job for description: {}", description);
+    
+    // Recreate args struct for internal use
+    let args = GenerateRegexArgs {
+        session_id,
+        project_directory,
+        description,
+        examples,
+        target_language,
+        model_override,
+        temperature_override,
+        max_tokens_override,
+    };
     
     // Validate required fields
     if args.session_id.is_empty() {

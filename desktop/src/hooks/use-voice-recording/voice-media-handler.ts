@@ -32,18 +32,17 @@ export async function setupMedia({
       noiseSuppression: true,
       autoGainControl: true,
       // Try to use higher sample rate if available
-      sampleRate: 44100,
+      sampleRate: { ideal: 48000 },
       // Request higher bitrate if available
       channelCount: 1, // Mono is better for speech recognition
     };
 
-    // Add deviceId constraint if provided and not 'default' or empty
+    // Add deviceId constraint only if a specific, non-"default" deviceId is provided
     if (deviceId && deviceId.trim() && deviceId !== "default") {
       audioConstraints.deviceId = { exact: deviceId };
-    } else if (deviceId === "default") {
-      // For 'default', we can either explicitly request it or let the browser handle default behavior
-      audioConstraints.deviceId = { exact: "default" };
     }
+    // If deviceId is "default", empty, or undefined, no deviceId constraint is added,
+    // allowing the browser to select the system default audio input device.
 
     // Request audio with the configured constraints
     const stream = await navigator.mediaDevices.getUserMedia({

@@ -5,26 +5,33 @@ import { useAuth } from '@/contexts/auth-context';
 /**
  * Hook to periodically refresh the application JWT token
  * 
- * Firebase ID tokens expire hourly, but our application JWT is typically valid for longer.
- * This hook sets up a timer to refresh the JWT token every 50 minutes, which is less
- * than the typical Firebase token expiry of 60 minutes.
- * 
- * The new implementation uses the main server's Firebase refresh token flow.
+ * Auth0 refresh tokens are used to get new access tokens.
+ * This hook sets up a timer to refresh the JWT token every 50 minutes.
  */
 export function useAuthTokenRefresher() {
   const refreshIntervalRef = useRef<number | null>(null);
   
   // Safely try to get the auth context
-  let firebaseUid: string | null = null;
+  let user: any = null;
   try {
     const auth = useAuth();
-    firebaseUid = auth.firebaseUid;
+    user = auth.user;
   } catch (e) {
     console.warn("Auth context not available yet, token refresh won't be initialized");
     return; // Early return if auth context is not available
   }
 
   useEffect(() => {
+    // Only start token refresh if user is authenticated
+    if (!user) {
+      // Clear any existing interval if user is not available
+      if (refreshIntervalRef.current) {
+        window.clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      return;
+    }
+
     const startTokenRefresh = () => {
       // Clear any existing interval
       if (refreshIntervalRef.current) {
@@ -37,37 +44,24 @@ export function useAuthTokenRefresher() {
           // Check if we're still logged in
           const currentToken = await invoke<string | null>('get_app_jwt');
           
-          if (!currentToken || !firebaseUid) {
-            // Not logged in or missing Firebase UID, clear the interval
+          if (!currentToken || !user) {
+            // Not logged in, clear the interval
             if (refreshIntervalRef.current) {
               window.clearInterval(refreshIntervalRef.current);
               refreshIntervalRef.current = null;
             }
-            console.log('[Auth] Not logged in or missing Firebase UID, skipping token refresh');
+            console.log('[Auth] Not logged in, skipping token refresh');
             return;
           }
 
-          // Try to refresh the Firebase ID token using the main server's refresh endpoint
-          console.log('[Auth] Refreshing Firebase ID token via main server');
+          // Try to refresh the app JWT using Auth0 refresh token
+          console.log('[Auth] Refreshing app JWT via Auth0');
           
           try {
-            // Get a new Firebase ID token using the server's stored refresh token
-            const newFirebaseIdToken = await invoke<string>(
-              'trigger_firebase_id_token_refresh_on_main_server'
-            );
-            
-            console.log('[Auth] Successfully refreshed Firebase ID token');
-            
-            // Exchange the new Firebase ID token for a new app JWT
-            await invoke('exchange_main_server_tokens_and_store_app_jwt', {
-              firebaseIdToken: newFirebaseIdToken
-            });
-            
-            console.log('[Auth] Successfully refreshed app JWT');
-            
-            // Auth context will be updated automatically by the exchange command
+            await invoke('refresh_app_jwt_auth0');
+            console.log('[Auth] Successfully refreshed app JWT via Auth0');
           } catch (error) {
-            console.error('[Auth] Firebase token refresh failed:', error);
+            console.error('[Auth] Auth0 token refresh failed:', error);
             
             // Fall back to validating the existing token
             try {
@@ -96,5 +90,5 @@ export function useAuthTokenRefresher() {
         refreshIntervalRef.current = null;
       }
     };
-  }, [firebaseUid]); // Dependency on firebaseUid to restart the refresh cycle if it changes
+  }, [user]); // Dependency on user to restart the refresh cycle if it changes
 }

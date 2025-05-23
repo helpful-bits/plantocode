@@ -17,7 +17,7 @@ interface ProxyRequestParams {
   endpoint: string; // e.g., '/openai/chat/completions'
   method: "GET" | "POST" | "PUT" | "DELETE";
   payload?: Record<string, unknown>;
-  authToken?: string; // Firebase ID token
+  authToken?: string; // Auth0 JWT token
 }
 
 interface ProxyResponseData {

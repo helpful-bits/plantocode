@@ -5,11 +5,11 @@ use log::{info, error, warn};
 use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{ModelInfo, RuntimeAiConfig, TaskSpecificModelConfig};
+use crate::models::{ModelInfo, RuntimeAIConfig, TaskSpecificModelConfig};
 use crate::api_clients::client_factory::ClientFactory;
 use crate::utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
 
-/// Retrieves the list of available AI models from the RuntimeAiConfig
+/// Retrieves the list of available AI models from the RuntimeAIConfig
 #[tauri::command]
 pub async fn get_available_ai_models(app_handle: AppHandle) -> AppResult<Vec<ModelInfo>> {
     match crate::config::get_runtime_ai_config() {
@@ -19,7 +19,7 @@ pub async fn get_available_ai_models(app_handle: AppHandle) -> AppResult<Vec<Mod
     }
 }
 
-/// Retrieves the default task configurations from the RuntimeAiConfig
+/// Retrieves the default task configurations from the RuntimeAIConfig
 #[tauri::command]
 pub async fn get_default_task_configurations(app_handle: AppHandle) -> AppResult<HashMap<String, TaskSpecificModelConfig>> {
     match crate::config::get_runtime_ai_config() {
@@ -33,7 +33,7 @@ pub async fn get_default_task_configurations(app_handle: AppHandle) -> AppResult
 #[tauri::command]
 pub async fn fetch_runtime_ai_config(
     app_handle: AppHandle,
-) -> AppResult<RuntimeAiConfig> {
+) -> AppResult<RuntimeAIConfig> {
     info!("Fetching runtime AI configuration from server via command");
     
     // Use our new config module to fetch and update the runtime AI configuration

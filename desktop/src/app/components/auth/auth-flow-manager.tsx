@@ -1,16 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Store } from '@tauri-apps/plugin-store';
 
 import LoginPage from "@/app/components/auth/login-page";
 import { useRuntimeConfigLoader } from "@/auth/use-runtime-config-loader";
 import { useAuth } from "@/contexts/auth-context";
 import { EmptyState, LoadingScreen } from "@/ui";
+import { OnboardingFlow } from "@/app/components/onboarding";
+import { APP_SETTINGS_STORE } from "@/utils/constants";
 
 interface AuthFlowManagerProps {
   children: ReactNode;
 }
 
 export function AuthFlowManager({ children }: AuthFlowManagerProps) {
+  const [isOnboardingNeeded, setIsOnboardingNeeded] = useState<boolean | null>(null);
+  
   // Safe version - early return if not ready
   if (typeof window === 'undefined') {
     return null; // SSR guard
@@ -28,6 +33,34 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       loadConfig,
       clearError,
     } = useRuntimeConfigLoader();
+
+    // Check onboarding status on mount
+    useEffect(() => {
+      const checkOnboardingStatus = async () => {
+        try {
+          const settingsStore = await Store.load(APP_SETTINGS_STORE);
+          const hasSetup = await settingsStore.get<boolean>('hasCompletedOnboarding');
+          setIsOnboardingNeeded(!hasSetup);
+        } catch (e) {
+          console.error("Error checking onboarding status:", e);
+          setIsOnboardingNeeded(true); // Default to needing onboarding if store fails
+        }
+      };
+      checkOnboardingStatus();
+    }, []);
+
+    const handleOnboardingComplete = async () => {
+      try {
+        const settingsStore = await Store.load(APP_SETTINGS_STORE);
+        await settingsStore.set('hasCompletedOnboarding', true);
+        await settingsStore.save();
+        setIsOnboardingNeeded(false);
+      } catch (e) {
+        console.error("Error saving onboarding status:", e);
+        // Still proceed even if store fails
+        setIsOnboardingNeeded(false);
+      }
+    };
 
 
     // Load runtime configuration after successful login
@@ -47,7 +80,17 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
         void initializeConfig();
       }
-    }, [user, loadConfig]);
+    }, [user]); // Remove loadConfig from deps to prevent infinite loop
+
+    // Show loading screen while checking onboarding status
+    if (isOnboardingNeeded === null) {
+      return <LoadingScreen loadingType="initializing" />;
+    }
+
+    // Show onboarding flow if needed
+    if (isOnboardingNeeded) {
+      return <OnboardingFlow onOnboardingComplete={handleOnboardingComplete} />;
+    }
 
     // Show loading screen while authenticating
     if (loading) {

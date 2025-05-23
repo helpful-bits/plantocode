@@ -2,8 +2,9 @@
 
 import React from "react";
 
+import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
-import { useGeneratePrompt } from "../_contexts/generate-prompt-context";
+import { useRegexContext } from "../_contexts/regex-context";
 import FileBrowser from "../file-browser";
 
 interface FileSectionProps {
@@ -14,16 +15,16 @@ const FileSection = React.memo(function FileSection({
   disabled = false,
 }: FileSectionProps) {
   // Get state and actions from contexts
-  const context = useGeneratePrompt();
   const fileState = useFileManagement();
-  const regexState = context.regex;
+  const regexContext = useRegexContext();
+  const coreContext = useCorePromptContext();
 
   // Calculate if regex is available based on regex patterns
   const isRegexAvailable = !!(
-    regexState.titleRegex.trim() ||
-    regexState.contentRegex.trim() ||
-    regexState.negativeTitleRegex.trim() ||
-    regexState.negativeContentRegex.trim()
+    regexContext.state.titleRegex.trim() ||
+    regexContext.state.contentRegex.trim() ||
+    regexContext.state.negativeTitleRegex.trim() ||
+    regexContext.state.negativeContentRegex.trim()
   );
 
   // Handle filter mode changes and synchronize with regex state
@@ -31,18 +32,18 @@ const FileSection = React.memo(function FileSection({
     fileState.setFilterMode(newMode);
     
     // Update regex state if needed
-    if (newMode === "regex" !== regexState.isRegexActive) {
+    if (newMode === "regex" !== regexContext.state.isRegexActive) {
       // When toggling regex mode, update through context actions
       if (newMode === "regex") {
         // Enable regex mode
-        context.regex.handleGenerateRegexFromTask();
+        regexContext.actions.handleGenerateRegexFromTask();
       } else {
         // Disable regex mode - the clear function also disables regex mode
-        context.regex.handleClearPatterns();
+        regexContext.actions.handleClearPatterns();
       }
     }
     
-    context.core.handleInteraction();
+    coreContext.actions.handleInteraction();
   };
 
   return (
@@ -61,7 +62,7 @@ const FileSection = React.memo(function FileSection({
         filterMode={fileState.filterMode}
         onFilterModeChange={handleFilterModeChange}
         isRegexAvailable={isRegexAvailable}
-        onInteraction={() => context.core.handleInteraction()}
+        onInteraction={() => coreContext.actions.handleInteraction()}
         refreshFiles={async (_preserveState?: boolean) => {
           await fileState.refreshFiles();
         }}
@@ -77,7 +78,10 @@ const FileSection = React.memo(function FileSection({
                 ? "Loading files..."
                 : ""
         }
-        regexState={context.regex}
+        regexState={{
+          ...regexContext.state,
+          ...regexContext.actions
+        }}
         disabled={disabled}
       />
     </>

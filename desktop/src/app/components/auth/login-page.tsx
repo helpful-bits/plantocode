@@ -20,34 +20,33 @@ export default function LoginPage() {
     }
   }, [error]);
 
-  // Handle sign-in with a specific provider
-  const handleSignIn = async (provider: "google" | "github" | "microsoft" | "apple") => {
+  // Handle sign-in with Auth0
+  const handleSignIn = async (providerHint?: string) => {
     // Clear any previous errors
     setLastError(null);
     setAuthInProgress(true);
     
     try {
-      console.log(`[LoginPage] Initiating sign in with ${provider}`);
-      // Log more details that might help with debugging
+      console.log(`[LoginPage] Initiating Auth0 sign in`);
       console.log(`[LoginPage] Current URL: ${window.location.href}`);
       console.log(`[LoginPage] Auth loading state: ${loading}`);
       
-      await signIn(provider);
+      await signIn(providerHint);
       // We don't immediately set authInProgress to false since we're waiting for a callback
       // The external browser will be opened and we'll poll for authentication completion
-      console.log(`[LoginPage] Sign in with ${provider} initiated, browser opened for authentication`);
+      console.log(`[LoginPage] Auth0 sign in initiated, browser opened for authentication`);
       
       // Add a timeout to detect if polling takes too long
       setTimeout(() => {
         if (authInProgress) {
-          console.log("[LoginPage] Still waiting for authentication after 60 seconds");
+          console.log("[LoginPage] Still waiting for authentication after 120 seconds");
           setLastError("Authentication is taking longer than expected. If you've completed sign-in in your browser, please try again.");
         }
-      }, 60000);
+      }, 120000); // 2 minutes for Auth0
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[LoginPage] Sign in with ${provider} failed:`, error);
+      console.error(`[LoginPage] Auth0 sign in failed:`, error);
       setLastError(`Sign in failed: ${errorMessage}`);
       setAuthInProgress(false);
     }
@@ -79,37 +78,47 @@ export default function LoginPage() {
         )}
 
         <div className="mt-8 space-y-4">
-          <button
-            onClick={() => handleSignIn("google")}
-            disabled={loading || authInProgress}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign in with Google"}
-          </button>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-600" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                Sign in with your preferred provider
+              </span>
+            </div>
+          </div>
 
-          <button
-            onClick={() => handleSignIn("github")}
-            disabled={loading || authInProgress}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign in with GitHub"}
-          </button>
-
-          <button
-            onClick={() => handleSignIn("microsoft")}
-            disabled={loading || authInProgress}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign in with Microsoft"}
-          </button>
-
-          <button
-            onClick={() => handleSignIn("apple")}
-            disabled={loading || authInProgress}
-            className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-900 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign in with Apple"}
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleSignIn('google-oauth2')}
+              disabled={loading || authInProgress}
+              className="flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Google
+            </button>
+            <button
+              onClick={() => handleSignIn('github')}
+              disabled={loading || authInProgress}
+              className="flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              GitHub
+            </button>
+            <button
+              onClick={() => handleSignIn('windowslive')}
+              disabled={loading || authInProgress}
+              className="flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Microsoft
+            </button>
+            <button
+              onClick={() => handleSignIn('apple')}
+              disabled={loading || authInProgress}
+              className="flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Apple
+            </button>
+          </div>
 
           <div className="text-sm text-center mt-6">
             <p className="text-gray-500 dark:text-gray-400">

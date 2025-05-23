@@ -32,5 +32,4 @@ export interface AuthDataResponse {
   user: FrontendUser;
   token: string;
   expires_in: number;
-  firebase_uid?: string; // Added for the new auth flow
 }
