@@ -48,9 +48,24 @@ pub struct PathFinderRequestArgs {
 /// Create a job to find relevant files in the project
 #[command]
 pub async fn find_relevant_files_command(
+    session_id: String,
+    task_description: String,
+    project_directory: Option<String>,
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
+    max_tokens_override: Option<u32>,
+    options: Option<PathFinderOptionsArgs>,
     app_handle: AppHandle,
-    args: PathFinderRequestArgs,
 ) -> AppResult<PathFinderCommandResponse> {
+    let args = PathFinderRequestArgs {
+        session_id,
+        task_description,
+        project_directory,
+        model_override,
+        temperature_override,
+        max_tokens_override,
+        options,
+    };
     info!("Finding relevant files for task: {}", args.task_description);
     
     // Validate required fields
@@ -164,9 +179,16 @@ pub async fn find_relevant_files_command(
 /// Create a background job to generate a directory tree
 #[command]
 pub async fn create_generate_directory_tree_job_command(
+    project_directory: String,
+    session_id: String,
+    options: Option<crate::utils::directory_tree::DirectoryTreeOptions>,
     app_handle: AppHandle,
-    args: CreateGenerateDirectoryTreeJobArgs,
 ) -> AppResult<String> {
+    let args = CreateGenerateDirectoryTreeJobArgs {
+        project_directory,
+        session_id,
+        options,
+    };
     info!("Creating generate directory tree job for path: {}", args.project_directory);
     
     // Validate project directory
@@ -208,39 +230,41 @@ pub async fn create_generate_directory_tree_job_command(
 }
 
 /// Create a background job to read a directory
-#[command(name = "task_create_read_directory_job_command")]
+#[command]
 pub async fn task_create_read_directory_job_command(
+    session_id: String,
+    directory_path: String,
+    exclude_patterns: Vec<String>,
     app_handle: AppHandle,
-    args: CreateReadDirectoryJobArgs,
 ) -> AppResult<String> {
-    info!("Creating read directory job for path: {}", args.project_directory);
+    info!("Creating read directory job for path: {}", directory_path);
     
     // Validate project directory
-    if args.project_directory.is_empty() {
+    if directory_path.is_empty() {
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
     // Validate session ID
-    if args.session_id.is_empty() {
+    if session_id.is_empty() {
         return Err(AppError::ValidationError("Session ID is required".to_string()));
     }
     
     // Create the payload for the ReadDirectoryProcessor
-    let payload = crate::jobs::types::ReadDirectoryPayloadStruct {
-        path: args.project_directory.clone(),
-        exclude_patterns: args.exclude_patterns.clone(),
+    let payload_struct = crate::jobs::types::ReadDirectoryPayloadStruct {
+        path: directory_path.clone(),
+        exclude_patterns: Some(exclude_patterns),
     };
     
     // Use job creation utility to create and queue the job
     let job_id = job_creation_utils::create_and_queue_background_job(
-        &args.session_id,
-        &args.project_directory,
+        &session_id,
+        &directory_path,
         "filesystem",
         TaskType::ReadDirectory,
         "READ_DIRECTORY",
-        &format!("Read directory: {}", args.project_directory),
+        &format!("Read directory: {}", directory_path),
         (String::new(), 0.0, 0), // No model needed for filesystem operations
-        serde_json::to_value(payload).map_err(|e| 
+        serde_json::to_value(payload_struct).map_err(|e| 
             AppError::SerdeError(e.to_string()))?,
         1, // Priority
         None, // No extra metadata

@@ -17,7 +17,6 @@ export function useGeneratePromptDisplayState({
   // UI state for showing prompt preview (if needed)
   const [showPrompt, setShowPrompt] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [pastedPaths, _setPastedPaths] = useState("");
   const [externalPathWarnings, setExternalPathWarnings] = useState<string[]>(
     []
   );
@@ -59,7 +58,6 @@ export function useGeneratePromptDisplayState({
     tokenCount,
     copySuccess,
     showPrompt,
-    pastedPaths,
     externalPathWarnings,
     error,
 

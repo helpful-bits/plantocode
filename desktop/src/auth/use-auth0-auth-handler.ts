@@ -3,75 +3,33 @@ import { invoke } from "@tauri-apps/api/core";
 import { shell } from "@/utils/shell-utils";
 
 import { type User } from "./auth-context-interface";
-import { type AuthDataResponse, type FrontendUser } from "../types";
+import { type FrontendUser } from "../types";
 
-interface FirebaseAuthState {
+interface Auth0AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
   token: string | null;
-  firebaseUid: string | null;
 }
 
 /**
- * Custom hook to handle Firebase authentication and token management
+ * Custom hook to handle Auth0 authentication and token management
  * Token persistence is handled exclusively by the Rust backend
  */
-export function useFirebaseAuthHandler() {
-  const [state, setState] = useState<FirebaseAuthState>({
+export function useAuth0AuthHandler() {
+  const [state, setState] = useState<Auth0AuthState>({
     user: null,
     loading: true,
     error: null,
-    token: null,
-    firebaseUid: null
+    token: null
   });
-
-  /**
-   * Process a Firebase user by exchanging the ID token with the server
-   * The JWT is stored directly in the Rust backend's TokenManager via OS keyring
-   */
-  const processFirebaseUser = useCallback(async (firebaseIdToken: string, firebaseUid: string): Promise<boolean> => {
-    try {
-      console.log("[Auth] Processing Firebase token with UID:", firebaseUid);
-      
-      // Exchange Firebase token for app JWT and store it in Rust backend
-      const authData = await invoke<AuthDataResponse>('exchange_main_server_tokens_and_store_app_jwt', { 
-        firebaseIdToken 
-      });
-      console.log("[Auth] Exchanged Firebase token for app JWT");
-      
-      // Update UI state
-      setState((prev: FirebaseAuthState) => ({ 
-        ...prev, 
-        user: authData.user, 
-        token: authData.token, 
-        firebaseUid: authData.firebase_uid || firebaseUid,
-        loading: false, 
-        error: null
-      }));
-      
-      return true;
-    } catch (error: any) {
-      console.error("[Auth] Error processing Firebase user:", error);
-      
-      setState((prev: FirebaseAuthState) => ({
-        ...prev,
-        user: null,
-        token: null,
-        firebaseUid: null,
-        loading: false,
-        error: error?.message || "Authentication failed - please try again",
-      }));
-      return false;
-    }
-  }, []);
 
   // Initialize auth when component mounts
   useEffect(() => {
     const initializeAuth = async () => {
-      setState((prev: FirebaseAuthState) => ({ ...prev, loading: true }));
+      setState((prev: Auth0AuthState) => ({ ...prev, loading: true }));
       
-      console.log("[Auth] Initializing authentication...");
+      console.log("[Auth] Initializing Auth0 authentication...");
       
       try {
         // Check if we have a stored token
@@ -87,7 +45,7 @@ export function useFirebaseAuthHandler() {
             });
             
             console.log("[Auth] Token validated, user authenticated:", userInfo.id);
-            setState((prev: FirebaseAuthState) => ({ 
+            setState((prev: Auth0AuthState) => ({ 
               ...prev, 
               user: userInfo, 
               token: storedToken, 
@@ -99,7 +57,7 @@ export function useFirebaseAuthHandler() {
             console.error("[Auth] Stored token invalid:", error);
             await invoke('set_app_jwt', { token: null });
             
-            setState((prev: FirebaseAuthState) => ({ 
+            setState((prev: Auth0AuthState) => ({ 
               ...prev, 
               user: null, 
               token: null, 
@@ -110,7 +68,7 @@ export function useFirebaseAuthHandler() {
         } else {
           // No stored token, ready for login
           console.log("[Auth] No stored token, ready for login");
-          setState((prev: FirebaseAuthState) => ({ 
+          setState((prev: Auth0AuthState) => ({ 
             ...prev, 
             user: null, 
             token: null, 
@@ -120,7 +78,7 @@ export function useFirebaseAuthHandler() {
         }
       } catch (error) {
         console.error("[Auth] Initialization failed:", error);
-        setState((prev: FirebaseAuthState) => ({ 
+        setState((prev: Auth0AuthState) => ({ 
           ...prev, 
           loading: false, 
           error: error instanceof Error ? error.message : "Failed to initialize authentication" 
@@ -132,18 +90,16 @@ export function useFirebaseAuthHandler() {
     initializeAuth();
   }, []);
 
-  // Sign in with provider using the web-based flow
+  // Sign in with Auth0 using the polling flow
   const signIn = useCallback(
-    async (provider: "google" | "github" | "microsoft" | "apple" = "google"): Promise<void> => {
-      setState((prev: FirebaseAuthState) => ({ ...prev, loading: true, error: null }));
+    async (providerHint?: string): Promise<void> => {
+      setState((prev: Auth0AuthState) => ({ ...prev, loading: true, error: null }));
       
       try {
-        console.log(`[Auth] Starting web-based authentication flow with provider: ${provider}`);
+        console.log("[Auth] Starting Auth0 authentication flow");
         
-        // Step 1: Initiate OAuth flow on main server - get auth URL and polling ID
-        const [authUrl, pollingId] = await invoke<[string, string]>('initiate_oauth_flow_on_main_server', { 
-          provider 
-        });
+        // Step 1: Start Auth0 login flow - get auth URL and polling ID
+        const [authUrl, pollingId] = await invoke<[string, string]>('start_auth0_login_flow', { providerHint });
         
         console.log(`[Auth] Got auth URL: ${authUrl}`);
         console.log(`[Auth] Got polling ID: ${pollingId}`);
@@ -151,9 +107,8 @@ export function useFirebaseAuthHandler() {
         // Step 2: Open browser with the auth URL
         await shell.open(authUrl);
         
-        // Step 3: Start polling the server for the Firebase token
-        // Show a loading state to the user
-        setState((prev: FirebaseAuthState) => ({ 
+        // Step 3: Start polling for authentication result
+        setState((prev: Auth0AuthState) => ({ 
           ...prev, 
           loading: true, 
           error: null
@@ -170,7 +125,7 @@ export function useFirebaseAuthHandler() {
           try {
             if (pollingAttempts >= maxPollingAttempts) {
               console.error("[Auth] Polling timeout reached");
-              setState((prev: FirebaseAuthState) => ({
+              setState((prev: Auth0AuthState) => ({
                 ...prev,
                 loading: false,
                 error: "Authentication timed out. Please try again.",
@@ -180,38 +135,36 @@ export function useFirebaseAuthHandler() {
             
             pollingAttempts++;
             
-            // Construct the polling URL using the server URL from the environment
-            const response = await fetch(`${import.meta.env.VITE_MAIN_SERVER_BASE_URL || 'http://localhost:8080'}/api/auth/get-token?pid=${pollingId}`);
+            // Check auth status and exchange token if ready
+            const result = await invoke<FrontendUser | null>('check_auth_status_and_exchange_token', {
+              pollingId
+            });
             
-            // If we get a 204 No Content, keep polling
-            if (response.status === 204) {
-              console.log(`[Auth] Still waiting for authentication... (attempt ${pollingAttempts})`);
-              setTimeout(pollForToken, pollingInterval);
+            if (result) {
+              // Authentication successful
+              console.log("[Auth] Authentication successful for user:", result.email);
+              
+              // Get the token that was stored by the Tauri command
+              const storedToken = await invoke<string | null>('get_app_jwt');
+              
+              setState((prev: Auth0AuthState) => ({
+                ...prev,
+                user: result,
+                token: storedToken,
+                loading: false,
+                error: null,
+              }));
+              
               return;
             }
             
-            // If we get a 200 OK, we have the token
-            if (response.status === 200) {
-              const data = await response.json();
-              console.log("[Auth] Got Firebase token from server");
-              
-              // Exchange the Firebase token for an app JWT and store it
-              await processFirebaseUser(data.firebase_id_token, data.firebase_uid);
-              
-              return;
-            }
+            // Still pending, continue polling
+            console.log(`[Auth] Still waiting for authentication... (attempt ${pollingAttempts})`);
+            setTimeout(pollForToken, pollingInterval);
             
-            // Any other status is an error
-            const errorText = await response.text();
-            console.error(`[Auth] Polling error: ${response.status} - ${errorText}`);
-            setState((prev: FirebaseAuthState) => ({
-              ...prev,
-              loading: false,
-              error: `Authentication error: ${errorText}`,
-            }));
           } catch (error: any) {
             console.error("[Auth] Polling error:", error);
-            setState((prev: FirebaseAuthState) => ({
+            setState((prev: Auth0AuthState) => ({
               ...prev,
               loading: false,
               error: error?.message || "Failed to check authentication status",
@@ -223,34 +176,33 @@ export function useFirebaseAuthHandler() {
         pollForToken();
       } catch (error: any) {
         console.error("[Auth] Sign-in error:", error);
-        setState((prev: FirebaseAuthState) => ({
+        setState((prev: Auth0AuthState) => ({
           ...prev,
           loading: false,
           error: error?.message || "Failed to start authentication flow",
         }));
       }
     },
-    [processFirebaseUser]
+    []
   );
 
   // Sign out
   const signOut = useCallback(async (): Promise<void> => {
-    setState((prev: FirebaseAuthState) => ({ ...prev, loading: true, error: null }));
+    setState((prev: Auth0AuthState) => ({ ...prev, loading: true, error: null }));
 
     try {
-      // Clear token from backend
-      await invoke('clear_stored_app_jwt');
+      // Call Auth0 logout which clears token and opens logout URL
+      await invoke('logout_auth0');
       
       setState({
         user: null,
         token: null,
-        firebaseUid: null,
         loading: false,
         error: null
       });
     } catch (error: any) {
       console.error("[Auth] Sign out error:", error);
-      setState((prev: FirebaseAuthState) => ({
+      setState((prev: Auth0AuthState) => ({
         ...prev,
         loading: false,
         error: error?.message || "Sign out failed",
@@ -258,12 +210,16 @@ export function useFirebaseAuthHandler() {
     }
   }, []);
 
+  // Get token from backend
+  const getToken = useCallback(async (): Promise<string | null> => {
+    return state.token || await invoke<string | null>('get_app_jwt');
+  }, [state.token]);
+
   // Return the auth state and methods
   return {
     ...state,
     signIn,
     signOut,
-    getToken: async () => state.token || await invoke<string | null>('get_app_jwt'),
-    firebaseUid: state.firebaseUid
+    getToken
   };
 }

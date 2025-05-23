@@ -3,7 +3,6 @@
 import { useAsyncState, useTextareaResize, useStableRef } from "@/hooks";
 export { useAsyncState, useTextareaResize, useStableRef };
 
-export * from "./use-directory-browser-logic";
 export * from "./use-file-management-state";
 export * from "./use-generate-form-state";
 export * from "./use-generate-prompt-session";

@@ -113,14 +113,13 @@ impl JobProcessor for ReadDirectoryProcessor {
             }
         };
         
-        let directory_path = &payload.path;
-        
-        // Check if the directory exists
-        let path = Path::new(directory_path);
+        let directory_path_str = &payload.path;
+        let path = Path::new(directory_path_str);
+        let normalized_base_path = crate::utils::path_utils::normalize_path(path);
         if !fs_utils::file_exists(path).await {
             return Err(AppError::FileSystemError(format!(
                 "Directory does not exist: {}",
-                directory_path
+                directory_path_str
             )));
         }
         
@@ -128,16 +127,15 @@ impl JobProcessor for ReadDirectoryProcessor {
         if !fs_utils::is_directory(path).await? {
             return Err(AppError::FileSystemError(format!(
                 "Path is not a directory: {}",
-                directory_path
+                directory_path_str
             )));
         }
         
         // Get the files in the directory
-        info!("Reading directory {}", directory_path);
+        info!("Reading directory {}", directory_path_str);
         
         let mut files = Vec::<PathBuf>::new();
         
-        // Try Git method first (respects .gitignore)
         if git_utils::is_git_repository(path) {
             info!("Directory is a git repository, using git-aware file listing");
             match git_utils::get_all_non_ignored_files(path) {
@@ -177,28 +175,28 @@ impl JobProcessor for ReadDirectoryProcessor {
                     info!("Found {} non-binary files using git-aware method", files.len());
                 },
                 Err(e) => {
-                    // Git method failed, log warning and fall back to recursive scan
                     log::warn!("Git-aware file listing failed: {}, falling back to recursive directory scan", e);
                     files = self.fallback_to_recursive_scan(path, payload.exclude_patterns.as_ref()).await?;
                 }
             }
         } else {
-            // Not a git repo, use recursive scan with directory exclusions
-            info!("Directory is not a git repository, using recursive directory scan");
+            info!("Directory is not a git repository, using recursive directory scan. Exclude patterns: {:?}", payload.exclude_patterns.as_ref());
             files = self.fallback_to_recursive_scan(path, payload.exclude_patterns.as_ref()).await?;
         }
         
         // Convert the absolute paths back to paths relative to the directory
         let mut relative_files = Vec::new();
         for file_path in files {
-            if let Ok(rel_path) = file_path.strip_prefix(path) {
+            if let Ok(rel_path) = file_path.strip_prefix(&normalized_base_path) {
                 relative_files.push(rel_path.to_string_lossy().to_string());
+            } else {
+                log::warn!("Failed to strip prefix for path: {:?}, base path: {:?}", file_path, normalized_base_path);
             }
         }
         
         // Create the response
         let response = json!({
-            "directory": directory_path,
+            "directory": directory_path_str,
             "files": relative_files,
             "count": relative_files.len()
         }).to_string();

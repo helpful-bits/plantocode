@@ -104,13 +104,13 @@ export function useSessionQueries({
         // No longer needed as we use other mechanisms for tracking operations
         // Call sessions action with normalized project path
         
-        const sessionsList = await getSessionsAction(normalizedProjectDir);
+        const sessionsResult = await getSessionsAction(normalizedProjectDir);
 
-        if (!Array.isArray(sessionsList)) {
-          throw new Error(
-            "Invalid response format: sessionsList is not an array"
-          );
+        if (!sessionsResult.isSuccess) {
+          throw new Error(sessionsResult.message || "Failed to load sessions");
         }
+
+        const sessionsList = sessionsResult.data || [];
 
         // Sessions loaded successfully
 

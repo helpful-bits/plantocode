@@ -1,10 +1,12 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
-import DirectoryBrowser from "@/app/components/generate-prompt/_components/directory-browser";
 import ProjectNotFound from "@/app/components/project-not-found";
 import { useProject } from "@/contexts/project-context";
+import { getHomeDirectoryAction } from "@/actions";
+import { useNotification } from "@/contexts/notification-context";
 
 interface RequireProjectDirectoryProps {
   children: ReactNode;
@@ -19,31 +21,45 @@ export function RequireProjectDirectory({
   description: _description, // Prefix with _ to indicate unused
 }: RequireProjectDirectoryProps) {
   const { projectDirectory, setProjectDirectory } = useProject();
-  const [isDirectoryBrowserOpen, setIsDirectoryBrowserOpen] = useState(false);
+  const { showNotification } = useNotification();
 
-  const handleOpenDirectoryBrowser = () => {
-    setIsDirectoryBrowserOpen(true);
-  };
+  const handleOpenDirectoryBrowser = useCallback(async () => {
+    try {
+      // Get default path - use home directory
+      let defaultPath = "";
+      const homeResult = await getHomeDirectoryAction();
+      if (homeResult?.isSuccess && homeResult.data) {
+        defaultPath = homeResult.data;
+      }
 
-  const handleDirectorySelected = async (selectedPath: string) => {
-    setIsDirectoryBrowserOpen(false);
-    if (selectedPath) {
-      await setProjectDirectory(selectedPath);
+      // Open native directory picker
+      const selectedPath = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: defaultPath || undefined,
+      });
+
+      // Handle selection
+      if (selectedPath && typeof selectedPath === 'string') {
+        await setProjectDirectory(selectedPath);
+        showNotification({
+          title: "Project Directory Set",
+          message: "Project directory has been selected successfully.",
+          type: "success",
+        });
+      }
+    } catch (error) {
+      console.error("[RequireProjectDirectory] Error opening directory dialog:", error);
+      showNotification({
+        title: "Error",
+        message: "Failed to open directory picker",
+        type: "error",
+      });
     }
-  };
+  }, [setProjectDirectory, showNotification]);
 
   if (!projectDirectory) {
-    return (
-      <>
-        <ProjectNotFound onSelectProject={handleOpenDirectoryBrowser} />
-        <DirectoryBrowser
-          onClose={() => setIsDirectoryBrowserOpen(false)}
-          onSelect={handleDirectorySelected}
-          initialPath={projectDirectory || ""}
-          isOpen={isDirectoryBrowserOpen}
-        />
-      </>
-    );
+    return <ProjectNotFound onSelectProject={handleOpenDirectoryBrowser} />;
   }
 
   return <>{children}</>;

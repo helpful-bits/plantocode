@@ -463,29 +463,15 @@ impl JobProcessor for PathFinderProcessor {
                     info!("Processing priority file types for content extraction");
                     let remaining_slots = max_files_with_content - relevant_file_contents.len();
                     
-                    // Find files matching the priority types
-                    let mut matching_files = Vec::new();
-                    for extension in priority_file_types {
-                        let pattern = format!("**/*.{}", extension);
-                        let found_files = path_utils::find_files(project_dir_path, &pattern, Some(&EXCLUDED_DIRS_FOR_SCAN))?;
-                        matching_files.extend(found_files);
-                    }
+                    // Find files matching the priority types using safe project-scoped discovery
+                    let matching_files = path_utils::find_project_files_by_extension(
+                        project_dir_path,
+                        priority_file_types,
+                        remaining_slots * 2 // Get more files to sort by modification time
+                    ).await?;
                     
-                    // Sort by modification time (most recent first) and take the remaining slots
-                    // Note: This could be made async with a helper function if needed
-                    let mut file_with_stats = Vec::new();
-                    for file_path in matching_files {
-                        if let Ok(metadata) = std::fs::metadata(&file_path) {
-                            if let Ok(modified) = metadata.modified() {
-                                file_with_stats.push((file_path, modified));
-                            }
-                        }
-                    }
-                    
-                    file_with_stats.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by modified time, most recent first
-                    
-                    // Take only the most recently modified files up to the limit
-                    for (file_path, _) in file_with_stats.into_iter().take(remaining_slots) {
+                    // Take only the most recently modified files up to the limit (already sorted by the function)
+                    for file_path in matching_files.into_iter().take(remaining_slots) {
                         // Skip files that are already included
                         let rel_path = path_utils::make_relative_to(&*file_path.to_string_lossy(), &payload.project_directory)?;
                         let rel_path_str = rel_path.to_string_lossy().into_owned();

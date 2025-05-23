@@ -37,7 +37,9 @@ export async function generateRegexPatternsAction(
       description: taskDescription,
       examples: examples || undefined,
       targetLanguage: targetLanguage || undefined,
-      // Model defaults are handled in Rust
+      modelOverride: undefined,
+      temperatureOverride: undefined,
+      maxTokensOverride: undefined,
     });
 
     return {

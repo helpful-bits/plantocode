@@ -68,7 +68,7 @@ pub const TOKEN_KEY: &str = "com.vibe-manager.auth.token.v1";
 pub const IMPLEMENTATION_PLANS_DIR_NAME: &str = "implementation_plans";
 
 // Common directories to exclude from file listing (used as fallback if git method fails)
-pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 12] = [
+pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
     "node_modules",
     ".git",
     ".next",
@@ -80,7 +80,15 @@ pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 12] = [
     ".vscode",
     ".idea",
     "target",
-    "vendor"
+    "vendor",
+    ".cargo",          // Cargo cache and registry
+    ".rustup",         // Rust toolchain
+    ".npm",            // NPM cache
+    ".yarn",           // Yarn cache
+    ".pnpm-store",     // PNPM cache
+    "Library",         // macOS system library (when not in user directory)
+    "Applications",    // macOS applications (when at root)
+    "System"           // macOS system directory
 ];
 
 // Common message constants

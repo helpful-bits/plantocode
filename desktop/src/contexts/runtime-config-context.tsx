@@ -6,28 +6,37 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 
 /**
- * Define the runtime AI config type
+ * Define the runtime AI config type to match Tauri backend expectations
  */
-export interface RuntimeAiConfig {
-  models: {
+export interface RuntimeAIConfig {
+  default_llm_model_id: string;
+  default_voice_model_id: string;
+  default_transcription_model_id: string;
+  tasks: Record<string, {
+    model: string;
+    max_tokens: number;
+    temperature: number;
+  }>;
+  available_models: {
     id: string;
     name: string;
-    contextWindow: number;
-    pricePerInputToken: number;
-    pricePerOutputToken: number;
+    provider: string;
+    description?: string;
+    context_window?: number;
+    price_per_input_token: number;
+    price_per_output_token: number;
   }[];
-  defaultSettings: {
-    defaultModel: string;
-    temperature: number;
-    maxTokens: number;
-  };
-  limits: {
-    maxTokensPerRequest: number;
-    maxTokensPerMonth: number;
+  path_finder_settings: {
+    max_files_with_content?: number;
+    include_file_contents?: boolean;
+    max_content_size_per_file?: number;
+    max_file_count?: number;
+    file_content_truncation_chars?: number;
+    token_limit_buffer?: number;
   };
 }
 
@@ -35,11 +44,11 @@ export interface RuntimeAiConfig {
  * Runtime config context type
  */
 interface RuntimeConfigContextType {
-  config: RuntimeAiConfig | null;
+  config: RuntimeAIConfig | null;
   isLoading: boolean;
   error: string | null;
-  refreshConfig: () => Promise<RuntimeAiConfig | null>;
-  updateConfig: (config: RuntimeAiConfig) => void;
+  refreshConfig: () => Promise<RuntimeAIConfig | null>;
+  updateConfig: (config: RuntimeAIConfig) => void;
   clearError: () => void;
 }
 
@@ -57,7 +66,7 @@ const RuntimeConfigContext = createContext<RuntimeConfigContextType>({
  * Provider component for runtime configuration
  */
 export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<RuntimeAiConfig | null>(null);
+  const [config, setConfig] = useState<RuntimeAIConfig | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null);
@@ -67,9 +76,9 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
    * @param force - Whether to force refresh even if the config was recently fetched
    * @returns The fetched configuration or null on error
    */
-  const fetchRuntimeConfig = async (
+  const fetchRuntimeConfig = useCallback(async (
     force: boolean = false
-  ): Promise<RuntimeAiConfig | null> => {
+  ): Promise<RuntimeAIConfig | null> => {
     // Skip if already loading
     if (isLoading) return config;
 
@@ -85,17 +94,9 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
       // Clear previous error if retrying
       if (error) setError(null);
 
-      const configData = await invoke<RuntimeAiConfig>(
+      const configData = await invoke<RuntimeAIConfig>(
         "fetch_runtime_ai_config"
       );
-
-      // Add default token limits if not provided
-      if (!configData.limits) {
-        configData.limits = {
-          maxTokensPerRequest: 10000,
-          maxTokensPerMonth: 1000000,
-        };
-      }
 
       setConfig(configData);
       setLastFetchTime(now);
@@ -112,23 +113,23 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading, config, lastFetchTime, error]);
 
   /**
    * Update the runtime configuration (used by AuthFlowManager)
    * @param newConfig - The new configuration to set
    */
-  const updateConfig = (newConfig: RuntimeAiConfig) => {
+  const updateConfig = useCallback((newConfig: RuntimeAIConfig) => {
     setConfig(newConfig);
     setLastFetchTime(Date.now());
-  };
+  }, []);
 
   /**
    * Clear any error state
    */
-  const clearError = () => {
+  const clearError = useCallback(() => {
     if (error) setError(null);
-  };
+  }, [error]);
 
   return (
     <RuntimeConfigContext.Provider
@@ -167,7 +168,7 @@ export function useRuntimeConfig() {
  * @returns The loaded configuration
  * @throws Error if loading fails
  */
-export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAiConfig> {
+export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAIConfig> {
   try {
     // Add retries for better resilience
     let attempts = 0;
@@ -175,7 +176,7 @@ export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAiConfig> {
 
     while (attempts < maxAttempts) {
       try {
-        const config = await invoke<RuntimeAiConfig>("fetch_runtime_ai_config");
+        const config = await invoke<RuntimeAIConfig>("fetch_runtime_ai_config");
         return config;
       } catch (err) {
         attempts++;

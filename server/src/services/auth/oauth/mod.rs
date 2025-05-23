@@ -1,3 +1,3 @@
-pub mod firebase_oauth;
+pub mod auth0_oauth;
 
-pub use firebase_oauth::FirebaseOAuthService;
+pub use auth0_oauth::Auth0OAuthService;

@@ -1,10 +1,9 @@
-use actix_web::{web, HttpResponse, get, post, HttpRequest, HttpMessage};
+use actix_web::{web, HttpResponse, get, post, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
-use chrono::Duration;
-use log::{debug, error, info};
-use uuid::Uuid;
+use log::debug;
+use crate::middleware::secure_auth::UserId;
 
 #[derive(Debug, Deserialize)]
 pub struct CheckoutRequest {
@@ -22,36 +21,32 @@ pub struct PortalResponse {
 }
 
 /// Get subscription info for the current user
-#[get("/billing/subscription")]
+#[get("/subscription")]
 pub async fn get_subscription(
-    req: HttpRequest,
+    user_id: UserId,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
-    debug!("Getting subscription for user: {}", user_id);
+    debug!("Getting subscription for user: {}", user_id.0);
     
     // Get subscription details
-    let subscription = billing_service.get_subscription_details(&user_id).await?;
+    let subscription = billing_service.get_subscription_details(&user_id.0).await?;
     
     // Return the subscription details
     Ok(HttpResponse::Ok().json(subscription))
 }
 
 /// Create a checkout session for subscription
-#[post("/billing/checkout")]
+#[post("/checkout")]
 pub async fn create_checkout_session(
-    req: HttpRequest,
+    user_id: UserId,
     billing_service: web::Data<BillingService>,
     checkout_request: web::Json<CheckoutRequest>,
 ) -> Result<HttpResponse, AppError> {
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
-    debug!("Creating checkout session for user: {} with plan: {}", user_id, checkout_request.plan);
+    debug!("Creating checkout session for user: {} with plan: {}", user_id.0, checkout_request.plan);
     
     // Create the checkout session
     #[cfg(feature = "stripe")]
-    let url = billing_service.create_checkout_session(&user_id, &checkout_request.plan).await?;
+    let url = billing_service.create_checkout_session(&user_id.0, &checkout_request.plan).await?;
     
     #[cfg(not(feature = "stripe"))]
     let url = "https://example.com/checkout-placeholder".to_string();
@@ -61,18 +56,16 @@ pub async fn create_checkout_session(
 }
 
 /// Create a billing portal session for managing subscription
-#[get("/billing/portal")]
+#[get("/portal")]
 pub async fn create_billing_portal(
-    req: HttpRequest,
+    user_id: UserId,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
-    debug!("Creating billing portal for user: {}", user_id);
+    debug!("Creating billing portal for user: {}", user_id.0);
     
     // Create the billing portal session
     #[cfg(feature = "stripe")]
-    let url = billing_service.create_billing_portal_session(&user_id).await?;
+    let url = billing_service.create_billing_portal_session(&user_id.0).await?;
     
     #[cfg(not(feature = "stripe"))]
     let url = "https://example.com/portal-placeholder".to_string();
@@ -82,17 +75,15 @@ pub async fn create_billing_portal(
 }
 
 /// Get API usage summary
-#[get("/billing/usage")]
+#[get("/usage")]
 pub async fn get_usage_summary(
-    req: HttpRequest,
+    user_id: UserId,
     billing_service: web::Data<BillingService>,
 ) -> Result<HttpResponse, AppError> {
-    // Get the user ID from authentication middleware
-    let user_id = req.extensions().get::<Uuid>().cloned().ok_or(AppError::Auth("Unauthorized".to_string()))?;
-    debug!("Getting API usage for user: {}", user_id);
+    debug!("Getting API usage for user: {}", user_id.0);
     
     // Get subscription details which includes usage
-    let details = billing_service.get_subscription_details(&user_id).await?;
+    let details = billing_service.get_subscription_details(&user_id.0).await?;
     
     // Extract just the usage part
     let usage = details.get("usage").ok_or(AppError::Internal("Failed to get usage from subscription details".to_string()))?;
@@ -102,7 +93,7 @@ pub async fn get_usage_summary(
 }
 
 /// Handle Stripe webhook events
-#[post("/billing/webhook")]
+#[post("/webhook")]
 pub async fn stripe_webhook(
     req: HttpRequest,
     body: web::Bytes,

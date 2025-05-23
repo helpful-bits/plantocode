@@ -25,10 +25,31 @@ pub struct GenerateGuidanceArgs {
 /// Command to generate guidance for a development task
 #[command]
 pub async fn generate_guidance_command(
-    args: GenerateGuidanceArgs, 
+    session_id: String,
+    project_directory: String,
+    task_description: String,
+    paths: Option<Vec<String>>,
+    file_contents_summary: Option<String>,
+    system_prompt_override: Option<String>,
+    model_override: Option<String>,
+    temperature_override: Option<f32>,
+    max_tokens_override: Option<u32>,
     app_handle: AppHandle
 ) -> AppResult<String> {
-    info!("Creating guidance generation job for task: {}", args.task_description);
+    info!("Creating guidance generation job for task: {}", task_description);
+    
+    // Recreate args struct for internal use
+    let args = GenerateGuidanceArgs {
+        session_id,
+        project_directory,
+        task_description,
+        paths,
+        file_contents_summary,
+        system_prompt_override,
+        model_override,
+        temperature_override,
+        max_tokens_override,
+    };
     
     // Validate required fields
     if args.session_id.is_empty() {

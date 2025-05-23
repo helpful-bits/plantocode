@@ -3,7 +3,7 @@ pub mod regex_commands;
 pub mod guidance_commands;
 pub mod file_system_commands;
 pub mod app_commands;
-pub mod auth_commands;
+pub mod auth0_commands;
 pub mod config_commands;
 pub mod fetch_handler_command;
 pub mod job_commands;
@@ -17,13 +17,13 @@ pub mod implementation_plan_commands;
 pub mod path_finding_commands;
 pub mod voice_commands;
 pub mod generic_task_commands;
+pub mod setup_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::generate_regex_command;
 pub use guidance_commands::generate_guidance_command;
 pub use file_system_commands::{
     get_home_directory_command,
-    get_common_paths_command,
     list_files_command,
     create_directory_command,
     read_file_content_command,
@@ -70,11 +70,13 @@ pub use generic_task_commands::{
     enhance_task_description_command,
 };
 
-// Re-exports from auth commands module
-pub use auth_commands::{
-    exchange_and_store_firebase_token,
+// Re-exports from auth0 commands module
+pub use auth0_commands::{
+    start_auth0_login_flow,
+    check_auth_status_and_exchange_token,
+    refresh_app_jwt_auth0,
+    logout_auth0,
     get_user_info_with_app_jwt,
-    get_stored_app_jwt,
     get_app_jwt,
     set_app_jwt,
     clear_stored_app_jwt,
@@ -132,5 +134,8 @@ pub use session_commands::{
     clear_all_project_sessions_command,
     update_session_fields_command,
 };
+
+// Re-exports from setup commands module
+pub use setup_commands::trigger_initial_keychain_access;
 
 // All command functions will return AppResult<T> directly

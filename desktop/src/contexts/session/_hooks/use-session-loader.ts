@@ -24,6 +24,7 @@ export function useSessionLoader({
   hasCompletedInitRef,
   loadingSessionRef,
   onNeedsSave,
+  setActiveSessionIdGlobally,
 }: {
   currentSession: Session | null;
   setCurrentSession: (session: Session | null) => void;
@@ -36,6 +37,7 @@ export function useSessionLoader({
     timestamp: number;
   }>;
   onNeedsSave?: (currentSessionId: string) => Promise<boolean>;
+  setActiveSessionIdGlobally: (sessionId: string | null) => Promise<void>;
 }) {
   const { projectDirectory } = useProject();
   const { setAppInitializing } = useUILayout();
@@ -144,6 +146,10 @@ export function useSessionLoader({
 
         setCurrentSession(session);
         setSessionModified(false);
+        
+        // Set this as the active session
+        await setActiveSessionIdGlobally(sessionId);
+        
         loadSuccess = true;
 
         if (typeof window !== "undefined") {
@@ -217,6 +223,7 @@ export function useSessionLoader({
       hasCompletedInitRef,
       loadingSessionRef,
       onNeedsSave,
+      setActiveSessionIdGlobally,
     ]
   );
 

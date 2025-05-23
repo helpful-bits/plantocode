@@ -94,7 +94,11 @@
       "Bash(test:*)",
       "Bash(npx eslint:*)",
       "Bash(npx eslint:*)",
-      "Bash(./node_modules/.bin/eslint desktop/src/hooks/use-voice-recording/use-voice-transcription-processing.ts)"
+      "Bash(./node_modules/.bin/eslint desktop/src/hooks/use-voice-recording/use-voice-transcription-processing.ts)",
+      "Bash(SQLX_OFFLINE=true cargo run --bin migrate -- --file migrations/001_firebase_to_auth0_migration.sql)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"is_binary_file\" desktop/src-tauri/src/utils/fs_utils.rs -A 20)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"pub async fn is_binary_file\" desktop/src-tauri/src/utils/fs_utils.rs -A 30)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -n \"pub async fn is_binary_file\" desktop/src-tauri/src/utils/fs_utils.rs)"
     ],
     "deny": []
   }

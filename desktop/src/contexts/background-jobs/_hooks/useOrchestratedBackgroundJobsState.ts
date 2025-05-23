@@ -145,9 +145,7 @@ export function useOrchestratedBackgroundJobsState({
     async (jobId: string): Promise<void> => {
       try {
         // Use Tauri command
-        await invoke("cancel_background_job_command", {
-          args: { jobId },
-        });
+        await invoke("cancel_background_job_command", { jobId });
 
         // Update local state optimistically
         setJobs((prev) =>
@@ -185,9 +183,7 @@ export function useOrchestratedBackgroundJobsState({
     async (jobId: string): Promise<void> => {
       try {
         // Use Tauri command
-        await invoke("delete_background_job_command", {
-          args: { jobId },
-        });
+        await invoke("delete_background_job_command", { jobId });
 
         // Update local state
         setJobs((prev) => prev.filter((job) => job.id !== jobId));
@@ -231,11 +227,13 @@ export function useOrchestratedBackgroundJobsState({
     const unlisten = listen("job_status_change", async (event) => {
       try {
         // The payload should include the job ID and potentially other metadata
-        const { jobId } = event.payload as { jobId: string };
+        const payload = event.payload as { job_id?: string; jobId?: string };
+        const jobId = payload.jobId || payload.job_id;
 
         if (!jobId) {
           console.error(
-            "[BackgroundJobs] Received job_status_change event without jobId"
+            "[BackgroundJobs] Received job_status_change event without jobId",
+            event.payload
           );
           return;
         }
