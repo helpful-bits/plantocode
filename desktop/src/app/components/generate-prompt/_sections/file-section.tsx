@@ -2,6 +2,8 @@
 
 import React from "react";
 
+import { useSessionStateContext } from "@/contexts/session";
+
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { useRegexContext } from "../_contexts/regex-context";
@@ -18,13 +20,14 @@ const FileSection = React.memo(function FileSection({
   const fileState = useFileManagement();
   const regexContext = useRegexContext();
   const coreContext = useCorePromptContext();
+  const { currentSession } = useSessionStateContext();
 
   // Calculate if regex is available based on regex patterns
   const isRegexAvailable = !!(
-    regexContext.state.titleRegex.trim() ||
-    regexContext.state.contentRegex.trim() ||
-    regexContext.state.negativeTitleRegex.trim() ||
-    regexContext.state.negativeContentRegex.trim()
+    currentSession?.titleRegex?.trim() ||
+    currentSession?.contentRegex?.trim() ||
+    currentSession?.negativeTitleRegex?.trim() ||
+    currentSession?.negativeContentRegex?.trim()
   );
 
   // Handle filter mode changes and synchronize with regex state
@@ -32,7 +35,7 @@ const FileSection = React.memo(function FileSection({
     fileState.setFilterMode(newMode);
     
     // Update regex state if needed
-    if (newMode === "regex" !== regexContext.state.isRegexActive) {
+    if (newMode === "regex" !== currentSession?.isRegexActive) {
       // When toggling regex mode, update through context actions
       if (newMode === "regex") {
         // Enable regex mode
@@ -79,7 +82,15 @@ const FileSection = React.memo(function FileSection({
                 : ""
         }
         regexState={{
+          // Provide regex pattern data from SessionContext
+          titleRegex: currentSession?.titleRegex || "",
+          contentRegex: currentSession?.contentRegex || "",
+          negativeTitleRegex: currentSession?.negativeTitleRegex || "",
+          negativeContentRegex: currentSession?.negativeContentRegex || "",
+          isRegexActive: currentSession?.isRegexActive || false,
+          // Provide UI state from RegexContext
           ...regexContext.state,
+          // Provide actions from RegexContext
           ...regexContext.actions
         }}
         disabled={disabled}

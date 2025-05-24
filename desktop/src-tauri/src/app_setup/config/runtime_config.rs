@@ -25,7 +25,7 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
     let runtime_config_value = server_proxy_client.get_runtime_ai_config().await?;
     
     // Deserialize the Value into RuntimeAIConfig
-    let runtime_config: RuntimeAIConfig = match serde_json::from_value(runtime_config_value.clone()) {
+    let mut runtime_config: RuntimeAIConfig = match serde_json::from_value(runtime_config_value.clone()) {
         Ok(config) => config,
         Err(e) => {
             let error_msg = format!("Failed to deserialize runtime AI config: {}", e);
@@ -43,6 +43,26 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
             return Err(AppError::SerializationError(e.to_string()));
         }
     };
+    
+    // Check if regex_generation task configuration exists, if not add default
+    let regex_generation_key = crate::models::TaskType::RegexGeneration.to_string();
+    if !runtime_config.tasks.contains_key(&regex_generation_key) {
+        warn!("Task-specific configuration not found for task {}, using default", regex_generation_key);
+        
+        let default_model = if !runtime_config.default_llm_model_id.is_empty() {
+            runtime_config.default_llm_model_id.clone()
+        } else {
+            "gpt-4o-mini".to_string()
+        };
+        
+        let default_config = crate::models::TaskSpecificModelConfig {
+            model: default_model,
+            max_tokens: 500,
+            temperature: 0.5,
+        };
+        
+        runtime_config.tasks.insert(regex_generation_key, default_config);
+    }
     
     // Validate that we have models available
     if runtime_config.available_models.is_empty() {

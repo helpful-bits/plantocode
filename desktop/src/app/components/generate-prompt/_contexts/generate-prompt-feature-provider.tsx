@@ -16,7 +16,7 @@ import { useGeneratePromptUI } from "../_hooks/use-generate-prompt-ui";
 // Removed backward compatibility hook
 import { useGuidanceGeneration } from "../_hooks/use-guidance-generation";
 import { useImplementationPlanActions } from "../_hooks/use-implementation-plan-actions";
-import { useRegexState } from "../_hooks/use-regex-state";
+import { useGeneratePromptRegexState } from "../_hooks/use-generate-prompt-regex-state";
 import { useSessionMetadata } from "../_hooks/use-session-metadata";
 import { useTaskDescriptionState } from "../_hooks/use-task-description-state";
 import { generateDirectoryTree } from "@/utils/directory-tree";
@@ -77,33 +77,28 @@ export function GeneratePromptFeatureProvider({
   });
 
   const taskState = useTaskDescriptionState({
+    taskDescription: sessionState.currentSession?.taskDescription || "",
     activeSessionId: sessionState.currentSession?.id || null,
     taskDescriptionRef,
     onInteraction: handleInteraction,
   });
 
-  const regexState = useRegexState({
-    initialTitleRegex: sessionState.currentSession?.titleRegex || "",
-    initialContentRegex: sessionState.currentSession?.contentRegex || "",
-    initialNegativeTitleRegex:
-      sessionState.currentSession?.negativeTitleRegex || "",
-    initialNegativeContentRegex:
-      sessionState.currentSession?.negativeContentRegex || "",
-    initialIsRegexActive: sessionState.currentSession?.isRegexActive || false,
-    onStateChange: handleInteraction,
-    taskDescription: taskState.taskDescription,
+  const regexState = useGeneratePromptRegexState({
+    taskDescription: sessionState.currentSession?.taskDescription || "",
+    handleInteraction,
   });
 
   const guidanceGeneration = useGuidanceGeneration({
-    taskDescription: taskState.taskDescription,
+    taskDescription: sessionState.currentSession?.taskDescription || "",
     projectDirectory: projectDirectory || "",
-    onGuidanceGenerated: taskState.setTaskDescription,
+    onGuidanceGenerated: (newText: string) => 
+      sessionActions.updateCurrentSessionFields({ taskDescription: newText }),
     onInteraction: handleInteraction,
   });
 
   // Use the simplified display state hook
   const displayState = useGeneratePromptDisplayState({
-    taskDescription: taskState.taskDescription,
+    taskDescription: sessionState.currentSession?.taskDescription || "",
   });
 
   const implementationPlanActions = useImplementationPlanActions();
@@ -177,12 +172,21 @@ export function GeneratePromptFeatureProvider({
         flushPendingSaves: () => sessionActions.flushSaves(),
         getCurrentSessionState: () => ({
           projectDirectory: projectDirectory || "",
-          taskDescription: taskState.taskDescription || "",
-          titleRegex: regexState.titleRegex || "",
-          contentRegex: regexState.contentRegex || "",
-          negativeTitleRegex: regexState.negativeTitleRegex || "",
-          negativeContentRegex: regexState.negativeContentRegex || "",
-          isRegexActive: regexState.isRegexActive,
+          taskDescription: sessionState.currentSession?.taskDescription || "",
+          titleRegex: sessionState.currentSession?.titleRegex || "",
+          contentRegex: sessionState.currentSession?.contentRegex || "",
+          negativeTitleRegex: sessionState.currentSession?.negativeTitleRegex || "",
+          negativeContentRegex: sessionState.currentSession?.negativeContentRegex || "",
+          isRegexActive: sessionState.currentSession?.isRegexActive || false,
+          // Include file management state from current session if available
+          searchTerm: sessionState.currentSession?.searchTerm || "",
+          includedFiles: sessionState.currentSession?.includedFiles || [],
+          forceExcludedFiles: sessionState.currentSession?.forceExcludedFiles || [],
+          searchSelectedFilesOnly: sessionState.currentSession?.searchSelectedFilesOnly || false,
+          // Include codebase structure from current session if available
+          codebaseStructure: sessionState.currentSession?.codebaseStructure || "",
+          // Include model used from current session if available, or use a default
+          modelUsed: sessionState.currentSession?.modelUsed || undefined,
         }),
         setSessionInitialized: formState.setSessionInitialized,
         setHasUnsavedChanges: (value: boolean) =>
@@ -194,6 +198,12 @@ export function GeneratePromptFeatureProvider({
     [
       sessionState.currentSession?.id,
       sessionState.currentSession?.name,
+      sessionState.currentSession?.searchTerm,
+      sessionState.currentSession?.includedFiles,
+      sessionState.currentSession?.forceExcludedFiles,
+      sessionState.currentSession?.searchSelectedFilesOnly,
+      sessionState.currentSession?.codebaseStructure,
+      sessionState.currentSession?.modelUsed,
       sessionState.isSessionLoading,
       sessionState.isSessionModified,
       sessionActions,
@@ -205,12 +215,6 @@ export function GeneratePromptFeatureProvider({
       formState.projectDataLoading,
       projectDirectory,
       sessionMetadata.sessionName,
-      taskState.taskDescription,
-      regexState.titleRegex,
-      regexState.contentRegex,
-      regexState.negativeTitleRegex,
-      regexState.negativeContentRegex,
-      regexState.isRegexActive,
       handleInteraction,
       resetAllState,
       handleGenerateCodebase,
@@ -221,8 +225,7 @@ export function GeneratePromptFeatureProvider({
   const taskContextValue = useMemo<TaskContextValue>(
     () => ({
       state: {
-        // Task description state
-        taskDescription: taskState.taskDescription,
+        // Task UI state only
         taskDescriptionRef,
         isGeneratingGuidance: guidanceGeneration.isGeneratingGuidance,
         isImprovingText: taskState.isImprovingText,
@@ -230,17 +233,14 @@ export function GeneratePromptFeatureProvider({
       },
       actions: {
         // Task description actions
-        setTaskDescription: taskState.setTaskDescription,
         handleGenerateGuidance: guidanceGeneration.handleGenerateGuidance,
         handleImproveSelection: taskState.handleImproveSelection,
         reset: taskState.reset,
       },
     }),
     [
-      taskState.taskDescription,
       taskState.isImprovingText,
       taskState.textImprovementJobId,
-      taskState.setTaskDescription,
       taskState.handleImproveSelection,
       taskState.reset,
       guidanceGeneration.isGeneratingGuidance,
@@ -252,42 +252,58 @@ export function GeneratePromptFeatureProvider({
   const regexContextValue = useMemo<RegexContextValue>(
     () => ({
       state: {
-        // Regex state
-        titleRegex: regexState.titleRegex,
-        contentRegex: regexState.contentRegex,
-        negativeTitleRegex: regexState.negativeTitleRegex,
-        negativeContentRegex: regexState.negativeContentRegex,
-        isRegexActive: regexState.isRegexActive,
+        // Regex UI state only (validation errors, generation status)
+        titleRegexError: null,
+        contentRegexError: null,
+        negativeTitleRegexError: null,
+        negativeContentRegexError: null,
         isGeneratingTaskRegex: regexState.isGeneratingTaskRegex,
         generatingRegexJobId: regexState.generatingRegexJobId,
         regexGenerationError: regexState.regexGenerationError,
+        
+        // Individual field generation state
+        generatingFieldType: regexState.generatingFieldType,
+        generatingFieldJobId: regexState.generatingFieldJobId,
+        fieldRegexGenerationError: regexState.fieldRegexGenerationError,
+        
+        // Description fields
+        titleRegexDescription: regexState.titleRegexDescription,
+        contentRegexDescription: regexState.contentRegexDescription,
+        negativeTitleRegexDescription: regexState.negativeTitleRegexDescription,
+        negativeContentRegexDescription: regexState.negativeContentRegexDescription,
+        regexSummaryExplanation: regexState.regexSummaryExplanation,
+        
+        // Summary generation state
+        isGeneratingSummaryExplanation: regexState.isGeneratingSummaryExplanation,
+        generatingSummaryJobId: regexState.generatingSummaryJobId,
+        summaryGenerationError: regexState.summaryGenerationError,
       },
       actions: {
-        // Regex actions
+        // Regex actions - these should use sessionActions for actual updates
         setTitleRegex: regexState.setTitleRegex,
         setContentRegex: regexState.setContentRegex,
         setNegativeTitleRegex: regexState.setNegativeTitleRegex,
         setNegativeContentRegex: regexState.setNegativeContentRegex,
         setIsRegexActive: regexState.setIsRegexActive,
+        
+        // Description setters
+        setTitleRegexDescription: regexState.setTitleRegexDescription,
+        setContentRegexDescription: regexState.setContentRegexDescription,
+        setNegativeTitleRegexDescription: regexState.setNegativeTitleRegexDescription,
+        setNegativeContentRegexDescription: regexState.setNegativeContentRegexDescription,
+        
+        // Generation functions
+        handleGenerateRegexForField: regexState.handleGenerateRegexForField,
+        handleGenerateSummaryExplanation: regexState.handleGenerateSummaryExplanation,
         handleGenerateRegexFromTask: regexState.handleGenerateRegexFromTask,
         applyRegexPatterns: (patterns) => {
-          regexState.applyRegexPatterns({
-            titlePattern: patterns.titleRegex,
-            contentPattern: patterns.contentRegex,
-            negativeTitlePattern: patterns.negativeTitleRegex,
-            negativeContentPattern: patterns.negativeContentRegex,
-          });
+          regexState.applyRegexPatterns(patterns);
         },
         handleClearPatterns: regexState.handleClearPatterns,
         reset: regexState.reset,
       },
     }),
     [
-      regexState.titleRegex,
-      regexState.contentRegex,
-      regexState.negativeTitleRegex,
-      regexState.negativeContentRegex,
-      regexState.isRegexActive,
       regexState.isGeneratingTaskRegex,
       regexState.generatingRegexJobId,
       regexState.regexGenerationError,

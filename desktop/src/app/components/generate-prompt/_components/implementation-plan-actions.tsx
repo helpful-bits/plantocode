@@ -4,12 +4,12 @@ import { FileCode } from "lucide-react";
 import { useCallback } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
+import { useSessionStateContext } from "@/contexts/session";
 import { Button } from "@/ui/button";
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { usePlanContext } from "../_contexts/plan-context";
-import { useTaskContext } from "../_contexts/task-context";
 
 export interface ImplementationPlanActionsProps {
   variant?: "default" | "compact";
@@ -28,14 +28,14 @@ export const ImplementationPlanActions = ({
 }: ImplementationPlanActionsProps) => {
   // Use contexts to get state and actions
   const { state: coreState } = useCorePromptContext();
-  const { state: taskState } = useTaskContext();
   const { state: planState, actions: planActions } = usePlanContext();
+  const { currentSession } = useSessionStateContext();
   const fileState = useFileManagement();
   const { showNotification } = useNotification();
 
   // Extract required values
   const { projectDirectory, activeSessionId } = coreState;
-  const { taskDescription } = taskState;
+  const taskDescription = currentSession?.taskDescription || "";
   const { isCreatingPlan, planCreationState } = planState;
   const { handleCreateImplementationPlan } = planActions;
 

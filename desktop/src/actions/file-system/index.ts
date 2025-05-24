@@ -11,8 +11,8 @@ export * from "./read.actions";
 // Export directory operations
 export * from "./directory.actions";
 
-// Export directory reading for path finder
-export * from "./read-directory-job.actions";
+// Export list project files action
+export * from "./list-project-files.action";
 
 // Export validation
 export * from "./validation.actions";

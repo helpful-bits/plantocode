@@ -10,7 +10,6 @@ import {
 import { useProject } from "@/contexts/project-context";
 import { type TaskSettings } from "@/types";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/ui";
-import { DEFAULT_TASK_SETTINGS } from "@/utils/constants";
 
 import SubscriptionManager from "@/app/components/billing/subscription-manager";
 import SystemSettings from "./system-settings";
@@ -20,10 +19,8 @@ import TaskModelSettings from "./task-model-settings";
 
 export default function SettingsForm() {
   const { projectDirectory } = useProject();
-  const [taskSettings, setTaskSettings] = useState<TaskSettings>(
-    DEFAULT_TASK_SETTINGS
-  );
-  const [isLoading, setIsLoading] = useState(false);
+  const [taskSettings, setTaskSettings] = useState<TaskSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -37,18 +34,18 @@ export default function SettingsForm() {
 
       try {
         const result = await getModelSettingsForProject(projectDirectory);
-        if (result.isSuccess) {
-          setTaskSettings(result.data || DEFAULT_TASK_SETTINGS);
+        if (result.isSuccess && result.data) {
+          setTaskSettings(result.data);
         } else {
           setError(result.message || "Failed to load project settings");
-          setTaskSettings(DEFAULT_TASK_SETTINGS);
+          setTaskSettings(null);
         }
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load project settings"
         );
         console.error("Error fetching project settings:", err);
-        setTaskSettings(DEFAULT_TASK_SETTINGS);
+        setTaskSettings(null);
       } finally {
         setIsLoading(false);
       }
@@ -133,10 +130,23 @@ export default function SettingsForm() {
         </CardHeader>
       </Card>
 
-      <TaskModelSettings
-        taskSettings={taskSettings}
-        onSettingsChange={handleSettingsChange}
-      />
+      {taskSettings && (
+        <TaskModelSettings
+          taskSettings={taskSettings}
+          onSettingsChange={handleSettingsChange}
+        />
+      )}
+
+      {!taskSettings && !isLoading && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Unable to Load Settings</CardTitle>
+            <CardDescription>
+              {error || "Failed to load AI model settings from server. Please ensure the server is running and try refreshing the page."}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       <SystemSettings projectDirectory={projectDirectory} />
 

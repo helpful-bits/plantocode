@@ -17,13 +17,13 @@ pub enum JobType {
     RegexGeneration,
     GuidanceGeneration,
     PathCorrection,
-    ReadDirectory,
     TextImprovement,
     TaskEnhancement,
     VoiceCorrection,
     GenerateDirectoryTree,
     TextCorrectionPostTranscription,
-    GenericLlmStream
+    GenericLlmStream,
+    RegexSummaryGeneration
 }
 
 impl TryFrom<&str> for JobType {
@@ -38,13 +38,13 @@ impl TryFrom<&str> for JobType {
             "REGEX_GENERATION" => Ok(JobType::RegexGeneration),
             "GUIDANCE_GENERATION" => Ok(JobType::GuidanceGeneration),
             "PATH_CORRECTION" => Ok(JobType::PathCorrection),
-            "READ_DIRECTORY" => Ok(JobType::ReadDirectory),
             "TEXT_IMPROVEMENT" => Ok(JobType::TextImprovement),
             "TASK_ENHANCEMENT" => Ok(JobType::TaskEnhancement),
             "VOICE_CORRECTION" => Ok(JobType::VoiceCorrection),
             "GENERATE_DIRECTORY_TREE" => Ok(JobType::GenerateDirectoryTree),
             "TEXT_CORRECTION_POST_TRANSCRIPTION" => Ok(JobType::TextCorrectionPostTranscription),
             "GENERIC_LLM_STREAM" => Ok(JobType::GenericLlmStream),
+            "REGEX_SUMMARY_GENERATION" => Ok(JobType::RegexSummaryGeneration),
             _ => Err(AppError::JobError(format!("Unknown job type: {}", value))),
         }
     }
@@ -60,13 +60,13 @@ impl std::fmt::Display for JobType {
             JobType::RegexGeneration => write!(f, "REGEX_GENERATION"),
             JobType::GuidanceGeneration => write!(f, "GUIDANCE_GENERATION"),
             JobType::PathCorrection => write!(f, "PATH_CORRECTION"),
-            JobType::ReadDirectory => write!(f, "READ_DIRECTORY"),
             JobType::TextImprovement => write!(f, "TEXT_IMPROVEMENT"),
             JobType::TaskEnhancement => write!(f, "TASK_ENHANCEMENT"),
             JobType::VoiceCorrection => write!(f, "VOICE_CORRECTION"),
             JobType::GenerateDirectoryTree => write!(f, "GENERATE_DIRECTORY_TREE"),
             JobType::TextCorrectionPostTranscription => write!(f, "TEXT_CORRECTION_POST_TRANSCRIPTION"),
             JobType::GenericLlmStream => write!(f, "GENERIC_LLM_STREAM"),
+            JobType::RegexSummaryGeneration => write!(f, "REGEX_SUMMARY_GENERATION"),
         }
     }
 }
@@ -164,6 +164,7 @@ pub struct RegexGenerationPayload {
     pub model_override: Option<String>,
     pub temperature: f32,
     pub max_output_tokens: Option<u32>,
+    pub target_field: Option<String>,
 }
 
 // Payload for Guidance Generation job
@@ -229,11 +230,6 @@ pub struct VoiceCorrectionPayload {
     pub original_job_id: Option<String>, // Optional, for context from original transcription
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReadDirectoryPayloadStruct {
-    pub path: String,
-    pub exclude_patterns: Option<Vec<String>>,
-}
 
 // Payload for Generate Directory Tree job
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,7 +269,6 @@ pub struct GenericLlmStreamPayload {
 #[serde(tag = "type", content = "data")]
 pub enum JobPayload {
     OpenRouterLlm(OpenRouterLlmPayload),
-    ReadDirectory(ReadDirectoryPayloadStruct),
     OpenRouterTranscription(OpenRouterTranscriptionPayload),
     PathFinder(PathFinderPayload),
     ImplementationPlan(ImplementationPlanPayload),
@@ -286,6 +281,7 @@ pub enum JobPayload {
     GenerateDirectoryTree(GenerateDirectoryTreePayload),
     TextCorrectionPostTranscription(TextCorrectionPostTranscriptionPayload),
     GenericLlmStream(GenericLlmStreamPayload),
+    RegexSummaryGeneration(crate::jobs::processors::RegexSummaryGenerationPayload),
 }
 
 // Result of a job process

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import {
   createSessionAction,
@@ -9,12 +9,14 @@ import {
   renameSessionAction,
 } from "@/actions";
 import { useProject } from "@/contexts/project-context";
+import { useNotification } from "@/contexts/notification-context";
 import { type Session } from "@/types";
 import {
   DatabaseError,
   DatabaseErrorCategory,
   DatabaseErrorSeverity,
 } from "@/types/error-types";
+import { DRAFT_SESSION_ID } from "./use-session-state";
 
 /**
  * Hook for session mutation actions and field updates
@@ -38,6 +40,10 @@ export function useSessionActions({
   onSessionNeedsReload?: (sessionId: string) => void;
 }) {
   const { projectDirectory } = useProject();
+  const { showNotification } = useNotification();
+  
+  // Debounce ref for auto-save functionality
+  const autoSaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Handle saving the current session
   const saveCurrentSession = useCallback(async (): Promise<boolean> => {
@@ -47,6 +53,14 @@ export function useSessionActions({
 
     if (!isSessionModified) {
       return true;
+    }
+
+    // Prevent saving draft sessions to database
+    if (currentSession.id === DRAFT_SESSION_ID) {
+      console.warn(
+        "[SessionActions] Attempted to save a draft session via saveCurrentSession. Drafts are persisted via createNewSession."
+      );
+      return true; // Considered 'saved' locally, no DB action
     }
 
     try {
@@ -61,6 +75,13 @@ export function useSessionActions({
       }
 
       setSessionModified(false);
+      
+      // Show success notification
+      showNotification({
+        title: "Session Saved",
+        message: "Session saved successfully",
+        type: "success",
+      });
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -86,6 +107,13 @@ export function useSessionActions({
             );
 
       setSessionError(dbError);
+      
+      // Show error notification
+      showNotification({
+        title: "Session Save Failed",
+        message: dbError.message,
+        type: "error",
+      });
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
@@ -106,10 +134,24 @@ export function useSessionActions({
     projectDirectory,
     setSessionModified,
     setSessionError,
+    showNotification,
   ]);
 
   // Direct reference to saveCurrentSession as flushSaves
   const flushSaves = saveCurrentSession;
+  
+  // Debounced auto-save function
+  const debouncedSaveCurrentSession = useCallback(() => {
+    if (autoSaveDebounceRef.current) {
+      clearTimeout(autoSaveDebounceRef.current);
+    }
+    
+    autoSaveDebounceRef.current = setTimeout(() => {
+      if (currentSession && isSessionModified) {
+        void saveCurrentSession();
+      }
+    }, 2000); // 2 second debounce
+  }, [currentSession, isSessionModified, saveCurrentSession]);
 
   // Update specific fields in the current session
   const updateCurrentSessionFields = useCallback(
@@ -119,9 +161,12 @@ export function useSessionActions({
         const updatedSession = { ...currentSession, ...fields };
         setSessionModified(true);
         setCurrentSession(updatedSession);
+        
+        // Trigger debounced auto-save
+        debouncedSaveCurrentSession();
       }
     },
-    [setCurrentSession, setSessionModified]
+    [setCurrentSession, setSessionModified, debouncedSaveCurrentSession]
   );
 
   // Create a new session

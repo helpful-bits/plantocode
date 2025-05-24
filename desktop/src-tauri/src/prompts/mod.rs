@@ -5,6 +5,7 @@ pub mod implementation_plan_title;
 pub mod path_correction;
 pub mod path_finder;
 pub mod regex;
+pub mod regex_summary;
 pub mod task_enhancement;
 pub mod text_improvement;
 pub mod voice_correction;
@@ -20,6 +21,7 @@ pub use path_finder::{
     generate_path_finder_prompt_with_contents
 };
 pub use regex::generate_regex_prompt;
+pub use regex_summary::generate_regex_summary_prompt;
 pub use task_enhancement::{
     generate_task_enhancement_system_prompt,
     generate_task_enhancement_user_prompt

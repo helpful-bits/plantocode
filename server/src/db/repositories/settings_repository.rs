@@ -1,7 +1,7 @@
 use sqlx::{PgPool, query_as};
 use serde_json::Value as JsonValue;
 use crate::error::AppError;
-use crate::config::settings::{AiModelSettings, TaskSpecificModelConfigEntry, ModelInfoEntry, PathFinderSettingsEntry}; // Ensure these are pub
+use crate::config::settings::{AIModelSettings, TaskSpecificModelConfigEntry, ModelInfoEntry, PathFinderSettingsEntry}; // Ensure these are pub
 use std::collections::HashMap;
 use serde::Serialize;
 use std::sync::Arc;
@@ -53,7 +53,7 @@ impl SettingsRepository {
         Ok(())
     }
 
-    pub async fn get_ai_model_settings(&self) -> Result<AiModelSettings, AppError> {
+    pub async fn get_ai_model_settings(&self) -> Result<AIModelSettings, AppError> {
         let default_llm_model_id_val = self.get_config_value("ai_settings_default_llm_model_id").await?
             .ok_or_else(|| AppError::Configuration("Missing ai_settings_default_llm_model_id".to_string()))?;
         let default_llm_model_id = default_llm_model_id_val.as_str().ok_or_else(|| AppError::Configuration("Invalid format for default_llm_model_id".to_string()))?.to_string();
@@ -84,7 +84,7 @@ impl SettingsRepository {
         // After fetching available_models, populate/update the service_pricing table
         self.update_service_pricing_table(&available_models).await?;
 
-        Ok(AiModelSettings {
+        Ok(AIModelSettings {
             default_llm_model_id,
             default_voice_model_id,
             default_transcription_model_id,
@@ -94,7 +94,7 @@ impl SettingsRepository {
         })
     }
 
-    pub async fn update_ai_model_settings(&self, settings: &AiModelSettings) -> Result<(), AppError> {
+    pub async fn update_ai_model_settings(&self, settings: &AIModelSettings) -> Result<(), AppError> {
         // Update each component of the AI model settings
         self.set_config_value("ai_settings_default_llm_model_id", &settings.default_llm_model_id, 
             Some("Default LLM model ID for general AI tasks")).await?;
@@ -122,22 +122,23 @@ impl SettingsRepository {
         Ok(())
     }
 
-    // Initialize the database with default AI model settings if they don't exist
+
+    // Ensure AI settings exist in database (should be populated by migrations)
     #[instrument(skip(self))]
-    pub async fn initialize_default_settings(&self, env_settings: &AiModelSettings) -> Result<(), AppError> {
-        info!("Initializing default AI model settings in database");
+    pub async fn ensure_ai_settings_exist(&self) -> Result<(), AppError> {
+        info!("Checking if AI settings exist in database");
         
-        // Check if settings already exist
+        // Check if critical AI settings exist
         let default_llm_exists = self.get_config_value("ai_settings_default_llm_model_id").await?.is_some();
+        let task_configs_exist = self.get_config_value("ai_settings_task_specific_configs").await?.is_some();
         
-        if !default_llm_exists {
-            info!("No existing AI settings found in database, initializing with environment defaults");
-            self.update_ai_model_settings(env_settings).await?;
-            info!("Successfully initialized default AI settings in database");
-        } else {
-            info!("AI settings already exist in database, skipping initialization");
+        if !default_llm_exists || !task_configs_exist {
+            return Err(AppError::Configuration(
+                "AI settings not found in database. Please ensure database migrations have been run.".to_string()
+            ));
         }
         
+        info!("AI settings exist in database");
         Ok(())
     }
 

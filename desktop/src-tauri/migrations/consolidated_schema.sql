@@ -46,11 +46,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   content_regex TEXT DEFAULT '',
   negative_title_regex TEXT DEFAULT '',
   negative_content_regex TEXT DEFAULT '',
-  is_regex_active INTEGER DEFAULT 0 CHECK(is_regex_active IN (0, 1)),
+  title_regex_description TEXT DEFAULT '',
+  content_regex_description TEXT DEFAULT '',
+  negative_title_regex_description TEXT DEFAULT '',
+  negative_content_regex_description TEXT DEFAULT '',
+  regex_summary_explanation TEXT DEFAULT '',
+  is_regex_active INTEGER DEFAULT 1 CHECK(is_regex_active IN (0, 1)),
   codebase_structure TEXT DEFAULT '',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  model_used TEXT DEFAULT 'gemini-2.5-flash-preview-04-17',
+  model_used TEXT DEFAULT 'anthropic/claude-sonnet-4',
   search_selected_files_only INTEGER DEFAULT 0 CHECK(search_selected_files_only IN (0, 1))
 );
 
@@ -162,6 +167,20 @@ CREATE TABLE IF NOT EXISTS task_settings (
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+-- Insert default 2025 model configurations
+INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
+VALUES 
+('default_llm_model_2025', 'anthropic/claude-sonnet-4', strftime('%s', 'now')),
+('default_reasoning_model_2025', 'deepseek/deepseek-r1', strftime('%s', 'now')),
+('default_fast_model_2025', 'google/gemini-2.5-flash-preview-05-20', strftime('%s', 'now')),
+('default_transcription_model_2025', 'whisper-large-v3', strftime('%s', 'now')),
+('model_update_version', '2025.1', strftime('%s', 'now')),
+('available_claude_models_2025', '["anthropic/claude-sonnet-4", "claude-opus-4-20250522", "claude-3-7-sonnet-20250219"]', strftime('%s', 'now')),
+('available_gemini_models_2025', '["google/gemini-2.5-flash-preview-05-20", "google/gemini-2.5-flash-preview-05-20:thinking", "google/gemini-2.5-pro-preview"]', strftime('%s', 'now')),
+('available_reasoning_models_2025', '["deepseek/deepseek-r1", "deepseek/deepseek-r1-distill-qwen-32b", "deepseek/deepseek-r1-distill-qwen-14b"]', strftime('%s', 'now'));
+
 -- Record this consolidated schema in the meta table
 INSERT OR REPLACE INTO meta (key, value)
-VALUES ('schema_version', '2025-05-17');
+VALUES ('schema_version', '2025-05-24-models'),
+       ('last_model_update', strftime('%s', 'now')),
+       ('initial_setup_with_2025_models', 'true');

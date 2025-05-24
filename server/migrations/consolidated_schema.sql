@@ -245,3 +245,231 @@ VALUES
 ('enterprise', 'Enterprise', 'Custom solutions for teams', 49.99, 499.99, 
  '{"monthly_tokens": 10000000, "services": ["anthropic/claude-3-haiku-20240307", "anthropic/claude-3-sonnet-20240229", "anthropic/claude-3-opus-20240229", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1"], "concurrency": 10, "team_members": 5}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
+
+-- Update all outdated models to 2025 versions
+-- Migration: 002_update_models_2025.sql
+
+-- Update existing models to latest 2025 versions
+UPDATE models 
+SET 
+    name = 'Claude 3.7 Sonnet (2025)',
+    context_window = 200000,
+    price_input = 0.003000,
+    price_output = 0.015000
+WHERE id = 'anthropic/claude-3-sonnet';
+
+UPDATE models 
+SET 
+    name = 'Claude 3.7 Opus (2025)',
+    context_window = 200000,
+    price_input = 0.015000,
+    price_output = 0.075000
+WHERE id = 'anthropic/claude-3-opus';
+
+UPDATE models 
+SET 
+    name = 'Claude 3.7 Haiku (2025)',
+    context_window = 200000,
+    price_input = 0.000250,
+    price_output = 0.001250
+WHERE id = 'anthropic/claude-3-haiku';
+
+-- Insert new 2025 model versions
+INSERT INTO models (id, name, context_window, price_input, price_output)
+VALUES 
+    ('claude-3-7-sonnet-20250219', 'Claude 3.7 Sonnet', 200000, 0.003000, 0.015000),
+    ('anthropic/claude-sonnet-4', 'Claude Sonnet 4', 200000, 0.004000, 0.020000),
+    ('claude-opus-4-20250522', 'Claude Opus 4', 200000, 0.020000, 0.100000),
+    ('google/gemini-2.5-flash-preview-05-20', 'Gemini 2.5 Flash Preview', 1000000, 0.000700, 0.002100),
+    ('google/gemini-2.5-flash-preview-05-20:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.000700, 0.002100),
+    ('google/gemini-2.5-pro-preview', 'Gemini 2.5 Pro Preview', 2000000, 0.001250, 0.005000),
+    ('deepseek/deepseek-r1', 'DeepSeek R1', 256000, 0.001000, 0.003000),
+    ('deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 Distill 32B', 256000, 0.000500, 0.001500),
+    ('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill 14B', 256000, 0.000300, 0.001000),
+    ('deepseek/deepseek-r1-distill-llama-70b', 'DeepSeek R1 Distill Llama 70B', 256000, 0.000700, 0.002000),
+    ('deepseek/deepseek-r1-distill-llama-8b', 'DeepSeek R1 Distill Llama 8B', 256000, 0.000200, 0.000600)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    context_window = EXCLUDED.context_window,
+    price_input = EXCLUDED.price_input,
+    price_output = EXCLUDED.price_output;
+
+-- Update service pricing for the new Claude 3.7 models
+UPDATE service_pricing 
+SET 
+    service_name = 'claude-3-7-sonnet-20250219',
+    updated_at = CURRENT_TIMESTAMP
+WHERE service_name = 'anthropic/claude-3-sonnet-20240229';
+
+UPDATE service_pricing 
+SET 
+    service_name = 'claude-3-7-opus-20250219',
+    updated_at = CURRENT_TIMESTAMP
+WHERE service_name = 'anthropic/claude-3-opus-20240229';
+
+UPDATE service_pricing 
+SET 
+    service_name = 'claude-3-7-haiku-20250219',
+    updated_at = CURRENT_TIMESTAMP
+WHERE service_name = 'anthropic/claude-3-haiku-20240307';
+
+-- Insert pricing for new 2025 models
+INSERT INTO service_pricing (service_name, input_token_price, output_token_price, currency, unit) 
+VALUES 
+('claude-3-7-sonnet-20250219', 0.003, 0.015, 'USD', 'per_1000_tokens'),
+('anthropic/claude-sonnet-4', 0.004, 0.020, 'USD', 'per_1000_tokens'),
+('claude-opus-4-20250522', 0.020, 0.100, 'USD', 'per_1000_tokens'),
+('google/gemini-2.5-flash-preview-05-20', 0.000700, 0.002100, 'USD', 'per_1000_tokens'),
+('google/gemini-2.5-flash-preview-05-20:thinking', 0.000700, 0.002100, 'USD', 'per_1000_tokens'),
+('google/gemini-2.5-pro-preview', 0.001250, 0.005000, 'USD', 'per_1000_tokens'),
+('deepseek/deepseek-r1', 0.001000, 0.003000, 'USD', 'per_1000_tokens'),
+('deepseek/deepseek-r1-distill-qwen-32b', 0.000500, 0.001500, 'USD', 'per_1000_tokens'),
+('deepseek/deepseek-r1-distill-qwen-14b', 0.000300, 0.001000, 'USD', 'per_1000_tokens'),
+('deepseek/deepseek-r1-distill-llama-70b', 0.000700, 0.002000, 'USD', 'per_1000_tokens'),
+('deepseek/deepseek-r1-distill-llama-8b', 0.000200, 0.000600, 'USD', 'per_1000_tokens')
+ON CONFLICT (service_name) DO UPDATE SET
+  input_token_price = EXCLUDED.input_token_price,
+  output_token_price = EXCLUDED.output_token_price,
+  updated_at = CURRENT_TIMESTAMP;
+
+-- Update subscription plans to include new 2025 models
+UPDATE subscription_plans 
+SET 
+    features = jsonb_set(
+        features, 
+        '{services}', 
+        '["claude-3-7-haiku-20250219", "openai/gpt-3.5-turbo", "deepseek/deepseek-r1-distill-llama-8b"]'::jsonb
+    )
+WHERE id = 'free';
+
+UPDATE subscription_plans 
+SET 
+    features = jsonb_set(
+        features, 
+        '{services}', 
+        '["claude-3-7-haiku-20250219", "claude-3-7-sonnet-20250219", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1", "deepseek/deepseek-r1-distill-qwen-14b", "deepseek/deepseek-r1-distill-qwen-32b"]'::jsonb
+    )
+WHERE id = 'pro';
+
+UPDATE subscription_plans 
+SET 
+    features = jsonb_set(
+        features, 
+        '{services}', 
+        '["claude-3-7-haiku-20250219", "claude-3-7-sonnet-20250219", "anthropic/claude-sonnet-4", "claude-opus-4-20250522", "openai/gpt-3.5-turbo", "openai/gpt-4-turbo", "openai/whisper-1", "google/gemini-2.5-flash-preview-05-20:thinking", "google/gemini-2.5-pro-preview", "deepseek/deepseek-r1", "deepseek/deepseek-r1-distill-qwen-32b", "deepseek/deepseek-r1-distill-llama-70b"]'::jsonb
+    )
+WHERE id = 'enterprise';
+
+-- Store the updated AI model configurations in application_configurations table
+INSERT INTO application_configurations (config_key, config_value, description)
+VALUES 
+('ai_settings_default_llm_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default LLM model for new installations'),
+('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default voice processing model'),
+('ai_settings_default_transcription_model_id', '"openai/whisper-1"'::jsonb, 'Default transcription model'),
+('ai_settings_reasoning_models', '["deepseek/deepseek-r1", "deepseek/deepseek-r1-distill-qwen-32b", "deepseek/deepseek-r1-distill-qwen-14b"]'::jsonb, 'Available reasoning models for complex tasks'),
+('ai_settings_latest_claude_models', '["claude-opus-4-20250522", "anthropic/claude-sonnet-4", "claude-3-7-sonnet-20250219"]'::jsonb, 'Latest Claude models available in 2025')
+ON CONFLICT (config_key) DO UPDATE SET
+  config_value = EXCLUDED.config_value,
+  description = EXCLUDED.description,
+  updated_at = CURRENT_TIMESTAMP;
+
+-- Insert comprehensive AI task configurations into application_configurations
+-- Migration: 003_insert_ai_task_configurations.sql
+-- This migration ensures ALL AI defaults come from the database, not hardcoded values
+
+-- Insert comprehensive task-specific model configurations
+INSERT INTO application_configurations (config_key, config_value, description)
+VALUES 
+('ai_settings_task_specific_configs', '{
+  "implementation_plan": {
+    "model": "deepseek/deepseek-r1",
+    "max_tokens": 65536,
+    "temperature": 0.7
+  },
+  "path_finder": {
+    "model": "google/gemini-2.5-flash-preview-05-20",
+    "max_tokens": 8192,
+    "temperature": 0.3
+  },
+  "text_improvement": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 4096,
+    "temperature": 0.7
+  },
+  "voice_transcription": {
+    "model": "openai/whisper-1",
+    "max_tokens": 1024,
+    "temperature": 0.0
+  },
+  "voice_correction": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 2048,
+    "temperature": 0.5
+  },
+  "path_correction": {
+    "model": "google/gemini-2.5-flash-preview-05-20",
+    "max_tokens": 4096,
+    "temperature": 0.3
+  },
+  "regex_generation": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 2048,
+    "temperature": 0.5
+  },
+  "guidance_generation": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 8192,
+    "temperature": 0.7
+  },
+  "task_enhancement": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 4096,
+    "temperature": 0.7
+  },
+  "generate_directory_tree": {
+    "model": "google/gemini-2.5-flash-preview-05-20",
+    "max_tokens": 4096,
+    "temperature": 0.3
+  },
+  "text_correction_post_transcription": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 2048,
+    "temperature": 0.5
+  },
+  "generic_llm_stream": {
+    "model": "google/gemini-2.5-flash-preview-05-20",
+    "max_tokens": 16384,
+    "temperature": 0.7
+  },
+  "regex_summary_generation": {
+    "model": "anthropic/claude-sonnet-4",
+    "max_tokens": 4096,
+    "temperature": 0.6
+  },
+  "streaming": {
+    "model": "google/gemini-2.5-flash-preview-05-20",
+    "max_tokens": 16384,
+    "temperature": 0.7
+  },
+  "unknown": {
+    "model": "google/gemini-2.5-flash-preview-05-20",
+    "max_tokens": 4096,
+    "temperature": 0.7
+  }
+}'::jsonb, 'Task-specific model configurations including model, tokens, and temperature for all supported task types'),
+
+('ai_settings_path_finder_settings', '{
+  "max_files_with_content": 10,
+  "include_file_contents": true,
+  "max_content_size_per_file": 5000,
+  "max_file_count": 50,
+  "file_content_truncation_chars": 2000,
+  "token_limit_buffer": 1000
+}'::jsonb, 'Settings for the PathFinder agent functionality'),
+
+('ai_settings_available_models', '[]'::jsonb, 'List of available AI models with their properties - will be populated from models table at startup')
+
+ON CONFLICT (config_key) DO UPDATE SET
+  config_value = EXCLUDED.config_value,
+  description = EXCLUDED.description,
+  updated_at = CURRENT_TIMESTAMP;

@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState, type TaskSettings } from "@/types";
-import { MODEL_SETTINGS_KEY, DEFAULT_TASK_SETTINGS } from "@/utils/constants";
+import { MODEL_SETTINGS_KEY } from "@/utils/constants";
+import { getModelSettingsForProject as getProjectTaskSettings } from "@/actions/project-settings.actions";
 
 // Define ConfigValue type to remove the redundant type constituents error
 type ConfigValue = string | Record<string, unknown> | null;
@@ -9,77 +10,23 @@ type ConfigValue = string | Record<string, unknown> | null;
 /**
  * Get model settings for a specific project
  *
- * Will return a fully resolved settings object where every TaskType has
- * all parameters (model, maxTokens, temperature) defined.
- * If no settings exist for the project, default settings will be saved.
+ * This is a simplified wrapper that delegates to the primary settings action.
+ * It fetches effective settings (project merged with server defaults) from the backend.
  */
 export async function getModelSettingsForProject(
   projectDirectory: string
-): Promise<TaskSettings> {
+): Promise<TaskSettings | null> {
   if (!projectDirectory) {
-    return DEFAULT_TASK_SETTINGS;
+    return null;
   }
 
   try {
-    // Use a normalized project directory
-    const safeProjectDirectory = projectDirectory.trim();
-
-    // Get settings using the generic cached state action
-    const result = await getGenericCachedStateAction(
-      safeProjectDirectory,
-      MODEL_SETTINGS_KEY
-    );
-
-    const settingsJson = result.isSuccess ? result.data : null;
-
-    if (!settingsJson) {
-
-      // Save default settings using the generic cached state action
-      await saveGenericCachedStateAction(
-        safeProjectDirectory,
-        MODEL_SETTINGS_KEY,
-        DEFAULT_TASK_SETTINGS
-      );
-      return DEFAULT_TASK_SETTINGS;
-    }
-
-    // Parse the JSON string into TaskSettings (not needed as getGenericCachedStateAction already parses JSON)
-    try {
-      const parsedSettings = settingsJson as TaskSettings;
-
-      // Create a new resolved settings object that merges defaults with stored settings
-      const resolvedSettings: TaskSettings = {} as TaskSettings;
-
-      // Iterate through all TaskType keys in DEFAULT_TASK_SETTINGS
-      (Object.keys(DEFAULT_TASK_SETTINGS) as Array<keyof TaskSettings>).forEach(
-        (settingsKey) => {
-          // Use the provided default or fall back to unknown as a last resort
-          const defaultConf =
-            DEFAULT_TASK_SETTINGS[settingsKey] || DEFAULT_TASK_SETTINGS.unknown;
-          const storedConf = parsedSettings
-            ? parsedSettings[settingsKey]
-            : undefined; // Safely access storedConf
-
-          // Ensure all required properties are set with proper fallbacks
-          resolvedSettings[settingsKey] = {
-            model: storedConf?.model ?? defaultConf.model,
-            maxTokens: storedConf?.maxTokens ?? defaultConf.maxTokens,
-            temperature: storedConf?.temperature ?? defaultConf.temperature,
-          };
-        }
-      );
-
-      return resolvedSettings;
-    } catch (error) {
-      console.error(
-        "[getModelSettingsForProject] Error processing settings:",
-        error
-      );
-      return DEFAULT_TASK_SETTINGS;
-    }
+    // Use the primary settings action which gets combined project + server defaults
+    const result = await getProjectTaskSettings(projectDirectory.trim());
+    return result.isSuccess && result.data ? result.data : null;
   } catch (error) {
     console.error("[getModelSettingsForProject]", error);
-    return DEFAULT_TASK_SETTINGS;
+    return null;
   }
 }
 

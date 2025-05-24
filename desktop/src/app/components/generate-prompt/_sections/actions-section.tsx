@@ -3,15 +3,13 @@
 import { Sparkles, Undo2, Redo2 } from "lucide-react";
 import React from "react";
 
+import { useSessionStateContext } from "@/contexts/session";
 import { SearchScopeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 
 import FindModeToggle from "../_components/find-mode-toggle";
 import RegexAccordion from "../_components/regex-accordion";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
-// Removed unused import
-import { useRegexContext } from "../_contexts/regex-context";
-import { useTaskContext } from "../_contexts/task-context";
 
 interface ActionsSectionProps {
   titleRegexError: string | null;
@@ -53,13 +51,12 @@ const ActionsSection = React.memo(function ActionsSection({
   disabled = false,
 }: ActionsSectionProps) {
   // Get states and actions from the granular contexts
-  const {
-    state: { taskDescription },
-  } = useTaskContext();
-  const { state: regexState } = useRegexContext();
+  const { currentSession } = useSessionStateContext();
   const {
     actions: { handleInteraction },
   } = useCorePromptContext();
+
+  const taskDescription = currentSession?.taskDescription || "";
 
   return (
     <div className="space-y-4">
@@ -128,7 +125,7 @@ const ActionsSection = React.memo(function ActionsSection({
             disabled={
               disabled ||
               (findFilesMode === "ai" && !taskDescription) ||
-              (findFilesMode === "manual" && !regexState.isRegexActive) ||
+              (findFilesMode === "manual" && !currentSession?.isRegexActive) ||
               isFindingFiles
             }
             isLoading={isFindingFiles}

@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { getModelSettingsForProject } from "@/actions/project-settings";
+import { getRuntimeAIConfig } from "@/actions/config.actions";
 import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
-import { GEMINI_FLASH_MODEL } from "@/utils/constants";
 
 /**
  * Finds relevant files for a given task
@@ -40,11 +40,20 @@ export async function findRelevantFilesAction({
       };
     }
 
-    // Get path finder settings - either from project or defaults
+    // Get path finder settings from RuntimeAIConfig (loaded from server database)
+    const runtimeConfig = await getRuntimeAIConfig();
+    if (!runtimeConfig?.isSuccess || !runtimeConfig.data?.tasks?.path_finder) {
+      return {
+        isSuccess: false,
+        message: "Runtime AI configuration not available. Please ensure server connection is established.",
+      };
+    }
+
+    const pathfinderDefaults = runtimeConfig.data.tasks.path_finder;
     const pathfinderSettings = {
-      model: GEMINI_FLASH_MODEL,
-      temperature: 0.2,
-      maxTokens: 16384,
+      model: pathfinderDefaults.model,
+      temperature: pathfinderDefaults.temperature,
+      maxTokens: pathfinderDefaults.max_tokens,
     };
 
     if (options.projectDirectory) {

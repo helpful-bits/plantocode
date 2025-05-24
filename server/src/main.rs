@@ -83,27 +83,67 @@ async fn main() -> std::io::Result<()> {
         }
     };
     
-    // Initialize SettingsRepository
+    // Initialize repositories
     let settings_repo = SettingsRepository::new(db_pool.clone());
+    let model_repo = ModelRepository::new(std::sync::Arc::new(db_pool.clone()));
     
-    // Initialize database with default settings if needed (using environment values as fallback)
-    if let Err(e) = settings_repo.initialize_default_settings(&env_app_settings.ai_models).await {
-        log::error!("Failed to initialize default settings in database: {}", e);
-        log::warn!("Will attempt to continue with environment-based settings, but database-stored settings are preferred");
+    // Step 1: Ensure AI settings exist in database (should be populated by migrations)
+    if let Err(e) = settings_repo.ensure_ai_settings_exist().await {
+        log::error!("AI settings missing from database: {}", e);
+        log::error!("Please run database migrations to populate AI settings.");
+        std::process::exit(1);
     }
     
-    // Load AI model settings from the database - this should now work since we've initialized if needed
-    let loaded_ai_model_settings = match settings_repo.get_ai_model_settings().await {
+    // Step 2: Load AI model settings from the database
+    let mut loaded_ai_model_settings = match settings_repo.get_ai_model_settings().await {
         Ok(settings) => {
             log::info!("Successfully loaded AI model settings from database.");
             settings
         }
         Err(e) => {
-            log::error!("Failed to load AI model settings from database even after initialization: {}", e);
-            log::warn!("Using environment-based AI settings as fallback (not recommended in production)");
-            env_app_settings.ai_models.clone()
+            log::error!("Failed to load AI model settings from database: {}", e);
+            log::error!("Database AI settings are corrupted or incomplete.");
+            std::process::exit(1);
         }
     };
+    
+    // Step 3: Populate available_models from ModelRepository
+    let models_from_db = match model_repo.get_all().await {
+        Ok(models) => {
+            log::info!("Successfully loaded {} models from database.", models.len());
+            models
+        }
+        Err(e) => {
+            log::error!("Failed to load models from database: {}", e);
+            log::error!("Database must contain model data. Please run database migrations.");
+            std::process::exit(1);
+        }
+    };
+    
+    // Step 4: Convert DB models to ModelInfoEntry format and update available_models
+    loaded_ai_model_settings.available_models = models_from_db.into_iter().map(|model| {
+        // Extract provider from model ID (e.g., "anthropic/claude-sonnet-4" -> "anthropic")
+        let provider = model.id.split('/').next().unwrap_or("unknown").to_string();
+        
+        crate::config::settings::ModelInfoEntry {
+            id: model.id.clone(),
+            name: model.name,
+            provider,
+            description: None, // Models table doesn't have description field
+            context_window: Some(model.context_window as u32),
+            price_input_per_1k_tokens: Some(model.price_input),
+            price_output_per_1k_tokens: Some(model.price_output),
+        }
+    }).collect();
+    
+    // Step 5: Persist the updated AI settings (with populated available_models) back to database
+    if let Err(e) = settings_repo.update_ai_model_settings(&loaded_ai_model_settings).await {
+        log::error!("Failed to persist updated AI model settings to database: {}", e);
+        log::error!("Cannot continue without proper AI settings persistence.");
+        std::process::exit(1);
+    }
+    
+    log::info!("AI model settings successfully loaded and updated with {} available models.", loaded_ai_model_settings.available_models.len());
     
     // Create the final app_settings with database-loaded AI model settings
     let mut app_settings = env_app_settings;

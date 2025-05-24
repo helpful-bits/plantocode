@@ -175,3 +175,4 @@ temp/
 /server/.sqlx/
 /desktop/src-tauri/.cargo/
 /desktop/pnpm-workspace.yaml
+/gen/

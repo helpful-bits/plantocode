@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
+import { useSessionActionsContext } from "@/contexts/session";
 
 export interface UseSessionMetadataProps {
   onInteraction: () => void;
@@ -15,30 +16,30 @@ export interface UseSessionMetadataReturn {
 
 /**
  * Hook to manage session metadata like name
+ * Now integrates directly with SessionContext
  */
 export function useSessionMetadata({
   onInteraction,
   initialSessionName = "Untitled Session",
 }: UseSessionMetadataProps): UseSessionMetadataReturn {
-  const [sessionName, setSessionNameState] =
-    useState<string>(initialSessionName);
+  const sessionActions = useSessionActionsContext();
 
-  // Handler for changing session name
+  // Handler for changing session name - updates SessionContext directly
   const setSessionName = useCallback(
     (name: string) => {
-      setSessionNameState(name);
+      sessionActions.updateCurrentSessionFields({ name });
       onInteraction();
     },
-    [onInteraction]
+    [sessionActions, onInteraction]
   );
 
-  // Reset function to restore defaults
+  // Reset function to restore defaults - updates SessionContext
   const reset = useCallback(() => {
-    setSessionNameState(initialSessionName);
-  }, [initialSessionName]);
+    sessionActions.updateCurrentSessionFields({ name: initialSessionName });
+  }, [sessionActions, initialSessionName]);
 
   return {
-    sessionName,
+    sessionName: initialSessionName, // This is now passed from the consuming component that reads from SessionContext
     setSessionName,
     reset,
   };

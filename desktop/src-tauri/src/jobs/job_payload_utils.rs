@@ -89,14 +89,6 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
             }
         },
         
-        // Match against ReadDirectory task type
-        read_directory if read_directory == TaskType::ReadDirectory.to_string() => {
-            debug!("Deserializing ReadDirectoryPayloadStruct");
-            let payload: crate::jobs::types::ReadDirectoryPayloadStruct = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize ReadDirectoryPayloadStruct: {}", e)))?;
-            Ok(JobPayload::ReadDirectory(payload))
-        },
-        
         // Match against ImplementationPlan task type
         implementation_plan if implementation_plan == TaskType::ImplementationPlan.to_string() => {
             debug!("Deserializing ImplementationPlanPayload");

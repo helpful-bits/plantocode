@@ -29,14 +29,20 @@ export function useAutoSessionLoader({
   const prevActiveSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Skip if there's no projectDirectory or activeSessionId
-    if (!projectDirectory || !activeSessionId) {
-      // Complete initialization
-      if (!initialAutoLoadCompleteRef.current && !hasCompletedInitRef.current) {
-        initialAutoLoadCompleteRef.current = true;
+    // Helper function to complete initialization
+    const completeInitialization = () => {
+      if (!hasCompletedInitRef.current) {
         hasCompletedInitRef.current = true;
         setAppInitializing(false);
       }
+      if (!initialAutoLoadCompleteRef.current) {
+        initialAutoLoadCompleteRef.current = true;
+      }
+    };
+
+    // Skip if there's no projectDirectory or activeSessionId
+    if (!projectDirectory || !activeSessionId) {
+      completeInitialization();
       return;
     }
 
@@ -51,13 +57,7 @@ export function useAutoSessionLoader({
         currentSession?.id === activeSessionId &&
         !initialAutoLoadCompleteRef.current
       ) {
-        initialAutoLoadCompleteRef.current = true;
-
-        // Complete initialization
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
       }
 
       // Update reference even when skipping
@@ -76,12 +76,7 @@ export function useAutoSessionLoader({
       setSessionLoading(true);
       loadSessionById(activeSessionId).catch(() => {
         setSessionLoading(false);
-
-        // Complete initialization on error
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
       });
 
       return;

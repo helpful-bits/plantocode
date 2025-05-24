@@ -212,7 +212,7 @@ impl OpenRouterClient {
         &self, 
         request: OpenRouterChatRequest,
         user_id: &str
-    ) -> Result<impl Stream<Item = Result<web::Bytes, AppError>>, AppError> {
+    ) -> Result<impl Stream<Item = Result<web::Bytes, AppError>> + use<>, AppError> {
         let request_id = self.get_next_request_id().await;
         let url = format!("{}/chat/completions", self.base_url);
         

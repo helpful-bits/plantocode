@@ -1,8 +1,8 @@
-pub mod read_directory_processor;
 pub mod path_finder_processor;
 pub mod path_finder_types;
 pub mod implementation_plan_processor;
 pub mod regex_generation_processor;
+pub mod regex_summary_generation_processor;
 pub mod guidance_generation_processor;
 pub mod path_correction_processor;
 pub mod text_improvement_processor;
@@ -13,11 +13,11 @@ pub mod text_correction_post_transcription_processor;
 pub mod generic_llm_stream_processor;
 pub mod server_proxy_transcription_processor;
 
-pub use read_directory_processor::ReadDirectoryProcessor;
 pub use path_finder_processor::PathFinderProcessor;
 pub use path_finder_types::{PathFinderResult, PathFinderOptions};
 pub use implementation_plan_processor::ImplementationPlanProcessor;
 pub use regex_generation_processor::RegexGenerationProcessor;
+pub use regex_summary_generation_processor::{RegexSummaryGenerationProcessor, RegexSummaryGenerationPayload};
 pub use guidance_generation_processor::GuidanceGenerationProcessor;
 pub use path_correction_processor::PathCorrectionProcessor;
 pub use text_improvement_processor::TextImprovementProcessor;

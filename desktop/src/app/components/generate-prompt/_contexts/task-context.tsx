@@ -9,7 +9,6 @@ import {
 // Create the context with a default value
 const defaultValue: TaskContextValue = {
   state: {
-    taskDescription: "",
     taskDescriptionRef: React.createRef(), // Create a ref object instead of null
     isGeneratingGuidance: false,
     isImprovingText: false,
@@ -17,7 +16,6 @@ const defaultValue: TaskContextValue = {
   },
   actions: {
     // These default implementations will be replaced by actual implementations
-    setTaskDescription: () => {},
     handleGenerateGuidance: async () => Promise.resolve(),
     handleImproveSelection: async () => Promise.resolve(),
     reset: () => {},

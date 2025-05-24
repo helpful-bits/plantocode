@@ -4,10 +4,7 @@ import { createContext, useContext, useMemo, useRef, type ReactNode } from "reac
 
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
-import {
-  useSessionStateContext,
-  useSessionActionsContext,
-} from "@/contexts/session";
+import { useSessionStateContext } from "@/contexts/session";
 
 
 import { useGeneratePromptCoreState } from "../_hooks/use-generate-prompt-core-state";
@@ -54,9 +51,8 @@ export function GeneratePromptProvider({
   // Get shared contexts
   const { projectDirectory } = useProject();
 
-  // Get session state and actions from separate contexts
+  // Get session state from separate contexts
   const sessionState = useSessionStateContext();
-  const sessionActions = useSessionActionsContext();
 
   const { showNotification } = useNotification();
   // Get file management context but we don't use includedPaths in this component
@@ -75,41 +71,14 @@ export function GeneratePromptProvider({
     taskDescriptionRef,
   });
 
-  // Initialize task state with required props from session state
+  // Initialize task state - it now reads from SessionContext directly
   const taskApi = useGeneratePromptTaskState({
-    taskDescription: sessionState.currentSession?.taskDescription || "",
-    setTaskDescription: (value: string) =>
-      sessionActions.updateCurrentSessionFields({ taskDescription: value }),
     handleInteraction: coreApi.handleInteraction,
     taskDescriptionRef,
   });
 
-  // Initialize regex state with required props from session state
+  // Initialize regex state - it now reads from SessionContext directly
   const regexApi = useGeneratePromptRegexState({
-    // State values from session
-    titleRegex: sessionState.currentSession?.titleRegex || "",
-    contentRegex: sessionState.currentSession?.contentRegex || "",
-    negativeTitleRegex: sessionState.currentSession?.negativeTitleRegex || "",
-    negativeContentRegex:
-      sessionState.currentSession?.negativeContentRegex || "",
-    isRegexActive: sessionState.currentSession?.isRegexActive || false,
-
-    // Updater functions using session actions
-    setTitleRegex: (value: string) =>
-      sessionActions.updateCurrentSessionFields({ titleRegex: value }),
-    setContentRegex: (value: string) =>
-      sessionActions.updateCurrentSessionFields({ contentRegex: value }),
-    setNegativeTitleRegex: (value: string) =>
-      sessionActions.updateCurrentSessionFields({ negativeTitleRegex: value }),
-    setNegativeContentRegex: (value: string) =>
-      sessionActions.updateCurrentSessionFields({
-        negativeContentRegex: value,
-      }),
-    setIsRegexActive: (value: boolean) =>
-      sessionActions.updateCurrentSessionFields({ isRegexActive: value }),
-
-    // Other props
-    activeSessionId: sessionState.activeSessionId,
     taskDescription: sessionState.currentSession?.taskDescription || "",
     handleInteraction: coreApi.handleInteraction,
   });

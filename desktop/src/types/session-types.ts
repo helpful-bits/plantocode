@@ -81,11 +81,11 @@ export type TaskType =
   | "path_correction"
   | "regex_generation"
   | "guidance_generation"
-  | "read_directory"
   | "task_enhancement"
   | "generate_directory_tree"
   | "text_correction_post_transcription"
   | "generic_llm_stream"
+  | "regex_summary_generation"
   | "unknown";
 
 /**
@@ -158,6 +158,11 @@ export type Session = {
   contentRegex: string; // Regex for file contents
   negativeTitleRegex: string; // Negative regex for file titles
   negativeContentRegex: string; // Negative regex for file contents
+  titleRegexDescription?: string; // Natural language description for title regex
+  contentRegexDescription?: string; // Natural language description for content regex
+  negativeTitleRegexDescription?: string; // Natural language description for negative title regex
+  negativeContentRegexDescription?: string; // Natural language description for negative content regex
+  regexSummaryExplanation?: string; // Human-readable summary of all regex filters
   isRegexActive: boolean; // Whether regex filtering is active
   updatedAt?: number; // Timestamp of last update (managed by repository)
   createdAt: number; // Timestamp when the session was created

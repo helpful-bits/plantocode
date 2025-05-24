@@ -236,37 +236,43 @@ export function useFileManagementState({
 
     // Import and use the file content loader utility only when needed
     void import("@/utils/file-content-loader").then(({ loadFileContents }) => {
-      // Filter out files that already have content loaded
-      const filesToLoad = fileSelectionManager.includedPaths.filter(
-        (path) =>
-          !fileContentsMap[path] ||
-          fileContentsMap[path].includes("[Error") ||
-          fileContentsMap[path].includes("[File not found]")
-      );
+      // Use callback to get current state and avoid dependency
+      setFileContentsMap((currentContents) => {
+        // Filter out files that already have content loaded
+        const filesToLoad = fileSelectionManager.includedPaths.filter(
+          (path) =>
+            !currentContents[path] ||
+            currentContents[path].includes("[Error") ||
+            currentContents[path].includes("[File not found]")
+        );
 
-      // Skip if no new files to load
-      if (filesToLoad.length === 0) {
-        return;
-      }
+        // Skip if no new files to load
+        if (filesToLoad.length === 0) {
+          return currentContents;
+        }
 
-      // Load file contents for UI preview only - limited to first 5 files
-      // for performance reasons. The backend will load complete files when needed.
-      loadFileContents(
-        projectDirectory,
-        filesToLoad.slice(0, 5),
-        fileContentsMap
-      )
-        .then((contents) => {
-          setFileContentsMap(contents);
-        })
-        .catch((error) => {
-          console.error(
-            "[FileManagementState] Error loading file contents for UI preview:",
-            error
-          );
-        });
+        // Load file contents for UI preview only - limited to first 5 files
+        // for performance reasons. The backend will load complete files when needed.
+        loadFileContents(
+          projectDirectory,
+          filesToLoad.slice(0, 5),
+          currentContents
+        )
+          .then((contents) => {
+            setFileContentsMap(contents);
+          })
+          .catch((error) => {
+            console.error(
+              "[FileManagementState] Error loading file contents for UI preview:",
+              error
+            );
+          });
+
+        // Return current state unchanged for now - async operation will update it
+        return currentContents;
+      });
     });
-  }, [projectDirectory, fileSelectionManager.includedPaths, fileContentsMap]);
+  }, [projectDirectory, fileSelectionManager.includedPaths]);
 
   // Calculate if regex is available based on patterns from session
   const { currentSession } = useSessionStateContext();
@@ -369,9 +375,6 @@ export function useFileManagementState({
       getFileStateForSession,
       flushFileStateSaves,
       fileSelectionManager.flushPendingOperations,
-      
-      // Add missing dependency
-      fileContentsMap,
     ]
   );
 

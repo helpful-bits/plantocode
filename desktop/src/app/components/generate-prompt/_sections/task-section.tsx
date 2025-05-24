@@ -9,6 +9,10 @@ import VoiceTranscription from "../_components/voice-transcription";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { useTaskContext } from "../_contexts/task-context";
+import { 
+  useSessionStateContext, 
+  useSessionActionsContext 
+} from "@/contexts/session";
 
 const TaskDescriptionArea = React.lazy(
   () => import("../_components/task-description")
@@ -21,7 +25,13 @@ interface TaskSectionProps {
 const TaskSection = React.memo(function TaskSection({
   disabled = false,
 }: TaskSectionProps) {
-  // Get the task context for direct access to task data
+  // Get task description from SessionContext
+  const sessionState = useSessionStateContext();
+  const sessionActions = useSessionActionsContext();
+  
+  const taskDescription = sessionState.currentSession?.taskDescription || "";
+  
+  // Get the task context for UI state and actions
   const { state: taskState, actions: taskActions } = useTaskContext();
   const { actions: coreActions } = useCorePromptContext();
 
@@ -29,7 +39,6 @@ const TaskSection = React.memo(function TaskSection({
   const fileState = useFileManagement();
 
   const {
-    taskDescription,
     taskDescriptionRef,
     isGeneratingGuidance,
     isImprovingText,
@@ -37,8 +46,12 @@ const TaskSection = React.memo(function TaskSection({
     textImprovementJobId: _textImprovementJobId,
   } = taskState;
 
-  const { setTaskDescription, handleGenerateGuidance, handleImproveSelection } =
-    taskActions;
+  const { handleGenerateGuidance, handleImproveSelection } = taskActions;
+  
+  // Create setTaskDescription handler
+  const setTaskDescription = (value: string) => {
+    sessionActions.updateCurrentSessionFields({ taskDescription: value });
+  };
 
   // Get file paths from FileManagement context
   const { includedPaths } = fileState;

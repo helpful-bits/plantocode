@@ -45,27 +45,26 @@ export function useSessionLoader({
   // Load a session by ID
   const loadSessionById = useCallback(
     async (sessionId: string) => {
-      if (!sessionId) {
+      // Helper function to complete initialization
+      const completeInitialization = () => {
         if (!hasCompletedInitRef.current) {
           hasCompletedInitRef.current = true;
           setAppInitializing(false);
         }
+      };
+
+      if (!sessionId) {
+        completeInitialization();
         return;
       }
 
       if (!projectDirectory) {
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
         return;
       }
 
       if (currentSession?.id === sessionId) {
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
         return;
       }
 
@@ -99,10 +98,7 @@ export function useSessionLoader({
           );
         }
 
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
       }, 2000); // 2 seconds timeout
 
       try {
@@ -164,10 +160,7 @@ export function useSessionLoader({
           );
         }
 
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
       } catch (error) {
         const dbError =
           error instanceof DatabaseError
@@ -197,10 +190,7 @@ export function useSessionLoader({
           );
         }
 
-        if (!hasCompletedInitRef.current) {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
-        }
+        completeInitialization();
 
         throw dbError;
       } finally {

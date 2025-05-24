@@ -70,7 +70,7 @@ async function badCreateImplementationPlanAction(params: {
 
     // Generate a title (BAD - should be in backend)
     const titlePrompt = `Generate a title for: ${params.taskDescription}`;
-    const titleResult = await someAiApiCall(titlePrompt);
+    const titleResult = await someAIApiCall(titlePrompt);
 
     // Pass all this to the backend (BAD - just pass the raw inputs)
     const result = await invoke<{ job_id: string }>(

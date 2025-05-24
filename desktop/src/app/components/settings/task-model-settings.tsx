@@ -23,11 +23,6 @@ import {
   TabsTrigger,
   Input,
 } from "@/ui";
-import {
-  DEFAULT_TASK_SETTINGS,
-  GEMINI_FLASH_MODEL,
-  GEMINI_PRO_PREVIEW_MODEL,
-} from "@/utils/constants";
 
 import type React from "react";
 
@@ -42,28 +37,41 @@ interface TaskModelSettingsProps {
 const modelOptions = {
   gemini: [
     {
-      value: DEFAULT_TASK_SETTINGS.streaming?.model ?? GEMINI_FLASH_MODEL,
-      label: "Gemini 2.5 Flash",
+      value: "google/gemini-2.5-flash-preview-05-20:thinking",
+      label: "Gemini 2.5 Flash Thinking",
+      description: "Latest 2025 model with advanced reasoning capabilities.",
+    },
+    {
+      value: "google/gemini-2.5-flash-preview-05-20",
+      label: "Gemini 2.5 Flash Preview",
       description: "Fast response, great for most tasks.",
     },
     {
-      value:
-        DEFAULT_TASK_SETTINGS.implementationPlan?.model ??
-        GEMINI_PRO_PREVIEW_MODEL,
-      label: "Gemini 2.5 Pro",
+      value: "google/gemini-2.5-pro-preview",
+      label: "Gemini 2.5 Pro Preview",
       description: "Higher quality, better reasoning for complex tasks.",
+    },
+    {
+      value: "google/gemini-2.5-flash-preview-05-20",
+      label: "Gemini 2.5 Flash (Legacy)",
+      description: "Legacy flash model for compatibility.",
     },
   ],
   claude: [
+    {
+      value: "anthropic/claude-sonnet-4",
+      label: "Claude Sonnet 4",
+      description: "Latest 2025 model with advanced coding and reasoning capabilities.",
+    },
     {
       value: "claude-3-7-sonnet-20250219",
       label: "Claude 3.7 Sonnet",
       description: "High quality for complex text processing.",
     },
     {
-      value: "claude-3-5-sonnet-20240620",
-      label: "Claude 3.5 Sonnet",
-      description: "Balanced quality and speed.",
+      value: "claude-opus-4-20250522",
+      label: "Claude Opus 4",
+      description: "Most intelligent model with state-of-the-art agent capabilities.",
     },
   ],
   whisper: [
@@ -73,6 +81,18 @@ const modelOptions = {
       description: "Latest model for accurate transcription.",
     },
   ],
+  reasoning: [
+    {
+      value: "deepseek/deepseek-r1",
+      label: "DeepSeek R1",
+      description: "State-of-the-art reasoning model, performance on par with OpenAI o1.",
+    },
+    {
+      value: "deepseek/deepseek-r1-distill-qwen-32b",
+      label: "DeepSeek R1 Distill 32B",
+      description: "Distilled reasoning model with excellent performance.",
+    },
+  ],
 };
 
 // Task type definitions with user-friendly names and default settings
@@ -80,7 +100,7 @@ const taskTypeDefinitions: Record<
   TaskType,
   {
     label: string;
-    defaultApiType: "gemini" | "claude" | "whisper";
+    defaultApiType: "gemini" | "claude" | "whisper" | "reasoning";
   }
 > = {
   path_finder: {
@@ -93,6 +113,10 @@ const taskTypeDefinitions: Record<
   },
   regex_generation: {
     label: "Regex Generation",
+    defaultApiType: "claude",
+  },
+  regex_summary_generation: {
+    label: "Regex Summary Generation",
     defaultApiType: "claude",
   },
   path_correction: {
@@ -117,14 +141,10 @@ const taskTypeDefinitions: Record<
   },
   implementation_plan: {
     label: "Implementation Plan",
-    defaultApiType: "gemini",
+    defaultApiType: "reasoning",
   },
   generic_llm_stream: {
     label: "Generic LLM Stream",
-    defaultApiType: "gemini",
-  },
-  read_directory: {
-    label: "Read Directory",
     defaultApiType: "gemini",
   },
   generate_directory_tree: {
@@ -179,10 +199,8 @@ export default function TaskModelSettings({
       console.error(
         `No settings found for task type: ${taskType} (mapped to ${settingsKey})`
       );
-      // Fallback to default settings if needed
-      return (
-        DEFAULT_TASK_SETTINGS[settingsKey] || DEFAULT_TASK_SETTINGS.unknown
-      );
+      // This should not happen if taskSettings is properly loaded from server
+      throw new Error(`No settings found for task type: ${taskType} (mapped to ${settingsKey}). Ensure server data is loaded properly.`);
     }
 
     return settings;

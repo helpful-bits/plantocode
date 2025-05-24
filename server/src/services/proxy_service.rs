@@ -179,6 +179,7 @@ impl ProxyService {
         let openrouter_client_owned = self.openrouter_client.clone();
         let api_usage_repository_clone = self.api_usage_repository.clone();
         let model_id_string = model_id.to_string();
+        let user_id_string = user_id.to_string();
         
         // Create a new owned boxed stream with static lifetime
         // We'll create the response in a more direct way that ensures 'static lifetime
@@ -186,7 +187,7 @@ impl ProxyService {
             // First, perform the request and get a result
             async move {
                 // This is now an owned client inside this async block
-                let stream_result = openrouter_client_owned.stream_chat_completion(request, &user_id.to_string()).await?;
+                let stream_result = openrouter_client_owned.stream_chat_completion(request, &user_id_string).await?;
                 
                 // We'll track usage information as we process the stream
                 let usage_tracking = Arc::new(Mutex::new(StreamUsageTracker::new()));

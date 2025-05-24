@@ -2,8 +2,7 @@ import type { TaskDescriptionHandle } from "../../_components/task-description";
 import type { RefObject } from "react";
 
 export interface TaskContextState {
-  // Task description state
-  taskDescription: string;
+  // Task description UI state
   taskDescriptionRef: RefObject<TaskDescriptionHandle | null>;
   isGeneratingGuidance: boolean;
   isImprovingText: boolean;
@@ -12,7 +11,6 @@ export interface TaskContextState {
 
 export interface TaskContextActions {
   // Task description actions
-  setTaskDescription: (value: string) => void;
   handleGenerateGuidance: (selectedPaths?: string[]) => Promise<void>;
   handleImproveSelection: (selection: string) => Promise<void>;
   reset: () => void;

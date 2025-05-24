@@ -58,6 +58,18 @@ const config: Config = {
           background: "hsl(var(--warning-background))",
           border: "hsl(var(--warning-border))",
         },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+          background: "hsl(var(--info-background))",
+          border: "hsl(var(--info-border))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+          background: "hsl(var(--success-background))",
+          border: "hsl(var(--success-border))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",

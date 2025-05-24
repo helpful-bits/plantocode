@@ -4,6 +4,8 @@
 #[cfg(debug_assertions)]
 use std::env;
 
+use tauri::Emitter;
+
 mod commands;
 pub mod config;
 pub mod constants;
@@ -111,6 +113,16 @@ fn main() {
             });
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Emit an event to the frontend to handle potential unsaved changes
+                let _ = window.emit("app-will-close", ());
+                
+                // For now, allow the window to close
+                // In the future, we could prevent default close behavior if needed
+                // api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             // App commands
             commands::app_commands::get_app_info,
@@ -174,7 +186,6 @@ fn main() {
             // Path finding commands
             commands::path_finding_commands::find_relevant_files_command,
             commands::path_finding_commands::create_generate_directory_tree_job_command,
-            commands::path_finding_commands::task_create_read_directory_job_command,
             
             // Voice commands
             commands::voice_commands::create_transcription_job_command,
@@ -187,6 +198,7 @@ fn main() {
             
             // Other task-specific commands
             commands::regex_commands::generate_regex_command,
+            commands::regex_summary_commands::generate_regex_summary_command,
             commands::guidance_commands::generate_guidance_command,
             
             // Database commands

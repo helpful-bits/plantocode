@@ -255,6 +255,7 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
                 regex_args.model_override,
                 regex_args.temperature_override,
                 regex_args.max_tokens_override,
+                regex_args.target_field,
                 app_handle.clone()
             ).await {
                 Ok(result) => {

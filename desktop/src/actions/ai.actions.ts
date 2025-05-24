@@ -272,7 +272,7 @@ export async function initiateGenericAiStreamAction(params: {
       },
     };
   } catch (error) {
-    console.error("[initiateGenericAiStreamAction]", error);
+    console.error("[initiateGenericAIStreamAction]", error);
 
     return {
       isSuccess: false,
