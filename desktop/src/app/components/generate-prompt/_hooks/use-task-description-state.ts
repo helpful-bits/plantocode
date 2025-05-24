@@ -6,15 +6,13 @@ import { improveSelectedTextAction } from "@/actions/ai/text-improvement.actions
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
-import {
-  useSessionStateContext,
-  useSessionActionsContext,
-} from "@/contexts/session";
+import { useSessionActionsContext } from "@/contexts/session";
 
 // Import TaskDescriptionHandle type directly
 import type { TaskDescriptionHandle } from "../_components/task-description";
 
 interface UseTaskDescriptionStateProps {
+  taskDescription: string;
   activeSessionId: string | null;
   taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
   isSwitchingSession?: boolean;
@@ -22,6 +20,7 @@ interface UseTaskDescriptionStateProps {
 }
 
 export function useTaskDescriptionState({
+  taskDescription,
   activeSessionId,
   taskDescriptionRef,
   isSwitchingSession = false,
@@ -29,12 +28,7 @@ export function useTaskDescriptionState({
 }: UseTaskDescriptionStateProps) {
   // Get the necessary states from project and session contexts
   const { projectDirectory } = useProject();
-  const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
-
-  // Internal state for task description
-  const [internalTaskDescription, setInternalTaskDescription] =
-    useState<string>("");
 
   // State for UI feedback and improvement features
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
@@ -56,28 +50,6 @@ export function useTaskDescriptionState({
     return Object.prototype.hasOwnProperty.call(obj, prop);
   };
 
-  // Initialize internal state from session when session changes
-  useEffect(() => {
-    // Don't update state when there's no session
-    if (!sessionState.currentSession) {
-      return;
-    }
-
-    // If we're switching sessions, keep the current task description unless
-    // the new session's task description is explicitly available
-    if (isSwitchingSession && !sessionState.currentSession.taskDescription) {
-      return;
-    }
-
-    // If we have a valid session, initialize from it
-    const sessionTaskDescription =
-      sessionState.currentSession.taskDescription || "";
-    setInternalTaskDescription(sessionTaskDescription);
-  }, [
-    sessionState.currentSession,
-    sessionState.activeSessionId,
-    isSwitchingSession,
-  ]);
 
   // Reset function clears UI-related state
   const reset = useCallback(() => {
@@ -117,7 +89,7 @@ export function useTaskDescriptionState({
         // Check if the job belongs to the current active session
         if (
           hasProperty(job, 'sessionId') && 
-          job.sessionId === sessionState.activeSessionId &&
+          job.sessionId === activeSessionId &&
           selectionRangeRef.current
         ) {
           // Parse the response - backend should return a clean string
@@ -140,14 +112,11 @@ export function useTaskDescriptionState({
           // Apply the improved text at the selection range
           if (improvedText && improvedText.trim()) {
             const { start, end } = selectionRangeRef.current;
-            const currentValue = internalTaskDescription;
+            const currentValue = taskDescription;
             const newValue =
               currentValue.substring(0, start) +
               improvedText +
               currentValue.substring(end);
-
-            // Update internal state
-            setInternalTaskDescription(newValue);
 
             // Update session
             sessionActions.updateCurrentSessionFields({
@@ -188,7 +157,7 @@ export function useTaskDescriptionState({
       selectionRangeRef.current = null;
 
       // Only show notification for current session
-      if (hasProperty(job, 'sessionId') && job.sessionId === sessionState.activeSessionId) {
+      if (hasProperty(job, 'sessionId') && job.sessionId === activeSessionId) {
         const errorMsg = hasProperty(job, 'errorMessage') && typeof job.errorMessage === 'string' 
           ? job.errorMessage 
           : "Failed to improve text.";
@@ -205,9 +174,9 @@ export function useTaskDescriptionState({
     textImprovementJobId,
     isSwitchingSession,
     showNotification,
-    sessionState.activeSessionId,
+    activeSessionId,
     sessionActions,
-    internalTaskDescription,
+    taskDescription,
     taskDescriptionRef,
     onInteraction,
   ]);
@@ -263,7 +232,7 @@ export function useTaskDescriptionState({
           selectionRangeRef.current = { start, end, text: selectedText };
         } else {
           // Fallback: find text in description
-          const index = internalTaskDescription.indexOf(selectedText);
+          const index = taskDescription.indexOf(selectedText);
           if (index >= 0) {
             selectionRangeRef.current = {
               start: index,
@@ -315,14 +284,14 @@ export function useTaskDescriptionState({
       activeSessionId,
       taskDescriptionRef,
       projectDirectory,
-      internalTaskDescription,
+      taskDescription,
     ]
   );
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(internalTaskDescription);
+      await navigator.clipboard.writeText(taskDescription);
       setTaskCopySuccess(true);
       setTimeout(() => setTaskCopySuccess(false), 2000);
       return true;
@@ -330,46 +299,25 @@ export function useTaskDescriptionState({
       console.error("Error copying task description:", error);
       return false;
     }
-  }, [internalTaskDescription]);
-
-  // Update both internal state and session context
-  const setTaskDescription = useCallback(
-    (value: string) => {
-      // Update internal state
-      setInternalTaskDescription(value);
-
-      // Update session
-      sessionActions.updateCurrentSessionFields({ taskDescription: value });
-
-      // Notify parent components
-      if (onInteraction) {
-        onInteraction();
-      }
-    },
-    [onInteraction, sessionActions]
-  );
+  }, [taskDescription]);
 
   return useMemo(
     () => ({
-      taskDescription: internalTaskDescription,
       isImprovingText,
       textImprovementJobId,
       taskCopySuccess,
       taskDescriptionRef,
 
       // Actions
-      setTaskDescription,
       handleImproveSelection,
       copyTaskDescription,
       reset,
     }),
     [
-      internalTaskDescription,
       isImprovingText,
       textImprovementJobId,
       taskCopySuccess,
       taskDescriptionRef,
-      setTaskDescription,
       handleImproveSelection,
       copyTaskDescription,
       reset,

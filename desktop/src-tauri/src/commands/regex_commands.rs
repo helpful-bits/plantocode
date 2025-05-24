@@ -19,6 +19,7 @@ pub struct GenerateRegexArgs {
     pub model_override: Option<String>,
     pub temperature_override: Option<f32>,
     pub max_tokens_override: Option<u32>,
+    pub target_field: Option<String>,
 }
 
 /// Command to generate regex based on description and examples
@@ -32,6 +33,7 @@ pub async fn generate_regex_command(
     model_override: Option<String>,
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
+    target_field: Option<String>,
     app_handle: AppHandle
 ) -> AppResult<String> {
     info!("Creating regex generation job for description: {}", description);
@@ -46,6 +48,7 @@ pub async fn generate_regex_command(
         model_override,
         temperature_override,
         max_tokens_override,
+        target_field,
     };
     
     // Validate required fields
@@ -107,6 +110,7 @@ pub async fn generate_regex_command(
         model_override: None, // Will be passed directly to create_and_queue_background_job
         temperature: temperature,
         max_output_tokens: None, // Will be passed directly to create_and_queue_background_job
+        target_field: args.target_field.clone(),
     };
     
     // Create additional metadata for the job
@@ -122,6 +126,11 @@ pub async fn generate_regex_command(
     
     if let Some(target_language) = &args.target_language {
         extra_metadata["target_language"] = serde_json::to_value(target_language)
+            .map_err(|e| AppError::SerdeError(e.to_string()))?;
+    }
+    
+    if let Some(target_field) = &args.target_field {
+        extra_metadata["target_field"] = serde_json::to_value(target_field)
             .map_err(|e| AppError::SerdeError(e.to_string()))?;
     }
     

@@ -1,7 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
+import { readFileContent } from "./tauri-fs";
+import { pathJoin } from "./tauri-fs";
 
 /**
- * Load file contents - simplified to use Tauri backend for all operations
+ * Load file contents - uses existing single-file Tauri command in a loop
  * This is a minimal frontend wrapper for file operations
  *
  * @param projectDirectory The absolute path to the base directory for the files
@@ -19,36 +20,27 @@ export async function loadFileContents(
     return existingContents;
   }
 
-  try {
-    // Call the Tauri command to load files in batches
-    const result = await invoke<{ contents: Record<string, string> }>(
-      "read_file_contents_command",
-      {
-        projectDirectory,
-        filePaths,
-        maxSize: 100 * 1024, // 100KB max for UI display
-      }
-    );
+  // Start with existing contents
+  const contents = { ...existingContents };
 
-    // Merge with existing contents
-    return {
-      ...existingContents,
-      ...result.contents,
-    };
-  } catch (error) {
-    console.error("Error loading file contents:", error);
-
-    // Return existing contents plus error placeholders for requested files
-    const contents = { ...existingContents };
-
-    // Add error placeholders for files that failed to load
-    for (const filePath of filePaths) {
-      if (!contents[filePath]) {
-        contents[filePath] =
-          `[Error loading file: ${error instanceof Error ? error.message : String(error)}]`;
-      }
+  // Load each file individually using the existing single-file command
+  for (const filePath of filePaths) {
+    try {
+      // Convert relative path to absolute path
+      const absolutePath = await pathJoin(projectDirectory, filePath);
+      
+      // Read the file content
+      const fileContent = await readFileContent(absolutePath, projectDirectory);
+      
+      // Store content with the original relative path as the key
+      contents[filePath] = fileContent;
+    } catch (error) {
+      console.error(`Error loading file ${filePath}:`, error);
+      
+      // Add error placeholder for this specific file
+      contents[filePath] = `[Error loading file: ${error instanceof Error ? error.message : String(error)}]`;
     }
-
-    return contents;
   }
+
+  return contents;
 }

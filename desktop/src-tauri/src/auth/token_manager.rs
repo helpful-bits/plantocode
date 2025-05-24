@@ -3,6 +3,7 @@ use tokio::sync::RwLock;
 use log::{info, debug, error};
 use crate::error::AppResult;
 use crate::auth::token_persistence;
+use crate::constants::USE_SESSION_STORAGE;
 
 #[derive(Debug)]
 pub struct TokenManager {
@@ -20,22 +21,23 @@ impl TokenManager {
     /// Initialize the TokenManager and load any stored token
     ///
     /// This should be called during app initialization to:
-    /// 1. Load any persisted token from keyring
+    /// 1. Load any persisted token from storage (keyring or session storage)
     /// 2. Set it in memory for fast access
     pub async fn init(&self) -> AppResult<()> {
-        info!("Initializing TokenManager and loading token from keyring");
+        let storage_type = if USE_SESSION_STORAGE { "session storage" } else { "keyring" };
+        info!("Initializing TokenManager and loading token from {}", storage_type);
         
-        // Load token from keyring
+        // Load token from storage
         let stored_token = token_persistence::load_token().await?;
         
         // Set it in memory
         if let Some(token) = stored_token {
-            debug!("Found stored token in keyring, loading into memory");
+            debug!("Found stored token in {}, loading into memory", storage_type);
             // Update in-memory cache
             let mut token_guard = self.token.write().await;
             *token_guard = Some(token);
         } else {
-            debug!("No token found in keyring");
+            debug!("No token found in {}", storage_type);
         }
         
         debug!("TokenManager initialized");
@@ -61,9 +63,10 @@ impl TokenManager {
             }
         }
         
-        // Persist to keyring
+        // Persist to storage
         token_persistence::save_token(new_token).await?;
-        debug!("TokenManager: Token persisted to keyring");
+        let storage_type = if USE_SESSION_STORAGE { "session storage" } else { "keyring" };
+        debug!("TokenManager: Token persisted to {}", storage_type);
         
         Ok(())
     }

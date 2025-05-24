@@ -19,7 +19,7 @@
 
   /* Improved focus styles */
   .focus-ring {
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring;
   }
 
   /* Loading progress bar animations */
@@ -129,6 +129,14 @@
     --warning-foreground: 38 92% 5%; /* dark orange/brown */
     --warning-background: 38 92% 95%; /* very light orange */
     --warning-border: 38 92% 80%; /* lighter orange */
+    --info: 200 90% 50%; /* A pleasant blue */
+    --info-foreground: 200 90% 10%;
+    --info-background: 200 90% 95%;
+    --info-border: 200 90% 80%;
+    --success: 140 70% 40%; /* A clear green */
+    --success-foreground: 140 70% 5%;
+    --success-background: 140 70% 95%;
+    --success-border: 140 70% 80%;
     --border: 0 0% 89.8%;
     --input: 220 13% 91%;
     --ring: 0 0% 3.9%;
@@ -162,6 +170,14 @@
     --warning-foreground: 38 92% 95%; /* very light orange/almost white */
     --warning-background: 38 92% 20%; /* dark orange/brown */
     --warning-border: 38 92% 40%; /* darker orange */
+    --info: 200 80% 60%;
+    --info-foreground: 200 80% 95%;
+    --info-background: 200 80% 20%;
+    --info-border: 200 80% 40%;
+    --success: 140 60% 50%;
+    --success-foreground: 140 60% 95%;
+    --success-background: 140 60% 20%;
+    --success-border: 140 60% 40%;
     --border: 215 25% 14%;
     --input: 215 25% 10%;
     --ring: 212 15% 45%;
@@ -217,34 +233,6 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* Dark mode component improvements */
-.dark input,
-.dark textarea,
-.dark select {
-  background-color: hsl(var(--input));
-  color: hsl(var(--foreground));
-}
-
-.dark button[class*="bg-white"],
-.dark div[class*="bg-white"] {
-  background-color: hsl(var(--muted));
-}
-
-.dark .bg-card,
-.dark [class*="bg-background"] {
-  background-color: hsl(var(--background));
-}
-
-.dark [class*="border-gray"],
-.dark [class*="border-slate"] {
-  border-color: hsl(var(--border));
-}
-
-/* Ensure all hover states in dark mode are visible but not too bright */
-.dark button:hover:not([disabled]),
-.dark a:hover:not([disabled]) {
-  filter: brightness(1.1);
-}
 
 /* Better colors for dialog backgrounds in dark mode */
 .dark [role="dialog"] {

@@ -4,6 +4,8 @@ import { useState, useRef } from "react";
 
 import { type Session } from "@/types";
 
+export const DRAFT_SESSION_ID = "UNSAVED_DRAFT_SESSION";
+
 /**
  * Hook to manage session state, loading, and modification status
  * Extracts state management from SessionProvider

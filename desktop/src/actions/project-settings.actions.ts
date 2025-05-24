@@ -8,7 +8,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
 import { type TaskSettings } from "@/types/task-settings-types";
-import { DEFAULT_TASK_SETTINGS } from "@/utils/constants";
 
 /**
  * Simple string hashing function for client-side key generation
@@ -54,7 +53,7 @@ export interface ProjectSettings {
  */
 export async function getModelSettingsForProject(
   projectDirectory: string
-): Promise<ActionState<TaskSettings>> {
+): Promise<ActionState<TaskSettings | null>> {
   try {
     // Check if we have a valid project directory
     if (!projectDirectory) {
@@ -62,7 +61,7 @@ export async function getModelSettingsForProject(
       return {
         isSuccess: false,
         message: "No project directory provided",
-        data: DEFAULT_TASK_SETTINGS,
+        data: null,
       };
     }
 
@@ -88,19 +87,18 @@ export async function getModelSettingsForProject(
       return {
         isSuccess: false,
         message: "Error parsing settings",
-        data: DEFAULT_TASK_SETTINGS,
+        data: null,
       };
     }
   } catch (error) {
     console.error("Error getting task model settings for project:", error);
-    // Return default settings on error
     return {
       isSuccess: false,
       message:
         error instanceof Error
           ? error.message
           : "Unknown error getting settings",
-      data: DEFAULT_TASK_SETTINGS,
+      data: null,
     };
   }
 }

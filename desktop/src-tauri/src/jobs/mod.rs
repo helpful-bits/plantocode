@@ -14,7 +14,6 @@ use tauri::AppHandle;
 
 use crate::error::AppResult;
 use self::processors::{
-    ReadDirectoryProcessor,
     PathFinderProcessor,
     ImplementationPlanProcessor,
     RegexGenerationProcessor,
@@ -26,7 +25,8 @@ use self::processors::{
     GenerateDirectoryTreeProcessor,
     TextCorrectionPostTranscriptionProcessor,
     GenericLlmStreamProcessor,
-    ServerProxyTranscriptionProcessor
+    ServerProxyTranscriptionProcessor,
+    RegexSummaryGenerationProcessor
 };
 use self::registry::get_job_registry;
 use self::scheduler::{init_job_scheduler, get_job_scheduler};
@@ -51,7 +51,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let registry = get_job_registry().await?;
     
     // Create processor instances
-    let read_directory_processor = Arc::new(ReadDirectoryProcessor::new());
     let path_finder_processor = Arc::new(PathFinderProcessor::new());
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
     let regex_generation_processor = Arc::new(RegexGenerationProcessor::new());
@@ -64,9 +63,9 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let text_correction_post_transcription_processor = Arc::new(TextCorrectionPostTranscriptionProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
     let server_proxy_transcription_processor = Arc::new(ServerProxyTranscriptionProcessor::new(app_handle.clone()));
+    let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
     
     // Register processors
-    registry.register(read_directory_processor).await;
     registry.register(path_finder_processor).await;
     registry.register(implementation_plan_processor).await;
     registry.register(regex_generation_processor).await;
@@ -79,6 +78,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(text_correction_post_transcription_processor).await;
     registry.register(generic_llm_stream_processor).await;
     registry.register(server_proxy_transcription_processor).await;
+    registry.register(regex_summary_generation_processor).await;
     
     debug!("Job processors registered");
     Ok(())

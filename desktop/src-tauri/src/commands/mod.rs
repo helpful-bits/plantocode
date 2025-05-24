@@ -1,5 +1,6 @@
 // Re-export all command modules
 pub mod regex_commands;
+pub mod regex_summary_commands;
 pub mod guidance_commands;
 pub mod file_system_commands;
 pub mod app_commands;
@@ -21,6 +22,7 @@ pub mod setup_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::generate_regex_command;
+pub use regex_summary_commands::generate_regex_summary_command;
 pub use guidance_commands::generate_guidance_command;
 pub use file_system_commands::{
     get_home_directory_command,
@@ -53,7 +55,6 @@ pub use implementation_plan_commands::{
 // Re-exports from path finding commands module
 pub use path_finding_commands::{
     find_relevant_files_command,
-    task_create_read_directory_job_command,
     create_generate_directory_tree_job_command,
 };
 
@@ -118,7 +119,6 @@ pub use settings_commands::{
     set_key_value_command,
     get_project_task_model_settings_command,
     set_project_task_model_settings_command,
-    get_default_task_model_settings_command,
     get_all_task_model_settings_for_project_command,
 };
 

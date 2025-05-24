@@ -11,7 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 /**
  * Runtime AI configuration interface
  */
-export interface RuntimeAiConfig {
+export interface RuntimeAIConfig {
   default_llm_model_id: string;
   default_voice_model_id: string;
   default_transcription_model_id: string;
@@ -30,6 +30,8 @@ export interface ModelInfo {
   provider: string;
   description?: string;
   context_window?: number;
+  price_per_input_token: number;
+  price_per_output_token: number;
 }
 
 /**
@@ -64,14 +66,14 @@ export interface TokenLimits {
 /**
  * Fetch runtime AI configuration from the server
  */
-export async function fetchRuntimeAiConfig(): Promise<RuntimeAiConfig> {
+export async function fetchRuntimeAIConfig(): Promise<RuntimeAIConfig> {
   return invoke("fetch_runtime_ai_config");
 }
 
 /**
  * Get available AI models from the cached configuration
  */
-export async function getAvailableAiModels(): Promise<ModelInfo[]> {
+export async function getAvailableAIModels(): Promise<ModelInfo[]> {
   return invoke("get_available_ai_models");
 }
 
@@ -82,4 +84,26 @@ export async function getDefaultTaskConfigurations(): Promise<
   Record<string, TaskSpecificModelConfig>
 > {
   return invoke("get_default_task_configurations");
+}
+
+/**
+ * Get runtime AI configuration with action state wrapper
+ */
+export async function getRuntimeAIConfig(): Promise<{
+  isSuccess: boolean;
+  data?: RuntimeAIConfig;
+  message?: string;
+}> {
+  try {
+    const config = await fetchRuntimeAIConfig();
+    return {
+      isSuccess: true,
+      data: config,
+    };
+  } catch (error) {
+    return {
+      isSuccess: false,
+      message: error instanceof Error ? error.message : "Failed to fetch runtime config",
+    };
+  }
 }

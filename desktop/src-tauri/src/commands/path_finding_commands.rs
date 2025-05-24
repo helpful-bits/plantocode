@@ -7,13 +7,6 @@ use crate::models::{TaskType, PathFinderCommandResponse};
 use crate::utils::job_creation_utils;
 use crate::db_utils::SessionRepository;
 
-/// Request payload for the read directory job
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateReadDirectoryJobArgs {
-    pub project_directory: String,
-    pub session_id: String,
-    pub exclude_patterns: Option<Vec<String>>,
-}
 
 /// Request payload for the directory tree generation job
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,48 +222,3 @@ pub async fn create_generate_directory_tree_job_command(
     Ok(job_id)
 }
 
-/// Create a background job to read a directory
-#[command]
-pub async fn task_create_read_directory_job_command(
-    session_id: String,
-    directory_path: String,
-    exclude_patterns: Vec<String>,
-    app_handle: AppHandle,
-) -> AppResult<String> {
-    info!("Creating read directory job for path: {}", directory_path);
-    
-    // Validate project directory
-    if directory_path.is_empty() {
-        return Err(AppError::ValidationError("Project directory is required".to_string()));
-    }
-    
-    // Validate session ID
-    if session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
-    }
-    
-    // Create the payload for the ReadDirectoryProcessor
-    let payload_struct = crate::jobs::types::ReadDirectoryPayloadStruct {
-        path: directory_path.clone(),
-        exclude_patterns: Some(exclude_patterns),
-    };
-    
-    // Use job creation utility to create and queue the job
-    let job_id = job_creation_utils::create_and_queue_background_job(
-        &session_id,
-        &directory_path,
-        "filesystem",
-        TaskType::ReadDirectory,
-        "READ_DIRECTORY",
-        &format!("Read directory: {}", directory_path),
-        (String::new(), 0.0, 0), // No model needed for filesystem operations
-        serde_json::to_value(payload_struct).map_err(|e| 
-            AppError::SerdeError(e.to_string()))?,
-        1, // Priority
-        None, // No extra metadata
-        &app_handle, // Add app_handle parameter
-    ).await?;
-    
-    info!("Created read directory job: {}", job_id);
-    Ok(job_id)
-}
