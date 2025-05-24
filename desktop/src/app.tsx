@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { AppShell } from "@/app/components/app-shell";
 import { AuthFlowManager } from "@/app/components/auth/auth-flow-manager";
@@ -52,6 +53,27 @@ export default function App() {
     };
 
     void initializeApp();
+  }, []);
+
+  // Listen for app close event to handle unsaved changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.__TAURI_IPC__) {
+      return;
+    }
+
+    const setupAppCloseListener = async () => {
+      const unlisten = await listen("app-will-close", () => {
+        // This event is emitted when the user tries to close the app
+        // The session context will handle saving if needed
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("app-will-close"));
+        }
+      });
+
+      return unlisten;
+    };
+
+    void setupAppCloseListener();
   }, []);
 
   if (initError) {

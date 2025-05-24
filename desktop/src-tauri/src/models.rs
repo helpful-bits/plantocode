@@ -32,6 +32,11 @@ pub struct Session {
     pub content_regex: Option<String>,
     pub negative_title_regex: Option<String>,
     pub negative_content_regex: Option<String>,
+    pub title_regex_description: Option<String>,
+    pub content_regex_description: Option<String>,
+    pub negative_title_regex_description: Option<String>,
+    pub negative_content_regex_description: Option<String>,
+    pub regex_summary_explanation: Option<String>,
     pub is_regex_active: bool,
     pub codebase_structure: Option<String>,
     pub search_selected_files_only: bool,
@@ -39,7 +44,7 @@ pub struct Session {
     pub created_at: i64,
     pub updated_at: i64,
     pub included_files: Option<Vec<String>>,
-    pub excluded_files: Option<Vec<String>>,
+    pub force_excluded_files: Option<Vec<String>>,
 }
 
 // Request struct for creating a session - only requires essential fields
@@ -56,6 +61,10 @@ pub struct CreateSessionRequest {
     pub content_regex: Option<String>,
     pub negative_title_regex: Option<String>,
     pub negative_content_regex: Option<String>,
+    pub title_regex_description: Option<String>,
+    pub content_regex_description: Option<String>,
+    pub negative_title_regex_description: Option<String>,
+    pub negative_content_regex_description: Option<String>,
     pub is_regex_active: Option<bool>,
     pub codebase_structure: Option<String>,
     pub search_selected_files_only: Option<bool>,
@@ -177,11 +186,12 @@ pub enum TaskType {
     PathCorrection,
     RegexGeneration,
     GuidanceGeneration,
-    ReadDirectory,
     TaskEnhancement,
     GenerateDirectoryTree,
     TextCorrectionPostTranscription,
     GenericLlmStream,
+    RegexSummaryGeneration,
+    Streaming,
     Unknown,
 }
 
@@ -196,11 +206,12 @@ impl ToString for TaskType {
             TaskType::PathCorrection => "path_correction".to_string(),
             TaskType::RegexGeneration => "regex_generation".to_string(),
             TaskType::GuidanceGeneration => "guidance_generation".to_string(),
-            TaskType::ReadDirectory => "read_directory".to_string(),
             TaskType::TaskEnhancement => "task_enhancement".to_string(),
             TaskType::GenerateDirectoryTree => "generate_directory_tree".to_string(),
             TaskType::TextCorrectionPostTranscription => "text_correction_post_transcription".to_string(),
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
+            TaskType::RegexSummaryGeneration => "regex_summary_generation".to_string(),
+            TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
     }
@@ -219,11 +230,12 @@ impl std::str::FromStr for TaskType {
             "path_correction" => Ok(TaskType::PathCorrection),
             "regex_generation" => Ok(TaskType::RegexGeneration),
             "guidance_generation" => Ok(TaskType::GuidanceGeneration),
-            "read_directory" => Ok(TaskType::ReadDirectory),
             "task_enhancement" => Ok(TaskType::TaskEnhancement),
             "generate_directory_tree" => Ok(TaskType::GenerateDirectoryTree),
             "text_correction_post_transcription" => Ok(TaskType::TextCorrectionPostTranscription),
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
+            "regex_summary_generation" => Ok(TaskType::RegexSummaryGeneration),
+            "streaming" => Ok(TaskType::Streaming),
             _ => Ok(TaskType::Unknown),
         }
     }

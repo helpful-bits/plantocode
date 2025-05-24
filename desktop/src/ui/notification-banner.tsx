@@ -66,36 +66,28 @@ export const NotificationBanner: FC<NotificationBannerProps> = ({
   // Variant-specific styles
   const variantStyles = {
     info: {
-      container:
-        "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900",
-      icon: <Info className="h-5 w-5 text-blue-500 dark:text-blue-400" />,
-      title: "text-blue-800 dark:text-blue-300",
-      message: "text-blue-700 dark:text-blue-400",
+      container: "bg-info-background border-info-border",
+      icon: <Info className="h-5 w-5 text-info" />,
+      title: "text-info-foreground",
+      message: "text-info-foreground",
     },
     success: {
-      container:
-        "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-900",
-      icon: (
-        <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400" />
-      ),
-      title: "text-green-800 dark:text-green-300",
-      message: "text-green-700 dark:text-green-400",
+      container: "bg-success-background border-success-border",
+      icon: <CheckCircle2 className="h-5 w-5 text-success" />,
+      title: "text-success-foreground",
+      message: "text-success-foreground",
     },
     warning: {
-      container:
-        "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900",
-      icon: (
-        <AlertCircle className="h-5 w-5 text-amber-500 dark:text-amber-400" />
-      ),
-      title: "text-amber-800 dark:text-amber-300",
-      message: "text-amber-700 dark:text-amber-400",
+      container: "bg-warning-background border-warning-border",
+      icon: <AlertCircle className="h-5 w-5 text-warning" />,
+      title: "text-warning-foreground",
+      message: "text-warning-foreground",
     },
     error: {
-      container:
-        "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-900",
-      icon: <AlertCircle className="h-5 w-5 text-red-500 dark:text-red-400" />,
-      title: "text-red-800 dark:text-red-300",
-      message: "text-red-700 dark:text-red-400",
+      container: "bg-destructive/10 border-destructive/20",
+      icon: <AlertCircle className="h-5 w-5 text-destructive" />,
+      title: "text-destructive",
+      message: "text-destructive/80",
     },
   };
 

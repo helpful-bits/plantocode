@@ -243,6 +243,7 @@ pub async fn create_regex_generation_job_service(
         model_override: Some(model.clone()),
         temperature,
         max_output_tokens: Some(max_tokens),
+        target_field: None,
     };
     
     // Use job creation utility

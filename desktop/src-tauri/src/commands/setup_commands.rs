@@ -1,9 +1,16 @@
 use keyring::Entry;
 use log::{info, warn, error};
 use crate::auth::token_persistence; // To access SERVICE_NAME and ACCOUNT_NAME
+use crate::constants::USE_SESSION_STORAGE;
 
 #[tauri::command]
 pub fn trigger_initial_keychain_access() -> Result<(), String> {
+    // Skip keychain access if using session storage
+    if USE_SESSION_STORAGE {
+        info!("Using session storage mode - skipping keychain access trigger");
+        return Ok(());
+    }
+
     info!("Attempting to trigger initial keychain access for onboarding.");
 
     // Use the same service and account names that will be used for actual token storage.

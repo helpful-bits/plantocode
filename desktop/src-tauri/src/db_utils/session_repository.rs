@@ -27,6 +27,11 @@ impl SessionRepository {
         let content_regex: Option<String> = row.try_get::<'_, Option<String>, _>("content_regex").unwrap_or(None);
         let negative_title_regex: Option<String> = row.try_get::<'_, Option<String>, _>("negative_title_regex").unwrap_or(None);
         let negative_content_regex: Option<String> = row.try_get::<'_, Option<String>, _>("negative_content_regex").unwrap_or(None);
+        let title_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("title_regex_description").unwrap_or(None);
+        let content_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("content_regex_description").unwrap_or(None);
+        let negative_title_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("negative_title_regex_description").unwrap_or(None);
+        let negative_content_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("negative_content_regex_description").unwrap_or(None);
+        let regex_summary_explanation: Option<String> = row.try_get::<'_, Option<String>, _>("regex_summary_explanation").unwrap_or(None);
         
         let is_regex_active: bool = row.try_get::<'_, i64, _>("is_regex_active").unwrap_or(0) == 1;
         let codebase_structure: Option<String> = row.try_get::<'_, Option<String>, _>("codebase_structure").unwrap_or(None);
@@ -38,7 +43,7 @@ impl SessionRepository {
         
         // Fetch included and excluded files
         let included_files = self.get_included_files(&id).await?;
-        let excluded_files = self.get_excluded_files(&id).await?;
+        let force_excluded_files = self.get_excluded_files(&id).await?;
         
         Ok(Session {
             id,
@@ -51,6 +56,11 @@ impl SessionRepository {
             content_regex,
             negative_title_regex,
             negative_content_regex,
+            title_regex_description,
+            content_regex_description,
+            negative_title_regex_description,
+            negative_content_regex_description,
+            regex_summary_explanation,
             is_regex_active,
             codebase_structure,
             search_selected_files_only,
@@ -58,7 +68,7 @@ impl SessionRepository {
             created_at,
             updated_at,
             included_files: Some(included_files),
-            excluded_files: Some(excluded_files),
+            force_excluded_files: Some(force_excluded_files),
         })
     }
     
@@ -142,6 +152,9 @@ impl SessionRepository {
     
     /// Create a new session
     pub async fn create_session(&self, session: &Session) -> AppResult<()> {
+        log::debug!("Repository: Creating session with ID: {}, Name: {}, ProjectDirectory: {}", 
+                   session.id, session.name, session.project_directory);
+        
         // Start transaction
         let mut tx = self.pool.begin().await
             .map_err(|e| AppError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
@@ -152,10 +165,13 @@ impl SessionRepository {
             INSERT INTO sessions (
                 id, name, project_directory, project_hash, 
                 task_description, search_term, title_regex, content_regex,
-                negative_title_regex, negative_content_regex, is_regex_active,
+                negative_title_regex, negative_content_regex, 
+                title_regex_description, content_regex_description,
+                negative_title_regex_description, negative_content_regex_description,
+                regex_summary_explanation, is_regex_active,
                 codebase_structure, search_selected_files_only, model_used,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
             "#)
             .bind(&session.id)
             .bind(&session.name)
@@ -167,6 +183,11 @@ impl SessionRepository {
             .bind(&session.content_regex)
             .bind(&session.negative_title_regex)
             .bind(&session.negative_content_regex)
+            .bind(&session.title_regex_description)
+            .bind(&session.content_regex_description)
+            .bind(&session.negative_title_regex_description)
+            .bind(&session.negative_content_regex_description)
+            .bind(&session.regex_summary_explanation)
             .bind(if session.is_regex_active { 1i64 } else { 0i64 })
             .bind(&session.codebase_structure)
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
@@ -179,6 +200,7 @@ impl SessionRepository {
         if let Err(e) = result {
             // Rollback transaction on error
             let _ = tx.rollback().await;
+            log::error!("Repository: Failed to insert session {}: {}", session.id, e);
             return Err(AppError::DatabaseError(format!("Failed to insert session: {}", e)));
         }
         
@@ -194,13 +216,14 @@ impl SessionRepository {
                 if let Err(e) = result {
                     // Rollback transaction on error
                     let _ = tx.rollback().await;
+                    log::error!("Repository: Failed to insert included file {} for session {}: {}", path, session.id, e);
                     return Err(AppError::DatabaseError(format!("Failed to insert included file: {}", e)));
                 }
             }
         }
         
         // Insert excluded files
-        if let Some(excluded_files) = &session.excluded_files {
+        if let Some(excluded_files) = &session.force_excluded_files {
             for path in excluded_files {
                 let result = sqlx::query("INSERT INTO excluded_files (session_id, path) VALUES ($1, $2)")
                     .bind(&session.id)
@@ -225,6 +248,9 @@ impl SessionRepository {
     
     /// Update an existing session
     pub async fn update_session(&self, session: &Session) -> AppResult<()> {
+        log::debug!("Repository: Updating session with ID: {}, Name: {}, ProjectDirectory: {}", 
+                   session.id, session.name, session.project_directory);
+        
         // Start transaction
         let mut tx = self.pool.begin().await
             .map_err(|e| AppError::DatabaseError(format!("Failed to begin transaction: {}", e)))?;
@@ -242,12 +268,17 @@ impl SessionRepository {
                 content_regex = $7,
                 negative_title_regex = $8,
                 negative_content_regex = $9,
-                is_regex_active = $10,
-                codebase_structure = $11,
-                search_selected_files_only = $12,
-                model_used = $13,
-                updated_at = $14
-            WHERE id = $15
+                title_regex_description = $10,
+                content_regex_description = $11,
+                negative_title_regex_description = $12,
+                negative_content_regex_description = $13,
+                regex_summary_explanation = $14,
+                is_regex_active = $15,
+                codebase_structure = $16,
+                search_selected_files_only = $17,
+                model_used = $18,
+                updated_at = $19
+            WHERE id = $20
             "#)
             .bind(&session.name)
             .bind(&session.project_directory)
@@ -258,6 +289,11 @@ impl SessionRepository {
             .bind(&session.content_regex)
             .bind(&session.negative_title_regex)
             .bind(&session.negative_content_regex)
+            .bind(&session.title_regex_description)
+            .bind(&session.content_regex_description)
+            .bind(&session.negative_title_regex_description)
+            .bind(&session.negative_content_regex_description)
+            .bind(&session.regex_summary_explanation)
             .bind(if session.is_regex_active { 1i64 } else { 0i64 })
             .bind(&session.codebase_structure)
             .bind(if session.search_selected_files_only { 1i64 } else { 0i64 })
@@ -270,6 +306,7 @@ impl SessionRepository {
         if let Err(e) = result {
             // Rollback transaction on error
             let _ = tx.rollback().await;
+            log::error!("Repository: Failed to update session {}: {}", session.id, e);
             return Err(AppError::DatabaseError(format!("Failed to update session: {}", e)));
         }
         
@@ -315,7 +352,7 @@ impl SessionRepository {
         }
         
         // Insert excluded files
-        if let Some(excluded_files) = &session.excluded_files {
+        if let Some(excluded_files) = &session.force_excluded_files {
             for path in excluded_files {
                 let result = sqlx::query("INSERT INTO excluded_files (session_id, path) VALUES ($1, $2)")
                     .bind(&session.id)

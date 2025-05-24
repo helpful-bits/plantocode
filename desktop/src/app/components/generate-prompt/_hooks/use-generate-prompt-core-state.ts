@@ -156,8 +156,7 @@ export function useGeneratePromptCoreState({
 
     // Action methods
     resetAllState,
-    setSessionName: (name: string) =>
-      sessionActions.updateCurrentSessionFields({ name }),
+    setSessionName: sessionMetadata.setSessionName,
     saveSessionState: () => sessionActions.saveCurrentSession(),
     flushPendingSaves: () => sessionActions.flushSaves(),
     getCurrentSessionState,

@@ -170,7 +170,7 @@ export function TokenUsageIndicator({
         )}
 
         {/* Error message if any */}
-        {error && <div className="text-xs text-red-500 mt-1">{error}</div>}
+        {error && <div className="text-xs text-destructive mt-1">{error}</div>}
       </div>
     </Card>
   );

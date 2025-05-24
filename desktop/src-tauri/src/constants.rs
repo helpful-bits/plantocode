@@ -64,6 +64,9 @@ pub const KV_PROJECT_DIRECTORY: &str = "project_directory";
 // Authentication keys
 pub const TOKEN_KEY: &str = "com.vibe-manager.auth.token.v1";
 
+// Storage mode configuration
+pub const USE_SESSION_STORAGE: bool = true; // Set to false to use keyring instead
+
 // Directory names
 pub const IMPLEMENTATION_PLANS_DIR_NAME: &str = "implementation_plans";
 

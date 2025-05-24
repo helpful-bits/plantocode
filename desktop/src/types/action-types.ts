@@ -23,7 +23,6 @@ export type TaskType =
   | "path_correction"
   | "regex_generation"
   | "guidance_generation"
-  | "read_directory"
   | "task_enhancement"
   | "generate_directory_tree"
   | "text_correction_post_transcription"

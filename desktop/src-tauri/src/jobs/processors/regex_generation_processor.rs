@@ -355,11 +355,15 @@ impl JobProcessor for RegexGenerationProcessor {
         }
         
         // Store structured data in metadata
-        let metadata_json = json!({
-            "regexData": structured_data
-        }).to_string();
-        
-        db_job.metadata = Some(metadata_json);
+        let mut metadata_map = serde_json::Map::new();
+        metadata_map.insert("regexData".to_string(), structured_data);
+
+        // Add target_field to the metadata from the payload
+        if let Some(target_field_from_payload) = &payload.target_field {
+            metadata_map.insert("target_field".to_string(), json!(target_field_from_payload));
+        }
+
+        db_job.metadata = Some(serde_json::Value::Object(metadata_map).to_string());
         
         // Update the job
         repo.update_job(&db_job).await?;

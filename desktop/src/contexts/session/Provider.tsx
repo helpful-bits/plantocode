@@ -1,17 +1,18 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useEffect } from "react";
 
 import { useProject } from "@/contexts/project-context";
 
 import { useActiveSessionManager } from "./_hooks/use-active-session-manager";
 import { useSessionActions } from "./_hooks/use-session-actions";
 import { useSessionLoader } from "./_hooks/use-session-loader";
-import { useSessionState } from "./_hooks/use-session-state";
+import { useSessionState, DRAFT_SESSION_ID } from "./_hooks/use-session-state";
 import {
   type SessionStateContextType,
   type SessionActionsContextType,
 } from "./_types/session-context-types";
 
 import type { ReactNode } from "react";
+import type { Session } from "@/types";
 
 const SessionStateContext = createContext<SessionStateContextType | null>(null);
 const SessionActionsContext = createContext<SessionActionsContextType | null>(
@@ -142,6 +143,78 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionActions.renameActiveSession,
     ]
   );
+
+  // Initialize draft session when no session is loaded but project is active
+  useEffect(() => {
+    if (
+      projectDirectory &&
+      !activeSessionManager.activeSessionId &&
+      !sessionStateHook.currentSession &&
+      !sessionStateHook.isSessionLoading
+    ) {
+      const draftSession: Session = {
+        id: DRAFT_SESSION_ID,
+        name: "New Session Draft",
+        projectDirectory: projectDirectory,
+        taskDescription: "",
+        searchTerm: "",
+        titleRegex: "",
+        contentRegex: "",
+        negativeTitleRegex: "",
+        negativeContentRegex: "",
+        titleRegexDescription: "",
+        contentRegexDescription: "",
+        negativeTitleRegexDescription: "",
+        negativeContentRegexDescription: "",
+        regexSummaryExplanation: "",
+        isRegexActive: true,
+        codebaseStructure: "",
+        searchSelectedFilesOnly: false,
+        modelUsed: undefined,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        includedFiles: [],
+        forceExcludedFiles: [],
+      };
+
+      sessionStateHook.setCurrentSession(draftSession);
+      sessionStateHook.setSessionModified(false);
+    }
+  }, [
+    projectDirectory,
+    activeSessionManager.activeSessionId,
+    sessionStateHook.currentSession,
+    sessionStateHook.isSessionLoading,
+    sessionStateHook.setCurrentSession,
+    sessionStateHook.setSessionModified,
+  ]);
+
+  // Listen for app close event to save modified sessions
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleAppClose = async () => {
+      if (sessionStateHook.isSessionModified && sessionStateHook.currentSession) {
+        try {
+          await sessionActions.saveCurrentSession();
+        } catch (error) {
+          console.error("Failed to save session on app close:", error);
+        }
+      }
+    };
+
+    window.addEventListener("app-will-close", handleAppClose);
+    
+    return () => {
+      window.removeEventListener("app-will-close", handleAppClose);
+    };
+  }, [
+    sessionStateHook.isSessionModified,
+    sessionStateHook.currentSession,
+    sessionActions.saveCurrentSession,
+  ]);
 
   return (
     <SessionStateContext.Provider value={stateContextValue}>

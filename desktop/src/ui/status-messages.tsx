@@ -36,7 +36,7 @@ export const StatusMessages: FC<StatusMessagesProps> = ({
 
       {/* Feedback message for clear operations */}
       {clearFeedback && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 text-xs mx-4 mt-3 mb-3 rounded-md">
+        <div className="bg-success-background border border-success-border text-success-foreground px-4 py-3 text-xs mx-4 mt-3 mb-3 rounded-md">
           <div className="text-xs text-balance">{clearFeedback}</div>
         </div>
       )}

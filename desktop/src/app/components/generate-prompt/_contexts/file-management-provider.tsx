@@ -7,7 +7,6 @@ import { useSessionStateContext } from "@/contexts/session";
 import { useFileManagementState } from "../_hooks/use-file-management-state";
 
 import { FileManagementContext } from "./file-management-context";
-import { useTaskContext } from "./task-context";
 
 interface FileManagementProviderProps {
   children: ReactNode;
@@ -25,15 +24,12 @@ export function FileManagementProvider({
   taskDescription: propTaskDescription, // Renamed to avoid conflicts with context
 }: FileManagementProviderProps) {
   // Get the session transition state for passing to child components
-  const { activeSessionId, isSessionLoading: isTransitioningSession } =
+  const { activeSessionId, isSessionLoading: isTransitioningSession, currentSession } =
     useSessionStateContext();
 
-  // Get task description from TaskContext if available
-  const { state: taskState } = useTaskContext();
-
-  // Use task description from context if available, otherwise use prop value
+  // Use task description from SessionContext if available, otherwise use prop value
   const taskDescription =
-    taskState?.taskDescription || propTaskDescription || "";
+    currentSession?.taskDescription || propTaskDescription || "";
 
   // Track session ID changes in a ref for better debugging
   const prevSessionIdRef = useRef<string | null>(null);

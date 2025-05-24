@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppSettings {
     pub app: AppConfig,
@@ -14,7 +15,7 @@ pub struct AppSettings {
     pub subscription: SubscriptionConfig,
     pub stripe: StripeConfig,
     pub deep_link: DeepLinkConfig,
-    pub ai_models: AiModelSettings,
+    pub ai_models: AIModelSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -109,7 +110,7 @@ pub struct PathFinderSettingsEntry {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AiModelSettings {
+pub struct AIModelSettings {
     pub default_llm_model_id: String,
     pub default_voice_model_id: String,
     pub default_transcription_model_id: String,
@@ -206,32 +207,23 @@ impl AppSettings {
         let app_deep_link_scheme = env::var("APP_DEEP_LINK_SCHEME")
             .unwrap_or_else(|_| "vibe-manager".to_string());
             
-        // AI model settings - will be loaded from DB during app initialization
-        // Create placeholder values that will be replaced by DB values
-        let default_llm_model_id = env::var("DEFAULT_LLM_MODEL_ID")
-            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
-        let default_voice_model_id = env::var("DEFAULT_VOICE_MODEL_ID")
-            .unwrap_or_else(|_| "anthropic/claude-3-sonnet-20240229".to_string());
-        let default_transcription_model_id = env::var("DEFAULT_TRANSCRIPTION_MODEL_ID")
-            .unwrap_or_else(|_| "openai/whisper-1".to_string());
-        
-        // Task specific configs - parse from environment if available
-        let task_specific_configs_json = env::var("TASK_SPECIFIC_CONFIGS_JSON").unwrap_or_else(|_| "{}".to_string());
-        let task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry> = 
-            serde_json::from_str(&task_specific_configs_json)
-                .map_err(|e| AppError::Configuration(format!("Invalid TASK_SPECIFIC_CONFIGS_JSON: {}", e)))?;
-
-        // Available models will be loaded from database, start with empty vector
-        let available_models = Vec::new();
-        
-        // Path finder settings - parse from environment if available
-        let path_finder_settings_json = env::var("PATH_FINDER_SETTINGS_JSON").unwrap_or_else(|_| 
-            r#"{"max_files_with_content":10,"include_file_contents":true,"max_content_size_per_file":5000,"max_file_count":50,"file_content_truncation_chars":2000,"token_limit_buffer":1000}"#.to_string()
-        );
-        
-        let path_finder_settings: PathFinderSettingsEntry = 
-            serde_json::from_str(&path_finder_settings_json)
-                .map_err(|e| AppError::Configuration(format!("Invalid PATH_FINDER_SETTINGS_JSON: {}", e)))?;
+        // AI model settings - placeholder values that will be replaced during app initialization
+        // The actual values will be loaded from the database
+        let ai_models = AIModelSettings {
+            default_llm_model_id: String::new(),
+            default_voice_model_id: String::new(),
+            default_transcription_model_id: String::new(),
+            task_specific_configs: HashMap::new(),
+            available_models: Vec::new(),
+            path_finder_settings: PathFinderSettingsEntry {
+                max_files_with_content: None,
+                include_file_contents: None,
+                max_content_size_per_file: None,
+                max_file_count: None,
+                file_content_truncation_chars: None,
+                token_limit_buffer: None,
+            },
+        };
         
         Ok(Self {
             app: AppConfig {
@@ -277,14 +269,7 @@ impl AppSettings {
             deep_link: DeepLinkConfig {
                 scheme: app_deep_link_scheme,
             },
-            ai_models: AiModelSettings {
-                default_llm_model_id,
-                default_voice_model_id,
-                default_transcription_model_id,
-                task_specific_configs,
-                available_models,  // Empty vector, will be filled from database
-                path_finder_settings,
-            },
+            ai_models,
         })
     }
 }

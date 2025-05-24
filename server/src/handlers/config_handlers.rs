@@ -6,12 +6,12 @@ use tracing::{debug, info, instrument};
 use crate::config::settings::AppSettings;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::error::AppError;
-use crate::models::runtime_config::{RuntimeAIConfig, TaskSpecificModelConfig, ModelInfo, PathFinderSettings};
+use crate::models::runtime_config::{RuntimeAIConfig, TaskSpecificModelConfig, ModelInfo, PathFinderSettings, AppState};
 use serde::{Serialize, Deserialize};
 
 
 // Runtime config response format that matches the Tauri backend expectations
-// This is the same as RuntimeAiConfig but with different model format
+// This is the same as RuntimeAIConfig but with different model format
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DesktopRuntimeAIConfig {
     /// Default LLM model ID
@@ -50,48 +50,55 @@ pub struct DesktopModelInfo {
 /// Handler for GET /api/config/desktop-runtime-config endpoint for desktop app
 ///
 /// Retrieves the runtime AI configuration including available models and default settings
-#[instrument(skip(model_repository))]
+#[instrument(skip(app_state))]
 pub async fn get_desktop_runtime_ai_config(
-    model_repository: web::Data<Arc<ModelRepository>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
-    info!("Fetching desktop runtime AI configuration");
+    info!("Fetching desktop runtime AI configuration from database-sourced settings");
     
-    // Get all models from the repository
-    let models = model_repository.get_all().await?;
+    // Get AI settings from application state (loaded from database at startup)
+    let ai_settings = &app_state.settings.ai_models;
     
-    // Transform models to the response format
-    let available_models = models.into_iter().map(|model| {
-        // Extract provider from model ID (e.g., "anthropic/claude-3-sonnet" -> "anthropic")
-        let provider = model.id.split('/').next().unwrap_or("unknown").to_string();
-        
+    // Transform available_models from AI settings to response format
+    let available_models = ai_settings.available_models.iter().map(|model| {
         DesktopModelInfo {
             id: model.id.clone(),
             name: model.name.clone(),
-            provider,
-            description: Some(format!("{} - AI Language Model", model.name)),
-            context_window: Some(model.context_window as u32),
-            // Convert from cost per token to cost per 1K tokens
-            price_per_input_token: model.price_input * 1000.0,
-            price_per_output_token: model.price_output * 1000.0,
+            provider: model.provider.clone(),
+            description: model.description.clone(),
+            context_window: model.context_window,
+            // Prices are already per 1K tokens in the database
+            price_per_input_token: model.price_input_per_1k_tokens.unwrap_or(0.0),
+            price_per_output_token: model.price_output_per_1k_tokens.unwrap_or(0.0),
         }
     }).collect::<Vec<_>>();
     
-    // Create default path finder settings
+    // Convert task_specific_configs to response format
+    let tasks = ai_settings.task_specific_configs.iter().map(|(task_key, config)| {
+        let task_config = TaskSpecificModelConfig {
+            model: config.model.clone(),
+            max_tokens: config.max_tokens,
+            temperature: config.temperature,
+        };
+        (task_key.clone(), task_config)
+    }).collect::<HashMap<String, TaskSpecificModelConfig>>();
+    
+    // Convert path_finder_settings to response format (keeping as u32 to match PathFinderSettings type)
     let path_finder_settings = PathFinderSettings {
-        max_files_with_content: Some(10),
-        include_file_contents: Some(true),
-        max_content_size_per_file: Some(10000),
-        max_file_count: Some(50),
-        file_content_truncation_chars: Some(5000),
-        token_limit_buffer: Some(500),
+        max_files_with_content: ai_settings.path_finder_settings.max_files_with_content,
+        include_file_contents: ai_settings.path_finder_settings.include_file_contents,
+        max_content_size_per_file: ai_settings.path_finder_settings.max_content_size_per_file,
+        max_file_count: ai_settings.path_finder_settings.max_file_count,
+        file_content_truncation_chars: ai_settings.path_finder_settings.file_content_truncation_chars,
+        token_limit_buffer: ai_settings.path_finder_settings.token_limit_buffer,
     };
     
-    // Create the response matching Tauri backend expectations
+    // Create the response from database-sourced AI settings
     let response = DesktopRuntimeAIConfig {
-        default_llm_model_id: "anthropic/claude-3-sonnet".to_string(),
-        default_voice_model_id: "openai/whisper-1".to_string(),
-        default_transcription_model_id: "openai/whisper-1".to_string(),
-        tasks: std::collections::HashMap::new(), // Empty for now
+        default_llm_model_id: ai_settings.default_llm_model_id.clone(),
+        default_voice_model_id: ai_settings.default_voice_model_id.clone(),
+        default_transcription_model_id: ai_settings.default_transcription_model_id.clone(),
+        tasks,
         available_models,
         path_finder_settings,
     };
