@@ -8,7 +8,7 @@ import { Input } from "@/ui/input";
 interface NewSessionFormProps {
   sessionNameInput: string;
   onSessionNameInputChange: (value: string) => void;
-  onSave: () => void;
+  onSave: () => Promise<void>;
   isLoading: boolean;
   disabled: boolean;
   globalIsSwitching: boolean;
@@ -39,7 +39,7 @@ const NewSessionForm = ({
           </div>
           <div className="flex gap-2">
             <Button
-              onClick={onSave}
+              onClick={() => { void onSave(); }}
               disabled={
                 !sessionNameInput.trim() || globalIsSwitching || disabled
               }
@@ -59,5 +59,7 @@ const NewSessionForm = ({
     </div>
   );
 };
+
+NewSessionForm.displayName = "NewSessionForm";
 
 export default NewSessionForm;

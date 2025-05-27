@@ -11,6 +11,7 @@ pub mod job_creation_utils;
 pub mod date_utils;
 pub mod deep_link_handler;
 pub mod env_utils;
+pub mod xml_utils;
 
 pub use directory_tree::{generate_directory_tree, DirectoryTreeOptions};
 pub use path_utils::{
@@ -32,3 +33,4 @@ pub use date_utils::get_timestamp;
 pub use error_utils::*;
 pub use deep_link_handler::register_deep_links;
 pub use env_utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
+pub use xml_utils::extract_xml_from_markdown;

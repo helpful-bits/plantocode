@@ -38,7 +38,7 @@ export async function enhanceTaskDescriptionAction({
 
 
     // Call the Tauri command for task enhancement
-    const result = await invoke<{ job_id: string }>(
+    const result = await invoke<{ jobId: string }>(
       "enhance_task_description_command",
       {
         sessionId,
@@ -56,9 +56,9 @@ export async function enhanceTaskDescriptionAction({
     return {
       isSuccess: true,
       message: "Task enhancement job started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
       metadata: {
-        jobId: result.job_id,
+        jobId: result.jobId,
         targetField,
         isBackgroundJob: true,
       },

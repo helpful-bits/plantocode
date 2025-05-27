@@ -13,7 +13,7 @@ pub fn ensure_db_permissions(app_data_root_dir: &Path) -> AppResult<()> {
     info!("Ensuring database permissions");
     
     // Construct paths
-    let db_dir_path = app_data_root_dir.join(APP_DATA_DIR_NAME);
+    let db_dir_path = app_data_root_dir.to_path_buf();
     let db_file_path = db_dir_path.join(DB_FILENAME);
     
     // Create directory if it doesn't exist
@@ -78,7 +78,7 @@ pub async fn handle_readonly_database(app_handle: &tauri::AppHandle, app_data_ro
     error!("Attempting to recover from readonly database state");
     
     // Construct paths
-    let db_dir_path = app_data_root_dir.join(APP_DATA_DIR_NAME);
+    let db_dir_path = app_data_root_dir.to_path_buf();
     let db_file_path = db_dir_path.join(DB_FILENAME);
     let wal_file_path = db_dir_path.join(format!("{}-wal", DB_FILENAME));
     let shm_file_path = db_dir_path.join(format!("{}-shm", DB_FILENAME));

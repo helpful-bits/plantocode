@@ -16,3 +16,6 @@ export * from "./list-project-files.action";
 
 // Export validation
 export * from "./validation.actions";
+
+// Export directory tree operations
+export * from "./directory-tree.actions";

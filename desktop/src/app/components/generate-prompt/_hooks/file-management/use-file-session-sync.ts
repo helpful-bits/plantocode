@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 
 import {
   useSessionStateContext,
@@ -19,16 +19,17 @@ export function useFileSessionSync() {
 
   useEffect(() => {
     // Load initial values from session when it changes or on mount
-    if (currentSession) {
-      setSearchTermState(currentSession.searchTerm || "");
-      setSearchSelectedFilesOnlyState(
-        currentSession.searchSelectedFilesOnly || false
-      );
-    } else {
-      setSearchTermState("");
-      setSearchSelectedFilesOnlyState(false);
+    const newSearchTerm = currentSession?.searchTerm || "";
+    const newSearchSelectedFilesOnly = currentSession?.searchSelectedFilesOnly || false;
+    
+    // Only update state if values have actually changed to prevent unnecessary re-renders
+    if (searchTerm !== newSearchTerm) {
+      setSearchTermState(newSearchTerm);
     }
-  }, [currentSession]);
+    if (searchSelectedFilesOnly !== newSearchSelectedFilesOnly) {
+      setSearchSelectedFilesOnlyState(newSearchSelectedFilesOnly);
+    }
+  }, [currentSession?.id, currentSession?.searchTerm, currentSession?.searchSelectedFilesOnly, searchTerm, searchSelectedFilesOnly]);
 
   const updateSearchTerm = useCallback(
     (term: string) => {
@@ -132,24 +133,39 @@ export function useFileSessionSync() {
     }
   }, [currentSession?.id, saveCurrentSession]);
 
-  return {
-    // State
-    searchTerm,
-    searchSelectedFilesOnly,
+  return useMemo(
+    () => ({
+      // State
+      searchTerm,
+      searchSelectedFilesOnly,
 
-    // Update methods
-    updateSearchTerm,
-    updateSearchSelectedOnly,
-    updateIncludedFiles,
-    updateExcludedFiles,
-    syncFileSelectionsToSession,
+      // Update methods
+      updateSearchTerm,
+      updateSearchSelectedOnly,
+      updateIncludedFiles,
+      updateExcludedFiles,
+      syncFileSelectionsToSession,
 
-    // Session access
-    getFileStateForSession,
-    flushFileStateSaves,
+      // Session access
+      getFileStateForSession,
+      flushFileStateSaves,
 
-    // Expose current session's file lists directly for reading
-    sessionIncludedFiles: currentSession?.includedFiles || [],
-    sessionForceExcludedFiles: currentSession?.forceExcludedFiles || [],
-  };
+      // Expose current session's file lists directly for reading
+      sessionIncludedFiles: currentSession?.includedFiles || [],
+      sessionForceExcludedFiles: currentSession?.forceExcludedFiles || [],
+    }),
+    [
+      searchTerm,
+      searchSelectedFilesOnly,
+      updateSearchTerm,
+      updateSearchSelectedOnly,
+      updateIncludedFiles,
+      updateExcludedFiles,
+      syncFileSelectionsToSession,
+      getFileStateForSession,
+      flushFileStateSaves,
+      currentSession?.includedFiles,
+      currentSession?.forceExcludedFiles,
+    ]
+  );
 }

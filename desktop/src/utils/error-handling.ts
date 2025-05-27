@@ -16,6 +16,8 @@ export enum ErrorType {
   NOT_FOUND_ERROR = "NOT_FOUND_ERROR",
   DATABASE_ERROR = "DATABASE_ERROR",
   INTERNAL_ERROR = "INTERNAL_ERROR",
+  BILLING_ERROR = "BILLING_ERROR",
+  CONFIGURATION_ERROR = "CONFIGURATION_ERROR",
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
@@ -217,6 +219,10 @@ export function calculateRetryDelay(
  */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof AppError || error instanceof Error) {
+    // Handle case where error.message might be empty
+    if (!error.message || error.message.trim() === "") {
+      return "An error occurred.";
+    }
     return error.message;
   }
 
@@ -230,6 +236,15 @@ export function getErrorMessage(error: unknown): string {
     "message" in error &&
     typeof error.message === "string"
   ) {
+    // Handle case where error.message might be empty
+    if (!error.message || error.message.trim() === "") {
+      // Attempt to stringify the object, but handle "[object Object]" case
+      const stringified = String(error);
+      if (stringified === "[object Object]" || stringified === "") {
+        return "An object error occurred without a specific message.";
+      }
+      return stringified;
+    }
     return error.message;
   }
 
@@ -297,7 +312,11 @@ export function createTranscriptionErrorMessage(error: unknown): string {
 
     // Final fallback - stringify the object
     try {
-      return JSON.stringify(error);
+      const stringifiedError = JSON.stringify(error);
+      if (stringifiedError === "{}") {
+        return "An unspecified object error occurred during transcription.";
+      }
+      return stringifiedError;
     } catch (_e) {
       return "Unknown error format";
     }
@@ -322,7 +341,7 @@ export async function logError(
     return;
   }
 
-  const serverUrl = import.meta.env.VITE_SERVER_URL;
+  const serverUrl = import.meta.env.VITE_MAIN_SERVER_BASE_URL;
   if (!serverUrl) {
     return;
   }

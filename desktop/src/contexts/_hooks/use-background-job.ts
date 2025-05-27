@@ -4,6 +4,7 @@ import { useContext } from "react";
 
 // Import directly from Provider to avoid circular dependency
 import { BackgroundJobsContext } from "../background-jobs/Provider";
+import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
 
 /**
  * Custom hook to get a specific background job by ID
@@ -27,7 +28,7 @@ export function useBackgroundJob(jobId: string | null) {
     status: job?.status || null,
     response: job?.response || null,
     errorMessage: job?.errorMessage || null,
-    metadata: job?.metadata || null, // Expose metadata directly for convenience
+    metadata: getParsedMetadata(job?.metadata), // Expose metadata directly for convenience
   };
 
   return result;

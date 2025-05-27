@@ -106,6 +106,6 @@ pub const PATH_FINDER_FILE_CONTENT_TRUNCATION_CHARS: usize = 5000; // Default tr
 pub const PATH_FINDER_TOKEN_LIMIT_BUFFER: u32 = 500;
 
 // Directory and file constants
-pub const APP_DATA_DIR_NAME: &str = "com.vibe-manager.desktop";
+pub const APP_DATA_DIR_NAME: &str = "com.vibe-manager.app";
 pub const APP_TEMP_SUBDIR_NAME: &str = "com.vibe-manager.desktop/temp";
 pub const DB_FILENAME: &str = "appdata.db";

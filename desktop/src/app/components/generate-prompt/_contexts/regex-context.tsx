@@ -16,17 +16,17 @@ const defaultValue: RegexContextValue = {
     isGeneratingTaskRegex: false,
     generatingRegexJobId: null,
     regexGenerationError: null,
-    generatingFieldType: null,
-    generatingFieldJobId: null,
-    fieldRegexGenerationError: null,
+    generatingFieldType: undefined,
+    generatingFieldJobId: undefined,
+    fieldRegexGenerationError: undefined,
     titleRegexDescription: "",
     contentRegexDescription: "",
     negativeTitleRegexDescription: "",
     negativeContentRegexDescription: "",
     regexSummaryExplanation: "",
     isGeneratingSummaryExplanation: false,
-    generatingSummaryJobId: null,
-    summaryGenerationError: null,
+    generatingSummaryJobId: undefined,
+    summaryGenerationError: undefined,
   },
   actions: {
     // These default implementations will be replaced by actual implementations
@@ -76,3 +76,5 @@ export const RegexContextProvider = ({
     <RegexContext.Provider value={value}>{children}</RegexContext.Provider>
   );
 };
+
+RegexContextProvider.displayName = "RegexContextProvider";

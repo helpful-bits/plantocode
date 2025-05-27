@@ -5,12 +5,26 @@ use chrono::{DateTime, Utc};
 use crate::error::AppError;
 use std::str::FromStr;
 use log::debug;
+use serde_json::json;
 
 #[derive(Debug)]
-pub struct ApiUsage {
+pub struct ApiUsageReport {
     pub tokens_input: i64,
     pub tokens_output: i64,
     pub total_cost: BigDecimal,
+}
+
+#[derive(Debug)]
+pub struct ApiUsageEntryDto {
+    pub user_id: Uuid,
+    pub service_name: String,
+    pub tokens_input: i32,
+    pub tokens_output: i32,
+    pub cost: BigDecimal,
+    pub request_id: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub processing_ms: Option<i32>,
+    pub input_duration_ms: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -27,32 +41,45 @@ impl ApiUsageRepository {
     // They are no longer needed as pricing is obtained directly from app_settings.ai_models
 
     /// Records API usage for billing purposes
-    /// 
-    /// # Arguments
-    /// * `user_id` - The ID of the user making the request
-    /// * `model_id` - The OpenRouter model ID being used (e.g., "anthropic/claude-3-opus-20240229")
-    /// * `tokens_input` - Number of input tokens used
-    /// * `tokens_output` - Number of output tokens generated
-    /// * `final_cost` - The calculated or provided cost as a BigDecimal
-    pub async fn record_usage(
-        &self,
-        user_id: &Uuid,
-        model_id: &str,
-        tokens_input: i32,
-        tokens_output: i32,
-        final_cost: BigDecimal,
-    ) -> Result<(), AppError> {
-        // Insert into api_usage table with the provided cost
+    pub async fn record_usage(&self, entry: ApiUsageEntryDto) -> Result<(), AppError> {
+        let mut final_metadata_json = entry.metadata.unwrap_or_else(|| json!({}));
+        if let Some(ms) = entry.processing_ms {
+            if let Some(obj) = final_metadata_json.as_object_mut() {
+                obj.insert("processing_ms".to_string(), json!(ms));
+            } else {
+                // This case implies original metadata was not an object (e.g., null, string, array)
+                // or entry.metadata was None and json!({}) was created.
+                // If it was None, it's already an empty object, so this branch might be less likely
+                // if json!({}) always creates an object.
+                // For safety, if it's not an object, we create a new one with processing_ms.
+                // However, standardizing on metadata being an object is better.
+                // Assuming metadata should always be an object if present.
+                final_metadata_json = json!({ "processing_ms": ms });
+                // If entry.metadata was Some but not an object, it gets overwritten.
+                // A more robust merge would be needed if entry.metadata could be non-object.
+                // For now, this prioritizes adding processing_ms.
+            }
+        }
+        // If final_metadata_json is an empty object after this, store it as NULL in DB.
+        let metadata_to_store = if final_metadata_json.as_object().map_or(false, |m| m.is_empty()) {
+            None
+        } else {
+            Some(final_metadata_json)
+        };
+
         query!(
             r#"
-            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cost)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cost, request_id, metadata, input_duration_ms)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
-            user_id,
-            model_id,
-            tokens_input,
-            tokens_output,
-            final_cost
+            entry.user_id,
+            entry.service_name,
+            entry.tokens_input,
+            entry.tokens_output,
+            entry.cost,
+            entry.request_id,
+            metadata_to_store,
+            entry.input_duration_ms
         )
         .execute(&self.db_pool)
         .await
@@ -98,7 +125,7 @@ impl ApiUsageRepository {
         user_id: &Uuid,
         start_date: Option<DateTime<Utc>>,
         end_date: Option<DateTime<Utc>>,
-    ) -> Result<ApiUsage, AppError> {
+    ) -> Result<ApiUsageReport, AppError> {
         let result = query!(
             r#"
             SELECT 
@@ -118,7 +145,7 @@ impl ApiUsageRepository {
         .await
         .map_err(|e| AppError::Database(format!("Failed to get usage for period: {}", e)))?;
 
-        Ok(ApiUsage {
+        Ok(ApiUsageReport {
             tokens_input: result.tokens_input.unwrap_or(0),
             tokens_output: result.tokens_output.unwrap_or(0),
             total_cost: result.total_cost.unwrap_or_else(|| BigDecimal::from_str("0").unwrap()),
@@ -129,17 +156,17 @@ impl ApiUsageRepository {
     pub fn calculate_cost(
         tokens_input: i32,
         tokens_output: i32,
-        input_price_per_1k: f64,
-        output_price_per_1k: f64,
+        input_price_per_1k: &BigDecimal,
+        output_price_per_1k: &BigDecimal,
     ) -> Result<BigDecimal, AppError> {
-        // Calculate cost: (tokens / 1000) * price_per_1k
-        let input_cost_f64 = (tokens_input as f64 / 1000.0) * input_price_per_1k;
-        let output_cost_f64 = (tokens_output as f64 / 1000.0) * output_price_per_1k;
-        let total_cost_f64 = input_cost_f64 + output_cost_f64;
-
-        // Convert to BigDecimal with appropriate precision (e.g., 6 decimal places)
-        let cost_string = format!("{:.6}", total_cost_f64);
-        BigDecimal::from_str(&cost_string)
-            .map_err(|e| AppError::Internal(format!("Failed to parse calculated cost to BigDecimal: {}", e)))
+        // Calculate cost using BigDecimal arithmetic: (tokens / 1000) * price_per_1k
+        let thousand = BigDecimal::from(1000);
+        let tokens_input_bd = BigDecimal::from(tokens_input);
+        let tokens_output_bd = BigDecimal::from(tokens_output);
+        
+        let input_cost = (&tokens_input_bd / &thousand) * input_price_per_1k;
+        let output_cost = (&tokens_output_bd / &thousand) * output_price_per_1k;
+        
+        Ok(input_cost + output_cost)
     }
 }

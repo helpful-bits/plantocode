@@ -129,6 +129,8 @@ const RegexField = React.memo(function RegexField({
   );
 });
 
+RegexField.displayName = "RegexField";
+
 const RegexInput = React.memo(function RegexInput({
   titleRegex,
   contentRegex,
@@ -253,5 +255,7 @@ const RegexInput = React.memo(function RegexInput({
     </div>
   );
 });
+
+RegexInput.displayName = "RegexInput";
 
 export default RegexInput;

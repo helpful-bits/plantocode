@@ -50,9 +50,7 @@ const DialogContent = forwardRef<
         </span>
       )}
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-        {" "}
-        {/* Use X icon */}
-        <X className="h-4 w-4" /> {/* Use X icon */}
+        <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
@@ -106,9 +104,10 @@ DialogTitle.displayName = DialogPrimitive.Title.displayName;
 const DialogDescription = forwardRef<
   ElementRef<typeof DialogPrimitive.Description>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
+>(({ className, id = "dialog-description", ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
+    id={id}
     className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />

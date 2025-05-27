@@ -1,7 +1,7 @@
 "use client";
 
 import { RefreshCw, Loader2 } from "lucide-react";
-import { memo, useEffect } from "react";
+import { memo } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import { type Session } from "@/types/session-types";
@@ -26,8 +26,6 @@ export interface SessionManagerProps {
   getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
   onLoadSession: (session: Session) => void;
   onSessionNameChange: (name: string) => void;
-  sessionInitialized: boolean;
-  onSessionStatusChange?: (hasActiveSession: boolean) => void;
   disabled?: boolean;
 }
 
@@ -36,7 +34,6 @@ const SessionManager = ({
   getCurrentSessionState,
   onLoadSession,
   onSessionNameChange,
-  onSessionStatusChange,
   disabled = false,
 }: SessionManagerProps) => {
   // Get contexts
@@ -102,12 +99,6 @@ const SessionManager = ({
     </AlertDialogContent>
   );
 
-  // Update onSessionStatusChange when sessions list changes
-  useEffect(() => {
-    if (onSessionStatusChange) {
-      onSessionStatusChange(!!activeSessionId || sessions.length > 0);
-    }
-  }, [activeSessionId, sessions.length, onSessionStatusChange]);
 
   return (
     <div className="space-y-2">
@@ -183,4 +174,6 @@ const SessionManager = ({
 };
 
 // Export the component with memo to prevent unnecessary re-renders
+SessionManager.displayName = "SessionManager";
+
 export default memo(SessionManager);

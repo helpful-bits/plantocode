@@ -215,4 +215,6 @@ const SessionListItem = ({
   );
 };
 
+SessionListItem.displayName = "SessionListItem";
+
 export default SessionListItem;

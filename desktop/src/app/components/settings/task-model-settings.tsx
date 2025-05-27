@@ -30,7 +30,6 @@ import type React from "react";
 interface TaskModelSettingsProps {
   taskSettings: TaskSettings;
   onSettingsChange: (settings: TaskSettings) => void;
-  onInteraction?: () => void;
 }
 
 // Model options by API type
@@ -162,29 +161,29 @@ const taskTypeDefinitions: Record<
 };
 
 // Map from TaskType (snake_case) to TaskSettings (camelCase)
+// This mapping MUST match the backend snake_to_camel_case function in settings_commands.rs
 const taskTypeToSettingsKey: Record<string, string> = {
-  path_finder: "pathFinder",
-  voice_transcription: "voiceTranscription",
-  regex_generation: "regexGeneration",
-  path_correction: "pathCorrection",
-  text_improvement: "textImprovement",
-  voice_correction: "voiceCorrection",
-  task_enhancement: "taskEnhancement",
-  guidance_generation: "guidanceGeneration",
   implementation_plan: "implementationPlan",
+  path_finder: "pathFinder",
+  text_improvement: "textImprovement",
+  transcription: "transcription",
+  voice_correction: "voiceCorrection",
+  path_correction: "pathCorrection",
+  regex_generation: "regexGeneration",
+  guidance_generation: "guidanceGeneration",
+  task_enhancement: "taskEnhancement",
   generic_llm_stream: "genericLlmStream",
-  read_directory: "genericLlmStream",
-  generate_directory_tree: "genericLlmStream",
-  text_correction_post_transcription: "textImprovement",
+  regex_summary_generation: "regexSummaryGeneration",
+  generate_directory_tree: "generateDirectoryTree",
+  text_correction_post_transcription: "textCorrectionPostTranscription",
+  streaming: "streaming",
   unknown: "unknown",
-  transcription: "voiceTranscription", // alias for voice_transcription
 };
 
 // Task model settings component
 export default function TaskModelSettings({
   taskSettings,
   onSettingsChange,
-  onInteraction,
 }: TaskModelSettingsProps) {
   // Helper to ensure all task types have settings and map snake_case to camelCase
   const getTaskSettings = (taskType: TaskType) => {
@@ -226,9 +225,6 @@ export default function TaskModelSettings({
     };
 
     onSettingsChange(newSettings);
-    if (onInteraction) {
-      onInteraction();
-    }
   };
 
   // Handle max tokens change for a specific task
@@ -245,9 +241,6 @@ export default function TaskModelSettings({
     };
 
     onSettingsChange(newSettings);
-    if (onInteraction) {
-      onInteraction();
-    }
   };
 
   // Handle temperature change for a specific task
@@ -264,9 +257,6 @@ export default function TaskModelSettings({
     };
 
     onSettingsChange(newSettings);
-    if (onInteraction) {
-      onInteraction();
-    }
   };
 
   // Get available models based on the task type's default API

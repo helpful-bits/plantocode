@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use chrono::{DateTime, Utc, Duration};
 use dashmap::DashMap;
-use serde::Deserialize;
 
 // Define structures
 #[derive(Debug, Clone)]
@@ -26,12 +25,6 @@ pub struct Auth0StateStoreValue {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Deserialize)]
-pub struct LoginViaWebQuery {
-    pub pid: String,
-    pub state: String,
-    pub provider: String,
-}
 
 // Type aliases for our stores
 pub type PollingStore = Arc<DashMap<String, Auth0PendingCodeInfo>>;

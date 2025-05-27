@@ -13,6 +13,7 @@ interface UseFileSelectionCoreProps {
   currentExcludedFiles: string[];
   onUpdateIncludedFiles: (paths: string[]) => void;
   onUpdateExcludedFiles: (paths: string[]) => void;
+  pushHistory: (currentIncluded: string[], currentExcluded: string[]) => void;
 }
 
 /**
@@ -25,6 +26,7 @@ export function useFileSelectionCore({
   currentExcludedFiles,
   onUpdateIncludedFiles,
   onUpdateExcludedFiles,
+  pushHistory,
 }: UseFileSelectionCoreProps) {
   // Calculate managedFilesMap as derived state
   const managedFilesMap = useMemo(() => 
@@ -43,6 +45,9 @@ export function useFileSelectionCore({
         console.error(`[useFileSelectionCore] Missing comparablePath for file: ${path}`);
         return;
       }
+
+      // Save current state before making changes
+      pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.included) {
         // If it was included, now un-including it
@@ -67,6 +72,7 @@ export function useFileSelectionCore({
       currentExcludedFiles,
       onUpdateIncludedFiles,
       onUpdateExcludedFiles,
+      pushHistory,
     ]
   );
 
@@ -80,6 +86,9 @@ export function useFileSelectionCore({
         console.error(`[useFileSelectionCore] Missing comparablePath for file: ${path}`);
         return;
       }
+
+      // Save current state before making changes
+      pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.forceExcluded) {
         // If it was excluded, now un-excluding it
@@ -100,6 +109,7 @@ export function useFileSelectionCore({
       currentExcludedFiles,
       onUpdateIncludedFiles,
       onUpdateExcludedFiles,
+      pushHistory,
     ]
   );
 
@@ -151,13 +161,24 @@ export function useFileSelectionCore({
     onUpdateExcludedFiles([]);
   }, [onUpdateIncludedFiles, onUpdateExcludedFiles]);
 
-  return {
-    managedFilesMap,
-    includedPaths,
-    excludedPaths,
-    toggleFileSelection,
-    toggleFileExclusion,
-    handleBulkToggle,
-    reset,
-  };
+  return useMemo(
+    () => ({
+      managedFilesMap,
+      includedPaths,
+      excludedPaths,
+      toggleFileSelection,
+      toggleFileExclusion,
+      handleBulkToggle,
+      reset,
+    }),
+    [
+      managedFilesMap,
+      includedPaths,
+      excludedPaths,
+      toggleFileSelection,
+      toggleFileExclusion,
+      handleBulkToggle,
+      reset,
+    ]
+  );
 }

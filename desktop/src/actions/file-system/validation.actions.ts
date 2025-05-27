@@ -13,7 +13,7 @@ export async function validateDirectoryAction(
     return {
       isSuccess: false,
       message: "Directory path cannot be empty",
-      data: null,
+      data: undefined,
     };
   }
 
@@ -42,7 +42,7 @@ export async function validateDirectoryAction(
           message: validateGitRepo
             ? "Directory is empty. Please select a valid git repository."
             : "Directory is empty",
-          data: validateGitRepo ? null : resolvedPath,
+          data: validateGitRepo ? undefined : resolvedPath,
         };
 
         return emptyDirResult;
@@ -54,7 +54,7 @@ export async function validateDirectoryAction(
 
       // Process the listing results to count files and directories
       for (const file of files) {
-        if (file.is_dir) {
+        if (file.isDir) {
           dirCount++;
         } else {
           fileCount++;
@@ -67,7 +67,7 @@ export async function validateDirectoryAction(
           isSuccess: false,
           message:
             "Directory is not a git repository. Please select a valid git repository.",
-          data: null,
+          data: undefined,
         };
       }
 
@@ -89,20 +89,20 @@ export async function validateDirectoryAction(
           return {
             isSuccess: false,
             message: "Directory does not exist",
-            data: null,
+            data: undefined,
           };
         } else if (errorMessage.includes("not a directory")) {
           return {
             isSuccess: false,
             message: "Path exists but is not a directory",
-            data: null,
+            data: undefined,
           };
         } else if (errorMessage.includes("permission denied")) {
           return {
             isSuccess: false,
             message:
               "Directory exists but cannot be read. Please check permissions.",
-            data: null,
+            data: undefined,
           };
         }
       }
@@ -119,7 +119,7 @@ export async function validateDirectoryAction(
     return {
       isSuccess: false,
       message: `Failed to access directory: ${errorMessage}`,
-      data: null,
+      data: undefined,
     };
   }
 }

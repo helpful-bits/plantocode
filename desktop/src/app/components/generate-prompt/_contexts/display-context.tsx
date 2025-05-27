@@ -47,3 +47,5 @@ export const DisplayContextProvider = ({
     <DisplayContext.Provider value={value}>{children}</DisplayContext.Provider>
   );
 };
+
+DisplayContextProvider.displayName = "DisplayContextProvider";

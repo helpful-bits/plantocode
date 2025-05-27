@@ -36,9 +36,6 @@ export function useTextareaResize(
 
     // Log resize for debugging purposes (uncomment when needed)
     // console.log(`[useTextareaResize] Adjusted textarea height to ${textarea.style.height}, content length: ${content.length}, scrollHeight: ${scrollHeight}`);
-    // We include content in dependencies even though it's not used directly in the callback
-    // This ensures the textarea is resized whenever content changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textareaRef, minHeight, maxHeight, extraHeight]);
 
   // Adjust height whenever content changes

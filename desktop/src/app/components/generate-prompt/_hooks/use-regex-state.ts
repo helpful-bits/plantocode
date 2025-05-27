@@ -9,34 +9,27 @@ import {
   useSessionStateContext,
   useSessionActionsContext,
 } from "@/contexts/session";
+import { useProject } from "@/contexts/project-context";
+import { AppError, ErrorType } from "@/utils/error-handling";
+import { handleActionError } from "@/utils/action-utils";
+import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
 
 import type { Session } from "@/types/session-types";
 
 interface UseRegexStateProps {
-  initialTitleRegex: string;
-  initialContentRegex: string;
-  initialNegativeTitleRegex: string;
-  initialNegativeContentRegex: string;
-  initialIsRegexActive: boolean;
   onStateChange?: () => void;
   taskDescription: string;
-  activeSessionId?: string | null;
 }
 
 export function useRegexState({
-  initialTitleRegex = "",
-  initialContentRegex = "",
-  initialNegativeTitleRegex = "",
-  initialNegativeContentRegex = "",
-  initialIsRegexActive = true,
   onStateChange,
   taskDescription,
-  activeSessionId: _activeSessionId // Rename to indicate it's not currently used
 }: UseRegexStateProps) {
   // Get session and notification contexts
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
   const { showNotification } = useNotification();
+  const { projectDirectory } = useProject();
 
   // Constants
   const REGEX_MAX_LENGTH = 500;
@@ -62,46 +55,17 @@ export function useRegexState({
     string | null
   >(null);
 
-  // Local state for immediate UI feedback
-  const [internalTitleRegex, setInternalTitleRegex] =
-    useState<string>(initialTitleRegex);
-  const [internalContentRegex, setInternalContentRegex] =
-    useState<string>(initialContentRegex);
-  const [internalNegativeTitleRegex, setInternalNegativeTitleRegex] =
-    useState<string>(initialNegativeTitleRegex);
-  const [internalNegativeContentRegex, setInternalNegativeContentRegex] =
-    useState<string>(initialNegativeContentRegex);
-  const [internalIsRegexActive, setInternalIsRegexActive] =
-    useState<boolean>(initialIsRegexActive);
+  // Get current regex values directly from session context
+  const titleRegex = sessionState.currentSession?.titleRegex || "";
+  const contentRegex = sessionState.currentSession?.contentRegex || "";
+  const negativeTitleRegex = sessionState.currentSession?.negativeTitleRegex || "";
+  const negativeContentRegex = sessionState.currentSession?.negativeContentRegex || "";
+  const isRegexActive = sessionState.currentSession?.isRegexActive ?? true;
 
-  // Debounce timers for each regex field
-  const titleRegexDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const contentRegexDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const negativeTitleRegexDebounceRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const negativeContentRegexDebounceRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
+  // Debounce timer for all regex field updates
+  const regexUpdateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Set initial values from props
-  useEffect(() => {
-    setInternalTitleRegex(initialTitleRegex);
-    setInternalContentRegex(initialContentRegex);
-    setInternalNegativeTitleRegex(initialNegativeTitleRegex);
-    setInternalNegativeContentRegex(initialNegativeContentRegex);
-    setInternalIsRegexActive(initialIsRegexActive);
-  }, [
-    initialTitleRegex,
-    initialContentRegex,
-    initialNegativeTitleRegex,
-    initialNegativeContentRegex,
-    initialIsRegexActive,
-  ]);
+  // No need to sync internal state since we read directly from session context
 
   // Utility function to validate regex without crashing
   const validateRegex = useCallback((pattern: string): string | null => {
@@ -125,9 +89,7 @@ export function useRegexState({
   const handleRegexFieldChange = useCallback(
     (
       value: string,
-      setter: React.Dispatch<React.SetStateAction<string>>,
       errorSetter: React.Dispatch<React.SetStateAction<string | null>>,
-      debounceRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
       fieldName: Extract<
         keyof Session,
         | "titleRegex"
@@ -136,19 +98,16 @@ export function useRegexState({
         | "negativeContentRegex"
       >
     ) => {
-      // Update local state immediately for responsive UI
-      setter(value);
-
       // Validate regex pattern
       const error = validateRegex(value);
       errorSetter(error);
 
       // Debounce the session update
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
+      if (regexUpdateDebounceRef.current) {
+        clearTimeout(regexUpdateDebounceRef.current);
       }
 
-      debounceRef.current = setTimeout(() => {
+      regexUpdateDebounceRef.current = setTimeout(() => {
         if (sessionState.activeSessionId) {
           sessionActions.updateCurrentSessionFields({
             [fieldName]: value,
@@ -167,9 +126,7 @@ export function useRegexState({
     (value: string) => {
       handleRegexFieldChange(
         value,
-        setInternalTitleRegex,
         setTitleRegexError,
-        titleRegexDebounceRef,
         "titleRegex"
       );
     },
@@ -180,9 +137,7 @@ export function useRegexState({
     (value: string) => {
       handleRegexFieldChange(
         value,
-        setInternalContentRegex,
         setContentRegexError,
-        contentRegexDebounceRef,
         "contentRegex"
       );
     },
@@ -193,9 +148,7 @@ export function useRegexState({
     (value: string) => {
       handleRegexFieldChange(
         value,
-        setInternalNegativeTitleRegex,
         setNegativeTitleRegexError,
-        negativeTitleRegexDebounceRef,
         "negativeTitleRegex"
       );
     },
@@ -206,9 +159,7 @@ export function useRegexState({
     (value: string) => {
       handleRegexFieldChange(
         value,
-        setInternalNegativeContentRegex,
         setNegativeContentRegexError,
-        negativeContentRegexDebounceRef,
         "negativeContentRegex"
       );
     },
@@ -219,15 +170,12 @@ export function useRegexState({
   const handleToggleRegexActive = useCallback(
     (newValue?: boolean) => {
       const nextValue =
-        typeof newValue === "boolean" ? newValue : !internalIsRegexActive;
+        typeof newValue === "boolean" ? newValue : !isRegexActive;
 
       // Skip if the value is already set
-      if (nextValue === internalIsRegexActive) {
+      if (nextValue === isRegexActive) {
         return;
       }
-
-      // Update local state
-      setInternalIsRegexActive(nextValue);
 
       // Update session
       sessionActions.updateCurrentSessionFields({
@@ -238,7 +186,7 @@ export function useRegexState({
         onStateChange();
       }
     },
-    [internalIsRegexActive, sessionActions, onStateChange]
+    [isRegexActive, sessionActions, onStateChange]
   );
 
   // Apply regex patterns from outside the component (e.g., from job results)
@@ -254,29 +202,25 @@ export function useRegexState({
       negativeTitlePattern?: string;
       negativeContentPattern?: string;
     }) => {
-      // Update UI state
+      // Update validation errors
       const updateFields: Partial<Session> = {};
 
       if (titlePattern !== undefined) {
-        setInternalTitleRegex(titlePattern);
         setTitleRegexError(validateRegex(titlePattern));
         updateFields.titleRegex = titlePattern;
       }
 
       if (contentPattern !== undefined) {
-        setInternalContentRegex(contentPattern);
         setContentRegexError(validateRegex(contentPattern));
         updateFields.contentRegex = contentPattern;
       }
 
       if (negativeTitlePattern !== undefined) {
-        setInternalNegativeTitleRegex(negativeTitlePattern);
         setNegativeTitleRegexError(validateRegex(negativeTitlePattern));
         updateFields.negativeTitleRegex = negativeTitlePattern;
       }
 
       if (negativeContentPattern !== undefined) {
-        setInternalNegativeContentRegex(negativeContentPattern);
         setNegativeContentRegexError(validateRegex(negativeContentPattern));
         updateFields.negativeContentRegex = negativeContentPattern;
       }
@@ -284,7 +228,6 @@ export function useRegexState({
       // Only update session if we have patterns
       if (Object.keys(updateFields).length > 0) {
         // Enable regex mode if we have patterns
-        setInternalIsRegexActive(true);
         updateFields.isRegexActive = true;
 
         // Update session with all changes
@@ -304,11 +247,7 @@ export function useRegexState({
 
   // Clear all patterns
   const handleClearPatterns = useCallback(() => {
-    // Update UI state
-    setInternalTitleRegex("");
-    setInternalContentRegex("");
-    setInternalNegativeTitleRegex("");
-    setInternalNegativeContentRegex("");
+    // Clear validation errors
     setTitleRegexError(null);
     setContentRegexError(null);
     setNegativeTitleRegexError(null);
@@ -329,12 +268,7 @@ export function useRegexState({
 
   // Reset function for all state
   const reset = useCallback(() => {
-    // Reset UI state
-    setInternalTitleRegex("");
-    setInternalContentRegex("");
-    setInternalNegativeTitleRegex("");
-    setInternalNegativeContentRegex("");
-    setInternalIsRegexActive(true);
+    // Reset validation errors
     setTitleRegexError(null);
     setContentRegexError(null);
     setNegativeTitleRegexError(null);
@@ -353,22 +287,14 @@ export function useRegexState({
     });
   }, [sessionActions]);
 
-  // Clean up debounce timers on unmount
+  // Clean up debounce timer on unmount
   useEffect(() => {
-    // Capture ref objects, not current values
-    const titleTimerRef = titleRegexDebounceRef;
-    const contentTimerRef = contentRegexDebounceRef;
-    const negativeTitleTimerRef = negativeTitleRegexDebounceRef;
-    const negativeContentTimerRef = negativeContentRegexDebounceRef;
+    const timerRef = regexUpdateDebounceRef;
     
     return () => {
-      // Access current values inside the cleanup function
-      [
-        titleTimerRef.current,
-        contentTimerRef.current,
-        negativeTitleTimerRef.current,
-        negativeContentTimerRef.current,
-      ].forEach((timer) => timer && clearTimeout(timer));
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
     };
   }, []);
 
@@ -377,45 +303,85 @@ export function useRegexState({
 
   // Process regex job results
   useEffect(() => {
-    if (!generatingRegexJobId || !regexJob?.job) {
+    const jobData = regexJob?.job; // regexJob is the result of useTypedBackgroundJob
+    if (!generatingRegexJobId || !jobData) {
       return;
     }
 
-    const job = regexJob.job;
-
-    if (job.status === "completed") {
+    if (jobData.status === "completed") {
       try {
-        // Extract regex patterns from job metadata with type safety
-        const metadata = regexJob.metadata || job.metadata;
-        // Type guard to ensure regexPatterns is a valid object
-        if (metadata && metadata.regexPatterns) {
-          const regexPatterns = metadata.regexPatterns;
+        const parsedJobMetadata = getParsedMetadata(jobData.metadata);
 
-          // Apply patterns to UI state and session
-          applyRegexPatterns({
-            titlePattern: typeof regexPatterns.titleRegex === 'string' ? regexPatterns.titleRegex : "",
-            contentPattern: typeof regexPatterns.contentRegex === 'string' ? regexPatterns.contentRegex : "",
-            negativeTitlePattern: typeof regexPatterns.negativeTitleRegex === 'string' ? regexPatterns.negativeTitleRegex : "",
-            negativeContentPattern: typeof regexPatterns.negativeContentRegex === 'string' ? regexPatterns.negativeContentRegex : "",
-          });
+        if (parsedJobMetadata?.regexData && typeof parsedJobMetadata.regexData === 'object') {
+          const regexData = parsedJobMetadata.regexData as any; // Assuming structure after parsing
 
-          // Trigger filter mode change event
-          window.dispatchEvent(new CustomEvent("setFilterModeToRegex"));
+          // Access snake_case primary_pattern from the regexData object
+          const primaryPattern = regexData.primary_pattern?.pattern;
+
+          if (primaryPattern && typeof primaryPattern === 'string') {
+            applyRegexPatterns({
+              titlePattern: primaryPattern,
+              contentPattern: "",
+              negativeTitlePattern: "",
+              negativeContentPattern: "",
+            });
+            window.dispatchEvent(new CustomEvent("setFilterModeToRegex"));
+          } else {
+            setIsGeneratingTaskRegex(false);
+            setRegexGenerationError("No valid primary pattern found in response metadata's regexData.");
+          }
+        } else if (jobData.response) { // Fallback to raw response
+          try {
+            const responseData = JSON.parse(jobData.response);
+            const primaryPattern = responseData?.primary_pattern?.pattern;
+            if (primaryPattern && typeof primaryPattern === 'string') {
+              applyRegexPatterns({ titlePattern: primaryPattern, contentPattern: "", negativeTitlePattern: "", negativeContentPattern: "" });
+              window.dispatchEvent(new CustomEvent("setFilterModeToRegex"));
+            } else {
+              setRegexGenerationError("No regex pattern found in job response.");
+            }
+          } catch (e) {
+            applyRegexPatterns({ titlePattern: jobData.response, contentPattern: "", negativeTitlePattern: "", negativeContentPattern: "" }); // Treat as simple string if not JSON
+            window.dispatchEvent(new CustomEvent("setFilterModeToRegex"));
+          }
         } else {
           setIsGeneratingTaskRegex(false);
-          setRegexGenerationError("No regex patterns found in response");
+          setRegexGenerationError("No regex data or response found in completed job.");
         }
       } catch (error) {
         setIsGeneratingTaskRegex(false);
         const errorMessage = error instanceof Error ? error.message : "Error processing regex patterns";
         setRegexGenerationError(errorMessage);
       }
-    } else if (job.status === "failed" || job.status === "canceled") {
+    } else if (jobData.status === "failed" || jobData.status === "canceled") {
       setIsGeneratingTaskRegex(false);
       // Type-safe error message handling
-      setRegexGenerationError(
-        typeof job.errorMessage === 'string' ? job.errorMessage : "Failed to generate regex patterns"
-      );
+      const errorMessage = typeof jobData.errorMessage === 'string' ? jobData.errorMessage : "Failed to generate regex patterns";
+      setRegexGenerationError(errorMessage);
+
+      // Check for billing errors in job failure
+      const errorMessageLower = errorMessage.toLowerCase();
+      const isBillingError = errorMessage && 
+        (errorMessageLower.includes("not available on your current plan") || 
+         errorMessageLower.includes("payment required") || 
+         errorMessageLower.includes("billing error") || 
+         errorMessageLower.includes("upgrade required") ||
+         errorMessageLower.includes("subscription plan"));
+
+      if (isBillingError) {
+        showNotification({
+          title: "Upgrade Required",
+          message: errorMessage || "This feature or model requires a higher subscription plan.",
+          type: "warning",
+          duration: 10000,
+          actionButton: {
+            label: "View Subscription",
+            onClick: () => window.location.pathname = '/settings',
+            variant: "default",
+            className: "bg-primary text-primary-foreground hover:bg-primary/90"
+          }
+        });
+      }
     }
   }, [regexJob, generatingRegexJobId, applyRegexPatterns]);
 
@@ -445,29 +411,45 @@ export function useRegexState({
 
     try {
       // Call the Tauri command directly
-      const result = await invoke<{ job_id: string }>(
-        "generate_regex_patterns_command",
+      const result = await invoke<{ jobId: string }>(
+        "generate_regex_command",
         {
           sessionId: sessionState.activeSessionId,
-          taskDescription: taskDescription,
+          projectDirectory: projectDirectory || "",
+          description: taskDescription,
         }
       );
 
       // Store job ID to track progress
-      setGeneratingRegexJobId(result.job_id);
+      setGeneratingRegexJobId(result.jobId);
     } catch (error) {
       console.error("Error generating regex patterns:", error);
       setIsGeneratingTaskRegex(false);
-      setRegexGenerationError(
-        error instanceof Error ? error.message : "An unknown error occurred"
-      );
+      
+      // Use standardized error handling to get ActionState
+      const errorState = handleActionError(error);
+      setRegexGenerationError(errorState.message || "An unknown error occurred");
+
+      // Check for billing errors
+      if (errorState.error instanceof AppError && errorState.error.type === ErrorType.BILLING_ERROR) {
+        showNotification({
+          title: "Upgrade Required",
+          message: errorState.error.message || "This feature or model requires a higher subscription plan.",
+          type: "warning",
+          duration: 10000,
+          actionButton: {
+            label: "View Subscription",
+            onClick: () => window.location.pathname = '/settings',
+            variant: "default",
+            className: "bg-primary text-primary-foreground hover:bg-primary/90"
+          }
+        });
+        return;
+      }
 
       showNotification({
         title: "Regex Generation Failed",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to generate regex patterns",
+        message: errorState.message || "Failed to generate regex patterns",
         type: "error",
       });
     }
@@ -481,12 +463,12 @@ export function useRegexState({
   // Return memoized state and actions
   return useMemo(
     () => ({
-      // UI state
-      titleRegex: internalTitleRegex,
-      contentRegex: internalContentRegex,
-      negativeTitleRegex: internalNegativeTitleRegex,
-      negativeContentRegex: internalNegativeContentRegex,
-      isRegexActive: internalIsRegexActive,
+      // UI state from SessionContext
+      titleRegex,
+      contentRegex,
+      negativeTitleRegex,
+      negativeContentRegex,
+      isRegexActive,
 
       // UI feedback state
       isGeneratingTaskRegex,
@@ -511,12 +493,12 @@ export function useRegexState({
       reset,
     }),
     [
-      // UI state
-      internalTitleRegex,
-      internalContentRegex,
-      internalNegativeTitleRegex,
-      internalNegativeContentRegex,
-      internalIsRegexActive,
+      // UI state from SessionContext
+      titleRegex,
+      contentRegex,
+      negativeTitleRegex,
+      negativeContentRegex,
+      isRegexActive,
 
       // UI feedback state
       isGeneratingTaskRegex,

@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use uuid::Uuid;
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus, TaskType};
+use crate::models::{BackgroundJob, JobStatus, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use crate::db_utils::{SessionRepository, BackgroundJobRepository, SettingsRepository};
 use crate::utils::job_creation_utils;
@@ -22,11 +22,6 @@ pub struct GenericLlmStreamArgs {
     pub project_directory: Option<String>,
 }
 
-// Command response for generic LLM stream
-#[derive(Debug, Serialize)]
-pub struct JobCommandResponse {
-    pub job_id: String,
-}
 
 /// Command to start a generic LLM streaming job
 #[command]
@@ -169,10 +164,6 @@ pub struct TaskEnhancementRequestArgs {
     pub max_tokens_override: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct TaskEnhancementCommandResponse {
-    pub job_id: String,
-}
 
 /// Enhances a task description with more details and clarity
 #[command]
@@ -186,7 +177,7 @@ pub async fn enhance_task_description_command(
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
     app_handle: AppHandle,
-) -> AppResult<TaskEnhancementCommandResponse> {
+) -> AppResult<JobCommandResponse> {
     let args = TaskEnhancementRequestArgs {
         session_id,
         task_description,
@@ -307,5 +298,5 @@ pub async fn enhance_task_description_command(
     
     info!("Created task enhancement job: {}", job_id);
     
-    Ok(TaskEnhancementCommandResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }

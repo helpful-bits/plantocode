@@ -5,8 +5,9 @@ import { useCallback } from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { areJobArraysEqual } from "@/utils/job-comparison-utils";
+import { createLogger } from "@/utils/logger";
 
-import { DEBUG_POLLING } from "../_utils/debug-utils";
+const logger = createLogger({ namespace: "BackgroundJobsFetcher" });
 
 export interface UseJobDataFetchingParams {
   // State setters
@@ -52,11 +53,9 @@ export function useJobDataFetching({
 
     // Prevent multiple concurrent fetches
     if (isFetchingRef.current) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] [${fetchAttemptTime}] Skipping fetch - already in progress`
-        );
-      }
+      logger.debug(
+        `[BackgroundJobs] [${fetchAttemptTime}] Skipping fetch - already in progress`
+      );
       return null;
     }
 
@@ -73,11 +72,9 @@ export function useJobDataFetching({
         setIsLoading(true);
       }
 
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] [${fetchAttemptTime}] Fetching jobs: initialLoad=${initialLoad}`
-        );
-      }
+      logger.debug(
+        `[BackgroundJobs] [${fetchAttemptTime}] Fetching jobs: initialLoad=${initialLoad}`
+      );
 
       // Performance tracking - measure fetch duration
       const fetchStartTime = performance.now();
@@ -88,11 +85,9 @@ export function useJobDataFetching({
       // Calculate fetch duration for monitoring
       const fetchDuration = performance.now() - fetchStartTime;
 
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] [${fetchAttemptTime}] Fetch completed in ${Math.round(fetchDuration)}ms with success`
-        );
-      }
+      logger.debug(
+        `[BackgroundJobs] [${fetchAttemptTime}] Fetch completed in ${Math.round(fetchDuration)}ms with success`
+      );
 
       // Record the fetch time for tracking
       const fetchTimeMs = Date.now();
@@ -102,9 +97,9 @@ export function useJobDataFetching({
       consecutiveErrorsRef.current = 0;
 
       // Enhanced logging with job status breakdown for monitoring
-      if (DEBUG_POLLING && jobsData.length > 0) {
+      if (jobsData.length > 0) {
         // Log job details for debugging
-        console.debug(
+        logger.debug(
           `[BackgroundJobs] [${fetchAttemptTime}] Retrieved ${jobsData.length} jobs`
         );
 
@@ -117,7 +112,7 @@ export function useJobDataFetching({
           {} as Record<string, number>
         );
 
-        console.debug(`[BackgroundJobs] Jobs by status:`, statusCounts);
+        logger.debug(`[BackgroundJobs] Jobs by status:`, statusCounts);
       }
 
       // Update jobs using functional update pattern
@@ -125,19 +120,15 @@ export function useJobDataFetching({
         // Only update if jobs have changed - uses the areJobArraysEqual helper
         // This avoids unnecessary re-renders
         if (!areJobArraysEqual(prevJobs, jobsData)) {
-          if (DEBUG_POLLING) {
-            console.debug(
-              `[BackgroundJobs] [${fetchAttemptTime}] Jobs array updated with ${jobsData.length} jobs`
-            );
-          }
+          logger.debug(
+            `[BackgroundJobs] [${fetchAttemptTime}] Jobs array updated with ${jobsData.length} jobs`
+          );
           return jobsData;
         }
 
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] [${fetchAttemptTime}] No changes in jobs array detected`
-          );
-        }
+        logger.debug(
+          `[BackgroundJobs] [${fetchAttemptTime}] No changes in jobs array detected`
+        );
         return prevJobs;
       });
 
@@ -150,19 +141,15 @@ export function useJobDataFetching({
 
         // Only update active jobs if they've changed
         if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
-          if (DEBUG_POLLING) {
-            console.debug(
-              `[BackgroundJobs] [${fetchAttemptTime}] Active jobs updated with ${activeJobsList.length} jobs`
-            );
-          }
+          logger.debug(
+            `[BackgroundJobs] [${fetchAttemptTime}] Active jobs updated with ${activeJobsList.length} jobs`
+          );
           return activeJobsList;
         }
 
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] [${fetchAttemptTime}] No changes in active jobs detected`
-          );
-        }
+        logger.debug(
+          `[BackgroundJobs] [${fetchAttemptTime}] No changes in active jobs detected`
+        );
         return prevActiveJobs;
       });
 
@@ -172,7 +159,7 @@ export function useJobDataFetching({
       consecutiveErrorsRef.current += 1;
 
       // Log the error with additional context
-      console.error(
+      logger.error(
         `[BackgroundJobs] [${fetchAttemptTime}] Error fetching jobs (attempt #${consecutiveErrorsRef.current}):`,
         err
       );
@@ -192,11 +179,9 @@ export function useJobDataFetching({
         setIsLoading(false);
         setInitialLoad(false);
 
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] [${fetchAttemptTime}] Initial load completed`
-          );
-        }
+        logger.debug(
+          `[BackgroundJobs] [${fetchAttemptTime}] Initial load completed`
+        );
       }
     }
   }, [
@@ -207,8 +192,6 @@ export function useJobDataFetching({
     setIsLoading,
     setInitialLoad,
     setLastFetchTime,
-    isFetchingRef,
-    consecutiveErrorsRef,
   ]);
 
   // Manual refresh function for jobs - simplified version that delegates to fetchJobs
@@ -227,7 +210,7 @@ export function useJobDataFetching({
       // Always reset UI state
       setIsLoading(false);
     }
-  }, [fetchJobs, isFetchingRef, setIsLoading]);
+  }, [fetchJobs, setIsLoading]);
 
   return {
     fetchJobs,

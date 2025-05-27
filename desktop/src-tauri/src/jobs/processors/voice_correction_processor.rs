@@ -13,6 +13,7 @@ use crate::prompts::voice_correction::generate_voice_correction_prompt;
 use crate::db_utils::BackgroundJobRepository;
 use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
 use crate::api_clients::client_factory;
+use crate::utils::xml_utils::extract_xml_from_markdown;
 
 // Define structs for parsing the XML response
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -121,17 +122,22 @@ impl JobProcessor for VoiceCorrectionProcessor {
             return Err(AppError::JobError("No response content received from API".to_string()));
         };
         
-        // Parse the XML from the response content
-        let xml_response: Result<VoiceCorrectionResponseXml, _> = quick_xml::de::from_str(&response_content);
+        let clean_xml_content = extract_xml_from_markdown(&response_content);
+        
+        // Parse the XML from the cleaned content
+        let xml_response: Result<VoiceCorrectionResponseXml, _> = quick_xml::de::from_str(&clean_xml_content);
         
         let parsed_response = match xml_response {
             Ok(result) => result,
             Err(e) => {
                 error!("Failed to parse XML response: {}", e);
                 
-                // Attempt to extract just the corrected text if XML parsing fails
-                // This is a fallback if the AI doesn't properly format as XML
-                let corrected_text = response_content;
+                // Use cleaned XML content as fallback, or original response if cleaning resulted in empty string
+                let corrected_text = if !clean_xml_content.is_empty() {
+                    clean_xml_content
+                } else {
+                    response_content
+                };
                 
                 // Create a basic response with just the text
                 VoiceCorrectionResponseXml {

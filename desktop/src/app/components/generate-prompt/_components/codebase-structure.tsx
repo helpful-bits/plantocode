@@ -3,7 +3,7 @@
 import { Loader2, FolderTree } from "lucide-react";
 import { useState, useEffect, ChangeEvent } from "react";
 
-import { generateDirectoryTree } from "@/utils/directory-tree";
+import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
 
 import { useBackgroundJobs } from "@/contexts/background-jobs";
 import { useProject } from "@/contexts/project-context";
@@ -55,13 +55,13 @@ export default function CodebaseStructure({
 
     try {
       // Create the background job and store the returned job ID
-      const newJobId = await generateDirectoryTree(projectDirectory);
+      const result = await createGenerateDirectoryTreeJobAction("system", projectDirectory, undefined);
 
-      if (!newJobId) {
-        throw new Error("Failed to create directory tree job");
+      if (!result.isSuccess || !result.data?.jobId) {
+        throw new Error(result.message || "Failed to create job");
       }
 
-      setJobId(newJobId);
+      setJobId(result.data.jobId);
     } catch (_error) {
       setError("Failed to generate directory tree.");
       setIsGenerating(false);
@@ -170,3 +170,5 @@ Defines your project's file structure to provide better context for the AI.`}
     </div>
   );
 }
+
+CodebaseStructure.displayName = "CodebaseStructure";

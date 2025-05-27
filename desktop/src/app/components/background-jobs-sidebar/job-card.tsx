@@ -7,7 +7,7 @@ import {
   X,
   FileCode,
 } from "lucide-react";
-import React, { useEffect } from "react";
+import React from "react";
 
 import {
   type BackgroundJob,
@@ -39,17 +39,6 @@ export interface JobCardProps {
 
 export const JobCard = React.memo(
   ({ job, handleCancel, isCancelling, onSelect }: JobCardProps) => {
-    // For debugging - enable to log all rerenders of JobCard
-    const DEBUG_JOBCARD = false;
-
-    // Add logging for tracking JobCard re-renders
-    useEffect(() => {
-      if (DEBUG_JOBCARD) {
-        console.debug(
-          `JobCard [${job.id}] rendering, status=${job.status}, response=${Boolean(job.response)}, error=${Boolean(job.errorMessage)}`
-        );
-      }
-    }, [job.id, job.status, job.response, job.errorMessage, DEBUG_JOBCARD]);
 
     // Choose best timestamp for display
     // Priority: startTime > lastUpdate > createdAt
@@ -67,9 +56,9 @@ export const JobCard = React.memo(
     const getResponsePreview = () => {
       if (
         job.taskType === "implementation_plan" &&
-        job.status === "completed"
+        JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)
       ) {
-        return `Implementation plan generated successfully.`;
+        return "Implementation plan generated.";
       }
 
       if (job.response) {
@@ -88,27 +77,22 @@ export const JobCard = React.memo(
 
     // Render the appropriate status icon
     const renderStatusIcon = (status: string) => {
-      switch (status) {
-        case "completed":
-        case "completed_by_tag":
-          return <CheckCircle className={getStatusIconClass(status)} />;
-        case "failed":
-          return <AlertCircle className={getStatusIconClass(status)} />;
-        case "running":
-        case "processing_stream":
-          return <Loader2 className={getStatusIconClass(status)} />;
-        case "canceled":
-          return <XCircle className={getStatusIconClass(status)} />;
-        case "preparing":
-        case "created":
-        case "queued":
-        case "idle":
-        case "preparing_input":
-        case "generating_stream":
-          return <Clock className={getStatusIconClass(status)} />;
-        default:
-          return <Clock className={getStatusIconClass(status)} />;
+      if (JOB_STATUSES.COMPLETED.includes(status as JobStatus)) {
+        return <CheckCircle className={getStatusIconClass(status)} />;
       }
+      if (status === "failed") {
+        return <AlertCircle className={getStatusIconClass(status)} />;
+      }
+      if (status === "running" || status === "processing_stream") {
+        return <Loader2 className={getStatusIconClass(status)} />;
+      }
+      if (status === "canceled") {
+        return <XCircle className={getStatusIconClass(status)} />;
+      }
+      if (JOB_STATUSES.ACTIVE.includes(status as JobStatus)) {
+        return <Clock className={getStatusIconClass(status)} />;
+      }
+      return <Clock className={getStatusIconClass(status)} />;
     };
 
     // Get user-friendly status display
@@ -117,23 +101,13 @@ export const JobCard = React.memo(
       if (job.status === "running" || job.status === "processing_stream") {
         return "Processing";
       } else if (
-        job.status === "preparing" ||
-        job.status === "created" ||
-        job.status === "queued" ||
-        job.status === "preparing_input" ||
-        job.status === "generating_stream"
+        ["preparing", "created", "queued", "preparing_input", "generating_stream"].includes(job.status)
       ) {
         return "Preparing";
       } else if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-        // Handle different completed states
-        if (job.status === "completed_by_tag") {
-          return "Completed";
-        }
         return "Completed";
-      } else if (job.status === "failed") {
-        return "Failed";
-      } else if (job.status === "canceled") {
-        return "Canceled";
+      } else if (JOB_STATUSES.FAILED.includes(job.status as JobStatus)) {
+        return job.status === "failed" ? "Failed" : "Canceled";
       } else {
         // Capitalize the first letter for any other status
         return job.status.charAt(0).toUpperCase() + job.status.slice(1);
@@ -206,7 +180,7 @@ export const JobCard = React.memo(
         <div className="text-muted-foreground text-[10px] mt-2">{timeAgo}</div>
 
         {/* Progress bar for running jobs */}
-        {job.status === "running" && (
+        {(job.status === "running" || job.status === "processing_stream") && (
           <div className="mt-2 mb-1">
             <Progress
               value={
@@ -341,7 +315,7 @@ export const JobCard = React.memo(
 
         {/* Info section container with fixed height for stability */}
         <div className="min-h-[42px] max-h-[42px] overflow-hidden">
-          {job.status === "completed" &&
+          {JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) &&
             job.taskType === "implementation_plan" && (
               <div className="text-[10px] mt-2 border-t pt-2 flex items-center gap-1.5 text-muted-foreground">
                 <FileCode className="h-3.5 w-3.5 text-primary" />
@@ -359,14 +333,29 @@ export const JobCard = React.memo(
           {/* Legacy file output is no longer supported */}
 
           {/* For path finder jobs, show path count from metadata if available */}
-          {job.taskType === "path_finder" && job.status === "completed" && (
+          {job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
             <div className="text-[10px] mt-2 border-t pt-2 flex items-center gap-1.5 text-muted-foreground">
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
-                return parsedMeta?.pathCount ? (
+                const pathFinderData = parsedMeta?.pathData;
+                
+                // Parse pathData if it's a string, otherwise use it as-is
+                let parsedPathData: { count?: number; paths?: string[] } | null = null;
+                if (typeof pathFinderData === 'string') {
+                  try {
+                    parsedPathData = JSON.parse(pathFinderData);
+                  } catch {
+                    parsedPathData = null;
+                  }
+                } else if (typeof pathFinderData === 'object' && pathFinderData !== null) {
+                  parsedPathData = pathFinderData as { count?: number; paths?: string[] };
+                }
+                
+                const count = parsedPathData?.count || parsedPathData?.paths?.length || 0;
+                return count > 0 ? (
                   <span className="font-medium">
-                    Found {parsedMeta.pathCount} relevant file
-                    {parsedMeta.pathCount !== 1 ? "s" : ""}
+                    Found {count} relevant file
+                    {count !== 1 ? "s" : ""}
                   </span>
                 ) : (
                   <span className="font-medium">Path finder completed</span>
@@ -377,8 +366,7 @@ export const JobCard = React.memo(
 
           {/* For regular jobs or those without special indicators, show response preview */}
           {job.response &&
-            !(job.status === "completed" && job.outputFilePath) &&
-            !(job.taskType === "path_finder" && job.status === "completed") && (
+            !(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) && (
               <div className="text-[10px] mt-2 border-t pt-2 text-muted-foreground break-words text-balance">
                 <ScrollArea className="h-[40px]">
                   {getResponsePreview()}
@@ -387,7 +375,7 @@ export const JobCard = React.memo(
             )}
 
           {/* Show error message if job failed or canceled */}
-          {(job.status === "failed" || job.status === "canceled") &&
+          {JOB_STATUSES.FAILED.includes(job.status as JobStatus) &&
             job.errorMessage && (
               <div className="text-[10px] mt-2 border-t pt-2 text-red-500 break-words text-balance">
                 <ScrollArea className="h-[40px]">
@@ -398,9 +386,9 @@ export const JobCard = React.memo(
 
           {/* Empty placeholder element when no special content is present, to maintain consistent height */}
           {/* All jobs now store output in the response field */}
-          {!(job.taskType === "path_finder" && job.status === "completed") &&
+          {!(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) &&
             !job.response &&
-            !(job.status === "failed" || job.status === "canceled") && (
+            !JOB_STATUSES.FAILED.includes(job.status as JobStatus) && (
               <div className="h-[42px]"></div>
             )}
         </div>

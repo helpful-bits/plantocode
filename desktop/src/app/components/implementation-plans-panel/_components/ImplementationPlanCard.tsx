@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ClipboardCopy, Info, Eye, Trash2, Loader2 } from "lucide-react";
 
 
-import { type BackgroundJob } from "@/types/session-types";
+import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { Button } from "@/ui/button";
 import {
   Card,
@@ -15,16 +15,9 @@ import {
 } from "@/ui/card";
 import { Progress } from "@/ui/progress";
 
-import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
+import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
 
-import type React from "react";
-
-// Define streaming statuses for consistent checking
-const STREAMING_STATUSES = [
-  "running",
-  "processing_stream",
-  "generating_stream",
-];
+import React from "react";
 
 interface ImplementationPlanCardProps {
   plan: BackgroundJob;
@@ -33,10 +26,10 @@ interface ImplementationPlanCardProps {
   onViewDetails: (plan: BackgroundJob) => void;
   onDelete: (jobId: string) => void;
   isDeleting: boolean;
-  copiedPlanId: string | null;
+  copiedPlanId?: string;
 }
 
-const ImplementationPlanCard: React.FC<ImplementationPlanCardProps> = ({
+const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   plan,
   onCopyContent,
   onViewContent,
@@ -45,60 +38,26 @@ const ImplementationPlanCard: React.FC<ImplementationPlanCardProps> = ({
   isDeleting,
   copiedPlanId,
 }) => {
-  const isStreaming = STREAMING_STATUSES.includes(plan.status.toLowerCase());
+  const parsedMeta = getParsedMetadata(plan.metadata);
+  const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
+                     ["running", "processing_stream", "generating_stream"].includes(plan.status);
   const progress = getStreamingProgressValue(
-    plan.metadata,
+    parsedMeta,
     plan.startTime,
     plan.maxOutputTokens
   );
 
   // Parse the model information from plan metadata if available
-  const modelInfo = plan.metadata?.modelInfo
-    ? `${(plan.metadata.modelInfo as any)?.modelName || (plan.metadata.modelInfo as any)?.model || 'Unknown'}`
-    : "Unknown model";
+  const modelInfo = plan.modelUsed || (typeof parsedMeta?.modelUsed === 'string' ? parsedMeta.modelUsed : 'Unknown Model');
 
   // Calculate estimated token count if available in metadata
-  let tokenCount = "Unknown";
-  if (plan.metadata?.tokenCount !== undefined) {
-    if (typeof plan.metadata.tokenCount === 'number') {
-      tokenCount = plan.metadata.tokenCount.toLocaleString();
-    } else if (plan.metadata.tokenCount !== null) {
-      // Handle non-number token count safely with safe string conversion
-      if (plan.metadata.tokenCount === null) {
-        tokenCount = "Unknown";
-      } else {
-        // Safe handling of any value type by converting to string in a controlled way
-        try {
-          const numericValue = typeof plan.metadata.tokenCount === 'object' 
-            ? parseInt(JSON.stringify(plan.metadata.tokenCount).replace(/[^0-9]/g, '') || '0', 10)
-            : parseInt(String(plan.metadata.tokenCount).replace(/[^0-9]/g, '') || '0', 10);
-          
-          tokenCount = numericValue > 0 ? `~${numericValue.toLocaleString()}` : "Unknown";
-        } catch {
-          tokenCount = "Unknown";
-        }
-      }
-    }
-  } else if (plan.metadata?.estimatedTokens !== undefined) {
-    if (typeof plan.metadata.estimatedTokens === 'number') {
-      tokenCount = plan.metadata.estimatedTokens.toLocaleString();
-    } else if (plan.metadata.estimatedTokens !== null) {
-      // Handle non-number token count safely with safe string conversion
-      if (plan.metadata.estimatedTokens === null) {
-        tokenCount = "Unknown";
-      } else {
-        // Safe handling of any value type by converting to string in a controlled way
-        try {
-          const numericValue = typeof plan.metadata.estimatedTokens === 'object' 
-            ? parseInt(JSON.stringify(plan.metadata.estimatedTokens).replace(/[^0-9]/g, '') || '0', 10) 
-            : parseInt(String(plan.metadata.estimatedTokens).replace(/[^0-9]/g, '') || '0', 10);
-          
-          tokenCount = numericValue > 0 ? `~${numericValue.toLocaleString()}` : "Unknown";
-        } catch {
-          tokenCount = "Unknown";
-        }
-      }
-    }
+  let tokenCountDisplay = "N/A";
+  const totalTokens = plan.totalTokens ?? parsedMeta?.totalTokens ?? parsedMeta?.tokensUsed;
+  if (typeof totalTokens === 'number' && totalTokens > 0) {
+    tokenCountDisplay = totalTokens.toLocaleString();
+  } else if (typeof totalTokens === 'string') {
+    const numericValue = parseInt(String(totalTokens).replace(/[^0-9]/g, '') || '0', 10);
+    if (numericValue > 0) tokenCountDisplay = `~${numericValue.toLocaleString()}`;
   }
 
   // Format timestamps
@@ -107,7 +66,7 @@ const ImplementationPlanCard: React.FC<ImplementationPlanCardProps> = ({
     : "Unknown time";
 
   // Extract session name
-  const sessionName = plan.metadata?.sessionName || "Untitled Session";
+  const sessionName = (typeof parsedMeta?.sessionName === 'string') ? parsedMeta.sessionName : "Untitled Plan";
 
   // Determine if the job has content to display
   const hasContent = !!plan.response || isStreaming;
@@ -117,9 +76,9 @@ const ImplementationPlanCard: React.FC<ImplementationPlanCardProps> = ({
       {/* Status indicator strip on the left side */}
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 ${
-          plan.status === "completed"
+          JOB_STATUSES.COMPLETED.includes(plan.status)
             ? "bg-green-500"
-            : plan.status === "failed"
+            : JOB_STATUSES.FAILED.includes(plan.status)
               ? "bg-red-500"
               : isStreaming
                 ? "bg-blue-500"
@@ -135,7 +94,7 @@ const ImplementationPlanCard: React.FC<ImplementationPlanCardProps> = ({
         <CardDescription className="flex flex-wrap gap-x-2 text-xs">
           <span>{modelInfo}</span>
           <span>•</span>
-          <span>{tokenCount} tokens</span>
+          <span>{tokenCountDisplay} tokens</span>
         </CardDescription>
       </CardHeader>
 
@@ -209,6 +168,8 @@ const ImplementationPlanCard: React.FC<ImplementationPlanCardProps> = ({
       </CardContent>
     </Card>
   );
-};
+});
+
+ImplementationPlanCard.displayName = "ImplementationPlanCard";
 
 export default ImplementationPlanCard;

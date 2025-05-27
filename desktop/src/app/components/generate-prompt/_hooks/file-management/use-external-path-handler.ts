@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 
 import { type FilesMap } from "./use-project-file-list";
+import { ensureProjectRelativePath } from "@/utils/path-utils";
 
 interface UseExternalPathHandlerProps {
   managedFilesMap: FilesMap;
@@ -45,24 +46,7 @@ export function useExternalPathHandler({
       paths
         .map((path) => {
           if (!path) return "";
-
-          // Use a standardized normalization approach
-          // This matches the normalizePathForComparison function but inline for efficiency
-          let normalizedPath = path.trim();
-          normalizedPath = normalizedPath.replace(/\\/g, "/");
-          normalizedPath = normalizedPath.replace(/\/\/+/g, "/");
-
-          // Remove leading ./ if present
-          if (normalizedPath.startsWith("./")) {
-            normalizedPath = normalizedPath.substring(2);
-          }
-
-          // Remove leading / if present (assuming paths are relative to project root)
-          if (normalizedPath.startsWith("/")) {
-            normalizedPath = normalizedPath.substring(1);
-          }
-
-          return normalizedPath;
+          return ensureProjectRelativePath(path);
         })
         .filter(Boolean)
     ); // Filter out empty strings
@@ -114,85 +98,27 @@ export function useExternalPathHandler({
       // Save current state to history before making changes
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
-      // Find matching file paths in managedFilesMap
       const warnings: string[] = [];
-      const matchedPaths: string[] = [];
-      const updatedMap: FilesMap = { ...managedFilesMap };
+      const newIncludedSet = new Set(mergeWithExisting ? currentIncludedFiles : []);
+      const newExcludedSet = new Set(currentExcludedFiles);
 
-      // Mark each path as included
-      paths.forEach((path: string) => {
-        // path is already normalized by normalizePathForComparison in PastePaths component
-        const normalizedInputPath = path; // Already normalized
+      // Create a map from comparablePath to actual path for efficient lookup
+      const comparableToActualPathMap = new Map<string, string>();
+      for (const [actualPathKey, fileInfo] of Object.entries(managedFilesMap)) {
+        if (fileInfo.comparablePath) {
+          comparableToActualPathMap.set(fileInfo.comparablePath, actualPathKey);
+        }
+      }
 
-        if (updatedMap[path]) {
-          updatedMap[path] = {
-            ...updatedMap[path],
-            included: true,
-            forceExcluded: false,
-          };
-          matchedPaths.push(path);
+      paths.forEach((inputComparablePath: string) => {
+        // The input paths are already normalized by normalizePath
+        if (comparableToActualPathMap.has(inputComparablePath)) {
+          // Add to included set (it's a Set, so duplicates are handled)
+          newIncludedSet.add(inputComparablePath);
+          // Remove from excluded set if it was there
+          newExcludedSet.delete(inputComparablePath);
         } else {
-          // Try to find a matching file using the comparablePath property
-          let found = false;
-
-          // First try: Direct match using comparablePath
-          for (const mapPath of Object.keys(updatedMap)) {
-            const fileInfo = updatedMap[mapPath];
-
-            if (fileInfo.comparablePath === normalizedInputPath) {
-              updatedMap[mapPath] = {
-                ...updatedMap[mapPath],
-                included: true,
-                forceExcluded: false,
-              };
-              matchedPaths.push(mapPath);
-              found = true;
-              break;
-            }
-          }
-
-          // Second try: Path ends with the input path (handles project-relative paths)
-          if (!found) {
-            for (const mapPath of Object.keys(updatedMap)) {
-              const fileInfo = updatedMap[mapPath];
-
-              if (
-                normalizedInputPath &&
-                fileInfo.comparablePath.endsWith("/" + normalizedInputPath)
-              ) {
-                updatedMap[mapPath] = {
-                  ...updatedMap[mapPath],
-                  included: true,
-                  forceExcluded: false,
-                };
-                matchedPaths.push(mapPath);
-                found = true;
-                break;
-              }
-            }
-          }
-
-          // Third try: Input path contains the map path (for scenarios where the full absolute path is pasted)
-          if (!found) {
-            for (const mapPath of Object.keys(updatedMap)) {
-              const fileInfo = updatedMap[mapPath];
-
-              if (normalizedInputPath.includes(fileInfo.comparablePath)) {
-                updatedMap[mapPath] = {
-                  ...updatedMap[mapPath],
-                  included: true,
-                  forceExcluded: false,
-                };
-                matchedPaths.push(mapPath);
-                found = true;
-                break;
-              }
-            }
-          }
-
-          if (!found) {
-            warnings.push(`Path not found: ${path}`);
-          }
+          warnings.push(`Path not found: ${inputComparablePath}`);
         }
       });
 
@@ -200,19 +126,15 @@ export function useExternalPathHandler({
         setExternalPathWarnings(warnings);
       }
 
-      // Update the session with new included files based on merge option
-      const newIncludedFiles = mergeWithExisting
-        ? [...new Set([...currentIncludedFiles, ...matchedPaths])] // Merge with existing
-        : [...matchedPaths]; // Replace existing
+      const finalIncludedPaths = Array.from(newIncludedSet);
+      const finalExcludedPaths = Array.from(newExcludedSet);
 
-      onUpdateIncludedFiles(newIncludedFiles);
-
-      // Also ensure these files are removed from excluded files if they were there
-      const newExcludedFiles = currentExcludedFiles.filter(
-        (path) => !matchedPaths.includes(path)
-      );
-      if (newExcludedFiles.length !== currentExcludedFiles.length) {
-        onUpdateExcludedFiles(newExcludedFiles);
+      // Only call update if there's a change
+      if (JSON.stringify(finalIncludedPaths) !== JSON.stringify(currentIncludedFiles)) {
+        onUpdateIncludedFiles(finalIncludedPaths);
+      }
+      if (JSON.stringify(finalExcludedPaths) !== JSON.stringify(currentExcludedFiles)) {
+        onUpdateExcludedFiles(finalExcludedPaths);
       }
     },
     [
@@ -284,12 +206,11 @@ export function useExternalPathHandler({
             found = true;
             matchedPaths.add(matchedPath);
 
-            // Also add to our outer matched paths collection
-            const normalizedMatchedPath =
-              updatedMap[matchedPath].comparablePath || normalizedPath;
-            if (!pathMatchingSet.has(normalizedMatchedPath)) {
-              matchedNormalizedPaths.push(normalizedMatchedPath);
-              pathMatchingSet.add(normalizedMatchedPath);
+            // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
+            const fileInfo = managedFilesMap[matchedPath];
+            if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
+              matchedNormalizedPaths.push(fileInfo.comparablePath);
+              pathMatchingSet.add(fileInfo.comparablePath);
             }
           }
         }
@@ -313,10 +234,11 @@ export function useExternalPathHandler({
               found = true;
               matchedPaths.add(actualPath);
 
-              // Also add to our outer matched paths collection
-              if (!pathMatchingSet.has(comparablePath)) {
-                matchedNormalizedPaths.push(comparablePath);
-                pathMatchingSet.add(comparablePath);
+              // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
+              const fileInfo = managedFilesMap[actualPath];
+              if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
+                matchedNormalizedPaths.push(fileInfo.comparablePath);
+                pathMatchingSet.add(fileInfo.comparablePath);
               }
               break;
             }
@@ -340,12 +262,11 @@ export function useExternalPathHandler({
               found = true;
               matchedPaths.add(actualPath);
 
-              // Also add to our outer matched paths collection
-              const normalizedMatchedPath =
-                updatedMap[actualPath].comparablePath || normalizedPath;
-              if (!pathMatchingSet.has(normalizedMatchedPath)) {
-                matchedNormalizedPaths.push(normalizedMatchedPath);
-                pathMatchingSet.add(normalizedMatchedPath);
+              // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
+              const fileInfo = managedFilesMap[actualPath];
+              if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
+                matchedNormalizedPaths.push(fileInfo.comparablePath);
+                pathMatchingSet.add(fileInfo.comparablePath);
               }
             }
             // If multiple matches, try to find the best one by path similarity
@@ -393,12 +314,11 @@ export function useExternalPathHandler({
                 found = true;
                 matchedPaths.add(bestMatch);
 
-                // Also add to our outer matched paths collection
-                const normalizedMatchedPath =
-                  updatedMap[bestMatch].comparablePath || normalizedPath;
-                if (!pathMatchingSet.has(normalizedMatchedPath)) {
-                  matchedNormalizedPaths.push(normalizedMatchedPath);
-                  pathMatchingSet.add(normalizedMatchedPath);
+                // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
+                const fileInfo = managedFilesMap[bestMatch];
+                if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
+                  matchedNormalizedPaths.push(fileInfo.comparablePath);
+                  pathMatchingSet.add(fileInfo.comparablePath);
                 }
               }
             }
@@ -432,11 +352,20 @@ export function useExternalPathHandler({
     lastBulkOperationTimeRef.current = 0;
   }, []);
 
-  return {
-    externalPathWarnings,
-    clearExternalPathWarnings,
-    applySelectionsFromPaths,
-    replaceAllSelectionsWithPaths,
-    reset,
-  };
+  return useMemo(
+    () => ({
+      externalPathWarnings,
+      clearExternalPathWarnings,
+      applySelectionsFromPaths,
+      replaceAllSelectionsWithPaths,
+      reset,
+    }),
+    [
+      externalPathWarnings,
+      clearExternalPathWarnings,
+      applySelectionsFromPaths,
+      replaceAllSelectionsWithPaths,
+      reset,
+    ]
+  );
 }

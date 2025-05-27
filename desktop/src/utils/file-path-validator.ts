@@ -1,4 +1,4 @@
-import { normalizePathForComparison } from "@/utils/path-utils";
+import { normalizePath } from "@/utils/path-utils";
 import * as tauriFs from "@/utils/tauri-fs";
 
 import { isBinaryFile, BINARY_EXTENSIONS } from "./file-binary-utils";
@@ -26,7 +26,7 @@ export async function validateFilePath(
     }
 
     // Normalize path using the canonical path normalization function
-    const normalizedPath = await normalizePathForComparison(filePath);
+    const normalizedPath = await normalizePath(filePath);
 
     // First check if we already have the content in our map
     if (fileContents[normalizedPath]) {

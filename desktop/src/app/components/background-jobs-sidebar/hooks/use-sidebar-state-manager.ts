@@ -47,6 +47,14 @@ export function useSidebarStateManager(): SidebarManager {
   });
 
   const refreshClickedRef = useRef(false);
+  
+  // Create a ref for the state to avoid dependency cycles
+  const stateRef = useRef(state);
+  
+  // Update the state ref when state changes
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Clear feedback message after it's been shown
   useEffect(() => {
@@ -72,7 +80,7 @@ export function useSidebarStateManager(): SidebarManager {
   // Handle manual refresh of jobs
   const handleRefresh = useCallback(async () => {
     // Prevent duplicate clicks
-    if (refreshClickedRef.current || state.isRefreshing) return;
+    if (refreshClickedRef.current || stateRef.current.isRefreshing) return;
 
     refreshClickedRef.current = true;
     setState((prev: SidebarState) => ({ ...prev, isRefreshing: true }));
@@ -86,7 +94,7 @@ export function useSidebarStateManager(): SidebarManager {
         refreshClickedRef.current = false;
       }, 1000);
     }
-  }, [state.isRefreshing, refreshJobs]);
+  }, [refreshJobs]);
 
   // Add event listener for custom refresh event
   useEffect(() => {

@@ -28,13 +28,7 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
 
-    // Initialize configuration
-    info!("Initializing configuration storage...");
-    if let Err(e) = crate::config::init_config().await {
-        warn!("Failed to initialize configuration: {}. Some features may be limited.", e);
-    } else {
-        info!("Secure token storage handled by keyring");
-    }
+    // Configuration will be loaded from server after Auth0 authentication
 
     // Initialize API clients
     if let Err(e) = services::initialize_api_clients(app_handle).await {
@@ -42,18 +36,6 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
     
-    // Initialize TokenManager with keyring integration
-    // (this must come after API clients are initialized)
-    if let Some(token_manager) = app_handle.try_state::<std::sync::Arc<crate::auth::TokenManager>>() {
-        if let Err(e) = token_manager.init().await {
-            error!("TokenManager initialization with keyring failed: {}", e);
-            return Err(e);
-        }
-        info!("TokenManager initialized with keyring persistence");
-    } else {
-        error!("TokenManager not found in app state after services::initialize_api_clients. This should not happen.");
-        return Err(AppError::ConfigError("TokenManager was not managed correctly during app setup".to_string()));
-    }
 
     // Initialize file lock manager
     if let Err(e) = file_management::initialize_file_lock_manager(app_handle).await {

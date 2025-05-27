@@ -31,7 +31,22 @@ const defaultValue: CorePromptContextValue = {
     setSessionInitialized: () => {},
     setHasUnsavedChanges: () => {},
     handleInteraction: () => {},
-    getCurrentSessionState: () => ({}),
+    getCurrentSessionState: () => ({
+      projectDirectory: "",
+      taskDescription: "",
+      titleRegex: "",
+      contentRegex: "",
+      negativeTitleRegex: "",
+      negativeContentRegex: "",
+      isRegexActive: true,
+      searchTerm: "",
+      includedFiles: [],
+      forceExcludedFiles: [],
+      searchSelectedFilesOnly: false,
+      codebaseStructure: "",
+      createdAt: Date.now(),
+      modelUsed: undefined,
+    }),
     handleGenerateCodebase: async () => Promise.resolve(),
   },
 };
@@ -67,3 +82,5 @@ export const CorePromptContextProvider = ({
     </CorePromptContext.Provider>
   );
 };
+
+CorePromptContextProvider.displayName = "CorePromptContextProvider";

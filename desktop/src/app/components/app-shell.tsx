@@ -1,11 +1,8 @@
 "use client";
 
 
-import { useUILayout } from "@/contexts/ui-layout-context";
 import { DatabaseErrorHandler } from "@/ui";
-import { AppInitializingScreen } from "@/ui/app-initializing-screen";
-import { TokenUsageIndicator } from "@/ui/token-usage-indicator";
-import { isDesktopApp, isTauriEnvironment } from "@/utils/platform";
+import { isTauriEnvironment } from "@/utils/platform";
 
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
 
@@ -19,15 +16,9 @@ import type { ReactNode } from "react";
  * This component is designed to work in both web and desktop environments.
  */
 export function AppShell({ children }: { children: ReactNode }) {
-  const { isAppInitializing } = useUILayout();
-  const runningInDesktop = isDesktopApp() || isTauriEnvironment();
+  const runningInDesktop = isTauriEnvironment();
 
-  // Show the app initializing screen during critical loading phase
-  if (isAppInitializing) {
-    return <AppInitializingScreen />;
-  }
-
-  // Once initialized, show the full application UI
+  // AuthFlowManager controls when this component renders, so we can proceed directly with the full UI
   return (
     <>
       {/* Main content layout with sidebar */}
@@ -42,27 +33,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="flex-1 transition-all duration-300 ease-in-out"
           style={{ marginLeft: "var(--sidebar-width, 320px)" }}
         >
-          <div
-            className={`container mx-auto px-6 py-8 ${runningInDesktop ? "pt-10" : ""}`}
-          >
-            <div className="flex justify-between items-center mb-6">
-              <Suspense
-                fallback={
-                  <div className="h-16 flex items-center justify-center text-muted-foreground">
-                    Loading navigation...
-                  </div>
-                }
-              >
-                <Navigation />
-              </Suspense>
+          {/* Navigation spans full width */}
+          <div className={`w-full ${runningInDesktop ? "pt-10" : "pt-8"}`}>
+            <Suspense
+              fallback={
+                <div className="h-16 flex items-center justify-center text-muted-foreground">
+                  Loading navigation...
+                </div>
+              }
+            >
+              <Navigation />
+            </Suspense>
 
-              {/* Token usage indicator in the top right */}
-              <div className="hidden md:block">
-                <TokenUsageIndicator compact={true} showRefreshButton={true} />
-              </div>
+            {/* Main content with container constraints */}
+            <div className="container mx-auto px-6 pt-4 pb-8">
+              {children}
             </div>
-
-            {children}
           </div>
         </div>
       </div>

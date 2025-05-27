@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useMemo } from "react";
 
 import { type Session } from "@/types";
 
@@ -22,28 +22,29 @@ export function useSessionState() {
   // Track errors that occur during session operations
   const [sessionError, setSessionError] = useState<Error | null>(null);
 
-  // Refs to track initialization and ongoing operations
-  const hasCompletedInitRef = useRef<boolean>(false);
-  const loadingSessionRef = useRef<{ id: string | null; timestamp: number }>({
-    id: null,
-    timestamp: 0,
-  });
+  return useMemo(
+    () => ({
+      // States - these will be part of SessionStateContext
+      currentSession,
+      isSessionLoading,
+      isSessionModified,
+      sessionError,
 
-  return {
-    // States - these will be part of SessionStateContext
-    currentSession,
-    isSessionLoading,
-    isSessionModified,
-    sessionError,
-
-    // State setters - these will be used internally and in SessionActionsContext
-    setCurrentSession,
-    setSessionLoading,
-    setSessionModified,
-    setSessionError,
-
-    // Refs - these are only used internally
-    hasCompletedInitRef,
-    loadingSessionRef,
-  };
+      // State setters - these will be used internally and in SessionActionsContext
+      setCurrentSession,
+      setSessionLoading,
+      setSessionModified,
+      setSessionError,
+    }),
+    [
+      currentSession,
+      isSessionLoading,
+      isSessionModified,
+      sessionError,
+      setCurrentSession,
+      setSessionLoading,
+      setSessionModified,
+      setSessionError,
+    ]
+  );
 }

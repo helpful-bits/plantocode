@@ -28,7 +28,6 @@ export function useGeneratePromptTaskState({
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
   
-  const taskDescription = sessionState.currentSession?.taskDescription || "";
   
   const setTaskDescription = useCallback((description: string) => {
     sessionActions.updateCurrentSessionFields({ taskDescription: description });
@@ -43,7 +42,6 @@ export function useGeneratePromptTaskState({
     textImprovementJobId,
     handleImproveSelection,
   } = useTaskDescriptionState({
-    taskDescription,
     activeSessionId: sessionState.activeSessionId,
     taskDescriptionRef,
     onInteraction: handleInteraction,
@@ -55,7 +53,6 @@ export function useGeneratePromptTaskState({
     handleGenerateGuidance: baseHandleGenerateGuidance,
   } = useGuidanceGeneration({
     projectDirectory: sessionState.currentSession?.projectDirectory || null,
-    taskDescription,
     onGuidanceGenerated: setTaskDescription,
     onInteraction: handleInteraction || (() => {}),
   });

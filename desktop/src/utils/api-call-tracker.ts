@@ -6,6 +6,11 @@
  * projectDirectory and sessionId
  */
 
+import { createLogger } from "./logger";
+
+// Create a namespaced logger for API tracking
+const logger = createLogger({ namespace: "API Tracker" });
+
 // Maps to track changes to project directory and session ID
 const projectDirChanges = new Map<string, number>();
 const sessionIdChanges = new Map<string, number>();
@@ -35,8 +40,8 @@ export function trackAPICall(
   // Track project directory changes
   if (projectDir) {
     if (!projectDirChanges.has(projectDir)) {
-      console.debug(
-        `[API Tracker] New project directory: ${projectDir} at ${formattedTime}`
+      logger.debug(
+        `New project directory: ${projectDir} at ${formattedTime}`
       );
     }
     projectDirChanges.set(projectDir, timestamp);
@@ -45,15 +50,15 @@ export function trackAPICall(
   // Track session ID changes
   if (sessionId) {
     if (!sessionIdChanges.has(sessionId)) {
-      console.debug(
-        `[API Tracker] New session ID: ${sessionId} at ${formattedTime}`
+      logger.debug(
+        `New session ID: ${sessionId} at ${formattedTime}`
       );
     }
     sessionIdChanges.set(sessionId, timestamp);
   }
 
   // Log the API call with context
-  console.debug(`[API Tracker] ${callName} called at ${formattedTime}`, {
+  logger.debug(`${callName} called at ${formattedTime}`, {
     projectDir,
     sessionId,
     ...additionalInfo,
@@ -66,7 +71,7 @@ export function trackAPICall(
 export function clearAPITrackingData(): void {
   projectDirChanges.clear();
   sessionIdChanges.clear();
-  console.debug("[API Tracker] Cleared tracking data");
+  logger.debug("Cleared tracking data");
 }
 
 /**
