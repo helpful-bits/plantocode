@@ -1,4 +1,5 @@
 import { type BackgroundJob } from "@/types/session-types";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
 interface JobDetailsStatusSectionProps {
   job: BackgroundJob;
@@ -6,26 +7,25 @@ interface JobDetailsStatusSectionProps {
 
 export function JobDetailsStatusSection({ job }: JobDetailsStatusSectionProps) {
   return (
-    <div className="col-span-1">
-      <div className="p-4 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
-        <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">
-          Job Status
-        </h4>
-        <div className="grid grid-cols-5 gap-6">
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Job Status</CardTitle>
+        <CardDescription className="text-xs">
+          Current job execution details
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <h5 className="text-xs text-muted-foreground mb-1">Status</h5>
-            <p className="text-sm font-medium">{job.status}</p>
+            <div className="text-xs text-muted-foreground mb-1">Status</div>
+            <div className="text-sm font-medium text-foreground">{job.status}</div>
           </div>
           <div>
-            <h5 className="text-xs text-muted-foreground mb-1">API</h5>
-            <p className="text-sm font-medium">{job.apiType}</p>
-          </div>
-          <div>
-            <h5 className="text-xs text-muted-foreground mb-1">Task</h5>
-            <p className="text-sm font-medium">{job.taskType}</p>
+            <div className="text-xs text-muted-foreground mb-1">Task</div>
+            <div className="text-sm font-medium text-foreground">{job.taskType}</div>
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

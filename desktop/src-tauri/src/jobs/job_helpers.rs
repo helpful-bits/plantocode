@@ -74,6 +74,18 @@ pub fn calculate_retry_delay(retry_count: u32) -> u32 {
     std::cmp::min(exp_delay + jitter, max_delay_seconds)
 }
 
+/// Get just the retry count from a job
+pub fn get_retry_count_from_job(job: &BackgroundJob) -> Option<u32> {
+    if let Some(metadata) = &job.metadata {
+        if let Ok(metadata_value) = serde_json::from_str::<serde_json::Value>(&metadata) {
+            if let Some(count) = metadata_value.get("retry_count").and_then(|v| v.as_u64()) {
+                return Some(count as u32);
+            }
+        }
+    }
+    None
+}
+
 /// Get retry information from job metadata
 pub async fn get_retry_info(job: &BackgroundJob) -> (bool, u32) {
     // Default values if metadata is absent

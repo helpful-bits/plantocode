@@ -251,7 +251,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               </label>
               <span
                 className={cn(
-                  "text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-0.5 rounded-sm",
+                  "text-xs bg-destructive/10 backdrop-blur-sm text-destructive px-2 py-0.5 rounded-md border border-destructive/20",
                   !effectiveIsEmpty && "invisible"
                 )}
               >
@@ -276,12 +276,12 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             Uses AI to refine the clarity and grammar of the selected text.
           </p>
           <div
-            className={`relative ${effectiveIsEmpty ? "border-2 border-red-200 dark:border-red-800 rounded-md" : ""}`}
+            className={`relative ${effectiveIsEmpty ? "border-2 border-destructive/20 rounded-xl" : ""}`}
           >
             <Textarea
               ref={internalTextareaRef}
               id="taskDescArea"
-              className={`border rounded-md bg-background/80 text-foreground p-3 min-h-[200px] w-full resize-y font-normal ${effectiveIsEmpty ? "border-red-200 dark:border-red-800" : ""}`}
+              className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
               value={value}
               onChange={handleChange}
               onSelect={handleSelect}
@@ -298,7 +298,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               aria-invalid={effectiveIsEmpty}
               disabled={disabled}
               loadingIndicator={
-                <div className="flex items-center bg-background/80 backdrop-blur-[1px] px-2 py-1 rounded-md border shadow-sm">
+                <div className="flex items-center bg-background backdrop-blur-sm px-3 py-2 rounded-lg border shadow-soft">
                   <svg
                     className="animate-spin h-3 w-3 mr-1.5 text-primary"
                     viewBox="0 0 24 24"
@@ -317,14 +317,14 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  <span className="text-xs font-medium">Loading...</span>
+                  <span className="text-xs font-medium text-foreground">Loading...</span>
                 </div>
               }
             />
 
             <div
               className={cn(
-                "text-xs text-red-600 dark:text-red-400 mt-1 pl-1",
+                "text-xs text-destructive mt-1 pl-1",
                 !effectiveIsEmpty && "invisible"
               )}
             >

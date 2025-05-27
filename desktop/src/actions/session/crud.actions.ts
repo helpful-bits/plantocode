@@ -4,6 +4,7 @@ import { type ActionState, type Session } from "@/types";
 import { hashString } from "@/utils/hash";
 import { normalizePath } from "@/utils/path-utils";
 import { createLogger } from "@/utils/logger";
+import { handleActionError } from "@/utils/action-utils";
 
 import { setActiveSessionAction } from "./active.actions";
 
@@ -67,13 +68,7 @@ export async function createSessionAction(
     };
   } catch (error) {
     logger.error(`Error:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error creating session",
-    };
+    return handleActionError(error) as ActionState<string>;
   }
 }
 
@@ -117,14 +112,7 @@ export async function getSessionsAction(
     };
   } catch (error) {
     logger.error(`Error retrieving sessions:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error retrieving sessions",
-      data: [],
-    };
+    return handleActionError(error) as ActionState<Session[]>;
   }
 }
 
@@ -157,13 +145,7 @@ export async function getSessionAction(
     };
   } catch (error) {
     logger.error(`Error:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error retrieving session",
-    };
+    return handleActionError(error) as ActionState<Session>;
   }
 }
 
@@ -219,10 +201,7 @@ export async function deleteSessionAction(
     };
   } catch (error) {
     logger.error(`Error:`, error);
-    return {
-      isSuccess: false,
-      message: `Failed to delete session: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<null>;
   }
 }
 
@@ -264,11 +243,7 @@ export async function saveSessionAction(
     };
   } catch (error) {
     logger.error(`Error:`, error);
-
-    return {
-      isSuccess: false,
-      message: `Failed to save session: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<Session>;
   }
 }
 
@@ -289,9 +264,6 @@ export async function renameSessionAction(
     };
   } catch (error) {
     logger.error(`Error:`, error);
-    return {
-      isSuccess: false,
-      message: `Failed to rename session: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<null>;
   }
 }

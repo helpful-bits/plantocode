@@ -51,7 +51,7 @@ export const JobCard = React.memo(
         : "Unknown time";
 
     // Determine if job can be canceled (only active/non-terminal jobs)
-    const canCancel = JOB_STATUSES.ACTIVE.includes(job.status);
+    const canCancel = JOB_STATUSES.ACTIVE.includes(job.status as JobStatus);
 
     const getResponsePreview = () => {
       if (
@@ -76,8 +76,8 @@ export const JobCard = React.memo(
     };
 
     // Render the appropriate status icon
-    const renderStatusIcon = (status: string) => {
-      if (JOB_STATUSES.COMPLETED.includes(status as JobStatus)) {
+    const renderStatusIcon = (status: JobStatus) => {
+      if (JOB_STATUSES.COMPLETED.includes(status)) {
         return <CheckCircle className={getStatusIconClass(status)} />;
       }
       if (status === "failed") {
@@ -89,7 +89,7 @@ export const JobCard = React.memo(
       if (status === "canceled") {
         return <XCircle className={getStatusIconClass(status)} />;
       }
-      if (JOB_STATUSES.ACTIVE.includes(status as JobStatus)) {
+      if (JOB_STATUSES.ACTIVE.includes(status)) {
         return <Clock className={getStatusIconClass(status)} />;
       }
       return <Clock className={getStatusIconClass(status)} />;
@@ -117,12 +117,9 @@ export const JobCard = React.memo(
     // Render card content
     return (
       <div
-        className="border bg-card p-3 rounded-md text-xs cursor-pointer hover:bg-accent/10 transition-colors w-full"
+        className="border border-border/60 bg-background/80 p-2 rounded-lg text-xs text-foreground cursor-pointer hover:bg-muted/50 transition-colors flex flex-col w-full max-w-full overflow-hidden shadow-soft backdrop-blur-sm min-w-0"
         style={{
-          height: "160px", // Fixed height for better layout stability
-          overflow: "hidden",
-          maxWidth: "100%", // Ensure card doesn't overflow sidebar
-          boxSizing: "border-box", // Include padding in width calculation
+          minHeight: "140px", // Reduced minimum height for better space utilization
         }}
         onClick={() => onSelect(job)}
         role="button"
@@ -133,20 +130,27 @@ export const JobCard = React.memo(
         data-testid={`job-card-${job.id}`}
         data-status={job.status}
       >
-        <div className="flex items-center justify-between mb-2 w-full">
-          <div className="flex items-center gap-2 font-medium">
-            <span className="w-4 h-4 inline-flex items-center justify-center">
-              {renderStatusIcon(job.status)}
+        <div className="flex items-center justify-between mb-2 w-full min-w-0">
+          <div className="flex items-center gap-2 font-medium min-w-0 flex-1">
+            <span className="w-4 h-4 inline-flex items-center justify-center flex-shrink-0">
+              {renderStatusIcon(job.status as JobStatus)}
             </span>
-            <span className="truncate">{getStatusDisplay()}</span>
+            <span className="truncate text-foreground">{getStatusDisplay()}</span>
+            {job.taskType && (
+              <Badge
+                variant="outline"
+                className="text-[10px] flex items-center gap-1.5 ml-1 flex-shrink-0"
+              >
+                {formatTaskType(job.taskType)}
+              </Badge>
+            )}
           </div>
 
           <div className="w-6 h-6 flex-shrink-0">
             {canCancel && (
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-6 w-6"
+                size="icon-xs"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.stopPropagation(); // Prevent triggering the card's onClick
                   void handleCancel(job.id);
@@ -159,22 +163,6 @@ export const JobCard = React.memo(
               </Button>
             )}
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-2 min-h-[20px]">
-          {job.apiType && (
-            <Badge className={getApiTypeBadgeClasses(job.apiType)}>
-              {formatApiType(job.apiType)}
-            </Badge>
-          )}
-          {job.taskType && (
-            <Badge
-              variant="outline"
-              className="text-[10px] flex items-center gap-1.5"
-            >
-              {formatTaskType(job.taskType)}
-            </Badge>
-          )}
         </div>
 
         <div className="text-muted-foreground text-[10px] mt-2">{timeAgo}</div>
@@ -237,10 +225,10 @@ export const JobCard = React.memo(
               }
               className="h-0.5"
             />
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center min-w-0 overflow-hidden">
               {job.statusMessage && (
                 <p
-                  className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5 truncate max-w-[75%]"
+                  className="text-[11px] text-primary mt-0.5 truncate flex-1 min-w-0"
                   title={job.statusMessage}
                 >
                   {job.statusMessage}
@@ -259,27 +247,27 @@ export const JobCard = React.memo(
         )}
 
         {/* Token count and model display */}
-        <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full">
-          <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden">
+        <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
+          <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
             {/* Display token counts with better formatting */}
             {(job.tokensSent ?? 0) > 0 ||
             (job.tokensReceived ?? 0) > 0 ||
             (job.totalTokens ?? 0) > 0 ? (
-              <span className="flex items-center gap-1.5">
-                <span className="text-[9px] text-muted-foreground">
+              <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                <span className="text-[9px] text-muted-foreground flex-shrink-0">
                   Tokens:
                 </span>
-                <span className="font-mono">
+                <span className="font-mono text-foreground text-[9px] flex-shrink-0">
                   {formatTokenCount(job.tokensSent ?? 0)}
                 </span>
-                <span className="text-[9px]">→</span>
-                <span className="font-mono">
+                <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                <span className="font-mono text-foreground text-[9px] flex-shrink-0">
                   {formatTokenCount(job.tokensReceived ?? 0)}
                 </span>
                 {(job.totalTokens ?? 0) > 0 &&
                   (job.totalTokens ?? 0) !==
                     (job.tokensSent ?? 0) + (job.tokensReceived ?? 0) && (
-                    <span className="font-mono text-[9px] ml-1">
+                    <span className="font-mono text-[9px] ml-1 text-muted-foreground">
                       ({formatTokenCount(job.totalTokens ?? 0)} total)
                     </span>
                   )}
@@ -289,7 +277,7 @@ export const JobCard = React.memo(
             )}
             {job.modelUsed ? (
               <span
-                className="text-[9px] text-gray-500 truncate max-w-[180px]"
+                className="text-[9px] text-muted-foreground truncate max-w-full"
                 title={job.modelUsed}
               >
                 {job.modelUsed.includes("gemini")
@@ -305,7 +293,7 @@ export const JobCard = React.memo(
 
           {/* Show duration for completed jobs or empty placeholder */}
           {job.endTime && job.startTime ? (
-            <span className="text-[9px] text-gray-500 flex-shrink-0 ml-1">
+            <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1">
               {Math.round((job.endTime - job.startTime) / 1000)}s
             </span>
           ) : (
@@ -313,13 +301,13 @@ export const JobCard = React.memo(
           )}
         </div>
 
-        {/* Info section container with fixed height for stability */}
-        <div className="min-h-[42px] max-h-[42px] overflow-hidden">
+        {/* Info section container with flexible height */}
+        <div className="flex-1 flex flex-col justify-end">
           {JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) &&
             job.taskType === "implementation_plan" && (
-              <div className="text-[10px] mt-2 border-t pt-2 flex items-center gap-1.5 text-muted-foreground">
+              <div className="text-[10px] mt-2 border-t border-border/60 pt-2 flex items-center gap-1.5 text-muted-foreground">
                 <FileCode className="h-3.5 w-3.5 text-primary" />
-                <span className="font-medium">
+                <span className="font-medium text-foreground">
                   {(() => {
                     const parsedMeta = getParsedMetadata(job.metadata);
                     return parsedMeta?.sessionName
@@ -334,7 +322,7 @@ export const JobCard = React.memo(
 
           {/* For path finder jobs, show path count from metadata if available */}
           {job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
-            <div className="text-[10px] mt-2 border-t pt-2 flex items-center gap-1.5 text-muted-foreground">
+            <div className="text-[10px] mt-2 border-t border-border/60 pt-2 flex items-center gap-1.5 text-muted-foreground">
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
                 const pathFinderData = parsedMeta?.pathData;
@@ -353,12 +341,12 @@ export const JobCard = React.memo(
                 
                 const count = parsedPathData?.count || parsedPathData?.paths?.length || 0;
                 return count > 0 ? (
-                  <span className="font-medium">
+                  <span className="font-medium text-foreground">
                     Found {count} relevant file
                     {count !== 1 ? "s" : ""}
                   </span>
                 ) : (
-                  <span className="font-medium">Path finder completed</span>
+                  <span className="font-medium text-foreground">Path finder completed</span>
                 );
               })()}
             </div>
@@ -367,9 +355,11 @@ export const JobCard = React.memo(
           {/* For regular jobs or those without special indicators, show response preview */}
           {job.response &&
             !(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) && (
-              <div className="text-[10px] mt-2 border-t pt-2 text-muted-foreground break-words text-balance">
-                <ScrollArea className="h-[40px]">
-                  {getResponsePreview()}
+              <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-muted-foreground break-words text-balance overflow-hidden">
+                <ScrollArea className="h-[40px] w-full overflow-hidden">
+                  <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                    {getResponsePreview()}
+                  </div>
                 </ScrollArea>
               </div>
             )}
@@ -377,9 +367,11 @@ export const JobCard = React.memo(
           {/* Show error message if job failed or canceled */}
           {JOB_STATUSES.FAILED.includes(job.status as JobStatus) &&
             job.errorMessage && (
-              <div className="text-[10px] mt-2 border-t pt-2 text-red-500 break-words text-balance">
-                <ScrollArea className="h-[40px]">
-                  {getErrorPreview()}
+              <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-destructive break-words text-balance overflow-hidden">
+                <ScrollArea className="h-[40px] w-full overflow-hidden">
+                  <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                    {getErrorPreview()}
+                  </div>
                 </ScrollArea>
               </div>
             )}

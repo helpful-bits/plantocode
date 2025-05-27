@@ -9,9 +9,9 @@ export function calculateManagedFilesMap(
 ): FilesMap {
   const newManagedFilesMap: FilesMap = {};
 
-  // Create sets for efficient lookup
-  const includedComparableSet = new Set(currentIncludedFiles);
-  const excludedComparableSet = new Set(currentExcludedFiles);
+  // Create sets for efficient lookup - only if arrays are not empty to avoid unnecessary set creation
+  const includedComparableSet = currentIncludedFiles.length > 0 ? new Set(currentIncludedFiles) : null;
+  const excludedComparableSet = currentExcludedFiles.length > 0 ? new Set(currentExcludedFiles) : null;
 
   // Single pass: Copy all files from rawFilesMap and apply selections
   for (const [path, fileInfo] of Object.entries(rawFilesMap)) {
@@ -19,25 +19,14 @@ export function calculateManagedFilesMap(
     const compPath = file.comparablePath;
     
     // Ensure exclusion takes precedence over inclusion
-    if (excludedComparableSet.has(compPath)) {
-      newManagedFilesMap[path] = {
-        ...file,
-        included: false,
-        forceExcluded: true,
-      };
-    } else if (includedComparableSet.has(compPath)) {
-      newManagedFilesMap[path] = {
-        ...file,
-        included: true,
-        forceExcluded: false,
-      };
-    } else {
-      newManagedFilesMap[path] = {
-        ...file,
-        included: false,
-        forceExcluded: false,
-      };
-    }
+    const isExcluded = excludedComparableSet?.has(compPath) ?? false;
+    const isIncluded = !isExcluded && (includedComparableSet?.has(compPath) ?? false);
+    
+    newManagedFilesMap[path] = {
+      ...file,
+      included: isIncluded,
+      forceExcluded: isExcluded,
+    };
   }
 
   return newManagedFilesMap;

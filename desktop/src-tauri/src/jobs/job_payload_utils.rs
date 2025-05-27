@@ -54,6 +54,8 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
             
             debug!("Successfully deserialized InputPathFinderPayload, converting to processor payload");
             // Convert input payload to PathFinderPayload for processor
+            // Note: Fields like directory_tree, relevant_file_contents, and system_prompt 
+            // are initialized with empty/default values and will be populated by the processor
             let processor_payload = PathFinderPayload {
                 session_id: input_payload.session_id,
                 task_description: input_payload.task_description,

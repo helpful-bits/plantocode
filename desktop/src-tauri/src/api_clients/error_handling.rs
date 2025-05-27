@@ -55,13 +55,26 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
         
         match error_type.as_str() {
             "authentication_error" => AppError::AuthError(format!("Authentication failed: {}", message)),
-            "authorization_error" => AppError::AccessDenied(format!("Access denied: {}", message)),
-            "billing_error" => AppError::BillingError(message),
-            "payment_required" => AppError::BillingError(message),
-            "rate_limit_error" => AppError::ServerProxyError(format!("Rate limit exceeded: {}", message)),
-            "provider_error" => AppError::ServerProxyError(format!("AI provider error: {}", message)),
-            "database_error" => AppError::ServerProxyError(format!("Server database error: {}", message)),
-            "validation_error" => AppError::ValidationError(message),
+            "authorization_error" | "unauthorized" => AppError::AccessDenied(format!("Access denied: {}", message)),
+            "billing_error" | "payment_required" => AppError::BillingError(message),
+            "rate_limit_error" => AppError::NetworkError(format!("Rate limit exceeded: {}", message)),
+            "provider_error" | "external_service_error" => AppError::ExternalServiceError(format!("AI provider error: {}", message)),
+            "database_error" => AppError::DatabaseError(format!("Server database error: {}", message)),
+            "validation_error" | "bad_request" => AppError::ValidationError(message),
+            "not_found" => AppError::NotFoundError(message),
+            "configuration_error" => AppError::ConfigError(format!("Server configuration error: {}", message)),
+            "internal_error" => AppError::ServerProxyError(format!("Server internal error: {}", message)),
+            "serialization_error" => AppError::SerializationError(format!("Server serialization error: {}", message)),
+            "invalid_argument" => AppError::InvalidArgument(message),
+            // Handle provider-specific errors that may come from the server
+            "openrouter_error" => AppError::OpenRouterError(format!("OpenRouter API error: {}", message)),
+            "groq_error" => AppError::ExternalServiceError(format!("Groq API error: {}", message)),
+            "anthropic_error" => AppError::ExternalServiceError(format!("Anthropic API error: {}", message)),
+            "openai_error" => AppError::ExternalServiceError(format!("OpenAI API error: {}", message)),
+            // Network and connection related errors
+            "network_error" => AppError::NetworkError(format!("Network error: {}", message)),
+            "timeout_error" => AppError::NetworkError(format!("Request timeout: {}", message)),
+            "connection_error" => AppError::NetworkError(format!("Connection error: {}", message)),
             _ => {
                 if let Some(code_val) = error_response.code {
                     AppError::ServerProxyError(format!("{} (HTTP Status: {}, Server Code: {})", message, status_code, code_val))

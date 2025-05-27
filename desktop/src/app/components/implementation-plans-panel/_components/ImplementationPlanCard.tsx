@@ -77,12 +77,12 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 ${
           JOB_STATUSES.COMPLETED.includes(plan.status)
-            ? "bg-green-500"
+            ? "bg-success"
             : JOB_STATUSES.FAILED.includes(plan.status)
-              ? "bg-red-500"
+              ? "bg-destructive"
               : isStreaming
-                ? "bg-blue-500"
-                : "bg-amber-500"
+                ? "bg-primary"
+                : "bg-warning"
         }`}
       />
 

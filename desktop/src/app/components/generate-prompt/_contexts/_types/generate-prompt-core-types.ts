@@ -8,6 +8,7 @@ export interface CorePromptContextState {
   sessionName: string;
   hasUnsavedChanges: boolean;
   isFormSaving: boolean;
+  isSessionFormLoading: boolean;
   error: Error | string | null;
 
   // Project data

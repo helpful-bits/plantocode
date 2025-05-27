@@ -11,8 +11,6 @@ import { createLogger } from '@/utils/logger';
 
 const logger = createLogger({ namespace: "ShellUtils" });
 
-// Define shell object with open method for compatibility
-export const shell = { open };
 
 /**
  * Executes a command and returns the output
@@ -26,12 +24,15 @@ export async function executeCommand(command: string, args: string[] = []): Prom
     const result = await cmd.execute();
 
     if (result.code !== 0) {
-      let errMsgDetails = result.stderr || result.stdout || "No specific error output";
-      // If details are empty but code is non-zero, emphasize the exit code.
-      if (errMsgDetails === "No specific error output" && result.code !== 0) {
-        errMsgDetails = `Process exited with code ${result.code}.`;
+      let errMsgDetails = "";
+      if (result.stderr && result.stderr.trim()) {
+        errMsgDetails = result.stderr.trim();
+      } else if (result.stdout && result.stdout.trim()) {
+        errMsgDetails = `Stdout: ${result.stdout.trim()}`;
+      } else {
+        errMsgDetails = `Process exited with code ${result.code} and no standard output or error.`;
       }
-      const errorMessage = `Command "${command} ${args.join(" ")}" failed with code ${result.code}: ${errMsgDetails}`;
+      const errorMessage = `Command "${command} ${args.join(" ")}" failed: ${errMsgDetails}`;
       logger.error(`[ShellUtils] ${errorMessage}`);
       throw new Error(errorMessage);
     }
@@ -49,7 +50,11 @@ export async function executeCommand(command: string, args: string[] = []): Prom
       errorMessage += "An unknown error occurred during shell command execution.";
     }
     logger.error(`[ShellUtils] ${errorMessage}`, error); // Log the original error object too
-    throw new Error(errorMessage);
+    const finalError = new Error(errorMessage);
+    if (error instanceof Error && error.stack) {
+      finalError.stack = `${errorMessage}\nCaused by: ${error.stack}`;
+    }
+    throw finalError;
   }
 }
 

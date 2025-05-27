@@ -54,7 +54,7 @@ const NewSessionForm = ({
         </div>
       </div>
       <p className="text-xs text-muted-foreground mt-1 text-balance">
-        Save the current task description and file selections as a new session.
+        Create a new session with fresh, empty settings.
       </p>
     </div>
   );

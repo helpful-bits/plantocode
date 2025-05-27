@@ -12,7 +12,7 @@ type ToasterToast = ToastProps & {
   description?: ReactNode;
   action?: ToastActionElement;
   clipboardFeedback?: boolean;
-  actionButton?: { label: string; onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | "warning"; className?: string };
+  actionButton?: { label: string; onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | "warning" | "navigation" | "navigation-active" | "filter" | "filter-active" | "compact"; className?: string };
 };
 
 export type ToastOptions = Omit<ToasterToast, "id">;
@@ -142,7 +142,7 @@ function createToast({ ...toastProps }: ToastInput) {
       ...toastProps,
       id,
       open: true,
-      onOpenChange: (open) => {
+      onOpenChange: (open: boolean) => {
         if (!open) dismiss();
       },
     },

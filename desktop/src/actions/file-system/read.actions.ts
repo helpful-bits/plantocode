@@ -1,5 +1,6 @@
 import { type ActionState } from "@/types";
 import { createLogger } from "@/utils/logger";
+import { handleActionError } from "@/utils/action-utils";
 
 import * as tauriFs from "../../utils/tauri-fs";
 
@@ -30,9 +31,6 @@ export async function readExternalFileAction(
       message: `Successfully read file: ${filePath}`,
     };
   } catch (error: unknown) {
-    return {
-      isSuccess: false,
-      message: error instanceof Error ? error.message : "Failed to read file",
-    };
+    return handleActionError(error) as ActionState<{ [key: string]: string }>;
   }
 }

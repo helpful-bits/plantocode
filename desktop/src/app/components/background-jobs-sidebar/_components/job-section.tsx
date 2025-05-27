@@ -26,11 +26,11 @@ export const JobSection = ({
   if (jobs.length === 0) return null;
 
   return (
-    <div className="mb-6 w-full">
+    <div className="mb-6 w-full max-w-full overflow-hidden">
       <h4 className="text-xs font-semibold text-muted-foreground mb-2">
         {title}
       </h4>
-      <div className="space-y-3 w-full">
+      <div className="space-y-3 w-full max-w-full overflow-hidden">
         {jobs.map((job) => (
           <JobCard
             key={job.id}

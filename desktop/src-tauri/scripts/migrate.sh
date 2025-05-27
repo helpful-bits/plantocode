@@ -75,9 +75,16 @@ PREREQUISITES:
     - Database file must be accessible
 
 DEFAULT DATABASE LOCATIONS:
-    macOS: ~/Library/Application Support/com.vibemanager.app/app.db
-    Linux: ~/.local/share/com.vibemanager.app/app.db
-    Windows: %APPDATA%/com.vibemanager.app/app.db
+    macOS: ~/Library/Application Support/com.vibe-manager.app/appdata.db
+    Linux: ~/.local/share/com.vibe-manager.app/appdata.db
+    Windows: %APPDATA%/com.vibe-manager.app/appdata.db
+
+NOTE: The actual database path differs from what's shown above. The correct paths are:
+    macOS: ~/Library/Application Support/com.vibe-manager.app/appdata.db
+    Linux: ~/.local/share/com.vibe-manager.app/appdata.db
+    Windows: %APPDATA%/com.vibe-manager.app/appdata.db
+
+The database filename is 'appdata.db' and the app identifier is 'com.vibe-manager.app' (with hyphens).
 EOF
 }
 
@@ -133,13 +140,13 @@ else
     # Detect OS and set default database path
     case "$(uname -s)" in
         Darwin)  # macOS
-            DB_PATH="$HOME/Library/Application Support/com.vibemanager.app/app.db"
+            DB_PATH="$HOME/Library/Application Support/com.vibe-manager.app/appdata.db"
             ;;
         Linux)
-            DB_PATH="$HOME/.local/share/com.vibemanager.app/app.db"
+            DB_PATH="$HOME/.local/share/com.vibe-manager.app/appdata.db"
             ;;
         CYGWIN*|MINGW*|MSYS*)  # Windows
-            DB_PATH="$APPDATA/com.vibemanager.app/app.db"
+            DB_PATH="$APPDATA/com.vibe-manager.app/appdata.db"
             ;;
         *)
             log_error "Unsupported operating system"

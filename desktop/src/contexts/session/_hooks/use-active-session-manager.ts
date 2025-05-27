@@ -75,9 +75,6 @@ export function useActiveSessionManager({
       pendingOperationRef.current = { sessionId, timestamp: now };
 
       try {
-        // Store the previous value before updating
-        const previousActiveSessionId = activeSessionId;
-        
         // First, update local state immediately for responsive UI
         setActiveSessionId(sessionId);
 
@@ -90,7 +87,6 @@ export function useActiveSessionManager({
         // Check if action failed
         if (result && !result.isSuccess) {
           console.error("Failed to persist active session:", result.message);
-          setActiveSessionId(previousActiveSessionId);
         }
 
         // Clear the pending operation reference on success

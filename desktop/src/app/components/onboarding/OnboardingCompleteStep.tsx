@@ -14,7 +14,7 @@ export function OnboardingCompleteStep({ onFinish }: OnboardingCompleteStepProps
       <Card className="w-full max-w-md p-8 text-center">
         <div className="space-y-6">
           <div className="space-y-2">
-            <CheckCircle className="w-16 h-16 mx-auto text-green-500" />
+            <CheckCircle className="w-16 h-16 mx-auto text-success" />
             <h1 className="text-3xl font-bold">Setup Complete!</h1>
             <p className="text-muted-foreground">
               Your secure storage has been configured successfully. Vibe Manager is ready to use.
@@ -22,8 +22,8 @@ export function OnboardingCompleteStep({ onFinish }: OnboardingCompleteStepProps
           </div>
           
           <div className="space-y-4">
-            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
-              <p className="text-sm text-green-800 dark:text-green-200">
+            <div className="bg-success/10 border border-success/20 rounded-lg p-4">
+              <p className="text-sm text-success">
                 ✓ Keychain access configured<br />
                 ✓ Secure credential storage enabled<br />
                 ✓ Ready for seamless authentication

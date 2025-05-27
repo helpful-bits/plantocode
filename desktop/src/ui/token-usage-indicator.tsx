@@ -1,4 +1,4 @@
-import { Loader2, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { useTokenUsage } from "@/hooks/useTokenUsage";
 
@@ -79,17 +79,14 @@ export function TokenUsageIndicator({
   if (compact) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
-        {isLoading && (
-          <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-        )}
 
         {actualTrialDaysLeft !== undefined && (
-          <Badge variant="outline" className="bg-primary/10">
+          <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary">
             {actualTrialDaysLeft} day{actualTrialDaysLeft !== 1 ? "s" : ""} left
           </Badge>
         )}
 
-        <Badge variant="outline" className="bg-muted/20">
+        <Badge variant="outline" className="bg-background/80 border-border/60 backdrop-blur-sm">
           {currencySymbol}
           {formattedCost}
         </Badge>
@@ -111,13 +108,13 @@ export function TokenUsageIndicator({
 
   // Show full card view with more details
   return (
-    <Card className={`p-4 shadow-sm ${className}`}>
+    <Card className={`p-4 shadow-soft backdrop-blur-sm bg-background/90 ${className}`}>
       <div className="space-y-3">
         {/* Usage title with cost and refresh button */}
         <div className="flex justify-between items-center">
-          <h3 className="text-sm font-medium">Token Usage</h3>
+          <h3 className="text-sm font-medium text-foreground">Token Usage</h3>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-muted/10 text-xs">
+            <Badge variant="outline" className="bg-background/80 border-border/60 backdrop-blur-sm text-xs">
               {currencySymbol}
               {formattedCost}
             </Badge>
@@ -130,11 +127,7 @@ export function TokenUsageIndicator({
                 onClick={refreshUsage}
                 disabled={isLoading}
               >
-                {isLoading ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3 w-3" />
-                )}
+                <RefreshCw className="h-3 w-3" />
               </Button>
             )}
           </div>

@@ -99,7 +99,17 @@
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"is_binary_file\" desktop/src-tauri/src/utils/fs_utils.rs -A 20)",
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"pub async fn is_binary_file\" desktop/src-tauri/src/utils/fs_utils.rs -A 30)",
       "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -n \"pub async fn is_binary_file\" desktop/src-tauri/src/utils/fs_utils.rs)",
-      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -n \"serde_json::json!\" /Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/commands/ -A 5 -B 2)"
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -n \"serde_json::json!\" /Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/commands/ -A 5 -B 2)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"text-red-|text-blue-|text-green-|text-gray-|text-teal-|bg-red-|bg-blue-|bg-green-|bg-gray-|bg-teal-|bg-white|text-white\" app/components/background-jobs-sidebar/job-card.tsx)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"text-red-|text-blue-|text-green-|text-gray-|text-teal-|bg-red-|bg-blue-|bg-green-|bg-gray-|bg-teal-|bg-white|text-white\" app/components/background-jobs-sidebar/background-jobs-sidebar.tsx)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"text-red-|text-blue-|text-green-|text-gray-|text-teal-|bg-red-|bg-blue-|bg-green-|bg-gray-|bg-teal-|bg-white|text-white\" app/components/onboarding/)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg \"text-red-|text-blue-|text-green-|text-gray-|text-teal-|bg-red-|bg-blue-|bg-green-|bg-gray-|bg-teal-|bg-white|text-white\" app/components/settings/)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -l \"text-red-|text-blue-|text-green-|text-gray-|text-teal-|bg-red-|bg-blue-|bg-green-|bg-gray-|bg-teal-|bg-white|text-white\" ui/)",
+      "Bash(/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-darwin/rg -l \"text-red-|text-blue-|text-green-|text-gray-|text-teal-|bg-red-|bg-blue-|bg-green-|bg-gray-|bg-teal-|bg-white|text-white\" app/components/implementation-plans-panel/)",
+      "WebFetch(domain:tailwindflex.com)",
+      "Bash(for file in *.rs)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(done)"
     ],
     "deny": []
   }

@@ -1,11 +1,92 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /**
  * Global styles for Vibe Manager applications
  * Contains CSS variables for theme, utility classes, and base styles
  */
+
+@theme {
+  /* App icon-inspired color system with WHITE background */
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.15 0 0);
+  --color-card: oklch(0.99 0 0);
+  --color-card-foreground: oklch(0.18 0 0);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.15 0 0);
+  
+  /* Primary: Based on #0F7E8C (bright teal) */
+  --color-primary: oklch(0.52 0.09 195);
+  --color-primary-foreground: oklch(0.98 0 0);
+  
+  /* Secondary: Light grays on white */
+  --color-secondary: oklch(0.97 0 0);
+  --color-secondary-foreground: oklch(0.2 0 0);
+  --color-muted: oklch(0.98 0 0);
+  --color-muted-foreground: oklch(0.4 0 0);
+  
+  /* Accent: Light teal variant based on #5FB1BE */
+  --color-accent: oklch(0.97 0.01 195);
+  --color-accent-foreground: oklch(0.15 0.04 206);
+  
+  /* Status colors */
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.97 0.01 25);
+  --color-warning: oklch(0.68 0.15 65);
+  --color-warning-foreground: oklch(0.18 0.05 65);
+  --color-warning-background: oklch(0.95 0.04 65);
+  --color-warning-border: oklch(0.8 0.08 65);
+  --color-info: oklch(0.58 0.12 220);
+  --color-info-foreground: oklch(0.18 0.05 220);
+  --color-info-background: oklch(0.95 0.03 220);
+  --color-info-border: oklch(0.8 0.06 220);
+  --color-success: oklch(0.58 0.15 145);
+  --color-success-foreground: oklch(0.18 0.05 145);
+  --color-success-background: oklch(0.95 0.04 145);
+  --color-success-border: oklch(0.8 0.08 145);
+  
+  /* UI elements on white */
+  --color-border: oklch(0.92 0 0);
+  --color-input: oklch(0.985 0 0);
+  --color-ring: oklch(0.52 0.09 195);
+  --color-chart-1: 12 76% 61%;
+  --color-chart-2: 173 58% 39%;
+  --color-chart-3: 197 37% 24%;
+  --color-chart-4: 43 74% 66%;
+  --color-chart-5: 27 87% 67%;
+
+  --radius: 0.5rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --sidebar-width: 320px;
+
+  --animate-collapsible-down: collapsible-down 0.2s ease-out;
+  --animate-collapsible-up: collapsible-up 0.2s ease-out;
+  --animate-appear: appear 0.3s ease-out;
+  --animate-progress-indeterminate: progress-indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+  @keyframes collapsible-down {
+    from { height: 0; opacity: 0; }
+    to { height: var(--radix-collapsible-content-height); opacity: 1; }
+  }
+
+  @keyframes collapsible-up {
+    from { height: var(--radix-collapsible-content-height); opacity: 1; }
+    to { height: 0; opacity: 0; }
+  }
+
+  @keyframes appear {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes progress-indeterminate {
+    0% { transform: translateX(-100%); width: 40%; }
+    50% { width: 70%; }
+    100% { transform: translateX(100%); width: 40%; }
+  }
+}
 
 @layer utilities {
   .text-balance {
@@ -17,9 +98,78 @@
     transition: all 0.2s ease;
   }
 
-  /* Improved focus styles */
+  /* Improved focus styles - accessible but modern */
   .focus-ring {
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring/70;
+  }
+
+  /* Softer shadow variants */
+  .shadow-soft {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  }
+
+  .shadow-soft-md {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  /* White background variations */
+  .bg-subtle {
+    background: linear-gradient(135deg, hsl(var(--background)) 0%, hsl(var(--muted)) 100%);
+  }
+
+  .bg-card-subtle {
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--background)) 100%);
+  }
+
+  /* WCAG-compliant text variants */
+  .text-soft {
+    color: hsl(var(--foreground));
+  }
+
+  .text-muted-soft {
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Subtle border variations */
+  .border-soft {
+    border-color: hsl(var(--border));
+  }
+
+  .border-subtle {
+    border-color: hsl(var(--border) / 0.5);
+  }
+
+  /* Soft interaction states */
+  .hover-soft {
+    @apply hover:bg-accent/20 hover:text-accent-foreground transition-all duration-300;
+  }
+
+  /* Enhanced glass morphism effects with teal accents */
+  .glass {
+    background: color-mix(in srgb, hsl(var(--primary)) 5%, transparent);
+    backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 10%, transparent);
+  }
+
+  .glass-card {
+    background: linear-gradient(135deg, 
+      color-mix(in srgb, hsl(var(--primary)) 8%, transparent) 0%, 
+      color-mix(in srgb, hsl(var(--primary)) 3%, transparent) 100%);
+    backdrop-filter: blur(8px);
+    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 8%, transparent);
+  }
+
+  /* Teal gradient utilities matching app icon */
+  .bg-teal-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, 
+      color-mix(in srgb, hsl(var(--primary)), black 60%) 50%, 
+      color-mix(in srgb, hsl(var(--primary)), black 80%) 100%);
+  }
+
+  .bg-teal-gradient-light {
+    background: linear-gradient(135deg, 
+      color-mix(in srgb, hsl(var(--primary)) 10%, transparent) 0%, 
+      color-mix(in srgb, hsl(var(--primary)) 5%, transparent) 100%);
   }
 
   /* Loading progress bar animations */
@@ -42,23 +192,9 @@
     animation: progress 2s ease-in-out infinite;
   }
 
-  /* Indeterminate progress for global loading indicator */
-  @keyframes progress-indeterminate {
-    0% {
-      transform: translateX(-100%);
-      width: 40%;
-    }
-    50% {
-      width: 70%;
-    }
-    100% {
-      transform: translateX(100%);
-      width: 40%;
-    }
-  }
-
+  /* Use the progress-indeterminate animation defined in @theme */
   .animate-progress-indeterminate {
-    animation: progress-indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    animation: var(--animate-progress-indeterminate);
   }
 
   /* Slower pulse animation for placeholders */
@@ -106,138 +242,145 @@
     @apply animate-pulse opacity-70;
   }
 
-  /* Navigation bar enhancements */
+  /* Navigation bar enhancements with backdrop */
   .nav-bar {
-    @apply relative w-full py-6 border-b border-border/30 mb-4;
-    background: linear-gradient(to right, hsl(var(--background)), hsl(var(--background)/0.98));
+    @apply relative w-full py-4 border-b border-border/30 mb-4 backdrop-blur-sm;
+    background: linear-gradient(to right, hsl(var(--color-background)), hsl(var(--color-background)/0.98));
   }
 
   .nav-bar::after {
+    @apply absolute bottom-0 left-0 right-0 h-px;
     content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(to right, transparent, hsl(var(--border)), transparent);
+    background: linear-gradient(to right, transparent, hsl(var(--color-border)), transparent);
   }
-
-  .nav-button {
-    @apply h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out;
-    @apply hover:shadow-sm hover:scale-[1.02] active:scale-[0.98];
-  }
-
-  .nav-button.active {
-    @apply bg-primary text-primary-foreground shadow-sm;
-    box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
-  }
-
 
   .nav-loading-indicator {
-    @apply flex items-center text-xs text-muted-foreground px-4 py-2 rounded-full;
-    @apply bg-gradient-to-r from-muted/40 to-muted/20 border border-border/20;
-    backdrop-filter: blur(8px);
+    @apply flex items-center text-xs text-muted-foreground px-3 py-1.5 rounded-full;
+    @apply bg-gradient-to-r from-muted/40 to-muted/20 border border-border/20 backdrop-blur-sm;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
   .nav-actions {
-    @apply flex items-center gap-3;
-  }
-
-  .nav-action-button {
-    @apply h-10 w-10 rounded-lg transition-all duration-200 ease-out;
-    @apply hover:shadow-sm hover:scale-[1.02] active:scale-[0.98];
-    @apply hover:bg-accent/50;
+    @apply flex items-center gap-2;
   }
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 224 71.4% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71.4% 4.1%;
-    --primary: 220.9 39.3% 11%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --warning: 38 92% 50%; /* orange-500 */
-    --warning-foreground: 38 92% 5%; /* dark orange/brown */
-    --warning-background: 38 92% 95%; /* very light orange */
-    --warning-border: 38 92% 80%; /* lighter orange */
-    --info: 200 90% 50%; /* A pleasant blue */
-    --info-foreground: 200 90% 10%;
-    --info-background: 200 90% 95%;
-    --info-border: 200 90% 80%;
-    --success: 140 70% 40%; /* A clear green */
-    --success-foreground: 140 70% 5%;
-    --success-background: 140 70% 95%;
-    --success-border: 140 70% 80%;
-    --border: 0 0% 89.8%;
-    --input: 220 13% 91%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-    --sidebar-width: 320px; /* Increased sidebar width when expanded */
+    /* Legacy color variables for compatibility */
+    --background: var(--color-background);
+    --foreground: var(--color-foreground);
+    --card: var(--color-card);
+    --card-foreground: var(--color-card-foreground);
+    --popover: var(--color-popover);
+    --popover-foreground: var(--color-popover-foreground);
+    --primary: var(--color-primary);
+    --primary-foreground: var(--color-primary-foreground);
+    --secondary: var(--color-secondary);
+    --secondary-foreground: var(--color-secondary-foreground);
+    --muted: var(--color-muted);
+    --muted-foreground: var(--color-muted-foreground);
+    --accent: var(--color-accent);
+    --accent-foreground: var(--color-accent-foreground);
+    --destructive: var(--color-destructive);
+    --destructive-foreground: var(--color-destructive-foreground);
+    --warning: var(--color-warning);
+    --warning-foreground: var(--color-warning-foreground);
+    --warning-background: var(--color-warning-background);
+    --warning-border: var(--color-warning-border);
+    --info: var(--color-info);
+    --info-foreground: var(--color-info-foreground);
+    --info-background: var(--color-info-background);
+    --info-border: var(--color-info-border);
+    --success: var(--color-success);
+    --success-foreground: var(--color-success-foreground);
+    --success-background: var(--color-success-background);
+    --success-border: var(--color-success-border);
+    --border: var(--color-border);
+    --input: var(--color-input);
+    --ring: var(--color-ring);
+    --chart-1: var(--color-chart-1);
+    --chart-2: var(--color-chart-2);
+    --chart-3: var(--color-chart-3);
+    --chart-4: var(--color-chart-4);
+    --chart-5: var(--color-chart-5);
   }
 
   .dark {
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 20% 98%;
-    --card: 224 71.4% 4.1%;
-    --card-foreground: 210 20% 98%;
-    --popover: 224 71.4% 4.1%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 217 33% 17%;
-    --primary-foreground: 210 20% 98%;
-    --secondary: 215 25% 12%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 215 25% 9%;
-    --muted-foreground: 217 10% 64%;
-    --accent: 217 15% 12%;
-    --accent-foreground: 210 20% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 20% 98%;
-    --warning: 38 92% 60%; /* slightly brighter orange */
-    --warning-foreground: 38 92% 95%; /* very light orange/almost white */
-    --warning-background: 38 92% 20%; /* dark orange/brown */
-    --warning-border: 38 92% 40%; /* darker orange */
-    --info: 200 80% 60%;
-    --info-foreground: 200 80% 95%;
-    --info-background: 200 80% 20%;
-    --info-border: 200 80% 40%;
-    --success: 140 60% 50%;
-    --success-foreground: 140 60% 95%;
-    --success-background: 140 60% 20%;
-    --success-border: 140 60% 40%;
-    --border: 215 25% 14%;
-    --input: 215 25% 10%;
-    --ring: 212 15% 45%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    /* Dark mode with icon-inspired navy and teal accents */
+    /* Background: Inspired by #071C2A (midnight navy) */
+    --color-background: oklch(0.12 0.02 206);
+    --color-foreground: oklch(0.9 0 0);
+    
+    /* Cards: Slightly lighter navy */
+    --color-card: oklch(0.16 0.02 206);
+    --color-card-foreground: oklch(0.88 0 0);
+    --color-popover: oklch(0.14 0.02 206);
+    --color-popover-foreground: oklch(0.9 0 0);
+    
+    /* Primary: Brighter teal for dark mode */
+    --color-primary: oklch(0.65 0.08 195);
+    --color-primary-foreground: oklch(0.12 0.02 206);
+    
+    /* Secondary and muted: Navy tones */
+    --color-secondary: oklch(0.22 0.02 206);
+    --color-secondary-foreground: oklch(0.82 0 0);
+    --color-muted: oklch(0.18 0.02 206);
+    --color-muted-foreground: oklch(0.62 0 0);
+    
+    /* Accent: Light teal with good contrast */
+    --color-accent: oklch(0.3 0.03 195);
+    --color-accent-foreground: oklch(0.85 0 0);
+    
+    /* Status colors */
+    --color-destructive: oklch(0.6 0.22 25);
+    --color-destructive-foreground: oklch(0.9 0.01 25);
+    --color-warning: oklch(0.65 0.15 65);
+    --color-warning-foreground: oklch(0.95 0.02 65);
+    --color-warning-background: oklch(0.2 0.08 65);
+    --color-warning-border: oklch(0.4 0.12 65);
+    --color-info: oklch(0.6 0.12 220);
+    --color-info-foreground: oklch(0.95 0.02 220);
+    --color-info-background: oklch(0.2 0.06 220);
+    --color-info-border: oklch(0.4 0.08 220);
+    --color-success: oklch(0.45 0.08 145);
+    --color-success-foreground: oklch(0.88 0.01 145);
+    --color-success-background: oklch(0.16 0.04 145);
+    --color-success-border: oklch(0.3 0.06 145);
+    
+    /* UI elements with navy tones */
+    --color-border: oklch(0.28 0.02 206);
+    --color-input: oklch(0.2 0.02 206);
+    --color-ring: oklch(0.65 0.08 195);
+    
+    /* Charts with teal family */
+    --color-chart-1: oklch(0.7 0.15 25);
+    --color-chart-2: oklch(0.65 0.08 195);
+    --color-chart-3: oklch(0.6 0.08 65);
+    --color-chart-4: oklch(0.75 0.15 285);
+    --color-chart-5: oklch(0.72 0.18 345);
   }
 
   * {
     @apply border-border;
   }
+  
+  html {
+    @apply bg-background;
+    margin: 0;
+    padding: 0;
+  }
+  
   body {
     @apply bg-background text-foreground antialiased;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
+  }
+  
+  #root {
+    @apply bg-background min-h-screen;
   }
 }
 
@@ -248,37 +391,44 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15); /* Subtle thumb color */
+  background-color: color-mix(in srgb, hsl(var(--foreground)) 15%, transparent);
   border-radius: 6px;
   transition: background-color 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.25); /* Slightly darker on hover */
+  background-color: color-mix(in srgb, hsl(var(--foreground)) 25%, transparent);
 }
 
 /* Scrollbar track */
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.03); /* Very subtle track */
+  background: color-mix(in srgb, hsl(var(--foreground)) 3%, transparent);
   border-radius: 6px;
-}
-
-/* Dark mode scrollbar styles */
-.dark::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.15);
-}
-
-.dark::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.25);
-}
-
-.dark::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.03);
 }
 
 
 /* Better colors for dialog backgrounds in dark mode */
 .dark [role="dialog"] {
-  background-color: hsl(var(--background));
+  background-color: hsl(var(--card)) !important;
   border-color: hsl(var(--border));
+}
+
+/* Ensure job details modal has solid background */
+.dark [data-radix-dialog-content] {
+  background-color: hsl(var(--card)) !important;
+  backdrop-filter: none !important;
+}
+
+/* Fix ScrollArea table display issues in background jobs sidebar */
+[data-radix-scroll-area-viewport] {
+  display: block !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+[data-radix-scroll-area-viewport] > * {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
 }

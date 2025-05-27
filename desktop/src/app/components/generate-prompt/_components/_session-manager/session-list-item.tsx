@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Pencil, Check, X, Copy, Trash2 } from "lucide-react";
-
+import { useRef, useEffect } from "react";
 
 import { type Session } from "@/types/session-types";
 import {
@@ -54,6 +54,13 @@ const SessionListItem = ({
   onClone,
   onEditInputChange,
 }: SessionListItemProps) => {
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing) {
+      setTimeout(() => editInputRef.current?.focus(), 0);
+    }
+  }, [isEditing]);
   return (
     <div
       className={`
@@ -77,6 +84,7 @@ const SessionListItem = ({
       {isEditing ? (
         <div className="flex-1 flex items-center mr-2">
           <Input
+            ref={editInputRef}
             value={editInputName}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               onEditInputChange(e.target.value)
@@ -122,7 +130,7 @@ const SessionListItem = ({
       ) : (
         <div className="flex-1 flex flex-col">
           <div className="flex items-center">
-            <span className="text-sm font-medium truncate max-w-[250px]">
+            <span className="text-sm font-medium truncate max-w-[250px] text-foreground">
               {session.name || "Untitled Session"}
             </span>
             {isSessionLoading && isActive && (

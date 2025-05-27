@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 interface ImplementationPlanDataResponse {
   id: string;
@@ -74,14 +75,7 @@ export async function createImplementationPlanAction(params: {
     };
   } catch (error) {
     console.error("[createImplementationPlanAction]", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error creating implementation plan",
-      error: error instanceof Error ? error : new Error("Unknown error"),
-    };
+    return handleActionError(error) as ActionState<{ jobId?: string }>;
   }
 }
 
@@ -132,18 +126,20 @@ export async function readImplementationPlanAction(jobId: string): Promise<
     };
   } catch (error) {
     console.error("[readImplementationPlanAction]", error);
-
+    const errorState = handleActionError(error);
     return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error reading implementation plan",
-      error: error instanceof Error ? error : new Error("Unknown error"),
+      ...errorState,
       data: {
         id: jobId,
         createdAt: new Date().toISOString(),
       },
-    };
+    } as ActionState<{
+      id: string;
+      title?: string;
+      description?: string;
+      content?: string;
+      contentFormat?: string;
+      createdAt: string;
+    }>;
   }
 }

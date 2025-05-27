@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 // Re-export functions from the primary project-settings.actions file
 export { 
@@ -54,13 +55,7 @@ export async function getGenericCachedStateAction(
       `[getGenericCachedStateAction] Error getting state for key ${key}:`,
       error
     );
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error getting cached state",
-    };
+    return handleActionError(error) as ActionState<ConfigValue>;
   }
 }
 
@@ -104,12 +99,6 @@ export async function saveGenericCachedStateAction(
       `[saveGenericCachedStateAction] Error saving state for key ${key}:`,
       error
     );
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error saving cached state",
-    };
+    return handleActionError(error) as ActionState<void>;
   }
 }

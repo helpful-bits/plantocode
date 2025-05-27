@@ -128,6 +128,7 @@ fn main() {
             commands::app_commands::get_app_info,
             commands::app_commands::get_config_load_error,
             commands::app_commands::get_database_info_command,
+            commands::app_commands::is_keyring_onboarding_required,
             
             // Auth0 commands (includes JWT token management)
             commands::auth0_commands::start_auth0_login_flow,
@@ -187,6 +188,7 @@ fn main() {
             // Path finding commands
             commands::path_finding_commands::find_relevant_files_command,
             commands::path_finding_commands::create_generate_directory_tree_job_command,
+            commands::path_finding_commands::create_path_correction_job_command,
             
             // Voice commands
             commands::voice_commands::create_transcription_job_command,
@@ -228,6 +230,7 @@ fn main() {
             
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,
+            commands::setup_commands::get_storage_mode,
             
             // Database maintenance commands
             commands::database_maintenance_commands::check_database_health_command,

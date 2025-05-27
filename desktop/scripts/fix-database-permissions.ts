@@ -8,12 +8,12 @@
  */
 
 import {
-  ensureDbPermissions,
+  ensureDbPermissions as ensureDatabasePermissions,
   handleReadonlyDatabase,
 } from "../../core/lib/db/connection-manager";
 import { closeDatabase, initializeDatabase } from "../../core/lib/db";
 import { DB_FILE } from "../../core/lib/db/constants";
-import fs from "fs";
+import fs from "node:fs";
 
 async function main() {
   console.log("=== Database Permission Fix Utility ===");
@@ -21,22 +21,22 @@ async function main() {
 
   try {
     // Check if the database file exists
-    const dbExists = fs.existsSync(DB_FILE);
-    console.log(`Database file exists: ${dbExists ? "Yes" : "No"}`);
+    const databaseExists = fs.existsSync(DB_FILE);
+    console.log(`Database file exists: ${databaseExists ? "Yes" : "No"}`);
 
-    if (dbExists) {
+    if (databaseExists) {
       // Check current permissions
       try {
         const stats = fs.statSync(DB_FILE);
         console.log(`Current database file mode: ${stats.mode.toString(8)}`);
-      } catch (err) {
-        console.error("Error checking database file stats:", err);
+      } catch (error) {
+        console.error("Error checking database file stats:", error);
       }
     }
 
     // Step 1: Fix permissions
     console.log("\nStep 1: Fixing permissions...");
-    const permissionsFixed = await ensureDbPermissions();
+    const permissionsFixed = await ensureDatabasePermissions();
 
     if (permissionsFixed) {
       console.log("✅ Database permissions successfully fixed");
@@ -88,7 +88,7 @@ async function main() {
 }
 
 // Run the main function
-main().catch((err) => {
-  console.error("Unhandled error:", err);
+main().catch((error) => {
+  console.error("Unhandled error:", error);
   process.exit(1);
 });

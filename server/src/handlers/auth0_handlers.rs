@@ -36,6 +36,7 @@ pub struct PollStatusQuery {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PollStatusResponse {
     pub status: String,
     pub authorization_code: String,

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Enhance a task description with more details and clarity
@@ -65,12 +66,6 @@ export async function enhanceTaskDescriptionAction({
     };
   } catch (error) {
     console.error(`[enhanceTaskDescriptionAction] Error:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to enhance task description",
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

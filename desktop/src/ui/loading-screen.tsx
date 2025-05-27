@@ -51,7 +51,7 @@ export function LoadingScreen({
   if (variant === "minimal") {
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-background">
-        <div className="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin mb-4"></div>
+        <div className="w-12 h-12 rounded-xl border-4 border-muted border-t-primary animate-spin mb-4 shadow-soft"></div>
         <p className="text-foreground/70 text-lg">{displayMessage}</p>
       </div>
     );
@@ -59,26 +59,26 @@ export function LoadingScreen({
 
   // Render full loading screen variant
   return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center bg-background z-50">
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-background z-20">
       <div className="text-center max-w-md px-6">
         {/* Logo placeholder (could be replaced with actual logo) */}
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-primary/40 flex items-center justify-center">
-            <div className="w-8 h-8 rounded-full bg-primary"></div>
+        <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-primary/10 flex items-center justify-center shadow-soft backdrop-blur-sm">
+          <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-primary"></div>
           </div>
         </div>
 
         {/* Main loading spinner */}
-        <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+        <div className="w-16 h-16 border-4 border-muted border-t-primary rounded-xl animate-spin mx-auto mb-4 shadow-soft"></div>
 
         {/* Primary message */}
-        <h3 className="text-xl font-medium mb-2">{displayMessage}</h3>
+        <h3 className="text-xl font-medium mb-2 text-foreground">{displayMessage}</h3>
 
         {/* Secondary message based on loading type */}
         <p className="text-muted-foreground mb-4">{getSubtext()}</p>
 
         {/* Loading progress bar */}
-        <div className="w-full h-1.5 bg-muted overflow-hidden rounded-full">
+        <div className="w-full h-1.5 bg-muted overflow-hidden rounded-xl shadow-soft backdrop-blur-sm">
           <div className="h-full bg-primary animate-progress-indeterminate"></div>
         </div>
       </div>

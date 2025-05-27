@@ -9,6 +9,7 @@ use crate::db::repositories::{
 use crate::config::AppSettings;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskSpecificModelConfig {
     pub model: String,
     pub max_tokens: u32,
@@ -16,6 +17,7 @@ pub struct TaskSpecificModelConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
     pub name: String,
@@ -30,6 +32,7 @@ pub struct ModelInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderSettings {
     pub max_files_with_content: Option<u32>,
     pub include_file_contents: Option<bool>,
@@ -40,6 +43,7 @@ pub struct PathFinderSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeAIConfig {
     pub default_llm_model_id: String,
     pub default_voice_model_id: String,

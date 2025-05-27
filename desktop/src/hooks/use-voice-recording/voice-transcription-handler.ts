@@ -272,8 +272,8 @@ export async function processDirectTranscriptionResult(
       error
     );
     updateState({
-      error:
-        error instanceof Error ? error.message : "Error processing recording",
+      error: createTranscriptionErrorMessage(error),
+      isProcessing: false,
     });
     setTextStatus("error");
   }

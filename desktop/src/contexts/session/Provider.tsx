@@ -58,6 +58,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
     id: null,
     timestamp: 0,
   });
+  
+  // Ref to prevent excessive draft session creation
+  const hasDraftInitializedRef = useRef<boolean>(false);
+  const lastProjectDirectoryRef = useRef<string | undefined>(undefined);
 
   // Initialize the active session manager
   const activeSessionManager = useActiveSessionManager({
@@ -106,7 +110,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
     isSessionLoading: sessionStateHook.isSessionLoading,
     loadSessionById: sessionLoader.loadSessionById,
     setAppInitializing,
-    setSessionLoading: sessionStateHook.setSessionLoading,
     hasCompletedInitRef,
   });
 
@@ -182,11 +185,18 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Initialize draft session when no session is loaded but project is active
   useEffect(() => {
+    // Reset draft initialization flag if project directory changes
+    if (lastProjectDirectoryRef.current !== projectDirectory) {
+      hasDraftInitializedRef.current = false;
+      lastProjectDirectoryRef.current = projectDirectory;
+    }
+    
     if (
       projectDirectory &&
       !activeSessionManager.activeSessionId &&
       !sessionStateHook.currentSession &&
-      !sessionStateHook.isSessionLoading
+      !sessionStateHook.isSessionLoading &&
+      !hasDraftInitializedRef.current
     ) {
       const draftSession: Session = {
         id: DRAFT_SESSION_ID,
@@ -215,6 +225,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
       sessionStateHook.setCurrentSession(draftSession);
       sessionStateHook.setSessionModified(false);
+      hasDraftInitializedRef.current = true;
     }
   }, [
     projectDirectory,

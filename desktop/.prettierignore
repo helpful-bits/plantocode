@@ -12,3 +12,20 @@ src-tauri/Cargo.lock
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
+
+# Config files (avoid formatting conflicts)
+eslint.config.mjs
+postcss.config.mjs
+components.json
+tailwind.config.ts
+vite.config.mts
+
+# Generated files that shouldn't be formatted
+gen/
+*.gen.*
+
+# IDE and temp files
+.vscode/
+.idea/
+*.swp
+*.swo

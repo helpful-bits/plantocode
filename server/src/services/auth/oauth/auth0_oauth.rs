@@ -54,6 +54,7 @@ pub struct Auth0TokenResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FrontendUser {
     pub id: String,
     pub email: String,
@@ -62,6 +63,7 @@ pub struct FrontendUser {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthDataResponse {
     pub user: FrontendUser,
     pub token: String,

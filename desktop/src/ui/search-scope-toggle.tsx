@@ -4,7 +4,6 @@ import { FileCheck, Files } from "lucide-react";
 import { FC } from "react";
 
 import { Button } from "@/ui/button";
-import { cn } from "@/utils/utils";
 
 interface SearchScopeToggleProps {
   searchSelectedFilesOnly: boolean;
@@ -23,16 +22,11 @@ export const SearchScopeToggle: FC<SearchScopeToggleProps> = ({
   includedCount = 0,
 }) => {
   return (
-    <div className="flex items-center border rounded-md overflow-hidden dark:border-border">
+    <div className="flex items-center border border-border/60 rounded-lg overflow-hidden shadow-soft backdrop-blur-sm bg-background/80">
       <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "rounded-none border-0 h-8 px-3",
-          !searchSelectedFilesOnly
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90"
-        )}
+        variant={!searchSelectedFilesOnly ? "filter-active" : "filter"}
+        size="xs"
+        className="px-3"
         onClick={() => onToggle(false)}
         disabled={disabled}
         title="Search in all project files"
@@ -41,17 +35,12 @@ export const SearchScopeToggle: FC<SearchScopeToggleProps> = ({
         All Files
       </Button>
 
-      <div className="w-[1px] h-6 bg-border dark:bg-border" />
+      <div className="w-[1px] h-6 bg-border/40" />
 
       <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "rounded-none border-0 h-8 px-3",
-          searchSelectedFilesOnly
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90"
-        )}
+        variant={searchSelectedFilesOnly ? "filter-active" : "filter"}
+        size="xs"
+        className="px-3"
         onClick={() => onToggle(true)}
         disabled={disabled || includedCount === 0}
         title={

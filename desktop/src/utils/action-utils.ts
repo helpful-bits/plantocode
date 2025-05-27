@@ -97,10 +97,46 @@ export function handleActionError(
     let appError: AppError;
     try {
       const parsed = JSON.parse(error) as { code?: string; message?: string; details?: string; type?: string /* legacy */ };
-      if (parsed && typeof parsed.message === 'string') {
-        const rustCode = parsed.code || parsed.type; // Prefer code, fallback to type
-        const errorType = rustCode ? mapRustErrorCodeToErrorType(rustCode) : ErrorType.UNKNOWN_ERROR;
-        appError = new AppError(parsed.message, errorType, { metadata: { details: parsed.details, source: 'backend-serialized' } });
+      if (parsed && typeof parsed === 'object') {
+        // Prioritize code field for SerializableError, then fallback to type (legacy)
+        const rustCode = (typeof parsed.code === 'string' && parsed.code) ? parsed.code : 
+                        (typeof parsed.type === 'string' && parsed.type) ? parsed.type : null;
+        
+        const errorMessage = (typeof parsed.message === 'string' && parsed.message.trim()) 
+          ? parsed.message 
+          : "A backend error occurred";
+        
+        // Use rustCode for mapping if available, otherwise fall back to message-based inference
+        let errorType: ErrorType;
+        if (rustCode) {
+          errorType = mapRustErrorCodeToErrorType(rustCode);
+        } else {
+          // Fallback to message-based inference when no code/type is available
+          const messageLower = errorMessage.toLowerCase();
+          if (messageLower.includes('not found')) {
+            errorType = ErrorType.NOT_FOUND_ERROR;
+          } else if (messageLower.includes('permission') || messageLower.includes('auth')) {
+            errorType = ErrorType.PERMISSION_ERROR;
+          } else if (messageLower.includes('billing') || messageLower.includes('payment')) {
+            errorType = ErrorType.BILLING_ERROR;
+          } else if (messageLower.includes('network') || messageLower.includes('connection')) {
+            errorType = ErrorType.NETWORK_ERROR;
+          } else if (messageLower.includes('config')) {
+            errorType = ErrorType.CONFIGURATION_ERROR;
+          } else if (messageLower.includes('validation')) {
+            errorType = ErrorType.VALIDATION_ERROR;
+          } else {
+            errorType = ErrorType.UNKNOWN_ERROR;
+          }
+        }
+        
+        appError = new AppError(errorMessage, errorType, { 
+          metadata: { 
+            details: parsed.details, 
+            source: 'backend-serialized',
+            rustCode: rustCode 
+          } 
+        });
       } else {
         // String is not our expected JSON structure
         const message = error.trim() || "An unspecified error occurred.";
@@ -137,16 +173,35 @@ export function handleActionError(
   if (potentialTauriError) {
     logger.debug("Detected Tauri-originated Error:", potentialTauriError);
     
-    const errorMessage = (typeof potentialTauriError.message === 'string') 
+    let errorMessage = (typeof potentialTauriError.message === 'string' && potentialTauriError.message.trim()) 
       ? potentialTauriError.message 
       : "Tauri error with undefined message";
     
-    // Determine ErrorType, prioritizing the code field from Tauri
+    let errorCode: string | undefined = potentialTauriError.code;
+    let errorDetails: string | undefined;
+    
+    // Try to parse the message as SerializableError JSON if no direct code is available
+    if (!errorCode && typeof potentialTauriError.message === 'string') {
+      try {
+        const parsedMessage = JSON.parse(potentialTauriError.message);
+        if (parsedMessage && typeof parsedMessage === 'object' && 
+            typeof parsedMessage.code === 'string' && typeof parsedMessage.message === 'string') {
+          // Message contains a stringified SerializableError
+          errorCode = parsedMessage.code;
+          errorMessage = parsedMessage.message;
+          errorDetails = parsedMessage.details;
+        }
+      } catch (e) {
+        // Message is not JSON, continue with original message
+      }
+    }
+    
+    // Determine ErrorType, prioritizing the code field from SerializableError
     let errorType: ErrorType;
     
-    if (potentialTauriError.code) {
-      // Use the code field for reliable mapping
-      errorType = mapRustErrorCodeToErrorType(potentialTauriError.code);
+    if (errorCode && typeof errorCode === 'string') {
+      // Prioritize code field from SerializableError for reliable mapping
+      errorType = mapRustErrorCodeToErrorType(errorCode);
     } else {
       // Fallback to message-based detection for backward compatibility
       const lowerMessage = errorMessage.toLowerCase();
@@ -172,10 +227,12 @@ export function handleActionError(
       errorType,
       {
         metadata: {
-          category: potentialTauriError.type || potentialTauriError.code || "TauriError",
+          category: potentialTauriError.type || errorCode || "TauriError",
           source: potentialTauriError.source || "backend",
           payload: potentialTauriError.payload,
           stack: potentialTauriError.stack,
+          rustCode: errorCode,
+          details: errorDetails,
         }
       }
     );

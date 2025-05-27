@@ -58,21 +58,21 @@ export function getStatusIconClass(status: string): string {
   switch (status) {
     case "completed":
     case "completed_by_tag":
-      return "h-3 w-3 text-green-500";
+      return "h-3 w-3 text-success";
     case "failed":
-      return "h-3 w-3 text-red-500";
+      return "h-3 w-3 text-destructive";
     case "running":
     case "processing_stream":
-      return "h-3 w-3 text-blue-500 animate-spin";
+      return "h-3 w-3 text-primary animate-spin";
     case "canceled":
-      return "h-3 w-3 text-amber-500";
+      return "h-3 w-3 text-warning";
     case "preparing":
     case "created":
     case "queued":
     case "idle":
     case "preparing_input":
     case "generating_stream":
-      return "h-3 w-3 text-blue-400";
+      return "h-3 w-3 text-info";
     default:
       return "h-3 w-3 text-muted-foreground";
   }
@@ -87,20 +87,20 @@ export function getApiTypeBadgeClasses(apiType: ApiType): string {
 
   switch (apiType.toLowerCase()) {
     case "gemini":
-      color = "text-emerald-50";
-      bgColor = "bg-emerald-700";
+      color = "text-success-foreground";
+      bgColor = "bg-success";
       break;
     case "claude":
-      color = "text-purple-50";
-      bgColor = "bg-purple-700";
+      color = "text-info-foreground";
+      bgColor = "bg-info";
       break;
     case "openai":
-      color = "text-teal-50";
-      bgColor = "bg-teal-700";
+      color = "text-primary-foreground";
+      bgColor = "bg-primary";
       break;
     case "groq":
-      color = "text-amber-50";
-      bgColor = "bg-amber-700";
+      color = "text-warning-foreground";
+      bgColor = "bg-warning";
       break;
   }
 
@@ -125,7 +125,7 @@ export function formatTaskType(taskType: TaskType): string {
   switch (taskType) {
     case "path_finder":
       return "Path Finding";
-    case "transcription":
+    case "voice_transcription":
       return "Voice Transcription";
     case "regex_generation":
       return "Regex Generation";
