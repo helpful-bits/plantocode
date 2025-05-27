@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Creates a job to correct and improve transcribed text
@@ -54,12 +55,6 @@ export async function createVoiceCorrectionJobAction(
     };
   } catch (error) {
     console.error("[TextCorrection] Error creating correction job:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to start text correction",
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

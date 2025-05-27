@@ -6,9 +6,9 @@ async function addModelUsedColumn() {
   try {
     console.log("Adding model_used column to sessions table...");
 
-    await connectionPool.withConnection(async (db) => {
+    await connectionPool.withConnection(async (database) => {
       // Check if column exists
-      const columnExists = db
+      const columnExists = database
         .prepare(
           `
         SELECT name FROM pragma_table_info('sessions') WHERE name='model_used'
@@ -24,14 +24,14 @@ async function addModelUsedColumn() {
       console.log("Adding model_used column to sessions table...");
 
       // Add the column
-      db.prepare(
+      database.prepare(
         `
         ALTER TABLE sessions ADD COLUMN model_used TEXT DEFAULT '${GEMINI_FLASH_MODEL}'
       `
       ).run();
 
       // Create index
-      db.prepare(
+      database.prepare(
         `
         CREATE INDEX IF NOT EXISTS idx_sessions_model_used ON sessions(model_used)
       `
@@ -40,7 +40,7 @@ async function addModelUsedColumn() {
       console.log("Successfully added model_used column to sessions table");
 
       // Add migration record
-      const migrationExists = db
+      const migrationExists = database
         .prepare(
           `
         SELECT name FROM migrations WHERE name='add_model_used_column'
@@ -49,7 +49,7 @@ async function addModelUsedColumn() {
         .get();
 
       if (!migrationExists) {
-        db.prepare(
+        database.prepare(
           `
           INSERT INTO migrations (name, applied_at) 
           VALUES ('add_model_used_column', strftime('%s', 'now'))

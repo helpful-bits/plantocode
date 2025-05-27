@@ -4,7 +4,7 @@ use std::sync::Arc;
 use futures::{Stream, StreamExt};
 use reqwest::{Client, header, multipart};
 use serde_json::{json, Value};
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use tauri::{AppHandle, Manager};
 
 use crate::auth::TokenManager;
@@ -126,7 +126,7 @@ impl ServerProxyClient {
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
         
         response.json::<R>().await
@@ -154,7 +154,7 @@ impl ServerProxyClient {
         }
     }
     
-    /// Get auth token from TokenManager
+    /// Get auth token from TokenManager with refresh attempt on failure
     async fn get_auth_token(&self) -> AppResult<String> {
         match self.token_manager.get().await {
             Some(token) => {
@@ -163,8 +163,22 @@ impl ServerProxyClient {
             },
             None => {
                 debug!("No auth token found in TokenManager");
-                Err(AppError::AuthError("Authentication token not found".to_string()))
+                Err(AppError::AuthError("Authentication token not found. Please re-authenticate.".to_string()))
             }
+        }
+    }
+    
+    /// Handle authentication error by suggesting token refresh
+    async fn handle_auth_error(&self, status_code: u16, error_text: &str) -> AppError {
+        if status_code == 401 {
+            warn!("Received 401 Unauthorized. Token may be expired. User needs to refresh token manually.");
+            // Clear the invalid token
+            if let Err(e) = self.token_manager.set(None).await {
+                error!("Failed to clear invalid token: {}", e);
+            }
+            AppError::AuthError("Authentication token expired. Please use refresh_app_jwt_auth0 command to refresh your token or re-authenticate.".to_string())
+        } else {
+            map_server_proxy_error(status_code, error_text)
         }
     }
 }
@@ -203,7 +217,7 @@ impl TranscriptionClient for ServerProxyClient {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
             error!("Server proxy transcription API error: {} - {}", status, error_text);
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
 
         // Parse the response
@@ -248,8 +262,8 @@ impl ApiClient for ServerProxyClient {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
             
-            // Use map_server_proxy_error to handle server proxy errors
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            // Use enhanced auth error handling
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
         
         let server_response: OpenRouterResponse = response.json().await
@@ -298,8 +312,8 @@ impl ApiClient for ServerProxyClient {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
             
-            // Use map_server_proxy_error to handle server proxy errors
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            // Use enhanced auth error handling
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
         
         let server_response: OpenRouterResponse = response.json().await
@@ -346,48 +360,108 @@ impl ApiClient for ServerProxyClient {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
             
-            // Use map_server_proxy_error to handle server proxy errors
-            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+            // Use enhanced auth error handling
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
         
-        // Get the stream and process it
+        // Get the stream and process it with enhanced SSE parsing
+        let mut buffer = String::new();
         let stream = response.bytes_stream().map(move |result| {
             match result {
                 Ok(bytes) => {
-                    // Parse the bytes as SSE (Server-Sent Events)
-                    let text = String::from_utf8_lossy(&bytes);
-                    let lines = text.split('\n').collect::<Vec<&str>>();
-                    
-                    // Process each line
-                    let mut chunks = Vec::new();
-                    for line in lines {
-                        if line.is_empty() || !line.starts_with("data: ") {
-                            continue;
-                        }
-                        
-                        let data = &line[6..]; // Remove "data: " prefix
-                        
-                        // Check for [DONE] message
-                        if data == "[DONE]" {
-                            continue;
-                        }
-                        
-                        // Parse as JSON
-                        match serde_json::from_str::<OpenRouterStreamChunk>(data) {
-                            Ok(chunk) => {
-                                chunks.push(Ok(chunk));
-                            },
-                            Err(e) => {
-                                error!("Failed to parse streaming chunk: {}", e);
-                                chunks.push(Err(AppError::ServerProxyError(format!("Failed to parse chunk: {}", e))));
-                            }
+                    // Convert bytes to string with enhanced UTF-8 handling
+                    match String::from_utf8(bytes.to_vec()) {
+                        Ok(new_text) => {
+                            buffer.push_str(&new_text);
+                        },
+                        Err(_) => {
+                            // Handle potential UTF-8 issues in streamed data
+                            let new_text = String::from_utf8_lossy(&bytes);
+                            buffer.push_str(&new_text);
+                            debug!("UTF-8 conversion issue in stream, using lossy conversion");
                         }
                     }
+                    
+                    let mut chunks = Vec::new();
+                    let mut lines_to_keep = String::new();
+                    
+                    // Split by double newlines to handle complete SSE events
+                    // Handle both \n\n and \r\n\r\n patterns
+                    let events: Vec<&str> = if buffer.contains("\r\n\r\n") {
+                        buffer.split("\r\n\r\n").collect()
+                    } else {
+                        buffer.split("\n\n").collect()
+                    };
+                    
+                    // Process all complete events (all but the last)
+                    for (i, event) in events.iter().enumerate() {
+                        if i == events.len() - 1 {
+                            // Keep the last (potentially incomplete) event in buffer
+                            lines_to_keep = event.to_string();
+                            continue;
+                        }
+                        
+                        // Process each line in the event
+                        for line in event.lines() {
+                            let line = line.trim();
+                            
+                            // Skip empty lines
+                            if line.is_empty() {
+                                continue;
+                            }
+                            
+                            // Handle different SSE line types
+                            if line.starts_with("data: ") {
+                                let data = &line[6..]; // Remove "data: " prefix
+                                
+                                // Check for [DONE] message
+                                if data.trim() == "[DONE]" {
+                                    debug!("Received [DONE] signal, ending stream");
+                                    continue;
+                                }
+                                
+                                // Skip empty data lines
+                                if data.trim().is_empty() {
+                                    continue;
+                                }
+                                
+                                // Parse as JSON with enhanced error handling
+                                match serde_json::from_str::<OpenRouterStreamChunk>(data) {
+                                    Ok(chunk) => {
+                                        trace!("Successfully parsed stream chunk");
+                                        chunks.push(Ok(chunk));
+                                    },
+                                    Err(e) => {
+                                        // Log the parsing error but continue processing other chunks
+                                        debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, data);
+                                        // Only push error for non-trivial parsing failures
+                                        if !data.trim().is_empty() && data.len() > 2 {
+                                            chunks.push(Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))));
+                                        }
+                                    }
+                                }
+                            } else if line.starts_with("event: ") {
+                                // Handle SSE event types
+                                debug!("SSE event type: {}", &line[7..]);
+                            } else if line.starts_with("id: ") {
+                                // Handle SSE event IDs
+                                trace!("SSE event ID: {}", &line[4..]);
+                            } else if line.starts_with("retry: ") {
+                                // Handle SSE retry directives
+                                debug!("SSE retry directive: {}", &line[7..]);
+                            }
+                            // Ignore other line types like comments (starting with :)
+                        }
+                    }
+                    
+                    // Update buffer with remaining incomplete data
+                    buffer = lines_to_keep;
                     
                     futures::stream::iter(chunks)
                 },
                 Err(e) => {
-                    futures::stream::iter(vec![Err(AppError::HttpError(e.to_string()))])
+                    error!("HTTP error in streaming response: {}", e);
+                    futures::stream::iter(vec![Err(AppError::NetworkError(format!("Stream network error: {}", e)))])
                 }
             }
         }).flatten();

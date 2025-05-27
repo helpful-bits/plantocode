@@ -117,12 +117,8 @@ export function useTokenUsage(options: UseTokenUsageOptions = {}) {
 
   // Initial fetch on mount
   useEffect(() => {
-    // We want this to run once on mount.
-    // fetchUsage itself has a 5-second throttle via lastRefreshTime.
     void fetchUsage();
-    // Provide an empty dependency array to run only on mount.
-    // fetchUsage will use the latest values from its closure due to useCallback.
-  }, []); // Empty dependency array
+  }, [fetchUsage]);
 
   // Set up auto-refresh if enabled
   useEffect(() => {

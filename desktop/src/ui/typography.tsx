@@ -111,7 +111,7 @@ export function Small({
   const Component = as;
   return (
     <Component
-      className={cn("text-sm font-medium leading-none", className)}
+      className={cn("text-sm font-medium leading-none text-foreground", className)}
       {...props}
     >
       {children}
@@ -161,7 +161,7 @@ export function Large({
 }: TypographyProps) {
   const Component = as;
   return (
-    <Component className={cn("text-lg font-semibold", className)} {...props}>
+    <Component className={cn("text-lg font-semibold text-foreground", className)} {...props}>
       {children}
     </Component>
   );
@@ -182,7 +182,7 @@ export function Code({ children, className, ...props }: TypographyProps) {
   return (
     <code
       className={cn(
-        "relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm",
+        "relative rounded-lg bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm shadow-soft backdrop-blur-sm",
         className
       )}
       {...props}

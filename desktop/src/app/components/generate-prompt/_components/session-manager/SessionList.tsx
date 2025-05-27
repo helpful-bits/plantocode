@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Loader2, Pencil, Copy, Trash2, Check, X } from "lucide-react";
 
 import { type Session } from "@/types/session-types";
@@ -21,7 +22,7 @@ interface SessionListProps {
   isLoading: boolean;
   disabled: boolean;
   globalIsSwitching: boolean;
-  renderDeleteDialog: (sessionId: string, sessionName: string) => JSX.Element;
+  renderDeleteDialog: (sessionId: string, sessionName: string) => React.ReactElement;
 }
 
 const SessionList = ({
@@ -41,7 +42,7 @@ const SessionList = ({
   globalIsSwitching,
   renderDeleteDialog,
 }: SessionListProps) => {
-  if (isLoading && sessions.length === 0) {
+  if (isLoading && sessions.length === 0) { // This handles initial load for an empty project
     return (
       <div className="flex justify-center items-center py-8">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
@@ -52,7 +53,7 @@ const SessionList = ({
     );
   }
 
-  if (sessions.length === 0) {
+  if (sessions.length === 0 && !isLoading) { // After loading, if still no sessions
     return (
       <div className="p-4 text-center text-muted-foreground text-sm">
         No saved sessions for this project.
@@ -106,9 +107,8 @@ const SessionList = ({
               />
               <div className="flex items-center gap-1 ml-2">
                 <Button
-                  size="icon"
+                  size="icon-xs"
                   variant="ghost"
-                  className="h-6 w-6 rounded-sm"
                   isLoading={isLoading}
                   disabled={globalIsSwitching || disabled}
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
@@ -116,28 +116,27 @@ const SessionList = ({
                     onSaveEdit(session.id);
                   }}
                 >
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="h-3.5 w-3.5 text-foreground" />
                 </Button>
                 <Button
-                  size="icon"
+                  size="icon-xs"
                   variant="ghost"
-                  className="h-6 w-6 rounded-sm"
                   disabled={globalIsSwitching || isLoading || disabled}
                   onClick={onCancelEdit}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5 text-foreground" />
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex-1 flex flex-col">
               <div className="flex items-center">
-                <span className="text-sm font-medium truncate max-w-[250px]">
+                <span className="text-sm font-medium truncate max-w-[250px] text-foreground">
                   {session.name || "Untitled Session"}
                 </span>
                 {isLoading && activeSessionId === session.id && (
                   <div className="ml-2 flex items-center text-primary">
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
                   </div>
                 )}
               </div>
@@ -150,40 +149,38 @@ const SessionList = ({
           {editingSessionId !== session.id && (
             <div className="flex items-center gap-1">
               <Button
-                size="icon"
+                size="icon-sm"
                 variant="ghost"
-                className="h-7 w-7 rounded-sm"
                 onClick={(e: React.MouseEvent) => onCloneSession(session, e)}
                 title="Clone session"
                 isLoading={isLoading}
                 disabled={globalIsSwitching || disabled}
               >
-                <Copy className="h-3.5 w-3.5" />
+                <Copy className="h-3.5 w-3.5 text-foreground" />
               </Button>
               <Button
-                size="icon"
+                size="icon-sm"
                 variant="ghost"
-                className="h-7 w-7 rounded-sm"
                 onClick={(e: React.MouseEvent) => onStartEdit(session, e)}
                 title="Rename session"
                 disabled={globalIsSwitching || isLoading || disabled}
               >
-                <Pencil className="h-3.5 w-3.5" />
+                <Pencil className="h-3.5 w-3.5 text-foreground" />
               </Button>
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
-                    size="icon"
+                    size="icon-sm"
                     variant="ghost"
-                    className="h-7 w-7 text-destructive rounded-sm"
+                    className="text-destructive"
                     onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
                       e.stopPropagation()
                     }
                     title="Delete session"
                     disabled={globalIsSwitching || isLoading || disabled}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </AlertDialogTrigger>
                 {renderDeleteDialog(

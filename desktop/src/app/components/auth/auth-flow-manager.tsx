@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Store } from '@tauri-apps/plugin-store';
+import { invoke } from '@tauri-apps/api/core';
 
 import LoginPage from "@/app/components/auth/login-page";
 import { useRuntimeConfigLoader } from "@/auth/use-runtime-config-loader";
@@ -48,15 +49,47 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     useEffect(() => {
       const checkOnboardingStatus = async () => {
         try {
-          const settingsStore = await Store.load(APP_SETTINGS_STORE);
-          const hasSetup = await settingsStore.get<boolean>('hasCompletedOnboarding');
-          setIsOnboardingNeeded(!hasSetup);
+          // First check storage mode with timeout
+          const storageMode = await Promise.race([
+            invoke<string>('get_storage_mode'),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Storage mode check timeout')), 10000)
+            )
+          ]);
+          
+          const isKeyringRequired = storageMode === 'keyring';
+          
+          if (isKeyringRequired) {
+            // If keyring is required, check if onboarding has been completed
+            try {
+              const settingsStore = await Promise.race([
+                Store.load(APP_SETTINGS_STORE),
+                new Promise<never>((_, reject) => 
+                  setTimeout(() => reject(new Error('Store load timeout')), 5000)
+                )
+              ]);
+              const hasSetup = await settingsStore.get<boolean>('hasCompletedOnboarding');
+              setIsOnboardingNeeded(!hasSetup);
+            } catch (storeError) {
+              await logError(storeError, "Auth Flow - Settings Store Access Failed");
+              // If we can't access settings store, assume onboarding is needed
+              setIsOnboardingNeeded(true);
+              showNotification({
+                title: "Settings Access Failed",
+                message: "Unable to check setup preferences. Starting fresh setup.",
+                type: "warning"
+              });
+            }
+          } else {
+            // If keyring is not required (debug mode), skip onboarding
+            setIsOnboardingNeeded(false);
+          }
         } catch (e) {
           await logError(e, "Auth Flow - Onboarding Status Check Failed");
-          setIsOnboardingNeeded(true); // Default to needing onboarding if store fails
+          setIsOnboardingNeeded(true); // Default to needing onboarding if check fails
           showNotification({
             title: "Setup Check Failed",
-            message: "Unable to check setup status. Starting fresh setup.",
+            message: "Unable to check setup status. Starting fresh setup for security.",
             type: "warning"
           });
         }
@@ -89,10 +122,23 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       if (user) {
         const initializeConfig = async () => {
           try {
-            // Load runtime configuration
-            await loadConfig();
+            // Load runtime configuration with timeout protection
+            await Promise.race([
+              loadConfig(),
+              new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Configuration load timeout')), 30000)
+              )
+            ]);
           } catch (err) {
             await logError(err, "Auth Flow - Configuration Load Failed", { userId: user?.id });
+            // Show user-friendly notification for configuration failures
+            if (err instanceof Error && err.message.includes('timeout')) {
+              showNotification({
+                title: "Configuration Timeout",
+                message: "Configuration loading is taking longer than expected. Please check your connection.",
+                type: "error"
+              });
+            }
             // We don't handle the error here because the loadConfig function
             // already updates the error state in the runtime config loader hook
           }

@@ -15,15 +15,15 @@ export async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> 
   return tauriInvoke<T>(command, args as InvokeArgs);
 }
 
-// Types based on file_system_commands.rs and existing usage
+// Types based on NativeFileInfoRs and ListFilesResponse in models.rs
 export interface NativeFileInfo {
   path: string;        // Relative path to the queried directory
   name: string;        // Base name of the file/directory
-  isDir: boolean;     // Whether this is a directory
-  isFile: boolean;    // Whether this is a regular file
-  isSymlink: boolean; // Whether this is a symbolic link
+  isDir: boolean;      // Whether this is a directory
+  isFile: boolean;     // Whether this is a regular file
+  isSymlink: boolean;  // Whether this is a symbolic link
   size?: number;       // File size in bytes (None for directories)
-  createdAt?: number; // Creation timestamp in milliseconds
+  createdAt?: number;  // Creation timestamp in milliseconds
   modifiedAt?: number; // Modification timestamp in milliseconds
   accessedAt?: number; // Access timestamp in milliseconds
   isHidden?: boolean;  // Whether the file is hidden
@@ -51,9 +51,9 @@ export async function listFiles(
 ): Promise<NativeFileInfo[]> {
   const response = await tauriInvoke<ListFilesResponse>("list_files_command", {
     directory,
-    pattern,
-    includeStats,
-    exclude,
+    pattern: pattern ?? null,
+    includeStats: includeStats ?? null,
+    exclude: exclude ?? null,
   });
   return response.files;
 }
@@ -64,7 +64,7 @@ export async function createDirectory(
 ): Promise<void> {
   return tauriInvoke("create_directory_command", {
     path,
-    projectDirectory,
+    projectDirectory: projectDirectory ?? null,
   });
 }
 
@@ -78,8 +78,8 @@ export async function readFileContent(
     "read_file_content_command",
     {
       path,
-      projectDirectory,
-      encoding,
+      projectDirectory: projectDirectory ?? null,
+      encoding: encoding ?? null,
     }
   );
   return response.content;
@@ -93,7 +93,7 @@ export async function writeFileContent(
   return tauriInvoke("write_file_content_command", {
     path,
     content,
-    projectDirectory,
+    projectDirectory: projectDirectory ?? null,
   });
 }
 
@@ -108,8 +108,8 @@ export async function createUniqueFilepath(args: {
     requestId: args.requestId,
     sessionName: args.sessionName,
     extension: args.extension,
-    projectDirectory: args.projectDirectory,
-    targetDirName: args.targetDirName,
+    projectDirectory: args.projectDirectory ?? null,
+    targetDirName: args.targetDirName ?? null,
   });
 }
 
@@ -119,7 +119,7 @@ export async function deleteFile(
 ): Promise<void> {
   return tauriInvoke("delete_file_command", {
     path,
-    projectDirectory,
+    projectDirectory: projectDirectory ?? null,
   });
 }
 
@@ -132,8 +132,8 @@ export async function moveFile(
   return tauriInvoke("move_file_command", {
     sourcePath,
     destinationPath,
-    projectDirectory,
-    overwrite,
+    projectDirectory: projectDirectory ?? null,
+    overwrite: overwrite ?? null,
   });
 }
 
@@ -165,10 +165,12 @@ export async function normalizePath(
   path: string,
   addTrailingSlash?: boolean
 ): Promise<string> {
-  return tauriInvoke("normalize_path_command", { path, addTrailingSlash });
+  return tauriInvoke("normalize_path_command", { 
+    path, 
+    addTrailingSlash: addTrailingSlash ?? null 
+  });
 }
 
 export async function getTempDir(): Promise<string> {
   return tauriInvoke("get_temp_dir_command");
 }
-

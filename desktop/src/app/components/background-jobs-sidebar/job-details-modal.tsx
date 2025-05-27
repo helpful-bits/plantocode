@@ -278,10 +278,10 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   return (
     <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-6">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col text-foreground !bg-card border-border rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
-            className={job.taskType === "implementation_plan" ? "text-xl" : ""}
+            className={`${job.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
           >
             {(() => {
               const parsedMeta = getParsedMetadata(job.metadata);
@@ -294,7 +294,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                   <div className="flex items-center gap-2">
                     <span>Implementation Plan Content</span>
                     {(job.status === "running" || job.status === "processing_stream") && parsedMeta?.isStreaming && (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     )}
                   </div>
                 );
@@ -308,7 +308,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
               }
             })()}
           </DialogTitle>
-          <DialogDescription className="text-balance">
+          <DialogDescription className="text-balance text-muted-foreground">
             {(() => {
               const parsedMeta = getParsedMetadata(job.metadata);
 
@@ -325,20 +325,26 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           </DialogDescription>
         </DialogHeader>
         <div
-          className="flex flex-col space-y-6 overflow-y-auto pr-2 mt-4 w-full"
+          className="flex flex-col space-y-4 overflow-y-auto pr-2 mt-4 w-full"
           style={{ maxHeight: "calc(90vh - 150px)" }}
         >
-          <div className="grid grid-cols-1 gap-4 py-4">
+          {/* Main job information cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <JobDetailsStatusSection job={job} />
             <JobDetailsModelConfigSection job={job} />
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <JobDetailsTimingSection job={job} jobDuration={jobDuration} />
             <JobDetailsTokenUsageSection job={job} />
-            <JobDetailsAdditionalInfoSection job={job} />
           </div>
 
+          <JobDetailsAdditionalInfoSection job={job} />
+          
           <JobDetailsErrorSection job={job} />
 
-          <div className="flex flex-col space-y-6 w-full">
+          {/* Content sections */}
+          <div className="space-y-4">
             <JobDetailsPromptSection promptContent={promptContent} />
             <JobDetailsResponseSection
               job={job}
@@ -351,8 +357,11 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             />
           </div>
         </div>
-        <DialogFooter className="mt-4">
-          <Button onClick={onClose} size="sm" variant="outline" className="h-9">
+        <DialogFooter className="mt-6">
+          <Button 
+            onClick={onClose} 
+            variant="outline"
+          >
             Close
           </Button>
         </DialogFooter>

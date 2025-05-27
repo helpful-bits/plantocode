@@ -8,6 +8,7 @@ use crate::error::{AppError, AppResult};
 
 /// Structure for operations in a transaction
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SqlOperation {
     sql: String,
     params: Option<Vec<JsonValue>>,
@@ -15,6 +16,7 @@ pub struct SqlOperation {
 
 /// Structure for query results
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecuteResult {
     pub last_insert_id: i64,
     pub rows_affected: u64,

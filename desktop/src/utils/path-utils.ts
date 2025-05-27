@@ -1,16 +1,5 @@
 import * as tauriFs from "@/utils/tauri-fs";
 
-/**
- * Normalize a path for display consistency
- * This is the original string-based normalization, kept for backward compatibility
- * For canonical file system paths, use normalizePath instead
- */
-export async function normalizePathForDisplayConsistency(inputPath: string): Promise<string> {
-  if (!inputPath) return "";
-
-  // Use the Rust-backed normalization function for consistency
-  return await tauriFs.normalizePath(inputPath);
-}
 
 /**
  * Canonical path normalizer - standard function for all file system operations
@@ -89,20 +78,26 @@ export async function parseFilePathsFromAIResponse(
 
   // Common patterns for file paths in AI responses
   const patterns = [
-    // Paths on their own lines or with numbers
-    /^\s*(?:\d+\.\s*)?([^:\n\r]+\.[a-zA-Z0-9]+)\s*$/gm,
+    // Paths on their own lines or with numbers (improved to handle more file extensions)
+    /^\s*(?:\d+\.\s*)?([^:\n\r\s]+\.[a-zA-Z0-9]+)\s*$/gm,
 
-    // Paths in markdown lists
-    /^\s*[-*]\s+([^:\n\r]+\.[a-zA-Z0-9]+)\s*$/gm,
+    // Paths in markdown lists (improved whitespace handling)
+    /^\s*[-*•]\s+([^:\n\r\s]+\.[a-zA-Z0-9]+)\s*$/gm,
 
-    // Paths in markdown code blocks
+    // Paths in markdown code blocks (improved to handle inline code)
     /`([^`\n\r]+\.[a-zA-Z0-9]+)`/g,
 
-    // Paths with relative prefixes (./something.js)
-    /(?:^|\s)(\.{1,2}\/[^\s,:"']+\.[a-zA-Z0-9]+)/g,
+    // Paths in quotes (common in AI responses)
+    /["']([^"'\n\r]+\.[a-zA-Z0-9]+)["']/g,
 
-    // More complex paths with directory structure
-    /(?:^|\s)([a-zA-Z0-9_\-/.]+\/[a-zA-Z0-9_\-/.]+\.[a-zA-Z0-9]+)/g,
+    // Paths with relative prefixes (./something.js, ../something.js)
+    /(?:^|\s)(\.{1,2}\/[^\s,:"'<>|]+\.[a-zA-Z0-9]+)/g,
+
+    // More complex paths with directory structure (improved character set)
+    /(?:^|\s)([a-zA-Z0-9_\-/.@]+\/[a-zA-Z0-9_\-/.@]+\.[a-zA-Z0-9]+)/g,
+
+    // Paths that start with common directory names
+    /(?:^|\s)((?:src|lib|dist|build|public|assets|components|utils|hooks|pages|app)\/[^\s,:"'<>|]+\.[a-zA-Z0-9]+)/gi,
   ];
 
   // Apply each pattern and collect results
@@ -114,13 +109,18 @@ export async function parseFilePathsFromAIResponse(
     while ((match = pattern.exec(response)) !== null) {
       const foundPath = match[1].trim();
 
-      // Skip if it's just a file extension or too short
-      if (foundPath.length < 3 || /^\.\w+$/.test(foundPath)) {
+      // Skip if it's just a file extension, too short, or contains invalid characters
+      if (foundPath.length < 3 || /^\.\w+$/.test(foundPath) || /[<>|"]/.test(foundPath)) {
         continue;
       }
 
-      // Skip if it seems to be a URL or absolute Windows path with drive letter
-      if (foundPath.startsWith("http") || /^[a-zA-Z]:/.test(foundPath)) {
+      // Skip if it seems to be a URL, email, or absolute Windows path with drive letter
+      if (foundPath.startsWith("http") || foundPath.includes("@") || /^[a-zA-Z]:/.test(foundPath)) {
+        continue;
+      }
+
+      // Skip common false positives (version numbers, domains, etc.)
+      if (/^\d+\.\d+\.\d+/.test(foundPath) || foundPath.includes("www.") || foundPath.includes(".com")) {
         continue;
       }
 
@@ -129,10 +129,20 @@ export async function parseFilePathsFromAIResponse(
         ? await tauriFs.pathJoin(projectDirectory, foundPath)
         : foundPath;
 
-      // Normalize the path and add if not already included
-      const normalizedPath = await normalizePath(processedPath);
-      if (!paths.includes(normalizedPath)) {
-        paths.push(normalizedPath);
+      // Normalize the path and make it project-relative if possible
+      let finalPathToAdd = await normalizePath(processedPath);
+      if (projectDirectory) {
+        try {
+          // Attempt to make it relative. If it fails (e.g., path outside project), keep it absolute for now,
+          // further validation might occur elsewhere, or it's an erroneous path from AI.
+          finalPathToAdd = await makePathRelative(finalPathToAdd, projectDirectory);
+        } catch (e) {
+          // Log or handle error if path cannot be made relative, or keep absolute.
+          // console.warn(`Could not make path relative: ${finalPathToAdd}`, e);
+        }
+      }
+      if (!paths.includes(finalPathToAdd)) { // Check after making relative
+        paths.push(finalPathToAdd);
       }
     }
   }
@@ -150,13 +160,25 @@ export async function parseFilePathsFromAIResponse(
       if (
         numberedMatch &&
         numberedMatch[1].includes(".") &&
-        !numberedMatch[1].includes(" ")
+        !numberedMatch[1].includes(" ") &&
+        numberedMatch[1].length > 3
       ) {
         const extractedPath = numberedMatch[1].trim();
-        const joinedPath = projectDirectory
-          ? await tauriFs.pathJoin(projectDirectory, extractedPath)
-          : extractedPath;
-        paths.push(await normalizePath(joinedPath));
+        // Skip if it looks like a version number or URL
+        if (!/^\d+\.\d+/.test(extractedPath) && !extractedPath.includes("http")) {
+          const joinedPath = projectDirectory
+            ? await tauriFs.pathJoin(projectDirectory, extractedPath)
+            : extractedPath;
+          let finalPathToAdd = await normalizePath(joinedPath);
+          if (projectDirectory) {
+            try {
+              finalPathToAdd = await makePathRelative(finalPathToAdd, projectDirectory);
+            } catch (e) {
+              // Keep absolute if cannot make relative
+            }
+          }
+          paths.push(finalPathToAdd);
+        }
         continue;
       }
 
@@ -171,7 +193,15 @@ export async function parseFilePathsFromAIResponse(
         const joinedPath = projectDirectory
           ? await tauriFs.pathJoin(projectDirectory, extractedPath)
           : extractedPath;
-        paths.push(await normalizePath(joinedPath));
+        let finalPathToAdd = await normalizePath(joinedPath);
+        if (projectDirectory) {
+          try {
+            finalPathToAdd = await makePathRelative(finalPathToAdd, projectDirectory);
+          } catch (e) {
+            // Keep absolute if cannot make relative
+          }
+        }
+        paths.push(finalPathToAdd);
       }
     }
   }

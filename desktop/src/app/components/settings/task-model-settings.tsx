@@ -50,11 +50,6 @@ const modelOptions = {
       label: "Gemini 2.5 Pro Preview",
       description: "Higher quality, better reasoning for complex tasks.",
     },
-    {
-      value: "google/gemini-2.5-flash-preview-05-20",
-      label: "Gemini 2.5 Flash (Legacy)",
-      description: "Legacy flash model for compatibility.",
-    },
   ],
   claude: [
     {
@@ -106,7 +101,7 @@ const taskTypeDefinitions: Record<
     label: "Path Finder",
     defaultApiType: "gemini",
   },
-  transcription: {
+  voice_transcription: {
     label: "Voice Transcription",
     defaultApiType: "whisper",
   },
@@ -166,7 +161,7 @@ const taskTypeToSettingsKey: Record<string, string> = {
   implementation_plan: "implementationPlan",
   path_finder: "pathFinder",
   text_improvement: "textImprovement",
-  transcription: "transcription",
+  voice_transcription: "transcription",
   voice_correction: "voiceCorrection",
   path_correction: "pathCorrection",
   regex_generation: "regexGeneration",
@@ -358,8 +353,8 @@ export default function TaskModelSettings({
                       >
                         Max Tokens
                       </Label>
-                      <div className="flex items-center gap-4 py-2 w-full">
-                        <div className="flex-1 min-w-[70%] mr-4">
+                      <div className="flex items-center gap-3 w-full">
+                        <div className="flex-1">
                           <Slider
                             id={`max-tokens-${type}`}
                             defaultValue={[settings.maxTokens]}
@@ -389,7 +384,7 @@ export default function TaskModelSettings({
                               handleMaxTokensChange(taskType, [value]);
                             }
                           }}
-                          className="w-20 font-mono text-sm ml-auto text-right pr-2"
+                          className="w-20 font-mono text-sm text-right"
                           min={1000}
                           max={100000}
                         />
@@ -400,7 +395,7 @@ export default function TaskModelSettings({
                     </div>
 
                     {/* Temperature Slider - not used by whisper transcription */}
-                    {taskType !== "transcription" ? (
+                    {taskType !== "voice_transcription" ? (
                       <div className="space-y-2">
                         <Label
                           htmlFor={`temperature-${type}`}
@@ -408,8 +403,8 @@ export default function TaskModelSettings({
                         >
                           Temperature
                         </Label>
-                        <div className="flex items-center gap-4 py-2 w-full">
-                          <div className="flex-1 min-w-[70%] mr-4">
+                        <div className="flex items-center gap-3 w-full">
+                          <div className="flex-1">
                             <Slider
                               id={`temperature-${type}`}
                               defaultValue={[settings.temperature]}
@@ -435,7 +430,7 @@ export default function TaskModelSettings({
                                 handleTemperatureChange(taskType, [value]);
                               }
                             }}
-                            className="w-16 font-mono text-sm ml-auto text-right pr-2"
+                            className="w-16 font-mono text-sm text-right"
                             min={0}
                             max={1}
                             step={0.05}
@@ -453,7 +448,7 @@ export default function TaskModelSettings({
                         <Label className="text-sm font-medium text-muted-foreground/80">
                           Temperature
                         </Label>
-                        <div className="flex items-center h-[38px] justify-center">
+                        <div className="flex items-center h-[40px] justify-center">
                           <p className="text-xs text-muted-foreground italic">
                             Not used for transcription
                           </p>

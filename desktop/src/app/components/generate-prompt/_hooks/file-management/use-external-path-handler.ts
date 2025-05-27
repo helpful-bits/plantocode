@@ -129,11 +129,16 @@ export function useExternalPathHandler({
       const finalIncludedPaths = Array.from(newIncludedSet);
       const finalExcludedPaths = Array.from(newExcludedSet);
 
-      // Only call update if there's a change
-      if (JSON.stringify(finalIncludedPaths) !== JSON.stringify(currentIncludedFiles)) {
+      // Only call update if there's a change (use shallow comparison for better performance)
+      const hasIncludedChanges = finalIncludedPaths.length !== currentIncludedFiles.length || 
+        finalIncludedPaths.some((path, index) => path !== currentIncludedFiles[index]);
+      const hasExcludedChanges = finalExcludedPaths.length !== currentExcludedFiles.length || 
+        finalExcludedPaths.some((path, index) => path !== currentExcludedFiles[index]);
+        
+      if (hasIncludedChanges) {
         onUpdateIncludedFiles(finalIncludedPaths);
       }
-      if (JSON.stringify(finalExcludedPaths) !== JSON.stringify(currentExcludedFiles)) {
+      if (hasExcludedChanges) {
         onUpdateExcludedFiles(finalExcludedPaths);
       }
     },
@@ -173,17 +178,14 @@ export function useExternalPathHandler({
       const normalizedPaths = normalizePaths(newPaths);
       const warnings: string[] = [];
 
-      // Create a copy of managedFilesMap that we'll update
-      const updatedMap = { ...managedFilesMap };
+      // Track matched paths efficiently without copying entire map
+      const matchedFileUpdates = new Map<string, { included: boolean; forceExcluded: boolean }>();
       const matchedPaths = new Set<string>(); // Track matched paths to avoid duplicates
 
-      // Reset all files to not included (except force excluded ones)
-      for (const path of Object.keys(updatedMap)) {
-        if (!updatedMap[path].forceExcluded) {
-          updatedMap[path] = {
-            ...updatedMap[path],
-            included: false,
-          };
+      // Mark all non-force-excluded files for exclusion in our update map
+      for (const [path, fileInfo] of Object.entries(managedFilesMap)) {
+        if (!fileInfo.forceExcluded) {
+          matchedFileUpdates.set(path, { included: false, forceExcluded: false });
         }
       }
 
@@ -198,11 +200,7 @@ export function useExternalPathHandler({
         if (fileIndices.byComparablePath.has(normalizedPath)) {
           matchedPath = fileIndices.byComparablePath.get(normalizedPath);
           if (matchedPath && !matchedPaths.has(matchedPath)) {
-            updatedMap[matchedPath] = {
-              ...updatedMap[matchedPath],
-              included: true,
-              forceExcluded: false,
-            };
+            matchedFileUpdates.set(matchedPath, { included: true, forceExcluded: false });
             found = true;
             matchedPaths.add(matchedPath);
 
@@ -226,11 +224,7 @@ export function useExternalPathHandler({
               normalizedPath &&
               comparablePath.endsWith("/" + normalizedPath)
             ) {
-              updatedMap[actualPath] = {
-                ...updatedMap[actualPath],
-                included: true,
-                forceExcluded: false,
-              };
+              matchedFileUpdates.set(actualPath, { included: true, forceExcluded: false });
               found = true;
               matchedPaths.add(actualPath);
 
@@ -254,11 +248,7 @@ export function useExternalPathHandler({
             // If we have a single match by filename, use it
             if (candidates.length === 1 && !matchedPaths.has(candidates[0])) {
               const actualPath = candidates[0];
-              updatedMap[actualPath] = {
-                ...updatedMap[actualPath],
-                included: true,
-                forceExcluded: false,
-              };
+              matchedFileUpdates.set(actualPath, { included: true, forceExcluded: false });
               found = true;
               matchedPaths.add(actualPath);
 
@@ -306,11 +296,7 @@ export function useExternalPathHandler({
               }
 
               if (bestMatch) {
-                updatedMap[bestMatch] = {
-                  ...updatedMap[bestMatch],
-                  included: true,
-                  forceExcluded: false,
-                };
+                matchedFileUpdates.set(bestMatch, { included: true, forceExcluded: false });
                 found = true;
                 matchedPaths.add(bestMatch);
 

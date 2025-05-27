@@ -147,6 +147,7 @@ export function GeneratePromptFeatureProvider({
           sessionState.currentSession?.name || sessionMetadata.sessionName,
         hasUnsavedChanges: sessionState.isSessionModified,
         isFormSaving: sessionState.isSessionLoading || formState.isFormSaving,
+        isSessionFormLoading: sessionState.isSessionLoading,
         error: formState.error,
 
         // Project data

@@ -13,7 +13,7 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ImplementationPlanPayload, StructuredImplementationPlan, StructuredImplementationPlanStep, StructuredImplementationPlanStepOperation};
 use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent};
-use crate::prompts::implementation_plan::{generate_implementation_plan_prompt, generate_enhanced_implementation_plan_prompt};
+use crate::prompts::implementation_plan::generate_enhanced_implementation_plan_prompt;
 use crate::utils::get_timestamp;
 use crate::utils::{fs_utils, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
@@ -40,13 +40,28 @@ impl ImplementationPlanProcessor {
         Ok(())
     }
     
-    // Parse implementation plan from the XML response
+    // Parse implementation plan from the XML response with enhanced error handling
     fn parse_implementation_plan(&self, clean_xml_content: &str) -> AppResult<(StructuredImplementationPlan, String)> {
         debug!("Parsing implementation plan from cleaned XML content");
+        
+        if clean_xml_content.trim().is_empty() {
+            warn!("Empty XML content provided for parsing");
+            return Err(AppError::ValidationError("Empty XML content provided".to_string()));
+        }
+        
+        // First, try to validate that the content at least looks like XML
+        if !clean_xml_content.trim_start().starts_with('<') {
+            warn!("Content does not appear to be XML: {}", &clean_xml_content[..100.min(clean_xml_content.len())]);
+        }
         
         // Attempt to deserialize the clean XML content into structured format
         match quick_xml::de::from_str::<StructuredImplementationPlan>(clean_xml_content) {
             Ok(structured_plan) => {
+                // Validate the parsed plan has meaningful content
+                if structured_plan.steps.is_empty() {
+                    warn!("Parsed implementation plan has no steps");
+                }
+                
                 // Generate human-readable summary
                 let mut summary = String::new();
                 if let Some(instructions) = &structured_plan.agent_instructions {
@@ -61,23 +76,43 @@ impl ImplementationPlanProcessor {
                 Ok((structured_plan, summary.trim().to_string()))
             },
             Err(e) => {
-                warn!("Failed to parse structured XML: {}", e);
-                // Fallback: create basic structure with just content
+                warn!("Failed to parse structured XML: {}. Content length: {}", e, clean_xml_content.len());
+                
+                // Enhanced fallback: try to extract meaningful content even from malformed XML
+                let fallback_content = if clean_xml_content.len() > 500 {
+                    // Try to extract first meaningful paragraph or section
+                    if let Some(first_tag_end) = clean_xml_content.find('>') {
+                        if let Some(last_tag_start) = clean_xml_content.rfind('<') {
+                            if first_tag_end < last_tag_start {
+                                clean_xml_content[first_tag_end + 1..last_tag_start].trim().to_string()
+                            } else {
+                                clean_xml_content.to_string()
+                            }
+                        } else {
+                            clean_xml_content.to_string()
+                        }
+                    } else {
+                        clean_xml_content.to_string()
+                    }
+                } else {
+                    clean_xml_content.to_string()
+                };
+                
                 let fallback_plan = StructuredImplementationPlan {
-                    agent_instructions: None,
+                    agent_instructions: Some("Note: This plan was parsed from malformed XML and may need manual review.".to_string()),
                     steps: vec![StructuredImplementationPlanStep {
                         number: Some("1".to_string()),
-                        title: "Implementation Plan".to_string(),
-                        description: clean_xml_content.to_string(),
+                        title: "Implementation Plan (Fallback)".to_string(),
+                        description: fallback_content.clone(),
                         file_operations: None,
                     }],
                 };
                 
-                let summary = format!("Implementation Plan: {}", 
-                    if clean_xml_content.len() > 200 {
-                        format!("{}...", &clean_xml_content[..200])
+                let summary = format!("Implementation Plan (parsed with fallback): {}", 
+                    if fallback_content.len() > 200 {
+                        format!("{}...", &fallback_content[..200])
                     } else {
-                        clean_xml_content.to_string()
+                        fallback_content
                     }
                 );
                 
@@ -187,13 +222,13 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Update the job with token estimate before LLM call
         repo.update_job(&db_job).await?;
         
-        // Create messages for the LLM
-        let messages = vec![
+        // Create messages for the LLM (note: prompt will be used later for streaming)
+        let _messages = vec![
             OpenRouterRequestMessage {
                 role: "user".to_string(),
                 content: vec![OpenRouterContent::Text {
                     content_type: "text".to_string(),
-                    text: prompt,
+                    text: prompt.clone(),
                 }],
             },
         ];
@@ -230,32 +265,30 @@ impl JobProcessor for ImplementationPlanProcessor {
         let mut accumulated_tokens = 0;
         let mut accumulated_chars = 0;
         
-        // For streaming, we need to convert the messages to a single prompt
-        // because the stream_complete method only accepts a single prompt string
-        let single_prompt = format!(
-            "User request: {}\n\nPlease generate a detailed implementation plan in XML format with <implementation_plan> tags.",
-            payload.task_description
-        );
-        
-        // Call the streaming API
-        let stream = match llm_client.stream_complete(&single_prompt, streaming_api_options).await {
+        // Use the full generated prompt instead of a simplified one to maintain consistency
+        // The prompt variable already contains the comprehensive implementation plan prompt
+        let stream = match llm_client.stream_complete(&prompt, streaming_api_options).await {
             Ok(stream) => stream,
             Err(e) => {
-                error!("Failed to initiate LLM stream: {}", e);
+                error!("Failed to initiate LLM stream for job {}: {}", payload.background_job_id, e);
                 let error_msg = format!("Failed to initiate LLM stream: {}", e);
                 
-                // Update job to failed
+                // Update job to failed with comprehensive error information
                 let timestamp = get_timestamp();
                 
                 // Get the job
                 let mut job = repo.get_job_by_id(&payload.background_job_id).await?
                     .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
                 
-                // Update job fields
+                // Update job fields with detailed error information
                 job.status = JobStatus::Failed.to_string();
                 job.error_message = Some(error_msg.clone());
                 job.updated_at = Some(timestamp);
                 job.end_time = Some(timestamp);
+                
+                // Log the failure for debugging
+                warn!("Implementation plan job {} failed during LLM stream initialization. Model: {}, Max tokens: {:?}", 
+                    payload.background_job_id, payload.model, payload.max_tokens);
                 
                 // Save updated job
                 repo.update_job(&job).await?;
@@ -283,25 +316,29 @@ impl JobProcessor for ImplementationPlanProcessor {
             // Process the chunk
             match chunk_result {
                 Ok(chunk) => {
-                    // Extract content from the choice message
-                    if let Some(content) = &chunk.choices[0].delta.content {
-                        // Compute token count - this is an approximation, better to use a tokenizer
-                        let estimated_tokens = (content.len() as f32 / 4.0).ceil() as i32;
-                        accumulated_tokens += estimated_tokens;
-                        accumulated_chars += content.len() as i32;
-                        
-                        // Append the chunk to the response
-                        response_content.push_str(content);
-                        
-                        // Update the job's response with the new chunk
-                        if let Err(e) = repo.append_to_job_response(
-                            &payload.background_job_id,
-                            content,
-                            estimated_tokens,
-                            accumulated_chars
-                        ).await {
-                            warn!("Failed to append chunk to job response: {}", e);
-                            // Continue processing even if updates fail
+                    // Safely extract content from the choice message with bounds checking
+                    if !chunk.choices.is_empty() {
+                        if let Some(content) = &chunk.choices[0].delta.content {
+                            if !content.is_empty() {
+                                // Use the token estimator for more accurate token counting
+                                let estimated_tokens = crate::utils::token_estimator::estimate_tokens(content) as i32;
+                                accumulated_tokens += estimated_tokens;
+                                accumulated_chars += content.len() as i32;
+                                
+                                // Append the chunk to the response
+                                response_content.push_str(content);
+                                
+                                // Update the job's response with the new chunk, but don't fail on update errors
+                                if let Err(e) = repo.append_to_job_response(
+                                    &payload.background_job_id,
+                                    content,
+                                    estimated_tokens,
+                                    accumulated_chars
+                                ).await {
+                                    warn!("Failed to append chunk to job response: {}", e);
+                                    // Continue processing even if updates fail
+                                }
+                            }
                         }
                     }
                 },
@@ -318,20 +355,24 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Continue with regular processing using the collected response
         if response_content.is_empty() {
             let error_msg = "No content received from LLM stream";
-            error!("{}", error_msg);
+            error!("Implementation plan job {} failed: {}", payload.background_job_id, error_msg);
             
-            // Update job to failed
+            // Update job to failed with detailed information
             let timestamp = get_timestamp();
             
             // Get the job
             let mut job = repo.get_job_by_id(&payload.background_job_id).await?
                 .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
             
-            // Update job fields
+            // Update job fields with comprehensive error information
             job.status = JobStatus::Failed.to_string();
             job.error_message = Some(error_msg.to_string());
             job.updated_at = Some(timestamp);
             job.end_time = Some(timestamp);
+            
+            // Log additional context for debugging
+            warn!("Implementation plan job {} received empty response. Accumulated tokens: {}, Model: {}", 
+                payload.background_job_id, accumulated_tokens, payload.model);
             
             // Save updated job
             repo.update_job(&job).await?;
@@ -354,16 +395,70 @@ impl JobProcessor for ImplementationPlanProcessor {
         let clean_xml_content = extract_xml_from_markdown(&response_content);
         
         // Parse the implementation plan into structured format
-        let (structured_plan, human_readable_summary) = self.parse_implementation_plan(&clean_xml_content)?;
+        let (structured_plan, human_readable_summary) = match self.parse_implementation_plan(&clean_xml_content) {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Failed to parse implementation plan for job {}: {}", payload.background_job_id, e);
+                let error_msg = format!("Failed to parse implementation plan: {}", e);
+                
+                // Update job to failed
+                let timestamp = get_timestamp();
+                let mut job = repo.get_job_by_id(&payload.background_job_id).await?
+                    .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
+                
+                job.status = JobStatus::Failed.to_string();
+                job.error_message = Some(error_msg.clone());
+                job.updated_at = Some(timestamp);
+                job.end_time = Some(timestamp);
+                
+                // Store the raw response for debugging
+                job.response = Some(format!("Raw LLM Response (parsing failed): {}", 
+                    if response_content.len() > 1000 { 
+                        format!("{}...", &response_content[..1000]) 
+                    } else { 
+                        response_content.clone() 
+                    }
+                ));
+                
+                repo.update_job(&job).await?;
+                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+            }
+        };
         
         // Save the clean XML content to a file
-        let file_path = self.save_implementation_plan_to_file(
+        let file_path = match self.save_implementation_plan_to_file(
             &clean_xml_content,
             &payload.project_directory,
             &payload.background_job_id,
             &payload.session_id,
             &app_handle
-        ).await?;
+        ).await {
+            Ok(path) => path,
+            Err(e) => {
+                error!("Failed to save implementation plan file for job {}: {}", payload.background_job_id, e);
+                let error_msg = format!("Failed to save implementation plan file: {}", e);
+                
+                // Update job to failed but include the parsed content in response
+                let timestamp = get_timestamp();
+                let mut job = repo.get_job_by_id(&payload.background_job_id).await?
+                    .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
+                
+                job.status = JobStatus::Failed.to_string();
+                job.error_message = Some(error_msg.clone());
+                job.response = Some(human_readable_summary.clone());
+                job.updated_at = Some(timestamp);
+                job.end_time = Some(timestamp);
+                
+                // Still set token usage since LLM call succeeded
+                job.tokens_received = Some(accumulated_tokens as i32);
+                if let Some(tokens_sent) = job.tokens_sent {
+                    job.total_tokens = Some(tokens_sent + accumulated_tokens as i32);
+                }
+                
+                repo.update_job(&job).await?;
+                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+            }
+        };
         
         // Extract the generated title from job metadata, if it exists
         let metadata: Option<serde_json::Value> = match &db_job.metadata {

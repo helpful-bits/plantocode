@@ -87,27 +87,31 @@ impl JobProcessor for GuidanceGenerationProcessor {
             },
         ];
         
-        // Set API options with model from config
+        // Set API options with model from payload or project/server config
         let model_to_use = if let Some(model_override) = payload.model_override.clone() {
             model_override
         } else {
-            crate::config::get_model_for_task(crate::models::TaskType::GuidanceGeneration)?
+            crate::config::get_model_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory).await?
         };
         
-        // Get max tokens and temperature from payload or config
-        let max_tokens = payload.max_output_tokens.unwrap_or_else(|| {
-            match crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::GuidanceGeneration)) {
+        // Get max tokens and temperature from payload or project/server config
+        let max_tokens = if let Some(tokens) = payload.max_output_tokens {
+            tokens
+        } else {
+            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory).await {
                 Ok(tokens) => tokens,
                 Err(_) => 2000, // Fallback only if config error occurs
             }
-        });
+        };
         
-        let temperature = payload.temperature.unwrap_or_else(|| {
-            match crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::GuidanceGeneration)) {
+        let temperature = if let Some(temp) = payload.temperature {
+            temp
+        } else {
+            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory).await {
                 Ok(temp) => temp,
                 Err(_) => 0.7, // Fallback only if config error occurs
             }
-        });
+        };
         
         let api_options = ApiClientOptions {
             model: model_to_use,

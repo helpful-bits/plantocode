@@ -1,7 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { Suspense } from "react";
+import { H3, P, Subtle } from "@/ui/typography";
 
 import { MemoizedFileManagementWrapper } from "./_components/file-management-wrapper";
 import { useCorePromptContext } from "./_contexts/core-prompt-context";
@@ -39,45 +38,40 @@ function GeneratePromptFormContent() {
         {/* ProjectSection - Handles project directory selection and session management */}
         <ErrorBoundary
           fallback={
-            <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-              <h3 className="text-red-800 font-medium">Project Section Error</h3>
-              <p className="text-red-600 text-sm mt-1">Unable to load project section. Please try refreshing.</p>
+            <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+              <H3 className="text-destructive">Project Section Error</H3>
+              <P className="text-destructive text-sm mt-1">Unable to load project section. Please try refreshing.</P>
             </div>
           }
         >
-          <Suspense
-            fallback={
-              <div className="flex justify-center items-center p-4 text-muted-foreground text-sm border rounded-lg bg-card/50 min-h-[200px]">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Loading project section...
-              </div>
-            }
-          >
-            {/* ProjectSection */}
+          {/* ProjectSection */}
+          <div className="relative">
             <ProjectSection disabled={false} />
-          </Suspense>
+          </div>
         </ErrorBoundary>
 
         {/* FileManagementContent wrapped with its own provider */}
         {projectDirectory ? (
           <ErrorBoundary
             fallback={
-              <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-                <h3 className="text-red-800 font-medium">File Management Error</h3>
-                <p className="text-red-600 text-sm mt-1">Unable to load file management. Please try selecting the project directory again.</p>
+              <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+                <H3 className="text-destructive">File Management Error</H3>
+                <P className="text-destructive text-sm mt-1">Unable to load file management. Please try selecting the project directory again.</P>
               </div>
             }
           >
             <FileManagementProvider>
-              <MemoizedFileManagementWrapper
-                hasSession={hasSession}
-              />
+              <div className="relative">
+                <MemoizedFileManagementWrapper
+                  hasSession={hasSession}
+                />
+              </div>
             </FileManagementProvider>
           </ErrorBoundary>
         ) : (
-          <div className="text-center text-muted-foreground italic p-4 border border-dashed rounded-md border-border bg-card/50">
-            <p>No project directory selected.</p>
-            <p className="text-xs mt-2">Please select a project directory in the Project section above.</p>
+          <div className="text-center text-muted-foreground italic p-6 border border-dashed rounded-xl border-border/60 bg-background/80 backdrop-blur-sm shadow-soft">
+            <P>No project directory selected.</P>
+            <Subtle className="mt-2">Please select a project directory in the Project section above.</Subtle>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Create a background job to correct paths based on task description and project structure
@@ -72,14 +73,6 @@ export async function createPathCorrectionJobAction(params: {
     };
   } catch (error) {
     console.error("[createPathCorrectionJobAction]", error);
-
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to create path correction job",
-      error: error instanceof Error ? error : new Error("Unknown error"),
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

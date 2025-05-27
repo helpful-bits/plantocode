@@ -3,7 +3,6 @@ declare module "node:url";
 declare module "node:fs";
 declare module "node:os";
 declare module "node:util";
-declare module "node:crypto";
 
 // Define NodeJS.Timeout to fix type errors
 declare namespace NodeJS {

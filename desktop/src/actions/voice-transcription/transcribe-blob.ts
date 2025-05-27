@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { type ActionState } from "@/types";
 import { WHISPER_MAX_FILE_SIZE_MB } from "@/utils/constants";
 import { getErrorMessage, createTranscriptionErrorMessage, logError } from "@/utils/error-handling";
+import { handleActionError } from "@/utils/action-utils";
 
 // For debug logging
 const DEBUG_LOGS = import.meta.env.DEV || import.meta.env.VITE_DEBUG === "true";
@@ -155,11 +156,10 @@ export async function createTranscriptionJobFromBlobAction(
       projectDirectory 
     });
     
-    const userFriendlyMessage = createTranscriptionErrorMessage(error);
+    const errorState = handleActionError(error);
     return {
-      isSuccess: false,
-      message: userFriendlyMessage,
+      ...errorState,
       error: error instanceof Error ? error : new Error(getErrorMessage(error))
-    };
+    } as ActionState<{ jobId: string }>;
   }
 }

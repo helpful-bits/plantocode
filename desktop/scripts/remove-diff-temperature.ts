@@ -4,11 +4,11 @@
  * from the sessions table.
  */
 
-import path from "path";
-import os from "os";
-import { exec as execCallback } from "child_process";
-import { promisify } from "util";
-import fs from "fs/promises";
+import path from "node:path";
+import os from "node:os";
+import { exec as execCallback } from "node:child_process";
+import { promisify } from "node:util";
+import fs from "node:fs/promises";
 
 // Set up database file paths directly
 const APP_DATA_DIR = path.join(os.homedir(), ".vibe-manager");
@@ -24,7 +24,7 @@ async function main() {
     try {
       await fs.access(DB_FILE);
       console.log(`Database file exists at: ${DB_FILE}`);
-    } catch (err) {
+    } catch {
       console.log(
         `Database file does not exist at ${DB_FILE}, nothing to migrate.`
       );
@@ -87,13 +87,13 @@ async function main() {
     `;
 
     // Save SQL to a temporary file
-    const tempSqlFile = path.join(os.tmpdir(), "remove-diff-temperature.sql");
-    await fs.writeFile(tempSqlFile, migrationSql);
-    console.log(`Migration SQL saved to ${tempSqlFile}`);
+    const temporarySqlFile = path.join(os.tmpdir(), "remove-diff-temperature.sql");
+    await fs.writeFile(temporarySqlFile, migrationSql);
+    console.log(`Migration SQL saved to ${temporarySqlFile}`);
 
     // Execute the SQL script
     const { stdout, stderr } = await exec(
-      `sqlite3 "${DB_FILE}" < "${tempSqlFile}"`
+      `sqlite3 "${DB_FILE}" < "${temporarySqlFile}"`
     );
 
     if (stderr) {
@@ -107,7 +107,7 @@ async function main() {
     );
 
     // Clean up temp file
-    await fs.unlink(tempSqlFile);
+    await fs.unlink(temporarySqlFile);
   } catch (error) {
     console.error("Migration failed:", error);
     process.exit(1);

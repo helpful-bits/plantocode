@@ -528,11 +528,14 @@ impl JobProcessor for PathFinderProcessor {
         // Get model for this task - get from payload override or from config
         let effective_model = match payload.model_override.as_deref() {
             Some(model) => model.to_string(),
-            None => match config::get_model_for_task(crate::models::TaskType::PathFinder) {
-                Ok(model) => model,
-                Err(e) => {
-                    error!("Failed to get model for PathFinder task: {}", e);
-                    return Err(e);
+            None => {
+                let project_dir = job.project_directory.as_deref().unwrap_or("");
+                match config::get_model_for_task_with_project(crate::models::TaskType::PathFinder, project_dir).await {
+                    Ok(model) => model,
+                    Err(e) => {
+                        error!("Failed to get model for PathFinder task: {}", e);
+                        return Err(e);
+                    }
                 }
             }
         };
@@ -544,12 +547,15 @@ impl JobProcessor for PathFinderProcessor {
         // Get max tokens from payload override or from config
         let max_output_tokens = match payload.max_output_tokens {
             Some(tokens) => tokens,
-            None => match config::get_default_max_tokens_for_task(Some(crate::models::TaskType::PathFinder)) {
-                Ok(tokens) => tokens,
-                Err(e) => {
-                    error!("Failed to get max tokens for PathFinder task: {}", e);
-                    // When config fails, use a reasonable default
-                    1000
+            None => {
+                let project_dir = job.project_directory.as_deref().unwrap_or("");
+                match config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathFinder, project_dir).await {
+                    Ok(tokens) => tokens,
+                    Err(e) => {
+                        error!("Failed to get max tokens for PathFinder task: {}", e);
+                        // When config fails, use a reasonable default
+                        1000
+                    }
                 }
             }
         };
@@ -562,8 +568,8 @@ impl JobProcessor for PathFinderProcessor {
         
         // Check estimated token count to ensure we're not over limits
         if estimated_input_tokens > max_input_tokens_for_model {
-            warn!("Estimated input tokens ({}) exceeds max allowed input tokens ({}) for model {}, will apply reduction strategies", 
-                  estimated_input_tokens, max_input_tokens_for_model, effective_model);
+            warn!("Estimated input tokens ({}) exceeds max allowed input tokens ({}) for model {} in job {}. Will apply reduction strategies", 
+                  estimated_input_tokens, max_input_tokens_for_model, effective_model, payload.background_job_id);
         }
         
         // Start generating user prompt with file contents
@@ -669,7 +675,8 @@ impl JobProcessor for PathFinderProcessor {
                 let original_max_files = max_files_with_content;
                 max_files_with_content = max_files_with_content.max(2) / 2; // Reduce by half, but minimum 1
                 
-                warn!("Reducing max files with content from {} to {}", original_max_files, max_files_with_content);
+                warn!("Job {}: Reducing max files with content from {} to {} to fit token limit", 
+                    payload.background_job_id, original_max_files, max_files_with_content);
                 
                 file_contents_xml_str = generate_file_contents_xml(
                     &relevant_file_contents, 
@@ -706,8 +713,8 @@ impl JobProcessor for PathFinderProcessor {
                     let original_char_limit = content_truncation_chars;
                     content_truncation_chars = content_truncation_chars / 2;
                     
-                    warn!("Reducing file content truncation from {} to {} chars", 
-                        original_char_limit, content_truncation_chars);
+                    warn!("Job {}: Reducing file content truncation from {} to {} chars to fit token limit", 
+                        payload.background_job_id, original_char_limit, content_truncation_chars);
                     
                     file_contents_xml_str = generate_file_contents_xml(
                         &relevant_file_contents, 
@@ -741,7 +748,8 @@ impl JobProcessor for PathFinderProcessor {
                         info!("Successfully reduced tokens by truncating file contents");
                     } else {
                         // Strategy 3: Truncate directory tree
-                        warn!("Truncating directory tree to max {} lines", PATH_FINDER_MAX_DIR_TREE_LINES);
+                        warn!("Job {}: Truncating directory tree to max {} lines to fit token limit", 
+                            payload.background_job_id, PATH_FINDER_MAX_DIR_TREE_LINES);
                         
                         let dir_tree_lines: Vec<&str> = directory_tree_content.lines().collect();
                         let truncated_line_count = dir_tree_lines.len().min(PATH_FINDER_MAX_DIR_TREE_LINES);
@@ -767,7 +775,8 @@ impl JobProcessor for PathFinderProcessor {
                         
                         // Last resort: Truncate task description
                         if new_total_tokens > max_allowable_tokens {
-                            warn!("Last resort: Truncating task description");
+                            warn!("Job {}: Last resort - Truncating task description to fit token limit", 
+                                payload.background_job_id);
                             
                             // Calculate how many tokens we need to remove
                             let excess_tokens = new_total_tokens - max_allowable_tokens;
@@ -798,8 +807,8 @@ impl JobProcessor for PathFinderProcessor {
                                 
                                 info!("After truncating task description: {} tokens", final_total_tokens);
                                 if final_total_tokens > max_allowable_tokens {
-                                    warn!("Even after all reduction strategies, token count ({}) exceeds maximum ({})",
-                                        final_total_tokens, max_allowable_tokens);
+                                    warn!("Job {}: Even after all reduction strategies, token count ({}) exceeds maximum ({})",
+                                        payload.background_job_id, final_total_tokens, max_allowable_tokens);
                                 }
                             }
                         }
@@ -807,7 +816,8 @@ impl JobProcessor for PathFinderProcessor {
                 }
             } else {
                 // Skip to directory tree truncation if no file contents to reduce
-                warn!("Truncating directory tree to max {} lines", PATH_FINDER_MAX_DIR_TREE_LINES);
+                warn!("Job {}: Truncating directory tree to max {} lines (no file contents to reduce)", 
+                    payload.background_job_id, PATH_FINDER_MAX_DIR_TREE_LINES);
                 
                 let dir_tree_lines: Vec<&str> = directory_tree_content.lines().collect();
                 let truncated_line_count = dir_tree_lines.len().min(PATH_FINDER_MAX_DIR_TREE_LINES);
@@ -824,7 +834,8 @@ impl JobProcessor for PathFinderProcessor {
                 
                 // Last resort: Truncate task description
                 if new_total_tokens > max_allowable_tokens {
-                    warn!("Last resort: Truncating task description");
+                    warn!("Job {}: Last resort - Truncating task description (no file contents to reduce)", 
+                        payload.background_job_id);
                     
                     // Calculate how many tokens we need to remove
                     let excess_tokens = new_total_tokens - max_allowable_tokens;
@@ -841,8 +852,8 @@ impl JobProcessor for PathFinderProcessor {
                         
                         info!("After truncating task description: {} tokens", final_total_tokens);
                         if final_total_tokens > max_allowable_tokens {
-                            warn!("Even after all reduction strategies, token count ({}) exceeds maximum ({})",
-                                final_total_tokens, max_allowable_tokens);
+                            warn!("Job {}: Even after all reduction strategies, token count ({}) exceeds maximum ({})",
+                                payload.background_job_id, final_total_tokens, max_allowable_tokens);
                         }
                     }
                 }

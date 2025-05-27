@@ -8,6 +8,7 @@ use crate::error::AppError;
 
 /// Request payload for the improve text command
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImproveTextArgs {
     pub session_id: String,
     pub text: String,
@@ -52,6 +53,7 @@ pub async fn improve_text_command(
 
 // Request arguments for text correction post transcription command
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CorrectTextPostTranscriptionArgs {
     pub session_id: String,
     pub text_to_correct: String,
@@ -105,10 +107,11 @@ pub async fn correct_text_post_transcription_command(
         original_transcription_job_id: args.original_transcription_job_id.clone(),
     };
     
-    // Get the model and settings for this task
-    let model = match crate::config::get_model_for_task(crate::models::TaskType::TextCorrectionPostTranscription) {
+    // Get the model and settings for this task - check project settings first, then server defaults
+    let project_dir = args.project_directory.clone().unwrap_or_default();
+    let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir).await {
         Ok(model) => model,
-        Err(_) => match crate::config::get_model_for_task(crate::models::TaskType::TextImprovement) {
+        Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir).await {
             Ok(model) => model,
             Err(e) => return Err(AppError::ConfigError(
                 format!("Failed to get model for text correction: {}", e)
@@ -116,9 +119,9 @@ pub async fn correct_text_post_transcription_command(
         },
     };
     
-    let temperature = match crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::TextCorrectionPostTranscription)) {
+    let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir).await {
         Ok(temp) => temp,
-        Err(_) => match crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::TextImprovement)) {
+        Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir).await {
             Ok(temp) => temp,
             Err(e) => return Err(AppError::ConfigError(
                 format!("Failed to get temperature for text correction: {}", e)
@@ -126,9 +129,9 @@ pub async fn correct_text_post_transcription_command(
         },
     };
     
-    let max_tokens = match crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::TextCorrectionPostTranscription)) {
+    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir).await {
         Ok(tokens) => tokens,
-        Err(_) => match crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::TextImprovement)) {
+        Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir).await {
             Ok(tokens) => tokens,
             Err(e) => return Err(AppError::ConfigError(
                 format!("Failed to get max tokens for text correction: {}", e)
@@ -160,6 +163,7 @@ pub async fn correct_text_post_transcription_command(
 
 /// Request payload for the generate simple text command
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenerateSimpleTextArgs {
     pub prompt: String,
     pub system_prompt: Option<String>,
@@ -195,6 +199,7 @@ pub async fn generate_simple_text_command(
         .unwrap_or(crate::models::TaskType::Unknown);
     
     // Resolve model, temperature, and max_tokens using task_type_for_settings, explicit args, or defaults
+    // Note: For simple text generation, we don't have a project directory, so we use empty string (server defaults only)
     let resolved_model = if let Some(model) = model_override {
         model
     } else {

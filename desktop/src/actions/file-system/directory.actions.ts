@@ -1,4 +1,5 @@
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 import * as tauriFs from "../../utils/tauri-fs";
 
@@ -27,12 +28,7 @@ export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
     };
   } catch (error) {
     console.error("Error getting home directory:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error ? error.message : "Failed to get home directory",
-      data: undefined,
-    };
+    return handleActionError(error) as ActionState<string>;
   }
 }
 
@@ -91,11 +87,7 @@ export async function selectDirectoryAction(
     }
   } catch (error) {
     console.error(`Error selecting directory ${directoryPath}:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error ? error.message : "Failed to select directory",
-    };
+    return handleActionError(error) as ActionState<string>;
   }
 }
 

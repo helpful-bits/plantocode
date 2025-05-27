@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
 import { hashString } from "@/utils/hash";
+import { handleActionError } from "@/utils/action-utils";
 
 import { saveGenericCachedStateAction } from "../project-settings";
 
@@ -55,10 +56,7 @@ export async function updateSessionProjectDirectoryAction(
     };
   } catch (error) {
     console.error(`[updateSessionProjectDirectoryAction] Error:`, error);
-    return {
-      isSuccess: false,
-      message: `Failed to update session project directory: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<null>;
   }
 }
 
@@ -87,9 +85,6 @@ export async function clearSessionsAction(
     };
   } catch (error) {
     console.error(`[clearSessionsAction] Error:`, error);
-    return {
-      isSuccess: false,
-      message: `Failed to clear sessions: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<null>;
   }
 }

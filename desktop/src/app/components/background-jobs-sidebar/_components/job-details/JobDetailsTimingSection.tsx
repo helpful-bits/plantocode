@@ -1,4 +1,5 @@
 import { type BackgroundJob } from "@/types/session-types";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Progress } from "@/ui/progress";
 import { formatTimestamp } from "@/utils/date-utils";
 
@@ -14,31 +15,34 @@ export function JobDetailsTimingSection({
   jobDuration,
 }: JobDetailsTimingSectionProps) {
   return (
-    <div className="col-span-1">
-      <div className="p-4 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
-        <h4 className="font-semibold mb-2 text-xs text-muted-foreground uppercase">
-          Timing
-        </h4>
-        <div className="grid grid-cols-5 gap-6">
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Timing</CardTitle>
+        <CardDescription className="text-xs">
+          Job execution timeline and progress
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <h5 className="text-xs text-muted-foreground mb-1">Created</h5>
-            <p className="text-sm font-medium">
+            <div className="text-xs text-muted-foreground mb-1">Created</div>
+            <div className="text-sm font-medium text-foreground">
               {formatTimestamp(
                 job.createdAt && job.createdAt > 0 ? job.createdAt : Date.now()
               )}
-            </p>
+            </div>
           </div>
           <div>
-            <h5 className="text-xs text-muted-foreground mb-1">Completed</h5>
-            <p className="text-sm font-medium">
+            <div className="text-xs text-muted-foreground mb-1">Completed</div>
+            <div className="text-sm font-medium text-foreground">
               {job.endTime && job.endTime > 0
                 ? formatTimestamp(job.endTime)
                 : "Not completed"}
-            </p>
+            </div>
           </div>
           <div>
-            <h5 className="text-xs text-muted-foreground mb-1">Duration</h5>
-            <p className="text-sm font-medium">{jobDuration}</p>
+            <div className="text-xs text-muted-foreground mb-1">Duration</div>
+            <div className="text-sm font-medium text-foreground">{jobDuration}</div>
             {job.status === "running" && job.startTime && (
               <div className="mt-2">
                 <Progress
@@ -73,17 +77,17 @@ export function JobDetailsTimingSection({
                   }
                   className="h-1 w-full animate-pulse"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Running...</p>
+                <div className="text-xs text-muted-foreground mt-1">Running...</div>
                 {typeof job.metadata?.streamProgress === "number" && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5 text-right">
+                  <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
                     {Math.floor(job.metadata.streamProgress)}%
-                  </p>
+                  </div>
                 )}
               </div>
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

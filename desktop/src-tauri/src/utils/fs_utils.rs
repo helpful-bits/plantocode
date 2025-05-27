@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, Component};
 use log::{info, error, debug};
 use ::dirs;
 use tokio::fs;
@@ -474,19 +474,96 @@ pub async fn get_app_temp_dir() -> AppResult<PathBuf> {
 /// This is an important security check to prevent operations outside the authorized area
 /// (sync version is fine as it's just path manipulation)
 pub fn ensure_path_within_project(project_dir: &Path, target_path: &Path) -> AppResult<()> {
-    // Normalize both paths to ensure consistent comparison
-    let normalized_project = crate::utils::path_utils::normalize_path(project_dir);
-    let normalized_target = crate::utils::path_utils::normalize_path(target_path);
-    
-    // Check if the target path is within the project directory
-    if !normalized_target.starts_with(&normalized_project) {
-        return Err(AppError::SecurityError(format!(
-            "Path is not within the project directory: {}",
-            target_path.display()
-        )));
+    // Get canonical project root
+    let project_root_canonical = project_dir.canonicalize().map_err(|e| {
+        AppError::SecurityError(format!("Invalid project directory {}: {}", project_dir.display(), e))
+    })?;
+
+    // Resolve target to an absolute path (either it is, or join with canonical root)
+    let target_absolute = if target_path.is_absolute() {
+        target_path.to_path_buf()
+    } else {
+        project_root_canonical.join(target_path)
+    };
+
+    // Try to canonicalize this absolute target
+    let target_canonical = target_absolute.canonicalize();
+
+    match target_canonical {
+        Ok(canonical_path) => {
+            // Path exists - check if it's within project bounds
+            if !canonical_path.starts_with(&project_root_canonical) {
+                Err(AppError::SecurityError(format!(
+                    "Path is outside project directory: {} (resolved to {})",
+                    target_path.display(),
+                    canonical_path.display()
+                )))
+            } else {
+                Ok(())
+            }
+        }
+        Err(_) => {
+            // Canonicalization failed (path might not exist)
+            // Check if the *intended* absolute path is within the project root
+            // This requires normalizing `target_absolute` to resolve `..` without filesystem access.
+            let mut components = Vec::new();
+            for component in target_absolute.components() {
+                match component {
+                    Component::ParentDir => {
+                        if !components.pop().is_some() {
+                            // Attempting to `..` above the starting point of this relative path part.
+                            // If target_absolute was formed from project_root_canonical.join(relative_part),
+                            // this implies trying to go above project_root_canonical.
+                            return Err(AppError::SecurityError(format!(
+                                "Invalid path (attempts to go above root): {}",
+                                target_path.display()
+                            )));
+                        }
+                    }
+                    Component::Normal(c) => components.push(c),
+                    Component::CurDir => {
+                        // Skip current directory components
+                    }
+                    Component::Prefix(_) | Component::RootDir => {
+                        // For absolute paths, these are expected at the start
+                        // For relative paths joined to canonical root, these shouldn't appear
+                        // We handle this by reconstructing the path properly below
+                    }
+                }
+            }
+            
+            // Reconstruct the absolute path based on the components resolved
+            let final_check_path = if target_path.is_absolute() {
+                // For absolute paths, we need to reconstruct from the root
+                // Extract the root components and rebuild
+                let mut rebuilt_path = PathBuf::new();
+                for component in target_absolute.components() {
+                    match component {
+                        Component::Prefix(prefix) => rebuilt_path.push(prefix.as_os_str()),
+                        Component::RootDir => rebuilt_path.push("/"),
+                        Component::Normal(_) | Component::ParentDir | Component::CurDir => break,
+                    }
+                }
+                // Add the manually normalized components
+                for component in components {
+                    rebuilt_path.push(component);
+                }
+                rebuilt_path
+            } else {
+                // If target_path was relative, components are relative to project_root_canonical
+                project_root_canonical.join(components.iter().collect::<PathBuf>())
+            };
+
+            if !final_check_path.starts_with(&project_root_canonical) {
+                Err(AppError::SecurityError(format!(
+                    "Path is outside project directory (non-existent path check): {}",
+                    target_path.display()
+                )))
+            } else {
+                Ok(())
+            }
+        }
     }
-    
-    Ok(())
 }
 
 /// Recursively read a directory with filtering, skipping excluded directories

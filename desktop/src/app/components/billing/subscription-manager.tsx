@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/ui/card";
 import { useToast } from "@/ui/use-toast";
+import { H3 } from "@/ui/typography";
 import { securedFetchJson } from "@/utils/secured-fetch";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
@@ -228,8 +229,8 @@ export default function SubscriptionManager() {
   };
 
   return (
-    <Card className="p-4 shadow-sm border">
-      <h3 className="font-medium mb-4">Subscription</h3>
+    <Card className="p-4">
+      <H3 className="mb-4">Subscription</H3>
       {renderContent()}
     </Card>
   );

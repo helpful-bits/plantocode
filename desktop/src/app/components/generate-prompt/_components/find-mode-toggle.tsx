@@ -35,7 +35,7 @@ const FindModeToggle = ({
         Extend
       </Button>
 
-      <div className="w-[1px] h-6 bg-border dark:bg-border" />
+      <div className="w-[1px] h-6 bg-border" />
 
       <Button
         variant="ghost"

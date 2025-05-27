@@ -54,13 +54,13 @@ export function ImplementationPlansPanel({
   return (
     <div className="space-y-4 p-4">
       <header className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Implementation Plans</h2>
+        <h2 className="text-xl font-semibold text-foreground">Implementation Plans</h2>
         <Button
           variant="outline"
           size="sm"
           onClick={() => refreshJobs()}
           disabled={isLoading}
-          isLoading={isLoading}
+          className="bg-background/90 backdrop-blur-sm shadow-soft border-border/30 text-muted-foreground hover:bg-muted/50 hover:text-primary hover:border-primary/20"
         >
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
@@ -77,10 +77,10 @@ export function ImplementationPlansPanel({
 
       {/* Empty state */}
       {!isLoading && implementationPlans.length === 0 && (
-        <Card>
+        <Card className="bg-background/90 backdrop-blur-sm shadow-soft border-border/20 rounded-xl">
           <CardContent className="flex flex-col items-center justify-center py-8">
             <div className="text-center space-y-3">
-              <h3 className="text-lg font-medium">No Implementation Plans</h3>
+              <h3 className="text-lg font-medium text-foreground">No Implementation Plans</h3>
               <p className="text-sm text-muted-foreground max-w-[400px] text-balance">
                 You haven&apos;t created any implementation plans yet for this
                 project. Use the &quot;Create Implementation Plan&quot; option in the file
@@ -94,18 +94,20 @@ export function ImplementationPlansPanel({
       {/* Implementation Plans List */}
       {implementationPlans.length > 0 && (
         <ScrollArea className="h-[calc(100vh-200px)] pr-4">
-          {implementationPlans.map((plan) => (
-            <ImplementationPlanCard
-              key={plan.id}
-              plan={plan}
-              onCopyContent={handleCopyToClipboard}
-              onViewContent={handleViewPlanContent}
-              onViewDetails={handleViewPlanDetails}
-              onDelete={(jobId) => setJobToDelete(jobId)}
-              isDeleting={isDeleting[plan.id] || false}
-              copiedPlanId={copiedPlanId}
-            />
-          ))}
+          <div className="space-y-3">
+            {implementationPlans.map((plan) => (
+              <ImplementationPlanCard
+                key={plan.id}
+                plan={plan}
+                onCopyContent={handleCopyToClipboard}
+                onViewContent={handleViewPlanContent}
+                onViewDetails={handleViewPlanDetails}
+                onDelete={(jobId) => setJobToDelete(jobId)}
+                isDeleting={isDeleting[plan.id] || false}
+                copiedPlanId={copiedPlanId}
+              />
+            ))}
+          </div>
         </ScrollArea>
       )}
 
@@ -136,7 +138,7 @@ export function ImplementationPlansPanel({
       {/* Delete Confirmation Dialog */}
       <AlertDialog
         open={!!jobToDelete}
-        onOpenChange={(open) => !open && setJobToDelete(undefined)}
+        onOpenChange={(open: boolean) => !open && setJobToDelete(undefined)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -221,13 +221,43 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof AppError || error instanceof Error) {
     // Handle case where error.message might be empty
     if (!error.message || error.message.trim() === "") {
-      return "An error occurred.";
+      return error.name || "An error occurred.";
     }
     return error.message;
   }
 
   if (typeof error === "string") {
-    return error;
+    // Attempt to parse string as JSON to extract structured error
+    try {
+      const parsed = JSON.parse(error);
+      if (parsed && typeof parsed === "object") {
+        // Check for message property and return if it's a non-empty string
+        if (parsed.message && typeof parsed.message === "string" && parsed.message.trim()) {
+          return parsed.message;
+        }
+        
+        // If no useful message property, try to stringify the parsed object
+        try {
+          const stringified = JSON.stringify(parsed);
+          if (stringified && stringified !== "{}" && stringified !== "") {
+            return stringified;
+          }
+        } catch {
+          // Fallback if stringification fails
+        }
+        
+        // Final fallback for parsed JSON without useful content
+        return "A structured error occurred";
+      }
+      // If JSON but not an object, fall back to original string
+      return error;
+    } catch {
+      // Not JSON, check for common error patterns
+      if (error.includes("FOREIGN KEY constraint failed")) {
+        return "Database constraint error occurred";
+      }
+      return error;
+    }
   }
 
   if (
@@ -238,12 +268,16 @@ export function getErrorMessage(error: unknown): string {
   ) {
     // Handle case where error.message might be empty
     if (!error.message || error.message.trim() === "") {
-      // Attempt to stringify the object, but handle "[object Object]" case
-      const stringified = String(error);
-      if (stringified === "[object Object]" || stringified === "") {
-        return "An object error occurred without a specific message.";
+      // Try to stringify the object for more context
+      try {
+        const stringified = JSON.stringify(error);
+        if (stringified === "{}" || stringified === "") {
+          return "An object error occurred";
+        }
+        return stringified;
+      } catch {
+        return "An object error occurred";
       }
-      return stringified;
     }
     return error.message;
   }
@@ -258,6 +292,12 @@ export function getErrorMessage(error: unknown): string {
 export function createTranscriptionErrorMessage(error: unknown): string {
   if (!error) {
     return "Unknown error occurred during transcription";
+  }
+  
+  // Handle empty or whitespace-only error messages
+  const errorMessage = getErrorMessage(error);
+  if (!errorMessage.trim()) {
+    return "Voice processing failed. Please try again.";
   }
 
   if (typeof error === "string") {
@@ -288,12 +328,12 @@ export function createTranscriptionErrorMessage(error: unknown): string {
       return "Voice processing timed out. Please try a shorter recording or try again later.";
     }
 
-    // Return the string directly if it's already a string
-    return error;
+    // Return the string directly if it's already a string and not empty
+    return errorMessage;
   }
 
   if (error instanceof Error) {
-    return error.message;
+    return getErrorMessage(error);
   }
 
   if (typeof error === "object" && error !== null) {

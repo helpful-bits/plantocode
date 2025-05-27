@@ -60,18 +60,18 @@ export interface DeleteSessionCommandArgs {
 // Commands from db_commands
 export interface DbExecuteQueryArgs {
   sql: string;
-  params: Array<string | number | boolean | null>;
+  params: Array<unknown>;
 }
 
 export interface DbSelectQueryArgs {
   sql: string;
-  params: Array<string | number | boolean | null>;
+  params: Array<unknown>;
 }
 
 export interface DbExecuteTransactionArgs {
   operations: Array<{
     sql: string;
-    params: Array<string | number | boolean | null>;
+    params: Array<unknown>;
   }>;
 }
 
@@ -152,7 +152,7 @@ export interface MoveFileCommandArgs {
 export interface GetAppDataDirectoryCommandArgs {
 }
 
-export interface Get_temp_dir_commandArgs {
+export interface GetTempDirCommandArgs {
 }
 
 
@@ -252,16 +252,17 @@ export interface DirectoryTreeOptions {
   includeHidden?: boolean | null;
 }
 
-// Define PathFinderOptions interface for better type safety
+// PathFinderOptions interface aligned with Rust PathFinderOptions struct
 export interface PathFinderOptions {
   includeFileContents?: boolean | null;
   maxFilesWithContent?: number | null;
-  maxDepth?: number | null;
-  excludePatterns?: string[] | null;
+  priorityFileTypes?: string[] | null;
+  includedFiles?: string[] | null;
+  excludedFiles?: string[] | null;
 }
 
 // Commands from path_finding_commands
-export interface FindFelevantFilesCommandArgs {
+export interface FindRelevantFilesCommandArgs {
   sessionId: string;
   taskDescription: string;
   projectDirectory?: string | null;
@@ -367,6 +368,16 @@ export interface SetProjectTaskModelSettingsCommandArgs {
 export interface FetchRuntimeAiConfigArgs {
 }
 
+// Commands from database_maintenance_commands
+export interface CheckDatabaseHealthCommandArgs {
+}
+
+export interface RepairDatabaseCommandArgs {
+}
+
+export interface ResetDatabaseCommandArgs {
+}
+
 
 // Common result types
 export interface JobResult {
@@ -393,6 +404,9 @@ export interface TokenExchangeResult {
 // Tauri invoke function type
 export type TauriInvoke = {
   "get_database_info_command": () => Promise<DatabaseInfo>;
+  "is_keyring_onboarding_required": () => Promise<boolean>;
+  "trigger_initial_keychain_access": () => Promise<void>;
+  "get_storage_mode": () => Promise<boolean>;
   "start_auth0_login_flow": (args: StartAuth0LoginFlowArgs) => Promise<Auth0LoginResult>;
   "check_auth_status_and_exchange_token": (args: CheckAuthStatusAndExchangeTokenArgs) => Promise<TokenExchangeResult>;
   "refresh_app_jwt_auth0": () => Promise<TokenExchangeResult>;
@@ -426,7 +440,14 @@ export type TauriInvoke = {
   "enhance_task_description_command": (args: EnhanceTaskDescriptionCommandArgs) => Promise<JobResult>;
   "generate_guidance_command": (args: GenerateGuidanceCommandArgs) => Promise<JobResult>;
   "create_implementation_plan_command": (args: CreateImplementationPlanCommandArgs) => Promise<JobResult>;
-  "read_implementation_plan_command": (args: ReadImplementationPlanCommandArgs) => Promise<string>;
+  "read_implementation_plan_command": (args: ReadImplementationPlanCommandArgs) => Promise<{
+    id: string;
+    title?: string | null;
+    description?: string | null;
+    content?: string | null;
+    contentFormat?: string | null;
+    createdAt: string;
+  }>;
   "update_job_cleared_status_command": (args: UpdateJobClearedStatusCommandArgs) => Promise<void>;
   "get_background_job_by_id_command": (args: GetBackgroundJobByIdCommandArgs) => Promise<import("@/types").BackgroundJob | null>;
   "clear_job_history_command": (args: ClearJobHistoryCommandArgs) => Promise<void>;
@@ -434,7 +455,7 @@ export type TauriInvoke = {
   "delete_background_job_command": (args: DeleteBackgroundJobCommandArgs) => Promise<void>;
   "cancel_background_job_command": (args: CancelBackgroundJobCommandArgs) => Promise<void>;
   "cancel_session_jobs_command": (args: CancelSessionJobsCommandArgs) => Promise<void>;
-  "find_relevant_files_command": (args: FindFelevantFilesCommandArgs) => Promise<JobResult>;
+  "find_relevant_files_command": (args: FindRelevantFilesCommandArgs) => Promise<JobResult>;
   "create_generate_directory_tree_job_command": (args: CreateGenerateDirectoryTreeJobCommandArgs) => Promise<JobResult>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
@@ -448,6 +469,9 @@ export type TauriInvoke = {
   "get_all_task_model_settings_for_project_command": (args: GetAllTaskModelSettingsForProjectCommandArgs) => Promise<import("@/types").TaskSettings>;
   "set_project_task_model_settings_command": (args: SetProjectTaskModelSettingsCommandArgs) => Promise<void>;
   "fetch_runtime_ai_config": (args: FetchRuntimeAiConfigArgs) => Promise<Record<string, unknown>>;
+  "check_database_health_command": (args: CheckDatabaseHealthCommandArgs) => Promise<Record<string, unknown>>;
+  "repair_database_command": (args: RepairDatabaseCommandArgs) => Promise<Record<string, unknown>>;
+  "reset_database_command": (args: ResetDatabaseCommandArgs) => Promise<Record<string, unknown>>;
 };
 
 // Strongly typed invoke function

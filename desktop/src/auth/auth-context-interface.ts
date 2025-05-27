@@ -9,6 +9,7 @@ export interface AuthContextType {
   loading: boolean;
   error?: string;
   token?: string;
+  tokenExpiresAt?: number;
   signIn: (providerHint?: string) => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | undefined>;

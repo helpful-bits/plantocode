@@ -18,6 +18,7 @@ pub fn get_home_directory_command() -> Result<String, String> {
 
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListFilesRequestArgs {
     pub directory: String,
     pub pattern: Option<String>,
@@ -50,6 +51,7 @@ pub async fn list_files_command(directory: String, pattern: Option<String>, incl
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateDirectoryArgs {
     pub path: String,
     pub project_directory: Option<String>,
@@ -76,6 +78,7 @@ pub async fn create_directory_command(path: String, project_directory: Option<St
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadFileContentArgs {
     pub path: String,
     pub project_directory: Option<String>,
@@ -83,6 +86,7 @@ pub struct ReadFileContentArgs {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadFileContentResponse {
     pub content: String,
 }
@@ -108,6 +112,7 @@ pub async fn read_file_content_command(path: String, project_directory: Option<S
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteFileContentArgs {
     pub path: String,
     pub content: String,
@@ -135,6 +140,7 @@ pub async fn write_file_content_command(path: String, content: String, project_d
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateUniqueFilePathArgs {
     pub request_id: String,
     pub session_name: String,
@@ -181,6 +187,7 @@ pub async fn create_unique_filepath_command(request_id: String, session_name: St
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteFileArgs {
     pub path: String,
     pub project_directory: Option<String>,
@@ -207,6 +214,7 @@ pub async fn delete_file_command(path: String, project_directory: Option<String>
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MoveFileArgs {
     pub source_path: String,
     pub destination_path: String,
@@ -245,22 +253,26 @@ pub async fn move_file_command(source_path: String, destination_path: String, pr
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PathArgs {
     pub path: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PathJoinArgs {
     pub paths: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NormalizePathArgs {
     pub path: String,
     pub add_trailing_slash: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SanitizeFilenameArgs {
     pub name: String,
 }

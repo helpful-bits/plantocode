@@ -173,14 +173,8 @@ impl BackgroundJobRepository {
                 chars_received = $4,
                 updated_at = $5,
                 last_update = $6,
-                metadata = json_set(
-                  COALESCE(metadata, '{}'), 
-                  '$.lastStreamUpdateTime', $7,
-                  '$.responseLength', $8,
-                  '$.totalTokens', $9,
-                  '$.isStreaming', 1
-                )
-            WHERE id = $10 AND status = $11
+                metadata = $7
+            WHERE id = $8 AND status = $9
             "#)
             .bind(new_response)
             .bind(tokens_received)
@@ -188,9 +182,7 @@ impl BackgroundJobRepository {
             .bind(current_total_response_length)
             .bind(now)
             .bind(now)
-            .bind(now)
-            .bind(current_total_response_length)
-            .bind(total_tokens)
+            .bind(metadata_str)
             .bind(job_id)
             .bind(JobStatus::Running.to_string())
             .execute(&*self.pool)

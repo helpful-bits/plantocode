@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, MicOff, Loader2, RefreshCw, ChevronDown } from "lucide-react";
+import { Mic, MicOff, Loader2, RefreshCw } from "lucide-react";
 import {
   useState,
   useCallback,
@@ -8,7 +8,15 @@ import {
 } from "react";
 
 import { useVoiceRecording } from "@/hooks/use-voice-recording";
-import { Button } from "@/ui/button";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Label,
+} from "@/ui";
 import { toast } from "@/ui/use-toast";
 import { createTranscriptionErrorMessage } from "@/utils/error-handling"; // Import error handling utility
 
@@ -417,21 +425,18 @@ const VoiceTranscription = function VoiceTranscription({
   ]);
 
   return (
-    <div className="inline-flex flex-col gap-2 border rounded-lg p-4 bg-card shadow-sm max-w-fit">
+    <div className="inline-flex flex-col gap-3 border rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
       <div className="flex items-center justify-between">
-        <div className="font-semibold text-card-foreground mr-2">
+        <div className="font-semibold text-foreground mr-2">
           Record Description:
         </div>
         <Button
           type="button"
           onClick={handleToggleRecording}
           disabled={!activeSessionId || disabled}
-          isLoading={isProcessing}
-          loadingText="Processing..."
-          loadingIcon={<Loader2 className="h-4 w-4 animate-spin mr-2" />}
           variant={isRecording ? "destructive" : "secondary"}
           size="sm"
-          className="min-w-[120px] flex justify-center items-center gap-2 h-9"
+          className="min-w-[120px]"
           title={
             disabled
               ? "Feature disabled during session switching"
@@ -444,6 +449,11 @@ const VoiceTranscription = function VoiceTranscription({
             <>
               <MicOff className="h-4 w-4 mr-2" />
               <span>Stop Recording</span>
+            </>
+          ) : isProcessing ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <span>Processing...</span>
             </>
           ) : (
             <>
@@ -461,24 +471,30 @@ const VoiceTranscription = function VoiceTranscription({
 
       <div className="flex flex-row gap-4 items-start mt-2">
         <div className="flex flex-col">
-          <div className="text-xs mb-1">Language</div>
+          <Label htmlFor="language-select" className="text-xs mb-1 text-foreground">
+            Language
+          </Label>
           <div className="h-9">
-            <div className="relative w-[130px]">
-              <select
+            <div className="w-[130px]">
+              <Select
                 value={languageCode}
-                onChange={(e) => setLanguageCode(e.target.value)}
+                onValueChange={setLanguageCode}
                 disabled={
                   isRecording || isProcessing || !activeSessionId || disabled
                 }
-                className="w-full h-9 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 appearance-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input dark:text-foreground dark:border-border"
               >
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-              </select>
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </div>
+                <SelectTrigger
+                  id="language-select"
+                  className="w-full h-9"
+                >
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="es">Spanish</SelectItem>
+                  <SelectItem value="fr">French</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-1 text-balance">
@@ -487,12 +503,14 @@ const VoiceTranscription = function VoiceTranscription({
         </div>
 
         <div className="flex flex-col">
-          <div className="text-xs mb-1">Microphone</div>
+          <Label htmlFor="microphone-select" className="text-xs mb-1 text-foreground">
+            Microphone
+          </Label>
           <div className="h-9">
-            <div className="relative w-[280px]">
-              <select
+            <div className="w-[280px]">
+              <Select
                 value={selectedAudioInputId}
-                onChange={(e) => selectAudioInput(e.target.value)}
+                onValueChange={selectAudioInput}
                 disabled={
                   isRecording ||
                   isProcessing ||
@@ -500,18 +518,22 @@ const VoiceTranscription = function VoiceTranscription({
                   disabled ||
                   availableAudioInputs.length === 0
                 }
-                className="w-full h-9 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 appearance-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input dark:text-foreground dark:border-border text-ellipsis"
               >
-                <option value="default">System Default</option>
-                {availableAudioInputs.map((device, index) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </div>
+                <SelectTrigger
+                  id="microphone-select"
+                  className="w-full h-9"
+                >
+                  <SelectValue placeholder="Select microphone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">System Default</SelectItem>
+                  {availableAudioInputs.map((device, index) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId || `device-${index}`}>
+                      {device.label || `Microphone ${index + 1}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-1 text-balance">
@@ -542,12 +564,8 @@ const VoiceTranscription = function VoiceTranscription({
             type="button"
             onClick={handleRetry}
             variant="outline"
-            size="sm"
-            className="w-fit text-xs h-8"
-            disabled={isRecording || disabled}
-            isLoading={isProcessing}
-            loadingText="Processing..."
-            loadingIcon={<Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />}
+            size="compact"
+            disabled={isRecording || disabled || isProcessing}
           >
             <RefreshCw className="h-3.5 w-3.5 mr-2" />
             Retry Last Recording
@@ -561,8 +579,8 @@ const VoiceTranscription = function VoiceTranscription({
             type="button"
             onClick={handleRevertToRaw}
             variant="link"
-            size="sm"
-            className="text-muted-foreground justify-start p-0 h-auto text-xs w-fit"
+            size="compact-sm"
+            className="justify-start p-0 h-auto text-muted-foreground"
             disabled={disabled}
           >
             Switch to original Groq transcription (without Claude&apos;s

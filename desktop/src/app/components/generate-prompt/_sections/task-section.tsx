@@ -41,8 +41,6 @@ const TaskSection = React.memo(function TaskSection({
     taskDescriptionRef,
     isGeneratingGuidance,
     isImprovingText,
-    // This is properly marked as unused
-    textImprovementJobId: _textImprovementJobId,
   } = taskState;
 
   const { handleGenerateGuidance, handleImproveSelection } = taskActions;
@@ -116,7 +114,7 @@ const TaskSection = React.memo(function TaskSection({
             </Button>
             <p className="text-xs text-muted-foreground mt-1 text-balance">
               {!(sessionState.currentSession?.taskDescription || "").trim() ? (
-                <span className="text-red-600 dark:text-red-400">
+                <span className="text-destructive">
                   Please enter a task description above to enable this feature.
                 </span>
               ) : (

@@ -41,7 +41,7 @@ export function KeychainActionStep({ onSuccess, onError }: KeychainActionStepPro
       <Card className="w-full max-w-md p-8 text-center">
         <div className="space-y-6">
           <div className="space-y-2">
-            <Settings className="w-12 h-12 mx-auto text-blue-500 animate-spin" />
+            <Settings className="w-12 h-12 mx-auto text-primary animate-spin" />
             <h1 className="text-2xl font-bold">Configuring Secure Storage</h1>
             <p className="text-muted-foreground">
               Setting up your keychain access for secure credential storage...

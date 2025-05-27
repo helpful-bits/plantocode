@@ -88,15 +88,24 @@ export function useSessionLoader({
       }
 
       loadingSessionRef.current = { id: sessionId, timestamp: now };
-      setSessionLoading(true);
+      // No loading state to eliminate UI jumps
+      // setSessionLoading(true);
 
       const previousSessionId = currentSessionRef.current?.id;
       let loadSuccess = false;
 
-      // Create a safety timeout - reduced to 2 seconds
+      // Create a safety timeout - increased to 10 seconds
       const safetyTimeout = setTimeout(() => {
-        setSessionLoading(false);
+        // setSessionLoading(false); // Removed to eliminate loading states
         loadingSessionRef.current = { id: null, timestamp: 0 };
+
+        if (!loadSuccess) {
+          setSessionError(new DatabaseError("Session load timed out", { 
+            category: DatabaseErrorCategory.TIMEOUT, 
+            severity: DatabaseErrorSeverity.WARNING, 
+            context: { sessionId } 
+          }));
+        }
 
         if (typeof window !== "undefined" && !loadSuccess) {
           window.dispatchEvent(
@@ -111,7 +120,7 @@ export function useSessionLoader({
         }
 
         completeInitialization();
-      }, 2000); // 2 seconds timeout
+      }, 10000); // 10 seconds timeout
 
       try {
         // If there's a current session with a different ID that needs saving,
@@ -208,7 +217,7 @@ export function useSessionLoader({
         throw dbError;
       } finally {
         clearTimeout(safetyTimeout);
-        setSessionLoading(false);
+        // setSessionLoading(false); // Removed to eliminate loading states
 
         if (loadingSessionRef.current.id === sessionId) {
           loadingSessionRef.current = { id: null, timestamp: 0 };
@@ -216,7 +225,6 @@ export function useSessionLoader({
       }
     },
     [
-      currentSession,
       projectDirectory,
       setAppInitializing,
       setCurrentSession,

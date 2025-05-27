@@ -52,7 +52,8 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     };
     
     let job_id = job.id().to_string();
-    info!("Processing job {} with task type {}", job_id, job.task_type_str);
+    let task_type = job.task_type_str.clone();
+    info!("Processing job {} with task type {}", job_id, task_type);
     
     // Update job status to running
     let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>();
@@ -72,8 +73,8 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     let processor = match processor_opt_result {
         Ok(p) => p,
         Err(e) => {
-            error!("Error finding processor for job {}: {}", job_id, e);
-            let error_message = format!("Error finding processor: {}", e);
+            error!("Error finding processor for job {} (task type: {}): {}", job_id, task_type, e);
+            let error_message = format!("Error finding processor for task type '{}': {}", task_type, e);
             handle_job_failure(
                 &app_handle,
                 &background_job_repo,
@@ -96,6 +97,8 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     
     match job_result {
         Ok(result) => {
+            info!("Job {} completed successfully with status: {:?}", job_id, result.status);
+            
             // Reset retry count and log any errors
             if let Err(e) = queue.reset_retry_count(&job_id) {
                 error!("Failed to reset retry count for job {}: {}", job_id, e);
@@ -113,6 +116,8 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             Ok(Some(result))
         },
         Err(e) => {
+            error!("Job {} (task type: {}) failed during processing: {}", job_id, task_type, e);
+            
             // Handle job failure or retry
             let handled = handle_job_failure_or_retry(
                 &app_handle,
@@ -125,8 +130,12 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             
             // Return None if the job is being retried, or Some with failure result if job permanently failed
             match handled {
-                JobFailureHandlingResult::Retrying => Ok(None),
+                JobFailureHandlingResult::Retrying => {
+                    info!("Job {} is being retried after failure", job_id);
+                    Ok(None)
+                },
                 JobFailureHandlingResult::PermanentFailure(failure_reason) => {
+                    error!("Job {} permanently failed: {}", job_id, failure_reason);
                     Ok(Some(JobProcessResult::failure(job_id, failure_reason)))
                 }
             }
@@ -149,11 +158,15 @@ async fn execute_job_with_processor(
     
     match timeout_result {
         // Job completed within timeout
-        Ok(process_result) => process_result,
+        Ok(process_result) => {
+            debug!("Job {} completed within timeout ({} seconds)", job_id, DEFAULT_JOB_TIMEOUT_SECONDS);
+            process_result
+        },
         // Job timed out
         Err(_elapsed) => {
             let timeout_message = format!("Job {} timed out after {} seconds", job_id, DEFAULT_JOB_TIMEOUT_SECONDS);
-            error!("{}", timeout_message);
+            error!("Timeout occurred: {}", timeout_message);
+            warn!("Consider increasing timeout limit for processor: {}", processor.name());
             Err(AppError::JobError(timeout_message))
         }
     }
@@ -168,6 +181,8 @@ async fn handle_job_success(
 ) -> AppResult<()> {
     match result.status {
         JobStatus::Completed => {
+            info!("Job {} completed successfully", job_id);
+            
             // Update job status to completed
             background_job_repo.update_job_status(
                 job_id,
@@ -175,7 +190,7 @@ async fn handle_job_success(
                 None,
             ).await?;
             
-            // Update job response
+            // Update job response with comprehensive result data
             if let Some(response) = &result.response {
                 background_job_repo.update_job_response(
                     job_id, 
@@ -198,8 +213,10 @@ async fn handle_job_success(
             )?;
         },
         JobStatus::Failed => {
-            // Update job status to failed
             let error_message = result.error.clone().unwrap_or_else(|| "Unknown error".to_string());
+            error!("Job {} failed: {}", job_id, error_message);
+            
+            // Update job status to failed with detailed error information
             background_job_repo.update_job_status(
                 job_id,
                 &JobStatus::Failed.to_string(),
@@ -301,7 +318,8 @@ async fn handle_job_failure_or_retry_internal(
     error_message: &str,
     job_copy: &BackgroundJob,
 ) -> AppResult<JobFailureHandlingResult> {
-    error!("Failed to process job {}: {}", job_id, error_message);
+    error!("Failed to process job {} (retry count: {}): {}", job_id, 
+        job_helpers::get_retry_count_from_job(job_copy).unwrap_or(0), error_message);
     
     // Check if this error type is retryable and get current retry count
     let (is_retryable, current_retry_count) = job_helpers::get_retry_info(job_copy).await;
@@ -312,8 +330,8 @@ async fn handle_job_failure_or_retry_internal(
         let retry_delay = job_helpers::calculate_retry_delay(current_retry_count);
         let next_retry_count = current_retry_count + 1;
         
-        warn!("Job {} failed with retryable error. Scheduling retry #{} in {} seconds: {}", 
-            job_id, next_retry_count, retry_delay, error_message);
+        warn!("Job {} failed with retryable error. Scheduling retry #{}/{} in {} seconds: {}", 
+            job_id, next_retry_count, job_helpers::MAX_RETRY_COUNT, retry_delay, error_message);
         
         // Prepare metadata for the retry
         let retry_metadata = job_helpers::prepare_retry_metadata(job_copy, next_retry_count, error_message).await;
@@ -348,7 +366,7 @@ async fn handle_job_failure_or_retry_internal(
         let failure_reason = if !is_retryable {
             format!("Non-retryable error: {}", error_message)
         } else {
-            format!("Failed after {} retries. Last error: {}", current_retry_count, error_message)
+            format!("Failed after {}/{} retries. Last error: {}", current_retry_count, job_helpers::MAX_RETRY_COUNT, error_message)
         };
         
         error!("Job {} permanently failed: {}", job_id, failure_reason);
@@ -387,8 +405,13 @@ fn emit_job_status_change(
         message: message.map(|s| s.to_string()),
     };
     
-    app_handle.emit("job_status_change", event)
-        .map_err(|e| AppError::TauriError(format!("Failed to emit job status change event: {}", e)))?;
+    if let Err(e) = app_handle.emit("job_status_change", event) {
+        error!("Failed to emit job status change event for job {}: {}", job_id, e);
+        return Err(AppError::TauriError(format!("Failed to emit job status change event: {}", e)));
+    }
+    
+    debug!("Emitted job status change event for job {}: status={}, message={:?}", 
+        job_id, status, message);
         
     Ok(())
 }

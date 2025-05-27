@@ -4,15 +4,15 @@ import { forwardRef, HTMLAttributes } from "react";
 import { cn } from "@/utils/utils";
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground",
+  "relative w-full rounded-xl border p-4 backdrop-blur-sm shadow-soft [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground",
   {
     variants: {
       variant: {
-        default: "bg-background text-foreground",
+        default: "bg-background/80 text-soft border-border/50",
         destructive:
-          "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+          "border-destructive/30 bg-destructive/10 text-destructive [&>svg]:text-destructive",
         warning:
-          "border-warning-border bg-warning-background text-warning-foreground [&>svg]:text-warning",
+          "border-warning/30 bg-warning/5 text-warning [&>svg]:text-warning",
       },
     },
     defaultVariants: {
@@ -54,7 +54,7 @@ const AlertDescription = forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
+    className={cn("text-sm [&_p]:leading-relaxed text-foreground", className)}
     {...props}
   />
 ));

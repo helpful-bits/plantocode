@@ -34,7 +34,7 @@ export const DataCard: FC<DataCardProps> = ({
   return (
     <Card className={`overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
         <div>
           <h3 className="font-medium">{title}</h3>
           {description && (
@@ -54,7 +54,7 @@ export const DataCard: FC<DataCardProps> = ({
             <p className="text-sm">Loading data...</p>
           </div>
         ) : error ? (
-          <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">
+          <div className="bg-destructive/10 text-destructive p-3 rounded-lg border border-destructive/20 text-sm backdrop-blur-sm">
             {error}
           </div>
         ) : (
@@ -64,7 +64,7 @@ export const DataCard: FC<DataCardProps> = ({
 
       {/* Footer with optional action */}
       {footerAction && (
-        <div className="border-t px-4 py-3 bg-muted/30">{footerAction}</div>
+        <div className="border-t border-border/60 px-4 py-3 bg-background/70 backdrop-blur-sm">{footerAction}</div>
       )}
     </Card>
   );

@@ -133,7 +133,7 @@ export default function SettingsForm() {
 
   if (!projectDirectory) {
     return (
-      <Card>
+      <Card className="bg-card/80 backdrop-blur-sm border shadow-soft rounded-xl">
         <CardHeader>
           <CardTitle>No Active Project</CardTitle>
           <CardDescription>
@@ -146,32 +146,17 @@ export default function SettingsForm() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div>
-            <CardTitle className="text-lg">
-              Project: {projectDirectory.split("/").pop()}
-            </CardTitle>
-            <CardDescription className="text-balance">
-              Configure AI model preferences specifically for the &apos;
-              {projectDirectory.split("/").pop()}&apos; project. These settings
-              override global defaults and apply to all sessions within this
-              project.
-            </CardDescription>
+      <div className="flex items-center gap-2 justify-end">
+        {isLoading && (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        )}
+        {saveSuccess && (
+          <div className="flex items-center gap-1 text-xs text-success">
+            <CheckCircle className="h-4 w-4" /> Saved
           </div>
-          <div className="flex items-center gap-2 min-w-[100px] justify-end">
-            {isLoading && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-            {saveSuccess && (
-              <div className="flex items-center gap-1 text-xs text-primary">
-                <CheckCircle className="h-4 w-4" /> Saved
-              </div>
-            )}
-            {error && <span className="text-xs text-destructive">{error}</span>}
-          </div>
-        </CardHeader>
-      </Card>
+        )}
+        {error && <span className="text-xs text-destructive">{error}</span>}
+      </div>
 
       {taskSettings && (
         <TaskModelSettings
@@ -181,7 +166,7 @@ export default function SettingsForm() {
       )}
 
       {!taskSettings && !isLoading && (
-        <Card>
+        <Card className="bg-card/80 backdrop-blur-sm border shadow-soft rounded-xl">
           <CardHeader>
             <CardTitle>Unable to Load Settings</CardTitle>
             <CardDescription>

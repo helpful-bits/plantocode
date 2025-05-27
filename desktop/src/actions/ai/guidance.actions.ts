@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Generate guidance for specific file paths
@@ -64,14 +65,6 @@ export async function generateGuidanceForPathsAction(
     };
   } catch (error) {
     console.error("[generateGuidanceForPathsAction]", error);
-
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error generating guidance",
-      error: error instanceof Error ? error : new Error("Unknown error"),
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

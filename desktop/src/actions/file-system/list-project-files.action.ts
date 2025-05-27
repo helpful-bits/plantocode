@@ -1,6 +1,7 @@
 import { type ActionState } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { type ListFilesResponse } from "@/utils/tauri-fs";
+import { handleActionError } from "@/utils/action-utils";
 
 // Request arguments for list_files_command - matches Rust struct
 export interface ListFilesRequestArgs {
@@ -40,9 +41,6 @@ export async function listProjectFilesAction(
     };
   } catch (error) {
     console.error("Error listing project files:", error);
-    return {
-      isSuccess: false,
-      message: error instanceof Error ? error.message : "Failed to list project files",
-    };
+    return handleActionError(error) as ActionState<ListFilesResponse>;
   }
 }

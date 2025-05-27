@@ -37,8 +37,16 @@ export function useFileSelectionCore({
   // File selection handlers
   const toggleFileSelection = useCallback(
     (path: string) => {
+      if (!path || typeof path !== 'string') {
+        console.error(`[useFileSelectionCore] Invalid path provided: ${path}`);
+        return;
+      }
+      
       const fileInfo = managedFilesMap[path];
-      if (!fileInfo) return;
+      if (!fileInfo) {
+        console.warn(`[useFileSelectionCore] File not found in managedFilesMap: ${path}`);
+        return;
+      }
 
       const targetComparablePath = fileInfo.comparablePath;
       if (!targetComparablePath) {
@@ -47,23 +55,24 @@ export function useFileSelectionCore({
       }
 
       // Save current state before making changes
+      // Note: currentIncludedFiles and currentExcludedFiles represent the state *before* this toggle action
+      // This is the correct behavior for history tracking - we capture the "before" state for undo operations
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.included) {
-        // If it was included, now un-including it
+        // If it was included, now excluding it (mutually exclusive behavior)
         const newIncludedFiles = currentIncludedFiles.filter(p => p !== targetComparablePath);
+        const newExcludedFiles = Array.from(new Set([...currentExcludedFiles, targetComparablePath]));
+        
         onUpdateIncludedFiles(newIncludedFiles);
+        onUpdateExcludedFiles(newExcludedFiles);
       } else {
-        // If it wasn't included, now including it
+        // If it wasn't included, now including it and removing from excluded
         const newIncludedFiles = Array.from(new Set([...currentIncludedFiles, targetComparablePath]));
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
         
         onUpdateIncludedFiles(newIncludedFiles);
-        
-        // Only update excluded files if there was a change
-        if (newExcludedFiles.length !== currentExcludedFiles.length) {
-          onUpdateExcludedFiles(newExcludedFiles);
-        }
+        onUpdateExcludedFiles(newExcludedFiles);
       }
     },
     [
@@ -78,8 +87,16 @@ export function useFileSelectionCore({
 
   const toggleFileExclusion = useCallback(
     (path: string) => {
+      if (!path || typeof path !== 'string') {
+        console.error(`[useFileSelectionCore] Invalid path provided: ${path}`);
+        return;
+      }
+      
       const fileInfo = managedFilesMap[path];
-      if (!fileInfo) return;
+      if (!fileInfo) {
+        console.warn(`[useFileSelectionCore] File not found in managedFilesMap: ${path}`);
+        return;
+      }
 
       const targetComparablePath = fileInfo.comparablePath;
       if (!targetComparablePath) {
@@ -88,14 +105,19 @@ export function useFileSelectionCore({
       }
 
       // Save current state before making changes
+      // Note: currentIncludedFiles and currentExcludedFiles represent the state *before* this toggle action
+      // This is the correct behavior for history tracking - we capture the "before" state for undo operations
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.forceExcluded) {
-        // If it was excluded, now un-excluding it
+        // If it was excluded, now including it (mutually exclusive behavior)
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
+        const newIncludedFiles = Array.from(new Set([...currentIncludedFiles, targetComparablePath]));
+        
         onUpdateExcludedFiles(newExcludedFiles);
+        onUpdateIncludedFiles(newIncludedFiles);
       } else {
-        // If it wasn't excluded, now excluding it
+        // If it wasn't excluded, now excluding it and removing from included
         const newExcludedFiles = Array.from(new Set([...currentExcludedFiles, targetComparablePath]));
         const newIncludedFiles = currentIncludedFiles.filter(p => p !== targetComparablePath);
         
@@ -115,9 +137,14 @@ export function useFileSelectionCore({
 
   const handleBulkToggle = useCallback(
     (shouldInclude: boolean, targetFiles: FileInfo[]) => {
+      if (!Array.isArray(targetFiles) || targetFiles.length === 0) {
+        console.warn('[useFileSelectionCore] No valid files provided for bulk toggle');
+        return;
+      }
+      
       const targetComparablePaths = targetFiles
-        .map(f => f.comparablePath)
-        .filter(Boolean) as string[];
+        .map(f => f?.comparablePath)
+        .filter((path): path is string => Boolean(path));
 
       if (shouldInclude) {
         // Adding files to included set

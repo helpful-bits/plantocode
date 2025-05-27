@@ -16,6 +16,7 @@ const defaultValue: CorePromptContextValue = {
     sessionName: "",
     hasUnsavedChanges: false,
     isFormSaving: false,
+    isSessionFormLoading: false,
     error: null,
 
     // Project data

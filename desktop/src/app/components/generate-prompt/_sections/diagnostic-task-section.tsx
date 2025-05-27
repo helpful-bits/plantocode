@@ -56,7 +56,7 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
 
   return (
     <div className="border rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
-      <h3 className="text-lg font-medium mb-4">Task Description</h3>
+      <h3 className="text-lg font-medium mb-4 text-foreground">Task Description</h3>
       <Suspense
         fallback={
           <div className="flex justify-center items-center min-h-[240px] text-muted-foreground">

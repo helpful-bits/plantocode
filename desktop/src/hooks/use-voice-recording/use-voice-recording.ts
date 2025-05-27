@@ -98,7 +98,7 @@ export function useVoiceRecording({
   // Ensure error propagation to main hook
   const handleError = useCallback(
     (errorMessage: string) => {
-      updateState({ error: errorMessage });
+      updateState({ error: errorMessage, isProcessing: false });
     },
     [updateState]
   );
@@ -156,8 +156,9 @@ export function useVoiceRecording({
     } catch (error) {
       // Catch any unhandled errors in startRecording
       console.error("[VoiceRecording] Unexpected error in startRecording:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       updateState({ 
-        error: `Failed to start recording: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Failed to start recording: ${errorMessage}`,
         isRecording: false 
       });
     }
@@ -187,8 +188,9 @@ export function useVoiceRecording({
     } catch (error) {
       // Catch any unhandled errors in stopRecording or processTranscription
       console.error("[VoiceRecording] Unexpected error in stopRecording:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       updateState({ 
-        error: `Failed to stop recording: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Failed to stop recording: ${errorMessage}`,
         isProcessing: false 
       });
     }
@@ -228,8 +230,9 @@ export function useVoiceRecording({
     } catch (error) {
       // Catch any unhandled errors in retryLastRecording
       console.error("[VoiceRecording] Unexpected error in retryLastRecording:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       updateState({ 
-        error: `Failed to retry recording: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Failed to retry recording: ${errorMessage}`,
         isProcessing: false 
       });
     }

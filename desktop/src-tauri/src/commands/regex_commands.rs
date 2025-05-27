@@ -10,6 +10,7 @@ use crate::jobs::types::{Job, JobPayload, JobType, RegexGenerationPayload};
 
 /// Arguments for regex generation command
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenerateRegexArgs {
     pub session_id: String,
     pub project_directory: String,
@@ -69,31 +70,31 @@ pub async fn generate_regex_command(
         .inner()
         .clone();
     
-    // Get model configuration for this task
+    // Get model configuration for this task - check project settings first, then server defaults
     let model = if let Some(model) = args.model_override.clone() {
         model
     } else {
-        match crate::config::get_model_for_task(TaskType::RegexGeneration) {
+        match crate::config::get_model_for_task_with_project(TaskType::RegexGeneration, &args.project_directory).await {
             Ok(model) => model,
             Err(e) => return Err(AppError::ConfigError(format!("Failed to get model for regex generation: {}", e))),
         }
     };
     
-    // Get temperature configuration
+    // Get temperature configuration - check project settings first, then server defaults
     let temperature = if let Some(temp) = args.temperature_override {
         temp
     } else {
-        match crate::config::get_default_temperature_for_task(Some(TaskType::RegexGeneration)) {
+        match crate::config::get_temperature_for_task_with_project(TaskType::RegexGeneration, &args.project_directory).await {
             Ok(temp) => temp,
             Err(e) => return Err(AppError::ConfigError(format!("Failed to get temperature for regex generation: {}", e))),
         }
     };
     
-    // Get max tokens configuration
+    // Get max tokens configuration - check project settings first, then server defaults
     let max_output_tokens = if let Some(tokens) = args.max_tokens_override {
         tokens
     } else {
-        match crate::config::get_default_max_tokens_for_task(Some(TaskType::RegexGeneration)) {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::RegexGeneration, &args.project_directory).await {
             Ok(tokens) => tokens,
             Err(e) => return Err(AppError::ConfigError(format!("Failed to get max tokens for regex generation: {}", e))),
         }

@@ -11,6 +11,7 @@ use crate::utils::git_utils;
 
 /// Options for directory tree generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DirectoryTreeOptions {
     /// Maximum depth to traverse (None means no limit)
     pub max_depth: Option<usize>,

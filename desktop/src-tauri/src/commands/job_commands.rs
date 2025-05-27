@@ -57,6 +57,7 @@ pub async fn get_active_jobs_command(app_handle: AppHandle) -> AppResult<Vec<cra
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteBackgroundJobArgs {
     pub job_id: String,
 }
@@ -75,6 +76,7 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CancelJobArgs {
     pub job_id: String,
 }
@@ -95,6 +97,7 @@ pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CancelSessionJobsArgs {
     pub session_id: String,
 }

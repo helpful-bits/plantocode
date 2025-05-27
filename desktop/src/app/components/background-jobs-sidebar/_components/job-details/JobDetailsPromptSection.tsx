@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { Button } from "@/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { ScrollArea } from "@/ui/scroll-area";
 
@@ -22,20 +23,25 @@ export function JobDetailsPromptSection({
     : promptContent.substring(0, PREVIEW_CHARS) + "...";
 
   return (
-    <div className="bg-gray-50 dark:bg-muted/10 rounded-md">
+    <Card>
       <Collapsible open={isPromptOpen} onOpenChange={setIsPromptOpen}>
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full flex justify-between items-center p-5 rounded-md">
-            <h4 className="font-semibold text-xs text-muted-foreground uppercase">
-              Prompt
-            </h4>
-            {isPromptOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
+          <CardHeader className="pb-3 cursor-pointer hover:bg-accent/50 transition-colors">
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-sm">Prompt</CardTitle>
+                <CardDescription className="text-xs">
+                  Input prompt sent to the AI model
+                </CardDescription>
+              </div>
+              {isPromptOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </CardHeader>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="px-5 pb-5">
+          <CardContent className="pt-0">
             <ScrollArea className={`${showFullPrompt ? "max-h-[400px]" : "max-h-[200px]"}`}>
-              <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full">
+              <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full text-foreground">
                 {displayContent}
               </pre>
             </ScrollArea>
@@ -43,15 +49,15 @@ export function JobDetailsPromptSection({
               <Button
                 variant="ghost"
                 size="sm"
-                className="mt-2 text-xs h-6 px-2"
+                className="mt-3 text-xs"
                 onClick={() => setShowFullPrompt(!showFullPrompt)}
               >
                 {showFullPrompt ? "Show Less" : "Show More"}
               </Button>
             )}
-          </div>
+          </CardContent>
         </CollapsibleContent>
       </Collapsible>
-    </div>
+    </Card>
   );
 }

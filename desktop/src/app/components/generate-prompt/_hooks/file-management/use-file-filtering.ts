@@ -33,10 +33,10 @@ export function useFileFiltering({
 }: UseFileFilteringProps) {
   // Memoize regex objects to prevent unnecessary recreation
   const compiledRegexObjects = useMemo(() => {
-    const titleRegexTrimmed = regexPatterns.titleRegex.trim();
-    const contentRegexTrimmed = regexPatterns.contentRegex.trim();
-    const negativeTitleRegexTrimmed = regexPatterns.negativeTitleRegex.trim();
-    const negativeContentRegexTrimmed = regexPatterns.negativeContentRegex.trim();
+    const titleRegexTrimmed = regexPatterns.titleRegex?.trim() ?? '';
+    const contentRegexTrimmed = regexPatterns.contentRegex?.trim() ?? '';
+    const negativeTitleRegexTrimmed = regexPatterns.negativeTitleRegex?.trim() ?? '';
+    const negativeContentRegexTrimmed = regexPatterns.negativeContentRegex?.trim() ?? '';
 
     // Compile title regex with error handling
     let titleRegexObj: RegExp | null = null;
@@ -105,6 +105,19 @@ export function useFileFiltering({
     if (!managedFilesMap || Object.keys(managedFilesMap).length === 0) {
       return [];
     }
+    
+    // Early return if all filters are empty or disabled
+    const hasSearchTerm = searchTerm.trim().length > 0;
+    const hasRegexFilters = filterMode === 'regex' && (
+      compiledRegexObjects.titleRegexTrimmed ||
+      compiledRegexObjects.contentRegexTrimmed ||
+      compiledRegexObjects.negativeTitleRegexTrimmed ||
+      compiledRegexObjects.negativeContentRegexTrimmed
+    );
+    
+    if (filterMode === 'all' && !hasSearchTerm && !hasRegexFilters) {
+      return Object.values(managedFilesMap);
+    }
 
     // Start with all files from the managedFilesMap
     let filteredFilesInLoop: FileInfo[] = Object.values(managedFilesMap);
@@ -135,6 +148,14 @@ export function useFileFiltering({
 
     // --- 3. THIRD, Apply Regex Filtering (if filter mode is 'regex') ---
     if (filterMode === "regex") {
+      const hasFileContents = Object.keys(fileContentsMap).length > 0;
+      
+      // Skip content-based filtering if no content is loaded to avoid expensive operations
+      if ((compiledRegexObjects.contentRegexTrimmed || compiledRegexObjects.negativeContentRegexTrimmed) && !hasFileContents) {
+        // If content filtering is required but no content is available, return empty to avoid confusion
+        return [];
+      }
+      
       const {
         titleRegexObj,
         contentRegexObj,
@@ -145,8 +166,6 @@ export function useFileFiltering({
         negativeTitleRegexTrimmed,
         negativeContentRegexTrimmed
       } = compiledRegexObjects;
-
-      const hasFileContents = Object.keys(fileContentsMap).length > 0;
 
       // Apply positive title regex filter
       if (titleRegexObj && titleRegexTrimmed) {

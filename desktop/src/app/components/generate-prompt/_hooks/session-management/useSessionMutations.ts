@@ -28,7 +28,7 @@ interface UseSessionMutationsProps {
  */
 export function useSessionMutations({
   projectDirectory,
-  getCurrentSessionState,
+  getCurrentSessionState: _getCurrentSessionState, // Keep parameter but don't use it for createSession
   onSessionNameChangeUISync,
   loadSessions,
   setSessions,
@@ -48,12 +48,12 @@ export function useSessionMutations({
 
   const {
     flushSaves,
-    loadSessionById,
     createNewSession,
     deleteActiveSession,
     deleteNonActiveSession,
     renameActiveSession,
     renameSession,
+    loadSessionById,
   } = useSessionActionsContext();
 
   const { showNotification } = useNotification();
@@ -88,33 +88,41 @@ export function useSessionMutations({
     // Starting session creation operation
 
     try {
-      // Get the current session state from the form context
-      const sessionState = getCurrentSessionState();
-
       // Normalize the project directory
       const normalizedProjectDir = await normalizePath(projectDirectory);
 
       // Creating new session
 
+      // Create fresh session data (without copying existing form state)
+      const freshSessionState = {
+        projectDirectory: normalizedProjectDir,
+        taskDescription: "",
+        titleRegex: "",
+        contentRegex: "",
+        negativeTitleRegex: "",
+        negativeContentRegex: "",
+        isRegexActive: false,
+        searchTerm: "",
+        includedFiles: [] as string[],
+        forceExcludedFiles: [] as string[],
+        searchSelectedFilesOnly: false,
+        codebaseStructure: "",
+        createdAt: Date.now(),
+      };
+
       // Create a temporary session object for optimistic UI update
       const tempSession: Session = {
-        ...sessionState,
+        ...freshSessionState,
         id: tempId,
         name: sessionNameInput,
-        projectDirectory: normalizedProjectDir,
         updatedAt: Date.now(),
-        // Only set createdAt if not already provided in sessionState
-        createdAt: sessionState.createdAt || Date.now(),
       };
 
       // Optimistic UI update - add the new session to the list immediately
       setSessions([tempSession, ...sessions], false);
 
       // Create a new session using the SessionContext
-      const sessionId = await createNewSession(sessionNameInput, {
-        ...sessionState,
-        projectDirectory: normalizedProjectDir,
-      });
+      const sessionId = await createNewSession(sessionNameInput, freshSessionState);
 
       if (sessionId) {
         // Session created successfully
@@ -387,23 +395,15 @@ export function useSessionMutations({
       // Starting session load operation
 
       // Save any pending changes to the current session
-      // Use flushSaves for maximum reliability rather than just saveCurrentSession
       if (isSessionModified && currentSession) {
-        // Flushing pending changes to current session before switching
         await flushSaves();
       }
 
-      // Use consolidated loadSessionById method
+      // Load the session directly through session context
       await loadSessionById(session.id);
 
-      // Update parent components
-      if (currentSession) {
-        // Session loaded, updating UI components
-        onSessionNameChangeUISync(currentSession.name);
-      } 
-      // If currentSession is null after loading, it may indicate an issue
-
-      // Session load operation completed successfully
+      // Update UI with the session name
+      onSessionNameChangeUISync(session.name);
     } catch (error) {
       // Error loading session
 

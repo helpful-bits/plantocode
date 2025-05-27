@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Cancels a background job with the specified ID
@@ -19,11 +20,7 @@ export async function cancelBackgroundJobAction(
     await invoke("cancel_background_job_command", { jobId });
     return { isSuccess: true };
   } catch (e) {
-    return {
-      isSuccess: false,
-      message: (e as Error).message,
-      error: e as Error,
-    };
+    return handleActionError(e) as ActionState<null>;
   }
 }
 
@@ -37,11 +34,7 @@ export async function deleteBackgroundJobAction(
     await invoke("delete_background_job_command", { jobId });
     return { isSuccess: true };
   } catch (e) {
-    return {
-      isSuccess: false,
-      message: (e as Error).message,
-      error: e as Error,
-    };
+    return handleActionError(e) as ActionState<null>;
   }
 }
 
@@ -55,11 +48,7 @@ export async function clearJobHistoryAction(
     await invoke("clear_job_history_command", { daysToKeep });
     return { isSuccess: true };
   } catch (e) {
-    return {
-      isSuccess: false,
-      message: (e as Error).message,
-      error: e as Error,
-    };
+    return handleActionError(e) as ActionState<null>;
   }
 }
 
@@ -74,11 +63,7 @@ export async function updateJobClearedStatusAction(
     await invoke("update_job_cleared_status_command", { jobId, cleared });
     return { isSuccess: true };
   } catch (e) {
-    return {
-      isSuccess: false,
-      message: (e as Error).message,
-      error: e as Error,
-    };
+    return handleActionError(e) as ActionState<null>;
   }
 }
 
@@ -95,11 +80,7 @@ export async function getBackgroundJobAction(
       data: job,
     };
   } catch (e) {
-    return {
-      isSuccess: false,
-      message: (e as Error).message,
-      error: e as Error,
-    };
+    return handleActionError(e) as ActionState<unknown>;
   }
 }
 
@@ -114,10 +95,6 @@ export async function getActiveJobsAction(): Promise<ActionState<unknown>> {
       data: jobs,
     };
   } catch (e) {
-    return {
-      isSuccess: false,
-      message: (e as Error).message,
-      error: e as Error,
-    };
+    return handleActionError(e) as ActionState<unknown>;
   }
 }

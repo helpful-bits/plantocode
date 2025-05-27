@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Loader2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { memo } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
@@ -24,7 +24,6 @@ import SessionList from "./session-manager/SessionList";
 export interface SessionManagerProps {
   projectDirectory: string;
   getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
-  onLoadSession: (session: Session) => void;
   onSessionNameChange: (name: string) => void;
   disabled?: boolean;
 }
@@ -32,7 +31,6 @@ export interface SessionManagerProps {
 const SessionManager = ({
   projectDirectory,
   getCurrentSessionState,
-  onLoadSession,
   onSessionNameChange,
   disabled = false,
 }: SessionManagerProps) => {
@@ -62,7 +60,6 @@ const SessionManager = ({
   } = useSessionManagerOrchestrator({
     projectDirectory,
     getCurrentSessionState,
-    onLoadSessionUISync: onLoadSession,
     onSessionNameChangeUISync: onSessionNameChange,
   });
 
@@ -113,9 +110,9 @@ const SessionManager = ({
       />
 
       {/* Sessions List */}
-      <div className="border rounded-md shadow-sm">
-        <div className="p-2 bg-muted/50 border-b flex justify-between items-center">
-          <h3 className="text-sm font-medium">Sessions</h3>
+      <div className="border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
+        <div className="p-3 bg-muted/80 backdrop-blur-sm border-b flex justify-between items-center rounded-t-xl">
+          <h3 className="text-sm font-medium text-foreground">Sessions</h3>
         </div>
 
         <SessionList
@@ -142,28 +139,15 @@ const SessionManager = ({
       )}
 
       {/* Refresh Button */}
-      <div className="flex justify-between mt-2">
-        {/* Display a subtle indicator when refreshing */}
-        {isLoading && (
-          <span className="text-xs text-muted-foreground flex items-center">
-            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-            Loading sessions...
-          </span>
-        )}
-
+      <div className="flex justify-end mt-2">
         <Button
           size="sm"
           variant="outline"
-          className="text-xs h-8 px-3"
+          className="text-xs h-8 px-3 text-foreground"
           onClick={() => {
             void loadSessionsFromServer(true);
           }}
-          isLoading={isLoading || globalIsSwitching}
-          loadingText="Refreshing..."
-          loadingIcon={
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-          }
-          disabled={isLoading || globalIsSwitching || disabled}
+          disabled={disabled}
         >
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
           Refresh

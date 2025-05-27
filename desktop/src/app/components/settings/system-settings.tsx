@@ -105,7 +105,7 @@ export default function SystemSettings({
   };
 
   return (
-    <Card>
+    <Card className="bg-card/80 backdrop-blur-sm border shadow-soft rounded-xl">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg">System Settings</CardTitle>
         <CardDescription className="text-balance">
@@ -124,15 +124,15 @@ export default function SystemSettings({
             <p className="text-xs text-muted-foreground text-balance">
               Command used to open generated output files (like implementation
               plans) in your preferred editor. For example:{" "}
-              <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">
+              <code className="bg-muted/80 px-1.5 py-0.5 rounded text-[11px] font-mono">
                 code
               </code>
               ,{" "}
-              <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">
+              <code className="bg-muted/80 px-1.5 py-0.5 rounded text-[11px] font-mono">
                 vim
               </code>
               , or{" "}
-              <code className="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono">
+              <code className="bg-muted/80 px-1.5 py-0.5 rounded text-[11px] font-mono">
                 open -a &quot;Text Editor&quot;
               </code>
             </p>
@@ -163,7 +163,7 @@ export default function SystemSettings({
             <div className="h-5 text-xs">
               {error && <span className="text-destructive">{error}</span>}
               {saveSuccess && (
-                <span className="text-primary flex items-center gap-1">
+                <span className="text-success flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Saved successfully
                 </span>
               )}

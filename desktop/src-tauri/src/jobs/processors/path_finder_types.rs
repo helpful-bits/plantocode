@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderResultFile {
     pub path: String,
     pub relevance: Option<String>,
@@ -9,6 +10,7 @@ pub struct PathFinderResultFile {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderResult {
     pub analysis: Option<String>,
     pub primary_files: Vec<PathFinderResultFile>,
@@ -40,6 +42,7 @@ impl PathFinderResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderOptions {
     pub include_file_contents: Option<bool>,
     pub max_files_with_content: Option<usize>,

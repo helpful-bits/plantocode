@@ -5,6 +5,7 @@ use log::{info, error};
 
 use crate::error::{AppError, AppResult, SerializableError};
 use crate::models::FetchResponse;
+use crate::commands;
 
 // Session management handlers
 pub async fn handle_get_sessions(app_handle: AppHandle) -> AppResult<FetchResponse> {
@@ -94,23 +95,18 @@ pub async fn handle_create_session(app_handle: AppHandle, args: &crate::models::
     info!("Handling create_session command");
     
     if let Some(body) = &args.body {
-        let session_data = serde_json::from_value::<crate::models::Session>(body.clone())
+        let create_request = serde_json::from_value::<crate::models::CreateSessionRequest>(body.clone())
             .map_err(|e| AppError::ValidationError(format!("Invalid session data: {}", e)))?;
         
-        let session_repo = app_handle.state::<std::sync::Arc<crate::db_utils::SessionRepository>>()
-            .inner().clone();
-        
-        match session_repo.create_session(&session_data).await {
-            Ok(session_id) => {
+        match commands::session_commands::create_session_command(app_handle.clone(), create_request).await {
+            Ok(created_session) => {
                 let mut headers = HashMap::new();
                 headers.insert("Content-Type".to_string(), "application/json".to_string());
                 
                 Ok(FetchResponse {
                     status: 201,
                     headers,
-                    body: json!({
-                        "id": session_id
-                    }),
+                    body: json!(created_session),
                 })
             },
             Err(e) => {

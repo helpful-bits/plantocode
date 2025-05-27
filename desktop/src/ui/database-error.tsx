@@ -196,7 +196,7 @@ export default function DatabaseErrorHandler() {
 
     if (!healthData.fileExists) {
       return (
-        <Alert className="my-4 bg-warning-background border-warning-border">
+        <Alert className="my-4 bg-warning/5 border-warning/30">
           <AlertTitle className="flex items-center gap-2">
             <FileDown className="h-4 w-4 text-warning" />
             Database File Missing
@@ -206,7 +206,7 @@ export default function DatabaseErrorHandler() {
               The database file is missing. A full reset will create a new
               database file.
             </p>
-            <p className="mt-2 text-sm">
+            <p className="mt-2 text-sm text-foreground">
               Recommended action: <strong>Full Reset</strong>
             </p>
           </AlertDescription>
@@ -220,7 +220,7 @@ export default function DatabaseErrorHandler() {
       parseInt(healthData.filePermissions, 8) < 600
     ) {
       return (
-        <Alert className="my-4 bg-warning-background border-warning-border">
+        <Alert className="my-4 bg-warning/5 border-warning/30">
           <AlertTitle className="flex items-center gap-2">
             <HardDrive className="h-4 w-4 text-warning" />
             Permission Issues
@@ -240,7 +240,7 @@ export default function DatabaseErrorHandler() {
 
     if (healthData.integrityStatus === "invalid") {
       return (
-        <Alert className="my-4 bg-warning-background border-warning-border">
+        <Alert className="my-4 bg-warning/5 border-warning/30">
           <AlertTitle className="flex items-center gap-2">
             <Database className="h-4 w-4 text-warning" />
             Database Integrity Issues
@@ -260,7 +260,7 @@ export default function DatabaseErrorHandler() {
     }
 
     return (
-      <Alert className="my-4 bg-warning-background border-warning-border">
+      <Alert className="my-4 bg-warning border-warning">
         <AlertTitle className="flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-warning" />
           Database Error
@@ -283,7 +283,7 @@ export default function DatabaseErrorHandler() {
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-red-500" />
+            <AlertTriangle className="h-5 w-5 text-destructive" />
             Database Connection Error
           </DialogTitle>
           <DialogDescription>
@@ -301,7 +301,7 @@ export default function DatabaseErrorHandler() {
         {healthData && getRepairGuidance()}
 
         {healthData && (
-          <div className="my-4 text-sm border rounded-md p-3 bg-gray-50">
+          <div className="my-4 text-sm border rounded-md p-3 bg-muted/50">
             <h4 className="font-medium mb-2">Database Diagnostics:</h4>
             <ul className="space-y-1 pl-2">
               <li>File exists: {healthData.fileExists ? "Yes" : "No"}</li>

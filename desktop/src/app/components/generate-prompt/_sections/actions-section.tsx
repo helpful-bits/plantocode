@@ -58,7 +58,7 @@ const ActionsSection = React.memo(function ActionsSection({
   return (
     <div className="space-y-4">
       <div className="bg-card p-6 rounded-lg border shadow-sm">
-        <h3 className="text-sm font-medium mb-3">File Search Options</h3>
+        <h3 className="text-sm font-medium mb-3 text-foreground">File Search Options</h3>
 
         <div className="flex flex-col space-y-4">
           <div className="flex justify-between items-center">
@@ -83,22 +83,20 @@ const ActionsSection = React.memo(function ActionsSection({
             <div className="flex items-center space-x-2">
               <Button
                 variant="outline"
-                size="sm"
+                size="icon-sm"
                 onClick={undoSelection}
                 disabled={!canUndo || disabled}
                 title="Undo last file selection"
-                className="h-8 w-8 p-0"
               >
                 <Undo2 className="h-4 w-4" />
               </Button>
 
               <Button
                 variant="outline"
-                size="sm"
+                size="icon-sm"
                 onClick={redoSelection}
                 disabled={!canRedo || disabled}
                 title="Redo undone file selection"
-                className="h-8 w-8 p-0"
               >
                 <Redo2 className="h-4 w-4" />
               </Button>
@@ -127,7 +125,7 @@ const ActionsSection = React.memo(function ActionsSection({
             }
             isLoading={isFindingFiles}
             loadingText="Finding files..."
-            className="w-full h-9 flex justify-center items-center"
+            className="w-full"
           >
             {findFilesMode === "ai" ? (
               <>

@@ -76,7 +76,7 @@ export type TaskType =
   | "implementation_plan"
   | "path_finder"
   | "text_improvement"
-  | "transcription"
+  | "voice_transcription"
   | "voice_correction"
   | "path_correction"
   | "regex_generation"
@@ -101,12 +101,7 @@ export interface JobMetadata {
   pathData?: string;
   modelUsed?: string;
   targetField?: string;
-  regexPatterns?: {
-    titleRegex?: string;
-    contentRegex?: string;
-    negativeTitleRegex?: string;
-    negativeContentRegex?: string;
-  };
+  regexData?: Record<string, any> | string;
   showPureContent?: boolean;
   lastStreamUpdateTime?: number;
   [key: string]: unknown; // Allow additional properties

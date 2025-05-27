@@ -48,3 +48,8 @@ pub fn trigger_initial_keychain_access() -> Result<(), String> {
         }
     }
 }
+
+#[tauri::command]
+pub fn get_storage_mode() -> bool {
+    USE_SESSION_STORAGE
+}

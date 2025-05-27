@@ -76,13 +76,13 @@ export function ProvidersWrapper({
         fallback={
           <div className="fixed inset-0 flex items-center justify-center bg-background p-8">
             <div className="max-w-md w-full text-center">
-              <h2 className="text-lg font-semibold mb-2">Provider Initialization Error</h2>
+              <h2 className="text-lg font-semibold mb-2 text-foreground">Provider Initialization Error</h2>
               <p className="text-muted-foreground mb-4">
                 Failed to initialize application providers. Please refresh the page.
               </p>
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 focus-ring"
               >
                 Refresh Page
               </button>

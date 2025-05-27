@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, FolderTree } from "lucide-react";
+import { FolderTree } from "lucide-react";
 import { useState, useEffect, ChangeEvent } from "react";
 
 import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
@@ -112,15 +112,11 @@ export default function CodebaseStructure({
             variant="secondary"
             size="sm"
             onClick={handleGenerateStructure}
-            disabled={isGenerating || !projectDirectory}
+            disabled={!projectDirectory}
             className="h-8"
           >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <FolderTree className="h-4 w-4 mr-2" />
-            )}
-            Generate
+            <FolderTree className="h-4 w-4 mr-2" />
+            {isGenerating ? "Generating..." : "Generate"}
           </Button>
           <Button
             type="button"
@@ -155,7 +151,7 @@ export default function CodebaseStructure({
   └── ...
 
 Defines your project's file structure to provide better context for the AI.`}
-            className="min-h-[200px] font-mono text-sm resize-y"
+            className="min-h-[200px] font-mono text-sm resize-y bg-background/90 backdrop-blur-sm border border-border/60 rounded-lg shadow-soft"
           />
         </>
       )}

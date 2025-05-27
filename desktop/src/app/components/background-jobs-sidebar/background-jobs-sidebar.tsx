@@ -52,50 +52,52 @@ export const BackgroundJobsSidebar = () => {
   const containerStyle = getSidebarStyle(activeCollapsed);
 
   return (
-    <div
-      className="fixed left-0 top-0 h-screen bg-card border-r z-50 overflow-hidden text-xs shadow-lg"
-      style={containerStyle}
-    >
-      <Collapsible open={!activeCollapsed} onOpenChange={handleCollapseChange}>
-        {/* Header with controls */}
-        <SidebarHeader
-          isCollapsed={activeCollapsed}
-          isRefreshing={isRefreshing}
-          isClearing={isClearing}
-          refreshDisabled={refreshClickedRef.current ?? false}
-          onRefresh={handleRefresh}
-          onClearHistory={handleClearHistory}
-        />
-
-        <CollapsibleContent
-          forceMount
-          className="overflow-y-auto"
-          style={{ height: "calc(100vh - 3.5rem)" }}
-        >
-          {/* Status messages (errors, feedback) */}
-          <StatusMessages
-            error={error}
-            clearFeedback={clearFeedback}
+    <>
+      <div
+        className="bg-background/95 backdrop-blur-sm border-r border-border/60 z-50 overflow-hidden text-xs shadow-soft"
+        style={containerStyle}
+      >
+        <Collapsible open={!activeCollapsed} onOpenChange={handleCollapseChange}>
+          {/* Header with controls */}
+          <SidebarHeader
             isCollapsed={activeCollapsed}
+            isRefreshing={isRefreshing}
+            isClearing={isClearing}
+            refreshDisabled={refreshClickedRef.current ?? false}
+            onRefresh={handleRefresh}
+            onClearHistory={handleClearHistory}
           />
 
-          {/* Job listings content */}
-          <JobContent
-            shouldShowLoading={shouldShowLoading}
-            shouldShowEmpty={shouldShowEmpty}
-            activeJobsToShow={activeJobsToShow}
-            completedJobs={completedJobs}
-            failedJobs={failedJobs}
-            handleCancel={handleCancelJob}
-            isCancelling={isCancelling}
-            onSelect={handleSelectJob}
-          />
-        </CollapsibleContent>
-      </Collapsible>
+          <CollapsibleContent
+            forceMount
+            className="overflow-y-auto"
+            style={{ height: "calc(100vh - 3.5rem)" }}
+          >
+            {/* Status messages (errors, feedback) */}
+            <StatusMessages
+              error={error}
+              clearFeedback={clearFeedback}
+              isCollapsed={activeCollapsed}
+            />
 
-      {/* Job Details Modal */}
+            {/* Job listings content */}
+            <JobContent
+              shouldShowLoading={shouldShowLoading}
+              shouldShowEmpty={shouldShowEmpty}
+              activeJobsToShow={activeJobsToShow}
+              completedJobs={completedJobs}
+              failedJobs={failedJobs}
+              handleCancel={handleCancelJob}
+              isCancelling={isCancelling}
+              onSelect={handleSelectJob}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+
+      {/* Job Details Modal - Moved outside sidebar container to fix z-index stacking */}
       <JobDetailsModal job={selectedJob} onClose={() => setSelectedJob(null)} />
-    </div>
+    </>
   );
 };
 

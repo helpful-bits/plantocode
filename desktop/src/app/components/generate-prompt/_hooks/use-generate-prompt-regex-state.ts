@@ -304,6 +304,11 @@ export function useGeneratePromptRegexState({
 
           // Update session with the generated regex
           sessionActions.updateCurrentSessionFields(updateObject);
+          
+          // Trigger interaction callback to mark session as modified
+          if (handleInteraction) {
+            handleInteraction();
+          }
         }
 
         // Reset state
@@ -350,6 +355,11 @@ export function useGeneratePromptRegexState({
         sessionActions.updateCurrentSessionFields({
           regexSummaryExplanation: job.response
         });
+
+        // Trigger interaction callback to mark session as modified
+        if (handleInteraction) {
+          handleInteraction();
+        }
 
         // Reset state
         setIsGeneratingSummaryExplanation(false);

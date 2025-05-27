@@ -24,6 +24,7 @@ use oauth2::{
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PollStatusResponse {
     pub status: String,
     pub authorization_code: Option<String>,
@@ -136,18 +137,45 @@ pub async fn check_auth_status_and_exchange_token(
     
     let authorization_code = poll_response.authorization_code
         .ok_or_else(|| AppError::ValidationError("Authorization code missing".to_string()))?;
+    
+    // Validate authorization code format
+    if authorization_code.is_empty() {
+        error!("Authorization code validation failed: empty code");
+        return Err(AppError::ValidationError("Invalid authorization code format".to_string()));
+    }
+    
+    if authorization_code.len() < 10 {
+        error!("Authorization code validation failed: code too short");
+        return Err(AppError::ValidationError("Invalid authorization code length".to_string()));
+    }
     let csrf_token_tauri_from_server = poll_response.tauri_csrf_token
         .ok_or_else(|| AppError::ValidationError("CSRF token missing".to_string()))?;
     
-    // Validate CSRF token
+    // Validate CSRF token with enhanced security checks
+    if csrf_token_tauri_from_server.is_empty() || csrf_token_tauri_original.is_empty() {
+        error!("CSRF token validation failed: empty token(s) detected");
+        return Err(AppError::SecurityError("Invalid CSRF token format".to_string()));
+    }
+    
+    if csrf_token_tauri_from_server.len() < 16 || csrf_token_tauri_original.len() < 16 {
+        error!("CSRF token validation failed: token too short");
+        return Err(AppError::SecurityError("Invalid CSRF token length".to_string()));
+    }
+    
     if csrf_token_tauri_from_server != csrf_token_tauri_original {
+        error!("CSRF token mismatch detected - potential security threat");
         return Err(AppError::SecurityError("CSRF token mismatch".to_string()));
     }
     
+    debug!("CSRF token validation successful");
+    
     // Exchange authorization code for tokens using OAuth2 client
-    let auth0_domain = std::env::var("AUTH0_DOMAIN").unwrap();
-    let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID").unwrap();
-    let server_auth0_callback_url = std::env::var("SERVER_AUTH0_CALLBACK_URL").unwrap();
+    let auth0_domain = std::env::var("AUTH0_DOMAIN")
+        .map_err(|_| AppError::ConfigError("AUTH0_DOMAIN environment variable not set".to_string()))?;
+    let auth0_native_client_id = std::env::var("AUTH0_NATIVE_CLIENT_ID")
+        .map_err(|_| AppError::ConfigError("AUTH0_NATIVE_CLIENT_ID environment variable not set".to_string()))?;
+    let server_auth0_callback_url = std::env::var("SERVER_AUTH0_CALLBACK_URL")
+        .map_err(|_| AppError::ConfigError("SERVER_AUTH0_CALLBACK_URL environment variable not set".to_string()))?;
     
     let auth_url = AuthUrl::new(format!("https://{}/authorize", auth0_domain))
         .map_err(|e| AppError::ConfigError(format!("Invalid auth URL: {}", e)))?;
@@ -190,14 +218,21 @@ pub async fn check_auth_status_and_exchange_token(
         .await
         .map_err(|e| AppError::NetworkError(format!("Failed to finalize login: {}", e)))?;
     
-    if !finalize_response.status().is_success() {
-        let error_text = finalize_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(AppError::ExternalServiceError(format!("Finalize login error: {}", error_text)));
+    let response_status = finalize_response.status();
+    let response_text = finalize_response.text().await
+        .unwrap_or_else(|_| "Failed to read response body".to_string());
+    
+    if !response_status.is_success() {
+        error!("Finalize login failed with status {}: {}", response_status, response_text);
+        return Err(AppError::ExternalServiceError(format!("Finalize login error: {}", response_text)));
     }
     
-    let auth_response: AuthDataResponse = finalize_response.json()
-        .await
-        .map_err(|e| AppError::SerdeError(format!("Failed to parse auth response: {}", e)))?;
+    let auth_response: AuthDataResponse = serde_json::from_str(&response_text)
+        .map_err(|e| {
+            error!("Failed to parse auth response. Status: {}, Response body: {}, Parse error: {}", 
+                   response_status, response_text, e);
+            AppError::SerdeError(format!("Failed to parse auth response: {}", e))
+        })?;
     
     // Store app JWT
     token_manager.set(Some(auth_response.token.clone())).await?;

@@ -39,13 +39,13 @@ const toastVariants = cva(
     variants: {
       variant: {
         default:
-          "border bg-background text-foreground dark:border-border dark:bg-background dark:text-foreground",
+          "border border-border bg-background text-foreground",
         destructive:
-          "destructive group border-destructive bg-destructive text-destructive-foreground dark:border-destructive dark:bg-destructive dark:text-destructive-foreground",
+          "destructive group border-destructive bg-destructive text-destructive-foreground",
         warning:
-          "warning group border-warning-border bg-warning-background text-warning-foreground dark:border-warning-border dark:bg-warning-background dark:text-warning-foreground",
+          "warning group border-warning/30 bg-warning/5 text-warning",
         success:
-          "success group border-success-border bg-success-background text-success-foreground",
+          "success group border-success/30 bg-success/5 text-success",
       },
     },
     defaultVariants: {
@@ -82,7 +82,7 @@ const ToastAction = forwardRef<
   <ToastPrimitives.Action
     ref={ref}
     className={cn(
-      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-muted/40 group-[.destructive]:hover:border-destructive/30 group-[.destructive]:hover:bg-destructive group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus:ring-destructive group-[.warning]:border-warning-border/30 group-[.warning]:text-warning-foreground group-[.warning]:hover:border-warning-border group-[.warning]:hover:bg-warning-background/80 group-[.warning]:focus:ring-warning group-[.success]:border-success-border/50 group-[.success]:text-success-foreground group-[.success]:hover:border-success-border group-[.success]:hover:bg-success-background/80 group-[.success]:focus:ring-success",
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus-ring disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-muted/40 group-[.destructive]:hover:border-destructive/30 group-[.destructive]:hover:bg-destructive group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus-visible:ring-destructive group-[.warning]:border-warning/30 group-[.warning]:text-warning group-[.warning]:hover:border-warning/50 group-[.warning]:hover:bg-warning/20 group-[.warning]:focus-visible:ring-warning group-[.success]:border-success/30 group-[.success]:text-success group-[.success]:hover:border-success/50 group-[.success]:hover:bg-success/20 group-[.success]:focus-visible:ring-success",
       className
     )}
     {...props}
@@ -97,7 +97,7 @@ const ToastClose = forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600 group-[.warning]:text-warning-foreground/70 group-[.warning]:hover:text-warning-foreground group-[.success]:text-success-foreground/70 group-[.success]:hover:text-success-foreground group-[.success]:focus:ring-success",
+      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus-ring group-hover:opacity-100 group-[.destructive]:text-destructive-foreground/70 group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus-visible:ring-destructive group-[.warning]:text-warning/70 group-[.warning]:hover:text-warning group-[.success]:text-success/70 group-[.success]:hover:text-success group-[.success]:focus-visible:ring-success",
       className
     )}
     toast-close=""
@@ -115,7 +115,7 @@ const ToastTitle = forwardRef<
   <ToastPrimitives.Title
     ref={ref}
     className={cn(
-      "text-sm font-semibold text-foreground group-[.warning]:text-warning-foreground group-[.success]:text-success-foreground",
+      "text-sm font-semibold text-foreground group-[.warning]:text-warning group-[.success]:text-success",
       className
     )}
     {...props}
@@ -130,7 +130,7 @@ const ToastDescription = forwardRef<
   <ToastPrimitives.Description
     ref={ref}
     className={cn(
-      "text-sm opacity-90 text-foreground/90 group-[.warning]:text-warning-foreground/90 group-[.success]:text-success-foreground/90",
+      "text-sm opacity-90 text-foreground/90 group-[.warning]:text-warning/90 group-[.success]:text-success/90",
       className
     )}
     {...props}

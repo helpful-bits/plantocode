@@ -76,20 +76,20 @@ const RegexField = React.memo(function RegexField({
   helpText,
 }: RegexFieldProps) {
   return (
-    <div className="flex flex-col gap-3 p-4 border rounded-lg bg-card/50">
+    <div className="flex flex-col gap-3 p-4 border rounded-xl bg-card backdrop-blur-sm shadow-soft">
       <div className="flex items-center justify-between">
         <h4 className="font-medium text-foreground">{title}</h4>
       </div>
       
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-muted-foreground">
+        <label className="text-sm font-medium text-foreground">
           Description:
         </label>
         <Textarea
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
           placeholder={placeholder}
-          className="h-16 text-sm bg-background/80 rounded-md resize-none"
+          className="h-16 text-sm bg-background backdrop-blur-sm border rounded-lg resize-none shadow-soft"
           disabled={disabled}
         />
         <div className="flex items-center gap-2">
@@ -109,13 +109,13 @@ const RegexField = React.memo(function RegexField({
       
       {generatedPattern && (
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-muted-foreground">
+          <label className="text-sm font-medium text-foreground">
             Generated Pattern:
           </label>
           <Textarea
             value={generatedPattern}
             readOnly
-            className="h-12 font-mono text-xs bg-muted/50 rounded-md resize-none"
+            className="h-12 font-mono text-xs bg-muted/80 backdrop-blur-sm border rounded-lg resize-none"
           />
         </div>
       )}
@@ -165,7 +165,7 @@ const RegexInput = React.memo(function RegexInput({
                          negativeTitleRegexDescription.trim() || negativeContentRegexDescription.trim();
 
   return (
-    <div className="flex flex-col gap-4 bg-card rounded-lg">
+    <div className="flex flex-col gap-4 bg-card/95 backdrop-blur-sm border rounded-xl p-6 shadow-soft">
       <div className="flex items-center justify-between">
         <h3 className="font-medium text-foreground">File Filters</h3>
         {(hasPatterns || hasDescriptions) && (

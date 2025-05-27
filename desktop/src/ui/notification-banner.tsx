@@ -66,22 +66,22 @@ export const NotificationBanner: FC<NotificationBannerProps> = ({
   // Variant-specific styles
   const variantStyles = {
     info: {
-      container: "bg-info-background border-info-border",
+      container: "bg-info/5 border-info/30",
       icon: <Info className="h-5 w-5 text-info" />,
-      title: "text-info-foreground",
-      message: "text-info-foreground",
+      title: "text-info",
+      message: "text-info",
     },
     success: {
-      container: "bg-success-background border-success-border",
+      container: "bg-success/5 border-success/30",
       icon: <CheckCircle2 className="h-5 w-5 text-success" />,
-      title: "text-success-foreground",
-      message: "text-success-foreground",
+      title: "text-success",
+      message: "text-success",
     },
     warning: {
-      container: "bg-warning-background border-warning-border",
+      container: "bg-warning/5 border-warning/30",
       icon: <AlertCircle className="h-5 w-5 text-warning" />,
-      title: "text-warning-foreground",
-      message: "text-warning-foreground",
+      title: "text-warning",
+      message: "text-warning",
     },
     error: {
       container: "bg-destructive/10 border-destructive/20",
@@ -93,7 +93,7 @@ export const NotificationBanner: FC<NotificationBannerProps> = ({
 
   return (
     <div
-      className={`border rounded-md p-4 mb-4 ${variantStyles[variant].container} ${className}`}
+      className={`border rounded-lg p-4 mb-4 shadow-soft backdrop-blur-sm ${variantStyles[variant].container} ${className}`}
     >
       <div className="flex">
         <div className="flex-shrink-0">
@@ -114,7 +114,7 @@ export const NotificationBanner: FC<NotificationBannerProps> = ({
           <div className="ml-auto pl-3">
             <button
               type="button"
-              className="inline-flex rounded-md p-1.5 hover:bg-opacity-10 hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+              className="inline-flex rounded-lg p-1.5 hover:bg-muted/50 focus-ring transition-colors"
               onClick={handleDismiss}
               aria-label="Dismiss"
             >

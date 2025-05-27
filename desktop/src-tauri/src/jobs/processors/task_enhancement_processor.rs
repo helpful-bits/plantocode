@@ -117,11 +117,12 @@ impl JobProcessor for TaskEnhancementProcessor {
             .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
         
         // Determine the model to use from config with robust fallback
+        let project_dir = payload.project_directory.as_deref().unwrap_or("");
         let mut model_to_use = match db_job.model_used {
             Some(model) if !model.is_empty() => model,
             _ => {
-                // Try to get task-specific model first
-                match crate::config::get_model_for_task(crate::models::TaskType::TaskEnhancement) {
+                // Try to get task-specific model from project settings first, then server defaults
+                match crate::config::get_model_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir).await {
                     Ok(model) => model,
                     Err(_) => {
                         // If task-specific model fails, fall back to default LLM model
@@ -136,10 +137,16 @@ impl JobProcessor for TaskEnhancementProcessor {
             model_to_use = crate::config::get_default_llm_model_id()?;
         }
         
-        // Get max tokens and temperature from config
-        let max_tokens = Some(crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::TaskEnhancement))?);
+        // Get max tokens and temperature from project/server config
+        let max_tokens = Some(match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir).await {
+            Ok(tokens) => tokens,
+            Err(_) => 4000, // Fallback
+        });
         
-        let temperature = Some(crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::TaskEnhancement))?);
+        let temperature = Some(match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir).await {
+            Ok(temp) => temp,
+            Err(_) => 0.4, // Fallback
+        });
         
         // Create the options with values from config
         let options = ApiClientOptions {

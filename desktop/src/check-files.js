@@ -43,11 +43,7 @@ function checkFiles() {
       const issues = checkForUnsafeUsage(content);
       
       if (issues.length > 0) {
-        console.log(`\nIssues in ${filePath}:`);
-        for (const issue of issues) console.log(`- ${issue}`);
         hasIssues = true;
-      } else {
-        console.log(`✓ ${filePath} looks good!`);
       }
     } catch (error) {
       console.error(`Error reading file ${filePath}:`, error.message);

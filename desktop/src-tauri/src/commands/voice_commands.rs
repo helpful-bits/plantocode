@@ -15,6 +15,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// Arguments for audio transcription request
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranscribeAudioArgs {
     pub session_id: String,
     pub audio_data: String, // Base64 encoded audio data
@@ -127,6 +128,7 @@ pub async fn create_transcription_job_command(
 
 /// Request for voice correction after transcription
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CorrectTranscriptionArgs {
     pub session_id: String,
     pub text_to_correct: String,
@@ -188,24 +190,24 @@ pub async fn correct_transcription_command(
         }
     };
     
-    // Get model for this task
-    let model = match crate::config::get_model_for_task(TaskType::VoiceCorrection) {
+    // Get model for this task - check project settings first, then server defaults
+    let model = match crate::config::get_model_for_task_with_project(TaskType::VoiceCorrection, &project_dir).await {
         Ok(model) => model,
         Err(e) => {
             return Err(AppError::ConfigError(format!("Failed to get model for voice correction: {}", e)));
         }
     };
     
-    // Get temperature for this task
-    let temperature = match crate::config::get_default_temperature_for_task(Some(TaskType::VoiceCorrection)) {
+    // Get temperature for this task - check project settings first, then server defaults
+    let temperature = match crate::config::get_temperature_for_task_with_project(TaskType::VoiceCorrection, &project_dir).await {
         Ok(temp) => temp,
         Err(e) => {
             return Err(AppError::ConfigError(format!("Failed to get temperature for voice correction: {}", e)));
         }
     };
     
-    // Get max tokens for this task
-    let max_tokens = match crate::config::get_default_max_tokens_for_task(Some(TaskType::VoiceCorrection)) {
+    // Get max tokens for this task - check project settings first, then server defaults
+    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(TaskType::VoiceCorrection, &project_dir).await {
         Ok(tokens) => tokens,
         Err(e) => {
             return Err(AppError::ConfigError(format!("Failed to get max tokens for voice correction: {}", e)));
@@ -245,6 +247,7 @@ pub async fn correct_transcription_command(
 
 /// Request for direct audio transcription
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DirectTranscribeAudioArgs {
     pub audio_data: Vec<u8>,  // Uint8Array from JS will be sent as Vec<u8>
     pub filename: String,

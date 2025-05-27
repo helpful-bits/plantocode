@@ -128,42 +128,12 @@ export function useFileSelectionManager({
   );
 
   // Auto-toggle "Show Only Selected" to "All Files" when selection becomes empty
-  const prevIncludedPathsLengthRef = useRef<number | undefined>(undefined);
-
+  // Simplified logic: if showOnlySelected is true and currentIncludedFiles.length becomes 0, set showOnlySelected to false
   useEffect(() => {
-    // Use the current prop value instead of derived state to be consistent with the source of truth
-    const currentIncludedFilesLength = currentIncludedFiles.length;
-
-    // Only proceed if we have a project loaded (rawFilesMap has content)
-    if (Object.keys(rawFilesMap).length === 0) {
-      prevIncludedPathsLengthRef.current = currentIncludedFilesLength;
-      return;
+    if (showOnlySelected && currentIncludedFiles.length === 0 && !isTransitioningSession) {
+      setShowOnlySelectedInternal(false);
     }
-
-    // Auto-toggle "show only selected" to false when selections become empty
-    // Only if "show only selected" is currently true to avoid unnecessary state changes
-    if (showOnlySelected) {
-      // Case 1: The count became zero (i.e., it was > 0 before and now is 0)
-      const countJustBecameZero = currentIncludedFilesLength === 0 &&
-        prevIncludedPathsLengthRef.current !== undefined &&
-        prevIncludedPathsLengthRef.current > 0;
-
-      // Case 2: No selected files and not transitioning (prevents confusing empty UI)
-      const hasNoSelectionsAndNotTransitioning = currentIncludedFilesLength === 0 && !isTransitioningSession;
-
-      if (countJustBecameZero || hasNoSelectionsAndNotTransitioning) {
-        setShowOnlySelectedInternal(false);
-      }
-    }
-
-    // Update previous length for the next run
-    prevIncludedPathsLengthRef.current = currentIncludedFilesLength;
-  }, [
-    currentIncludedFiles.length,
-    rawFilesMap,
-    isTransitioningSession,
-    showOnlySelected,
-  ]);
+  }, [currentIncludedFiles.length, showOnlySelected, isTransitioningSession]);
 
   // Return a comprehensive API that maintains the same interface as the original hook
   return useMemo(

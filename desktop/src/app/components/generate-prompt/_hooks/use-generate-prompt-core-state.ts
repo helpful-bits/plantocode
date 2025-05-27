@@ -51,24 +51,45 @@ export function useGeneratePromptCoreState({
   });
 
   // Create a function to get the current session state
-  // Simplified to directly return session data with fallbacks
+  // All fields are sourced consistently from currentSession if available, applying defaults only if currentSession itself or its properties are null/undefined
   const getCurrentSessionState = useCallback(() => {
-    // Ensure all required fields have fallbacks if currentSession might be null initially
-    return {
+    const baseState = {
       projectDirectory: projectDirectory || "",
-      taskDescription: currentSession?.taskDescription || "",
-      titleRegex: currentSession?.titleRegex || "",
-      contentRegex: currentSession?.contentRegex || "",
-      negativeTitleRegex: currentSession?.negativeTitleRegex || "",
-      negativeContentRegex: currentSession?.negativeContentRegex || "",
-      isRegexActive: currentSession?.isRegexActive ?? true,
-      searchTerm: currentSession?.searchTerm || "",
-      includedFiles: currentSession?.includedFiles || [],
-      forceExcludedFiles: currentSession?.forceExcludedFiles || [],
-      searchSelectedFilesOnly: currentSession?.searchSelectedFilesOnly ?? false,
-      codebaseStructure: currentSession?.codebaseStructure || "",
-      createdAt: currentSession?.createdAt || Date.now(),
-      modelUsed: currentSession?.modelUsed,
+      taskDescription: "",
+      titleRegex: "",
+      contentRegex: "",
+      negativeTitleRegex: "",
+      negativeContentRegex: "",
+      isRegexActive: true,
+      searchTerm: "",
+      includedFiles: [],
+      forceExcludedFiles: [],
+      searchSelectedFilesOnly: false,
+      codebaseStructure: "",
+      createdAt: Date.now(),
+      modelUsed: undefined,
+    };
+
+    if (!currentSession) {
+      return baseState;
+    }
+
+    // When currentSession exists, merge with defaults
+    return {
+      ...baseState,
+      taskDescription: currentSession.taskDescription || "",
+      titleRegex: currentSession.titleRegex || "",
+      contentRegex: currentSession.contentRegex || "",
+      negativeTitleRegex: currentSession.negativeTitleRegex || "",
+      negativeContentRegex: currentSession.negativeContentRegex || "",
+      isRegexActive: currentSession.isRegexActive ?? true,
+      searchTerm: currentSession.searchTerm || "",
+      includedFiles: currentSession.includedFiles || [],
+      forceExcludedFiles: currentSession.forceExcludedFiles || [],
+      searchSelectedFilesOnly: currentSession.searchSelectedFilesOnly ?? false,
+      codebaseStructure: currentSession.codebaseStructure || "",
+      createdAt: currentSession.createdAt || Date.now(),
+      modelUsed: currentSession.modelUsed,
     };
   }, [currentSession, projectDirectory]);
 
@@ -88,10 +109,10 @@ export function useGeneratePromptCoreState({
         isRegexActive: true,
       });
     }
-
   }, [
     sessionMetadata,
     formState,
+    activeSessionId,
     sessionActions,
   ]);
 
@@ -138,6 +159,7 @@ export function useGeneratePromptCoreState({
       sessionName: currentSessionName,
       hasUnsavedChanges: isSessionModified,
       isFormSaving: isSessionLoading || formState.isFormSaving,
+      isSessionFormLoading: isSessionLoading,
       error: formState.error,
 
       // Project data
@@ -157,7 +179,14 @@ export function useGeneratePromptCoreState({
       handleGenerateCodebase,
     }),
     [
+      // Core session state
       activeSessionId,
+      sessionState.isSessionLoading,
+      currentSessionName,
+      isSessionModified,
+      isSessionLoading,
+      
+      // Form state
       formState.isStateLoaded,
       formState.isRestoringSession,
       formState.sessionInitialized,
@@ -165,11 +194,11 @@ export function useGeneratePromptCoreState({
       formState.error,
       formState.projectDataLoading,
       formState.setSessionInitialized,
-      sessionState.isSessionLoading,
-      currentSessionName,
-      isSessionModified,
-      isSessionLoading,
+      
+      // Project
       projectDirectory,
+      
+      // Actions and callbacks
       resetAllState,
       sessionMetadata.setSessionName,
       sessionActions,

@@ -21,22 +21,22 @@ impl SessionRepository {
         let project_directory: String = row.try_get::<'_, String, _>("project_directory")?;
         let project_hash: String = row.try_get::<'_, String, _>("project_hash")?;
         
-        let task_description: Option<String> = row.try_get::<'_, Option<String>, _>("task_description").unwrap_or(None);
-        let search_term: Option<String> = row.try_get::<'_, Option<String>, _>("search_term").unwrap_or(None);
-        let title_regex: Option<String> = row.try_get::<'_, Option<String>, _>("title_regex").unwrap_or(None);
-        let content_regex: Option<String> = row.try_get::<'_, Option<String>, _>("content_regex").unwrap_or(None);
-        let negative_title_regex: Option<String> = row.try_get::<'_, Option<String>, _>("negative_title_regex").unwrap_or(None);
-        let negative_content_regex: Option<String> = row.try_get::<'_, Option<String>, _>("negative_content_regex").unwrap_or(None);
-        let title_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("title_regex_description").unwrap_or(None);
-        let content_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("content_regex_description").unwrap_or(None);
-        let negative_title_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("negative_title_regex_description").unwrap_or(None);
-        let negative_content_regex_description: Option<String> = row.try_get::<'_, Option<String>, _>("negative_content_regex_description").unwrap_or(None);
-        let regex_summary_explanation: Option<String> = row.try_get::<'_, Option<String>, _>("regex_summary_explanation").unwrap_or(None);
+        let task_description: Option<String> = row.try_get("task_description")?;
+        let search_term: Option<String> = row.try_get("search_term")?;
+        let title_regex: Option<String> = row.try_get("title_regex")?;
+        let content_regex: Option<String> = row.try_get("content_regex")?;
+        let negative_title_regex: Option<String> = row.try_get("negative_title_regex")?;
+        let negative_content_regex: Option<String> = row.try_get("negative_content_regex")?;
+        let title_regex_description: Option<String> = row.try_get("title_regex_description")?;
+        let content_regex_description: Option<String> = row.try_get("content_regex_description")?;
+        let negative_title_regex_description: Option<String> = row.try_get("negative_title_regex_description")?;
+        let negative_content_regex_description: Option<String> = row.try_get("negative_content_regex_description")?;
+        let regex_summary_explanation: Option<String> = row.try_get("regex_summary_explanation")?;
         
         let is_regex_active: bool = row.try_get::<'_, i64, _>("is_regex_active").unwrap_or(0) == 1;
-        let codebase_structure: Option<String> = row.try_get::<'_, Option<String>, _>("codebase_structure").unwrap_or(None);
-        let search_selected_files_only: bool = row.try_get::<'_, i64, _>("search_selected_files_only").unwrap_or(0) == 1;
-        let model_used: Option<String> = row.try_get::<'_, Option<String>, _>("model_used").unwrap_or(None);
+        let codebase_structure: Option<String> = row.try_get("codebase_structure")?;
+        let search_selected_files_only = row.try_get::<'_, i64, _>("search_selected_files_only").unwrap_or(0) == 1;
+        let model_used: Option<String> = row.try_get("model_used")?;
         
         let created_at: i64 = row.try_get::<'_, i64, _>("created_at")?;
         let updated_at: i64 = row.try_get::<'_, i64, _>("updated_at")?;

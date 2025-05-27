@@ -1,6 +1,7 @@
 
 import { type ActionState } from "@/types";
 import { hashString } from "@/utils/hash";
+import { handleActionError } from "@/utils/action-utils";
 
 import {
   getGenericCachedStateAction,
@@ -40,10 +41,7 @@ export async function setActiveSessionAction(
     };
   } catch (error) {
     console.error(`[setActiveSessionAction] Error:`, error);
-    return {
-      isSuccess: false,
-      message: `Failed to set active session: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<void>;
   }
 }
 
@@ -70,9 +68,6 @@ export async function getActiveSessionIdAction(
     };
   } catch (error) {
     console.error(`[getActiveSessionIdAction] Error:`, error);
-    return {
-      isSuccess: false,
-      message: `Failed to get active session ID: ${error instanceof Error ? error.message : String(error)}`,
-    };
+    return handleActionError(error) as ActionState<string | null>;
   }
 }

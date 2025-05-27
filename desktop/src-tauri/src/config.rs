@@ -28,6 +28,8 @@ pub static CONFIG: Lazy<RwLock<Option<crate::models::RuntimeAIConfig>>> = Lazy::
 // Model configuration helper functions
 use crate::error::{AppResult, AppError};
 use crate::models::{TaskType, RuntimeAIConfig};
+use crate::utils::hash_utils::hash_string;
+use crate::SETTINGS_REPO;
 
 // Update runtime AI configuration
 pub fn update_runtime_ai_config(new_config: RuntimeAIConfig) -> AppResult<()> {
@@ -287,4 +289,159 @@ pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
     }
     
     Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+}
+
+// Project-aware configuration functions that check user settings first, then fall back to server defaults
+
+/// Helper function to parse project settings JSON and extract model for a specific task
+fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<String> {
+    let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    
+    // Map TaskType to frontend camelCase key
+    let task_key = match task_type {
+        TaskType::ImplementationPlan => "implementationPlan",
+        TaskType::PathFinder => "pathFinder",
+        TaskType::TextImprovement => "textImprovement",
+        TaskType::VoiceTranscription => "transcription",
+        TaskType::VoiceCorrection => "voiceCorrection",
+        TaskType::PathCorrection => "pathCorrection",
+        TaskType::RegexGeneration => "regexGeneration",
+        TaskType::GuidanceGeneration => "guidanceGeneration",
+        TaskType::TaskEnhancement => "taskEnhancement",
+        TaskType::GenericLlmStream => "genericLlmStream",
+        TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
+        TaskType::GenerateDirectoryTree => "generateDirectoryTree",
+        TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
+        _ => return None,
+    };
+    
+    settings.get(task_key)?
+        .get("model")?
+        .as_str()
+        .map(|s| s.to_string())
+}
+
+/// Helper function to extract temperature from project settings
+fn extract_temperature_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<f32> {
+    let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    
+    let task_key = match task_type {
+        TaskType::ImplementationPlan => "implementationPlan",
+        TaskType::PathFinder => "pathFinder",
+        TaskType::TextImprovement => "textImprovement",
+        TaskType::VoiceTranscription => "transcription",
+        TaskType::VoiceCorrection => "voiceCorrection",
+        TaskType::PathCorrection => "pathCorrection",
+        TaskType::RegexGeneration => "regexGeneration",
+        TaskType::GuidanceGeneration => "guidanceGeneration",
+        TaskType::TaskEnhancement => "taskEnhancement",
+        TaskType::GenericLlmStream => "genericLlmStream",
+        TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
+        TaskType::GenerateDirectoryTree => "generateDirectoryTree",
+        TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
+        _ => return None,
+    };
+    
+    settings.get(task_key)?
+        .get("temperature")?
+        .as_f64()
+        .map(|t| t as f32)
+}
+
+/// Helper function to extract maxTokens from project settings
+fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<u32> {
+    let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    
+    let task_key = match task_type {
+        TaskType::ImplementationPlan => "implementationPlan",
+        TaskType::PathFinder => "pathFinder",
+        TaskType::TextImprovement => "textImprovement",
+        TaskType::VoiceTranscription => "transcription",
+        TaskType::VoiceCorrection => "voiceCorrection",
+        TaskType::PathCorrection => "pathCorrection",
+        TaskType::RegexGeneration => "regexGeneration",
+        TaskType::GuidanceGeneration => "guidanceGeneration",
+        TaskType::TaskEnhancement => "taskEnhancement",
+        TaskType::GenericLlmStream => "genericLlmStream",
+        TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
+        TaskType::GenerateDirectoryTree => "generateDirectoryTree",
+        TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
+        _ => return None,
+    };
+    
+    settings.get(task_key)?
+        .get("maxTokens")?
+        .as_u64()
+        .map(|t| t as u32)
+}
+
+/// Async version: Get model for a task, checking project-specific settings first, then falling back to server config
+pub async fn get_model_for_task_with_project(task_type: TaskType, project_directory: &str) -> AppResult<String> {
+    // First try to get project-specific settings
+    if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    }) {
+        let project_hash = hash_string(project_directory);
+        let key = format!("project_task_model_settings_{}", project_hash);
+        
+        // Try to get project settings
+        if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+            if let Some(model) = extract_model_from_project_settings(&settings_json, task_type) {
+                if !model.is_empty() {
+                    log::debug!("Using project-specific model for {:?}: {}", task_type, model);
+                    return Ok(model);
+                }
+            }
+        }
+    }
+    
+    // Fall back to server config
+    log::debug!("Using server default model for {:?}", task_type);
+    get_model_for_task(task_type)
+}
+
+/// Async version: Get temperature for a task, checking project-specific settings first, then falling back to server config
+pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_directory: &str) -> AppResult<f32> {
+    // First try to get project-specific settings
+    if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    }) {
+        let project_hash = hash_string(project_directory);
+        let key = format!("project_task_model_settings_{}", project_hash);
+        
+        // Try to get project settings
+        if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+            if let Some(temperature) = extract_temperature_from_project_settings(&settings_json, task_type) {
+                log::debug!("Using project-specific temperature for {:?}: {}", task_type, temperature);
+                return Ok(temperature);
+            }
+        }
+    }
+    
+    // Fall back to server config
+    log::debug!("Using server default temperature for {:?}", task_type);
+    get_default_temperature_for_task(Some(task_type))
+}
+
+/// Async version: Get max tokens for a task, checking project-specific settings first, then falling back to server config
+pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_directory: &str) -> AppResult<u32> {
+    // First try to get project-specific settings
+    if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    }) {
+        let project_hash = hash_string(project_directory);
+        let key = format!("project_task_model_settings_{}", project_hash);
+        
+        // Try to get project settings
+        if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+            if let Some(max_tokens) = extract_max_tokens_from_project_settings(&settings_json, task_type) {
+                log::debug!("Using project-specific max_tokens for {:?}: {}", task_type, max_tokens);
+                return Ok(max_tokens);
+            }
+        }
+    }
+    
+    // Fall back to server config
+    log::debug!("Using server default max_tokens for {:?}", task_type);
+    get_default_max_tokens_for_task(Some(task_type))
 }

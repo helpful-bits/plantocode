@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use log::{info, debug, error};
-use crate::error::AppResult;
+use crate::error::{AppResult, AppError};
 use crate::auth::token_persistence;
 use crate::constants::USE_SESSION_STORAGE;
 
@@ -44,16 +44,28 @@ impl TokenManager {
         Ok(())
     }
 
-    /// Get the current token from memory
+    /// Get the current token from memory with timeout protection
     pub async fn get(&self) -> Option<String> {
-        let token_guard = self.token.read().await;
-        token_guard.clone()
+        use tokio::time::{timeout, Duration};
+        
+        match timeout(Duration::from_secs(5), async {
+            let token_guard = self.token.read().await;
+            token_guard.clone()
+        }).await {
+            Ok(token) => token,
+            Err(_) => {
+                error!("Timeout getting token from TokenManager");
+                None
+            }
+        }
     }
 
-    /// Set a new token in memory and persist to keyring
+    /// Set a new token in memory and persist to keyring with timeout protection
     pub async fn set(&self, new_token: Option<String>) -> AppResult<()> {
-        // Update in-memory cache
-        {
+        use tokio::time::{timeout, Duration};
+        
+        // Update in-memory cache with timeout protection
+        match timeout(Duration::from_secs(5), async {
             let mut token_guard = self.token.write().await;
             *token_guard = new_token.clone();
             
@@ -61,10 +73,23 @@ impl TokenManager {
                 Some(_) => debug!("TokenManager: Token set in memory cache"),
                 None => debug!("TokenManager: Token cleared from memory cache"),
             }
+        }).await {
+            Ok(_) => {},
+            Err(_) => {
+                error!("Timeout setting token in memory cache");
+                return Err(AppError::StorageError("Timeout updating token in memory".to_string()));
+            }
         }
         
-        // Persist to storage
-        token_persistence::save_token(new_token).await?;
+        // Persist to storage with timeout protection
+        match timeout(Duration::from_secs(10), token_persistence::save_token(new_token.clone())).await {
+            Ok(result) => result?,
+            Err(_) => {
+                error!("Timeout persisting token to storage");
+                return Err(AppError::StorageError("Timeout persisting token to storage".to_string()));
+            }
+        }
+        
         let storage_type = if USE_SESSION_STORAGE { "session storage" } else { "keyring" };
         debug!("TokenManager: Token persisted to {}", storage_type);
         

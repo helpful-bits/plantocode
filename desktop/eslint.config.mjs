@@ -17,6 +17,7 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import jsxA11yPlugin from 'eslint-plugin-jsx-a11y';
 import importPlugin from 'eslint-plugin-import';
 import sonarjs from 'eslint-plugin-sonarjs';
+import tailwindcssPlugin from 'eslint-plugin-tailwindcss';
 import unicornPlugin from 'eslint-plugin-unicorn';
 
 export default [
@@ -225,6 +226,9 @@ export default [
   // SonarJS recommended configuration
   sonarjs.configs.recommended,
   
+  // TailwindCSS recommended configuration
+  ...tailwindcssPlugin.configs.recommended,
+  
   // Unicorn recommended configuration
   unicornPlugin.configs['flat/recommended'],
   
@@ -239,7 +243,6 @@ export default [
           kebabCase: true,
         },
         ignore: [
-          // Add regex patterns for files that should be ignored by this rule
           // Config files and standard filename conventions
           /vite\.config\.mts$/,
           /tailwind\.config\.ts$/,
@@ -247,6 +250,21 @@ export default [
           /eslint\.config\.mjs$/,
           /components\.json$/,
           /tsconfig.*\.json$/,
+          // Private/internal modules with underscore prefix (React/Next.js patterns)
+          /^_.*$/,
+          // Allow underscore directories (common React patterns)
+          /\/_[^/]+$/,
+          // Special React component files
+          /\.stories\.(ts|tsx|js|jsx)$/,
+          /\.test\.(ts|tsx|js|jsx)$/,
+          /\.spec\.(ts|tsx|js|jsx)$/,
+          // API route files (Next.js style)
+          /route\.(ts|tsx|js|jsx)$/,
+          /layout\.(ts|tsx|js|jsx)$/,
+          /page\.(ts|tsx|js|jsx)$/,
+          /loading\.(ts|tsx|js|jsx)$/,
+          /error\.(ts|tsx|js|jsx)$/,
+          /not-found\.(ts|tsx|js|jsx)$/,
         ]
       }],
       // Add other unicorn rule overrides here if needed

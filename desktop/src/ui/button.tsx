@@ -1,3 +1,4 @@
+import React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef, ButtonHTMLAttributes } from "react";
@@ -5,29 +6,45 @@ import { forwardRef, ButtonHTMLAttributes } from "react";
 import { cn } from "@/utils/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-all duration-200 focus-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/80",
+          "bg-primary text-primary-foreground hover:bg-primary/85 shadow-soft hover:shadow-soft-md backdrop-blur-sm",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive dark:text-destructive-foreground",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/85 shadow-soft hover:shadow-soft-md",
         warning:
-          "bg-warning text-warning-foreground hover:bg-warning/90 dark:bg-warning dark:text-warning-foreground",
+          "bg-warning text-warning-foreground hover:bg-warning/85 shadow-soft hover:shadow-soft-md",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground dark:border-border dark:bg-transparent dark:hover:bg-accent",
+          "border border-border bg-background/80 text-foreground backdrop-blur-sm hover:bg-accent/60 hover:text-accent-foreground shadow-soft hover:shadow-soft-md",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:bg-secondary dark:text-secondary-foreground dark:hover:bg-secondary/70",
+          "bg-secondary/80 text-secondary-foreground hover:bg-secondary/60 border border-border/50 shadow-soft hover:shadow-soft-md backdrop-blur-sm",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/30 dark:hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline dark:text-primary-foreground",
+          "hover:bg-accent/40 hover:text-accent-foreground transition-all duration-200 backdrop-blur-sm",
+        link: "text-primary underline-offset-4 hover:underline hover:text-primary/80",
+        navigation:
+          "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out hover:bg-accent/40 focus:bg-accent/50 focus-ring border border-transparent hover:border-border/30 backdrop-blur-sm",
+        "navigation-active":
+          "h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out bg-primary/90 text-primary-foreground shadow-soft border border-primary/15 backdrop-blur-sm",
+        filter:
+          "border-0 rounded-none text-muted-foreground hover:bg-accent/30 hover:text-accent-foreground data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium transition-all duration-200 backdrop-blur-sm",
+        "filter-active":
+          "border-0 rounded-none bg-primary/10 text-primary font-medium hover:bg-primary/15 transition-all duration-200 backdrop-blur-sm",
+        compact:
+          "bg-secondary/60 text-secondary-foreground hover:bg-secondary/80 border border-border/40 shadow-sm hover:shadow-md transition-all duration-200 backdrop-blur-sm",
       },
       size: {
         default: "h-10 px-4 py-2",
+        xs: "h-7 rounded-md px-2 text-xs",
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
+        "icon-xs": "h-6 w-6",
+        "icon-sm": "h-7 w-7",
+        "icon-lg": "h-11 w-11",
+        compact: "h-8 px-2 py-1 text-xs",
+        "compact-sm": "h-6 px-1.5 py-0.5 text-xs",
       },
     },
     defaultVariants: {
@@ -43,7 +60,7 @@ export interface ButtonProps
   asChild?: boolean;
   isLoading?: boolean;
   loadingText?: string;
-  loadingIcon?: JSX.Element | null | undefined;
+  loadingIcon?: React.ReactElement | null | undefined;
   variant?:
     | "default"
     | "destructive"
@@ -51,8 +68,13 @@ export interface ButtonProps
     | "outline"
     | "secondary"
     | "ghost"
-    | "link";
-  size?: "default" | "sm" | "lg" | "icon";
+    | "link"
+    | "navigation"
+    | "navigation-active"
+    | "filter"
+    | "filter-active"
+    | "compact";
+  size?: "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg" | "compact" | "compact-sm";
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -108,12 +130,16 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       children
     );
 
-    // Apply fixed width and transition styles to prevent button size changes
-    // This ensures a more stable UI during loading states
+    // Apply consistent width to prevent layout shifts during loading
+    // Use a more stable width preservation strategy
     const buttonStyle = {
-      minWidth: isLoading ? "max-content" : undefined,
       transition: "all 200ms ease-in-out",
       position: "relative" as const,
+      // Prevent width changes during loading by maintaining original button width
+      ...(isLoading && { 
+        minWidth: "max-content",
+        width: "auto" 
+      }),
     };
 
     // Compute the loading state class

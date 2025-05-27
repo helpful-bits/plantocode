@@ -18,18 +18,16 @@ export function useFileSessionSync() {
     useState<boolean>(false);
 
   useEffect(() => {
-    // Load initial values from session when it changes or on mount
-    const newSearchTerm = currentSession?.searchTerm || "";
-    const newSearchSelectedFilesOnly = currentSession?.searchSelectedFilesOnly || false;
-    
-    // Only update state if values have actually changed to prevent unnecessary re-renders
-    if (searchTerm !== newSearchTerm) {
-      setSearchTermState(newSearchTerm);
-    }
-    if (searchSelectedFilesOnly !== newSearchSelectedFilesOnly) {
-      setSearchSelectedFilesOnlyState(newSearchSelectedFilesOnly);
-    }
-  }, [currentSession?.id, currentSession?.searchTerm, currentSession?.searchSelectedFilesOnly, searchTerm, searchSelectedFilesOnly]);
+    // Sync searchTerm from session to local state
+    const newSearchTerm = currentSession?.searchTerm ?? "";
+    setSearchTermState(newSearchTerm);
+  }, [currentSession?.searchTerm]);
+
+  useEffect(() => {
+    // Sync searchSelectedFilesOnly from session to local state
+    const newSearchSelectedFilesOnly = currentSession?.searchSelectedFilesOnly ?? false;
+    setSearchSelectedFilesOnlyState(newSearchSelectedFilesOnly);
+  }, [currentSession?.searchSelectedFilesOnly]);
 
   const updateSearchTerm = useCallback(
     (term: string) => {

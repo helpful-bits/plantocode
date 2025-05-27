@@ -66,11 +66,11 @@ pub async fn create_path_finder_job_service(
         session.project_directory
     };
     
-    // Get the model for this task
+    // Get the model for this task - check project settings first, then server defaults
     let model = if let Some(override_model) = args.model.clone() {
         override_model
     } else {
-        match crate::config::get_model_for_task(TaskType::PathFinder) {
+        match crate::config::get_model_for_task_with_project(TaskType::PathFinder, &project_directory).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for path finder: {}", e)));
@@ -78,11 +78,11 @@ pub async fn create_path_finder_job_service(
         }
     };
     
-    // Get temperature for this task
+    // Get temperature for this task - check project settings first, then server defaults
     let temperature = if let Some(override_temp) = args.temperature {
         override_temp
     } else {
-        match crate::config::get_default_temperature_for_task(Some(TaskType::PathFinder)) {
+        match crate::config::get_temperature_for_task_with_project(TaskType::PathFinder, &project_directory).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for path finder: {}", e)));
@@ -90,11 +90,11 @@ pub async fn create_path_finder_job_service(
         }
     };
     
-    // Get max tokens for this task
+    // Get max tokens for this task - check project settings first, then server defaults
     let max_tokens = if let Some(override_tokens) = args.max_tokens {
         override_tokens
     } else {
-        match crate::config::get_default_max_tokens_for_task(Some(TaskType::PathFinder)) {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathFinder, &project_directory).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for path finder: {}", e)));
@@ -196,11 +196,11 @@ pub async fn create_regex_generation_job_service(
         session.project_directory
     };
     
-    // Get the model for this task
+    // Get the model for this task - check project settings first, then server defaults
     let model = if let Some(override_model) = args.model_override.clone() {
         override_model
     } else {
-        match crate::config::get_model_for_task(TaskType::RegexGeneration) {
+        match crate::config::get_model_for_task_with_project(TaskType::RegexGeneration, &project_directory).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for regex generation: {}", e)));
@@ -208,11 +208,11 @@ pub async fn create_regex_generation_job_service(
         }
     };
     
-    // Get temperature for this task
+    // Get temperature for this task - check project settings first, then server defaults
     let temperature = if let Some(override_temp) = args.temperature_override {
         override_temp
     } else {
-        match crate::config::get_default_temperature_for_task(Some(TaskType::RegexGeneration)) {
+        match crate::config::get_temperature_for_task_with_project(TaskType::RegexGeneration, &project_directory).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for regex generation: {}", e)));
@@ -220,11 +220,11 @@ pub async fn create_regex_generation_job_service(
         }
     };
     
-    // Get max tokens for this task
+    // Get max tokens for this task - check project settings first, then server defaults
     let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
         override_tokens
     } else {
-        match crate::config::get_default_max_tokens_for_task(Some(TaskType::RegexGeneration)) {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::RegexGeneration, &project_directory).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for regex generation: {}", e)));

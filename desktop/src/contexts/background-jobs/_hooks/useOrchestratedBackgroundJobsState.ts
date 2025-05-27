@@ -33,7 +33,7 @@ export function useOrchestratedBackgroundJobsState({
   const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs);
   const [activeJobs, setActiveJobs] = useState<BackgroundJob[]>(
     initialJobs.filter((job) =>
-      JOB_STATUSES.ACTIVE.includes(job.status as any)
+      JOB_STATUSES.ACTIVE.includes(job.status)
     )
   );
 
@@ -113,7 +113,7 @@ export function useOrchestratedBackgroundJobsState({
         setInitialLoad(false);
       }
     }
-  }, []);
+  }, [initialLoad]);
 
   // Refresh jobs and update state
   const refreshJobs = useCallback(async () => {
@@ -140,7 +140,7 @@ export function useOrchestratedBackgroundJobsState({
         // Update active jobs
         setActiveJobs((prevActiveJobs) => {
           const activeJobsList = jobsData.filter((job: BackgroundJob) =>
-            JOB_STATUSES.ACTIVE.includes(job.status as any)
+            JOB_STATUSES.ACTIVE.includes(job.status)
           );
 
           if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
@@ -238,91 +238,100 @@ export function useOrchestratedBackgroundJobsState({
 
   // Listen for job status change events from the Rust backend
   useEffect(() => {
-    const unlisten = listen("job_status_change", async (event) => {
+    let unlistenPromise: Promise<() => void> | null = null;
+    
+    const setupListener = async () => {
       try {
-        // The payload should include the job ID and potentially other metadata
-        const payload = event.payload as { jobId: string; status: string; message?: string };
-        const jobId = payload.jobId;
+        unlistenPromise = listen("job_status_change", async (event) => {
+          try {
+            // The payload should include the job ID and potentially other metadata
+            const payload = event.payload as { jobId: string; status: string; message?: string };
+            const jobId = payload.jobId;
 
-        if (!jobId) {
-          console.error(
-            "[BackgroundJobs] Received job_status_change event without jobId",
-            event.payload
-          );
-          return;
-        }
-
-
-        // Fetch the updated job details using Tauri command
-        try {
-          const updatedJob = await invoke<BackgroundJob>(
-            "get_background_job_by_id_command",
-            { jobId }
-          );
-
-          if (!updatedJob) {
-            throw new Error("Failed to get job details");
-          }
-
-          // Update the jobs state
-          setJobs(prev => {
-            const existingJobIndex = prev.findIndex(j => j.id === updatedJob.id);
-            if (existingJobIndex !== -1) {
-              if (areJobsEqual(prev[existingJobIndex], updatedJob)) return prev; // No change
-              const newJobs = [...prev];
-              newJobs[existingJobIndex] = updatedJob;
-              return newJobs;
-            } else {
-              return [...prev, updatedJob]; // Add new job
+            if (!jobId) {
+              console.error(
+                "[BackgroundJobs] Received job_status_change event without jobId",
+                event.payload
+              );
+              return;
             }
-          });
 
-          // Update active jobs state
-          setActiveJobs((prev) => {
-            const isJobActive = JOB_STATUSES.ACTIVE.includes(
-              updatedJob.status as any
+            // Fetch the updated job details using Tauri command
+            try {
+              const updatedJob = await invoke<BackgroundJob>(
+                "get_background_job_by_id_command",
+                { jobId }
+              );
+
+              if (!updatedJob) {
+                console.warn(`[BackgroundJobs] Job ${jobId} not found, may have been deleted`);
+                // Remove from local state if it doesn't exist
+                setJobs(prev => prev.filter(j => j.id !== jobId));
+                setActiveJobs(prev => prev.filter(j => j.id !== jobId));
+                return;
+              }
+
+              // Update the jobs state efficiently
+              setJobs(prev => {
+                const existingJobIndex = prev.findIndex(j => j.id === updatedJob.id);
+                if (existingJobIndex !== -1) {
+                  if (areJobsEqual(prev[existingJobIndex], updatedJob)) return prev;
+                  const newJobs = [...prev];
+                  newJobs[existingJobIndex] = updatedJob;
+                  return newJobs;
+                } else {
+                  return [...prev, updatedJob];
+                }
+              });
+
+              // Update active jobs state efficiently
+              setActiveJobs((prev) => {
+                const isJobActive = JOB_STATUSES.ACTIVE.includes(updatedJob.status);
+                const existingActiveIndex = prev.findIndex((job) => job.id === updatedJob.id);
+                const jobExistsInActive = existingActiveIndex !== -1;
+
+                if (isJobActive && !jobExistsInActive) {
+                  return [...prev, updatedJob];
+                }
+
+                if (!isJobActive && jobExistsInActive) {
+                  return prev.filter((job) => job.id !== updatedJob.id);
+                }
+
+                if (isJobActive && jobExistsInActive) {
+                  if (areJobsEqual(prev[existingActiveIndex], updatedJob)) return prev;
+                  const newActiveJobs = [...prev];
+                  newActiveJobs[existingActiveIndex] = updatedJob;
+                  return newActiveJobs;
+                }
+
+                return prev;
+              });
+            } catch (err) {
+              console.error(
+                `[BackgroundJobs] Error fetching updated job ${jobId}:`,
+                err
+              );
+            }
+          } catch (err) {
+            console.error(
+              "[BackgroundJobs] Error processing job_status_change event:",
+              err
             );
-            const existingActiveIndex = prev.findIndex((job) => job.id === updatedJob.id);
-            const jobExistsInActive = existingActiveIndex !== -1;
-
-            // If job should be active but isn't in the active list, add it
-            if (isJobActive && !jobExistsInActive) {
-              return [...prev, updatedJob];
-            }
-
-            // If job shouldn't be active but is in the active list, remove it
-            if (!isJobActive && jobExistsInActive) {
-              return prev.filter((job) => job.id !== updatedJob.id);
-            }
-
-            // If job should be active and is already in the list, update it only if changed
-            if (isJobActive && jobExistsInActive) {
-              if (areJobsEqual(prev[existingActiveIndex], updatedJob)) return prev; // No change
-              const newActiveJobs = [...prev];
-              newActiveJobs[existingActiveIndex] = updatedJob;
-              return newActiveJobs;
-            }
-
-            // Otherwise, no change to active jobs
-            return prev;
-          });
-        } catch (err) {
-          console.error(
-            `[BackgroundJobs] Error fetching updated job ${jobId}:`,
-            err
-          );
-        }
+          }
+        });
       } catch (err) {
-        console.error(
-          "[BackgroundJobs] Error processing job_status_change event:",
-          err
-        );
+        console.error("[BackgroundJobs] Error setting up job status listener:", err);
       }
-    });
+    };
+
+    void setupListener();
 
     // Clean up the listener when component unmounts
     return () => {
-      void unlisten.then((cleanupFn) => cleanupFn());
+      if (unlistenPromise) {
+        void unlistenPromise.then((cleanupFn) => cleanupFn());
+      }
     };
   }, []);
 
@@ -363,18 +372,19 @@ export function useOrchestratedBackgroundJobsState({
       lastFetchTime,
     }),
     [
+      // Core state
       jobs,
       activeJobs,
       isLoading,
       error,
+      lastFetchTime,
+      
+      // Action callbacks
       cancelJob,
       deleteJob,
       clearHistory,
       refreshJobs,
       getJobById,
-      isFetchingRef,
-      consecutiveErrorsRef,
-      lastFetchTime,
     ]
   );
 }

@@ -66,7 +66,7 @@ export function NoSubscriptionState({
     description="Get started with a subscription to access premium features."
     actionText="Upgrade to Pro"
     onAction={onUpgrade}
-    className="border-none p-4"
+    className="border-none p-0"
   />
   );
 }

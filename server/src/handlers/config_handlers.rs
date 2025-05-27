@@ -14,6 +14,7 @@ use serde::{Serialize, Deserialize};
 // Runtime config response format that matches the Tauri backend expectations
 // This is the same as RuntimeAIConfig but with different model format
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopRuntimeAIConfig {
     /// Default LLM model ID
     pub default_llm_model_id: String,
@@ -30,6 +31,7 @@ pub struct DesktopRuntimeAIConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopModelInfo {
     /// Unique model identifier
     pub id: String,

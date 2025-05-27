@@ -5,6 +5,7 @@ use crate::constants::USE_SESSION_STORAGE;
 
 // Constants for token storage
 pub const SERVICE_NAME_FOR_KEYRING: &str = "vibe-manager";
+// Account name for storing the app's primary auth token in the keyring
 pub const ACCOUNT_NAME_FOR_KEYRING: &str = "default";
 
 // Session storage state - in memory only when using session storage mode

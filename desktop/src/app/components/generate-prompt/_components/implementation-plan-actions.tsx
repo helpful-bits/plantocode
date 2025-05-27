@@ -101,7 +101,7 @@ export const ImplementationPlanActions = ({
   return (
     <div className={`bg-card p-6 rounded-lg border shadow-sm ${className}`}>
       <div>
-        <h3 className="text-sm font-medium mb-3">Implementation Plans</h3>
+        <h3 className="text-sm font-medium mb-3 text-foreground">Implementation Plans</h3>
 
         <Button
           variant="default"
