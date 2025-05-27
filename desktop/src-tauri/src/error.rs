@@ -25,8 +25,8 @@ pub enum AppError {
     #[error("Tauri error: {0}")]
     TauriError(String),
     
-    #[error("Secure storage error: {0}")]
-    StrongholdError(String), // Keeping for backwards compatibility, renamed in UI presentation
+    #[error("Keyring error: {0}")]
+    KeyringError(String),
     
     #[error("Configuration error: {0}")]
     ConfigError(String),
@@ -145,6 +145,7 @@ impl From<sqlx::Error> for AppError {
 
 // A serializable version of AppError for sending to the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SerializableError {
     pub code: String,
     pub message: String,
@@ -161,7 +162,7 @@ impl From<AppError> for SerializableError {
             AppError::ServerProxyError(_) => "SERVER_PROXY_ERROR",
             AppError::HttpError(_) => "HTTP_ERROR",
             AppError::TauriError(_) => "TAURI_ERROR",
-            AppError::StrongholdError(_) => "STRONGHOLD_ERROR",
+            AppError::KeyringError(_) => "KEYRING_ERROR",
             AppError::ConfigError(_) => "CONFIG_ERROR",
             AppError::JobError(_) => "JOB_ERROR",
             AppError::FileSystemError(_) => "FILE_SYSTEM_ERROR",

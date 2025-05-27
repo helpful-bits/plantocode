@@ -187,7 +187,7 @@ function FileBrowser({
   );
 
   return (
-    <div className="space-y-4 mb-4 border rounded-lg p-6 bg-card shadow-sm">
+    <div className="space-y-4 mb-4 border border-border/60 rounded-xl p-6 bg-background/95 backdrop-blur-sm shadow-soft">
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center gap-4">
           <div className="relative flex-1">
@@ -246,7 +246,7 @@ function FileBrowser({
 
       {/* Show error message if regex generation fails */}
       {regexState.regexGenerationError && (
-        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/30 bg-destructive/5 p-2 rounded-md">
+        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/20 bg-destructive/10 backdrop-blur-sm p-3 rounded-lg">
           {regexState.regexGenerationError}
         </div>
       )}
@@ -257,20 +257,22 @@ function FileBrowser({
       {!isLoading && totalFilesCount > 0 && (
         <div className="space-y-1">
           <div
-            className={`flex items-center justify-between text-sm ${includedCount === 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"} border-b pb-3`}
+            className={`flex items-center justify-between text-sm ${includedCount === 0 ? "text-destructive" : "text-muted-foreground"} border-b pb-3`}
           >
             <div className="flex items-center gap-2">
               {includedCount === 0 && (
-                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <AlertCircle className="h-4 w-4 text-destructive" />
               )}
               <span
-                className={`font-medium ${includedCount === 0 ? "text-red-600 dark:text-red-400" : ""}`}
+                className={`font-medium ${includedCount === 0 ? "text-destructive" : "text-foreground"}`}
               >
                 {includedCount}
               </span>{" "}
-              of {totalFilesCount} files selected
+              <span className={includedCount === 0 ? "text-destructive" : "text-foreground"}>
+                of {totalFilesCount} files selected
+              </span>
               {includedCount === 0 && (
-                <span className="text-xs bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 px-2 py-0.5 rounded-sm">
+                <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-sm">
                   No files selected
                 </span>
               )}
@@ -320,7 +322,7 @@ function FileBrowser({
             </div>
           </div>
           <div
-            className={`text-xs ${includedCount === 0 ? "text-red-500 dark:text-red-400 font-medium" : "text-muted-foreground italic"} text-balance`}
+            className={`text-xs ${includedCount === 0 ? "text-destructive font-medium" : "text-muted-foreground italic"} text-balance`}
           >
             {includedCount === 0
               ? "Select files from the list below to include them in your prompt. Files contain critical context for the AI model."
@@ -329,7 +331,7 @@ function FileBrowser({
 
           {/* Extra warning when no files are selected */}
           {includedCount === 0 && (
-            <div className="mt-2 p-2 border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 rounded-md text-sm text-red-800 dark:text-red-200">
+            <div className="mt-2 p-4 border border-destructive/20 bg-destructive/10 backdrop-blur-sm rounded-lg text-sm text-destructive">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
                 <div>
@@ -348,7 +350,7 @@ function FileBrowser({
       )}
 
       {/* File Browser Main Container */}
-      <div className="border rounded-md bg-background/50 p-3 h-[450px] overflow-auto relative">
+      <div className="border border-border/60 rounded-xl bg-background/80 backdrop-blur-sm p-4 h-[450px] overflow-auto relative shadow-soft">
         {(() => {
           // No project directory selected
           if (!projectDirectory) {
@@ -360,7 +362,7 @@ function FileBrowser({
             );
           }
 
-          // Initial loading
+          // Initial loading (before any files are loaded)
           if (isLoading && !isInitialized) {
             return (
               <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
@@ -380,9 +382,9 @@ function FileBrowser({
             return (
               <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
                 <div className="text-center">
-                  <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                  <p className="font-medium text-red-500">Error loading files</p>
-                  <p className="text-xs mt-2 text-red-400">{fileLoadError}</p>
+                  <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+                  <p className="font-medium text-destructive">Error loading files</p>
+                  <p className="text-xs mt-2 text-destructive/80">{fileLoadError}</p>
                   <p className="text-xs mt-1 text-muted-foreground">
                     Project directory: {projectDirectory || "none"}
                   </p>
@@ -429,8 +431,7 @@ function FileBrowser({
                       Refresh Files
                     </Button>
                     <p className="text-xs text-warning mt-2">
-                      Files may be loading in the background. If this persists, try
-                      clicking Refresh Files again.
+                      If files should exist in this directory, try clicking Refresh Files.
                     </p>
                   </div>
                 </div>
@@ -442,7 +443,7 @@ function FileBrowser({
           if (!isLoading && Object.keys(managedFilesMap).length > 0 && displayedFiles.length === 0) {
             return (
               <div className="h-full flex items-center justify-center">
-                <div className="bg-card border rounded-lg p-6 max-w-md shadow-md text-center">
+                <div className="bg-background/95 backdrop-blur-sm border border-border/60 rounded-xl p-6 max-w-md shadow-soft text-center">
                   {searchTerm ||
                   (regexState.isRegexActive &&
                     (regexState.titleRegex ||
@@ -450,7 +451,7 @@ function FileBrowser({
                       regexState.negativeTitleRegex ||
                       regexState.negativeContentRegex)) ? (
                     <>
-                      <Info className="h-8 w-8 text-blue-500/80 mx-auto mb-2" />
+                      <Info className="h-8 w-8 text-info mx-auto mb-2" />
                       <p className="font-medium">
                         No files match your search criteria
                       </p>
@@ -534,9 +535,9 @@ function FileBrowser({
           );
         })()}
 
-        {/* Small loading indicator for background refresh */}
+        {/* Small loading indicator for background refresh (when files are already loaded) */}
         <div
-          className={`absolute top-2 right-2 bg-background/95 border rounded-md px-3 py-2 shadow-sm flex items-center gap-2 z-10 transition-opacity duration-300 ${isLoading && isInitialized ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`absolute top-2 right-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg px-3 py-2 shadow-soft flex items-center gap-2 z-10 transition-opacity duration-300 ${isLoading && isInitialized ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         >
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground text-xs">

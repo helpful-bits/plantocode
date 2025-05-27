@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { shell } from "@/utils/shell-utils";
+import { open } from "@/utils/shell-utils";
 import { createLogger } from "@/utils/logger";
 import { getErrorMessage } from "@/utils/error-handling";
 
@@ -14,6 +14,7 @@ interface Auth0AuthState {
   loading: boolean;
   error?: string;
   token?: string;
+  tokenExpiresAt?: number;
 }
 
 /**
@@ -73,10 +74,14 @@ export function useAuth0AuthHandler() {
             
             logger.debug("Token validated, user authenticated:", userInfo.id);
             if (isMountedRef.current && !abortController.signal.aborted) {
+              // For stored tokens, we don't know the exact expiry, so use a conservative estimate
+              // Assume tokens are valid for 1 hour from now (will be refreshed every 50 minutes)
+              const tokenExpiresAt = Date.now() + (60 * 60 * 1000); // 1 hour from now
               setState((prev: Auth0AuthState) => ({ 
                 ...prev, 
                 user: userInfo, 
                 token: storedToken, 
+                tokenExpiresAt,
                 loading: false, 
                 error: undefined
               }));
@@ -97,6 +102,7 @@ export function useAuth0AuthHandler() {
                 ...prev, 
                 user: undefined, 
                 token: undefined, 
+                tokenExpiresAt: undefined,
                 loading: false, 
                 error: undefined
               }));
@@ -110,6 +116,7 @@ export function useAuth0AuthHandler() {
               ...prev, 
               user: undefined, 
               token: undefined, 
+              tokenExpiresAt: undefined,
               loading: false, 
               error: undefined
             }));
@@ -175,7 +182,7 @@ export function useAuth0AuthHandler() {
         logger.debug(`Got polling ID: ${pollingId}`);
         
         // Step 2: Open browser with the auth URL
-        await shell.open(authUrl);
+        await open(authUrl);
         
         // Step 3: Start polling for authentication result
         if (!isMountedRef.current) return;
@@ -191,18 +198,27 @@ export function useAuth0AuthHandler() {
         let pollingAttempts = 0;
         const maxPollingAttempts = 60; // 60 attempts with 2-second interval = 2 minutes max
         const pollingInterval = 2000; // 2 seconds
+        const startTime = Date.now();
+        const maxPollingDuration = 150000; // 2.5 minutes in milliseconds (buffer beyond attempts)
+        let pollingTimeoutId: NodeJS.Timeout | null = null;
         
         const pollForToken = async (): Promise<void> => {
           try {
-            if (!isMountedRef.current) return;
+            if (!isMountedRef.current) {
+              if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+              return;
+            }
             
-            if (pollingAttempts >= maxPollingAttempts) {
-              logger.error(`Auth0 polling timeout reached after ${maxPollingAttempts} attempts`);
+            // Check both attempt count and elapsed time for robust timeout handling
+            const elapsedTime = Date.now() - startTime;
+            if (pollingAttempts >= maxPollingAttempts || elapsedTime >= maxPollingDuration) {
+              if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+              logger.error(`Auth0 polling timeout reached after ${pollingAttempts} attempts (${Math.round(elapsedTime/1000)}s elapsed)`);
               if (isMountedRef.current) {
                 setState((prev: Auth0AuthState) => ({
                   ...prev,
                   loading: false,
-                  error: "Authentication timed out. Please try again.",
+                  error: "Authentication timed out. Please close the browser tab and try again.",
                 }));
               }
               return;
@@ -217,16 +233,21 @@ export function useAuth0AuthHandler() {
             
             if (result) {
               // Authentication successful
+              if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
               logger.debug("Authentication successful for user:", result.email);
               
               // Get the token that was stored by the Tauri command
               const storedToken = await invoke<string | undefined>('get_app_jwt');
               
               if (isMountedRef.current) {
+                // For new authentication, assume default 1 hour expiry (typical for JWT tokens)
+                // This will be used by the token refresher to schedule refresh attempts
+                const tokenExpiresAt = Date.now() + (60 * 60 * 1000); // 1 hour from now
                 setState((prev: Auth0AuthState) => ({
                   ...prev,
                   user: result,
                   token: storedToken,
+                  tokenExpiresAt,
                   loading: false,
                   error: undefined,
                 }));
@@ -235,15 +256,22 @@ export function useAuth0AuthHandler() {
               return;
             }
             
-            // Still pending, continue polling
-            logger.debug(`Still waiting for authentication... (attempt ${pollingAttempts})`);
-            setTimeout(() => {
-              if (!isMountedRef.current || state.error) return;
+            // Still pending, continue polling with exponential backoff for later attempts
+            const backoffMultiplier = pollingAttempts > 30 ? 1.5 : 1; // Slow down after 30 attempts
+            const nextInterval = Math.min(pollingInterval * backoffMultiplier, 5000); // Cap at 5 seconds
+            
+            logger.debug(`Still waiting for authentication... (attempt ${pollingAttempts}/${maxPollingAttempts})`);
+            pollingTimeoutId = setTimeout(() => {
+              if (!isMountedRef.current || state.error) {
+                if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+                return;
+              }
               pollForToken();
-            }, pollingInterval);
+            }, nextInterval);
             
           } catch (error: any) {
             logger.error("Polling error:", error);
+            if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
             if (isMountedRef.current) {
               setState((prev: Auth0AuthState) => ({
                 ...prev,
@@ -284,6 +312,7 @@ export function useAuth0AuthHandler() {
         setState({
           user: undefined,
           token: undefined,
+          tokenExpiresAt: undefined,
           loading: false,
           error: undefined
         });

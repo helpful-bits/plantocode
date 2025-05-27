@@ -62,10 +62,13 @@ pub const KV_ACTIVE_SESSION_ID: &str = "active_session_id";
 pub const KV_PROJECT_DIRECTORY: &str = "project_directory";
 
 // Authentication keys
+// Note: TOKEN_KEY is primarily used when USE_SESSION_STORAGE is false (for keyring operations)
 pub const TOKEN_KEY: &str = "com.vibe-manager.auth.token.v1";
 
 // Storage mode configuration
-pub const USE_SESSION_STORAGE: bool = true; // Set to false to use keyring instead
+// Development: Use in-memory session storage. Production: Use OS keyring.
+// Note: When true, onboarding keychain flow will be skipped
+pub const USE_SESSION_STORAGE: bool = cfg!(debug_assertions);
 
 // Directory names
 pub const IMPLEMENTATION_PLANS_DIR_NAME: &str = "implementation_plans";

@@ -8,7 +8,7 @@ use crate::models::{BackgroundJob, JobStatus};
 
 /// Job types that can be processed by the system
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "camelCase")]
 pub enum JobType {
     OpenRouterLlm,
     OpenRouterTranscription,
@@ -109,6 +109,7 @@ pub struct OpenRouterTranscriptionPayload {
 
 // Input payload for Path Finder job (used for deserialization from frontend)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InputPathFinderPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -122,6 +123,7 @@ pub struct InputPathFinderPayload {
 
 // Payload for Path Finder job with additional fields needed by the processor
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderPayload {
     pub session_id: String,
     pub task_description: String,
@@ -142,6 +144,7 @@ pub struct PathFinderPayload {
 
 // Payload for Implementation Plan job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImplementationPlanPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -156,6 +159,7 @@ pub struct ImplementationPlanPayload {
 
 // Payload for Regex Generation job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegexGenerationPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -171,6 +175,7 @@ pub struct RegexGenerationPayload {
 
 // Payload for Guidance Generation job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GuidanceGenerationPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -186,6 +191,7 @@ pub struct GuidanceGenerationPayload {
 
 // Payload for Path Correction job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PathCorrectionPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -199,6 +205,7 @@ pub struct PathCorrectionPayload {
 
 // Payload for Text Improvement job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextImprovementPayload {
     pub background_job_id: String, // Comes from Job.db_job.id
     pub session_id: String,        // Comes from Job.db_job.session_id
@@ -211,6 +218,7 @@ pub struct TextImprovementPayload {
 
 // Payload for Task Enhancement job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskEnhancementPayload {
     pub background_job_id: String, // Comes from Job.db_job.id
     pub session_id: String,        // Comes from Job.db_job.session_id
@@ -222,6 +230,7 @@ pub struct TaskEnhancementPayload {
 
 // Payload for Voice Correction job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VoiceCorrectionPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -234,6 +243,7 @@ pub struct VoiceCorrectionPayload {
 
 // Payload for Generate Directory Tree job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenerateDirectoryTreePayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -243,6 +253,7 @@ pub struct GenerateDirectoryTreePayload {
 
 // Payload for Text Correction Post Transcription job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TextCorrectionPostTranscriptionPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -254,6 +265,7 @@ pub struct TextCorrectionPostTranscriptionPayload {
 
 // Payload for Generic LLM Stream job
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenericLlmStreamPayload {
     pub background_job_id: String,
     pub session_id: String,
@@ -287,6 +299,7 @@ pub enum JobPayload {
 
 // Structured types for Implementation Plan parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StructuredImplementationPlanStepOperation {
     #[serde(rename = "type")]
     pub operation_type: String, // "create", "modify", "delete", etc.
@@ -295,6 +308,7 @@ pub struct StructuredImplementationPlanStepOperation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StructuredImplementationPlanStep {
     pub number: Option<String>,
     pub title: String,
@@ -303,6 +317,7 @@ pub struct StructuredImplementationPlanStep {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StructuredImplementationPlan {
     pub agent_instructions: Option<String>,
     pub steps: Vec<StructuredImplementationPlanStep>,

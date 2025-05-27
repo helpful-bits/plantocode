@@ -6,8 +6,8 @@ import {
 } from "../../core/lib/db/integrity-check";
 import { closeDatabase } from "../../core/lib/db";
 import { DB_FILE } from "../../core/lib/db/constants";
-import readline from "readline";
-import fs from "fs";
+import readline from "node:readline";
+import fs from "node:fs";
 
 /**
  * Script to reset the database (WARNING: Deletes all data!)

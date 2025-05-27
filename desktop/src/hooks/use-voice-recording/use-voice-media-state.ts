@@ -5,6 +5,9 @@ import { useState, useRef, useCallback } from "react";
 import { setupMedia, cleanupMedia } from "./voice-media-handler";
 import { getErrorMessage } from "@/utils/error-handling";
 
+const MEDIA_RECORDER_TIMESLICE_MS = 10000;
+const MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS = 3000;
+
 interface UseVoiceMediaStateProps {
   onError: (error: string) => void;
   selectedAudioInputId: string;
@@ -68,7 +71,7 @@ export function useVoiceMediaState({
 
     // Start recording with a timeslice to ensure ondataavailable events fire periodically
     // 10000ms (10 seconds) is a good balance - not too frequent but ensures we get chunks during recording
-    recorderRef.current.start(10000); // Request data every 10 seconds
+    recorderRef.current.start(MEDIA_RECORDER_TIMESLICE_MS); // Request data every 10 seconds
 
     // Also set up a manual requestData call every 3 seconds as a backup
     const interval = setInterval(() => {
@@ -85,7 +88,7 @@ export function useVoiceMediaState({
       } else {
         clearInterval(interval);
       }
-    }, 3000);
+    }, MEDIA_RECORDER_REQUEST_DATA_INTERVAL_MS);
 
     // Store the interval so we can clear it on stop
     const intervalId = interval as unknown as number;

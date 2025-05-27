@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { type BackgroundJob } from "@/types/session-types";
 import { Button } from "@/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { ScrollArea } from "@/ui/scroll-area";
 
@@ -32,38 +33,43 @@ export function JobDetailsMetadataSection({
     ? formattedMetadata 
     : formattedMetadata.substring(0, PREVIEW_CHARS) + "...";
 
-  const formattedRegex = job.metadata.regexPatterns ? formatRegexPatterns(job.metadata.regexPatterns) : null;
+  const formattedRegex = job.metadata.regexData ? formatRegexPatterns(job.metadata.regexData) : null;
   const isLongRegex = formattedRegex ? formattedRegex.length > PREVIEW_CHARS : false;
   const displayRegex = showFullRegex || !isLongRegex || !formattedRegex
     ? formattedRegex 
     : formattedRegex.substring(0, PREVIEW_CHARS) + "...";
 
   return (
-    <div className="bg-gray-50 dark:bg-muted/10 rounded-md">
+    <Card>
       <Collapsible open={isMetadataOpen} onOpenChange={setIsMetadataOpen}>
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full flex justify-between items-center p-5 rounded-md">
-            <h4 className="font-semibold text-xs text-muted-foreground uppercase">
-              Metadata
-            </h4>
-            {isMetadataOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
+          <CardHeader className="pb-3 cursor-pointer hover:bg-accent/50 transition-colors">
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-sm">Metadata</CardTitle>
+                <CardDescription className="text-xs">
+                  Additional job configuration and debug information
+                </CardDescription>
+              </div>
+              {isMetadataOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </CardHeader>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="px-5 pb-5">
+          <CardContent className="pt-0 space-y-3">
             {job.metadata.targetField && (
-              <div className="mb-3">
-                <h5 className="text-xs text-muted-foreground mb-1">Target Field</h5>
-                <p className="text-sm font-medium">{job.metadata.targetField}</p>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Target Field</div>
+                <div className="text-sm font-medium text-foreground">{job.metadata.targetField}</div>
               </div>
             )}
 
             {/* Display regex patterns separately if they exist */}
-            {job.metadata.regexPatterns && (
-              <div className="mb-3">
-                <h5 className="text-xs text-muted-foreground mb-1">Regex Patterns</h5>
+            {job.metadata.regexData && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Regex Patterns</div>
                 <ScrollArea className={`${showFullRegex ? "max-h-[300px]" : "max-h-[150px]"}`}>
-                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md">
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md text-foreground">
                     {displayRegex || 'No regex patterns found'}
                   </pre>
                 </ScrollArea>
@@ -71,7 +77,7 @@ export function JobDetailsMetadataSection({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="mt-2 text-xs h-6 px-2"
+                    className="mt-2 text-xs"
                     onClick={() => setShowFullRegex(!showFullRegex)}
                   >
                     {showFullRegex ? "Show Less" : "Show More"}
@@ -81,10 +87,10 @@ export function JobDetailsMetadataSection({
             )}
 
             {/* Other metadata */}
-            <div className="mb-3">
-              <h5 className="text-xs text-muted-foreground mb-1">Other Metadata</h5>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Other Metadata</div>
               <ScrollArea className={`${showFullMetadata ? "max-h-[300px]" : "max-h-[150px]"}`}>
-                <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full">
+                <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full text-foreground">
                   {displayMetadata}
                 </pre>
               </ScrollArea>
@@ -92,16 +98,16 @@ export function JobDetailsMetadataSection({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="mt-2 text-xs h-6 px-2"
+                  className="mt-2 text-xs"
                   onClick={() => setShowFullMetadata(!showFullMetadata)}
                 >
                   {showFullMetadata ? "Show Less" : "Show More"}
                 </Button>
               )}
             </div>
-          </div>
+          </CardContent>
         </CollapsibleContent>
       </Collapsible>
-    </div>
+    </Card>
   );
 }

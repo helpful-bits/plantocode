@@ -92,27 +92,28 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
             ],
         };
         
-        // Get the model and settings from app config
+        // Get the model and settings from project/server config
         // Default to text improvement models if the specific ones aren't available
-        let model = match crate::config::get_model_for_task(crate::models::TaskType::TextCorrectionPostTranscription) {
+        let project_dir = payload.project_directory.as_deref().unwrap_or("");
+        let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, project_dir).await {
             Ok(m) => m,
-            Err(_) => match crate::config::get_model_for_task(crate::models::TaskType::TextImprovement) {
+            Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_dir).await {
                 Ok(m) => m,
                 Err(e) => return Err(AppError::ConfigError(format!("Failed to get model: {}", e))),
             },
         };
         
-        let temperature = match crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::TextCorrectionPostTranscription)) {
+        let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, project_dir).await {
             Ok(t) => t,
-            Err(_) => match crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::TextImprovement)) {
+            Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_dir).await {
                 Ok(t) => t,
                 Err(_) => 0.7, // Default fallback
             },
         };
         
-        let max_tokens = match crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::TextCorrectionPostTranscription)) {
+        let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, project_dir).await {
             Ok(t) => t,
-            Err(_) => match crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::TextImprovement)) {
+            Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_dir).await {
                 Ok(t) => t,
                 Err(_) => 2000, // Default fallback
             },

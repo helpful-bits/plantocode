@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
 import { type TaskSettings } from "@/types/task-settings-types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Simple string hashing function for client-side key generation
@@ -69,14 +70,7 @@ export async function getModelSettingsForProject(
     }
   } catch (error) {
     console.error("Error getting task model settings for project:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error getting settings",
-      data: undefined,
-    };
+    return handleActionError(error) as ActionState<TaskSettings | null>;
   }
 }
 
@@ -115,13 +109,7 @@ export async function saveProjectTaskModelSettingsAction(
     };
   } catch (error) {
     console.error("Error saving project task model settings:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error saving settings",
-    };
+    return handleActionError(error) as ActionState<void>;
   }
 }
 
@@ -158,14 +146,7 @@ export async function getProjectSettingAction(
     };
   } catch (error) {
     console.error(`Error getting project setting '${key}':`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error getting project setting",
-      data: undefined,
-    };
+    return handleActionError(error) as ActionState<string | null>;
   }
 }
 
@@ -201,12 +182,6 @@ export async function saveProjectSettingAction(
     };
   } catch (error) {
     console.error(`Error saving project setting '${key}':`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error saving project setting",
-    };
+    return handleActionError(error) as ActionState<void>;
   }
 }

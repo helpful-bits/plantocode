@@ -28,3 +28,11 @@ pub async fn get_database_info_command(app_handle: AppHandle) -> AppResult<Datab
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to get database info: {}", e)))
 }
+
+#[command]
+pub fn is_keyring_onboarding_required() -> bool {
+    // Returns true if keyring is used (not session storage)
+    // This assumes initial access hasn't been "remembered" by the OS yet.
+    // A more robust check might involve trying a non-prompting keychain read.
+    !crate::constants::USE_SESSION_STORAGE
+}

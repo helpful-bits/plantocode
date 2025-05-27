@@ -1,6 +1,7 @@
 import { FileCode } from "lucide-react";
 
 import { type BackgroundJob } from "@/types/session-types";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
 interface JobDetailsAdditionalInfoSectionProps {
   job: BackgroundJob;
@@ -15,38 +16,40 @@ export function JobDetailsAdditionalInfoSection({
   }
 
   return (
-    <div className="col-span-1">
-      <div className="p-4 bg-gray-50 dark:bg-muted/10 rounded-md mb-2">
-        <h4 className="font-semibold mb-3 text-xs text-muted-foreground uppercase">
-          Additional Information
-        </h4>
-
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Additional Information</CardTitle>
+        <CardDescription className="text-xs">
+          Extra details and file outputs
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
         {outputPathFromMeta && (
-          <div className="mb-3">
-            <h5 className="text-xs text-muted-foreground mb-1">File Output</h5>
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">File Output</div>
             <div className="flex items-center gap-2">
               <FileCode className="h-4 w-4 text-muted-foreground" />
-              <p
-                className="text-sm font-medium truncate text-balance"
+              <div
+                className="text-sm font-medium truncate text-balance text-foreground"
                 title={outputPathFromMeta || ""}
               >
                 {outputPathFromMeta}
-              </p>
+              </div>
             </div>
           </div>
         )}
 
         {job.statusMessage && (
           <div>
-            <h5 className="text-xs text-muted-foreground mb-1">
+            <div className="text-xs text-muted-foreground mb-1">
               Status Message
-            </h5>
-            <div className="text-sm font-medium text-balance max-h-[100px] overflow-auto">
+            </div>
+            <div className="text-sm font-medium text-balance max-h-[100px] overflow-auto text-foreground">
               {job.statusMessage}
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

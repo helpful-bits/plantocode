@@ -47,13 +47,25 @@ export function useVoiceTranscriptionProcessing({
 
   // Keep track of already processed jobs to prevent duplicate processing
   const processedJobsRef = useRef<Set<string>>(new Set());
+  
+  // Track component mount state to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+  
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Get the background job from context using typed hook
   const { job: transcriptionJobData } = useTypedBackgroundJob(transcriptionJobId);
 
-  // Unified function to update state
+  // Unified function to update state (only if component is still mounted)
   const updateState = useCallback(
     (state: { error?: string | null; isProcessing?: boolean }) => {
+      if (!isMountedRef.current) return;
+      
       if (state.error !== undefined) {
         // Only call onError if there's actually an error message
         if (state.error) {
@@ -157,8 +169,7 @@ export function useVoiceTranscriptionProcessing({
           "[VoiceRecording] Error processing transcription result:",
           error
         );
-        const errorMessage = createTranscriptionErrorMessage(error);
-        updateState({ error: errorMessage, isProcessing: false });
+        updateState({ error: createTranscriptionErrorMessage(error), isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -209,8 +220,7 @@ export function useVoiceTranscriptionProcessing({
         await processTranscriptionResult(result, false);
       } catch (err) {
         console.error("[VoiceRecording] Error in processTranscription:", err);
-        const errorMessage = createTranscriptionErrorMessage(err);
-        updateState({ error: errorMessage, isProcessing: false });
+        updateState({ error: createTranscriptionErrorMessage(err), isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -244,8 +254,7 @@ export function useVoiceTranscriptionProcessing({
         await processTranscriptionResult(result, false);
       } catch (err) {
         console.error("[VoiceRecording] Error in retryTranscription:", err);
-        const errorMessage = createTranscriptionErrorMessage(err);
-        updateState({ error: errorMessage, isProcessing: false });
+        updateState({ error: createTranscriptionErrorMessage(err), isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -299,14 +308,16 @@ export function useVoiceTranscriptionProcessing({
         if (JOB_STATUSES.COMPLETED.includes(status as JobStatus)) {
           const responseText = jobProcessingResult.text;
 
-          if (!responseText) {
+          if (!responseText?.trim()) {
             console.warn(`[VoiceRecording] Completed job has no text response`);
-            updateState({
-              error: "Transcription completed but no text was received. Please try again.",
-              isProcessing: false,
-            });
-            setTextStatus("error");
-            setTranscriptionJobId(null);
+            if (isMountedRef.current) {
+              updateState({
+                error: "Transcription completed but no text was received. Please try again.",
+                isProcessing: false,
+              });
+              setTextStatus("error");
+              setTranscriptionJobId(null);
+            }
             return;
           }
 
@@ -318,6 +329,9 @@ export function useVoiceTranscriptionProcessing({
               `[VoiceRecording] Correction completed with text length: ${responseText.length}`
             );
 
+            // Only update state if component is still mounted
+            if (!isMountedRef.current) return;
+            
             // Set corrected text
             setCorrectedText(responseText);
 
@@ -340,13 +354,16 @@ export function useVoiceTranscriptionProcessing({
             setTextStatus("done");
             setTranscriptionJobId(null);
             updateState({ isProcessing: false });
-          } else if (taskType === "transcription") {
+          } else if (taskType === "voice_transcription") {
             // This is a transcription job
             // eslint-disable-next-line no-console
             console.log(
               `[VoiceRecording] Transcription completed with text length: ${responseText.length}`
             );
 
+            // Only update state if component is still mounted
+            if (!isMountedRef.current) return;
+            
             // Set raw text
             setRawText(responseText);
 
@@ -422,9 +439,11 @@ export function useVoiceTranscriptionProcessing({
               if (onTranscribed) {
                 onTranscribed(responseText);
               }
-              setTextStatus("done");
-              setTranscriptionJobId(null);
-              updateState({ isProcessing: false });
+              if (isMountedRef.current) {
+                setTextStatus("done");
+                setTranscriptionJobId(null);
+                updateState({ isProcessing: false });
+              }
             }
           } else {
             // Unknown task type but has text, treat as generic transcription
@@ -459,9 +478,9 @@ export function useVoiceTranscriptionProcessing({
             setTextStatus("done");
           } else {
             // True error case
-            const errorMessage = jobProcessingResult.error || "Transcription job failed. Please try again.";
+            const finalErrorMessage = jobProcessingResult.error || "Transcription job failed. Please try again.";
             updateState({
-              error: errorMessage,
+              error: finalErrorMessage,
               isProcessing: false,
             });
             setTextStatus("error");
@@ -471,8 +490,7 @@ export function useVoiceTranscriptionProcessing({
         }
       } catch (error) {
         console.error("[VoiceRecording] Error processing job result:", error);
-        const errorMessage = createTranscriptionErrorMessage(error);
-        updateState({ error: errorMessage, isProcessing: false });
+        updateState({ error: createTranscriptionErrorMessage(error), isProcessing: false });
         setTextStatus("error");
         setTranscriptionJobId(null);
       }

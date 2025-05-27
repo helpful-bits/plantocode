@@ -62,9 +62,9 @@ pub async fn set_project_task_model_settings_command(app_handle: AppHandle, proj
 
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FrontendReadyTaskModelConfig {
     model: String,
-    #[serde(rename = "maxTokens")]
     max_tokens: u32,
     temperature: f32,
 }

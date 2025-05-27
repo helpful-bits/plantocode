@@ -12,13 +12,11 @@ import {
 import {
   readTextFile,
   writeTextFile,
-  mkdir,
-  remove,
   exists,
 } from "@tauri-apps/plugin-fs";
 
 import { createError, ErrorType } from "@/utils/error-handling";
-import { normalizePath as tauriNormalizePath, pathJoin } from "@/utils/tauri-fs";
+import { normalizePath as tauriNormalizePath, pathJoin, createDirectory, deleteFile } from "@/utils/tauri-fs";
 
 /**
  * Ensures a path is within a specified root directory to prevent path traversal vulnerabilities
@@ -102,7 +100,7 @@ export async function safeWriteFile(
 
   // Ensure the directory exists
   const dirPath = await dirname(safePath);
-  await mkdir(dirPath, { recursive: true });
+  await createDirectory(dirPath);
 
   try {
     await writeTextFile(safePath, data);
@@ -137,7 +135,7 @@ export async function safeCreateDirectory(
   const safePath = await ensureSafePath(rootDir, dirPath);
 
   try {
-    await mkdir(safePath, { recursive: true });
+    await createDirectory(safePath);
   } catch (error) {
     const errorMsg = (error as Error).message || "";
 
@@ -169,7 +167,7 @@ export async function safeRemoveFile(
   const safePath = await ensureSafePath(rootDir, filePath);
 
   try {
-    await remove(safePath);
+    await deleteFile(safePath);
   } catch (error) {
     const errorMsg = (error as Error).message || "";
 

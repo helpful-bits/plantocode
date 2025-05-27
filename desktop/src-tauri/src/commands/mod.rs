@@ -58,6 +58,7 @@ pub use implementation_plan_commands::{
 pub use path_finding_commands::{
     find_relevant_files_command,
     create_generate_directory_tree_job_command,
+    create_path_correction_job_command,
 };
 
 // Re-exports from voice commands module
@@ -138,7 +139,7 @@ pub use session_commands::{
 };
 
 // Re-exports from setup commands module
-pub use setup_commands::trigger_initial_keychain_access;
+pub use setup_commands::{trigger_initial_keychain_access, get_storage_mode};
 
 // Re-exports from database maintenance commands module
 pub use database_maintenance_commands::{

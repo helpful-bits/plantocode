@@ -138,7 +138,7 @@ export function useFileManagementState({
   const handlePathsFoundByAI = useCallback(
     (paths: string[]) => {
       if (paths.length > 0) {
-        // Directly use the appropriate function based on the mode
+        // Use the appropriate function based on the mode
         if (findFilesMode === "replace") {
           replaceSelectionWithPaths(paths);
         } else {
@@ -176,7 +176,7 @@ export function useFileManagementState({
         error
       );
     }
-  }, [relevantFilesFinder, taskDescription]);
+  }, [taskDescription, relevantFilesFinder]);
 
   // SECTION 7: UI ADAPTERS - Interface adapters for consumer components
   // Adapter for bulk toggle to match expected interface
@@ -256,7 +256,8 @@ export function useFileManagementState({
     void import("@/utils/file-content-loader").then(({ loadFileContents }) => {
       // Load file contents for UI preview only - limited to first 5 files
       // for performance reasons. The backend will load complete files when needed.
-      loadFileContents(projectDirectory, filesToLoadForUI.slice(0, 5))
+      const MAX_FILES_FOR_UI_PREVIEW = 5;
+      loadFileContents(projectDirectory, filesToLoadForUI.slice(0, MAX_FILES_FOR_UI_PREVIEW))
         .then((newlyLoadedContents) => {
           // Merge newly loaded contents with existing contents
           setFileContentsMap(prevContents => ({ ...prevContents, ...newlyLoadedContents }));
@@ -268,7 +269,7 @@ export function useFileManagementState({
           );
         });
     });
-  }, [projectDirectory, fileSelectionManager.includedPaths.length]);
+  }, [projectDirectory, fileSelectionManager.includedPaths, fileContentsMap]);
 
   // Calculate if regex is available based on patterns from session
   const isRegexAvailable = Boolean(
@@ -329,30 +330,32 @@ export function useFileManagementState({
       flushPendingOperations: fileSelectionManager.flushPendingOperations,
     }),
     [
-      // File list dependencies
+      // Core file management state
       fileSelectionManager.managedFilesMap,
       isLoadingFiles,
       isInitialized,
       fileLoadError,
       refreshFiles,
 
-      // Selection state dependencies
+      // Search and filter state
       searchTerm,
       filterMode,
       isRegexAvailable,
+      searchSelectedFilesOnly,
+      findFilesMode,
+
+      // Selection state
       fileSelectionManager.externalPathWarnings,
       fileSelectionManager.includedPaths,
       fileSelectionManager.excludedPaths,
-      searchSelectedFilesOnly,
       fileSelectionManager.canUndo,
       fileSelectionManager.canRedo,
-      findFilesMode,
 
-      // AI integration dependencies
+      // AI integration state
       relevantFilesFinder.isFindingFiles,
       relevantFilesFinder.findingFilesJobId,
 
-      // Action dependencies
+      // Action callbacks
       updateSearchTerm,
       handleFilterModeChange,
       fileSelectionManager.toggleFileSelection,
@@ -366,7 +369,7 @@ export function useFileManagementState({
       findRelevantFilesCallback,
       setFindFilesMode,
 
-      // Session dependencies
+      // Session synchronization
       getFileStateForSession,
       flushFileStateSaves,
       fileSelectionManager.flushPendingOperations,

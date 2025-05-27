@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Creates a background job to generate a directory tree
@@ -43,16 +44,6 @@ export async function createGenerateDirectoryTreeJobAction(
     };
   } catch (error) {
     console.error("[createGenerateDirectoryTreeJobAction] Error:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to start directory tree generation",
-      error:
-        error instanceof Error
-          ? error
-          : new Error("Failed to generate directory tree"),
-    };
+    return handleActionError(error) as ActionState<{ jobId?: string }>;
   }
 }

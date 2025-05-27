@@ -5,7 +5,7 @@ async function addRegexDescriptionColumns() {
   try {
     console.log("Adding regex description columns to sessions table...");
 
-    await connectionPool.withConnection(async (db) => {
+    await connectionPool.withConnection(async (database) => {
       // Define the columns to add
       const columnsToAdd = [
         { name: 'title_regex_description', type: 'TEXT DEFAULT ""' },
@@ -19,7 +19,7 @@ async function addRegexDescriptionColumns() {
 
       for (const column of columnsToAdd) {
         // Check if column exists
-        const columnExists = db
+        const columnExists = database
           .prepare(
             `
             SELECT name FROM pragma_table_info('sessions') WHERE name=?
@@ -35,7 +35,7 @@ async function addRegexDescriptionColumns() {
         console.log(`Adding ${column.name} column to sessions table...`);
 
         // Add the column
-        db.prepare(
+        database.prepare(
           `
           ALTER TABLE sessions ADD COLUMN ${column.name} ${column.type}
         `
@@ -49,7 +49,7 @@ async function addRegexDescriptionColumns() {
         console.log(`Added ${addedColumns} new regex description columns`);
 
         // Add migration record
-        const migrationExists = db
+        const migrationExists = database
           .prepare(
             `
             SELECT name FROM migrations WHERE name='add_regex_description_columns'
@@ -58,7 +58,7 @@ async function addRegexDescriptionColumns() {
           .get();
 
         if (!migrationExists) {
-          db.prepare(
+          database.prepare(
             `
             INSERT INTO migrations (name, applied_at) 
             VALUES ('add_regex_description_columns', strftime('%s', 'now'))

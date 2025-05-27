@@ -13,6 +13,7 @@ use crate::models::JobCommandResponse;
 
 /// Request payload for the implementation plan generation command
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateImplementationPlanArgs {
     pub session_id: String,
     pub task_description: String,
@@ -63,11 +64,11 @@ pub async fn create_implementation_plan_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
-    // Get the model for this task
+    // Get the model for this task - check project settings first, then server defaults
     let model = if let Some(model) = args.model {
         model
     } else {
-        match crate::config::get_model_for_task(TaskType::ImplementationPlan) {
+        match crate::config::get_model_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for implementation plan: {}", e)));
@@ -75,11 +76,11 @@ pub async fn create_implementation_plan_command(
         }
     };
     
-    // Get temperature for this task
+    // Get temperature for this task - check project settings first, then server defaults
     let temperature = if let Some(temp) = args.temperature {
         temp
     } else {
-        match crate::config::get_default_temperature_for_task(Some(TaskType::ImplementationPlan)) {
+        match crate::config::get_temperature_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for implementation plan: {}", e)));
@@ -87,11 +88,11 @@ pub async fn create_implementation_plan_command(
         }
     };
     
-    // Get max tokens for this task
+    // Get max tokens for this task - check project settings first, then server defaults
     let max_tokens = if let Some(tokens) = args.max_tokens {
         tokens
     } else {
-        match crate::config::get_default_max_tokens_for_task(Some(TaskType::ImplementationPlan)) {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for implementation plan: {}", e)));
@@ -136,6 +137,7 @@ pub async fn create_implementation_plan_command(
 
 /// Arguments for reading an implementation plan
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadImplementationPlanArgs {
     pub job_id: String,
 }

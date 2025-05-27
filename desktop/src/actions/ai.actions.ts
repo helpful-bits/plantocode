@@ -8,6 +8,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState, type TaskType } from "@/types";
+import { createErrorState, createSuccessState } from "@/utils/error-handling";
+import { handleActionError } from "@/utils/action-utils";
 
 import { getModelSettingsForProject } from "./project-settings.actions";
 
@@ -22,14 +24,11 @@ export async function sendPromptToAiAction(
 ): Promise<ActionState<{ jobId: string }>> {
   // Validate inputs
   if (!promptText) {
-    return { isSuccess: false, message: "Prompt cannot be empty." };
+    return createErrorState("Prompt cannot be empty.");
   }
 
   if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
-    return {
-      isSuccess: false,
-      message: "Session ID is required and must be a string.",
-    };
+    return createErrorState("Session ID is required and must be a string.");
   }
 
   try {
@@ -39,7 +38,7 @@ export async function sendPromptToAiAction(
     });
 
     if (!sessionDetails) {
-      return { isSuccess: false, message: "Session not found." };
+      return createErrorState("Session not found.");
     }
 
     const projectDirectory = sessionDetails.projectDirectory;
@@ -77,23 +76,14 @@ export async function sendPromptToAiAction(
       }
     );
 
-    return {
-      isSuccess: true,
-      message: "Streaming job created",
-      data: { jobId: result.jobId },
-      metadata: {
-        jobId: result.jobId,
-      },
-    };
+    return createSuccessState(
+      { jobId: result.jobId },
+      "Streaming job created",
+      { jobId: result.jobId }
+    );
   } catch (error) {
     console.error(`[AI Action] Error preparing request:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error preparing request.",
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }
 
@@ -105,31 +95,16 @@ export async function cancelAiRequestAction(
 ): Promise<ActionState<null>> {
   // Validate request ID
   if (!requestId || typeof requestId !== "string" || !requestId.trim()) {
-    return {
-      isSuccess: false,
-      message: "Invalid request ID",
-      data: null,
-    };
+    return createErrorState("Invalid request ID");
   }
 
   try {
     // Cancel the background job
     await invoke("cancel_background_job_command", { jobId: requestId });
 
-    return {
-      isSuccess: true,
-      message: "Request cancelled successfully",
-      data: null,
-    };
+    return createSuccessState(null, "Request cancelled successfully");
   } catch (error) {
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error cancelling request",
-      data: null,
-    };
+    return handleActionError(error) as ActionState<null>;
   }
 }
 
@@ -142,16 +117,14 @@ export async function cancelSessionRequestsAction(sessionId: string): Promise<
     cancelledBackgroundJobs: number;
   }>
 > {
+  const defaultData = {
+    cancelledQueueRequests: 0,
+    cancelledBackgroundJobs: 0,
+  };
+
   // Validate session ID
   if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
-    return {
-      isSuccess: false,
-      message: "Invalid session ID",
-      data: {
-        cancelledQueueRequests: 0,
-        cancelledBackgroundJobs: 0,
-      },
-    };
+    return { ...createErrorState("Invalid session ID"), data: defaultData };
   }
 
   try {
@@ -160,26 +133,15 @@ export async function cancelSessionRequestsAction(sessionId: string): Promise<
       sessionId,
     });
 
-    return {
-      isSuccess: true,
-      message: `${cancelledCount} background jobs cancelled for session`,
-      data: {
+    return createSuccessState(
+      {
         cancelledQueueRequests: 0,
         cancelledBackgroundJobs: cancelledCount,
       },
-    };
+      `${cancelledCount} background jobs cancelled for session`
+    );
   } catch (error) {
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error cancelling session requests",
-      data: {
-        cancelledQueueRequests: 0,
-        cancelledBackgroundJobs: 0,
-      },
-    };
+    return { ...(handleActionError(error) as ActionState<typeof defaultData>), data: defaultData };
   }
 }
 
@@ -212,11 +174,11 @@ export async function initiateGenericAiStreamAction(params: {
   } = params;
 
   if (!promptText.trim()) {
-    return { isSuccess: false, message: "Prompt text cannot be empty" };
+    return createErrorState("Prompt text cannot be empty");
   }
 
   if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
-    return { isSuccess: false, message: "Invalid or missing session ID" };
+    return createErrorState("Invalid or missing session ID");
   }
 
   try {
@@ -266,25 +228,14 @@ export async function initiateGenericAiStreamAction(params: {
       }
     );
 
-    return {
-      isSuccess: true,
-      message: "Generic AI streaming job queued",
-      data: { jobId: result.jobId },
-      metadata: {
-        jobId: result.jobId,
-      },
-    };
+    return createSuccessState(
+      { jobId: result.jobId },
+      "Generic AI streaming job queued",
+      { jobId: result.jobId }
+    );
   } catch (error) {
     console.error("[initiateGenericAIStreamAction]", error);
-
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error initiating streaming job",
-      error: error instanceof Error ? error : new Error("Unknown error"),
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }
 
@@ -312,29 +263,14 @@ export async function generateSimpleTextAction(params: {
   } = params;
 
   if (!prompt || !prompt.trim()) {
-    return { isSuccess: false, message: "Prompt cannot be empty" };
+    return createErrorState("Prompt cannot be empty");
   }
 
   try {
     // Map frontend TaskType values to backend-expected snake_case strings
     const mapFrontendTaskTypeToBackend = (frontendType: string): string => {
-      switch (frontendType) {
-        case "implementationPlan": return "implementation_plan";
-        case "pathFinder": return "path_finder";
-        case "textImprovement": return "text_improvement";
-        case "transcription": return "voice_transcription"; // Explicitly voice_transcription
-        case "voiceCorrection": return "voice_correction";
-        case "pathCorrection": return "path_correction";
-        case "regexGeneration": return "regex_generation";
-        case "guidanceGeneration": return "guidance_generation";
-        case "taskEnhancement": return "task_enhancement";
-        case "genericLlmStream": return "generic_llm_stream";
-        case "regexSummaryGeneration": return "regex_summary_generation";
-        case "generateDirectoryTree": return "generate_directory_tree";
-        case "textCorrectionPostTranscription": return "text_correction_post_transcription";
-        // Add any other camelCase keys from TaskSettings if they differ from snake_case TaskType
-        default: return frontendType; // Assume already snake_case or unknown
-      }
+      if (frontendType === "transcription") return "voice_transcription";
+      return frontendType; // Most frontend TaskType strings are already snake_case
     };
     
     const backendTaskTypeString = mapFrontendTaskTypeToBackend(taskTypeForSettings);
@@ -349,21 +285,9 @@ export async function generateSimpleTextAction(params: {
       taskType: backendTaskTypeString,
     });
 
-    return {
-      isSuccess: true,
-      message: "Text generated successfully",
-      data: response,
-    };
+    return createSuccessState(response, "Text generated successfully");
   } catch (error) {
     console.error("[generateSimpleTextAction]", error);
-
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error generating text",
-      error: error instanceof Error ? error : new Error("Unknown error"),
-    };
+    return handleActionError(error) as ActionState<string>;
   }
 }

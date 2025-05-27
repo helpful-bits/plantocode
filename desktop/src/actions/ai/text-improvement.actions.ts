@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 export interface ImproveTextOptions {
   text: string;
@@ -97,10 +98,6 @@ export async function improveSelectedTextAction(
     };
   } catch (error) {
     console.error("Error improving text:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error ? error.message : "Failed to improve text",
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

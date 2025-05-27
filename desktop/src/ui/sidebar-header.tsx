@@ -43,9 +43,9 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
   onClearHistory,
 }) => {
   return (
-    <div className="px-4 py-3 border-b flex items-center justify-between h-14">
+    <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between h-14 bg-background/80 backdrop-blur-sm">
       <h2
-        className={`font-medium text-sm text-balance ${isCollapsed ? "opacity-0" : "opacity-100"}`}
+        className={`font-medium text-sm text-balance text-foreground ${isCollapsed ? "opacity-0" : "opacity-100"}`}
         style={{ minWidth: "100px", transition: "opacity 150ms ease" }}
       >
         Background Tasks
@@ -63,9 +63,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                   onClick={onRefresh}
                   disabled={isRefreshing || refreshDisabled}
                 >
-                  <RefreshCw
-                    className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-                  />
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

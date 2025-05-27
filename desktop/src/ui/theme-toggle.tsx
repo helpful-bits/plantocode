@@ -15,25 +15,22 @@ import {
 
 export function ThemeToggle() {
   // Get theme from our custom theme provider
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
 
   // Stabilize onClick handlers with useCallback
   const setLightTheme = useCallback(() => setTheme("light"), [setTheme]);
   const setDarkTheme = useCallback(() => setTheme("dark"), [setTheme]);
   const setSystemTheme = useCallback(() => setTheme("system"), [setTheme]);
 
-  // Only show the toggle once theme is available
-  // This prevents UI jumps during initialization
-  const themeReady = typeof theme !== "undefined";
+  // Show toggle immediately since theme is loaded synchronously from localStorage
+  // The theme provider loads theme synchronously, so this should be immediately available
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className={`nav-action-button ${
-            !themeReady ? "opacity-0" : "opacity-100 transition-opacity"
-          }`}
+          size="icon"
         >
           <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -41,8 +38,7 @@ export function ThemeToggle() {
           <span className="sr-only">Toggle theme</span>
         </Button>
       </DropdownMenuTrigger>
-      {themeReady && (
-        <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={setLightTheme}>
             <Sun className="mr-2 h-4 w-4" />
             <span>Light</span>
@@ -56,7 +52,6 @@ export function ThemeToggle() {
             <span>System</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
-      )}
     </DropdownMenu>
   );
 }

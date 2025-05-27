@@ -35,34 +35,3 @@ The title should capture the essence of this implementation task while being con
     task_description, relevant_files_summary)
 }
 
-/// Legacy prompt template for generating implementation plan titles from full plan content
-/// This is kept for backward compatibility but the new approach uses the system and user prompts above
-pub fn generate_implementation_plan_title_prompt(plan_content: &str) -> String {
-    let prompt = format!(
-r#"You are an expert at creating concise, descriptive titles for software implementation plans. Your task is to create a clear, informative title for the following implementation plan:
-
-```
-{}
-```
-
-Please provide a title that:
-1. Clearly communicates the main purpose or goal of the implementation
-2. Is concise (ideally 5-10 words, maximum 15 words)
-3. Uses proper capitalization and technical terminology
-4. Captures the essence of what will be implemented
-5. Would be useful in a list of implementation plans for easy identification
-
-Your response should be in the following format:
-
-<implementation_plan_title>
-  <title>Your Concise, Descriptive Title Here</title>
-  <rationale>
-    A brief explanation of why this title effectively represents the implementation plan.
-  </rationale>
-</implementation_plan_title>
-
-Focus on creating a title that would help a developer quickly understand what this implementation plan is about without having to read the entire document."#,
-    plan_content);
-
-    prompt
-}

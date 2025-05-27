@@ -25,16 +25,11 @@ export const FilterModeToggle: FC<FilterModeToggleProps> = ({
   disabled = false,
 }) => {
   return (
-    <div className="flex items-center border rounded-md overflow-hidden dark:border-border">
+    <div className="flex items-center border border-border rounded-md overflow-hidden">
       <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "rounded-none border-0 h-8 px-3",
-          currentMode === "all"
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90"
-        )}
+        variant={currentMode === "all" ? "filter-active" : "filter"}
+        size="xs"
+        className="px-3"
         onClick={() => onModeChange("all")}
         disabled={disabled}
         title="Show all project files"
@@ -43,17 +38,12 @@ export const FilterModeToggle: FC<FilterModeToggleProps> = ({
         All
       </Button>
 
-      <div className="w-[1px] h-6 bg-border dark:bg-border" />
+      <div className="w-[1px] h-6 bg-border/40" />
 
       <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "rounded-none border-0 h-8 px-3",
-          currentMode === "selected"
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90"
-        )}
+        variant={currentMode === "selected" ? "filter-active" : "filter"}
+        size="xs"
+        className="px-3"
         onClick={() => onModeChange("selected")}
         disabled={disabled}
         title="Show only selected files"
@@ -62,17 +52,14 @@ export const FilterModeToggle: FC<FilterModeToggleProps> = ({
         Selected
       </Button>
 
-      <div className="w-[1px] h-6 bg-border dark:bg-border" />
+      <div className="w-[1px] h-6 bg-border/40" />
 
       <Button
-        variant="ghost"
-        size="sm"
+        variant={currentMode === "regex" ? "filter-active" : "filter"}
+        size="xs"
         className={cn(
-          "rounded-none border-0 h-8 px-3",
-          currentMode === "regex"
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90",
-          !isRegexAvailable && "opacity-50 dark:opacity-40"
+          "px-3",
+          !isRegexAvailable && "opacity-40"
         )}
         onClick={() => onModeChange("regex")}
         disabled={disabled || !isRegexAvailable}

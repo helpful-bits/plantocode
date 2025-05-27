@@ -97,14 +97,19 @@ fn generate_stable_client_id() -> Result<String, AppError> {
         .to_string_lossy()
         .to_string();
     
-    // Create a unique but stable identifier based on the home path and a UUID
-    // This provides stability while still being unique per device
-    let machine_uuid = Uuid::new_v4().to_string();
-    let combined_string = format!("{}:{}", home_dir, machine_uuid);
+    // Get system hostname for additional uniqueness
+    let hostname = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    
+    // Create a stable identifier based on deterministic machine characteristics
+    // This provides stability across restarts while still being unique per device
+    let combined_string = format!("vibe-manager:{}:{}", home_dir, hostname);
     
     // Hash to create a fixed-length identifier that doesn't expose the path
-    // Temporarily use hash_string instead of sha256_hash
     let client_id = hash_utils::hash_string(&combined_string);
+    
+    debug!("Generated stable client ID for token binding (hash of machine characteristics)");
     
     Ok(client_id)
 }

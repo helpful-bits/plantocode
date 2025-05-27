@@ -1,4 +1,5 @@
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 import * as tauriFs from "../../utils/tauri-fs";
 
@@ -112,14 +113,6 @@ export async function validateDirectoryAction(
     }
   } catch (error: unknown) {
     console.error(`Error validating directory ${directoryPath}:`, error);
-
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-
-    return {
-      isSuccess: false,
-      message: `Failed to access directory: ${errorMessage}`,
-      data: undefined,
-    };
+    return handleActionError(error) as ActionState<string | null>;
   }
 }

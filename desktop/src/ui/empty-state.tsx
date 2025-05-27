@@ -55,15 +55,15 @@ export const EmptyState = ({
 
   // Variant-specific classes
   const variantClasses = {
-    default: "bg-muted/30",
-    "no-data": "bg-muted/30",
-    "no-results": "bg-muted/30",
-    error: "bg-destructive/5",
+    default: "bg-muted/20 border-border/40",
+    "no-data": "bg-muted/20 border-border/40",
+    "no-results": "bg-muted/20 border-border/40",
+    error: "bg-destructive/5 border-destructive/20",
   };
 
   return (
     <div
-      className={`flex flex-col items-center justify-center p-8 rounded-lg border border-dashed ${variantClasses[variant]} ${className}`}
+      className={`flex flex-col items-center justify-center p-8 rounded-xl border border-dashed ${variantClasses[variant]} ${className}`}
     >
       <div className="text-center">
         <div className="mx-auto mb-4">{icon || getDefaultIcon()}</div>

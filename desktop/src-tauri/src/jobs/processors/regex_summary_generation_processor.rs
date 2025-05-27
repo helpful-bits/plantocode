@@ -12,6 +12,7 @@ use crate::models::JobStatus;
 use crate::utils::get_timestamp;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegexSummaryGenerationPayload {
     pub background_job_id: String,
     pub session_id: String,

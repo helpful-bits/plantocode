@@ -8,6 +8,7 @@ import {
   deleteSessionAction,
   renameSessionAction,
 } from "@/actions";
+import { areArraysEqual } from "@/utils/array-utils";
 import { useProject } from "@/contexts/project-context";
 import { useNotification } from "@/contexts/notification-context";
 import { type Session } from "@/types";
@@ -59,16 +60,16 @@ export function useSessionActions({
 
   // Handle saving the current session
   const saveCurrentSession = useCallback(async (): Promise<boolean> => {
-    if (!currentSession || !projectDirectory) {
+    if (!currentSessionRef.current || !projectDirectory) {
       return false;
     }
 
-    if (!isSessionModified) {
+    if (!isSessionModifiedRef.current) {
       return true;
     }
 
     // Prevent saving draft sessions to database
-    if (currentSession.id === DRAFT_SESSION_ID) {
+    if (currentSessionRef.current.id === DRAFT_SESSION_ID) {
       console.warn(
         "[SessionActions] Attempted to save a draft session via saveCurrentSession. Drafts are persisted via createNewSession."
       );
@@ -76,29 +77,22 @@ export function useSessionActions({
     }
 
     try {
-      if (!currentSession) {
+      if (!currentSessionRef.current) {
         return false;
       }
 
-      const result = await saveSessionAction(currentSession);
+      const result = await saveSessionAction(currentSessionRef.current);
 
       if (!result.isSuccess) {
         throw new Error(result.message || "Failed to save session");
       }
 
       setSessionModified(false);
-      
-      // Show success notification
-      showNotification({
-        title: "Session Saved",
-        message: "Session saved successfully",
-        type: "success",
-      });
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("session-save-complete", {
-            detail: { sessionId: currentSession.id },
+            detail: { sessionId: currentSessionRef.current.id },
           })
         );
       }
@@ -114,7 +108,7 @@ export function useSessionActions({
                 originalError: error as unknown as Error | undefined,
                 category: DatabaseErrorCategory.OTHER,
                 severity: DatabaseErrorSeverity.WARNING,
-                context: { sessionId: currentSession.id },
+                context: { sessionId: currentSessionRef.current?.id },
               }
             );
 
@@ -131,7 +125,7 @@ export function useSessionActions({
         window.dispatchEvent(
           new CustomEvent("session-save-failed", {
             detail: {
-              sessionId: currentSession.id,
+              sessionId: currentSessionRef.current?.id,
               error: dbError.message,
             },
           })
@@ -141,9 +135,7 @@ export function useSessionActions({
       return false;
     }
   }, [
-    currentSession, // From SessionStateContext
     projectDirectory, // From useProject()
-    isSessionModified, // From SessionStateContext
     setSessionModified, // Stable setter from SessionStateContext
     setSessionError, // Stable setter from SessionStateContext
     showNotification, // From NotificationContext, assumed stable
@@ -169,27 +161,22 @@ export function useSessionActions({
     saveCurrentSession, // Memoized function dependency
   ]);
 
-  // Helper function for shallow array comparison
-  const areArraysEqual = useCallback((a: unknown[], b: unknown[]): boolean => {
-    if (a.length !== b.length) return false;
-    return a.every((item, index) => item === b[index]);
-  }, []);
 
   // Update specific fields in the current session
   const updateCurrentSessionFields = useCallback(
     (fields: Partial<Session>) => {
       // Using Session type for the function parameter ensures proper typing
-      if (currentSession) {
+      if (currentSessionRef.current) {
         let changed = false;
         const updatedFields: Partial<Session> = {};
 
         for (const key in fields) {
           const typedKey = key as keyof Session;
           const fieldValue = fields[typedKey];
-          if (fieldValue !== undefined && fieldValue !== currentSession[typedKey]) {
+          if (fieldValue !== undefined && fieldValue !== currentSessionRef.current[typedKey]) {
             // For arrays, do a shallow content comparison
-            if (Array.isArray(fieldValue) && Array.isArray(currentSession[typedKey])) {
-              if (!areArraysEqual(fieldValue as unknown[], currentSession[typedKey] as unknown[])) {
+            if (Array.isArray(fieldValue) && Array.isArray(currentSessionRef.current[typedKey])) {
+              if (!areArraysEqual(fieldValue as unknown[], currentSessionRef.current[typedKey] as unknown[])) {
                 changed = true;
                 (updatedFields as any)[typedKey] = fieldValue;
               }
@@ -201,7 +188,7 @@ export function useSessionActions({
         }
 
         if (changed) {
-          const updatedSession = { ...currentSession, ...updatedFields };
+          const updatedSession = { ...currentSessionRef.current, ...updatedFields };
           setSessionModified(true);
           setCurrentSession(updatedSession);
           
@@ -211,11 +198,9 @@ export function useSessionActions({
       }
     },
     [
-      currentSession, // From SessionStateContext
       setCurrentSession, // Stable setter from SessionStateContext
       setSessionModified, // Stable setter from SessionStateContext
       debouncedSaveCurrentSession, // Memoized function dependency
-      areArraysEqual, // Helper function dependency
     ]
   );
 
@@ -230,7 +215,7 @@ export function useSessionActions({
       }
 
       try {
-        if (currentSession && isSessionModified) {
+        if (currentSessionRef.current && isSessionModifiedRef.current) {
           await saveCurrentSession();
         }
 
@@ -281,8 +266,6 @@ export function useSessionActions({
     },
     [
       projectDirectory,
-      currentSession,
-      isSessionModified,
       saveCurrentSession,
       setSessionError,
       onSessionNeedsReload,
@@ -298,9 +281,9 @@ export function useSessionActions({
 
       try {
         if (
-          currentSession &&
-          isSessionModified &&
-          sessionId !== currentSession.id
+          currentSessionRef.current &&
+          isSessionModifiedRef.current &&
+          sessionId !== currentSessionRef.current.id
         ) {
           await saveCurrentSession();
         }
@@ -308,7 +291,7 @@ export function useSessionActions({
         if (sessionId === null) {
           setCurrentSession(null);
           setSessionModified(false);
-        } else if (sessionId !== currentSession?.id && onSessionNeedsReload) {
+        } else if (sessionId !== currentSessionRef.current?.id && onSessionNeedsReload) {
           // Signal that we need to load this session instead of loading it directly
           onSessionNeedsReload(sessionId);
         }
@@ -333,8 +316,6 @@ export function useSessionActions({
     },
     [
       projectDirectory,
-      currentSession,
-      isSessionModified,
       saveCurrentSession,
       setCurrentSession,
       setSessionModified,
@@ -346,12 +327,12 @@ export function useSessionActions({
 
   // Delete the active session
   const deleteActiveSession = useCallback(async () => {
-    if (!currentSession?.id) {
+    if (!currentSessionRef.current?.id) {
       return;
     }
 
     try {
-      const sessionIdToDelete = currentSession.id;
+      const sessionIdToDelete = currentSessionRef.current.id;
       const result = await deleteSessionAction(sessionIdToDelete);
 
       if (!result.isSuccess) {
@@ -380,7 +361,7 @@ export function useSessionActions({
                 originalError: error as unknown as Error | undefined,
                 category: DatabaseErrorCategory.OTHER,
                 severity: DatabaseErrorSeverity.WARNING,
-                context: { sessionId: currentSession.id },
+                context: { sessionId: currentSessionRef.current.id },
                 reportToUser: true,
               }
             );
@@ -389,7 +370,6 @@ export function useSessionActions({
       throw dbError;
     }
   }, [
-    currentSession,
     setCurrentSession,
     setSessionModified,
     setActiveSessionIdGlobally,
@@ -442,13 +422,13 @@ export function useSessionActions({
   // Rename the active session
   const renameActiveSession = useCallback(
     async (newName: string) => {
-      if (!currentSession?.id) {
+      if (!currentSessionRef.current?.id) {
         return;
       }
 
       try {
         updateCurrentSessionFields({ name: newName });
-        const result = await renameSessionAction(currentSession.id, newName);
+        const result = await renameSessionAction(currentSessionRef.current.id, newName);
 
         if (!result.isSuccess) {
           throw new Error(result.message || "Failed to rename session");
@@ -465,7 +445,7 @@ export function useSessionActions({
                   originalError: error as unknown as Error | undefined,
                   category: DatabaseErrorCategory.OTHER,
                   severity: DatabaseErrorSeverity.WARNING,
-                  context: { sessionId: currentSession.id, newName },
+                  context: { sessionId: currentSessionRef.current.id, newName },
                   reportToUser: true,
                 }
               );
@@ -474,7 +454,6 @@ export function useSessionActions({
       }
     },
     [
-      currentSession,
       updateCurrentSessionFields,
       saveCurrentSession,
       setSessionError,

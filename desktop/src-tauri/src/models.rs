@@ -86,7 +86,7 @@ pub struct CreateSessionRequest {
 
 // Job status enum that matches the SQL schema CHECK constraint
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum JobStatus {
     Idle,
     Created,
@@ -169,7 +169,7 @@ impl FromStr for JobStatus {
 
 // API type enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum ApiType {
     OpenRouter,
     FileSystem,
@@ -186,7 +186,7 @@ impl ToString for ApiType {
 
 // Task type enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum TaskType {
     ImplementationPlan,
     PathFinder,
@@ -283,7 +283,7 @@ pub struct BackgroundJob {
     pub metadata: Option<String>,
 }
 
-// Task settings model
+// Task settings model (DB struct - no camelCase conversion)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSettings {

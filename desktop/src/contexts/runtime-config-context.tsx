@@ -41,6 +41,10 @@ export interface RuntimeAIConfig {
     fileContentTruncationChars?: number;
     tokenLimitBuffer?: number;
   };
+  limits: {
+    maxTokensPerRequest?: number;
+    maxTokensPerMonth?: number;
+  };
 }
 
 /**

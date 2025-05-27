@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { fileURLToPath } from "url";
 import tsconfigPaths from "vite-tsconfig-paths";
+import tailwindcss from "@tailwindcss/vite";
 
 // Create __dirname equivalent for ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -10,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react(), tsconfigPaths(), tailwindcss()],
   
   // Set root to the desktop/ directory (parent of src/)
   root: path.resolve(__dirname, ".."),

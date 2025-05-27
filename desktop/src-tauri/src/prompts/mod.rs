@@ -12,8 +12,8 @@ pub mod voice_correction;
 
 // Re-export commonly used prompt functions
 pub use guidance::{generate_guidance_prompt, generate_guidance_system_prompt, generate_guidance_user_prompt, generate_guidance_for_paths_user_prompt};
-pub use implementation_plan::{generate_implementation_plan_prompt, generate_enhanced_implementation_plan_prompt};
-pub use implementation_plan_title::{generate_implementation_plan_title_prompt, generate_implementation_plan_title_system_prompt, generate_implementation_plan_title_user_prompt};
+pub use implementation_plan::generate_enhanced_implementation_plan_prompt;
+pub use implementation_plan_title::{generate_implementation_plan_title_system_prompt, generate_implementation_plan_title_user_prompt};
 pub use path_correction::generate_path_correction_prompt;
 pub use path_finder::{
     generate_path_finder_prompt,

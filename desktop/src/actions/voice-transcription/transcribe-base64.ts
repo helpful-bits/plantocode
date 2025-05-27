@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 // For debug logging
 const DEBUG_LOGS = import.meta.env.DEV || import.meta.env.VITE_DEBUG === "true";
@@ -136,12 +137,6 @@ export async function transcribeAudioAction(
     };
   } catch (error) {
     console.error("[Voice Transcription] Error:", error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to start audio transcription",
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

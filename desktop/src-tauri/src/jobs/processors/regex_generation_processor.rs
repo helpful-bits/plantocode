@@ -258,13 +258,13 @@ impl JobProcessor for RegexGenerationProcessor {
         // Determine which model to use from config
         let model = match payload.model_override.clone() {
             Some(model) => model,
-            None => crate::config::get_model_for_task(crate::models::TaskType::RegexGeneration)?
+            None => crate::config::get_model_for_task_with_project(crate::models::TaskType::RegexGeneration, &payload.project_directory).await?
         };
         
         // Get max tokens from payload or config
         let max_tokens = match payload.max_output_tokens {
             Some(tokens) => Some(tokens),
-            None => Some(crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::RegexGeneration))?)
+            None => Some(crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::RegexGeneration, &payload.project_directory).await?)
         };
         
         // Create API client options

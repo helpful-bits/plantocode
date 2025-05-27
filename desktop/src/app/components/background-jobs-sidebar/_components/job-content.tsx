@@ -34,10 +34,10 @@ export const JobContent = ({
 }: JobContentProps) => {
   return (
     <ScrollArea
-      className="px-4 py-3 pb-24 h-full min-h-[calc(100vh-8rem)]"
-      style={{ width: "100%" }}
+      className="px-3 py-3 pb-24 h-full min-h-[calc(100vh-8rem)]"
+      style={{ width: "100%", maxWidth: "100%", display: "block !important", minWidth: "0 !important" }}
     >
-      <div className="min-h-[calc(100vh-10rem)] w-full">
+      <div className="min-h-[calc(100vh-10rem)] w-full max-w-full overflow-hidden">
         {shouldShowLoading ? (
           <LoadingState />
         ) : shouldShowEmpty ? (

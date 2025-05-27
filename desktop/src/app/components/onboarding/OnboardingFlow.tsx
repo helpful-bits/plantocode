@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Store } from '@tauri-apps/plugin-store';
+import { invoke } from '@tauri-apps/api/core';
 import { WelcomeStep } from './WelcomeStep';
 import { KeychainExplanationStep } from './KeychainExplanationStep';
 import { KeychainActionStep } from './KeychainActionStep';
@@ -18,9 +19,31 @@ interface OnboardingFlowProps {
 export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
   const [currentState, setCurrentState] = useState<OnboardingState>('welcome');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [useSessionStorage, setUseSessionStorage] = useState<boolean>(false);
+
+  // Check storage mode on component mount
+  useEffect(() => {
+    const checkStorageMode = async () => {
+      try {
+        const sessionStorageMode = await invoke('get_storage_mode');
+        setUseSessionStorage(Boolean(sessionStorageMode));
+      } catch (error) {
+        console.error('Failed to get storage mode:', error);
+        // Default to false (use keychain) if we can't determine the mode
+        setUseSessionStorage(false);
+      }
+    };
+    
+    checkStorageMode();
+  }, []);
 
   const handleWelcomeNext = () => {
-    setCurrentState('keychainExplanation');
+    // Skip keychain steps if using session storage
+    if (useSessionStorage) {
+      setCurrentState('completed');
+    } else {
+      setCurrentState('keychainExplanation');
+    }
   };
 
   const handleKeychainExplanationProceed = () => {

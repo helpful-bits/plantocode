@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Creates a job to generate regex patterns based on a task description
@@ -48,12 +49,6 @@ export async function generateRegexPatternsAction(
     console.error(
       `[generateRegexPatternsAction] Unexpected error: ${error instanceof Error ? error.message : String(error)}`
     );
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to generate regex patterns",
-    };
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

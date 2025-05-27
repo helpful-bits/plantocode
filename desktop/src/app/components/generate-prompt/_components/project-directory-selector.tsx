@@ -385,10 +385,6 @@ function ProjectDirectorySelector({
     <div className="w-full">
       <form onSubmit={handleSubmit} className="w-full">
         <div className="flex flex-col space-y-2 w-full">
-          <div className="text-sm text-muted-foreground mb-1 text-balance">
-            Select your project&apos;s root folder to enable file browsing,
-            session saving, and project-specific settings.
-          </div>
           <div className="flex items-center gap-2 w-full">
             <div className="relative flex-1">
               <Input
@@ -415,7 +411,7 @@ function ProjectDirectorySelector({
                 <button
                   type="button"
                   onClick={handleClearClick}
-                  className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-10 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-ring"
                   aria-label="Clear input"
                   disabled={disabled}
                 >

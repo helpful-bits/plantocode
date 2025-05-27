@@ -5,6 +5,7 @@ import {
   DatabaseErrorCategory,
   DatabaseErrorSeverity,
 } from "@/types/error-types";
+import { handleActionError } from "@/utils/action-utils";
 
 
 /**
@@ -49,12 +50,10 @@ export async function resetSessionStateAction(sessionId: string) {
       `[resetSessionStateAction] Error resetting session state:`,
       error
     );
-    const message = error instanceof Error ? error.message : String(error);
-
+    const errorState = handleActionError(error);
     return {
-      isSuccess: false,
-      message: `Failed to reset session state: ${message}`,
-      error: new DatabaseError(`Failed to reset session state: ${message}`, {
+      ...errorState,
+      error: new DatabaseError(`Failed to reset session state: ${errorState.message}`, {
         severity: DatabaseErrorSeverity.WARNING,
         category: DatabaseErrorCategory.OTHER,
         context: { sessionId },

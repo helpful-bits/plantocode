@@ -15,7 +15,7 @@ export function OnboardingErrorStep({ errorMessage, onRetry }: OnboardingErrorSt
       <Card className="w-full max-w-md p-8 text-center">
         <div className="space-y-6">
           <div className="space-y-2">
-            <AlertCircle className="w-16 h-16 mx-auto text-red-500" />
+            <AlertCircle className="w-16 h-16 mx-auto text-destructive" />
             <h1 className="text-2xl font-bold">Keychain Access Required</h1>
             <p className="text-muted-foreground">
               Vibe Manager could not set up secure storage because access to the Keychain was denied or an error occurred.
@@ -23,14 +23,14 @@ export function OnboardingErrorStep({ errorMessage, onRetry }: OnboardingErrorSt
           </div>
           
           <div className="space-y-4">
-            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <p className="text-sm text-red-800 dark:text-red-200">
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+              <p className="text-sm text-destructive">
                 <strong>Error:</strong> {errorMessage}
               </p>
             </div>
             
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <p className="text-sm text-blue-800 dark:text-blue-200">
+            <div className="bg-info/10 border border-info/20 rounded-lg p-4">
+              <p className="text-sm text-info">
                 <strong>This is needed to securely save your login.</strong><br />
                 When you try again, please choose "Always Allow" in the macOS dialog to avoid future prompts.
               </p>
