@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 import { getActiveSessionIdAction, setActiveSessionAction } from "@/actions";
 
 interface UseActiveSessionManagerProps {
-  projectDirectory: string | null;
+  projectDirectory?: string;
 }
 
 /**
@@ -26,7 +26,7 @@ export function useActiveSessionManager({
   const pendingOperationRef = useRef<{
     sessionId: string | null;
     timestamp: number;
-  } | null>(null);
+  } | undefined>(undefined);
 
   // Load the active session ID when the project directory changes
   useEffect(() => {
@@ -36,8 +36,8 @@ export function useActiveSessionManager({
       try {
         const result = await getActiveSessionIdAction(projectDirectory);
 
-        if (result.isSuccess && result.data !== undefined) {
-          setActiveSessionId(result.data);
+        if (result.isSuccess) {
+          setActiveSessionId(result.data ?? null);
         }
       } catch (_err) {
         // Failed to get active session
@@ -75,6 +75,9 @@ export function useActiveSessionManager({
       pendingOperationRef.current = { sessionId, timestamp: now };
 
       try {
+        // Store the previous value before updating
+        const previousActiveSessionId = activeSessionId;
+        
         // First, update local state immediately for responsive UI
         setActiveSessionId(sessionId);
 
@@ -86,19 +89,20 @@ export function useActiveSessionManager({
 
         // Check if action failed
         if (result && !result.isSuccess) {
-          // Action failed silently
+          console.error("Failed to persist active session:", result.message);
+          setActiveSessionId(previousActiveSessionId);
         }
 
         // Clear the pending operation reference on success
         if (pendingOperationRef.current?.sessionId === sessionId) {
-          pendingOperationRef.current = null;
+          pendingOperationRef.current = undefined;
         }
       } catch (_err) {
         // Error setting active session
 
         // Clear the pending operation reference on error
         if (pendingOperationRef.current?.sessionId === sessionId) {
-          pendingOperationRef.current = null;
+          pendingOperationRef.current = undefined;
         }
       }
     },
@@ -106,11 +110,14 @@ export function useActiveSessionManager({
   );
 
   // Return an object that clearly separates state from actions
-  return {
-    // State (for SessionStateContext)
-    activeSessionId,
+  return useMemo(
+    () => ({
+      // State (for SessionStateContext)
+      activeSessionId,
 
-    // Actions (for SessionActionsContext)
-    updateActiveSessionId,
-  };
+      // Actions (for SessionActionsContext)
+      updateActiveSessionId,
+    }),
+    [activeSessionId, updateActiveSessionId]
+  );
 }

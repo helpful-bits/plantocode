@@ -54,7 +54,6 @@ function FileManagementContent({ hasSession }: FileManagementContentProps) {
           toggleSearchSelectedFilesOnly={
             fileState.toggleSearchSelectedFilesOnly
           }
-          _includedFilesCount={fileState.includedPaths.length}
           canUndo={fileState.canUndo}
           canRedo={fileState.canRedo}
           undoSelection={fileState.undoSelection}
@@ -74,5 +73,7 @@ function FileManagementContent({ hasSession }: FileManagementContentProps) {
     </>
   );
 }
+
+FileManagementContent.displayName = "FileManagementContent";
 
 export default React.memo(FileManagementContent);

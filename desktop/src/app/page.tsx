@@ -22,7 +22,7 @@ export default function Home() {
       <RequireProjectDirectory>
         {/* Show main app content when a project directory is selected */}
         <div className="relative w-full">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">
               Project: {projectDirectory?.split("/").pop()}
             </h1>

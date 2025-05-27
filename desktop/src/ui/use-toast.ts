@@ -12,6 +12,7 @@ type ToasterToast = ToastProps & {
   description?: ReactNode;
   action?: ToastActionElement;
   clipboardFeedback?: boolean;
+  actionButton?: { label: string; onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | "warning"; className?: string };
 };
 
 export type ToastOptions = Omit<ToasterToast, "id">;

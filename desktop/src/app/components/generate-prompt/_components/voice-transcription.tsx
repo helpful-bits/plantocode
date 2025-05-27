@@ -23,7 +23,7 @@ interface VoiceTranscriptionProps {
   disabled?: boolean; // Added prop to disable the component during session switching
 }
 
-export default function VoiceTranscription({
+const VoiceTranscription = function VoiceTranscription({
   onTranscribed,
   onInteraction,
   textareaRef,
@@ -515,16 +515,19 @@ export default function VoiceTranscription({
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-1 text-balance">
-            {/* Display the active device when known */}
-            {activeAudioInputLabel
-              ? `Using: ${activeAudioInputLabel}`
-              : selectedAudioInputId === "default" && defaultDeviceLabel
-                ? `Default device: ${defaultDeviceLabel}`
-                : selectedAudioInputId === "default"
-                  ? "Default device will be identified after recording"
-                  : activeSessionId
-                    ? "Start recording to confirm selected device"
-                    : "Select a session to enable microphone"}
+            {(() => {
+              if (activeAudioInputLabel) return `Using: ${activeAudioInputLabel}`;
+              if (selectedAudioInputId !== "default") {
+                const selectedDevice = availableAudioInputs.find(d => d.deviceId === selectedAudioInputId);
+                if (selectedDevice?.label) return `Selected: ${selectedDevice.label}`;
+                if (activeSessionId && availableAudioInputs.length > 0) return `Start recording to confirm selected device`;
+                if (activeSessionId && availableAudioInputs.length === 0) return `No microphone found. Check system settings.`;
+              }
+              if (defaultDeviceLabel && availableAudioInputs.length > 0) return `Default: ${defaultDeviceLabel}`;
+              if (activeSessionId && availableAudioInputs.length > 0) return "Default device will be identified after recording";
+              if (activeSessionId && availableAudioInputs.length === 0) return `No microphone found. Check system settings.`;
+              return "Select a session to enable microphone";
+            })()}
           </p>
         </div>
       </div>
@@ -569,4 +572,8 @@ export default function VoiceTranscription({
       )}
     </div>
   );
-}
+};
+
+VoiceTranscription.displayName = "VoiceTranscription";
+
+export default VoiceTranscription;

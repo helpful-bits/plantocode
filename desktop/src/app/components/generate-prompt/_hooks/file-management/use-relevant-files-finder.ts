@@ -9,6 +9,8 @@ import { JOB_STATUSES, type JobStatus } from "@/types/session-types";
 import {
   normalizePath,
   parseFilePathsFromAIResponse,
+  makePathRelative,
+  ensureProjectRelativePath,
 } from "@/utils/path-utils";
 
 interface UseRelevantFilesFinderProps {
@@ -34,22 +36,22 @@ export function useRelevantFilesFinder({
   timeout = 300000, // Default 5 minute timeout
 }: UseRelevantFilesFinderProps) {
   // State
-  const [findingFilesJobId, setFindingFilesJobId] = useState<string | null>(
-    null
+  const [findingFilesJobId, setFindingFilesJobId] = useState<string | undefined>(
+    undefined
   );
   
   // Single ref to track if a job is being created
   const isRequestInProgressRef = useRef<boolean>(false);
   
   // Add timeout ref for job monitoring
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Monitor the background job status
-  const findingFilesJobResult = useBackgroundJob(findingFilesJobId) as {
+  const findingFilesJobResult = useBackgroundJob(findingFilesJobId ?? null) as {
     status: string;
     job?: {
       metadata?: {
-        pathData?: string;
+        pathFinderData?: string;
       };
       response?: string;
       errorMessage?: string;
@@ -111,7 +113,7 @@ export function useRelevantFilesFinder({
           
           // Set new timeout
           timeoutRef.current = setTimeout(() => {
-            setFindingFilesJobId(null);
+            setFindingFilesJobId(undefined);
           }, timeout);
         }
 
@@ -157,7 +159,7 @@ export function useRelevantFilesFinder({
           // Clear timeout if job completes
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
-            timeoutRef.current = null;
+            timeoutRef.current = undefined;
           }
           
           // Extract paths from job result, prioritizing structured data over text parsing
@@ -177,13 +179,13 @@ export function useRelevantFilesFinder({
         // Clear timeout if job fails
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
-          timeoutRef.current = null;
+          timeoutRef.current = undefined;
         }
       }
 
       // Once job is in any terminal state, clear the job ID
       if (JOB_STATUSES.TERMINAL.includes(status as JobStatus)) {
-        setFindingFilesJobId(null);
+        setFindingFilesJobId(undefined);
       }
     };
 
@@ -191,16 +193,16 @@ export function useRelevantFilesFinder({
   }, [findingFilesJobId, findingFilesJobResult, onComplete, projectDirectory]);
 
   // Helper function to extract paths from job result
-  async function extractPathsFromJobResult(job: { metadata?: { pathData?: string } | undefined, response?: string | undefined }, projectDir: string | null): Promise<string[]> {
+  async function extractPathsFromJobResult(job: { metadata?: { pathFinderData?: string } | undefined, response?: string | undefined }, projectDir: string | null): Promise<string[]> {
     let paths: string[] = [];
 
     // Method 1: Extract from structured metadata (preferred)
-    if (job.metadata?.pathData) {
+    if (job.metadata?.pathFinderData) {
       try {
-        const pathData = job.metadata?.pathData ? JSON.parse(job.metadata.pathData) as { paths?: string[] } : {};
-        if (pathData && 'paths' in pathData && Array.isArray(pathData.paths)) {
-          paths = pathData.paths;
-          return paths;
+        const pathData = job.metadata?.pathFinderData ? (typeof job.metadata.pathFinderData === 'string' ? JSON.parse(job.metadata.pathFinderData) : job.metadata.pathFinderData) as { paths?: string[]; result?: { paths?: string[] } } : {};
+        const pathsArray = pathData?.paths || pathData?.result?.paths;
+        if (pathsArray && Array.isArray(pathsArray)) {
+          paths = pathsArray;
         }
       } catch (_jsonError) {
         // Continue to fallback methods
@@ -208,12 +210,11 @@ export function useRelevantFilesFinder({
     }
 
     // Method 2: Parse from JSON response
-    if (job.response) {
+    if (paths.length === 0 && job.response) {
       try {
         const jsonResponse = job.response ? JSON.parse(job.response) as { paths?: string[] } : {};
         if (jsonResponse && 'paths' in jsonResponse && Array.isArray(jsonResponse.paths)) {
           paths = jsonResponse.paths;
-          return paths;
         }
       } catch (_jsonError) {
         // Not JSON, continue to fallback methods
@@ -221,14 +222,14 @@ export function useRelevantFilesFinder({
     }
 
     // Method 3: Use specialized path parser
-    if (job.response && projectDir) {
+    if (paths.length === 0 && job.response && projectDir) {
       try {
         const parsedPaths = await parseFilePathsFromAIResponse(
           job.response,
           projectDir
         );
         if (parsedPaths.length > 0) {
-          return parsedPaths;
+          paths = parsedPaths;
         }
       } catch (_parseError) {
         // Error parsing paths from response
@@ -236,18 +237,26 @@ export function useRelevantFilesFinder({
     }
 
     // Method 4: Last resort - split by newlines
-    if (job.response) {
+    if (paths.length === 0 && job.response) {
       const splitPaths = job.response.split("\n")
         .filter(Boolean)
         .map((line: string) => line.trim())
         .filter((line: string) => line.includes(".") && !line.includes(" "));
       
       if (splitPaths.length > 0) {
-        return splitPaths;
+        paths = splitPaths;
       }
     }
 
-    return [];
+    // Convert all paths to project-relative if projectDir is available
+    if (projectDir && paths.length > 0) {
+      const relativePaths = await Promise.all(
+        paths.map(p => makePathRelative(p, projectDir).catch(() => p)) // fallback to original if error
+      );
+      paths = relativePaths.map(p => ensureProjectRelativePath(p)); // Ensure consistent relative format
+    }
+
+    return paths;
   }
 
   // Function to execute the find operation
@@ -278,7 +287,7 @@ export function useRelevantFilesFinder({
     // Single boolean to indicate if finding files process is active
     const isFindingFiles =
       findRelevantFilesAsync.isLoading ||
-      findingFilesJobId !== null ||
+      findingFilesJobId !== undefined ||
       isRequestInProgressRef.current;
 
     return {

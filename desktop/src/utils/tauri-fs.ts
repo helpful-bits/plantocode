@@ -17,24 +17,24 @@ export async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> 
 
 // Types based on file_system_commands.rs and existing usage
 export interface NativeFileInfo {
-  name: string;
-  path: string;
-  is_dir: boolean; // Corresponds to isDir in some TS code, Rust uses is_dir
-  is_file: boolean; // Corresponds to isFile, Rust uses is_file
-  is_symlink: boolean; // Rust uses is_symlink
-  size?: number; // u64 in Rust
-  created_at?: number; // u64 in Rust (timestamp)
-  modified_at?: number; // u64 in Rust (timestamp)
-  accessed_at?: number; // u64 in Rust (timestamp)
-  is_hidden?: boolean;
-  is_readable?: boolean;
-  is_writable?: boolean;
+  path: string;        // Relative path to the queried directory
+  name: string;        // Base name of the file/directory
+  isDir: boolean;     // Whether this is a directory
+  isFile: boolean;    // Whether this is a regular file
+  isSymlink: boolean; // Whether this is a symbolic link
+  size?: number;       // File size in bytes (None for directories)
+  createdAt?: number; // Creation timestamp in milliseconds
+  modifiedAt?: number; // Modification timestamp in milliseconds
+  accessedAt?: number; // Access timestamp in milliseconds
+  isHidden?: boolean;  // Whether the file is hidden
+  isReadable?: boolean; // Whether the file is readable
+  isWritable?: boolean; // Whether the file is writable
 }
 
 export interface ListFilesResponse {
-  path: string;
   files: NativeFileInfo[];
-  count: number;
+  warning?: string;
+  totalFoundBeforeFiltering?: number;
 }
 
 

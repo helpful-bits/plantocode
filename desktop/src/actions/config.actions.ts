@@ -12,12 +12,12 @@ import { invoke } from "@tauri-apps/api/core";
  * Runtime AI configuration interface
  */
 export interface RuntimeAIConfig {
-  default_llm_model_id: string;
-  default_voice_model_id: string;
-  default_transcription_model_id: string;
-  tasks: Record<string, TaskSpecificModelConfig>;
-  available_models: ModelInfo[];
-  path_finder_settings: PathFinderSettings;
+  defaultLlmModelId: string;
+  defaultVoiceModelId: string;
+  defaultTranscriptionModelId: string;
+  tasks: Record<string, TaskModelSettings>;
+  availableModels: ModelInfo[];
+  pathFinderSettings: PathFinderSettings;
   limits: TokenLimits;
 }
 
@@ -29,17 +29,17 @@ export interface ModelInfo {
   name: string;
   provider: string;
   description?: string;
-  context_window?: number;
-  price_per_input_token: number;
-  price_per_output_token: number;
+  contextWindow?: number;
+  pricePerInputToken: number;
+  pricePerOutputToken: number;
 }
 
 /**
  * Task-specific model configuration interface
  */
-export interface TaskSpecificModelConfig {
+export interface TaskModelSettings {
   model: string;
-  max_tokens: number;
+  maxTokens: number;
   temperature: number;
 }
 
@@ -47,20 +47,20 @@ export interface TaskSpecificModelConfig {
  * Path finder settings interface
  */
 export interface PathFinderSettings {
-  max_files_with_content?: number;
-  include_file_contents?: boolean;
-  max_content_size_per_file?: number;
-  max_file_count?: number;
-  file_content_truncation_chars?: number;
-  token_limit_buffer?: number;
+  maxFilesWithContent?: number;
+  includeFileContents?: boolean;
+  maxContentSizePerFile?: number;
+  maxFileCount?: number;
+  fileContentTruncationChars?: number;
+  tokenLimitBuffer?: number;
 }
 
 /**
  * Token limits interface
  */
 export interface TokenLimits {
-  max_tokens_per_minute?: number;
-  max_tokens_per_day?: number;
+  maxTokensPerRequest?: number;
+  maxTokensPerMonth?: number;
 }
 
 /**
@@ -81,7 +81,7 @@ export async function getAvailableAIModels(): Promise<ModelInfo[]> {
  * Get default task configurations from the cached configuration
  */
 export async function getDefaultTaskConfigurations(): Promise<
-  Record<string, TaskSpecificModelConfig>
+  Record<string, TaskModelSettings>
 > {
   return invoke("get_default_task_configurations");
 }

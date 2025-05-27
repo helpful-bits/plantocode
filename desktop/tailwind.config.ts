@@ -1,10 +1,4 @@
 import type { Config } from "tailwindcss";
-import path from "path";
-import { fileURLToPath } from "url";
-
-// Create __dirname equivalent for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 /**
  * Tailwind configuration for Vibe Manager Desktop
@@ -12,18 +6,9 @@ const __dirname = path.dirname(__filename);
 const config: Config = {
   darkMode: "class",
   content: [
-    // Only include specific paths to absolutely avoid node_modules
-    path.join(__dirname, "index.html"),
-    // More specific paths that explicitly avoid node_modules
-    path.join(__dirname, "src", "app", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "ui", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "hooks", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "utils", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "contexts", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "actions", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "adapters", "**", "*.{js,jsx,ts,tsx}"),
-    path.join(__dirname, "src", "types", "**", "*.{js,jsx,ts,tsx}"),
+    "./index.html", // For desktop/index.html
+    "./src/**/*.{js,jsx,ts,tsx}", // For all relevant files in desktop/src
+    "!./src/**/node_modules/**", // Explicitly exclude node_modules
   ],
   // Explicitly ignore node_modules warning
   hideNodeModulesWarning: true,

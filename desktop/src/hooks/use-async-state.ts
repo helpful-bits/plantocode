@@ -4,12 +4,13 @@ import { useState, useCallback } from "react";
 
 // Define a generic type for the result of an async operation
 export type AsyncResult<T> = {
-  data: T | null;
+  data?: T;
   isLoading: boolean;
-  error: Error | null;
+  error?: Error;
   reset: () => void;
 };
 
+// Args extends unknown[] allows this hook to wrap functions with any number and type of arguments.
 type AsyncFunction<T, Args extends unknown[]> = (...args: Args) => Promise<T>;
 
 /**
@@ -21,22 +22,23 @@ type AsyncFunction<T, Args extends unknown[]> = (...args: Args) => Promise<T>;
 export function useAsyncState<T, Args extends unknown[]>(
   asyncFn: AsyncFunction<T, Args>
 ): AsyncResult<T> & {
-  execute: (...args: Args) => Promise<T | null>;
+  execute: (...args: Args) => Promise<T>;
 } {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<Error | undefined>(undefined);
+  const [data, setData] = useState<T | undefined>(undefined);
 
   const reset = useCallback(() => {
     setIsLoading(false);
-    setError(null);
-    setData(null);
+    setError(undefined);
+    setData(undefined);
   }, []);
 
   const execute = useCallback(
-    async (...args: Args): Promise<T | null> => {
+    async (...args: Args): Promise<T> => {
       setIsLoading(true);
-      setError(null);
+      setError(undefined);
+      // Not calling setData(null) here to keep stale data during loading
 
       try {
         const result = await asyncFn(...args);
@@ -46,12 +48,12 @@ export function useAsyncState<T, Args extends unknown[]>(
         const errorObj = err instanceof Error ? err : new Error(String(err));
         setError(errorObj);
         console.error("Error in useAsyncState:", errorObj);
-        return null;
+        throw errorObj;
       } finally {
         setIsLoading(false);
       }
     },
-    [asyncFn]
+    [asyncFn] // asyncFn is the primary dependency for re-memoization.
   );
 
   return { execute, isLoading, error, data, reset };
@@ -67,32 +69,31 @@ export function useAsyncState<T, Args extends unknown[]>(
 export function useAsyncAction<Args extends unknown[]>(
   asyncFn: AsyncFunction<unknown, Args>
 ): {
-  execute: (...args: Args) => Promise<boolean>;
+  execute: (...args: Args) => Promise<void>;
   isLoading: boolean;
-  error: Error | null;
+  error?: Error;
   reset: () => void;
 } {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<Error | undefined>(undefined);
 
   const reset = useCallback(() => {
     setIsLoading(false);
-    setError(null);
+    setError(undefined);
   }, []);
 
   const execute = useCallback(
-    async (...args: Args): Promise<boolean> => {
+    async (...args: Args): Promise<void> => {
       setIsLoading(true);
-      setError(null);
+      setError(undefined);
 
       try {
         await asyncFn(...args);
-        return true;
       } catch (err) {
         const errorObj = err instanceof Error ? err : new Error(String(err));
         setError(errorObj);
         console.error("Error in useAsyncAction:", errorObj);
-        return false;
+        throw errorObj;
       } finally {
         setIsLoading(false);
       }

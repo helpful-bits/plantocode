@@ -12,6 +12,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult, RegexGenerationPaylo
 use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent};
 use crate::prompts::regex::generate_regex_prompt;
 use crate::utils::get_timestamp;
+use crate::utils::xml_utils::extract_xml_from_markdown;
 
 pub struct RegexGenerationProcessor;
 
@@ -39,8 +40,10 @@ impl RegexGenerationProcessor {
     fn parse_regex_patterns(&self, response: &str) -> AppResult<serde_json::Value> {
         debug!("Parsing regex patterns from response");
         
-        // Check if the response contains a regex_generation tag
-        if !response.contains("<regex_generation>") {
+        let cleaned_response = extract_xml_from_markdown(response);
+        
+        // Check if the cleaned response contains a regex_generation tag
+        if !cleaned_response.contains("<regex_generation>") {
             warn!("Response does not contain <regex_generation> tag");
             return Ok(json!({
                 "raw_content": response,
@@ -50,7 +53,7 @@ impl RegexGenerationProcessor {
         }
         
         // Prepare to extract pattern information
-        let mut reader = Reader::from_str(response);
+        let mut reader = Reader::from_str(&cleaned_response);
         reader.config_mut().trim_text(true);
         
         let mut buf = Vec::new();

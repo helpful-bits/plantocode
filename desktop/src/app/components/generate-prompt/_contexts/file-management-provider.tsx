@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useRef } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 
@@ -10,8 +10,6 @@ import { FileManagementContext } from "./file-management-context";
 
 interface FileManagementProviderProps {
   children: ReactNode;
-  projectDirectory: string;
-  taskDescription?: string; // Made optional to allow using TaskContext
 }
 
 /**
@@ -20,57 +18,21 @@ interface FileManagementProviderProps {
  */
 export function FileManagementProvider({
   children,
-  projectDirectory,
-  taskDescription: propTaskDescription, // Renamed to avoid conflicts with context
 }: FileManagementProviderProps) {
   // Get the session transition state for passing to child components
-  const { activeSessionId, isSessionLoading: isTransitioningSession, currentSession } =
+  const { activeSessionId, isSessionLoading: isTransitioningSession } =
     useSessionStateContext();
-
-  // Use task description from SessionContext if available, otherwise use prop value
-  const taskDescription =
-    currentSession?.taskDescription || propTaskDescription || "";
 
   // Track session ID changes in a ref for better debugging
   const prevSessionIdRef = useRef<string | null>(null);
   const prevTransitionStateRef = useRef<boolean>(false);
 
-  // Mount with project directory, session ID, and transition state
+  // Initialize file management state - it gets projectDirectory from useProject context internally
+  const fileManagementState = useFileManagementState({});
 
-  // Create the file management state using a ref to avoid prop updates during render
-  const stateProps = useRef({
-    projectDirectory,
-    taskDescription,
-    isTransitioningSession,
-  });
-
-  // Update the ref when props change
-  useEffect(() => {
-    stateProps.current = {
-      projectDirectory,
-      taskDescription,
-      isTransitioningSession,
-    };
-  }, [projectDirectory, taskDescription, isTransitioningSession]);
-
-  // Initialize file management state with the props from the ref
-  const fileManagementState = useFileManagementState(stateProps.current);
-
-  // Track session changes
-  useEffect(() => {
-    if (activeSessionId !== prevSessionIdRef.current) {
-      // Update ref for next comparison
-      prevSessionIdRef.current = activeSessionId;
-    }
-  }, [activeSessionId]);
-
-  // Track transition state changes
-  useEffect(() => {
-    if (isTransitioningSession !== prevTransitionStateRef.current) {
-      // Update ref for next comparison
-      prevTransitionStateRef.current = isTransitioningSession;
-    }
-  }, [isTransitioningSession]);
+  // Update refs for debugging purposes (kept for debugging)
+  prevSessionIdRef.current = activeSessionId;
+  prevTransitionStateRef.current = isTransitioningSession;
 
   // Access file state for component rendering
   // const { isInitialized } = fileManagementState; - Not used
@@ -81,3 +43,5 @@ export function FileManagementProvider({
     </FileManagementContext.Provider>
   );
 }
+
+FileManagementProvider.displayName = "FileManagementProvider";

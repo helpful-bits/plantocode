@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use uuid::Uuid;
 use crate::error::AppResult;
-use crate::models::{BackgroundJob, JobStatus, TaskType};
+use crate::models::{BackgroundJob, JobStatus, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use crate::db_utils::{SessionRepository, BackgroundJobRepository};
 use crate::utils::job_creation_utils;
@@ -22,11 +22,6 @@ pub struct TranscribeAudioArgs {
     pub project_directory: Option<String>,
 }
 
-/// Response for the transcribe audio command
-#[derive(Debug, Serialize)]
-pub struct TranscribeAudioResponse {
-    pub job_id: String,
-}
 
 /// Transcribes audio data to text using OpenRouter's transcription API
 #[command]
@@ -36,7 +31,7 @@ pub async fn create_transcription_job_command(
     filename: Option<String>,
     project_directory: Option<String>,
     app_handle: AppHandle,
-) -> AppResult<TranscribeAudioResponse> {
+) -> AppResult<JobCommandResponse> {
     let args = TranscribeAudioArgs {
         session_id,
         audio_data,
@@ -127,7 +122,7 @@ pub async fn create_transcription_job_command(
     
     info!("Created audio transcription job: {}", job_id);
     
-    Ok(TranscribeAudioResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }
 
 /// Request for voice correction after transcription
@@ -140,11 +135,6 @@ pub struct CorrectTranscriptionArgs {
     pub project_directory: Option<String>,
 }
 
-/// Response for the correction command
-#[derive(Debug, Serialize)] 
-pub struct CorrectTranscriptionResponse {
-    pub job_id: String,
-}
 
 /// Corrects a transcription, typically after voice-to-text conversion
 #[command]
@@ -155,7 +145,7 @@ pub async fn correct_transcription_command(
     original_job_id: Option<String>,
     project_directory: Option<String>,
     app_handle: AppHandle,
-) -> AppResult<CorrectTranscriptionResponse> {
+) -> AppResult<JobCommandResponse> {
     let args = CorrectTranscriptionArgs {
         session_id,
         text_to_correct,
@@ -250,7 +240,7 @@ pub async fn correct_transcription_command(
     
     info!("Created voice correction job: {}", job_id);
     
-    Ok(CorrectTranscriptionResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }
 
 /// Request for direct audio transcription

@@ -6,10 +6,11 @@ import { useState, useCallback, useEffect } from "react";
 import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
+import { AppError, ErrorType } from "@/utils/error-handling";
+import { handleActionError } from "@/utils/action-utils";
 
 export interface UseGuidanceGenerationProps {
   projectDirectory: string | null;
-  taskDescription: string;
   onGuidanceGenerated: (value: string) => void;
   onInteraction: () => void;
 }
@@ -25,13 +26,15 @@ export interface UseGuidanceGenerationReturn {
  */
 export function useGuidanceGeneration({
   projectDirectory,
-  taskDescription,
   onGuidanceGenerated,
   onInteraction,
 }: UseGuidanceGenerationProps): UseGuidanceGenerationReturn {
   // UI state
   const { showNotification } = useNotification();
-  const { activeSessionId } = useSessionStateContext();
+  const sessionState = useSessionStateContext();
+  const { activeSessionId } = sessionState;
+  
+  const taskDescription = sessionState.currentSession?.taskDescription || "";
   const [isGeneratingGuidance, setIsGeneratingGuidance] = useState(false);
   const [guidanceJobId, setGuidanceJobId] = useState<string | null>(null);
 
@@ -78,11 +81,35 @@ export function useGuidanceGeneration({
     }
     // Handle failed job
     else if (job.status === "failed" || job.status === "canceled") {
-      showNotification({
-        title: "Error Generating Guidance",
-        message: typeof job.errorMessage === 'string' ? job.errorMessage : "Failed to generate guidance.",
-        type: "error",
-      });
+      const errorMessage = typeof job.errorMessage === 'string' ? job.errorMessage : "Failed to generate guidance.";
+      const errorMessageLower = errorMessage.toLowerCase();
+      const isBillingError = errorMessage && 
+        (errorMessageLower.includes("not available on your current plan") || 
+         errorMessageLower.includes("payment required") || 
+         errorMessageLower.includes("billing error") || 
+         errorMessageLower.includes("upgrade required") ||
+         errorMessageLower.includes("subscription plan"));
+
+      if (isBillingError) {
+        showNotification({
+          title: "Upgrade Required",
+          message: errorMessage || "This feature or model requires a higher subscription plan.",
+          type: "warning",
+          duration: 10000,
+          actionButton: {
+            label: "View Subscription",
+            onClick: () => window.location.pathname = '/settings',
+            variant: "default",
+            className: "bg-primary text-primary-foreground hover:bg-primary/90"
+          }
+        });
+      } else {
+        showNotification({
+          title: "Error Generating Guidance",
+          message: errorMessage,
+          type: "error",
+        });
+      }
 
       // Reset UI state
       setGuidanceJobId(null);
@@ -160,12 +187,30 @@ export function useGuidanceGeneration({
       } catch (error) {
         console.error("Error generating guidance:", error);
 
+        // Use standardized error handling to get ActionState
+        const errorState = handleActionError(error);
+        
+        // Check for billing errors
+        if (errorState.error instanceof AppError && errorState.error.type === ErrorType.BILLING_ERROR) {
+          showNotification({
+            title: "Upgrade Required",
+            message: errorState.error.message || "This feature or model requires a higher subscription plan.",
+            type: "warning",
+            duration: 10000,
+            actionButton: {
+              label: "View Subscription",
+              onClick: () => window.location.pathname = '/settings',
+              variant: "default",
+              className: "bg-primary text-primary-foreground hover:bg-primary/90"
+            }
+          });
+          setIsGeneratingGuidance(false);
+          return;
+        }
+
         showNotification({
           title: "Error Generating Guidance",
-          message:
-            error instanceof Error
-              ? error.message
-              : "An unknown error occurred.",
+          message: errorState.message || "An unknown error occurred.",
           type: "error",
         });
 

@@ -1,10 +1,12 @@
-import { createContext, useContext, useMemo, useEffect } from "react";
+import { createContext, useContext, useMemo, useEffect, useCallback, useRef } from "react";
 
 import { useProject } from "@/contexts/project-context";
+import { useUILayout } from "@/contexts/ui-layout-context";
 
 import { useActiveSessionManager } from "./_hooks/use-active-session-manager";
 import { useSessionActions } from "./_hooks/use-session-actions";
 import { useSessionLoader } from "./_hooks/use-session-loader";
+import { useAutoSessionLoader } from "./_hooks/use-auto-session-loader";
 import { useSessionState, DRAFT_SESSION_ID } from "./_hooks/use-session-state";
 import {
   type SessionStateContextType,
@@ -45,14 +47,43 @@ interface SessionProviderProps {
 
 export function SessionProvider({ children }: SessionProviderProps) {
   const { projectDirectory } = useProject();
+  const { setAppInitializing } = useUILayout();
 
   // Use the session state hook to manage session state
   const sessionStateHook = useSessionState();
+
+  // Create refs for internal state management
+  const hasCompletedInitRef = useRef<boolean>(false);
+  const loadingSessionRef = useRef<{ id: string | null; timestamp: number }>({
+    id: null,
+    timestamp: 0,
+  });
 
   // Initialize the active session manager
   const activeSessionManager = useActiveSessionManager({
     projectDirectory: projectDirectory,
   });
+
+  // Memoize the onNeedsSave callback for useSessionLoader
+  const handleNeedsSave = useCallback(async (sessionId: string) => {
+    if (
+      sessionStateHook.isSessionModified &&
+      sessionStateHook.currentSession?.id === sessionId
+    ) {
+      // Import the save action directly to avoid circular dependency
+      const { saveSessionAction } = await import("@/actions");
+      try {
+        const result = await saveSessionAction(sessionStateHook.currentSession);
+        if (result.isSuccess) {
+          sessionStateHook.setSessionModified(false);
+          return true;
+        }
+      } catch (error) {
+        console.error("Failed to save session in onNeedsSave:", error);
+      }
+    }
+    return false;
+  }, [sessionStateHook.isSessionModified, sessionStateHook.currentSession, sessionStateHook.setSessionModified]);
 
   // Initialize the session loader
   const sessionLoader = useSessionLoader({
@@ -61,19 +92,22 @@ export function SessionProvider({ children }: SessionProviderProps) {
     setSessionLoading: sessionStateHook.setSessionLoading,
     setSessionModified: sessionStateHook.setSessionModified,
     setSessionError: sessionStateHook.setSessionError,
-    hasCompletedInitRef: sessionStateHook.hasCompletedInitRef,
-    loadingSessionRef: sessionStateHook.loadingSessionRef,
+    hasCompletedInitRef,
+    loadingSessionRef,
     setActiveSessionIdGlobally: activeSessionManager.updateActiveSessionId,
-    onNeedsSave: async (sessionId) => {
-      if (
-        sessionStateHook.isSessionModified &&
-        sessionStateHook.currentSession?.id === sessionId
-      ) {
-        await sessionActions.saveCurrentSession();
-        return true;
-      }
-      return false;
-    },
+    onNeedsSave: handleNeedsSave,
+  });
+
+  // Initialize auto session loader
+  useAutoSessionLoader({
+    projectDirectory,
+    activeSessionId: activeSessionManager.activeSessionId,
+    currentSession: sessionStateHook.currentSession,
+    isSessionLoading: sessionStateHook.isSessionLoading,
+    loadSessionById: sessionLoader.loadSessionById,
+    setAppInitializing,
+    setSessionLoading: sessionStateHook.setSessionLoading,
+    hasCompletedInitRef,
   });
 
   // Initialize session actions
@@ -97,7 +131,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       currentSession: sessionStateHook.currentSession,
       isSessionLoading: sessionStateHook.isSessionLoading,
       isSessionModified: sessionStateHook.isSessionModified,
-      sessionError: sessionStateHook.sessionError || null,
+      sessionError: sessionStateHook.sessionError,
     }),
     [
       activeSessionManager.activeSessionId,
@@ -127,6 +161,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       deleteActiveSession: sessionActions.deleteActiveSession,
       deleteNonActiveSession: sessionActions.deleteNonActiveSession,
       renameActiveSession: sessionActions.renameActiveSession,
+      renameSession: sessionActions.renameSession,
     }),
     [
       activeSessionManager.updateActiveSessionId,
@@ -141,6 +176,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionActions.deleteActiveSession,
       sessionActions.deleteNonActiveSession,
       sessionActions.renameActiveSession,
+      sessionActions.renameSession,
     ]
   );
 

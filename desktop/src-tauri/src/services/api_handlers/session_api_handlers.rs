@@ -3,7 +3,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use log::{info, error};
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, SerializableError};
 use crate::models::FetchResponse;
 
 // Session management handlers
@@ -32,9 +32,7 @@ pub async fn handle_get_sessions(app_handle: AppHandle) -> AppResult<FetchRespon
             Ok(FetchResponse {
                 status: 500,
                 headers,
-                body: json!({
-                    "error": format!("Failed to get sessions: {}", e)
-                }),
+                body: json!(SerializableError::from(e)),
             })
         }
     }
@@ -65,9 +63,7 @@ pub async fn handle_get_session(app_handle: AppHandle, session_id: Option<&str>)
                 Ok(FetchResponse {
                     status: 404,
                     headers,
-                    body: json!({
-                        "error": format!("Session not found: {}", id)
-                    }),
+                    body: json!(SerializableError::from(AppError::NotFoundError(format!("Session not found: {}", id)))),
                 })
             },
             Err(e) => {
@@ -78,9 +74,7 @@ pub async fn handle_get_session(app_handle: AppHandle, session_id: Option<&str>)
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to get session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -91,9 +85,7 @@ pub async fn handle_get_session(app_handle: AppHandle, session_id: Option<&str>)
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Session ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Session ID is required".to_string()))),
         })
     }
 }
@@ -129,9 +121,7 @@ pub async fn handle_create_session(app_handle: AppHandle, args: &crate::models::
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to create session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -142,9 +132,7 @@ pub async fn handle_create_session(app_handle: AppHandle, args: &crate::models::
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -180,9 +168,7 @@ pub async fn handle_update_session(app_handle: AppHandle, args: &crate::models::
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to update session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -193,9 +179,7 @@ pub async fn handle_update_session(app_handle: AppHandle, args: &crate::models::
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -228,9 +212,7 @@ pub async fn handle_delete_session(app_handle: AppHandle, session_id: Option<&st
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to delete session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -241,9 +223,7 @@ pub async fn handle_delete_session(app_handle: AppHandle, session_id: Option<&st
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Session ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Session ID is required".to_string()))),
         })
     }
 }
@@ -279,9 +259,7 @@ pub async fn handle_get_active_session(app_handle: AppHandle) -> AppResult<Fetch
                 Ok(FetchResponse {
                     status: 404,
                     headers,
-                    body: json!({
-                        "error": "Active session not found"
-                    }),
+                    body: json!(SerializableError::from(AppError::NotFoundError("Active session not found".to_string()))),
                 })
             },
             Err(e) => {
@@ -292,9 +270,7 @@ pub async fn handle_get_active_session(app_handle: AppHandle) -> AppResult<Fetch
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to get active session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         },
@@ -305,9 +281,7 @@ pub async fn handle_get_active_session(app_handle: AppHandle) -> AppResult<Fetch
             Ok(FetchResponse {
                 status: 404,
                 headers,
-                body: json!({
-                    "error": "No active session ID set"
-                }),
+                body: json!(SerializableError::from(AppError::NotFoundError("No active session ID set".to_string()))),
             })
         }
     }
@@ -339,9 +313,7 @@ pub async fn handle_set_active_session(app_handle: AppHandle, args: &crate::mode
             return Ok(FetchResponse {
                 status: 404,
                 headers,
-                body: json!({
-                    "error": format!("Session with ID {} not found", session_id)
-                }),
+                body: json!(SerializableError::from(AppError::NotFoundError(format!("Session with ID {} not found", session_id)))),
             });
         }
         
@@ -370,9 +342,7 @@ pub async fn handle_set_active_session(app_handle: AppHandle, args: &crate::mode
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to set active session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -383,9 +353,7 @@ pub async fn handle_set_active_session(app_handle: AppHandle, args: &crate::mode
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }

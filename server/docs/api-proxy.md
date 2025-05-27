@@ -29,9 +29,8 @@ The desktop application needs to access various AI services (Gemini, Claude, Gro
 
 The server exposes the following proxy endpoints:
 
-- `/api/proxy/gemini` - Google Gemini API
-- `/api/proxy/claude` - Anthropic Claude API
-- `/api/proxy/groq` - Groq API
+- `/api/proxy/openrouter/chat/completions` - OpenRouter API for LLM requests
+- `/api/proxy/audio/transcriptions` - Groq API for audio transcription (Whisper)
 
 ## Authentication Flow
 
@@ -56,11 +55,12 @@ The server exposes the following proxy endpoints:
 Each API request is tracked in the `api_usage` table with:
 
 - `user_id`: The ID of the user making the request
-- `service_name`: The API service being used (e.g., "gemini", "claude")
+- `service_name`: The API service being used (e.g., "groq/whisper-large-v3", "anthropic/claude-sonnet-4")
 - `tokens_input`: Number of input tokens used
 - `tokens_output`: Number of output tokens generated
 - `cost`: Calculated cost of the request
 - `timestamp`: When the request was made
+- `input_duration_ms`: Duration of audio input in milliseconds (for transcription services)
 
 ## Configuration
 
@@ -68,9 +68,8 @@ The server needs the following environment variables:
 
 ```
 # API Keys
-GEMINI_API_KEY=...
-ANTHROPIC_API_KEY=...
-GROQ_API_KEY=...
+OPENROUTER_API_KEY=...  # For LLM requests
+GROQ_API_KEY=...        # For transcription requests
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=60000  # 1 minute
@@ -84,5 +83,8 @@ DEFAULT_TRIAL_DAYS=7
 
 - Each proxy endpoint has its own handler in `src/handlers/proxy_handlers.rs`
 - The actual proxy logic is in `src/services/proxy_service.rs`
+- LLM requests are routed through OpenRouter, transcription requests through Groq
+- Default transcription model is `groq/whisper-large-v3`
 - Subscription status is checked in `src/services/billing_service.rs`
 - Rate limiting is handled by middleware in `src/middleware/rate_limiter.rs`
+- Audio transcription requests must include `duration_ms` field for accurate billing

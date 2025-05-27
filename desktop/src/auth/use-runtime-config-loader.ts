@@ -60,7 +60,7 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, updateConfigFn]);
+  }, [updateConfigFn]);
 
   const clearError = useCallback(() => {
     if (error) setError(null);

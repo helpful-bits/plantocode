@@ -1,8 +1,9 @@
 import { type ActionState } from "@/types";
+import { createLogger } from "@/utils/logger";
 
 import * as tauriFs from "../../utils/tauri-fs";
 
-const DEBUG_LOGS = import.meta.env.DEV; // Enable logs in development
+const logger = createLogger({ namespace: "FileSystemRead" });
 
 export async function readExternalFileAction(
   filePath: string
@@ -16,9 +17,7 @@ export async function readExternalFileAction(
     }
 
     // Use the tauriFs to read file content
-    if (DEBUG_LOGS) {
-      // Debug logging is conditional and useful for development
-    }
+    logger.debug(`Reading file: ${filePath}`);
 
     const content = await tauriFs.readFileContent(filePath, undefined, "utf8");
 

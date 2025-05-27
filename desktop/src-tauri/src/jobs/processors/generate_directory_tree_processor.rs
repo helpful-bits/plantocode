@@ -62,7 +62,8 @@ impl JobProcessor for GenerateDirectoryTreeProcessor {
             }
         };
         
-        let project_directory = &payload.project_directory;
+        let project_directory = job.project_directory.as_ref()
+            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
         
         // Check if the directory exists
         let path = Path::new(project_directory);

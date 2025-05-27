@@ -5,7 +5,6 @@ use crate::services::command_handler_service::handle_command;
 use crate::auth::token_manager::TokenManager;
 use crate::models::{FetchRequestArgs, FetchResponse, StreamRequestArgs};
 use reqwest::Client;
-use tokio::sync::Mutex;
 use std::sync::Arc;
 use std::collections::HashMap;
 use futures::StreamExt;
@@ -34,7 +33,7 @@ pub async fn invoke_fetch_handler(
     method: String,
     headers: Option<serde_json::Value>,
     body: Option<String>,
-    token_manager: State<'_, Arc<Mutex<TokenManager>>>,
+    token_manager: State<'_, Arc<TokenManager>>,
 ) -> AppResult<String> {
     info!("Invoking fetch handler for AI proxy: {} {}", method, url);
     
@@ -99,7 +98,7 @@ pub async fn invoke_stream_handler(
     method: String,
     headers: Option<serde_json::Value>,
     body: Option<String>,
-    token_manager: State<'_, Arc<Mutex<TokenManager>>>,
+    token_manager: State<'_, Arc<TokenManager>>,
     on_chunk: impl Fn(String) + Send + 'static,
 ) -> AppResult<()> {
     info!("Invoking stream handler for AI proxy: {} {}", method, url);

@@ -76,6 +76,7 @@ cargo run
 - `JWT_ACCESS_TOKEN_DURATION_DAYS`: Duration of access tokens in days (default: 30)
 - `FIREBASE_API_KEY`: Your Firebase project API key
 - `FIREBASE_PROJECT_ID`: Your Firebase project ID
+- `GROQ_API_KEY`: Groq API key for transcription services
 
 ## Authentication Flow
 

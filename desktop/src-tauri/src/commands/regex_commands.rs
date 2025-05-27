@@ -3,7 +3,7 @@ use log::info;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus, ApiType, TaskType};
+use crate::models::{BackgroundJob, JobStatus, ApiType, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use std::sync::Arc;
 use crate::jobs::types::{Job, JobPayload, JobType, RegexGenerationPayload};
@@ -35,7 +35,7 @@ pub async fn generate_regex_command(
     max_tokens_override: Option<u32>,
     target_field: Option<String>,
     app_handle: AppHandle
-) -> AppResult<String> {
+) -> AppResult<JobCommandResponse> {
     info!("Creating regex generation job for description: {}", description);
     
     // Recreate args struct for internal use
@@ -151,5 +151,5 @@ pub async fn generate_regex_command(
     ).await?;
     
     info!("Created regex generation job: {}", job_id);
-    Ok(job_id)
+    Ok(JobCommandResponse { job_id })
 }

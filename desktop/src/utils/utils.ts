@@ -78,16 +78,14 @@ export function safeFetch(
           }
         })
         .catch((error) => {
-          // If we've run out of retries or it's a timeout/abort error, reject
-          if (
-            retriesLeft === 0 ||
-            (error && typeof error === 'object' && 'name' in error && error.name === "AbortError") ||
-            (error instanceof TypeError &&
-              error.message.includes("Failed to fetch"))
-          ) {
-            reject(new Error(`Fetch failed: ${error instanceof Error ? error.message : String(error)}`));
+          if (retriesLeft === 0) {
+            reject(new Error(`Fetch failed after ${maxRetries} attempts: ${error instanceof Error ? error.message : String(error)}`));
+          } else if (error && typeof error === 'object' && 'name' in error && error.name === "AbortError") {
+            reject(new Error(`Fetch timed out after ${timeout}ms: ${input instanceof Request ? input.url : String(input)}`));
+          } else if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+            reject(new Error(`Network error during fetch: ${error.message}`));
           } else {
-            // Otherwise retry
+            // Retry for other errors
             setTimeout(() => {
               performFetchWithRetry(retriesLeft - 1, waitTime * 1.5)
                 .then(resolve)
@@ -108,20 +106,35 @@ export function safeFetch(
  * @returns The content with leading/trailing fences removed.
  */
 export function stripMarkdownCodeFences(content: string): string {
-  // Match potential fences at the beginning or end, considering optional language identifiers and surrounding whitespace/newlines.
-  // Regex handles ```, ```diff, ```patch, etc., at start and end.
-  // Group 1 captures the actual content *between* the fences if both are present.
-  // Group 2 captures content if only a start fence is present (multiline match needed).
-  // Group 3 captures content if only an end fence is present (multiline match needed).
-  // Handles optional language identifiers and surrounding whitespace/newlines.
-  const fenceRegex =
-    /^\s*```(?:[a-zA-Z0-9\-_]*)\s*?\r?\n([\s\S]*?)\r?\n\s*```\s*$|^\s*```(?:[a-zA-Z0-9\-_]*)\s*?\r?\n([\s\S]+)|([\s\S]+?)\r?\n\s*```\s*$/;
-
+  // Regex to find content between the outermost triple backticks,
+  // allowing for an optional language specifier after the opening fence.
+  // It uses a non-greedy match for the content.
+  const fenceRegex = /^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n([\s\S]*?)\r?\n\s*```\s*$/;
   const match = content.match(fenceRegex);
 
-  if (match) {
-    // Return the captured group that is not undefined, prioritizing the full match (group 1)
-    return (match[1] ?? match[2] ?? match[3] ?? content).trim();
+  if (match && match[1] !== undefined) {
+    return match[1].trim(); // Return the captured content
   }
-  return content;
+
+  // Fallback for cases where only one fence might be present or formatting is unusual
+  // This tries to remove leading/trailing fences more loosely.
+  let processedContent = content.trim();
+  const startsWithFence = /^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n/.test(processedContent);
+  const endsWithFence = /\r?\n\s*```\s*$/.test(processedContent);
+
+  if (startsWithFence) {
+    processedContent = processedContent.replace(/^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n/, "");
+  }
+  if (endsWithFence) {
+    processedContent = processedContent.replace(/\r?\n\s*```\s*$/, "");
+  }
+
+  // Only return the processed content if fences were actually removed,
+  // otherwise return original if no clear outer fences were found.
+  // This check prevents accidental stripping if the content itself contains "```".
+  if (startsWithFence || endsWithFence) {
+    return processedContent.trim();
+  }
+
+  return content; // Return original content if no clear outer fences are matched
 }

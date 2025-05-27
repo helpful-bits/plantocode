@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::SubscriptionRepository;
-use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepository;
+use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -9,6 +9,7 @@ use std::env;
 use chrono::{DateTime, Utc, Duration, Datelike};
 use std::sync::Arc;
 use sqlx::PgPool;
+use bigdecimal::ToPrimitive;
 
 // Import Stripe crate if available
 #[cfg(feature = "stripe")]
@@ -20,15 +21,6 @@ use stripe::{
     PaymentLink, Client as StripeClient
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PlanInfo {
-    pub id: String,
-    pub name: String,
-    pub price_monthly: f64,
-    pub price_yearly: f64,
-    pub features: Vec<String>,
-    pub token_limit: u64,
-}
 
 #[derive(Debug, Clone)]
 pub struct BillingService {
@@ -37,7 +29,6 @@ pub struct BillingService {
     api_usage_repository: Arc<ApiUsageRepository>,
     #[cfg(feature = "stripe")]
     stripe_client: Option<StripeClient>,
-    plans: Vec<PlanInfo>,
     default_trial_days: i64,
     app_settings: crate::config::settings::AppSettings,
 }
@@ -51,45 +42,6 @@ impl BillingService {
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pool.clone()));
         let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pool.clone()));
         let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pool));
-        // Initialize plans
-        let plans = vec![
-            PlanInfo {
-                id: "free".to_string(),
-                name: "Free".to_string(),
-                price_monthly: 0.0,
-                price_yearly: 0.0,
-                features: vec![
-                    "Basic access".to_string(),
-                    "10K tokens per month".to_string(),
-                ],
-                token_limit: 10_000,
-            },
-            PlanInfo {
-                id: "pro".to_string(),
-                name: "Pro".to_string(),
-                price_monthly: 29.99,
-                price_yearly: 299.99,
-                features: vec![
-                    "Unlimited access".to_string(),
-                    "2M tokens per month".to_string(),
-                    "Priority support".to_string(),
-                ],
-                token_limit: 2_000_000,
-            },
-            PlanInfo {
-                id: "enterprise".to_string(),
-                name: "Enterprise".to_string(),
-                price_monthly: 99.99,
-                price_yearly: 999.99,
-                features: vec![
-                    "Unlimited access".to_string(),
-                    "Unlimited tokens".to_string(),
-                    "24/7 support".to_string(),
-                    "Custom integrations".to_string(),
-                ],
-                token_limit: u64::MAX,
-            },
-        ];
         
         // Get default trial days from environment
         let default_trial_days = env::var("DEFAULT_TRIAL_DAYS")
@@ -116,7 +68,6 @@ impl BillingService {
             api_usage_repository,
             #[cfg(feature = "stripe")]
             stripe_client,
-            plans,
             default_trial_days,
             app_settings,
         }
@@ -128,10 +79,6 @@ impl BillingService {
         user_id: &Uuid,
         model_id: &str,
     ) -> Result<bool, AppError> {
-        // Validate model_id structure (simple check)
-        if !model_id.contains("/") && model_id != "openai/whisper-1" {
-            return Err(AppError::InvalidArgument(format!("Invalid model_id format: {}", model_id)));
-        }
     
         // Get user's subscription
         let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
@@ -175,25 +122,17 @@ impl BillingService {
                         Vec::new()
                     });
                 
-                // Check if the model is allowed
-                let model_allowed = allowed_model_patterns.iter().any(|pattern| *pattern == model_id);
-                if !model_allowed {
-                    debug!("Model {} not available on plan {} for user {}", model_id, subscription.plan_id, user_id);
-                    return Err(AppError::Payment(format!("Model {} not available on your current plan", model_id)));
-                }
+                // All models are available on all plans, only token usage is limited
+                // Skip model restriction check - enforce only token limits
                 
-                // Check usage limits
-                let plan = self.get_plan_by_id(&subscription.plan_id)?;
+                let plan = self.get_plan_by_id(&subscription.plan_id).await?;
                 
-                // Get usage for the current month
                 let now = Utc::now();
-                let start_of_month = DateTime::<Utc>::from_utc(
-                    chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-                        .unwrap()
-                        .and_hms_opt(0, 0, 0)
-                        .unwrap(),
-                    Utc,
-                );
+                let start_of_month = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap()
+                    .and_utc();
                 
                 let usage = self.api_usage_repository
                     .get_usage_for_period(user_id, Some(start_of_month), None)
@@ -201,7 +140,7 @@ impl BillingService {
                 
                 let total_tokens = usage.tokens_input + usage.tokens_output;
                 
-                if total_tokens >= plan.token_limit as i64 && plan.token_limit != u64::MAX {
+                if plan.monthly_tokens > 0 && total_tokens >= plan.monthly_tokens {
                     debug!("Token limit reached for user {}", user_id);
                     return Err(AppError::Payment("Token limit reached for this billing period".to_string()));
                 }
@@ -244,12 +183,9 @@ impl BillingService {
         self.subscription_repository.get_pool().clone()
     }
     
-    // Get plan by ID
-    fn get_plan_by_id(&self, plan_id: &str) -> Result<&PlanInfo, AppError> {
-        self.plans
-            .iter()
-            .find(|p| p.id == plan_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plan not found: {}", plan_id)))
+    // Get plan by ID from database
+    async fn get_plan_by_id(&self, plan_id: &str) -> Result<SubscriptionPlan, AppError> {
+        self.subscription_plan_repository.get_plan_by_id(plan_id).await
     }
     
     // Generate a checkout session URL for upgrading
@@ -259,8 +195,7 @@ impl BillingService {
         user_id: &Uuid,
         plan_id: &str,
     ) -> Result<String, AppError> {
-        // Ensure plan exists
-        let plan = self.get_plan_by_id(plan_id)?;
+        let plan = self.get_plan_by_id(plan_id).await?;
         
         // Ensure Stripe is configured
         let stripe = match &self.stripe_client {
@@ -411,18 +346,15 @@ impl BillingService {
             }
         };
         
-        // Get plan details
-        let plan = self.get_plan_by_id(&subscription.plan_id)?;
+        let _plan = self.get_plan_by_id(&subscription.plan_id).await?;
         
         // Get usage for current month
         let now = Utc::now();
-        let start_of_month = DateTime::<Utc>::from_utc(
-            chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap(),
-            Utc,
-        );
+        let start_of_month = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
         
         let usage = self.api_usage_repository
             .get_usage_for_period(user_id, Some(start_of_month), None)
@@ -435,8 +367,7 @@ impl BillingService {
             // The total_cost is already in BigDecimal format from the database
             let cost_decimal = &usage.total_cost;
             // Convert to f64 for the JSON response
-            let cost_str = cost_decimal.to_string();
-            cost_str.parse::<f64>().unwrap_or(0.0)
+            cost_decimal.to_f64().unwrap_or(0.0)
         } else {
             0.0
         };

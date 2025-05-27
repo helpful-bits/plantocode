@@ -3,7 +3,7 @@
 import { ClipboardCopy, Loader2, RefreshCw } from "lucide-react";
 import React from "react";
 
-import { type BackgroundJob } from "@/types/session-types";
+import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
@@ -12,18 +12,11 @@ import { ScrollArea } from "@/ui/scroll-area";
 
 import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
 
-// Define streaming statuses for consistent checking
-const STREAMING_STATUSES = [
-  "running",
-  "processing_stream",
-  "generating_stream",
-];
-
 interface PlanContentModalProps {
-  plan: BackgroundJob | null;
+  plan?: BackgroundJob;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pollingError: string | null;
+  pollingError?: string;
   onCopyContent: (text: string) => void;
   onRefreshContent: (jobId: string) => Promise<void>;
 }
@@ -40,7 +33,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   if (!plan) return null;
 
-  const isStreaming = STREAMING_STATUSES.includes(plan.status.toLowerCase());
+  const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
+                     (plan.status === "running" || plan.status === "processing_stream" || plan.status === "generating_stream");
   const progress = getStreamingProgressValue(
     plan.metadata,
     plan.startTime,

@@ -17,7 +17,7 @@ import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
-import { normalizePath, normalizePathForComparison } from "@/utils/path-utils";
+import { normalizePath } from "@/utils/path-utils";
 import { cn } from "@/utils/utils";
 
 
@@ -28,10 +28,9 @@ enum ValidationType {
   Loading = "loading",
 }
 
-export default function ProjectDirectorySelector({
+function ProjectDirectorySelector({
   disabled = false,
 }: {
-  isRefreshing?: boolean;
   disabled?: boolean;
 }) {
   // Project context for project directory management
@@ -61,6 +60,8 @@ export default function ProjectDirectorySelector({
   useEffect(() => {
     if (projectIsLoading) return;
 
+    const contextProjectDir = projectDirectory || "";
+    
     // On initial mount, always sync with project directory regardless of user edits
     if (isInitialMountRef.current) {
       if (projectDirectory) {
@@ -72,28 +73,28 @@ export default function ProjectDirectorySelector({
 
     // After initial mount, only update if user hasn't edited
     if (!userEditedRef.current) {
-      const contextProjectDir = projectDirectory || "";
-      const normalizedContextDir =
-        normalizePathForComparison(contextProjectDir);
-      const normalizedInputValue = normalizePathForComparison(inputValue);
+      // Use async comparison for proper path normalization
+      const compareAndUpdate = async () => {
+        const normalizedInputValue = await normalizePath(inputValue);
+        const normalizedContextDir = await normalizePath(contextProjectDir);
 
-      if (normalizedContextDir !== normalizedInputValue) {
-        setInputValue(contextProjectDir);
-      }
+        if (normalizedInputValue !== normalizedContextDir) {
+          setInputValue(contextProjectDir);
+        }
+      };
+
+      void compareAndUpdate();
     }
-    // We intentionally exclude inputValue from dependencies to prevent
-    // unnecessary re-renders and potential infinite loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectDirectory, projectIsLoading]);
+  }, [projectDirectory, projectIsLoading]); // Removed inputValue from dependencies
 
   // Reset userEditedRef when input value matches project directory
   useEffect(() => {
     if (!projectIsLoading && projectDirectory) {
       // Check if input value and project directory are in sync
       const checkPaths = async () => {
-        const normalizedInput = await normalizePathForComparison(inputValue);
+        const normalizedInput = await normalizePath(inputValue);
         const normalizedProjectDir =
-          await normalizePathForComparison(projectDirectory);
+          await normalizePath(projectDirectory);
 
         if (normalizedInput === normalizedProjectDir && userEditedRef.current) {
           userEditedRef.current = false;
@@ -221,12 +222,7 @@ export default function ProjectDirectorySelector({
       const normalizedProjectDir = await normalizePath(projectDirectory || "");
 
       // Skip if unchanged using proper path comparison
-      const normalizedInputForComparison =
-        await normalizePathForComparison(normalizedInput);
-      const normalizedProjectDirForComparison =
-        await normalizePathForComparison(normalizedProjectDir);
-
-      if (normalizedInputForComparison === normalizedProjectDirForComparison) {
+      if (normalizedInput === normalizedProjectDir) {
         setValidationStatus({
           type: ValidationType.Info,
           message: "Directory unchanged",
@@ -476,3 +472,7 @@ export default function ProjectDirectorySelector({
     </div>
   );
 }
+
+ProjectDirectorySelector.displayName = "ProjectDirectorySelector";
+
+export default ProjectDirectorySelector;

@@ -1,15 +1,23 @@
 import * as tauriFs from "@/utils/tauri-fs";
 
 /**
- * Normalize a path to a consistent format
- * - Converts backslashes to forward slashes
- * - Removes trailing slashes
- * - On Windows, makes drive letters lowercase
+ * Normalize a path for display consistency
+ * This is the original string-based normalization, kept for backward compatibility
+ * For canonical file system paths, use normalizePath instead
+ */
+export async function normalizePathForDisplayConsistency(inputPath: string): Promise<string> {
+  if (!inputPath) return "";
+
+  // Use the Rust-backed normalization function for consistency
+  return await tauriFs.normalizePath(inputPath);
+}
+
+/**
+ * Canonical path normalizer - standard function for all file system operations
+ * This should be used for any paths that will interact with the backend or file system
  */
 export async function normalizePath(inputPath: string): Promise<string> {
   if (!inputPath) return "";
-
-  // Use the Rust-backed normalization function
   return await tauriFs.normalizePath(inputPath);
 }
 
@@ -44,24 +52,24 @@ export async function makePathRelative(
 }
 
 /**
- * Normalize a path for comparison purposes
- * - Returns a fully normalized, absolute path
- * - Resolves '.' and '..' segments
+ * Creates a comparable relative path for consistent file identification
+ * This ensures consistent path formatting across all file management components
+ * Synchronous version for project-relative path normalization
  */
-export async function normalizePathForComparison(
-  inputPath: string
-): Promise<string> {
-  if (!inputPath) return "";
-
-  try {
-    // Use the Rust-backed normalizer, which should handle resolving path segments
-    // More reliably than the Node.js path.resolve we used previously
-    return await tauriFs.normalizePath(inputPath);
-  } catch (error) {
-    console.error(`Error normalizing path: ${inputPath}`, error);
-    // Fallback in case of error, but still use the async normalizer
-    return await normalizePath(inputPath);
+export function ensureProjectRelativePath(relativePath: string): string {
+  if (!relativePath) return "";
+  let comparablePath = relativePath.trim().replace(/\\/g, "/");
+  // Remove leading "./" or "/"
+  if (comparablePath.startsWith("./")) {
+    comparablePath = comparablePath.substring(2);
+  } else if (comparablePath.startsWith("/")) {
+    comparablePath = comparablePath.substring(1);
   }
+  // Remove trailing slash if it's not the root itself
+  if (comparablePath.endsWith("/") && comparablePath.length > 1) {
+    comparablePath = comparablePath.slice(0, -1);
+  }
+  return comparablePath;
 }
 
 /**

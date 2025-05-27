@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager};
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use crate::utils::hash_utils;
-use log::{info, debug, warn};
+use log::{info, debug, warn, error};
 use std::sync::Arc;
 use dirs;
 use uuid::Uuid;
@@ -10,13 +10,29 @@ use crate::constants::{SERVER_API_URL, HEADER_CLIENT_ID};
 use crate::api_clients::{ApiClient, TranscriptionClient, server_proxy_client::ServerProxyClient};
 use crate::auth::TokenManager;
 
-pub async fn initialize_api_clients(app_handle: &AppHandle) -> Result<(), AppError> {
+pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
    
     // Initialize TokenManager with persistent storage support
     let token_manager = Arc::new(TokenManager::new());
-    info!("TokenManager initialized");
-    
-    // Note: token_manager.init will be called after plugin initialization in main.rs
+    info!("TokenManager instance created.");
+
+    // Initialize the TokenManager (load token from persistence)
+    // This MUST happen before clients that use it are created.
+    match token_manager.init().await {
+        Ok(_) => {
+            info!("TokenManager initialized and token loaded from persistence.");
+        },
+        Err(e) => {
+            error!("TokenManager initialization with keyring/storage failed: {}", e);
+            // For critical startup issues, we should fail fast rather than continue in a broken state
+            // However, for auth token loading, we can continue as the user can re-authenticate
+            warn!("Continuing without persisted token - user will need to re-authenticate");
+        }
+    }
+
+    // Manage TokenManager early so other parts can access it if needed,
+    // even if full client setup below fails.
+    app_handle.manage(token_manager.clone());
     
     // Generate a stable client identifier for token binding
     let client_id = generate_stable_client_id()?;
@@ -47,7 +63,7 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> Result<(), AppErr
     let server_proxy_client = ServerProxyClient::new_with_client(
         app_handle.clone(), 
         server_url, 
-        token_manager.clone(),
+        token_manager.clone(), // Pass the initialized token_manager
         http_client
     );
     
@@ -65,9 +81,8 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> Result<(), AppErr
     app_handle.manage(api_client_arc);
     app_handle.manage(transcription_client_arc);
     app_handle.manage(server_proxy_client_arc);
-    app_handle.manage(token_manager.clone());
     
-    info!("API client and TokenManager registered in app state");
+    info!("API clients initialized and registered in app state.");
     
     Ok(())
 }

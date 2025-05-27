@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 
 import { toast } from "@/ui/use-toast";
+import type { ButtonProps } from "@/ui/button";
 
 import type { ToastOptions } from "@/ui/use-toast";
 
@@ -16,6 +17,7 @@ export interface NotificationType {
   type?: "default" | "success" | "error" | "warning" | "info";
   duration?: number;
   clipboardFeedback?: boolean;
+  actionButton?: { label: string; onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; variant?: ButtonProps['variant']; className?: string };
 }
 
 export interface NotificationContextValue {
@@ -33,11 +35,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     type = "default",
     duration = 5000,
     clipboardFeedback = false,
+    actionButton,
   }: NotificationType) => {
     const options: ToastOptions = {
       title,
       description: message,
       duration,
+      actionButton,
     };
 
     // Map type to variant

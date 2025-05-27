@@ -11,11 +11,12 @@ use crate::api_clients::{ApiClient, client_trait::ApiClientOptions};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, ImplementationPlanPayload};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, ImplementationPlanPayload, StructuredImplementationPlan, StructuredImplementationPlanStep, StructuredImplementationPlanStepOperation};
 use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent};
 use crate::prompts::implementation_plan::{generate_implementation_plan_prompt, generate_enhanced_implementation_plan_prompt};
 use crate::utils::get_timestamp;
 use crate::utils::{fs_utils, path_utils};
+use crate::utils::xml_utils::extract_xml_from_markdown;
 
 pub struct ImplementationPlanProcessor;
 
@@ -40,87 +41,61 @@ impl ImplementationPlanProcessor {
     }
     
     // Parse implementation plan from the XML response
-    fn parse_implementation_plan(&self, response: &str) -> AppResult<serde_json::Value> {
-        debug!("Parsing implementation plan from response");
+    fn parse_implementation_plan(&self, clean_xml_content: &str) -> AppResult<(StructuredImplementationPlan, String)> {
+        debug!("Parsing implementation plan from cleaned XML content");
         
-        // Check if the response contains an implementation_plan tag
-        if !response.contains("<implementation_plan>") {
-            warn!("Response does not contain <implementation_plan> tag");
-            return Ok(json!({
-                "raw_content": response,
-                "format": "raw",
-                "parsing_status": "failed"
-            }));
-        }
-        
-        // Prepare to extract the content from the implementation_plan tag
-        let mut reader = Reader::from_str(response);
-        reader.config_mut().trim_text(true);
-        
-        let mut buf = Vec::new();
-        let mut in_implementation_plan = false;
-        let mut implementation_plan_content = String::new();
-        
-        // Parse the XML response
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => {
-                    if e.name().as_ref() == b"implementation_plan" {
-                        in_implementation_plan = true;
+        // Attempt to deserialize the clean XML content into structured format
+        match quick_xml::de::from_str::<StructuredImplementationPlan>(clean_xml_content) {
+            Ok(structured_plan) => {
+                // Generate human-readable summary
+                let mut summary = String::new();
+                if let Some(instructions) = &structured_plan.agent_instructions {
+                    summary.push_str(&format!("Agent Instructions: {}\n\n", instructions));
+                }
+                
+                summary.push_str(&format!("Implementation Plan with {} steps:\n", structured_plan.steps.len()));
+                for (i, step) in structured_plan.steps.iter().enumerate() {
+                    summary.push_str(&format!("{}. {}: {}\n", i + 1, step.title, step.description));
+                }
+                
+                Ok((structured_plan, summary.trim().to_string()))
+            },
+            Err(e) => {
+                warn!("Failed to parse structured XML: {}", e);
+                // Fallback: create basic structure with just content
+                let fallback_plan = StructuredImplementationPlan {
+                    agent_instructions: None,
+                    steps: vec![StructuredImplementationPlanStep {
+                        number: Some("1".to_string()),
+                        title: "Implementation Plan".to_string(),
+                        description: clean_xml_content.to_string(),
+                        file_operations: None,
+                    }],
+                };
+                
+                let summary = format!("Implementation Plan: {}", 
+                    if clean_xml_content.len() > 200 {
+                        format!("{}...", &clean_xml_content[..200])
+                    } else {
+                        clean_xml_content.to_string()
                     }
-                },
-                Ok(Event::End(ref e)) => {
-                    if e.name().as_ref() == b"implementation_plan" {
-                        in_implementation_plan = false;
-                    }
-                },
-                Ok(Event::Text(e)) => {
-                    if in_implementation_plan {
-                        implementation_plan_content.push_str(&e.unescape().unwrap_or_default().to_string());
-                    }
-                },
-                Ok(Event::Eof) => break,
-                Err(e) => {
-                    warn!("Error parsing XML: {}", e);
-                    return Ok(json!({
-                        "raw_content": response,
-                        "format": "raw",
-                        "parsing_status": "error",
-                        "error": format!("Error parsing XML: {}", e)
-                    }));
-                },
-                _ => {}
+                );
+                
+                Ok((fallback_plan, summary))
             }
-            buf.clear();
-        }
-        
-        // If we couldn't extract content properly, return the raw response
-        if implementation_plan_content.is_empty() {
-            Ok(json!({
-                "raw_content": response,
-                "format": "xml",
-                "parsing_status": "success"
-            }))
-        } else {
-            // Structured JSON representation of the parsed implementation plan
-            Ok(json!({
-                "raw_content": response,
-                "format": "xml",
-                "parsing_status": "success",
-                "content": implementation_plan_content.trim()
-            }))
         }
     }
     
     // Save implementation plan to a file
-    async fn save_implementation_plan_to_file(&self, content: &str, project_directory: &str, job_id: &str, session_id: &str) -> AppResult<String> {
+    async fn save_implementation_plan_to_file(&self, content: &str, project_directory: &str, job_id: &str, session_id: &str, app_handle: &AppHandle) -> AppResult<String> {
         // Create a unique file path using the new utility function
         let file_path = path_utils::create_unique_output_filepath(
             session_id,
             "implementation_plan",
             Some(Path::new(project_directory)),
             "xml",
-            Some(crate::constants::IMPLEMENTATION_PLANS_DIR_NAME)
+            Some(crate::constants::IMPLEMENTATION_PLANS_DIR_NAME),
+            app_handle
         ).await?;
         
         // Save the plan - properly await the async function and pass the PathBuf directly
@@ -174,9 +149,12 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Load contents of relevant files
         let mut file_contents_map: HashMap<String, String> = HashMap::new();
         
+        let project_directory = job.project_directory.as_ref()
+            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
+            
         for relative_path_str in &payload.relevant_files {
             // Construct full path
-            let full_path = std::path::Path::new(&payload.project_directory).join(relative_path_str);
+            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
             
             // Read file content
             match fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
@@ -372,15 +350,19 @@ impl JobProcessor for ImplementationPlanProcessor {
             return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Parse the implementation plan
-        let structured_data = self.parse_implementation_plan(&response_content)?;
+        // Extract clean XML content from the response
+        let clean_xml_content = extract_xml_from_markdown(&response_content);
         
-        // Save the implementation plan to a file
+        // Parse the implementation plan into structured format
+        let (structured_plan, human_readable_summary) = self.parse_implementation_plan(&clean_xml_content)?;
+        
+        // Save the clean XML content to a file
         let file_path = self.save_implementation_plan_to_file(
-            &response_content,
+            &clean_xml_content,
             &payload.project_directory,
             &payload.background_job_id,
-            &payload.session_id
+            &payload.session_id,
+            &app_handle
         ).await?;
         
         // Extract the generated title from job metadata, if it exists
@@ -412,7 +394,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             
         // Update job fields for completion
         job.status = JobStatus::Completed.to_string();
-        job.response = Some(response_content.clone());
+        job.response = Some(human_readable_summary.clone());
         job.updated_at = Some(timestamp);
         job.end_time = Some(timestamp);
         job.model_used = Some(payload.model.clone());
@@ -435,13 +417,13 @@ impl JobProcessor for ImplementationPlanProcessor {
             .and_then(|job| job.metadata)
             .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(&metadata_str).ok()) {
             Some(mut json) => {
-                json["planData"] = structured_data;
+                json["planData"] = serde_json::to_value(structured_plan).unwrap_or_default();
                 json["outputPath"] = json!(file_path);
                 // Keep the generated_title if it exists
                 json
             },
             None => json!({
-                "planData": structured_data,
+                "planData": serde_json::to_value(structured_plan).unwrap_or_default(),
                 "outputPath": file_path,
                 "generated_title": generated_title,
             }),

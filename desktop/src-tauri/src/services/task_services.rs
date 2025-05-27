@@ -3,8 +3,8 @@
 use tauri::AppHandle;
 use serde::{Serialize, Deserialize};
 use crate::error::AppResult;
-use crate::commands::text_commands::{CorrectTextPostTranscriptionArgs, JobCommandResponse};
-use crate::models::{PathFinderRequestArgs, PathFinderCommandResponse};
+use crate::commands::text_commands::CorrectTextPostTranscriptionArgs;
+use crate::models::{PathFinderRequestArgs, JobCommandResponse};
 
 /// Arguments for creating a regex generation job.
 #[derive(Debug, Deserialize)]
@@ -23,7 +23,7 @@ pub struct CreateRegexGenerationServiceArgs {
 pub async fn create_path_finder_job_service(
     app_handle: &AppHandle,
     args: PathFinderRequestArgs,
-) -> AppResult<PathFinderCommandResponse> {
+) -> AppResult<JobCommandResponse> {
     use log::info;
     use crate::error::AppError;
     use crate::models::TaskType;
@@ -144,7 +144,7 @@ pub async fn create_path_finder_job_service(
     info!("Created path finder job: {}", job_id);
     
     // Return the response
-    Ok(crate::models::PathFinderCommandResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }
 
 
@@ -152,7 +152,7 @@ pub async fn create_path_finder_job_service(
 pub async fn create_regex_generation_job_service(
     app_handle: &AppHandle,
     args: CreateRegexGenerationServiceArgs,
-) -> AppResult<String> {
+) -> AppResult<JobCommandResponse> {
     use log::info;
     use crate::error::AppError;
     use crate::models::TaskType;
@@ -267,5 +267,5 @@ pub async fn create_regex_generation_job_service(
     info!("Created regex generation job: {}", job_id);
     
     // Return the job ID
-    Ok(job_id)
+    Ok(JobCommandResponse { job_id })
 }

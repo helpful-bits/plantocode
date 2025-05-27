@@ -3,7 +3,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use log::{info, error};
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, SerializableError};
 use crate::models::FetchResponse;
 
 // File system action handlers
@@ -45,9 +45,7 @@ pub async fn handle_read_directory(app_handle: AppHandle, args: &crate::models::
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to read directory: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -58,9 +56,7 @@ pub async fn handle_read_directory(app_handle: AppHandle, args: &crate::models::
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -93,9 +89,7 @@ pub async fn handle_read_file(app_handle: AppHandle, args: &crate::models::Fetch
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to read file: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -106,9 +100,7 @@ pub async fn handle_read_file(app_handle: AppHandle, args: &crate::models::Fetch
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -146,9 +138,7 @@ pub async fn handle_write_file(app_handle: AppHandle, args: &crate::models::Fetc
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to write file: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -159,9 +149,7 @@ pub async fn handle_write_file(app_handle: AppHandle, args: &crate::models::Fetc
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -194,9 +182,7 @@ pub async fn handle_list_files(app_handle: AppHandle, args: &crate::models::Fetc
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to list files: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -207,9 +193,7 @@ pub async fn handle_list_files(app_handle: AppHandle, args: &crate::models::Fetc
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -238,9 +222,7 @@ pub async fn handle_get_home_directory(app_handle: AppHandle) -> AppResult<Fetch
             Ok(FetchResponse {
                 status: 500,
                 headers,
-                body: json!({
-                    "error": format!("Failed to get home directory: {}", e)
-                }),
+                body: json!(SerializableError::from(e)),
             })
         }
     }
@@ -282,9 +264,7 @@ pub async fn handle_create_unique_filepath(app_handle: AppHandle, args: &crate::
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to create unique filepath: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -295,9 +275,7 @@ pub async fn handle_create_unique_filepath(app_handle: AppHandle, args: &crate::
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }

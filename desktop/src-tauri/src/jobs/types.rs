@@ -73,6 +73,7 @@ impl std::fmt::Display for JobType {
 
 // Event emitted when a job status changes
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JobStatusChangeEvent {
     pub job_id: String,
     pub status: String,
@@ -81,6 +82,7 @@ pub struct JobStatusChangeEvent {
 
 // Event emitted when a job response is updated
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JobResponseUpdateEvent {
     pub job_id: String,
     pub response_chunk: String,
@@ -123,8 +125,8 @@ pub struct InputPathFinderPayload {
 pub struct PathFinderPayload {
     pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
     pub background_job_id: String,
+    pub project_directory: String,
     pub model_override: Option<String>,
     pub system_prompt: String,
     pub temperature: f32,
@@ -144,12 +146,12 @@ pub struct ImplementationPlanPayload {
     pub background_job_id: String,
     pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
     pub project_structure: Option<String>, // Renamed from codebase_structure
     pub relevant_files: Vec<String>,     // New field
     pub model: String,                   // Changed from model_override
     pub temperature: f32,
     pub max_tokens: Option<u32>,      // Changed from max_output_tokens
+    pub project_directory: String,
 }
 
 // Payload for Regex Generation job
@@ -160,11 +162,11 @@ pub struct RegexGenerationPayload {
     pub description: String,
     pub examples: Option<Vec<String>>,
     pub target_language: Option<String>,
-    pub project_directory: String,
     pub model_override: Option<String>,
     pub temperature: f32,
     pub max_output_tokens: Option<u32>,
     pub target_field: Option<String>,
+    pub project_directory: String,
 }
 
 // Payload for Guidance Generation job
@@ -172,7 +174,6 @@ pub struct RegexGenerationPayload {
 pub struct GuidanceGenerationPayload {
     pub background_job_id: String,
     pub session_id: String,
-    pub project_directory: String,
     pub task_description: String,
     pub paths: Option<Vec<String>>,
     pub file_contents_summary: Option<String>,
@@ -180,6 +181,7 @@ pub struct GuidanceGenerationPayload {
     pub model_override: Option<String>, 
     pub temperature: Option<f32>,
     pub max_output_tokens: Option<u32>,
+    pub project_directory: String,
 }
 
 // Payload for Path Correction job
@@ -187,7 +189,6 @@ pub struct GuidanceGenerationPayload {
 pub struct PathCorrectionPayload {
     pub background_job_id: String,
     pub session_id: String,
-    pub project_directory: String,
     pub paths_to_correct: String,
     pub context_description: String,
     pub system_prompt_override: Option<String>,
@@ -201,11 +202,11 @@ pub struct PathCorrectionPayload {
 pub struct TextImprovementPayload {
     pub background_job_id: String, // Comes from Job.db_job.id
     pub session_id: String,        // Comes from Job.db_job.session_id
-    pub project_directory: Option<String>, // Comes from Job.db_job.project_directory
     pub text_to_improve: String,
     pub language: Option<String>, // e.g., "en", "es"
     pub improvement_type: String, // e.g., "clarity", "conciseness", "technical", "grammar", "persuasiveness", "general"
     pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
+    pub project_directory: Option<String>,
 }
 
 // Payload for Task Enhancement job
@@ -213,10 +214,10 @@ pub struct TextImprovementPayload {
 pub struct TaskEnhancementPayload {
     pub background_job_id: String, // Comes from Job.db_job.id
     pub session_id: String,        // Comes from Job.db_job.session_id
-    pub project_directory: Option<String>, // Comes from Job.db_job.project_directory
     pub task_description: String,
     pub project_context: Option<String>, // e.g., codebase structure, relevant files
     pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
+    pub project_directory: Option<String>,
 }
 
 // Payload for Voice Correction job
@@ -224,10 +225,10 @@ pub struct TaskEnhancementPayload {
 pub struct VoiceCorrectionPayload {
     pub background_job_id: String,
     pub session_id: String,
-    pub project_directory: Option<String>,
     pub text_to_correct: String,
     pub language: String,
     pub original_job_id: Option<String>, // Optional, for context from original transcription
+    pub project_directory: Option<String>,
 }
 
 
@@ -236,8 +237,8 @@ pub struct VoiceCorrectionPayload {
 pub struct GenerateDirectoryTreePayload {
     pub background_job_id: String,
     pub session_id: String,
-    pub project_directory: String,
     pub options: Option<crate::utils::directory_tree::DirectoryTreeOptions>,
+    pub project_directory: String,
 }
 
 // Payload for Text Correction Post Transcription job
@@ -245,10 +246,10 @@ pub struct GenerateDirectoryTreePayload {
 pub struct TextCorrectionPostTranscriptionPayload {
     pub background_job_id: String,
     pub session_id: String,
-    pub project_directory: Option<String>,
     pub text_to_correct: String,
     pub language: String,
     pub original_transcription_job_id: Option<String>,
+    pub project_directory: Option<String>,
 }
 
 // Payload for Generic LLM Stream job
@@ -256,13 +257,13 @@ pub struct TextCorrectionPostTranscriptionPayload {
 pub struct GenericLlmStreamPayload {
     pub background_job_id: String,
     pub session_id: String,
-    pub project_directory: Option<String>,
     pub prompt_text: String,
     pub system_prompt: Option<String>,
     pub model: Option<String>,
     pub temperature: Option<f32>,
     pub max_output_tokens: Option<u32>,
     pub metadata: Option<serde_json::Value>,
+    pub project_directory: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -282,6 +283,29 @@ pub enum JobPayload {
     TextCorrectionPostTranscription(TextCorrectionPostTranscriptionPayload),
     GenericLlmStream(GenericLlmStreamPayload),
     RegexSummaryGeneration(crate::jobs::processors::RegexSummaryGenerationPayload),
+}
+
+// Structured types for Implementation Plan parsing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredImplementationPlanStepOperation {
+    #[serde(rename = "type")]
+    pub operation_type: String, // "create", "modify", "delete", etc.
+    pub path: String,
+    pub changes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredImplementationPlanStep {
+    pub number: Option<String>,
+    pub title: String,
+    pub description: String,
+    pub file_operations: Option<Vec<StructuredImplementationPlanStepOperation>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredImplementationPlan {
+    pub agent_instructions: Option<String>,
+    pub steps: Vec<StructuredImplementationPlanStep>,
 }
 
 // Result of a job process
@@ -351,6 +375,7 @@ pub struct Job {
     pub created_at: String, // Timestamp string
     pub session_id: String,
     pub task_type_str: String,
+    pub project_directory: Option<String>,
 }
 
 impl Job {

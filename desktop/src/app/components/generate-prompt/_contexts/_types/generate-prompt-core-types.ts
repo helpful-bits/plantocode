@@ -19,12 +19,27 @@ export interface CorePromptContextActions {
   // Core actions
   resetAllState: () => void;
   setSessionName: (name: string) => void;
-  saveSessionState: (sessionId: string, stateToSave?: Record<string, unknown>) => Promise<void>;
+  saveSessionState: () => Promise<void>;
   flushPendingSaves: () => Promise<boolean>;
   setSessionInitialized: (value: boolean) => void;
   setHasUnsavedChanges: (value: boolean) => void;
   handleInteraction: () => void;
-  getCurrentSessionState: () => Record<string, unknown>;
+  getCurrentSessionState: () => {
+    projectDirectory: string;
+    taskDescription: string;
+    titleRegex: string;
+    contentRegex: string;
+    negativeTitleRegex: string;
+    negativeContentRegex: string;
+    isRegexActive: boolean;
+    searchTerm: string;
+    includedFiles: string[];
+    forceExcludedFiles: string[];
+    searchSelectedFilesOnly: boolean;
+    codebaseStructure: string;
+    createdAt: number;
+    modelUsed?: string;
+  };
 
   handleGenerateCodebase: () => Promise<void>;
 }

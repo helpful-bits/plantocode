@@ -2,8 +2,10 @@ use actix_web::{web, HttpResponse, get, post, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
-use log::debug;
+use log::{debug, error, info};
 use crate::middleware::secure_auth::UserId;
+use chrono::{DateTime, Utc, Duration};
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
 pub struct CheckoutRequest {
@@ -98,6 +100,7 @@ pub async fn stripe_webhook(
     req: HttpRequest,
     body: web::Bytes,
     billing_service: web::Data<BillingService>,
+    app_state: web::Data<crate::models::runtime_config::AppState>,
 ) -> Result<HttpResponse, AppError> {
     // Get the Stripe signature from the request header
     let stripe_signature = req.headers()
@@ -109,16 +112,11 @@ pub async fn stripe_webhook(
     // Verify and process the webhook
     #[cfg(feature = "stripe")]
     {
-        use crate::config::settings::AppSettings;
-        use std::env;
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
         
-        // Get webhook secret from app_settings
-        let app_settings = crate::config::settings::AppSettings::from_env()
-            .map_err(|e| AppError::Configuration(format!("Failed to load app settings: {}", e)))?;
-            
-        let webhook_secret = app_settings.stripe.webhook_secret.clone();
+        // Get webhook secret from app_state
+        let webhook_secret = app_state.settings.stripe.webhook_secret.clone();
         
         // Parse the signature header
         let mut timestamp: Option<&str> = None;
@@ -153,6 +151,7 @@ pub async fn stripe_webhook(
         mac.update(signed_payload.as_bytes());
         
         if mac.verify_slice(&sig_bytes).is_err() {
+            error!("Stripe webhook signature verification failed. Signature: {}, Timestamp: {}", signature, timestamp);
             return Err(AppError::Auth("Invalid Stripe signature".to_string()));
         }
         
@@ -167,55 +166,64 @@ pub async fn stripe_webhook(
             "checkout.session.completed" => {
                 info!("Checkout session completed: {}", event.id);
                 if let stripe::EventObject::CheckoutSession(session) = event.data.object {
-                    if let Some(customer) = session.customer {
-                        // Find user by Stripe customer ID
-                        let db_pool = billing_service.get_db_pool();
-                        let sub_repo = crate::db::repositories::SubscriptionRepository::new(db_pool.clone());
-                        let user_repo = crate::db::repositories::UserRepository::new(db_pool);
-                        
-                        // Find users with this Stripe customer ID
-                        if let Some(subscription_id) = session.subscription {
-                            // Update user's subscription
-                            let users = user_repo.find_by_stripe_customer_id(&customer.to_string()).await?;
-                            
-                            if let Some(user) = users.first() {
-                                // Check if user already has a subscription
-                                if let Some(mut subscription) = sub_repo.get_by_user_id(&user.id).await? {
-                                    // Update the existing subscription
-                                    subscription.stripe_customer_id = Some(customer.to_string());
-                                    subscription.stripe_subscription_id = Some(subscription_id.to_string());
-                                    subscription.status = "active".to_string();
+                    let db_pool = billing_service.get_db_pool();
+                    let sub_repo = crate::db::repositories::SubscriptionRepository::new(db_pool.clone());
+                    let user_repo = crate::db::repositories::UserRepository::new(db_pool);
+
+                    // Primary path: Use user_id from metadata
+                    if let Some(user_id_str) = session.metadata.as_ref().and_then(|m| m.get("user_id").and_then(|v| v.as_str())) {
+                        if let Ok(user_uuid) = Uuid::parse_str(user_id_str) {
+                            let user_option = user_repo.get_by_id(&user_uuid).await.ok();
+                            if let Some(user) = user_option {
+                                // Update or create subscription for this user
+                                if let Some(mut db_subscription) = sub_repo.get_by_user_id(&user.id).await? {
+                                    // Update existing subscription
+                                    db_subscription.stripe_customer_id = session.customer.as_ref().map(|c| c.id().to_string());
+                                    db_subscription.stripe_subscription_id = session.subscription.as_ref().map(|s| s.id().to_string());
+                                    db_subscription.status = "active".to_string();
                                     
-                                    // Set plan based on checkout session metadata
-                                    if let Some(metadata) = session.metadata {
-                                        if let Some(plan) = metadata.get("plan") {
-                                            subscription.plan_id = plan.to_string();
+                                    // Update plan_id from metadata
+                                    if let Some(metadata) = &session.metadata {
+                                        if let Some(plan_val) = metadata.get("plan_id") {
+                                            db_subscription.plan_id = plan_val.to_string();
                                         }
                                     }
                                     
-                                    // Update subscription in database
-                                    sub_repo.update(&subscription).await?;
+                                    sub_repo.update(&db_subscription).await?;
                                     info!("Updated subscription for user: {}", user.id);
                                 } else {
                                     // Create new subscription
-                                    let plan_id = session.metadata
-                                        .and_then(|m| m.get("plan").map(|s| s.to_string()))
-                                        .unwrap_or_else(|| "pro".to_string()); // Default to pro plan
-                                    
-                                    // Create subscription in database
-                                    let sub_id = sub_repo.create(
+                                    let plan_id_from_meta = session.metadata
+                                        .as_ref()
+                                        .and_then(|m| m.get("plan_id").map(|s| s.as_str().to_string()))
+                                        .unwrap_or_else(|| "pro".to_string());
+
+                                    let end_date_fallback = Utc::now() + Duration::days(30);
+
+                                    sub_repo.create(
                                         &user.id,
-                                        &plan_id,
+                                        &plan_id_from_meta,
                                         "active",
-                                        Some(&customer.to_string()),
-                                        Some(&subscription_id.to_string()),
-                                        None, // No trial for paid subscriptions
-                                        Utc::now() + Duration::days(30), // Default to 30 days
+                                        session.customer.as_ref().map(|c| c.id().as_str()),
+                                        session.subscription.as_ref().map(|s| s.id().as_str()),
+                                        None, // No trial for new paid subscriptions from checkout
+                                        end_date_fallback,
                                     ).await?;
-                                    
-                                    info!("Created new subscription for user: {}", user.id);
+                                    info!("Created new subscription via checkout for user: {}", user.id);
                                 }
+                            } else {
+                                error!("User with ID {} from Stripe metadata not found in database.", user_id_str);
                             }
+                        } else {
+                            error!("Invalid user_id format in Stripe metadata: {}", user_id_str);
+                        }
+                    } else {
+                        // Critical case: user_id was not in metadata
+                        if let Some(customer_ref) = &session.customer {
+                            let stripe_customer_id_str = customer_ref.id().to_string();
+                            error!("CRITICAL: Missing user_id in Stripe checkout session metadata for customer {}. Payment cannot be automatically linked.", stripe_customer_id_str);
+                        } else {
+                            error!("CRITICAL: Missing user_id AND customer_id in Stripe checkout session metadata. Payment cannot be linked.");
                         }
                     }
                 }

@@ -84,9 +84,9 @@ export function useTauriCommand<T = unknown>(options: UseTauriCommandOptions<T>)
           options.successMessage
         );
 
-        return traceActionResult(actionState, traceName);
+        return traceActionResult(actionState);
       } catch (err) {
-        const actionState = handleActionError(err, traceName);
+        const actionState = handleActionError(err);
 
         // Update state
         setError(actionState.error ?? null);
@@ -121,13 +121,10 @@ export function useTauriCommand<T = unknown>(options: UseTauriCommandOptions<T>)
  */
 interface JobCommandResult {
   jobId?: string;
-  job_id?: string;
-  id?: string;
   metadata?: {
     jobId?: string;
   };
   status?: string;
-  job_status?: string;
 }
 
 /**
@@ -135,15 +132,12 @@ interface JobCommandResult {
  */
 function hasJobInfo(result: unknown): result is JobCommandResult {
   if (!result || typeof result !== "object") return false;
-
   const obj = result as Record<string, unknown>;
   return !!(
-    "jobId" in obj ||
-    "job_id" in obj ||
-    "id" in obj ||
+    obj.jobId || // Check for camelCase jobId
     (obj.metadata &&
       typeof obj.metadata === "object" &&
-      "jobId" in (obj.metadata))
+      (obj.metadata as Record<string, unknown>).jobId)
   );
 }
 
@@ -168,13 +162,12 @@ export function useTauriJobCommand<T = unknown>(
       if (hasJobInfo(result)) {
         // Extract job ID from various possible shapes
         const extractedJobId =
-          result.jobId ||
-          result.job_id ||
-          result.metadata?.jobId ||
-          (typeof result === "object" && "id" in result ? result.id : null);
+          (result as JobCommandResult).jobId ||
+          (result as JobCommandResult).metadata?.jobId ||
+          null;
 
         // Extract job status if available
-        const extractedStatus = result.status || result.job_status || null;
+        const extractedStatus = result.status || null;
 
         if (extractedJobId) {
           setJobId(extractedJobId);

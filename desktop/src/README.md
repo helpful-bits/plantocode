@@ -133,6 +133,24 @@ Use CSS variables for theming to ensure dark mode support:
 - Follow accessibility best practices
 - Compose complex components from simpler ones
 
+### Desktop Environment Detection
+
+To detect if the application is running in the desktop environment, use the `isTauriEnvironment()` utility function from `@/utils/platform`. This utility checks for Tauri's global variables (`window.__TAURI_IPC__` and `window.__TAURI_INTERNALS__`) to determine if the app is running in a Tauri environment.
+
+```tsx
+import { isTauriEnvironment } from "@/utils/platform";
+
+function ConditionalComponent() {
+  if (isTauriEnvironment()) {
+    return <DesktopSpecificFeature />;
+  }
+  
+  return <WebFeature />;
+}
+```
+
+This provides a reliable way to conditionally render features that are only available in the desktop environment without relying on custom global markers.
+
 ## Setup in New Project
 
 To use this shared package in a new project:

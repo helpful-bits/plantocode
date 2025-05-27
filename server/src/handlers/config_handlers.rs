@@ -2,6 +2,7 @@ use actix_web::{web, HttpResponse};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tracing::{debug, info, instrument};
+use bigdecimal::{BigDecimal, ToPrimitive};
 
 use crate::config::settings::AppSettings;
 use crate::db::repositories::model_repository::ModelRepository;
@@ -40,9 +41,9 @@ pub struct DesktopModelInfo {
     pub description: Option<String>,
     /// Context window size in tokens
     pub context_window: Option<u32>,
-    /// Price per 1K input tokens in USD
+    /// Price per input token in USD
     pub price_per_input_token: f64,
-    /// Price per 1K output tokens in USD
+    /// Price per output token in USD
     pub price_per_output_token: f64,
 }
 
@@ -67,9 +68,15 @@ pub async fn get_desktop_runtime_ai_config(
             provider: model.provider.clone(),
             description: model.description.clone(),
             context_window: model.context_window,
-            // Prices are already per 1K tokens in the database
-            price_per_input_token: model.price_input_per_1k_tokens.unwrap_or(0.0),
-            price_per_output_token: model.price_output_per_1k_tokens.unwrap_or(0.0),
+            // Convert prices from per 1K tokens to per token
+            price_per_input_token: model.price_input_per_1k_tokens
+                .as_ref()
+                .and_then(|p| p.to_f64())
+                .unwrap_or(0.0) / 1000.0,
+            price_per_output_token: model.price_output_per_1k_tokens
+                .as_ref()
+                .and_then(|p| p.to_f64())
+                .unwrap_or(0.0) / 1000.0,
         }
     }).collect::<Vec<_>>();
     

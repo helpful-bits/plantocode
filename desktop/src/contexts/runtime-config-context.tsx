@@ -6,37 +6,40 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
+import { createLogger } from "@/utils/logger";
+
+const logger = createLogger({ namespace: "RuntimeConfigContext" });
 
 /**
  * Define the runtime AI config type to match Tauri backend expectations
  */
 export interface RuntimeAIConfig {
-  default_llm_model_id: string;
-  default_voice_model_id: string;
-  default_transcription_model_id: string;
+  defaultLlmModelId: string;
+  defaultVoiceModelId: string;
+  defaultTranscriptionModelId: string;
   tasks: Record<string, {
     model: string;
-    max_tokens: number;
+    maxTokens: number;
     temperature: number;
   }>;
-  available_models: {
+  availableModels: {
     id: string;
     name: string;
     provider: string;
     description?: string;
-    context_window?: number;
-    price_per_input_token: number;
-    price_per_output_token: number;
+    contextWindow?: number;
+    pricePerInputToken: number;
+    pricePerOutputToken: number;
   }[];
-  path_finder_settings: {
-    max_files_with_content?: number;
-    include_file_contents?: boolean;
-    max_content_size_per_file?: number;
-    max_file_count?: number;
-    file_content_truncation_chars?: number;
-    token_limit_buffer?: number;
+  pathFinderSettings: {
+    maxFilesWithContent?: number;
+    includeFileContents?: boolean;
+    maxContentSizePerFile?: number;
+    maxFileCount?: number;
+    fileContentTruncationChars?: number;
+    tokenLimitBuffer?: number;
   };
 }
 
@@ -108,7 +111,7 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
           : "Failed to load runtime configuration";
 
       setError(errorMessage);
-      console.error("Error loading runtime AI config:", err);
+      logger.error("Error loading runtime AI config:", err);
       return null;
     } finally {
       setIsLoading(false);
@@ -131,17 +134,18 @@ export function RuntimeConfigProvider({ children }: { children: ReactNode }) {
     if (error) setError(null);
   }, [error]);
 
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    config,
+    isLoading,
+    error,
+    refreshConfig: () => fetchRuntimeConfig(true),
+    updateConfig,
+    clearError,
+  }), [config, isLoading, error, fetchRuntimeConfig, updateConfig, clearError]);
+
   return (
-    <RuntimeConfigContext.Provider
-      value={{
-        config,
-        isLoading,
-        error,
-        refreshConfig: () => fetchRuntimeConfig(true),
-        updateConfig,
-        clearError,
-      }}
-    >
+    <RuntimeConfigContext.Provider value={contextValue}>
       {children}
     </RuntimeConfigContext.Provider>
   );
@@ -195,7 +199,7 @@ export async function loadRuntimeConfigAfterLogin(): Promise<RuntimeAIConfig> {
       "Failed to load runtime config after maximum retry attempts"
     );
   } catch (error) {
-    console.error("Failed to load runtime config after login:", error);
+    logger.error("Failed to load runtime config after login:", error);
     throw error;
   }
 }

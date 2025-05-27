@@ -123,27 +123,27 @@ export interface BackgroundJob {
   taskType: TaskType;
   status: JobStatus;
   createdAt: number;
-  updatedAt?: number | null;
-  startTime?: number | null;
-  endTime?: number | null;
-  lastUpdate?: number | null;
+  updatedAt?: number;
+  startTime?: number;
+  endTime?: number;
+  lastUpdate?: number;
   prompt: string;
-  response?: string | null;
-  projectDirectory?: string | null;
-  tokensSent?: number | null;
-  tokensReceived?: number | null;
-  totalTokens?: number | null;
-  charsReceived?: number | null;
-  statusMessage?: string | null;
-  errorMessage?: string | null;
-  modelUsed?: string | null;
-  maxOutputTokens?: number | null;
-  temperature?: number | null;
-  includeSyntax?: boolean | null;
-  cleared?: boolean | null;
-  visible?: boolean | null;
-  metadata?: JobMetadata | null;
-  outputFilePath?: string | null;
+  response?: string;
+  projectDirectory?: string;
+  tokensSent?: number;
+  tokensReceived?: number;
+  totalTokens?: number;
+  charsReceived?: number;
+  statusMessage?: string;
+  errorMessage?: string;
+  modelUsed?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  includeSyntax?: boolean;
+  cleared?: boolean;
+  visible?: boolean;
+  metadata?: JobMetadata;
+  outputFilePath?: string;
 }
 
 // Session structure including background jobs and task settings
@@ -152,12 +152,12 @@ export type Session = {
   name: string; // User-provided name for the session
   projectDirectory: string;
   projectHash?: string; // Hashed project directory for database lookups
-  taskDescription: string; // Task description field
-  searchTerm: string; // Search filter for files
-  titleRegex: string; // Regex for file titles
-  contentRegex: string; // Regex for file contents
-  negativeTitleRegex: string; // Negative regex for file titles
-  negativeContentRegex: string; // Negative regex for file contents
+  taskDescription?: string; // Task description field
+  searchTerm?: string; // Search filter for files
+  titleRegex?: string; // Regex for file titles
+  contentRegex?: string; // Regex for file contents
+  negativeTitleRegex?: string; // Negative regex for file titles
+  negativeContentRegex?: string; // Negative regex for file contents
   titleRegexDescription?: string; // Natural language description for title regex
   contentRegexDescription?: string; // Natural language description for content regex
   negativeTitleRegexDescription?: string; // Natural language description for negative title regex
@@ -169,7 +169,7 @@ export type Session = {
   includedFiles: string[]; // Paths relative to projectDirectory that are selected
   forceExcludedFiles: string[]; // Paths forced excluded even if they match inclusion criteria
   backgroundJobs?: BackgroundJob[]; // Associated background jobs
-  codebaseStructure: string; // ASCII structure of codebase
+  codebaseStructure?: string; // ASCII structure of codebase
   searchSelectedFilesOnly: boolean; // Whether to search only in selected files
   modelUsed?: string; // The model used for this session
 };

@@ -26,7 +26,7 @@ interface RegexAccordionProps {
   disabled?: boolean;
 }
 
-export default function RegexAccordion({
+function RegexAccordion({
   titleRegexError,
   contentRegexError,
   negativeTitleRegexError,
@@ -234,3 +234,7 @@ export default function RegexAccordion({
     </div>
   );
 }
+
+RegexAccordion.displayName = "RegexAccordion";
+
+export default RegexAccordion;

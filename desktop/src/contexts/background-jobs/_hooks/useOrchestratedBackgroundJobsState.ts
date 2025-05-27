@@ -2,13 +2,14 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 
 import {
   type BackgroundJob,
   JOB_STATUSES,
 } from "@/types/session-types";
-import { areJobArraysEqual } from "@/utils/job-comparison-utils";
+import { areJobArraysEqual, areJobsEqual } from "@/utils/job-comparison-utils";
+import { logError, getErrorMessage } from "@/utils/error-handling";
 
 export interface UseOrchestratedBackgroundJobsStateParams {
   initialJobs?: BackgroundJob[];
@@ -79,14 +80,27 @@ export function useOrchestratedBackgroundJobsState({
       // Increment consecutive errors counter
       consecutiveErrorsRef.current += 1;
 
-      // Log the error
-      console.error(
-        `[BackgroundJobs] Error fetching jobs (attempt #${consecutiveErrorsRef.current}):`,
-        err
-      );
+      // Log the error with context
+      await logError(err, "Background Jobs - Fetch Jobs Failed", {
+        consecutiveErrors: consecutiveErrorsRef.current,
+        lastFetchTime,
+        initialLoad
+      });
 
-      // Update error state
-      setError(err instanceof Error ? err : new Error(String(err)));
+      // Create user-friendly error message
+      const errorMessage = getErrorMessage(err);
+      let userFriendlyMessage = "Failed to fetch background jobs";
+      
+      if (errorMessage.includes("network") || errorMessage.includes("connection")) {
+        userFriendlyMessage = "Network error loading jobs. Retrying automatically...";
+      } else if (errorMessage.includes("timeout")) {
+        userFriendlyMessage = "Request timed out loading jobs. Will retry shortly.";
+      } else if (consecutiveErrorsRef.current > 3) {
+        userFriendlyMessage = "Persistent error loading jobs. Please check your connection.";
+      }
+
+      // Update error state with user-friendly message
+      setError(new Error(userFriendlyMessage));
 
       return null;
     } finally {
@@ -99,7 +113,7 @@ export function useOrchestratedBackgroundJobsState({
         setInitialLoad(false);
       }
     }
-  }, [initialLoad]);
+  }, []);
 
   // Refresh jobs and update state
   const refreshJobs = useCallback(async () => {
@@ -153,7 +167,7 @@ export function useOrchestratedBackgroundJobsState({
             job.id === jobId
               ? {
                   ...job,
-                  status: "canceled",
+                  status: "canceled" as const,
                   errorMessage: "Canceled by user",
                   endTime: job.endTime || Date.now(),
                   updatedAt: Date.now(),
@@ -227,8 +241,8 @@ export function useOrchestratedBackgroundJobsState({
     const unlisten = listen("job_status_change", async (event) => {
       try {
         // The payload should include the job ID and potentially other metadata
-        const payload = event.payload as { job_id?: string; jobId?: string };
-        const jobId = payload.jobId || payload.job_id;
+        const payload = event.payload as { jobId: string; status: string; message?: string };
+        const jobId = payload.jobId;
 
         if (!jobId) {
           console.error(
@@ -251,18 +265,16 @@ export function useOrchestratedBackgroundJobsState({
           }
 
           // Update the jobs state
-          setJobs((prev) => {
-            // Find and replace the job in the array
-            const updatedJobs = prev.map((job) =>
-              job.id === updatedJob.id ? updatedJob : job
-            );
-
-            // If the job doesn't exist in our current state, add it
-            if (!prev.some((job) => job.id === updatedJob.id)) {
-              updatedJobs.push(updatedJob);
+          setJobs(prev => {
+            const existingJobIndex = prev.findIndex(j => j.id === updatedJob.id);
+            if (existingJobIndex !== -1) {
+              if (areJobsEqual(prev[existingJobIndex], updatedJob)) return prev; // No change
+              const newJobs = [...prev];
+              newJobs[existingJobIndex] = updatedJob;
+              return newJobs;
+            } else {
+              return [...prev, updatedJob]; // Add new job
             }
-
-            return updatedJobs;
           });
 
           // Update active jobs state
@@ -270,9 +282,8 @@ export function useOrchestratedBackgroundJobsState({
             const isJobActive = JOB_STATUSES.ACTIVE.includes(
               updatedJob.status as any
             );
-            const jobExistsInActive = prev.some(
-              (job) => job.id === updatedJob.id
-            );
+            const existingActiveIndex = prev.findIndex((job) => job.id === updatedJob.id);
+            const jobExistsInActive = existingActiveIndex !== -1;
 
             // If job should be active but isn't in the active list, add it
             if (isJobActive && !jobExistsInActive) {
@@ -284,11 +295,12 @@ export function useOrchestratedBackgroundJobsState({
               return prev.filter((job) => job.id !== updatedJob.id);
             }
 
-            // If job should be active and is already in the list, update it
+            // If job should be active and is already in the list, update it only if changed
             if (isJobActive && jobExistsInActive) {
-              return prev.map((job) =>
-                job.id === updatedJob.id ? updatedJob : job
-              );
+              if (areJobsEqual(prev[existingActiveIndex], updatedJob)) return prev; // No change
+              const newActiveJobs = [...prev];
+              newActiveJobs[existingActiveIndex] = updatedJob;
+              return newActiveJobs;
             }
 
             // Otherwise, no change to active jobs
@@ -330,23 +342,39 @@ export function useOrchestratedBackgroundJobsState({
     [jobs]
   );
 
-  return {
-    // State
-    jobs,
-    activeJobs,
-    isLoading,
-    error,
+  return useMemo(
+    () => ({
+      // State
+      jobs,
+      activeJobs,
+      isLoading,
+      error,
 
-    // Actions
-    cancelJob,
-    deleteJob,
-    clearHistory,
-    refreshJobs,
-    getJobById,
+      // Actions
+      cancelJob,
+      deleteJob,
+      clearHistory,
+      refreshJobs,
+      getJobById,
 
-    // For debugging/testing
-    isFetchingRef,
-    consecutiveErrorsRef,
-    lastFetchTime,
-  };
+      // For debugging/testing
+      isFetchingRef,
+      consecutiveErrorsRef,
+      lastFetchTime,
+    }),
+    [
+      jobs,
+      activeJobs,
+      isLoading,
+      error,
+      cancelJob,
+      deleteJob,
+      clearHistory,
+      refreshJobs,
+      getJobById,
+      isFetchingRef,
+      consecutiveErrorsRef,
+      lastFetchTime,
+    ]
+  );
 }

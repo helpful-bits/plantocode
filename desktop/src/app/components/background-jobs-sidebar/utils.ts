@@ -5,26 +5,23 @@ import { formatTimeAgo as formatTimeAgoUtil } from "@/utils/date-utils";
  * Helper function to safely parse job metadata
  */
 export const getParsedMetadata = (
-  metadata: JobMetadata | string | null | undefined
+  metadataInput: JobMetadata | string | null | undefined
 ): JobMetadata | null => {
-  if (!metadata) return null;
-
-  // If metadata is already an object, return it
-  if (typeof metadata === "object" && metadata !== null) {
-    return metadata;
+  if (!metadataInput) return null;
+  if (typeof metadataInput === 'object' && metadataInput !== null) {
+    return metadataInput as JobMetadata; // Already an object
   }
-
-  // Try to parse the string metadata
-  if (typeof metadata === "string") {
+  if (typeof metadataInput === 'string') {
     try {
-      return JSON.parse(metadata) as JobMetadata;
+      return JSON.parse(metadataInput) as JobMetadata;
     } catch (e) {
-      console.warn("Failed to parse job metadata:", e);
+      console.warn("Failed to parse job metadata string:", e, "String was:", metadataInput);
+      // Attempt to handle non-JSON string as a simple key-value if it makes sense
+      // or return a structured error/indicator. For now, null for unparsable.
       return null;
     }
   }
-
-  return null;
+  return null; // Should not happen if JobMetadata is string or object
 };
 
 /**

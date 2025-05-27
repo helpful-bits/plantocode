@@ -71,12 +71,13 @@ export async function improveSelectedTextAction(
     }
 
     // Call the Tauri command to improve text
-    const result = await invoke<{ job_id: string }>("improve_text_command", {
+    // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
+    const result = await invoke<{ jobId: string }>("improve_text_command", {
       sessionId: actualSessionId,
       text,
       improvementType,
       language,
-      projectDirectory: actualProjectDirectory,
+      projectDirectory: actualProjectDirectory || undefined,
       modelOverride,
       temperatureOverride,
       maxTokensOverride,
@@ -86,11 +87,11 @@ export async function improveSelectedTextAction(
     return {
       isSuccess: true,
       message: "Text improvement job started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
       metadata: {
         isBackgroundJob: true,
-        jobId: result.job_id,
-        operationId: result.job_id,
+        jobId: result.jobId,
+        operationId: result.jobId,
         targetField: targetFieldParam,
       },
     };

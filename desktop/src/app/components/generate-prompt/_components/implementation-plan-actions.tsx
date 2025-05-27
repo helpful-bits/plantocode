@@ -123,4 +123,6 @@ export const ImplementationPlanActions = ({
   );
 };
 
+ImplementationPlanActions.displayName = "ImplementationPlanActions";
+
 export default ImplementationPlanActions;

@@ -12,14 +12,13 @@ import {
 import { type TaskDescriptionHandle } from "../_components/task-description";
 import { useGenerateFormState } from "../_hooks/use-generate-form-state";
 import { useGeneratePromptDisplayState } from "../_hooks/use-generate-prompt-display-state";
-import { useGeneratePromptUI } from "../_hooks/use-generate-prompt-ui";
 // Removed backward compatibility hook
 import { useGuidanceGeneration } from "../_hooks/use-guidance-generation";
 import { useImplementationPlanActions } from "../_hooks/use-implementation-plan-actions";
 import { useGeneratePromptRegexState } from "../_hooks/use-generate-prompt-regex-state";
 import { useSessionMetadata } from "../_hooks/use-session-metadata";
 import { useTaskDescriptionState } from "../_hooks/use-task-description-state";
-import { generateDirectoryTree } from "@/utils/directory-tree";
+import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
 
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
@@ -52,7 +51,6 @@ export function GeneratePromptFeatureProvider({
   const taskDescriptionRef = useRef<TaskDescriptionHandle>(null);
 
   // State management hooks
-  useGeneratePromptUI();
 
   const formState = useGenerateFormState({
     activeSessionId: sessionState.currentSession?.id || null,
@@ -62,14 +60,16 @@ export function GeneratePromptFeatureProvider({
 
   // Handle user interactions that modify session
   const handleInteraction = useCallback(() => {
-    if (
-      sessionState.currentSession?.id &&
-      !sessionState.isSessionLoading &&
-      formState.sessionInitialized
-    ) {
-      sessionActions.setSessionModified(true);
-    }
-  }, [sessionState.currentSession?.id, sessionState.isSessionLoading, formState.sessionInitialized, sessionActions]);
+    sessionActions.setSessionModified(true);
+  }, [sessionActions]);
+
+  // Handle guidance generation callback
+  const handleGuidanceGenerated = useCallback((newText: string) => {
+    sessionActions.updateCurrentSessionFields({ taskDescription: newText });
+  }, [sessionActions]);
+
+  // Note: Removed simple pass-through actions (setSessionName, saveSessionState, setHasUnsavedChanges)
+  // Components should use useSessionActionsContext directly for these
 
   const sessionMetadata = useSessionMetadata({
     onInteraction: handleInteraction,
@@ -77,29 +77,23 @@ export function GeneratePromptFeatureProvider({
   });
 
   const taskState = useTaskDescriptionState({
-    taskDescription: sessionState.currentSession?.taskDescription || "",
-    activeSessionId: sessionState.currentSession?.id || null,
+    activeSessionId: sessionState.activeSessionId,
     taskDescriptionRef,
     onInteraction: handleInteraction,
   });
 
   const regexState = useGeneratePromptRegexState({
-    taskDescription: sessionState.currentSession?.taskDescription || "",
     handleInteraction,
   });
 
   const guidanceGeneration = useGuidanceGeneration({
-    taskDescription: sessionState.currentSession?.taskDescription || "",
     projectDirectory: projectDirectory || "",
-    onGuidanceGenerated: (newText: string) => 
-      sessionActions.updateCurrentSessionFields({ taskDescription: newText }),
+    onGuidanceGenerated: handleGuidanceGenerated,
     onInteraction: handleInteraction,
   });
 
   // Use the simplified display state hook
-  const displayState = useGeneratePromptDisplayState({
-    taskDescription: sessionState.currentSession?.taskDescription || "",
-  });
+  const displayState = useGeneratePromptDisplayState();
 
   const implementationPlanActions = useImplementationPlanActions();
 
@@ -110,7 +104,7 @@ export function GeneratePromptFeatureProvider({
     sessionActions.setSessionModified(false);
     taskState.reset();
     regexState.reset();
-  }, [sessionMetadata, formState, sessionActions, taskState, regexState]);
+  }, [sessionMetadata.reset, formState.resetFormState, sessionActions.setSessionModified, taskState.reset, regexState.reset]);
 
   // Handler for generating codebase directory tree
   const handleGenerateCodebase = useCallback(async () => {
@@ -123,18 +117,18 @@ export function GeneratePromptFeatureProvider({
       return;
     }
 
-    const jobId = await generateDirectoryTree(projectDirectory);
-    if (!jobId) {
+    const result = await createGenerateDirectoryTreeJobAction("system", projectDirectory, undefined);
+    if (!result.isSuccess || !result.data?.jobId) {
       showNotification({
-        title: "Generate Codebase",
-        message: "Failed to start directory tree generation",
-        type: "error",
+        title: "Error",
+        message: result.message || "Failed to start generation", 
+        type: "error"
       });
     } else {
       showNotification({
-        title: "Generate Codebase",
-        message: "Directory tree generation started",
-        type: "success",
+        title: "Success",
+        message: "Generation started",
+        type: "success"
       });
     }
   }, [projectDirectory, showNotification]);
@@ -160,16 +154,12 @@ export function GeneratePromptFeatureProvider({
         projectDataLoading: formState.projectDataLoading,
       },
       actions: {
-        // Core actions
+        // Core actions (complex orchestrations only)
         resetAllState,
-        setSessionName: (name: string) =>
-          sessionActions.updateCurrentSessionFields({ name }),
-        saveSessionState: async (_sessionId: string, _stateToSave?: Record<string, unknown>) => {
-          // The _stateToSave and _sessionId params are from the original type, but saveCurrentSession doesn't use them.
-          // We just call saveCurrentSession and adapt the return type to void.
-          await sessionActions.saveCurrentSession();
-        },
-        flushPendingSaves: () => sessionActions.flushSaves(),
+        setSessionName: (name: string) => sessionActions.renameActiveSession(name),
+        saveSessionState: async () => { await sessionActions.saveCurrentSession(); },
+        flushPendingSaves: async () => { await sessionActions.flushSaves(); return true; },
+        setHasUnsavedChanges: sessionActions.setSessionModified,
         getCurrentSessionState: () => ({
           projectDirectory: projectDirectory || "",
           taskDescription: sessionState.currentSession?.taskDescription || "",
@@ -187,23 +177,29 @@ export function GeneratePromptFeatureProvider({
           codebaseStructure: sessionState.currentSession?.codebaseStructure || "",
           // Include model used from current session if available, or use a default
           modelUsed: sessionState.currentSession?.modelUsed || undefined,
+          createdAt: sessionState.currentSession?.createdAt || Date.now(),
         }),
         setSessionInitialized: formState.setSessionInitialized,
-        setHasUnsavedChanges: (value: boolean) =>
-          sessionActions.setSessionModified(value),
-        handleInteraction: handleInteraction,
+        handleInteraction,
         handleGenerateCodebase,
       },
     }),
     [
       sessionState.currentSession?.id,
       sessionState.currentSession?.name,
+      sessionState.currentSession?.taskDescription,
+      sessionState.currentSession?.titleRegex,
+      sessionState.currentSession?.contentRegex,
+      sessionState.currentSession?.negativeTitleRegex,
+      sessionState.currentSession?.negativeContentRegex,
+      sessionState.currentSession?.isRegexActive,
       sessionState.currentSession?.searchTerm,
       sessionState.currentSession?.includedFiles,
       sessionState.currentSession?.forceExcludedFiles,
       sessionState.currentSession?.searchSelectedFilesOnly,
       sessionState.currentSession?.codebaseStructure,
       sessionState.currentSession?.modelUsed,
+      sessionState.currentSession?.createdAt,
       sessionState.isSessionLoading,
       sessionState.isSessionModified,
       sessionActions,
@@ -213,12 +209,12 @@ export function GeneratePromptFeatureProvider({
       formState.isFormSaving,
       formState.error,
       formState.projectDataLoading,
+      formState.setSessionInitialized,
       projectDirectory,
       sessionMetadata.sessionName,
       handleInteraction,
       resetAllState,
       handleGenerateCodebase,
-      formState.setSessionInitialized,
     ]
   );
 
@@ -307,12 +303,29 @@ export function GeneratePromptFeatureProvider({
       regexState.isGeneratingTaskRegex,
       regexState.generatingRegexJobId,
       regexState.regexGenerationError,
+      regexState.titleRegexDescription,
+      regexState.contentRegexDescription,
+      regexState.negativeTitleRegexDescription,
+      regexState.negativeContentRegexDescription,
+      regexState.regexSummaryExplanation,
+      regexState.generatingFieldType,
+      regexState.generatingFieldJobId,
+      regexState.fieldRegexGenerationError,
+      regexState.isGeneratingSummaryExplanation,
+      regexState.generatingSummaryJobId,
+      regexState.summaryGenerationError,
       regexState.setTitleRegex,
       regexState.setContentRegex,
       regexState.setNegativeTitleRegex,
       regexState.setNegativeContentRegex,
       regexState.setIsRegexActive,
+      regexState.setTitleRegexDescription,
+      regexState.setContentRegexDescription,
+      regexState.setNegativeTitleRegexDescription,
+      regexState.setNegativeContentRegexDescription,
       regexState.handleGenerateRegexFromTask,
+      regexState.handleGenerateRegexForField,
+      regexState.handleGenerateSummaryExplanation,
       regexState.applyRegexPatterns,
       regexState.handleClearPatterns,
       regexState.reset
@@ -393,3 +406,5 @@ export function GeneratePromptFeatureProvider({
     </CorePromptContextProvider>
   );
 };
+
+GeneratePromptFeatureProvider.displayName = "GeneratePromptFeatureProvider";

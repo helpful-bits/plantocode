@@ -31,29 +31,79 @@ export function useFileFiltering({
   filterMode,
   regexPatterns,
 }: UseFileFilteringProps) {
-  // Extract the filtering logic from FileBrowser component
-  const {
-    filteredFiles,
-    titleRegexError,
-    contentRegexError,
-    negativeTitleRegexError,
-    negativeContentRegexError,
-  } = useMemo(() => {
-    // Default values
-    let titleRegexErrorInLoop = null;
-    let contentRegexErrorInLoop = null;
-    let negativeTitleRegexErrorInLoop = null;
-    let negativeContentRegexErrorInLoop = null;
+  // Memoize regex objects to prevent unnecessary recreation
+  const compiledRegexObjects = useMemo(() => {
+    const titleRegexTrimmed = regexPatterns.titleRegex.trim();
+    const contentRegexTrimmed = regexPatterns.contentRegex.trim();
+    const negativeTitleRegexTrimmed = regexPatterns.negativeTitleRegex.trim();
+    const negativeContentRegexTrimmed = regexPatterns.negativeContentRegex.trim();
 
+    // Compile title regex with error handling
+    let titleRegexObj: RegExp | null = null;
+    if (titleRegexTrimmed) {
+      try {
+        titleRegexObj = new RegExp(titleRegexTrimmed, "i");
+      } catch (e) {
+        console.warn("Invalid title regex in useFileFiltering:", e);
+        titleRegexObj = null;
+      }
+    }
+
+    // Compile content regex with error handling
+    let contentRegexObj: RegExp | null = null;
+    if (contentRegexTrimmed) {
+      try {
+        contentRegexObj = new RegExp(contentRegexTrimmed, "im");
+      } catch (e) {
+        console.warn("Invalid content regex in useFileFiltering:", e);
+        contentRegexObj = null;
+      }
+    }
+
+    // Compile negative title regex with error handling
+    let negativeTitleRegexObj: RegExp | null = null;
+    if (negativeTitleRegexTrimmed) {
+      try {
+        negativeTitleRegexObj = new RegExp(negativeTitleRegexTrimmed, "i");
+      } catch (e) {
+        console.warn("Invalid negative title regex in useFileFiltering:", e);
+        negativeTitleRegexObj = null;
+      }
+    }
+
+    // Compile negative content regex with error handling
+    let negativeContentRegexObj: RegExp | null = null;
+    if (negativeContentRegexTrimmed) {
+      try {
+        negativeContentRegexObj = new RegExp(negativeContentRegexTrimmed, "im");
+      } catch (e) {
+        console.warn("Invalid negative content regex in useFileFiltering:", e);
+        negativeContentRegexObj = null;
+      }
+    }
+
+    return {
+      titleRegexObj,
+      contentRegexObj,
+      negativeTitleRegexObj,
+      negativeContentRegexObj,
+      titleRegexTrimmed,
+      contentRegexTrimmed,
+      negativeTitleRegexTrimmed,
+      negativeContentRegexTrimmed
+    };
+  }, [
+    regexPatterns.titleRegex,
+    regexPatterns.contentRegex,
+    regexPatterns.negativeTitleRegex,
+    regexPatterns.negativeContentRegex
+  ]);
+
+  // Extract the filtering logic from FileBrowser component
+  const filteredFiles = useMemo(() => {
     // Skip filtering if files are empty
     if (!managedFilesMap || Object.keys(managedFilesMap).length === 0) {
-      return {
-        filteredFiles: [],
-        titleRegexError: titleRegexErrorInLoop,
-        contentRegexError: contentRegexErrorInLoop,
-        negativeTitleRegexError: negativeTitleRegexErrorInLoop,
-        negativeContentRegexError: negativeContentRegexErrorInLoop,
-      };
+      return [];
     }
 
     // Start with all files from the managedFilesMap
@@ -85,67 +135,16 @@ export function useFileFiltering({
 
     // --- 3. THIRD, Apply Regex Filtering (if filter mode is 'regex') ---
     if (filterMode === "regex") {
-      // Process positive regex patterns
-      const titleRegexTrimmed = regexPatterns.titleRegex.trim();
-      const contentRegexTrimmed = regexPatterns.contentRegex.trim();
-
-      // Compile title regex with error handling
-      let titleRegexObj: RegExp | null = null;
-      if (titleRegexTrimmed) {
-        try {
-          titleRegexObj = new RegExp(titleRegexTrimmed, "i"); // Use case-insensitive flag
-          titleRegexErrorInLoop = null; // Clear error if regex is valid
-        } catch (e) {
-          titleRegexErrorInLoop =
-            e instanceof Error ? e.message : "Invalid title regex";
-          console.error("Title Regex Error:", e);
-        }
-      }
-
-      // Compile content regex with error handling
-      let contentRegexObj: RegExp | null = null;
-      if (contentRegexTrimmed) {
-        try {
-          contentRegexObj = new RegExp(contentRegexTrimmed, "im"); // Use multiline and case-insensitive flags
-          contentRegexErrorInLoop = null; // Clear error if regex is valid
-        } catch (e) {
-          contentRegexErrorInLoop =
-            e instanceof Error ? e.message : "Invalid content regex";
-          console.error("Content Regex Error:", e);
-        }
-      }
-
-      // Compile negative title regex with error handling
-      const negativeTitleRegexTrimmed = regexPatterns.negativeTitleRegex.trim();
-      let negativeTitleRegexObj: RegExp | null = null;
-      if (negativeTitleRegexTrimmed) {
-        try {
-          negativeTitleRegexObj = new RegExp(negativeTitleRegexTrimmed, "i"); // Use case-insensitive flag
-          negativeTitleRegexErrorInLoop = null; // Clear error if regex is valid
-        } catch (e) {
-          negativeTitleRegexErrorInLoop =
-            e instanceof Error ? e.message : "Invalid negative title regex";
-          console.error("Negative Title Regex Error:", e);
-        }
-      }
-
-      // Compile negative content regex with error handling
-      const negativeContentRegexTrimmed =
-        regexPatterns.negativeContentRegex.trim();
-      let negativeContentRegexObj: RegExp | null = null;
-      if (negativeContentRegexTrimmed) {
-        try {
-          negativeContentRegexObj = new RegExp(
-            negativeContentRegexTrimmed,
-            "im"
-          ); // Use multiline and case-insensitive flags
-          negativeContentRegexErrorInLoop = null; // Clear error if regex is valid
-        } catch (e) {
-          negativeContentRegexErrorInLoop =
-            e instanceof Error ? e.message : "Invalid negative content regex";
-          console.error("Negative Content Regex Error:", e);
-        }
-      }
+      const {
+        titleRegexObj,
+        contentRegexObj,
+        negativeTitleRegexObj,
+        negativeContentRegexObj,
+        titleRegexTrimmed,
+        contentRegexTrimmed,
+        negativeTitleRegexTrimmed,
+        negativeContentRegexTrimmed
+      } = compiledRegexObjects;
 
       const hasFileContents = Object.keys(fileContentsMap).length > 0;
 
@@ -209,29 +208,16 @@ export function useFileFiltering({
       }
     }
 
-    return {
-      filteredFiles: filteredFilesInLoop,
-      titleRegexError: titleRegexErrorInLoop,
-      contentRegexError: contentRegexErrorInLoop,
-      negativeTitleRegexError: negativeTitleRegexErrorInLoop,
-      negativeContentRegexError: negativeContentRegexErrorInLoop,
-    };
+    return filteredFilesInLoop;
   }, [
     managedFilesMap,
     searchTerm,
     filterMode,
-    regexPatterns.titleRegex,
-    regexPatterns.contentRegex,
-    regexPatterns.negativeTitleRegex,
-    regexPatterns.negativeContentRegex,
+    compiledRegexObjects,
     fileContentsMap,
   ]);
 
   return {
     filteredFiles,
-    titleRegexError,
-    contentRegexError,
-    negativeTitleRegexError,
-    negativeContentRegexError,
   };
 }

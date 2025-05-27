@@ -1,26 +1,13 @@
 import { type ActionState } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
+import { type ListFilesResponse } from "@/utils/tauri-fs";
 
 // Request arguments for list_files_command - matches Rust struct
 export interface ListFilesRequestArgs {
   directory: string;
   pattern?: string;
-  include_stats?: boolean;
+  includeStats?: boolean;
   exclude?: string[];
-}
-
-// Response structure for list_files_command - matches Rust struct
-export interface ListFilesResponse {
-  files: string[]; // List of file paths relative to the queried directory
-  stats?: Array<{
-    path: string; // Relative path to the queried directory
-    size: number;
-    modified_ms: number;
-    created_ms?: number;
-    accessed_ms?: number;
-  }>;
-  warning?: string;
-  total_found_before_filtering?: number;
 }
 
 /**
@@ -42,7 +29,7 @@ export async function listProjectFilesAction(
     const response = await invoke<ListFilesResponse>("list_files_command", {
       directory: args.directory,
       pattern: args.pattern,
-      includeStats: args.include_stats,
+      includeStats: args.includeStats,
       exclude: args.exclude,
     });
 

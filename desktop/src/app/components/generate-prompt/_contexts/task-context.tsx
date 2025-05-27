@@ -1,4 +1,4 @@
-import React, { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import {
   type TaskContextValue,
@@ -9,10 +9,10 @@ import {
 // Create the context with a default value
 const defaultValue: TaskContextValue = {
   state: {
-    taskDescriptionRef: React.createRef(), // Create a ref object instead of null
+    taskDescriptionRef: { current: null }, // Provide a stable, null-initialized ref object
     isGeneratingGuidance: false,
     isImprovingText: false,
-    textImprovementJobId: null,
+    textImprovementJobId: undefined,
   },
   actions: {
     // These default implementations will be replaced by actual implementations
@@ -46,3 +46,5 @@ export const TaskContextProvider = ({
 }: TaskContextProviderProps) => {
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
 };
+
+TaskContextProvider.displayName = "TaskContextProvider";

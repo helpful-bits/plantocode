@@ -6,10 +6,8 @@
 // Export session-related types (prioritized for job types)
 export * from "./session-types";
 
-// Export action-related types with renamed conflicts
+// Export action-related types
 export type {
-  TaskType as ActionTaskType,
-  TaskSettings as ActionTaskSettings,
   ActionState,
   FileInfo,
 } from "./action-types";

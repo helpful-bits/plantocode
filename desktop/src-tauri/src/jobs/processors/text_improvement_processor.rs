@@ -11,13 +11,18 @@ use crate::api_clients::client_trait::ApiClientOptions;
 use crate::prompts::text_improvement::{generate_text_improvement_system_prompt, generate_text_improvement_user_prompt};
 use crate::db_utils::BackgroundJobRepository;
 use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
+use crate::utils::xml_utils::extract_xml_from_markdown;
 
 // Define structs for parsing the XML response
 #[derive(Debug, Deserialize, Serialize, Default)]
 struct TextImprovementResponseXml {
+    #[serde(default)]
     analysis: Option<String>,
-    improved_text: String,
+    #[serde(default)]
+    improved_text: Option<String>,
+    #[serde(default)]
     changes: Option<ChangesXml>,
+    #[serde(default)]
     recommendations: Option<RecommendationsXml>,
 }
 
@@ -151,21 +156,28 @@ impl JobProcessor for TextImprovementProcessor {
             return Err(AppError::JobError("No response content received from API".to_string()));
         };
         
-        // Parse the XML from the response content
-        let xml_response: Result<TextImprovementResponseXml, _> = quick_xml::de::from_str(&response_content);
+        // Extract XML from markdown code blocks if present
+        let clean_xml_content = extract_xml_from_markdown(&response_content);
+        debug!("Original response length: {}, Cleaned XML length: {}", response_content.len(), clean_xml_content.len());
+        
+        // Parse the XML from the cleaned content
+        let xml_response: Result<TextImprovementResponseXml, _> = quick_xml::de::from_str(&clean_xml_content);
         
         let parsed_response = match xml_response {
             Ok(result) => result,
             Err(e) => {
                 error!("Failed to parse XML response: {}", e);
                 
-                // Attempt to extract just the improved text if XML parsing fails
-                // This is a fallback if the AI doesn't properly format as XML
-                let improved_text = response_content;
+                // Use cleaned XML content as fallback, or original response if cleaning resulted in empty string
+                let improved_text = if !clean_xml_content.is_empty() {
+                    clean_xml_content
+                } else {
+                    response_content
+                };
                 
                 // Create a basic response with just the text
                 TextImprovementResponseXml {
-                    improved_text,
+                    improved_text: Some(improved_text),
                     analysis: None,
                     changes: None,
                     recommendations: None,
@@ -177,6 +189,11 @@ impl JobProcessor for TextImprovementProcessor {
         let tokens_sent = response.usage.as_ref().map(|u| u.prompt_tokens as i32);
         let tokens_received = response.usage.as_ref().map(|u| u.completion_tokens as i32);
         let total_tokens = response.usage.as_ref().map(|u| u.total_tokens as i32);
+        
+        // Get the improved text, falling back to original if missing
+        let improved_text = parsed_response.improved_text
+            .clone()
+            .unwrap_or_else(|| payload.text_to_improve.clone());
         
         // Serialize the detailed analysis data for storing in metadata
         let metadata = serde_json::json!({
@@ -192,19 +209,18 @@ impl JobProcessor for TextImprovementProcessor {
         // Update the job with the response and metadata
         repo.update_job_response(
             &job_id, 
-            &parsed_response.improved_text,
+            &improved_text,
             Some(JobStatus::Completed),
             Some(&metadata.to_string()),
             tokens_sent,
             tokens_received,
             total_tokens,
-            Some(parsed_response.improved_text.len() as i32),
+            Some(improved_text.len() as i32),
         ).await?;
         
         info!("Completed Text Improvement job {}", job_id);
         info!("Tokens sent: {:?}, Tokens received: {:?}", tokens_sent, tokens_received);
         
-        let improved_text = parsed_response.improved_text.clone();
         let text_len = improved_text.len() as i32;
         
         Ok(JobProcessResult::success(job_id, improved_text)

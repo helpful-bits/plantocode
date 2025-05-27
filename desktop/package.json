@@ -20,7 +20,6 @@
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md,html,css,scss,yaml,yml}\"",
     "check:all": "pnpm typecheck && pnpm lint && pnpm format:check",
     "prepare": "husky",
-    "generate:types": "node ./scripts/generate-tauri-types.mjs",
     "postinstall": "pnpm generate:types"
   },
   "workspaces": [

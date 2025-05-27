@@ -6,9 +6,7 @@
  */
 
 import {
-  resolve,
   dirname,
-  normalize,
   extname,
 } from "@tauri-apps/api/path";
 import {
@@ -20,6 +18,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 
 import { createError, ErrorType } from "@/utils/error-handling";
+import { normalizePath as tauriNormalizePath, pathJoin } from "@/utils/tauri-fs";
 
 /**
  * Ensures a path is within a specified root directory to prevent path traversal vulnerabilities
@@ -33,8 +32,8 @@ export async function ensureSafePath(
   targetPath: string
 ): Promise<string> {
   // Normalize paths to absolute paths
-  const normalizedRoot = await resolve(rootDir);
-  const normalizedTarget = await resolve(normalizedRoot, targetPath);
+  const normalizedRoot = await tauriNormalizePath(rootDir);
+  const normalizedTarget = await tauriNormalizePath(await pathJoin(normalizedRoot, targetPath));
 
   // Check if the target path is within the root directory
   if (!normalizedTarget.startsWith(normalizedRoot)) {
@@ -216,7 +215,7 @@ export async function safeFileExists(
  */
 export async function sanitizePath(filePath: string): Promise<string> {
   // Normalize the path (resolve .. and .)
-  const normalized = await normalize(filePath);
+  const normalized = await tauriNormalizePath(filePath);
 
   // Remove any null bytes which can be used in some path traversal attacks
   const withoutNullBytes = normalized.replace(/\0/g, "");

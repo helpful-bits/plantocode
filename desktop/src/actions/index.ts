@@ -11,8 +11,8 @@
 // Export grouped actions by domain
 export * from "./background-jobs";
 export * from "./ai";
-export * from "./file-system.actions";
+export * from "./file-system";
 export * from "./path-finder";
 export * from "./project-settings.actions";
 export * from "./session";
-export * from "./voice.actions";
+export * from "./voice-transcription";

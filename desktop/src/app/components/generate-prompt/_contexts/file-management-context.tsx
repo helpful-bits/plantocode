@@ -20,9 +20,9 @@ export interface FileManagementContextValue {
   isLoadingFiles: boolean;
   isInitialized: boolean;
   isFindingFiles: boolean;
-  findingFilesJobId: string | null;
+  findingFilesJobId?: string;
   fileContentsMap: Record<string, string>;
-  fileLoadError: string | null;
+  fileLoadError?: string;
   findFilesMode: "replace" | "extend";
   canUndo: boolean;
   canRedo: boolean;

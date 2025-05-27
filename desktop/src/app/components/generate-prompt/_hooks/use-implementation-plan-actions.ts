@@ -1,11 +1,13 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
+import { AppError, ErrorType } from "@/utils/error-handling";
+import { handleActionError } from "@/utils/action-utils";
 
 /**
  * Hook for managing implementation plan UI interactions
@@ -54,7 +56,7 @@ export function useImplementationPlanActions() {
 
       try {
         // Call the Tauri command directly
-        await invoke<{ job_id: string }>(
+        await invoke<{ jobId: string }>(
           "create_implementation_plan_command",
           {
             sessionId: activeSessionId,
@@ -85,13 +87,30 @@ export function useImplementationPlanActions() {
         // Reset UI state
         setPlanCreationState("idle");
 
+        // Use standardized error handling to get ActionState
+        const errorState = handleActionError(error);
+        
+        // Check for billing errors
+        if (errorState.error instanceof AppError && errorState.error.type === ErrorType.BILLING_ERROR) {
+          showNotification({
+            title: "Upgrade Required",
+            message: errorState.error.message || "This feature or model requires a higher subscription plan.",
+            type: "warning",
+            duration: 10000,
+            actionButton: {
+              label: "View Subscription",
+              onClick: () => window.location.pathname = '/settings',
+              variant: "default",
+              className: "bg-primary text-primary-foreground hover:bg-primary/90"
+            }
+          });
+          return;
+        }
+
         // Notify the user
         showNotification({
           title: "Implementation Plan Creation Failed",
-          message:
-            error instanceof Error
-              ? error.message
-              : "An unknown error occurred.",
+          message: errorState.message || "An unknown error occurred.",
           type: "error",
         });
       }
@@ -99,12 +118,15 @@ export function useImplementationPlanActions() {
     [projectDirectory, activeSessionId, showNotification]
   );
 
-  return {
-    // UI state
-    isCreatingPlan,
-    planCreationState,
+  return useMemo(
+    () => ({
+      // UI state
+      isCreatingPlan,
+      planCreationState,
 
-    // Actions
-    handleCreateImplementationPlan,
-  };
+      // Actions
+      handleCreateImplementationPlan,
+    }),
+    [isCreatingPlan, planCreationState, handleCreateImplementationPlan]
+  );
 }

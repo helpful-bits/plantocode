@@ -199,4 +199,6 @@ const SessionList = ({
   );
 };
 
+SessionList.displayName = "SessionList";
+
 export default SessionList;

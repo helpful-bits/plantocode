@@ -3,7 +3,7 @@ use log::info;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus, ApiType, TaskType};
+use crate::models::{BackgroundJob, JobStatus, ApiType, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use std::sync::Arc;
 use crate::jobs::types::{Job, JobPayload, JobType, GuidanceGenerationPayload};
@@ -35,7 +35,7 @@ pub async fn generate_guidance_command(
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
     app_handle: AppHandle
-) -> AppResult<String> {
+) -> AppResult<JobCommandResponse> {
     info!("Creating guidance generation job for task: {}", task_description);
     
     // Recreate args struct for internal use
@@ -115,7 +115,7 @@ pub async fn generate_guidance_command(
     
     // Create additional metadata for the job
     let mut extra_metadata = serde_json::json!({
-        "task_description": args.task_description,
+        "taskDescription": args.task_description,
     });
     
     // Add optional fields to metadata
@@ -125,7 +125,7 @@ pub async fn generate_guidance_command(
     }
     
     if let Some(file_contents_summary) = &args.file_contents_summary {
-        extra_metadata["file_contents_summary"] = serde_json::to_value(file_contents_summary)
+        extra_metadata["fileContentsSummary"] = serde_json::to_value(file_contents_summary)
             .map_err(|e| AppError::SerdeError(e.to_string()))?;
     }
     
@@ -146,5 +146,5 @@ pub async fn generate_guidance_command(
     ).await?;
     
     info!("Created guidance generation job: {}", job_id);
-    Ok(job_id)
+    Ok(JobCommandResponse { job_id })
 }

@@ -10,15 +10,11 @@ import { useNotification } from "@/contexts/notification-context";
 
 interface RequireProjectDirectoryProps {
   children: ReactNode;
-  title?: string;
-  description?: string;
 }
 
 
 export function RequireProjectDirectory({
   children,
-  title: _title, // Prefix with _ to indicate unused
-  description: _description, // Prefix with _ to indicate unused
 }: RequireProjectDirectoryProps) {
   const { projectDirectory, setProjectDirectory } = useProject();
   const { showNotification } = useNotification();

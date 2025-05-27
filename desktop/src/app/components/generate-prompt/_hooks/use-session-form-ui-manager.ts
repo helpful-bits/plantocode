@@ -76,7 +76,7 @@ export function useSessionFormUIManager({
         return Promise.reject(error);
       }
     },
-    [sessionState.currentSession, sessionActions, onSessionTransition]
+    [sessionState.currentSession?.id, sessionActions, onSessionTransition]
   );
 
   // Handle session creation from UI form
@@ -121,9 +121,13 @@ export function useSessionFormUIManager({
 
   // Handle session rename from UI
   const handleSessionRename = useCallback(
-    async (_sessionId: string, newName: string) => { // Prefix with underscore to mark as unused
+    async (sessionId: string, newName: string) => {
       try {
-        await sessionActions.renameActiveSession(newName);
+        if (sessionId === sessionState.activeSessionId) {
+          await sessionActions.renameActiveSession(newName);
+        } else {
+          await sessionActions.renameSession(sessionId, newName);
+        }
       } catch (error) {
         console.error(
           "[useSessionFormUIManager] Error renaming session:",
@@ -131,7 +135,7 @@ export function useSessionFormUIManager({
         );
       }
     },
-    [sessionActions]
+    [sessionState.activeSessionId, sessionActions]
   );
 
   // Filter sessions based on the search term

@@ -9,15 +9,18 @@
  * - Subscription management
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { AppShell } from "@/app/components/app-shell";
+import { isTauriEnvironment } from "@/utils/platform";
 import { AuthFlowManager } from "@/app/components/auth/auth-flow-manager";
 import { ProvidersWrapper } from "@/app/components/providers-wrapper";
 import { ThemeProvider } from "@/app/components/theme-provider";
 import CoreHomePage from "@/app/page";
+import SettingsPage from "@/app/settings/page";
 import { AuthProvider } from "@/contexts/auth-context";
+import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
 import { Toaster } from "@/ui/toaster";
 
@@ -25,55 +28,149 @@ import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
 import { DesktopEnvironmentProvider } from "./providers/desktop-bridge-provider";
 
+// Simple router component to handle path changes
+function Router() {
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const handlePathChange = () => {
+      const newPath = window.location.pathname;
+      setCurrentPath(newPath);
+      // Dispatch custom event for other components
+      window.dispatchEvent(new CustomEvent('routeChange', { detail: { path: newPath } }));
+    };
+
+    // Initial dispatch
+    handlePathChange();
+
+    window.addEventListener('popstate', handlePathChange);
+
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function(state, title, url) {
+      originalPushState.call(window.history, state, title, url);
+      handlePathChange(); // This already calls dispatch
+    };
+
+    return () => {
+      window.removeEventListener('popstate', handlePathChange);
+      window.history.pushState = originalPushState;
+    };
+  }, []); // Empty dependency array for mount/unmount logic
+
+  switch (currentPath) {
+    case '/settings':
+      return <SettingsPage />;
+    case '/':
+    default:
+      return <CoreHomePage />;
+  }
+}
+
+// Safe app structure to ensure proper provider nesting and prevent remounting
+function SafeAppContent() {
+  // Only render the auth-dependent components when needed
+  return (
+    <ThemeProvider defaultTheme="system" enableSystem>
+      <RuntimeConfigProvider>
+        <AuthProvider>
+          <DesktopEnvironmentProvider>
+            <UILayoutProvider>
+              <AuthFlowManager>
+                <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
+                  {/* App Shell Component */}
+                  <AppShell>
+                    {/* Router handles different pages */}
+                    <Router />
+                  </AppShell>
+                  {/* Toaster needs to be within ProvidersWrapper to access notification context */}
+                  <Toaster />
+                </ProvidersWrapper>
+              </AuthFlowManager>
+            </UILayoutProvider>
+          </DesktopEnvironmentProvider>
+        </AuthProvider>
+      </RuntimeConfigProvider>
+    </ThemeProvider>
+  );
+}
+
 // Main application with authentication wrapper
 export default function App() {
   const [appReady, setAppReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
+  // Memoize the initialization function to ensure it only runs once
+  const initializeApp = useCallback(() => {
+    try {
+      // Validate environment
+      if (typeof window === "undefined") {
+        throw new Error("Application must run in a browser environment");
+      }
+
+      // Check if Tauri is available for desktop functionality
+      if (isTauriEnvironment()) {
+        // Use a logger that can be configured instead of console.log
+        // eslint-disable-next-line no-console
+        console.log("[App] Tauri environment detected, checking for pending deep links...");
+      } else {
+        console.warn("[App] Tauri not detected - some features may be limited");
+      }
+
+      setAppReady(true);
+    } catch (err) {
+      console.error("Failed to initialize app:", err);
+      setInitError(
+        err instanceof Error
+          ? `Initialization Error: ${err.message}`
+          : "Failed to initialize application"
+      );
+    }
+  }, []);
+
   // Set app as ready after ensuring environment is initialized
   useEffect(() => {
-    const initializeApp = () => {
-      try {
-        // Check if there are deep links waiting to be processed
-        if (typeof window !== "undefined" && window.__TAURI_IPC__) {
-          // Use a logger that can be configured instead of console.log
-          // eslint-disable-next-line no-console
-          console.log("[App] Checking for pending deep links...");
-        }
-
-        setAppReady(true);
-      } catch (err) {
-        console.error("Failed to initialize app:", err);
-        setInitError(
-          err instanceof Error
-            ? `Initialization Error: ${err.message}`
-            : "Failed to initialize application"
-        );
-      }
-    };
-
-    void initializeApp();
-  }, []);
+    initializeApp();
+  }, [initializeApp]);
 
   // Listen for app close event to handle unsaved changes
   useEffect(() => {
-    if (typeof window === "undefined" || !window.__TAURI_IPC__) {
+    if (typeof window === "undefined" || !isTauriEnvironment()) {
       return;
     }
 
     const setupAppCloseListener = async () => {
-      const unlisten = await listen("app-will-close", () => {
-        // This event is emitted when the user tries to close the app
-        // The session context will handle saving if needed
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("app-will-close"));
-        }
-      });
+      try {
+        const unlisten = await listen("app-will-close", () => {
+          // This event is emitted when the user tries to close the app
+          // The session context will handle saving if needed
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("app-will-close"));
+          }
+        });
 
-      return unlisten;
+        return unlisten;
+      } catch (error) {
+        console.error("Failed to setup app close listener:", error);
+        // Don't throw - this is a non-critical feature
+        return () => {}; // Return a no-op cleanup function
+      }
     };
 
-    void setupAppCloseListener();
+    let cleanup: (() => void) | undefined;
+    
+    setupAppCloseListener()
+      .then((unlistenFn) => {
+        cleanup = unlistenFn;
+      })
+      .catch((error) => {
+        console.error("Error setting up app close listener:", error);
+      });
+
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
   }, []);
 
   if (initError) {
@@ -95,32 +192,6 @@ export default function App() {
   if (!appReady) {
     return <LoadingScreen loadingType="initializing" />;
   }
-
-  // Create a safe app structure to ensure proper provider nesting
-  const SafeAppContent = () => {
-    // Only render the auth-dependent components when needed
-    return (
-      <ThemeProvider defaultTheme="system" enableSystem>
-        <RuntimeConfigProvider>
-          <AuthProvider>
-            <DesktopEnvironmentProvider>
-              <AuthFlowManager>
-                <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
-                  {/* App Shell Component */}
-                  <AppShell>
-                    {/* Core Home Page */}
-                    <CoreHomePage />
-                  </AppShell>
-                  {/* Toaster needs to be within ProvidersWrapper to access notification context */}
-                  <Toaster />
-                </ProvidersWrapper>
-              </AuthFlowManager>
-            </DesktopEnvironmentProvider>
-          </AuthProvider>
-        </RuntimeConfigProvider>
-      </ThemeProvider>
-    );
-  };
 
   return <SafeAppContent />;
 }

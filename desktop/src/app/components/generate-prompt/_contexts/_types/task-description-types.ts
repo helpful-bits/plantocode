@@ -6,7 +6,7 @@ export interface TaskContextState {
   taskDescriptionRef: RefObject<TaskDescriptionHandle | null>;
   isGeneratingGuidance: boolean;
   isImprovingText: boolean;
-  textImprovementJobId: string | null;
+  textImprovementJobId?: string;
 }
 
 export interface TaskContextActions {

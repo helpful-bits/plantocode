@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { type User } from '@/auth/auth-context-interface';
 import { useAuth } from '@/contexts/auth-context';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger({ namespace: "AuthTokenRefresher" });
 
 /**
  * Hook to periodically refresh the application JWT token
@@ -8,18 +12,9 @@ import { useAuth } from '@/contexts/auth-context';
  * Auth0 refresh tokens are used to get new access tokens.
  * This hook sets up a timer to refresh the JWT token every 50 minutes.
  */
-export function useAuthTokenRefresher() {
+export function useAuthTokenRefresher(user: User | undefined) {
+  const { token } = useAuth();
   const refreshIntervalRef = useRef<number | null>(null);
-  
-  // Safely try to get the auth context
-  let user: any = null;
-  try {
-    const auth = useAuth();
-    user = auth.user;
-  } catch (e) {
-    console.warn("Auth context not available yet, token refresh won't be initialized");
-    return; // Early return if auth context is not available
-  }
 
   useEffect(() => {
     // Only start token refresh if user is authenticated
@@ -41,41 +36,53 @@ export function useAuthTokenRefresher() {
       // Set up new interval - 50 minutes (3,000,000 milliseconds)
       refreshIntervalRef.current = window.setInterval(async () => {
         try {
-          // Check if we're still logged in
           const currentToken = await invoke<string | null>('get_app_jwt');
-          
-          if (!currentToken || !user) {
-            // Not logged in, clear the interval
+
+          if (!user) {
             if (refreshIntervalRef.current) {
               window.clearInterval(refreshIntervalRef.current);
               refreshIntervalRef.current = null;
             }
-            console.log('[Auth] Not logged in, skipping token refresh');
+            logger.info('[AuthTokenRefresher] User is not available during scheduled refresh, stopping refresh interval.');
             return;
           }
 
-          // Try to refresh the app JWT using Auth0 refresh token
-          console.log('[Auth] Refreshing app JWT via Auth0');
-          
+          if (!currentToken) {
+            logger.info('[AuthTokenRefresher] No token found during scheduled refresh, stopping refresh interval.');
+            if (refreshIntervalRef.current) {
+              window.clearInterval(refreshIntervalRef.current);
+              refreshIntervalRef.current = null;
+            }
+            return;
+          }
+
+          logger.info('[AuthTokenRefresher] Attempting to refresh app JWT.');
           try {
             await invoke('refresh_app_jwt_auth0');
-            console.log('[Auth] Successfully refreshed app JWT via Auth0');
-          } catch (error) {
-            console.error('[Auth] Auth0 token refresh failed:', error);
+            logger.info('[AuthTokenRefresher] Successfully refreshed app JWT.');
+          } catch (refreshError) {
+            logger.error('[AuthTokenRefresher] App JWT refresh failed:', refreshError);
             
-            // Fall back to validating the existing token
             try {
               await invoke('get_user_info_with_app_jwt', { appToken: currentToken });
-              console.log('[Auth] Existing JWT token still valid');
+              logger.info('[AuthTokenRefresher] Existing JWT token still valid after refresh attempt failed.');
             } catch (validationError) {
-              console.error('[Auth] JWT token validation failed:', validationError);
+              logger.error('[AuthTokenRefresher] Existing JWT token validation failed after refresh error. Reason:', validationError);
               
-              // Clear token on validation failure
-              await invoke('set_app_jwt', { token: null });
+              try {
+                await invoke('set_app_jwt', { token: null });
+                logger.info('[AuthTokenRefresher] Cleared invalid JWT token.');
+                if (refreshIntervalRef.current) {
+                  window.clearInterval(refreshIntervalRef.current);
+                  refreshIntervalRef.current = null;
+                }
+              } catch (clearTokenError) {
+                logger.error('[AuthTokenRefresher] Failed to clear invalid JWT token:', clearTokenError);
+              }
             }
           }
-        } catch (error) {
-          console.error('[Auth] Failed to refresh JWT token:', error);
+        } catch (intervalError) {
+          logger.error('[AuthTokenRefresher] Error in refresh interval:', intervalError);
         }
       }, 3000000); // 50 minutes = 3,000,000 milliseconds
     };
@@ -90,5 +97,5 @@ export function useAuthTokenRefresher() {
         refreshIntervalRef.current = null;
       }
     };
-  }, [user]); // Dependency on user to restart the refresh cycle if it changes
+  }, [user?.id, token]); // Dependency on user ID to restart the refresh cycle if user identity changes
 }

@@ -3,11 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { type ActionState, type Session } from "@/types";
 import { hashString } from "@/utils/hash";
 import { normalizePath } from "@/utils/path-utils";
+import { createLogger } from "@/utils/logger";
 
 import { setActiveSessionAction } from "./active.actions";
 
-// For debug logging
-const DEBUG_LOGS = import.meta.env.DEV || import.meta.env.VITE_DEBUG === "true";
+const logger = createLogger({ namespace: "SessionCrud" });
 
 /**
  * Create a new session with the specified settings
@@ -16,13 +16,8 @@ export async function createSessionAction(
   sessionData: Partial<Session>
 ): Promise<ActionState<string>> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     if (!sessionData.projectDirectory) {
-      console.error("[createSessionAction] Project directory is required");
+      logger.error("Project directory is required");
       return {
         isSuccess: false,
         message: "Project directory is required",
@@ -36,12 +31,10 @@ export async function createSessionAction(
     };
 
     // Log the data being sent to Tauri for debugging
-    if (DEBUG_LOGS) {
-      console.log("[createSessionAction] Sending to Tauri:", {
-        projectDirectory: sessionRequest.projectDirectory,
-        hasAllRequiredFields: !!sessionRequest.projectDirectory,
-      });
-    }
+    logger.debug("Sending to Tauri:", {
+      projectDirectory: sessionRequest.projectDirectory,
+      hasAllRequiredFields: !!sessionRequest.projectDirectory,
+    });
 
     // Create the session using the Tauri command
     const session = await invoke<Session>("create_session_command", {
@@ -49,7 +42,7 @@ export async function createSessionAction(
     });
 
     if (!session) {
-      console.error("[createSessionAction] Failed to create session");
+      logger.error("Failed to create session");
       return {
         isSuccess: false,
         message: "Failed to create session",
@@ -57,15 +50,11 @@ export async function createSessionAction(
     }
 
     // Automatically set as the active session for the project
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
     try {
       await setActiveSessionAction(session.projectDirectory, session.id);
     } catch (error) {
-      console.warn(
-        `[Action] Could not set active session, but session was created successfully:`,
+      logger.warn(
+        `Could not set active session, but session was created successfully:`,
         error
       );
       // Don't fail the whole operation if just setting the active session fails
@@ -77,7 +66,7 @@ export async function createSessionAction(
       message: "Session created successfully",
     };
   } catch (error) {
-    console.error(`[createSessionAction] Error:`, error);
+    logger.error(`Error:`, error);
     return {
       isSuccess: false,
       message:
@@ -96,8 +85,8 @@ export async function getSessionsAction(
 ): Promise<ActionState<Session[]>> {
   try {
     if (!projectDirectory) {
-      console.error(
-        `[getSessionsAction] Invalid projectDirectory: ${projectDirectory}`
+      logger.error(
+        `Invalid projectDirectory: ${projectDirectory}`
       );
       return {
         isSuccess: false,
@@ -108,10 +97,6 @@ export async function getSessionsAction(
 
     // We need to ensure we get a string from this function, not a Promise
     const normalizedProjectDir = await Promise.resolve(normalizePath(projectDirectory));
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
 
     // Use the Tauri command to get sessions for the project
     const sessions = await invoke<Session[]>(
@@ -119,14 +104,9 @@ export async function getSessionsAction(
       { projectDirectory: normalizedProjectDir }
     );
 
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     if (sessions.length === 0) {
-      console.info(
-        `[Action] No sessions found for project: ${normalizedProjectDir}. This could be normal for a new project.`
+      logger.info(
+        `No sessions found for project: ${normalizedProjectDir}. This could be normal for a new project.`
       );
     }
 
@@ -136,7 +116,7 @@ export async function getSessionsAction(
       message: `Found ${sessions.length} sessions for project`,
     };
   } catch (error) {
-    console.error(`[getSessionsAction] Error retrieving sessions:`, error);
+    logger.error(`Error retrieving sessions:`, error);
     return {
       isSuccess: false,
       message:
@@ -155,19 +135,14 @@ export async function getSessionAction(
   sessionId: string
 ): Promise<ActionState<Session>> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     // Use the Tauri command to get a session by ID
     const session = await invoke<Session | null>("get_session_command", {
       sessionId,
     });
 
     if (!session) {
-      console.error(
-        `[getSessionAction] Session with ID ${sessionId} not found`
+      logger.error(
+        `Session with ID ${sessionId} not found`
       );
       return {
         isSuccess: false,
@@ -181,7 +156,7 @@ export async function getSessionAction(
       message: "Session retrieved successfully",
     };
   } catch (error) {
-    console.error(`[getSessionAction] Error:`, error);
+    logger.error(`Error:`, error);
     return {
       isSuccess: false,
       message:
@@ -199,11 +174,6 @@ export async function deleteSessionAction(
   sessionId: string
 ): Promise<ActionState<null>> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     // First, get the session to obtain the project directory
     const sessionResult = await getSessionAction(sessionId);
 
@@ -222,10 +192,6 @@ export async function deleteSessionAction(
 
     // If the deleted session was the active one for its project, clear the active session
     if (session.projectDirectory) {
-      if (DEBUG_LOGS) {
-        // Using if condition to satisfy ESLint no-console rule
-        // Kept for debugging purposes
-      }
       try {
         // Use our existing active session action
         const { getActiveSessionIdAction } = await import("./active.actions");
@@ -239,8 +205,8 @@ export async function deleteSessionAction(
           await setActiveSessionAction(session.projectDirectory, null);
         }
       } catch (error) {
-        console.warn(
-          `[Action] Could not clear active session, but session was deleted successfully:`,
+        logger.warn(
+          `Could not clear active session, but session was deleted successfully:`,
           error
         );
         // Don't fail the whole operation if just clearing the active session fails
@@ -252,7 +218,7 @@ export async function deleteSessionAction(
       message: "Session deleted successfully",
     };
   } catch (error) {
-    console.error(`[deleteSessionAction] Error:`, error);
+    logger.error(`Error:`, error);
     return {
       isSuccess: false,
       message: `Failed to delete session: ${error instanceof Error ? error.message : String(error)}`,
@@ -267,11 +233,6 @@ export async function saveSessionAction(
   sessionData: Session
 ): Promise<ActionState<Session>> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     if (!sessionData.id) {
       return {
         isSuccess: false,
@@ -302,7 +263,7 @@ export async function saveSessionAction(
       message: "Session saved successfully",
     };
   } catch (error) {
-    console.error(`[saveSessionAction] Error:`, error);
+    logger.error(`Error:`, error);
 
     return {
       isSuccess: false,
@@ -319,11 +280,6 @@ export async function renameSessionAction(
   name: string
 ): Promise<ActionState<null>> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     // Use the Tauri command to rename the session
     await invoke("rename_session_command", { sessionId, name });
 
@@ -332,7 +288,7 @@ export async function renameSessionAction(
       message: "Session renamed successfully",
     };
   } catch (error) {
-    console.error(`[renameSessionAction] Error:`, error);
+    logger.error(`Error:`, error);
     return {
       isSuccess: false,
       message: `Failed to rename session: ${error instanceof Error ? error.message : String(error)}`,

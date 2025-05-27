@@ -21,6 +21,8 @@ export async function findRelevantFilesAction({
     includedFiles?: string[];
     forceExcludedFiles?: string[];
     includeFileContents?: boolean;
+    maxFilesWithContent?: number;
+    priorityFileTypes?: string[];
   }>;
 }): Promise<ActionState<{ jobId: string }>> {
   try {
@@ -42,71 +44,78 @@ export async function findRelevantFilesAction({
 
     // Get path finder settings from RuntimeAIConfig (loaded from server database)
     const runtimeConfig = await getRuntimeAIConfig();
-    if (!runtimeConfig?.isSuccess || !runtimeConfig.data?.tasks?.path_finder) {
+    if (!runtimeConfig?.isSuccess || !runtimeConfig.data?.tasks?.pathFinder) {
       return {
         isSuccess: false,
         message: "Runtime AI configuration not available. Please ensure server connection is established.",
       };
     }
 
-    const pathfinderDefaults = runtimeConfig.data.tasks.path_finder;
+    const pathfinderDefaults = runtimeConfig.data.tasks.pathFinder;
     const pathfinderSettings = {
       model: pathfinderDefaults.model,
       temperature: pathfinderDefaults.temperature,
-      maxTokens: pathfinderDefaults.max_tokens,
+      maxTokens: pathfinderDefaults.maxTokens,
     };
 
     if (options.projectDirectory) {
       try {
-        const modelSettings = await getModelSettingsForProject(
+        const modelSettingsResult = await getModelSettingsForProject(
           options.projectDirectory
         );
-        if (modelSettings && modelSettings.pathFinder) {
-          if (modelSettings.pathFinder.model) {
-            pathfinderSettings.model = modelSettings.pathFinder.model;
+        if (modelSettingsResult?.isSuccess && modelSettingsResult.data?.pathFinder) {
+          const pathFinderSettings = modelSettingsResult.data.pathFinder;
+          if (pathFinderSettings.model) {
+            pathfinderSettings.model = pathFinderSettings.model;
           }
 
-          if (modelSettings.pathFinder.temperature !== undefined) {
-            pathfinderSettings.temperature =
-              modelSettings.pathFinder.temperature;
+          if (pathFinderSettings.temperature !== undefined) {
+            pathfinderSettings.temperature = pathFinderSettings.temperature;
           }
 
-          if (modelSettings.pathFinder.maxTokens) {
-            pathfinderSettings.maxTokens = modelSettings.pathFinder.maxTokens;
+          if (pathFinderSettings.maxTokens) {
+            pathfinderSettings.maxTokens = pathFinderSettings.maxTokens;
           }
         }
       } catch (err) {
-        console.warn("Could not load project settings for path finder:", err);
+        // Could not load project settings for path finder, continuing with defaults
         // Continue with defaults
       }
     }
 
-    // Invoke the Tauri command to find relevant files with direct parameter passing
-    const result = await invoke<{ job_id: string }>(
+    // Construct PathFinderOptionsArgs to match Rust struct
+    const currentOptions = options || {};
+    const pathFinderOptionsArg = {
+      includeFileContents: currentOptions.includeFileContents,
+      maxFilesWithContent: currentOptions.maxFilesWithContent,
+      priorityFileTypes: currentOptions.priorityFileTypes,
+      includedFiles: currentOptions.includedFiles?.length ? currentOptions.includedFiles : null,
+      excludedFiles: currentOptions.forceExcludedFiles?.length ? currentOptions.forceExcludedFiles : null,
+    };
+
+    // Check if all fields in pathFinderOptionsArg are null or undefined to pass null for the whole struct
+    const allOptionsNull = Object.values(pathFinderOptionsArg).every(val => val === null || val === undefined);
+
+    // Invoke the Tauri command to find relevant files
+    const result = await invoke<{ jobId: string }>(
       "find_relevant_files_command",
       {
-        args: {
-          session_id: sessionId,
-          task_description: taskDescription,
-          options: {
-            include_file_contents: options.includeFileContents,
-            included_files: options.includedFiles || [],
-            excluded_files: options.forceExcludedFiles || [],
-          },
-          model_override: options.modelOverride || pathfinderSettings.model,
-          temperature_override: pathfinderSettings.temperature,
-          max_tokens_override: pathfinderSettings.maxTokens,
-          project_directory: options.projectDirectory,
-        },
+        sessionId: sessionId,
+        taskDescription: taskDescription,
+        projectDirectory: currentOptions.projectDirectory,
+        modelOverride: currentOptions.modelOverride || pathfinderSettings.model,
+        temperatureOverride: pathfinderSettings.temperature,
+        maxTokensOverride: pathfinderSettings.maxTokens,
+        options: allOptionsNull ? null : pathFinderOptionsArg,
       }
     );
 
     return {
       isSuccess: true,
       message: "Path finder job started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
     };
   } catch (error) {
-    return handleActionError(error, "Failed to find relevant files") as ActionState<{ jobId: string }>;
+    return handleActionError(error) as ActionState<{ jobId: string }>;
   }
 }

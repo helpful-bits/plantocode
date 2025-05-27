@@ -1,9 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import React, { Suspense } from "react";
-
-import { type Session } from "@/types/session-types";
+import React, { Suspense, useCallback } from "react";
 import ProjectDirectorySelector from "../_components/project-directory-selector";
 import SessionManager from "../_components/session-manager";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
@@ -16,9 +14,18 @@ const ProjectSection = React.memo(function ProjectSection({
   disabled,
 }: ProjectSectionProps) {
   const {
-    state: { projectDirectory, sessionInitialized },
-    actions: { getCurrentSessionState, setSessionInitialized },
+    state: { projectDirectory },
+    actions: { getCurrentSessionState, setSessionName },
   } = useCorePromptContext();
+
+  const handleLoadSession = useCallback(() => {
+    // Session loading is handled through context
+  }, []);
+
+  const handleSessionNameChange = useCallback((_name: string) => {
+    // Session name changes are handled through context
+    // Prefix with underscore to indicate deliberate non-use
+  }, [setSessionName]);
 
 
   return (
@@ -36,21 +43,9 @@ const ProjectSection = React.memo(function ProjectSection({
         >
           <SessionManager
             projectDirectory={projectDirectory || ""}
-            getCurrentSessionState={() => getCurrentSessionState() as Omit<Session, "id" | "name" | "updatedAt">} // Type assertion to match expected format
-            onLoadSession={() => {
-              // Session loading is handled through context
-            }}
-            onSessionNameChange={(_name) => {
-              // Session name changes are handled through context
-              // Prefix with underscore to indicate deliberate non-use
-            }}
-            sessionInitialized={sessionInitialized}
-            onSessionStatusChange={(hasSession) => {
-              // Only update if the status actually changed to avoid unnecessary renders
-              if (hasSession !== sessionInitialized) {
-                setSessionInitialized(hasSession);
-              }
-            }}
+            getCurrentSessionState={getCurrentSessionState}
+            onLoadSession={handleLoadSession}
+            onSessionNameChange={handleSessionNameChange}
             disabled={disabled}
           />
         </Suspense>
@@ -58,5 +53,7 @@ const ProjectSection = React.memo(function ProjectSection({
     </>
   );
 });
+
+ProjectSection.displayName = "ProjectSection";
 
 export default ProjectSection;

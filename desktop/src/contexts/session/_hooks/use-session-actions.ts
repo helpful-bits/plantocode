@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useMemo, useEffect } from "react";
 
 import {
   createSessionAction,
@@ -44,6 +44,18 @@ export function useSessionActions({
   
   // Debounce ref for auto-save functionality
   const autoSaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Use refs to avoid stale closures in the debounced function
+  const currentSessionRef = useRef(currentSession);
+  const isSessionModifiedRef = useRef(isSessionModified);
+  
+  useEffect(() => {
+    currentSessionRef.current = currentSession;
+  }, [currentSession]);
+  
+  useEffect(() => {
+    isSessionModifiedRef.current = isSessionModified;
+  }, [isSessionModified]);
 
   // Handle saving the current session
   const saveCurrentSession = useCallback(async (): Promise<boolean> => {
@@ -129,12 +141,13 @@ export function useSessionActions({
       return false;
     }
   }, [
-    currentSession,
-    isSessionModified,
-    projectDirectory,
-    setSessionModified,
-    setSessionError,
-    showNotification,
+    currentSession, // From SessionStateContext
+    projectDirectory, // From useProject()
+    isSessionModified, // From SessionStateContext
+    setSessionModified, // Stable setter from SessionStateContext
+    setSessionError, // Stable setter from SessionStateContext
+    showNotification, // From NotificationContext, assumed stable
+    // saveSessionAction is an external import, inherently stable
   ]);
 
   // Direct reference to saveCurrentSession as flushSaves
@@ -147,26 +160,63 @@ export function useSessionActions({
     }
     
     autoSaveDebounceRef.current = setTimeout(() => {
-      if (currentSession && isSessionModified) {
+      // Use refs to avoid stale closures
+      if (currentSessionRef.current && isSessionModifiedRef.current) {
         void saveCurrentSession();
       }
     }, 2000); // 2 second debounce
-  }, [currentSession, isSessionModified, saveCurrentSession]);
+  }, [
+    saveCurrentSession, // Memoized function dependency
+  ]);
+
+  // Helper function for shallow array comparison
+  const areArraysEqual = useCallback((a: unknown[], b: unknown[]): boolean => {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => item === b[index]);
+  }, []);
 
   // Update specific fields in the current session
   const updateCurrentSessionFields = useCallback(
     (fields: Partial<Session>) => {
       // Using Session type for the function parameter ensures proper typing
       if (currentSession) {
-        const updatedSession = { ...currentSession, ...fields };
-        setSessionModified(true);
-        setCurrentSession(updatedSession);
-        
-        // Trigger debounced auto-save
-        debouncedSaveCurrentSession();
+        let changed = false;
+        const updatedFields: Partial<Session> = {};
+
+        for (const key in fields) {
+          const typedKey = key as keyof Session;
+          const fieldValue = fields[typedKey];
+          if (fieldValue !== undefined && fieldValue !== currentSession[typedKey]) {
+            // For arrays, do a shallow content comparison
+            if (Array.isArray(fieldValue) && Array.isArray(currentSession[typedKey])) {
+              if (!areArraysEqual(fieldValue as unknown[], currentSession[typedKey] as unknown[])) {
+                changed = true;
+                (updatedFields as any)[typedKey] = fieldValue;
+              }
+            } else {
+              changed = true;
+              (updatedFields as any)[typedKey] = fieldValue;
+            }
+          }
+        }
+
+        if (changed) {
+          const updatedSession = { ...currentSession, ...updatedFields };
+          setSessionModified(true);
+          setCurrentSession(updatedSession);
+          
+          // Trigger debounced auto-save
+          debouncedSaveCurrentSession();
+        }
       }
     },
-    [setCurrentSession, setSessionModified, debouncedSaveCurrentSession]
+    [
+      currentSession, // From SessionStateContext
+      setCurrentSession, // Stable setter from SessionStateContext
+      setSessionModified, // Stable setter from SessionStateContext
+      debouncedSaveCurrentSession, // Memoized function dependency
+      areArraysEqual, // Helper function dependency
+    ]
   );
 
   // Create a new session
@@ -431,14 +481,68 @@ export function useSessionActions({
     ]
   );
 
-  return {
-    saveCurrentSession,
-    flushSaves,
-    updateCurrentSessionFields,
-    createNewSession,
-    setActiveSessionId,
-    deleteActiveSession,
-    deleteNonActiveSession,
-    renameActiveSession,
-  };
+  // Rename any session by ID
+  const renameSession = useCallback(
+    async (sessionId: string, newName: string) => {
+      if (!sessionId || !newName.trim()) {
+        setSessionError(new Error("Session ID and new name are required for rename."));
+        return;
+      }
+
+      try {
+        const result = await renameSessionAction(sessionId, newName);
+
+        if (!result.isSuccess) {
+          throw new Error(result.message || "Failed to rename session");
+        }
+
+        if (onSessionNeedsReload) {
+          onSessionNeedsReload(sessionId);
+        }
+      } catch (error) {
+        const dbError =
+          error instanceof DatabaseError
+            ? error
+            : new DatabaseError(
+                `Error renaming session: ${error instanceof Error ? error.message : String(error)}`,
+                {
+                  originalError: error as unknown as Error | undefined,
+                  category: DatabaseErrorCategory.OTHER,
+                  severity: DatabaseErrorSeverity.WARNING,
+                  context: { sessionId, newName },
+                  reportToUser: true,
+                }
+              );
+
+        setSessionError(dbError);
+        throw dbError;
+      }
+    },
+    [setSessionError, onSessionNeedsReload]
+  );
+
+  return useMemo(
+    () => ({
+      saveCurrentSession,
+      flushSaves,
+      updateCurrentSessionFields,
+      createNewSession,
+      setActiveSessionId,
+      deleteActiveSession,
+      deleteNonActiveSession,
+      renameActiveSession,
+      renameSession,
+    }),
+    [
+      saveCurrentSession,
+      flushSaves,
+      updateCurrentSessionFields,
+      createNewSession,
+      setActiveSessionId,
+      deleteActiveSession,
+      deleteNonActiveSession,
+      renameActiveSession,
+      renameSession,
+    ]
+  );
 }

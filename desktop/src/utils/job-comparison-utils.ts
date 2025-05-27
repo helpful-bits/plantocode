@@ -1,8 +1,10 @@
 "use client";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
-import { DEBUG_POLLING } from "@/utils/constants";
+import { createLogger } from "@/utils/logger";
 import { safeStringCompare } from "@/utils/string-utils";
+
+const logger = createLogger({ namespace: "JobComparison" });
 
 /**
  * Compares two background jobs to determine if they are functionally equal
@@ -21,11 +23,9 @@ export function areJobsEqual(
 
   // Fast path 2: Check status first - if different, jobs are definitely not equal
   if (jobA.status !== jobB.status) {
-    if (DEBUG_POLLING) {
-      console.debug(
-        `[BackgroundJobs] Jobs differ for ${jobA.id}: status changed from ${jobA.status} to ${jobB.status}`
-      );
-    }
+    logger.debug(
+      `Jobs differ for ${jobA.id}: status changed from ${jobA.status} to ${jobB.status}`
+    );
     return false;
   }
 
@@ -33,21 +33,17 @@ export function areJobsEqual(
   if (jobA.updatedAt === jobB.updatedAt) {
     // For terminal jobs with identical updatedAt, assume content is stable
     if (JOB_STATUSES.TERMINAL.includes(jobA.status)) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Fast equality check for terminal job ${jobA.id} with matching updatedAt`
-        );
-      }
+      logger.debug(
+        `Fast equality check for terminal job ${jobA.id} with matching updatedAt`
+      );
       return true;
     }
 
     // For non-running/non-streaming jobs, updatedAt is usually sufficient
     if (jobA.status !== "running") {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Fast equality check for non-running job ${jobA.id} with matching updatedAt`
-        );
-      }
+      logger.debug(
+        `Fast equality check for non-running job ${jobA.id} with matching updatedAt`
+      );
       return true;
     }
   }
@@ -60,11 +56,9 @@ export function areJobsEqual(
 
     // If streaming status changed, jobs are different
     if (jobAIsStreaming !== jobBIsStreaming) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Streaming status changed for job ${jobA.id}`
-        );
-      }
+        logger.debug(
+        `Streaming status changed for job ${jobA.id}`
+      );
       return false;
     }
 
@@ -75,11 +69,9 @@ export function areJobsEqual(
       const streamProgressB = jobB.metadata?.streamProgress;
 
       if (streamProgressA !== streamProgressB) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Implementation plan streaming progress changed: ${streamProgressA} → ${streamProgressB}`
-          );
-        }
+        logger.debug(
+          `Implementation plan streaming progress changed: ${streamProgressA} → ${streamProgressB}`
+        );
         return false;
       }
 
@@ -88,11 +80,9 @@ export function areJobsEqual(
       const responseLengthB = jobB.metadata?.responseLength;
 
       if (responseLengthA !== responseLengthB) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Implementation plan response length changed: ${responseLengthA} → ${responseLengthB}`
-          );
-        }
+        logger.debug(
+          `Implementation plan response length changed: ${responseLengthA} → ${responseLengthB}`
+        );
         return false;
       }
 
@@ -102,11 +92,9 @@ export function areJobsEqual(
         const lengthB = jobB.response?.length || 0;
 
         if (lengthA !== lengthB) {
-          if (DEBUG_POLLING) {
-            console.debug(
-              `[BackgroundJobs] Implementation plan response content length changed: ${lengthA} → ${lengthB}`
-            );
-          }
+          logger.debug(
+            `Implementation plan response content length changed: ${lengthA} → ${lengthB}`
+          );
           return false;
         }
       }
@@ -139,25 +127,23 @@ export function areJobsEqual(
         streamProgressA !== streamProgressB ||
         estimatedTotalLengthA !== estimatedTotalLengthB
       ) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Streaming metrics changed for job ${jobA.id}:`,
-            {
-              timeChange:
-                streamTimeA !== streamTimeB
-                  ? `${streamTimeA} → ${streamTimeB}`
-                  : "unchanged",
-              charsChange:
-                charsA !== charsB ? `${charsA} → ${charsB}` : "unchanged",
-              tokensChange:
-                tokensA !== tokensB ? `${tokensA} → ${tokensB}` : "unchanged",
-              responseLengthChange:
-                responseLengthA !== responseLengthB
-                  ? `${responseLengthA} → ${responseLengthB}`
-                  : "unchanged",
-            }
-          );
-        }
+        logger.debug(
+          `Streaming metrics changed for job ${jobA.id}:`,
+          {
+            timeChange:
+              streamTimeA !== streamTimeB
+                ? `${streamTimeA} → ${streamTimeB}`
+                : "unchanged",
+            charsChange:
+              charsA !== charsB ? `${charsA} → ${charsB}` : "unchanged",
+            tokensChange:
+              tokensA !== tokensB ? `${tokensA} → ${tokensB}` : "unchanged",
+            responseLengthChange:
+              responseLengthA !== responseLengthB
+                ? `${responseLengthA} → ${responseLengthB}`
+                : "unchanged",
+          }
+        );
         return false;
       }
 
@@ -168,22 +154,18 @@ export function areJobsEqual(
       ) {
         // Length comparison is faster than content comparison
         if (jobA.response.length !== jobB.response.length) {
-          if (DEBUG_POLLING) {
-            console.debug(
-              `[BackgroundJobs] Response length changed for job ${jobA.id}: ${jobA.response.length} → ${jobB.response.length}`
-            );
-          }
+          logger.debug(
+            `Response length changed for job ${jobA.id}: ${jobA.response.length} → ${jobB.response.length}`
+          );
           return false;
         }
 
         // For relatively short responses, compare content directly
         // This catches character changes even when length is identical
         if (jobA.response.length < 5000 && jobA.response !== jobB.response) {
-          if (DEBUG_POLLING) {
-            console.debug(
-              `[BackgroundJobs] Response content changed for streaming job ${jobA.id} despite same length`
-            );
-          }
+          logger.debug(
+            `Response content changed for streaming job ${jobA.id} despite same length`
+          );
           return false;
         }
       }
@@ -192,32 +174,26 @@ export function areJobsEqual(
 
   // Efficient status message comparison
   if (!safeStringCompare(jobA.statusMessage, jobB.statusMessage)) {
-    if (DEBUG_POLLING) {
-      console.debug(
-        `[BackgroundJobs] Status message changed for job ${jobA.id}`
-      );
-    }
+    logger.debug(
+      `Status message changed for job ${jobA.id}`
+    );
     return false;
   }
 
   // For all jobs, always check output file path - this is crucial for implementation plans
   if (!safeStringCompare(jobA.outputFilePath, jobB.outputFilePath)) {
-    if (DEBUG_POLLING) {
-      console.debug(
-        `[BackgroundJobs] Output file path changed for job ${jobA.id}: ${jobA.outputFilePath} → ${jobB.outputFilePath}`
-      );
-    }
+    logger.debug(
+      `Output file path changed for job ${jobA.id}: ${jobA.outputFilePath} → ${jobB.outputFilePath}`
+    );
     return false;
   }
 
   // For failed/canceled jobs, check error message
   if (jobA.status === "failed" || jobA.status === "canceled") {
     if (!safeStringCompare(jobA.errorMessage, jobB.errorMessage)) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Error message changed for job ${jobA.id}`
-        );
-      }
+      logger.debug(
+        `Error message changed for job ${jobA.id}`
+      );
       return false;
     }
   }
@@ -227,49 +203,41 @@ export function areJobsEqual(
   if (jobA.taskType === "path_finder" && jobA.status === "completed") {
     // Compare metadata directly as it's now an object
     if (jobA.metadata?.pathCount !== jobB.metadata?.pathCount) {
-      if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Path count changed for job ${jobA.id}`);
-      }
+      logger.debug(`Path count changed for job ${jobA.id}`);
       return false;
     }
   }
 
   // Check if metadata has changed in a way that affects the UI
   if (hasMetadataChanged(jobA, jobB)) {
-    if (DEBUG_POLLING) {
-      console.debug(`[BackgroundJobs] Metadata changed for job ${jobA.id}`);
-    }
+    logger.debug(`Metadata changed for job ${jobA.id}`);
     return false;
   }
 
   // Response content comparison for all job types
   if (!safeStringCompare(jobA.response, jobB.response)) {
-    if (DEBUG_POLLING) {
-      console.debug(
-        `[BackgroundJobs] Response content changed for job ${jobA.id}`
+    logger.debug(
+      `Response content changed for job ${jobA.id}`
+    );
+
+    // Additional debugging: detect file reference vs content changes
+    const aHasFileRef =
+      jobA.response?.includes("Content stored in file:") ||
+      jobA.response?.includes("available in file:");
+    const bHasFileRef =
+      jobB.response?.includes("Content stored in file:") ||
+      jobB.response?.includes("available in file:");
+
+    if (aHasFileRef !== bHasFileRef) {
+      logger.debug(
+        `File reference changed in response: ${aHasFileRef} → ${bHasFileRef}`
       );
-
-      // Additional debugging: detect file reference vs content changes
-      const aHasFileRef =
-        jobA.response?.includes("Content stored in file:") ||
-        jobA.response?.includes("available in file:");
-      const bHasFileRef =
-        jobB.response?.includes("Content stored in file:") ||
-        jobB.response?.includes("available in file:");
-
-      if (aHasFileRef !== bHasFileRef) {
-        console.debug(
-          `[BackgroundJobs] File reference changed in response: ${aHasFileRef} → ${bHasFileRef}`
-        );
-      }
     }
     return false;
   }
 
   // For debugging, log that jobs are considered equal
-  if (DEBUG_POLLING) {
-    console.debug(`[BackgroundJobs] Jobs considered equal for ${jobA.id}`);
-  }
+  logger.debug(`Jobs considered equal for ${jobA.id}`);
 
   // All checks passed, jobs are equal
   return true;
@@ -299,11 +267,9 @@ export function hasMetadataChanged(
     const hasRegexPatternsB = jobB.metadata.regexPatterns !== undefined;
 
     if (hasRegexPatternsA !== hasRegexPatternsB) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Metadata differs: regexPatterns presence mismatch for job ${jobA.id}`
-        );
-      }
+      logger.debug(
+        `Metadata differs: regexPatterns presence mismatch for job ${jobA.id}`
+      );
       return true;
     }
 
@@ -313,11 +279,9 @@ export function hasMetadataChanged(
       hasRegexPatternsB &&
       jobA.metadata.regexPatterns !== jobB.metadata.regexPatterns
     ) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Metadata differs: regexPatterns changed for job ${jobA.id}`
-        );
-      }
+      logger.debug(
+        `Metadata differs: regexPatterns changed for job ${jobA.id}`
+      );
       return true;
     }
   }
@@ -327,11 +291,9 @@ export function hasMetadataChanged(
     // For completed path finder jobs, check pathCount
     if (jobA.status === "completed") {
       if (jobA.metadata?.pathCount !== jobB.metadata?.pathCount) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Path finder job metadata differs: pathCount ${jobA.metadata?.pathCount} !== ${jobB.metadata?.pathCount}`
-          );
-        }
+        logger.debug(
+          `Path finder job metadata differs: pathCount ${jobA.metadata?.pathCount} !== ${jobB.metadata?.pathCount}`
+        );
         return true;
       }
 
@@ -340,11 +302,9 @@ export function hasMetadataChanged(
       const hasPathDataB = jobB.metadata?.pathData !== undefined;
 
       if (hasPathDataA !== hasPathDataB) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Path finder job metadata differs: pathData presence mismatch`
-          );
-        }
+        logger.debug(
+          `Path finder job metadata differs: pathData presence mismatch`
+        );
         return true;
       }
 
@@ -354,11 +314,9 @@ export function hasMetadataChanged(
         hasPathDataB &&
         jobA.metadata?.pathData !== jobB.metadata?.pathData
       ) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Path finder job metadata differs: pathData reference changes`
-          );
-        }
+        logger.debug(
+          `Path finder job metadata differs: pathData reference changes`
+        );
         return true;
       }
     }
@@ -371,9 +329,7 @@ export function hasMetadataChanged(
     const jobBIsStreaming = jobB.metadata?.isStreaming === true;
 
     if (jobAIsStreaming !== jobBIsStreaming) {
-      if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Streaming status differs in metadata`);
-      }
+      logger.debug(`Streaming status differs in metadata`);
       return true;
     }
 
@@ -384,31 +340,25 @@ export function hasMetadataChanged(
 
       // Check streamProgress
       if (jobA.metadata.streamProgress !== jobB.metadata.streamProgress) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Implementation plan stream progress differs: ${jobA.metadata.streamProgress} !== ${jobB.metadata.streamProgress}`
-          );
-        }
+        logger.debug(
+          `Implementation plan stream progress differs: ${jobA.metadata.streamProgress} !== ${jobB.metadata.streamProgress}`
+        );
         return true;
       }
 
       // Check response length (critically important for UI updates)
       if (jobA.metadata?.responseLength !== jobB.metadata?.responseLength) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Implementation plan response length differs: ${jobA.metadata.responseLength} !== ${jobB.metadata.responseLength}`
-          );
-        }
+        logger.debug(
+          `Implementation plan response length differs: ${jobA.metadata.responseLength} !== ${jobB.metadata.responseLength}`
+        );
         return true;
       }
 
       // Check session name for implementation plans (used for display)
       if (jobA.metadata?.sessionName !== jobB.metadata?.sessionName) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Implementation plan session name differs`
-          );
-        }
+        logger.debug(
+          `Implementation plan session name differs`
+        );
         return true;
       }
     }
@@ -420,31 +370,25 @@ export function hasMetadataChanged(
         jobA.metadata?.lastStreamUpdateTime !==
         jobB.metadata?.lastStreamUpdateTime
       ) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Stream update time differs: ${jobA.metadata.lastStreamUpdateTime} !== ${jobB.metadata.lastStreamUpdateTime}`
-          );
-        }
+        logger.debug(
+          `Stream update time differs: ${jobA.metadata.lastStreamUpdateTime} !== ${jobB.metadata.lastStreamUpdateTime}`
+        );
         return true;
       }
 
       // Check streamProgress for implementation plan and streaming jobs
       if (jobA.metadata?.streamProgress !== jobB.metadata?.streamProgress) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Stream progress differs: ${jobA.metadata.streamProgress} !== ${jobB.metadata.streamProgress}`
-          );
-        }
+        logger.debug(
+          `Stream progress differs: ${jobA.metadata.streamProgress} !== ${jobB.metadata.streamProgress}`
+        );
         return true;
       }
 
       // Check response length tracking
       if (jobA.metadata?.responseLength !== jobB.metadata?.responseLength) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Response length differs in metadata: ${jobA.metadata?.responseLength} !== ${jobB.metadata?.responseLength}`
-          );
-        }
+        logger.debug(
+          `Response length differs in metadata: ${jobA.metadata?.responseLength} !== ${jobB.metadata?.responseLength}`
+        );
         return true;
       }
 
@@ -453,11 +397,9 @@ export function hasMetadataChanged(
         jobA.metadata?.estimatedTotalLength !==
         jobB.metadata?.estimatedTotalLength
       ) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Estimated total length differs: ${jobA.metadata?.estimatedTotalLength} !== ${jobB.metadata?.estimatedTotalLength}`
-          );
-        }
+        logger.debug(
+          `Estimated total length differs: ${jobA.metadata?.estimatedTotalLength} !== ${jobB.metadata?.estimatedTotalLength}`
+        );
         return true;
       }
     }
@@ -490,11 +432,9 @@ export function hasMetadataChanged(
     if (valueA !== undefined || valueB !== undefined) {
       // If values differ, metadata has changed
       if (valueA !== valueB) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Metadata differs for ${field}: ${String(valueA)} !== ${String(valueB)}`
-          );
-        }
+        logger.debug(
+          `Metadata differs for ${field}: ${String(valueA)} !== ${String(valueB)}`
+        );
         return true;
       }
     }
@@ -514,11 +454,9 @@ export function areJobArraysEqual(
 ): boolean {
   // Compare lengths first for a quick check
   if (arrA.length !== arrB.length) {
-    if (DEBUG_POLLING) {
-      console.debug(
-        `[BackgroundJobs] Job arrays differ in length: ${arrA.length} vs ${arrB.length}`
-      );
-    }
+    logger.debug(
+      `Job arrays differ in length: ${arrA.length} vs ${arrB.length}`
+    );
     return false;
   }
 
@@ -535,11 +473,9 @@ export function areJobArraysEqual(
       const jobB = arrB.find((job) => job.id === jobA.id);
 
       if (!jobB || !areJobsEqual(jobA, jobB)) {
-        if (DEBUG_POLLING) {
-          console.debug(
-            `[BackgroundJobs] Small array mismatch for job ${jobA.id}`
-          );
-        }
+        logger.debug(
+          `Small array mismatch for job ${jobA.id}`
+        );
         return false;
       }
     }
@@ -563,11 +499,9 @@ export function areJobArraysEqual(
   // Check if all IDs in A exist in B
   for (const jobId of jobIdsA) {
     if (!jobIdsB.has(jobId)) {
-      if (DEBUG_POLLING) {
-        console.debug(
-          `[BackgroundJobs] Job ${jobId} exists in array A but not in array B`
-        );
-      }
+      logger.debug(
+        `Job ${jobId} exists in array A but not in array B`
+      );
       return false;
     }
   }
@@ -583,9 +517,7 @@ export function areJobArraysEqual(
     const jobB = jobsMapB.get(jobA.id);
     // We know jobB exists because we checked the IDs above
     if (!areJobsEqual(jobA, jobB!)) {
-      if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Active job differs: ${jobA.id}`);
-      }
+      logger.debug(`Active job differs: ${jobA.id}`);
       return false;
     }
   }
@@ -599,9 +531,7 @@ export function areJobArraysEqual(
     const jobB = jobsMapB.get(jobA.id);
     // We know jobB exists because we checked the IDs above
     if (!areJobsEqual(jobA, jobB!)) {
-      if (DEBUG_POLLING) {
-        console.debug(`[BackgroundJobs] Terminal job differs: ${jobA.id}`);
-      }
+      logger.debug(`Terminal job differs: ${jobA.id}`);
       return false;
     }
   }

@@ -356,7 +356,7 @@ impl BackgroundJobRepository {
                     ELSE 9
                 END,
                 updated_at DESC
-            LIMIT 100
+            LIMIT 500
             "#)
             .fetch_all(&*self.pool)
             .await

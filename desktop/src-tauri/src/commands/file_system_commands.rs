@@ -171,7 +171,8 @@ pub async fn create_unique_filepath_command(request_id: String, session_name: St
         &session_name, 
         project_dir_path.as_deref(),
         &extension,
-        target_dir_name.as_deref()
+        target_dir_name.as_deref(),
+        &app_handle
     ).await
     .map_err(|e| AppError::FileSystemError(format!("Failed to create unique file path: {}", e)))?;
     
@@ -301,8 +302,8 @@ pub fn path_extname_command(path: String) -> AppResult<String> {
 }
 
 #[command] 
-pub async fn get_app_data_directory_command() -> AppResult<String> {
-    let dir = path_utils::get_app_data_root_dir().await?;
+pub async fn get_app_data_directory_command(app_handle: AppHandle) -> AppResult<String> {
+    let dir = path_utils::get_app_data_root_dir(&app_handle).await?;
     Ok(dir.to_string_lossy().to_string())
 }
 

@@ -4,18 +4,14 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
 import { useProject } from "@/contexts/project-context";
-import { type BackgroundJob } from "@/types/session-types";
+import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { toast } from "@/ui/use-toast";
+import { createLogger } from "@/utils/logger";
 
-// Define streaming statuses for consistent checking
-const STREAMING_STATUSES = [
-  "running",
-  "processing_stream",
-  "generating_stream",
-];
+const logger = createLogger({ namespace: "ImplPlansLogic" });
 
 interface UseImplementationPlansLogicProps {
-  sessionId?: string | null;
+  sessionId: string | null;
 }
 
 export function useImplementationPlansLogic({
@@ -25,18 +21,18 @@ export function useImplementationPlansLogic({
   const { projectDirectory } = useProject();
 
   // UI state
-  const [copiedPlanId, setCopiedPlanId] = useState<string | null>(null);
-  const [jobForModal, setJobForModal] = useState<BackgroundJob | null>(null);
+  const [copiedPlanId, setCopiedPlanId] = useState<string | undefined>(undefined);
+  const [jobForModal, setJobForModal] = useState<BackgroundJob | undefined>(undefined);
   const [planContentModal, setPlanContentModal] = useState<{
     plan: BackgroundJob;
     open: boolean;
-  } | null>(null);
-  const [pollingError, setPollingError] = useState<string | null>(null);
-  const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+  } | undefined>(undefined);
+  const [pollingError, setPollingError] = useState<string | undefined>(undefined);
+  const [jobToDelete, setJobToDelete] = useState<string | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
 
   // Ref to track the polling interval for streaming updates
-  const streamingUpdateInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamingUpdateInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Filter implementation plans for the current project and optionally session
   const implementationPlans = useMemo(() => {
@@ -62,8 +58,8 @@ export function useImplementationPlansLogic({
       })
       .sort((a: BackgroundJob, b: BackgroundJob) => {
         // Active jobs first
-        const aIsActive = STREAMING_STATUSES.includes(a.status.toLowerCase());
-        const bIsActive = STREAMING_STATUSES.includes(b.status.toLowerCase());
+        const aIsActive = JOB_STATUSES.ACTIVE.includes(a.status);
+        const bIsActive = JOB_STATUSES.ACTIVE.includes(b.status);
 
         if (aIsActive && !bIsActive) return -1;
         if (!aIsActive && bIsActive) return 1;
@@ -88,10 +84,10 @@ export function useImplementationPlansLogic({
 
         // Reset copied state after 2 seconds
         setTimeout(() => {
-          setCopiedPlanId(null);
+          setCopiedPlanId(undefined);
         }, 2000);
       } catch (error) {
-        console.error("Failed to copy text: ", error);
+        logger.error("Failed to copy text: ", error);
         toast({
           title: "Copy Failed",
           description: "Could not copy to clipboard.",
@@ -114,7 +110,7 @@ export function useImplementationPlansLogic({
 
         // Optimistic UI update
         setIsDeleting((prev) => ({ ...prev, [jobId]: false }));
-        setJobToDelete(null);
+        setJobToDelete(undefined);
 
         toast({
           title: "Success",
@@ -125,7 +121,7 @@ export function useImplementationPlansLogic({
         // Refresh jobs list
         await refreshJobs();
       } catch (error) {
-        console.error("Error deleting job:", error);
+        logger.error("Error deleting job:", error);
 
         toast({
           title: "Error",
@@ -159,17 +155,17 @@ export function useImplementationPlansLogic({
               : prev
           );
 
-          // If the job is no longer streaming, clear the interval
+          // If the job is no longer active, clear the interval
           if (
-            !STREAMING_STATUSES.includes(updatedJob.status.toLowerCase()) &&
+            !JOB_STATUSES.ACTIVE.includes(updatedJob.status) &&
             streamingUpdateInterval.current
           ) {
             clearInterval(streamingUpdateInterval.current);
-            streamingUpdateInterval.current = null;
+            streamingUpdateInterval.current = undefined;
           }
         }
       } catch (error) {
-        console.error("Error refreshing job content:", error);
+        logger.error("Error refreshing job content:", error);
         setPollingError("Failed to refresh the plan content.");
         throw error;
       }
@@ -181,8 +177,8 @@ export function useImplementationPlansLogic({
   const handleViewPlanContent = useCallback((plan: BackgroundJob) => {
     setPlanContentModal({ plan, open: true });
 
-    // Start polling for updates if the plan is still streaming
-    if (STREAMING_STATUSES.includes(plan.status.toLowerCase())) {
+    // Start polling for updates if the plan is still active
+    if (JOB_STATUSES.ACTIVE.includes(plan.status)) {
       // Clear any existing interval
       if (streamingUpdateInterval.current) {
         clearInterval(streamingUpdateInterval.current);
@@ -191,7 +187,7 @@ export function useImplementationPlansLogic({
       // Set up new polling interval
       streamingUpdateInterval.current = setInterval(() => {
         refreshJobContent(plan.id).catch((error) => {
-          console.error("Error polling for job updates:", error);
+          logger.error("Error polling for job updates:", error);
           setPollingError(
             "Failed to get the latest updates. The plan may still be generating."
           );
@@ -202,16 +198,16 @@ export function useImplementationPlansLogic({
 
   // Handle closing the plan content modal
   const handleClosePlanContentModal = useCallback(() => {
-    setPlanContentModal((prev) => (prev ? { ...prev, open: false } : null));
+    setPlanContentModal((prev) => (prev ? { ...prev, open: false } : undefined));
 
     // Stop polling when modal closes
     if (streamingUpdateInterval.current) {
       clearInterval(streamingUpdateInterval.current);
-      streamingUpdateInterval.current = null;
+      streamingUpdateInterval.current = undefined;
     }
 
     // Clear error when closing
-    setPollingError(null);
+    setPollingError(undefined);
   }, []);
 
   // Clean up polling interval on unmount
@@ -230,7 +226,7 @@ export function useImplementationPlansLogic({
 
   // Handle plan details modal close
   const handleClosePlanDetails = useCallback(() => {
-    setJobForModal(null);
+    setJobForModal(undefined);
   }, []);
 
   return {

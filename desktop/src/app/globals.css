@@ -105,6 +105,49 @@
   .pulse-subtle {
     @apply animate-pulse opacity-70;
   }
+
+  /* Navigation bar enhancements */
+  .nav-bar {
+    @apply relative w-full py-6 border-b border-border/30 mb-4;
+    background: linear-gradient(to right, hsl(var(--background)), hsl(var(--background)/0.98));
+  }
+
+  .nav-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(to right, transparent, hsl(var(--border)), transparent);
+  }
+
+  .nav-button {
+    @apply h-10 px-5 font-medium rounded-lg transition-all duration-200 ease-out;
+    @apply hover:shadow-sm hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .nav-button.active {
+    @apply bg-primary text-primary-foreground shadow-sm;
+    box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  }
+
+
+  .nav-loading-indicator {
+    @apply flex items-center text-xs text-muted-foreground px-4 py-2 rounded-full;
+    @apply bg-gradient-to-r from-muted/40 to-muted/20 border border-border/20;
+    backdrop-filter: blur(8px);
+  }
+
+  .nav-actions {
+    @apply flex items-center gap-3;
+  }
+
+  .nav-action-button {
+    @apply h-10 w-10 rounded-lg transition-all duration-200 ease-out;
+    @apply hover:shadow-sm hover:scale-[1.02] active:scale-[0.98];
+    @apply hover:bg-accent/50;
+  }
 }
 
 @layer base {

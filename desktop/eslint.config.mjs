@@ -45,7 +45,7 @@ export default [
   
   // TypeScript configuration
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
     plugins: {
       '@typescript-eslint': tseslintPlugin,
     },
@@ -54,7 +54,7 @@ export default [
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: ['./src/tsconfig.json', './src/tsconfig.build.json'],
+        project: ['./tsconfig.json', './tsconfig.build.json'],
         tsconfigRootDir: __dirname,
         ecmaFeatures: { jsx: true },
       },
@@ -101,7 +101,7 @@ export default [
   
   // React configuration
   {
-    files: ['**/*.tsx', '**/*.jsx'],
+    files: ['src/**/*.tsx', 'src/**/*.jsx'],
     plugins: {
       'react': reactPlugin,
       'react-hooks': reactHooksPlugin,
@@ -139,7 +139,7 @@ export default [
   
   // Import plugin configuration
   {
-    files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
+    files: ['src/**/*.ts', 'src/**/*.tsx', 'src/**/*.js', 'src/**/*.jsx'],
     plugins: {
       'import': importPlugin,
     },
@@ -147,7 +147,7 @@ export default [
       'import/resolver': {
         typescript: {
           alwaysTryTypes: true,
-          project: ['./src/tsconfig.json', './src/tsconfig.build.json'],
+          project: ['./tsconfig.json', './tsconfig.build.json'],
           tsconfigRootDir: __dirname,
         },
         node: { extensions: ['.js', '.jsx', '.ts', '.tsx'] },
@@ -205,9 +205,9 @@ export default [
   // Overrides for specific files
   {
     files: [
-      'src/*.config.js',
-      'src/*.config.mjs',
-      'src/*.config.ts',
+      '*.config.js',
+      '*.config.mjs',
+      '*.config.ts',
       'scripts/**/*.ts'
     ],
     plugins: {
@@ -227,6 +227,34 @@ export default [
   
   // Unicorn recommended configuration
   unicornPlugin.configs['flat/recommended'],
+  
+  // Unicorn rule overrides
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx', 'src/**/*.js', 'src/**/*.jsx'],
+    rules: {
+      'unicorn/filename-case': ['warn', {
+        cases: {
+          camelCase: true,
+          pascalCase: true,
+          kebabCase: true,
+        },
+        ignore: [
+          // Add regex patterns for files that should be ignored by this rule
+          // Config files and standard filename conventions
+          /vite\.config\.mts$/,
+          /tailwind\.config\.ts$/,
+          /postcss\.config\.mjs$/,
+          /eslint\.config\.mjs$/,
+          /components\.json$/,
+          /tsconfig.*\.json$/,
+        ]
+      }],
+      // Add other unicorn rule overrides here if needed
+      'unicorn/prevent-abbreviations': 'off', // Often too strict
+      'unicorn/no-null': 'off', // Null is commonly used in React state
+      'unicorn/prefer-top-level-await': 'off', // Not always applicable in all frontend modules
+    }
+  },
   
   // Prettier compatibility (must be last)
   eslintConfigPrettier,

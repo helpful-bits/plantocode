@@ -3,32 +3,9 @@
  * Works in both browser and Node.js environments
  */
 
-// Custom logger to replace console calls
-const logger = {
-  // Default to no logging in production
-  isEnabled: import.meta.env.DEV,
-  
-  log: (...args: unknown[]): void => {
-    if (logger.isEnabled) {
-      // eslint-disable-next-line no-console
-      console.log(...args);
-    }
-  },
-  
-  error: (...args: unknown[]): void => {
-    if (logger.isEnabled) {
-      // eslint-disable-next-line no-console
-      console.error(...args);
-    }
-  },
-  
-  trace: (...args: unknown[]): void => {
-    if (logger.isEnabled) {
-      // eslint-disable-next-line no-console
-      console.trace(...args);
-    }
-  }
-};
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger({ namespace: "TrackedFetch" });
 
 // Generate a unique ID for tracking requests
 const generateId = (): string => {
@@ -148,24 +125,24 @@ export class TrackedFetch {
       const debug = import.meta.env.VITE_DEBUG_FETCH === "true" ? getDebugInfo() : null;
 
       // Logging request information
-      logger.log(
-        `[TrackedFetch] ${method} request to ${url} (ID: ${requestId})`
+      logger.debug(
+        `${method} request to ${url} (ID: ${requestId})`
       );
 
       if (isPostRequest) {
         // Log POST request details
-        logger.log(`[TrackedFetch] POST request details:
+        logger.debug(`POST request details:
   - URL: ${url}
   - Body size: ${init?.body ? (typeof init.body === "string" ? init.body.length : "[Unknown]") : "none"}`);
 
         if (isRootPath) {
-          // Log warning for root/API path POST request
-          logger.log(
-            `[TrackedFetch] WARNING: POST request to root or API path detected`
+          // Log debug info for root/API path POST request
+          logger.debug(
+            `POST request to root or API path detected (URL: ${url})`
           );
           // Log additional debug info for root/API path POST request
           if (debug) {
-            logger.trace(`[TrackedFetch] Debug info for POST to ${url} (${debug.timestamp})`);
+            logger.debug(`Debug info for POST to ${url} (${debug.timestamp})`);
           }
         }
       }
@@ -186,8 +163,8 @@ export class TrackedFetch {
       // Enhanced logging for completed requests, especially for targeted URLs
       if (isPostRequest || isRootPath) {
         // Log completed request status
-        logger.log(
-          `[TrackedFetch] Completed ${method} request to ${url} in ${duration}ms (ID: ${requestId}), Status: ${response.status}`
+        logger.debug(
+          `Completed ${method} request to ${url} in ${duration}ms (ID: ${requestId}), Status: ${response.status}`
         );
       }
 
@@ -205,15 +182,15 @@ export class TrackedFetch {
       // Enhanced error logging for failed requests
       // Log failed request error
       logger.error(
-        `[TrackedFetch] Failed ${method} request to ${url} after ${duration}ms (ID: ${requestId})`,
+        `Failed ${method} request to ${url} after ${duration}ms (ID: ${requestId})`,
         error
       );
 
       if (isPostRequest || isRootPath) {
         // Log additional debug info for failed request
         const debug = getDebugInfo();
-        logger.trace(
-          `[TrackedFetch] Error details for failed request to ${url} (${debug.timestamp})`
+        logger.debug(
+          `Error details for failed request to ${url} (${debug.timestamp})`
         );
       }
 

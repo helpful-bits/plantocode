@@ -3,7 +3,7 @@ use log::info;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use crate::error::{AppError, AppResult};
-use crate::models::{TaskType, PathFinderCommandResponse};
+use crate::models::{TaskType, JobCommandResponse};
 use crate::utils::job_creation_utils;
 use crate::db_utils::SessionRepository;
 
@@ -49,7 +49,7 @@ pub async fn find_relevant_files_command(
     max_tokens_override: Option<u32>,
     options: Option<PathFinderOptionsArgs>,
     app_handle: AppHandle,
-) -> AppResult<PathFinderCommandResponse> {
+) -> AppResult<JobCommandResponse> {
     let args = PathFinderRequestArgs {
         session_id,
         task_description,
@@ -166,7 +166,7 @@ pub async fn find_relevant_files_command(
     info!("Created path finder job: {}", job_id);
     
     // Return the job ID
-    Ok(PathFinderCommandResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }
 
 /// Create a background job to generate a directory tree
@@ -176,7 +176,7 @@ pub async fn create_generate_directory_tree_job_command(
     session_id: String,
     options: Option<crate::utils::directory_tree::DirectoryTreeOptions>,
     app_handle: AppHandle,
-) -> AppResult<String> {
+) -> AppResult<JobCommandResponse> {
     let args = CreateGenerateDirectoryTreeJobArgs {
         project_directory,
         session_id,
@@ -219,6 +219,6 @@ pub async fn create_generate_directory_tree_job_command(
     ).await?;
     
     info!("Created generate directory tree job: {}", job_id);
-    Ok(job_id)
+    Ok(JobCommandResponse { job_id })
 }
 

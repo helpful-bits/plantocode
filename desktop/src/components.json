@@ -17,5 +17,5 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "outputPath": "../shared/src/ui"
+  "outputPath": "./ui"
 }

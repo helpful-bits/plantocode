@@ -3,7 +3,8 @@
  */
 
 // Set to false to disable all console logs in production
-const isLoggingEnabled = import.meta.env.DEV;
+// Supports both Node.js and Vite environments for enhanced robustness
+const isLoggingEnabled = (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') || (typeof import.meta !== 'undefined' && import.meta.env?.DEV);
 
 // Define log levels for type safety
 export type LogLevel = "debug" | "info" | "log" | "warn" | "error";

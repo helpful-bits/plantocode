@@ -56,16 +56,10 @@ export function formatString(
   params: Record<string, unknown>
 ): string {
   return template.replace(/{([^{}]*)}/g, (match, key) => {
-    const paramValue = params[key as string];
-    return paramValue !== undefined 
-      ? (typeof paramValue === 'string' 
-          ? paramValue 
-          : typeof paramValue === 'number' || typeof paramValue === 'boolean'
-            ? String(paramValue)
-            : paramValue === null
-              ? 'null'
-              : match)
-      : match;
+    const paramValue = params[key];
+    if (paramValue === undefined) return match;
+    if (paramValue === null) return "null";
+    return String(paramValue); // Handles string, number, boolean
   });
 }
 
@@ -200,8 +194,8 @@ export function toSnakeCase(str: string): string {
  */
 export function toCamelCase(str: string): string {
   return str
-    .replace(/[-_](.)/g, (_, c) => (typeof c === 'string' ? c.toUpperCase() : c) as string)
-    .replace(/^(.)/, (_, c) => (typeof c === 'string' ? c.toLowerCase() : c) as string);
+    .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
+    .replace(/^(.)/, (_, c) => c.toLowerCase());
 }
 
 /**

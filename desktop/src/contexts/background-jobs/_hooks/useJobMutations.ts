@@ -6,9 +6,10 @@ import {
   cancelBackgroundJobAction,
   deleteBackgroundJobAction,
   clearJobHistoryAction,
-} from "@/actions/background-job-actions";
+} from "@/actions/background-jobs";
 import streamingRequestPool from "@/api/streaming-request-pool";
 import { type BackgroundJob, type JobStatus } from "@/types/session-types";
+import { logError, getErrorMessage } from "@/utils/error-handling";
 
 export interface UseJobMutationsParams {
   // State setters
@@ -67,10 +68,16 @@ export function useJobMutations({
         // Refresh jobs to get the updated state
         await refreshJobs();
       } catch (err) {
-        console.error("[BackgroundJobs] Error canceling job:", err);
+        await logError(err, "Background Jobs - Cancel Job Failed", { jobId });
         // Refresh to get current state if error occurred
         await refreshJobs();
-        throw err;
+        
+        // Create user-friendly error message
+        const userMessage = getErrorMessage(err).includes("not found") 
+          ? "Job not found or already completed"
+          : "Failed to cancel job. Please try again.";
+        
+        throw new Error(userMessage);
       }
     },
     [refreshJobs, setJobs, setActiveJobs]
@@ -96,10 +103,16 @@ export function useJobMutations({
         // Refresh jobs to get the updated state
         await refreshJobs();
       } catch (err) {
-        console.error("[BackgroundJobs] Error deleting job:", err);
+        await logError(err, "Background Jobs - Delete Job Failed", { jobId });
         // Refresh to get current state if error occurred
         await refreshJobs();
-        throw err;
+        
+        // Create user-friendly error message
+        const userMessage = getErrorMessage(err).includes("not found")
+          ? "Job not found or already deleted"
+          : "Failed to delete job. Please try again.";
+        
+        throw new Error(userMessage);
       }
     },
     [refreshJobs, setJobs, setActiveJobs]
@@ -118,10 +131,13 @@ export function useJobMutations({
         // Refresh jobs to ensure we have current state after clearing
         await refreshJobs();
       } catch (err) {
-        console.error("[BackgroundJobs] Error clearing job history:", err);
+        await logError(err, "Background Jobs - Clear History Failed", { daysToKeep });
         // Refresh to get current state if error occurred
         await refreshJobs();
-        throw err;
+        
+        // Create user-friendly error message
+        const userMessage = "Failed to clear job history. Please try again.";
+        throw new Error(userMessage);
       }
     },
     [refreshJobs]

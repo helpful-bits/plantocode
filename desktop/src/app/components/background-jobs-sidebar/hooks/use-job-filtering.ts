@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
+import { createLogger } from "@/utils/logger";
 
-// Enable this for extensive logging of job filtering and sorting
-// Define this outside of the hook entirely to avoid it being included in dependency arrays
-const DEBUG_JOB_FILTERING = false;
+const logger = createLogger({ namespace: "JobFiltering" });
 
 /**
  * Custom hook for filtering and sorting jobs in the background jobs sidebar
@@ -26,30 +25,28 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
   const { activeJobsToShow, completedJobs, failedJobs, hasJobs } =
     useMemo(() => {
       // Track start time for performance measurement
-      const startTime = DEBUG_JOB_FILTERING ? performance.now() : 0;
+      const startTime = performance.now();
 
       // Use cached jobs during loading to prevent UI flicker
       const jobsToUse = isLoading && cachedJobs.length > 0 ? cachedJobs : jobs;
 
-      if (DEBUG_JOB_FILTERING) {
-        console.debug(
-          `[useJobFiltering] Filtering ${jobsToUse.length} jobs (cached=${isLoading && cachedJobs.length > 0})`
-        );
+      logger.debug(
+        `Filtering ${jobsToUse.length} jobs (cached=${isLoading && cachedJobs.length > 0})`
+      );
 
-        // Log job status distribution for debugging
-        const statusCounts = jobsToUse.reduce(
-          (acc: Record<string, number>, job: BackgroundJob) => {
-            acc[job.status] = (acc[job.status] || 0) + 1;
-            return acc;
-          },
-          {} as Record<string, number>
-        );
+      // Log job status distribution for debugging
+      const statusCounts = jobsToUse.reduce(
+        (acc: Record<string, number>, job: BackgroundJob) => {
+          acc[job.status] = (acc[job.status] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
 
-        console.debug(
-          `[useJobFiltering] Jobs status distribution:`,
-          statusCounts
-        );
-      }
+      logger.debug(
+        `Jobs status distribution:`,
+        statusCounts
+      );
 
       // Use the centralized constants for status categories to ensure consistency
       const ACTIVE_STATUSES = JOB_STATUSES.ACTIVE;
@@ -98,18 +95,16 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
           safeCompare(a, b, ["endTime", "updatedAt", "lastUpdate"])
         );
 
-      if (DEBUG_JOB_FILTERING) {
-        const duration = performance.now() - startTime;
-        console.debug(
-          `[useJobFiltering] Filtered jobs in ${Math.round(duration)}ms:`,
-          {
-            active: activeList.length,
-            completed: completedList.length,
-            failed: failedList.length,
-            total: jobsToUse.length,
-          }
-        );
-      }
+      const duration = performance.now() - startTime;
+      logger.debug(
+        `Filtered jobs in ${Math.round(duration)}ms:`,
+        {
+          active: activeList.length,
+          completed: completedList.length,
+          failed: failedList.length,
+          total: jobsToUse.length,
+        }
+      );
 
       return {
         activeJobsToShow: activeList,
@@ -117,8 +112,6 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
         failedJobs: failedList,
         hasJobs: jobsToUse.length > 0,
       };
-      // DEBUG_JOB_FILTERING is a constant and doesn't need to be in deps
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jobs, cachedJobs, isLoading]);
 
   // Show loading only on first load, otherwise show cached content during updates

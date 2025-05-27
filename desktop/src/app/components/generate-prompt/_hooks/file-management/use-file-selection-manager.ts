@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 
 import { useExternalPathHandler } from "./use-external-path-handler";
 import { useFileSelectionCore } from "./use-file-selection-core";
@@ -47,19 +47,20 @@ export function useFileSelectionManager({
   const prevSessionIdRef = useRef<string | null>(activeSessionId);
 
   // Use modular hooks for core functionality
-  const fileSelectionCore = useFileSelectionCore({
-    rawFilesMap,
+  const fileSelectionHistory = useFileSelectionHistory({
     currentIncludedFiles,
     currentExcludedFiles,
     onUpdateIncludedFiles,
     onUpdateExcludedFiles,
   });
 
-  const fileSelectionHistory = useFileSelectionHistory({
+  const fileSelectionCore = useFileSelectionCore({
+    rawFilesMap,
     currentIncludedFiles,
     currentExcludedFiles,
     onUpdateIncludedFiles,
     onUpdateExcludedFiles,
+    pushHistory: fileSelectionHistory.pushHistory,
   });
 
   const externalPathHandler = useExternalPathHandler({
@@ -71,20 +72,17 @@ export function useFileSelectionManager({
     pushHistory: fileSelectionHistory.pushHistory,
   });
 
-  // Track session changes
-  useEffect(() => {
-    const sessionChanged = prevSessionIdRef.current !== activeSessionId;
-    const transitionStateChanged =
-      prevIsTransitioningRef.current !== isTransitioningSession;
-
-    if (sessionChanged) {
-      prevSessionIdRef.current = activeSessionId;
-    }
-
-    if (transitionStateChanged) {
-      prevIsTransitioningRef.current = isTransitioningSession;
-    }
-  }, [activeSessionId, isTransitioningSession]);
+  // Flush pending operations function
+  const flushPendingOperations = useCallback(() => {
+    fileSelectionHistory.pushHistory(
+      fileSelectionCore.includedPaths,
+      fileSelectionCore.excludedPaths
+    );
+  }, [
+    fileSelectionHistory.pushHistory,
+    fileSelectionCore.includedPaths,
+    fileSelectionCore.excludedPaths,
+  ]);
 
   // Reset all state when session changes
   const reset = useCallback(() => {
@@ -94,27 +92,20 @@ export function useFileSelectionManager({
     setShowOnlySelectedInternal(false);
   }, [fileSelectionCore, fileSelectionHistory, externalPathHandler]);
 
-  // Handle session transitions
+  // Handle session transitions with refined logic
   useEffect(() => {
-    // Skip resets during transitions
-    if (isTransitioningSession) {
-      return;
-    }
+    const sessionChanged = prevSessionIdRef.current !== activeSessionId;
+    const transitionEnded = prevIsTransitioningRef.current && !isTransitioningSession;
 
-    // Only reset after the transition is complete (activeSessionId changed AND transition is done)
-    if (
-      activeSessionId !== prevSessionIdRef.current &&
-      prevSessionIdRef.current !== null &&
-      !isTransitioningSession
-    ) {
+    if (transitionEnded && sessionChanged && prevSessionIdRef.current !== null) {
       reset();
     }
 
-    // Update the ref for next comparison, but only when not transitioning
-    if (!isTransitioningSession) {
-      prevSessionIdRef.current = activeSessionId;
-    }
-  }, [activeSessionId, reset, isTransitioningSession]);
+    // Update refs for next cycle
+    prevSessionIdRef.current = activeSessionId;
+    prevIsTransitioningRef.current = isTransitioningSession;
+
+  }, [activeSessionId, isTransitioningSession, reset]);
 
   // Pass through setters to communicate with session
   const searchTerm = currentSearchTerm;
@@ -143,85 +134,98 @@ export function useFileSelectionManager({
     // Use the current prop value instead of derived state to be consistent with the source of truth
     const currentIncludedFilesLength = currentIncludedFiles.length;
 
-    // Only act if "show only selected" is currently active
-    // and there are files in the project (rawFilesMap indicates loaded project files)
-    if (showOnlySelected && Object.keys(rawFilesMap).length > 0) {
-      // Check if the count *became* zero (i.e., it was > 0 before and now is 0)
-      if (
-        currentIncludedFilesLength === 0 &&
-        prevIncludedPathsLengthRef.current !== undefined &&
-        prevIncludedPathsLengthRef.current > 0
-      ) {
-        setShowOnlySelectedInternal(false);
-      }
+    // Only proceed if we have a project loaded (rawFilesMap has content)
+    if (Object.keys(rawFilesMap).length === 0) {
+      prevIncludedPathsLengthRef.current = currentIncludedFilesLength;
+      return;
     }
 
-    // Handle the case where a session with no selected files is loaded
-    // but "Show Only Selected" is somehow still active - preventing a confusing empty UI
-    if (
-      showOnlySelected &&
-      currentIncludedFilesLength === 0 &&
-      Object.keys(rawFilesMap).length > 0 &&
-      !isTransitioningSession
-    ) {
-      // If we have files in rawFilesMap but no selections AND show only selected,
-      // automatically switch to "All Files" view
-      setShowOnlySelectedInternal(false);
+    // Auto-toggle "show only selected" to false when selections become empty
+    // Only if "show only selected" is currently true to avoid unnecessary state changes
+    if (showOnlySelected) {
+      // Case 1: The count became zero (i.e., it was > 0 before and now is 0)
+      const countJustBecameZero = currentIncludedFilesLength === 0 &&
+        prevIncludedPathsLengthRef.current !== undefined &&
+        prevIncludedPathsLengthRef.current > 0;
+
+      // Case 2: No selected files and not transitioning (prevents confusing empty UI)
+      const hasNoSelectionsAndNotTransitioning = currentIncludedFilesLength === 0 && !isTransitioningSession;
+
+      if (countJustBecameZero || hasNoSelectionsAndNotTransitioning) {
+        setShowOnlySelectedInternal(false);
+      }
     }
 
     // Update previous length for the next run
     prevIncludedPathsLengthRef.current = currentIncludedFilesLength;
   }, [
     currentIncludedFiles.length,
-    showOnlySelected,
     rawFilesMap,
     isTransitioningSession,
+    showOnlySelected,
   ]);
 
   // Return a comprehensive API that maintains the same interface as the original hook
-  return {
-    // State - the authoritative source of truth for file selection
-    managedFilesMap: fileSelectionCore.managedFilesMap,
-    searchTerm,
-    showOnlySelected,
-    externalPathWarnings: externalPathHandler.externalPathWarnings,
-    searchSelectedFilesOnly,
-    includedPaths: fileSelectionCore.includedPaths,
-    excludedPaths: fileSelectionCore.excludedPaths,
+  return useMemo(
+    () => ({
+      // State - the authoritative source of truth for file selection
+      managedFilesMap: fileSelectionCore.managedFilesMap,
+      searchTerm,
+      showOnlySelected,
+      externalPathWarnings: externalPathHandler.externalPathWarnings,
+      searchSelectedFilesOnly,
+      includedPaths: fileSelectionCore.includedPaths,
+      excludedPaths: fileSelectionCore.excludedPaths,
 
-    // Setters
-    setSearchTerm,
-    setShowOnlySelected: setShowOnlySelectedInternal,
-    setExternalPathWarnings: externalPathHandler.clearExternalPathWarnings,
+      // Setters
+      setSearchTerm,
+      setShowOnlySelected: setShowOnlySelectedInternal,
+      setExternalPathWarnings: externalPathHandler.clearExternalPathWarnings,
 
-    // Core selection actions
-    toggleFileSelection: fileSelectionCore.toggleFileSelection,
-    toggleFileExclusion: fileSelectionCore.toggleFileExclusion,
-    toggleSearchSelectedFilesOnly,
-    handleBulkToggle: fileSelectionCore.handleBulkToggle,
+      // Core selection actions
+      toggleFileSelection: fileSelectionCore.toggleFileSelection,
+      toggleFileExclusion: fileSelectionCore.toggleFileExclusion,
+      toggleSearchSelectedFilesOnly,
+      handleBulkToggle: fileSelectionCore.handleBulkToggle,
 
-    // External path handling
-    applySelectionsFromPaths: externalPathHandler.applySelectionsFromPaths,
-    replaceAllSelectionsWithPaths:
-      externalPathHandler.replaceAllSelectionsWithPaths,
+      // External path handling
+      applySelectionsFromPaths: externalPathHandler.applySelectionsFromPaths,
+      replaceAllSelectionsWithPaths:
+        externalPathHandler.replaceAllSelectionsWithPaths,
 
-    // History operations
-    undoSelection: fileSelectionHistory.undoSelection,
-    redoSelection: fileSelectionHistory.redoSelection,
-    canUndo: fileSelectionHistory.canUndo,
-    canRedo: fileSelectionHistory.canRedo,
+      // History operations
+      undoSelection: fileSelectionHistory.undoSelection,
+      redoSelection: fileSelectionHistory.redoSelection,
+      canUndo: fileSelectionHistory.canUndo,
+      canRedo: fileSelectionHistory.canRedo,
 
-    // Cleanup
-    flushPendingOperations: useCallback(() => {
-      fileSelectionHistory.pushHistory(
-        fileSelectionCore.includedPaths,
-        fileSelectionCore.excludedPaths
-      );
-    }, [
-      fileSelectionHistory.pushHistory,
+      // Cleanup
+      flushPendingOperations,
+      reset,
+    }),
+    [
+      fileSelectionCore.managedFilesMap,
+      searchTerm,
+      showOnlySelected,
+      externalPathHandler.externalPathWarnings,
+      searchSelectedFilesOnly,
       fileSelectionCore.includedPaths,
       fileSelectionCore.excludedPaths,
-    ]),
-    reset,
-  };
+      setSearchTerm,
+      setShowOnlySelectedInternal,
+      externalPathHandler.clearExternalPathWarnings,
+      fileSelectionCore.toggleFileSelection,
+      fileSelectionCore.toggleFileExclusion,
+      toggleSearchSelectedFilesOnly,
+      fileSelectionCore.handleBulkToggle,
+      externalPathHandler.applySelectionsFromPaths,
+      externalPathHandler.replaceAllSelectionsWithPaths,
+      fileSelectionHistory.undoSelection,
+      fileSelectionHistory.redoSelection,
+      fileSelectionHistory.canUndo,
+      fileSelectionHistory.canRedo,
+      flushPendingOperations,
+      reset,
+    ]
+  );
 }

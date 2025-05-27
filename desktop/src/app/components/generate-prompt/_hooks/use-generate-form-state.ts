@@ -63,10 +63,15 @@ export function useGenerateFormState({
 
   // Handle session/project changes
   useEffect(() => {
-    // Reset state when session changes or becomes null
     if (!activeSessionId || isTransitioningSession) {
+      // Reset relevant states when no active session or during transition
       setIsStateLoaded(false);
       setIsRestoringSession(false);
+      setSessionInitialized(false); // Explicitly set to false
+    } else if (activeSessionId && !isTransitioningSession) {
+      // Session is active and not transitioning
+      setSessionInitialized(true);
+      // setIsStateLoaded might be set after session data is fully loaded
     }
   }, [activeSessionId, isTransitioningSession, projectDirectory]);
 

@@ -45,8 +45,7 @@ export function useSessionQueries({
   lastFetchTimeRef,
   deletedSessionIdsRef,
 }: UseSessionQueriesProps) {
-  const { activeSessionId, currentSession } = useSessionStateContext();
-
+  const sessionStateContext = useSessionStateContext();
   const { loadSessionById } = useSessionActionsContext();
 
   const { showNotification } = useNotification();
@@ -63,13 +62,13 @@ export function useSessionQueries({
         return;
       }
 
-      if (!forceRefresh) {
-        // Check for pending operation
-        if (pendingLoadRef.current) {
-          // Skip loadSessions when a load is already pending
-          return;
-        }
+      // Check for pending operation
+      if (pendingLoadRef.current && !forceRefresh) {
+        // Skip loadSessions when a load is already pending
+        return;
+      }
 
+      if (!forceRefresh) {
         // Check if minimum time interval has passed since last fetch
         const now = Date.now();
         const timeSinceLastFetch = now - lastFetchTimeRef.current;
@@ -82,20 +81,21 @@ export function useSessionQueries({
         }
       }
 
+      // Set pending flag immediately to prevent race conditions
+      pendingLoadRef.current = true;
+
       const normalizedProjectDir = await normalizePath(projectDirectory);
       // Loading sessions for project directory
 
       // Reset any previous errors
       setSessionsError(null);
-
-      // Set pending flag and update last fetch time
-      pendingLoadRef.current = true;
       lastFetchTimeRef.current = Date.now();
 
       // Throttle frequent calls by applying a small delay
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      if (!hasLoadedOnceRef.current) {
+      // Set loading state for initial load or force refresh
+      if (!hasLoadedOnceRef.current || forceRefresh) {
         setIsLoadingSessions(true);
       }
 
@@ -114,13 +114,15 @@ export function useSessionQueries({
 
         // Sessions loaded successfully
 
-        // Mark as loaded
+        // Mark as loaded after first successful fetch for this project
         hasLoadedOnceRef.current = true;
 
+        // Read current sessions length at execution time
+        const currentSessionsLength = sessions.length;
         // If we get an empty array but already have sessions displayed,
         // AND we're not currently forcing a refresh,
         // keep the existing sessions displayed but disabled
-        if (sessionsList.length === 0 && sessions.length > 0 && !forceRefresh) {
+        if (sessionsList.length === 0 && currentSessionsLength > 0 && !forceRefresh) {
           // Keep existing UI state to avoid flicker on empty server response
           setIsLoadingSessions(false); // Just clear loading state, keep UI stable
           return;
@@ -140,7 +142,8 @@ export function useSessionQueries({
         // Process loaded sessions
 
         // Auto-activate a session if none is active but sessions exist
-        if (!activeSessionId && filteredList.length > 0) {
+        // Use current values directly from session state context
+        if (!sessionStateContext.activeSessionId && filteredList.length > 0) {
           // Auto-activate most recent session when no session is active
 
           // Sort by updated time to get the most recently used session
@@ -157,21 +160,19 @@ export function useSessionQueries({
             // Auto-activate the most recently used session
 
             // Use a small timeout to avoid React state update conflicts
-            setTimeout(() => {
-              // Use loadSessionById with force option to ensure the session loads properly
-              const loadPromise = loadSessionById(sessionToActivate.id ? String(sessionToActivate.id) : '');
-
-              loadPromise
-                .then(() => {
-                  if (currentSession) {
-                    // Session auto-activation successful
-                    onLoadSessionUISync(currentSession);
-                    onSessionNameChangeUISync(currentSession.name);
-                  }
-                })
-                .catch((_error: unknown) => {
-                  // Session auto-activation failed
-                });
+            setTimeout(async () => {
+              try {
+                await loadSessionById(sessionToActivate.id);
+                // Check if the correct session was loaded after await
+                if (sessionStateContext.currentSession && sessionStateContext.currentSession.id === sessionToActivate.id) {
+                  onLoadSessionUISync(sessionStateContext.currentSession);
+                  onSessionNameChangeUISync(sessionStateContext.currentSession.name);
+                } else {
+                  console.warn(`[SessionQueries] Auto-activated session ${sessionToActivate.id} but currentSession is ${sessionStateContext.currentSession?.id}`);
+                }
+              } catch (error) {
+                console.error(`[SessionQueries] Auto-activation failed for session ${sessionToActivate.id}:`, error);
+              }
             }, 50);
           }
         }
@@ -192,7 +193,12 @@ export function useSessionQueries({
         // Ensure loading is cleared on error
         hasLoadedOnceRef.current = true;
       } finally {
-        setIsLoadingSessions(false);
+        // Clear loading state if it was set during initial load or force refresh
+        if (forceRefresh || !hasLoadedOnceRef.current) {
+          setIsLoadingSessions(false);
+        } else {
+          setIsLoadingSessions(false);
+        }
 
         // Set a cooldown period before allowing the next load
         setTimeout(() => {
@@ -200,23 +206,7 @@ export function useSessionQueries({
         }, 500); // 0.5 second cooldown
       }
     },
-    [
-      projectDirectory,
-      activeSessionId,
-      currentSession,
-      sessions.length,
-      showNotification,
-      loadSessionById,
-      onLoadSessionUISync,
-      onSessionNameChangeUISync,
-      setSessions,
-      setIsLoadingSessions,
-      setSessionsError,
-      pendingLoadRef,
-      hasLoadedOnceRef,
-      lastFetchTimeRef,
-      deletedSessionIdsRef,
-    ]
+    [projectDirectory, loadSessionById, onLoadSessionUISync, onSessionNameChangeUISync, showNotification, sessionStateContext.activeSessionId, sessions, setSessions, setIsLoadingSessions, setSessionsError, pendingLoadRef, hasLoadedOnceRef, lastFetchTimeRef, deletedSessionIdsRef]
   );
 
   return {

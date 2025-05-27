@@ -57,4 +57,6 @@ const FindModeToggle = ({
   );
 };
 
+FindModeToggle.displayName = "FindModeToggle";
+
 export default FindModeToggle;

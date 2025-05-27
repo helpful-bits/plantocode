@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
-import type { BackgroundJob, JobMetadata } from "@/types/session-types";
+import type { BackgroundJob } from "@/types/session-types";
+import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
 
 /**
  * Type-safe wrapper for useBackgroundJob hook
@@ -11,17 +13,19 @@ import type { BackgroundJob, JobMetadata } from "@/types/session-types";
  * @returns An object with properly typed job data and related states
  */
 export function useTypedBackgroundJob(jobId: string | null) {
-  const backgroundJobs = useBackgroundJobs();
-  const job = jobId ? backgroundJobs.jobs.find(j => j.id === jobId) as BackgroundJob | undefined : undefined;
-  
-  // Create a properly typed version of the job result
-  return {
+  const { jobs: allJobs, isLoading, error, getJobById } = useBackgroundJobs();
+
+  const job = useMemo(() => {
+    return jobId ? getJobById(jobId) : null;
+  }, [jobId, getJobById, allJobs]);
+
+  return useMemo(() => ({
     job: job || null,
-    isLoading: backgroundJobs.isLoading || false,
-    error: backgroundJobs.error || null,
+    isLoading: isLoading || false,
+    error: error || null,
     status: job?.status as BackgroundJob["status"] | null,
     response: job?.response as string | null,
     errorMessage: job?.errorMessage as string | null,
-    metadata: job?.metadata as JobMetadata | null,
-  };
+    metadata: getParsedMetadata(job?.metadata),
+  }), [job, isLoading, error]);
 }

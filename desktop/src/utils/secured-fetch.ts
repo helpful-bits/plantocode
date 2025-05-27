@@ -1,4 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger({ namespace: "SecuredFetch" });
 
 /**
  * Type for secured fetch options
@@ -40,10 +43,10 @@ export async function securedFetch(
         // Add the Bearer token to the Authorization header
         headers.set('Authorization', `Bearer ${token}`);
       } else {
-        console.warn('[securedFetch] No authentication token available');
+        logger.warn('[securedFetch] No authentication token available');
       }
     } catch (error) {
-      console.error('[securedFetch] Error getting authentication token:', error);
+      logger.error('[securedFetch] Error getting authentication token:', error);
     }
   }
   

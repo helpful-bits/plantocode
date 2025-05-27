@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 
@@ -30,24 +30,47 @@ const FileSection = React.memo(function FileSection({
     currentSession?.negativeContentRegex?.trim()
   );
 
-  // Handle filter mode changes and synchronize with regex state
-  const handleFilterModeChange = (newMode: "all" | "selected" | "regex") => {
+  // Handle filter mode changes
+  const handleFilterModeChange = useCallback((newMode: "all" | "selected" | "regex") => {
     fileState.setFilterMode(newMode);
-    
-    // Update regex state if needed
-    if (newMode === "regex" !== currentSession?.isRegexActive) {
-      // When toggling regex mode, update through context actions
-      if (newMode === "regex") {
-        // Enable regex mode
-        regexContext.actions.handleGenerateRegexFromTask();
-      } else {
-        // Disable regex mode - the clear function also disables regex mode
-        regexContext.actions.handleClearPatterns();
-      }
-    }
-    
     coreContext.actions.handleInteraction();
-  };
+  }, [
+    fileState.setFilterMode,
+    coreContext.actions
+  ]);
+
+  // Memoize bulk toggle handler to ensure stable prop
+  const handleBulkToggle = useCallback((shouldInclude: boolean, targetFiles: any[]) => {
+    // Update state through fileState.handleBulkToggle which will trigger the proper interaction handlers
+    fileState.handleBulkToggle(targetFiles, shouldInclude);
+  }, [fileState.handleBulkToggle]);
+
+  // Memoize refresh files handler to ensure stable prop
+  const handleRefreshFiles = useCallback(async (_preserveState?: boolean) => {
+    await fileState.refreshFiles();
+  }, [fileState.refreshFiles]);
+
+  // Memoize regex state to prevent unnecessary re-renders
+  const regexState = useMemo(() => ({
+    // Provide regex pattern data from SessionContext
+    titleRegex: currentSession?.titleRegex || "",
+    contentRegex: currentSession?.contentRegex || "",
+    negativeTitleRegex: currentSession?.negativeTitleRegex || "",
+    negativeContentRegex: currentSession?.negativeContentRegex || "",
+    isRegexActive: currentSession?.isRegexActive || false,
+    // Provide UI state from RegexContext
+    ...regexContext.state,
+    // Provide actions from RegexContext
+    ...regexContext.actions
+  }), [
+    currentSession?.titleRegex,
+    currentSession?.contentRegex,
+    currentSession?.negativeTitleRegex,
+    currentSession?.negativeContentRegex,
+    currentSession?.isRegexActive,
+    regexContext.state,
+    regexContext.actions
+  ]);
 
   return (
     <>
@@ -58,17 +81,11 @@ const FileSection = React.memo(function FileSection({
         onSearchChange={fileState.setSearchTerm}
         onToggleSelection={fileState.toggleFileSelection}
         onToggleExclusion={fileState.toggleFileExclusion}
-        onBulkToggle={(shouldInclude, targetFiles) => {
-          // Update state through fileState.handleBulkToggle which will trigger the proper interaction handlers
-          fileState.handleBulkToggle(targetFiles, shouldInclude);
-        }}
+        onBulkToggle={handleBulkToggle}
         filterMode={fileState.filterMode}
         onFilterModeChange={handleFilterModeChange}
         isRegexAvailable={isRegexAvailable}
-        onInteraction={() => coreContext.actions.handleInteraction()}
-        refreshFiles={async (_preserveState?: boolean) => {
-          await fileState.refreshFiles();
-        }}
+        refreshFiles={handleRefreshFiles}
         isLoading={fileState.isLoadingFiles || fileState.isFindingFiles}
         isInitialized={fileState.isInitialized}
         fileLoadError={fileState.fileLoadError}
@@ -81,22 +98,13 @@ const FileSection = React.memo(function FileSection({
                 ? "Loading files..."
                 : ""
         }
-        regexState={{
-          // Provide regex pattern data from SessionContext
-          titleRegex: currentSession?.titleRegex || "",
-          contentRegex: currentSession?.contentRegex || "",
-          negativeTitleRegex: currentSession?.negativeTitleRegex || "",
-          negativeContentRegex: currentSession?.negativeContentRegex || "",
-          isRegexActive: currentSession?.isRegexActive || false,
-          // Provide UI state from RegexContext
-          ...regexContext.state,
-          // Provide actions from RegexContext
-          ...regexContext.actions
-        }}
+        regexState={regexState}
         disabled={disabled}
       />
     </>
   );
 });
+
+FileSection.displayName = "FileSection";
 
 export default FileSection;

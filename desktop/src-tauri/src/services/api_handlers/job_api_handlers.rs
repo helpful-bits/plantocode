@@ -3,7 +3,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use log::{info, error};
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, SerializableError};
 use crate::models::FetchResponse;
 
 // Background job management handlers
@@ -32,9 +32,7 @@ pub async fn handle_get_jobs(app_handle: AppHandle) -> AppResult<FetchResponse> 
             Ok(FetchResponse {
                 status: 500,
                 headers,
-                body: json!({
-                    "error": format!("Failed to get jobs: {}", e)
-                }),
+                body: json!(SerializableError::from(e)),
             })
         }
     }
@@ -65,9 +63,7 @@ pub async fn handle_get_job(app_handle: AppHandle, job_id: Option<&str>) -> AppR
                 Ok(FetchResponse {
                     status: 404,
                     headers,
-                    body: json!({
-                        "error": format!("Job not found: {}", id)
-                    }),
+                    body: json!(SerializableError::from(AppError::NotFoundError(format!("Job not found: {}", id)))),
                 })
             },
             Err(e) => {
@@ -78,9 +74,7 @@ pub async fn handle_get_job(app_handle: AppHandle, job_id: Option<&str>) -> AppR
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to get job: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -91,9 +85,7 @@ pub async fn handle_get_job(app_handle: AppHandle, job_id: Option<&str>) -> AppR
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Job ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Job ID is required".to_string()))),
         })
     }
 }
@@ -124,9 +116,7 @@ pub async fn handle_get_jobs_by_session(app_handle: AppHandle, session_id: Optio
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to get jobs for session: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -137,9 +127,7 @@ pub async fn handle_get_jobs_by_session(app_handle: AppHandle, session_id: Optio
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Session ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Session ID is required".to_string()))),
         })
     }
 }
@@ -169,9 +157,7 @@ pub async fn handle_get_active_jobs(app_handle: AppHandle) -> AppResult<FetchRes
             Ok(FetchResponse {
                 status: 500,
                 headers,
-                body: json!({
-                    "error": format!("Failed to get active jobs: {}", e)
-                }),
+                body: json!(SerializableError::from(e)),
             })
         }
     }
@@ -203,9 +189,7 @@ pub async fn handle_cancel_job(app_handle: AppHandle, job_id: Option<&str>) -> A
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to cancel job: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -216,9 +200,7 @@ pub async fn handle_cancel_job(app_handle: AppHandle, job_id: Option<&str>) -> A
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Job ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Job ID is required".to_string()))),
         })
     }
 }
@@ -249,9 +231,7 @@ pub async fn handle_cancel_session_jobs(app_handle: AppHandle, session_id: Optio
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to cancel session jobs: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -262,9 +242,7 @@ pub async fn handle_cancel_session_jobs(app_handle: AppHandle, session_id: Optio
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Session ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Session ID is required".to_string()))),
         })
     }
 }
@@ -304,9 +282,7 @@ pub async fn handle_update_job_cleared_status(app_handle: AppHandle, args: &crat
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to update job cleared status: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -317,9 +293,7 @@ pub async fn handle_update_job_cleared_status(app_handle: AppHandle, args: &crat
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }
@@ -360,9 +334,7 @@ pub async fn handle_clear_job_history(app_handle: AppHandle, args: &crate::model
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to clear job history: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -393,9 +365,7 @@ pub async fn handle_clear_job_history(app_handle: AppHandle, args: &crate::model
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to clear job history: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -430,9 +400,7 @@ pub async fn handle_delete_job(app_handle: AppHandle, job_id: Option<&str>) -> A
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to delete job: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -443,9 +411,7 @@ pub async fn handle_delete_job(app_handle: AppHandle, job_id: Option<&str>) -> A
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Job ID is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Job ID is required".to_string()))),
         })
     }
 }

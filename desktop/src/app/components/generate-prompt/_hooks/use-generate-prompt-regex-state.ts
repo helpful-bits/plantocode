@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 
 import { useRegexState } from "./use-regex-state";
+import { getErrorMessage } from "@/utils/error-handling";
 import { 
   useSessionStateContext, 
   useSessionActionsContext 
@@ -10,20 +11,24 @@ import {
 import { useTauriJobCommand } from "@/hooks/use-tauri-command";
 import { useProject } from "@/contexts/project-context";
 import { useBackgroundJobs } from "@/contexts/background-jobs";
+import { getParsedMetadata } from "../../background-jobs-sidebar/utils";
 
 export interface UseGeneratePromptRegexStateProps {
-  // Other props
-  taskDescription: string;
   handleInteraction?: () => void;
 }
 
+interface RegexJobResponse {
+  jobId: string;
+}
+
 export function useGeneratePromptRegexState({
-  taskDescription,
   handleInteraction,
 }: UseGeneratePromptRegexStateProps) {
   // Get regex values from SessionContext
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
+  
+  const taskDescription = sessionState.currentSession?.taskDescription || "";
   
   const titleRegex = sessionState.currentSession?.titleRegex || "";
   const contentRegex = sessionState.currentSession?.contentRegex || "";
@@ -44,12 +49,12 @@ export function useGeneratePromptRegexState({
   const { getJobById } = useBackgroundJobs();
   
   // State for individual field generation
-  const [generatingFieldType, setGeneratingFieldType] = useState<'title' | 'content' | 'negativeTitle' | 'negativeContent' | null>(null);
-  const [generatingFieldJobId, setGeneratingFieldJobId] = useState<string | null>(null);
-  const [fieldRegexGenerationError, setFieldRegexGenerationError] = useState<string | null>(null);
+  const [generatingFieldType, setGeneratingFieldType] = useState<'title' | 'content' | 'negativeTitle' | 'negativeContent' | undefined>(undefined);
+  const [generatingFieldJobId, setGeneratingFieldJobId] = useState<string | undefined>(undefined);
+  const [fieldRegexGenerationError, setFieldRegexGenerationError] = useState<string | undefined>(undefined);
   
   // Tauri command for individual regex generation
-  const { execute: executeRegexGeneration } = useTauriJobCommand({
+  const { execute: executeRegexGeneration } = useTauriJobCommand<RegexJobResponse>({
     command: "generate_regex_command",
     traceName: "generate_regex_for_field",
   });
@@ -113,11 +118,11 @@ export function useGeneratePromptRegexState({
 
     // Set loading state
     setGeneratingFieldType(fieldType);
-    setGeneratingFieldJobId(null);
-    setFieldRegexGenerationError(null);
+    setGeneratingFieldJobId(undefined);
+    setFieldRegexGenerationError(undefined);
 
     try {
-      // Call the Tauri command with target_field parameter
+      // Call the Tauri command with targetField parameter
       const result = await executeRegexGeneration({
         sessionId: activeSessionId,
         projectDirectory: projectDirectory,
@@ -125,54 +130,27 @@ export function useGeneratePromptRegexState({
         targetField: fieldType,
       });
 
-      if (result.isSuccess && result.data) {
-        // Store the job ID
-        setGeneratingFieldJobId(result.data as string);
-      } else {
-        let extractedErrorMessage = "Failed to start regex generation";
-        
-        // Try to extract error message from result
-        const errorSource = (result as any).error || (result as any).message;
-        if (errorSource) {
-          if (typeof errorSource === 'string') {
-            extractedErrorMessage = errorSource;
-          } else if (errorSource instanceof Error) {
-            extractedErrorMessage = errorSource.message;
-          } else if (typeof errorSource === 'object' && errorSource !== null) {
-            // Handle plain objects from Tauri like { ConfigError: "details" }
-            if ('message' in errorSource && typeof errorSource.message === 'string') {
-              extractedErrorMessage = errorSource.message;
-            } else {
-              // Extract error from object keys (e.g., ConfigError: "...")
-              const errorKeys = Object.keys(errorSource);
-              if (errorKeys.length === 1) {
-                const errorKey = errorKeys[0];
-                const errorValue = (errorSource as any)[errorKey];
-                if (typeof errorValue === 'string') {
-                  extractedErrorMessage = `${errorKey}: ${errorValue}`;
-                } else {
-                  extractedErrorMessage = `${errorKey}: ${JSON.stringify(errorValue)}`;
-                }
-              } else {
-                extractedErrorMessage = JSON.stringify(result.error);
-              }
-            }
-          }
-        } else if (result.message && typeof result.message === 'string') {
-          extractedErrorMessage = result.message;
-        }
-        
-        setFieldRegexGenerationError(extractedErrorMessage);
-        setGeneratingFieldType(null);
+      if (result.isSuccess && result.data?.jobId && typeof result.data.jobId === 'string') {
+        setGeneratingFieldJobId(result.data.jobId);
+      } else if (result.isSuccess) { // Success but jobId is problematic
+        const errorMsg = "Job started but a valid job ID was not returned from the backend.";
+        setFieldRegexGenerationError(errorMsg);
+        console.error("[RegexState] Unexpected data structure on success (jobId missing/invalid):", JSON.stringify(result.data));
+        setGeneratingFieldType(undefined);
+      } else { // Not isSuccess
+        const errorMessage = getErrorMessage(result.error) || result.message || "Failed to start regex generation for field.";
+        setFieldRegexGenerationError(errorMessage);
+        console.error("[RegexState] Regex generation failed:", JSON.stringify(result));
+        setGeneratingFieldType(undefined);
       }
     } catch (error) {
-      let msg = "Unknown error occurred while initiating regex generation.";
+      let msg = "Unknown error occurred.";
       if (error instanceof Error) {
         msg = error.message;
       } else if (typeof error === 'string') {
         msg = error;
-      } else if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
-        msg = (error as any).message;
+      } else if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+        msg = error.message;
       } else {
         try {
           const stringifiedError = JSON.stringify(error);
@@ -180,7 +158,7 @@ export function useGeneratePromptRegexState({
         } catch { /* Fallback to default msg */ }
       }
       setFieldRegexGenerationError(msg);
-      setGeneratingFieldType(null);
+      setGeneratingFieldType(undefined);
     }
 
     if (handleInteraction) handleInteraction();
@@ -188,11 +166,11 @@ export function useGeneratePromptRegexState({
   
   // State for summary generation
   const [isGeneratingSummaryExplanation, setIsGeneratingSummaryExplanation] = useState(false);
-  const [generatingSummaryJobId, setGeneratingSummaryJobId] = useState<string | null>(null);
-  const [summaryGenerationError, setSummaryGenerationError] = useState<string | null>(null);
+  const [generatingSummaryJobId, setGeneratingSummaryJobId] = useState<string | undefined>(undefined);
+  const [summaryGenerationError, setSummaryGenerationError] = useState<string | undefined>(undefined);
   
   // Tauri command for summary generation
-  const { execute: executeRegexSummaryGeneration } = useTauriJobCommand({
+  const { execute: executeRegexSummaryGeneration } = useTauriJobCommand<RegexJobResponse>({
     command: "generate_regex_summary_command",
     traceName: "generate_regex_summary",
   });
@@ -205,8 +183,8 @@ export function useGeneratePromptRegexState({
 
     // Set loading state
     setIsGeneratingSummaryExplanation(true);
-    setGeneratingSummaryJobId(null);
-    setSummaryGenerationError(null);
+    setGeneratingSummaryJobId(undefined);
+    setSummaryGenerationError(undefined);
 
     try {
       // Call the Tauri command
@@ -214,51 +192,34 @@ export function useGeneratePromptRegexState({
         sessionId: activeSessionId,
       });
 
-      if (result.isSuccess && result.data) {
-        // Store the job ID
-        setGeneratingSummaryJobId(result.data as string);
-      } else {
-        let extractedErrorMessage = "Failed to start summary generation";
-        
-        // Try to extract error message from result
-        const errorSource = (result as any).error || (result as any).message;
-        if (errorSource) {
-          if (typeof errorSource === 'string') {
-            extractedErrorMessage = errorSource;
-          } else if (errorSource instanceof Error) {
-            extractedErrorMessage = errorSource.message;
-          } else if (typeof errorSource === 'object' && errorSource !== null) {
-            // Handle plain objects from Tauri like { ConfigError: "details" }
-            if ('message' in errorSource && typeof errorSource.message === 'string') {
-              extractedErrorMessage = errorSource.message;
-            } else {
-              // Extract error from object keys (e.g., ConfigError: "...")
-              const errorKeys = Object.keys(errorSource);
-              if (errorKeys.length === 1) {
-                const errorKey = errorKeys[0];
-                const errorValue = (errorSource as any)[errorKey];
-                if (typeof errorValue === 'string') {
-                  extractedErrorMessage = `${errorKey}: ${errorValue}`;
-                } else {
-                  extractedErrorMessage = `${errorKey}: ${JSON.stringify(errorValue)}`;
-                }
-              } else {
-                extractedErrorMessage = JSON.stringify(result.error);
-              }
-            }
-          }
-        } else if (result.message && typeof result.message === 'string') {
-          extractedErrorMessage = result.message;
-        }
-        
-        setSummaryGenerationError(extractedErrorMessage);
+      if (result.isSuccess && result.data?.jobId && typeof result.data.jobId === 'string') {
+        setGeneratingSummaryJobId(result.data.jobId);
+      } else if (result.isSuccess) { // Success but jobId is problematic
+        const errorMsg = "Job started but a valid job ID was not returned from the backend.";
+        setSummaryGenerationError(errorMsg);
+        console.error("[RegexState] Unexpected data structure on success (jobId missing/invalid):", JSON.stringify(result.data));
+        setIsGeneratingSummaryExplanation(false);
+      } else { // Not isSuccess
+        const errorMessage = getErrorMessage(result.error) || result.message || "Failed to start regex summary generation.";
+        setSummaryGenerationError(errorMessage);
+        console.error("[RegexState] Regex summary generation failed:", JSON.stringify(result));
         setIsGeneratingSummaryExplanation(false);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 
-        (typeof error === 'string' ? error : 
-          (error && typeof error === 'object' ? JSON.stringify(error) : "Unknown error occurred"));
-      setSummaryGenerationError(errorMessage);
+      let msg = "Unknown error occurred.";
+      if (error instanceof Error) {
+        msg = error.message;
+      } else if (typeof error === 'string') {
+        msg = error;
+      } else if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+        msg = error.message;
+      } else {
+        try {
+          const stringifiedError = JSON.stringify(error);
+          msg = stringifiedError === '{}' ? "An unspecified object error occurred." : stringifiedError;
+        } catch { /* Fallback to default msg */ }
+      }
+      setSummaryGenerationError(msg);
       setIsGeneratingSummaryExplanation(false);
     }
 
@@ -275,20 +236,40 @@ export function useGeneratePromptRegexState({
     // Check if job completed successfully
     if (job.status === "completed" && job.metadata) {
       try {
-        // Extract the target field from metadata
-        const targetField = job.metadata.targetField || job.metadata.target_field;
+        // Use safe metadata parsing
+        const metadata = getParsedMetadata(job.metadata);
         
-        // Extract the generated regex pattern
+        // Extract the target field from metadata with safe access
+        const targetField = metadata?.targetField || metadata?.target_field;
+        
+        // Extract the generated regex pattern with safe property access
         let regexPattern: string | undefined;
         
-        if (job.metadata.regexData && (job.metadata.regexData as any).primary_pattern) {
-          regexPattern = (job.metadata.regexData as any).primary_pattern.pattern;
-        } else if (job.response) {
+        // Define a type guard for regex data structure
+        const isRegexDataObj = (obj: unknown): obj is { 
+          primary_pattern?: { pattern?: string }; 
+          primaryPattern?: { pattern?: string };
+        } => {
+          return obj !== null && typeof obj === 'object';
+        };
+        
+        const regexDataObj = metadata?.regexData;
+        if (isRegexDataObj(regexDataObj)) {
+          if (regexDataObj.primary_pattern?.pattern) { // Check snake_case
+            regexPattern = regexDataObj.primary_pattern.pattern;
+          } else if (regexDataObj.primaryPattern?.pattern) { // Fallback to camelCase
+            regexPattern = regexDataObj.primaryPattern.pattern;
+          }
+        }
+        
+        if (!regexPattern && job.response) {
           // Fallback: try to extract pattern from response
           try {
             const responseData = JSON.parse(job.response);
-            if (responseData.primary_pattern && responseData.primary_pattern.pattern) {
-              regexPattern = responseData.primary_pattern.pattern;
+            // Check both snake_case and camelCase for robustness
+            const patternFromResponse = responseData?.primary_pattern?.pattern || responseData?.primaryPattern?.pattern;
+            if (patternFromResponse && typeof patternFromResponse === 'string') {
+              regexPattern = patternFromResponse;
             }
           } catch {
             // If JSON parsing fails, treat response as the pattern
@@ -298,7 +279,14 @@ export function useGeneratePromptRegexState({
 
         if (regexPattern && targetField === generatingFieldType) {
           // Map target field to session property
-          const updateObject: any = {};
+          type SessionRegexUpdate = {
+            titleRegex?: string;
+            contentRegex?: string;
+            negativeTitleRegex?: string;
+            negativeContentRegex?: string;
+          };
+          
+          const updateObject: SessionRegexUpdate = {};
           switch (targetField) {
             case 'title':
               updateObject.titleRegex = regexPattern;
@@ -319,17 +307,17 @@ export function useGeneratePromptRegexState({
         }
 
         // Reset state
-        setGeneratingFieldType(null);
-        setGeneratingFieldJobId(null);
-        setFieldRegexGenerationError(null);
+        setGeneratingFieldType(undefined);
+        setGeneratingFieldJobId(undefined);
+        setFieldRegexGenerationError(undefined);
       } catch (error) {
         let msg = "Failed to process regex generation result.";
         if (error instanceof Error) {
           msg = error.message;
         } else if (typeof error === 'string') {
           msg = error;
-        } else if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
-          msg = (error as any).message;
+        } else if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+          msg = error.message;
         } else {
           try {
             const stringifiedError = JSON.stringify(error);
@@ -337,14 +325,14 @@ export function useGeneratePromptRegexState({
           } catch { /* Fallback to default msg */ }
         }
         setFieldRegexGenerationError(msg);
-        setGeneratingFieldType(null);
-        setGeneratingFieldJobId(null);
+        setGeneratingFieldType(undefined);
+        setGeneratingFieldJobId(undefined);
       }
     } else if (job.status === "failed") {
       // Handle failed job
-      setFieldRegexGenerationError(String(job.errorMessage || "The regex generation background job failed."));
-      setGeneratingFieldType(null);
-      setGeneratingFieldJobId(null);
+      setFieldRegexGenerationError(job.errorMessage || "The regex generation background job failed.");
+      setGeneratingFieldType(undefined);
+      setGeneratingFieldJobId(undefined);
     }
   }, [generatingFieldJobId, generatingFieldType, getJobById, sessionActions]);
 
@@ -365,21 +353,21 @@ export function useGeneratePromptRegexState({
 
         // Reset state
         setIsGeneratingSummaryExplanation(false);
-        setGeneratingSummaryJobId(null);
-        setSummaryGenerationError(null);
+        setGeneratingSummaryJobId(undefined);
+        setSummaryGenerationError(undefined);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 
           (typeof error === 'string' ? error : 
             (error && typeof error === 'object' ? JSON.stringify(error) : "Failed to process summary generation result"));
         setSummaryGenerationError(errorMessage);
         setIsGeneratingSummaryExplanation(false);
-        setGeneratingSummaryJobId(null);
+        setGeneratingSummaryJobId(undefined);
       }
     } else if (job.status === "failed") {
       // Handle failed job
       setSummaryGenerationError(job.errorMessage || "Summary generation failed");
       setIsGeneratingSummaryExplanation(false);
-      setGeneratingSummaryJobId(null);
+      setGeneratingSummaryJobId(undefined);
     }
   }, [generatingSummaryJobId, getJobById, sessionActions]);
   // Initialize regex state with UI-specific logic
@@ -395,14 +383,8 @@ export function useGeneratePromptRegexState({
     applyRegexPatterns: baseApplyRegexPatterns,
     handleClearPatterns: baseClearPatterns,
   } = useRegexState({
-    initialTitleRegex: titleRegex,
-    initialContentRegex: contentRegex,
-    initialNegativeTitleRegex: negativeTitleRegex,
-    initialNegativeContentRegex: negativeContentRegex,
-    initialIsRegexActive: isRegexActive,
     onStateChange: handleInteraction,
     taskDescription,
-    activeSessionId,
   });
 
   // Wrap the regex generation handler to call handleInteraction
@@ -477,61 +459,103 @@ export function useGeneratePromptRegexState({
     }
   }, [sessionActions, handleInteraction]);
 
-  return {
-    // Regex generation UI state
-    isGeneratingTaskRegex,
-    generatingRegexJobId,
-    regexGenerationError,
-    
-    // Validation errors
-    titleRegexError,
-    contentRegexError,
-    negativeTitleRegexError,
-    negativeContentRegexError,
-    
-    // Current regex values (from SessionContext)
-    titleRegex,
-    contentRegex,
-    negativeTitleRegex,
-    negativeContentRegex,
-    isRegexActive,
-    
-    // Description fields (from SessionContext)
-    titleRegexDescription,
-    contentRegexDescription,
-    negativeTitleRegexDescription,
-    negativeContentRegexDescription,
-    regexSummaryExplanation,
-    
-    // Individual field generation state
-    generatingFieldType,
-    generatingFieldJobId,
-    fieldRegexGenerationError,
-    
-    // Summary generation state
-    isGeneratingSummaryExplanation,
-    generatingSummaryJobId,
-    summaryGenerationError,
-    
-    // Regex setters (update SessionContext)
-    setTitleRegex,
-    setContentRegex,
-    setNegativeTitleRegex,
-    setNegativeContentRegex,
-    setIsRegexActive,
-    
-    // Description setters
-    setTitleRegexDescription,
-    setContentRegexDescription,
-    setNegativeTitleRegexDescription,
-    setNegativeContentRegexDescription,
-    
-    // Regex actions
-    handleGenerateRegexFromTask,
-    handleGenerateRegexForField,
-    handleGenerateSummaryExplanation,
-    applyRegexPatterns,
-    handleClearPatterns,
-    reset,
-  };
+  return useMemo(
+    () => ({
+      // Regex generation UI state
+      isGeneratingTaskRegex,
+      generatingRegexJobId,
+      regexGenerationError,
+      
+      // Validation errors
+      titleRegexError,
+      contentRegexError,
+      negativeTitleRegexError,
+      negativeContentRegexError,
+      
+      // Current regex values (from SessionContext)
+      titleRegex,
+      contentRegex,
+      negativeTitleRegex,
+      negativeContentRegex,
+      isRegexActive,
+      
+      // Description fields (from SessionContext)
+      titleRegexDescription,
+      contentRegexDescription,
+      negativeTitleRegexDescription,
+      negativeContentRegexDescription,
+      regexSummaryExplanation,
+      
+      // Individual field generation state
+      generatingFieldType,
+      generatingFieldJobId,
+      fieldRegexGenerationError,
+      
+      // Summary generation state
+      isGeneratingSummaryExplanation,
+      generatingSummaryJobId,
+      summaryGenerationError,
+      
+      // Regex setters (update SessionContext)
+      setTitleRegex,
+      setContentRegex,
+      setNegativeTitleRegex,
+      setNegativeContentRegex,
+      setIsRegexActive,
+      
+      // Description setters
+      setTitleRegexDescription,
+      setContentRegexDescription,
+      setNegativeTitleRegexDescription,
+      setNegativeContentRegexDescription,
+      
+      // Regex actions
+      handleGenerateRegexFromTask,
+      handleGenerateRegexForField,
+      handleGenerateSummaryExplanation,
+      applyRegexPatterns,
+      handleClearPatterns,
+      reset,
+    }),
+    [
+      isGeneratingTaskRegex,
+      generatingRegexJobId,
+      regexGenerationError,
+      titleRegexError,
+      contentRegexError,
+      negativeTitleRegexError,
+      negativeContentRegexError,
+      titleRegex,
+      contentRegex,
+      negativeTitleRegex,
+      negativeContentRegex,
+      isRegexActive,
+      titleRegexDescription,
+      contentRegexDescription,
+      negativeTitleRegexDescription,
+      negativeContentRegexDescription,
+      regexSummaryExplanation,
+      generatingFieldType,
+      generatingFieldJobId,
+      fieldRegexGenerationError,
+      isGeneratingSummaryExplanation,
+      generatingSummaryJobId,
+      summaryGenerationError,
+      setTitleRegex,
+      setContentRegex,
+      setNegativeTitleRegex,
+      setNegativeContentRegex,
+      setIsRegexActive,
+      setTitleRegexDescription,
+      setContentRegexDescription,
+      setNegativeTitleRegexDescription,
+      setNegativeContentRegexDescription,
+      handleGenerateRegexFromTask,
+      handleGenerateRegexForField,
+      handleGenerateSummaryExplanation,
+      applyRegexPatterns,
+      handleClearPatterns,
+      reset,
+    ]
+  );
 }

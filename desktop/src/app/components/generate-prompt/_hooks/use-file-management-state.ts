@@ -3,6 +3,7 @@
 import { useRef, useCallback, useEffect, useState, useMemo } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
+import { useProject } from "@/contexts/project-context";
 
 import { type FileManagementContextValue } from "../_contexts/file-management-context";
 
@@ -17,11 +18,7 @@ import { useRelevantFilesFinder } from "./file-management/use-relevant-files-fin
 
 
 
-interface UseFileManagementStateProps {
-  projectDirectory: string;
-  taskDescription: string;
-  isTransitioningSession?: boolean;
-}
+interface UseFileManagementStateProps {}
 
 /**
  * Main hook for file management state
@@ -36,11 +33,10 @@ interface UseFileManagementStateProps {
  * 6. File contents loading - REMOVED as backend now handles file loading
  */
 export function useFileManagementState({
-  projectDirectory,
-  taskDescription,
-  isTransitioningSession = false,
 }: UseFileManagementStateProps): FileManagementContextValue {
-  const { activeSessionId } = useSessionStateContext();
+  const { projectDirectory } = useProject();
+  const { activeSessionId, isSessionLoading: isTransitioningSession, currentSession } = useSessionStateContext();
+  const taskDescription = currentSession?.taskDescription || "";
 
   // SECTION 1: UI STATE - Managed directly in this hook as it's UI coordination
   const [filterMode, setFilterModeState] = useState<
@@ -104,6 +100,15 @@ export function useFileManagementState({
     isTransitioningSession,
     activeSessionId,
   });
+
+  // Auto-initialize file list when project and session are ready
+  useEffect(() => {
+    if (projectDirectory && activeSessionId && !isInitialized && !isLoadingFiles) {
+      refreshFiles().catch(() => {
+        // Error handled by refreshFiles
+      });
+    }
+  }, [projectDirectory, activeSessionId, isInitialized, isLoadingFiles, refreshFiles]);
 
   // SECTION 5: PATH SELECTION HELPERS - Bridging file selection with AI results
   // Create dedicated functions for adding/replacing paths
@@ -234,48 +239,38 @@ export function useFileManagementState({
       return;
     }
 
+    // Calculate files that need to be loaded for UI preview
+    const filesToLoadForUI = fileSelectionManager.includedPaths.filter(
+      (path) =>
+        !fileContentsMap[path] ||
+        fileContentsMap[path].includes("[Error") ||
+        fileContentsMap[path].includes("[File not found]")
+    );
+
+    // Skip if no new files to load
+    if (filesToLoadForUI.length === 0) {
+      return;
+    }
+
     // Import and use the file content loader utility only when needed
     void import("@/utils/file-content-loader").then(({ loadFileContents }) => {
-      // Use callback to get current state and avoid dependency
-      setFileContentsMap((currentContents) => {
-        // Filter out files that already have content loaded
-        const filesToLoad = fileSelectionManager.includedPaths.filter(
-          (path) =>
-            !currentContents[path] ||
-            currentContents[path].includes("[Error") ||
-            currentContents[path].includes("[File not found]")
-        );
-
-        // Skip if no new files to load
-        if (filesToLoad.length === 0) {
-          return currentContents;
-        }
-
-        // Load file contents for UI preview only - limited to first 5 files
-        // for performance reasons. The backend will load complete files when needed.
-        loadFileContents(
-          projectDirectory,
-          filesToLoad.slice(0, 5),
-          currentContents
-        )
-          .then((contents) => {
-            setFileContentsMap(contents);
-          })
-          .catch((error) => {
-            console.error(
-              "[FileManagementState] Error loading file contents for UI preview:",
-              error
-            );
-          });
-
-        // Return current state unchanged for now - async operation will update it
-        return currentContents;
-      });
+      // Load file contents for UI preview only - limited to first 5 files
+      // for performance reasons. The backend will load complete files when needed.
+      loadFileContents(projectDirectory, filesToLoadForUI.slice(0, 5))
+        .then((newlyLoadedContents) => {
+          // Merge newly loaded contents with existing contents
+          setFileContentsMap(prevContents => ({ ...prevContents, ...newlyLoadedContents }));
+        })
+        .catch((error) => {
+          console.error(
+            "[FileManagementState] Error loading file contents for UI preview:",
+            error
+          );
+        });
     });
-  }, [projectDirectory, fileSelectionManager.includedPaths]);
+  }, [projectDirectory, fileSelectionManager.includedPaths.length]);
 
   // Calculate if regex is available based on patterns from session
-  const { currentSession } = useSessionStateContext();
   const isRegexAvailable = Boolean(
     currentSession?.titleRegex?.trim() ||
       currentSession?.contentRegex?.trim() ||

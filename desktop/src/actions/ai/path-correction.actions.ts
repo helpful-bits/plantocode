@@ -3,31 +3,42 @@ import { invoke } from "@tauri-apps/api/core";
 import { type ActionState } from "@/types";
 
 /**
- * Correct paths based on task description and project structure
+ * Create a background job to correct paths based on task description and project structure
  */
-export async function correctPathsAction(
-  paths: string,
-  projectDirectory?: string,
-  sessionId?: string
-): Promise<ActionState<{ correctedPaths: string[] }>> {
-  if (!paths.trim()) {
+export async function createPathCorrectionJobAction(params: {
+  sessionId: string;
+  projectDirectory: string;
+  pathsToCorrect: string;
+  contextDescription?: string;
+  modelOverride?: string;
+  temperatureOverride?: number;
+  maxTokensOverride?: number;
+}): Promise<ActionState<{ jobId: string }>> {
+  const { sessionId, projectDirectory, pathsToCorrect, contextDescription, modelOverride, temperatureOverride, maxTokensOverride } = params;
+
+  if (!pathsToCorrect.trim()) {
     return { isSuccess: false, message: "No paths provided to correct" };
   }
 
-  // Validate sessionId if provided
-  if (
-    sessionId !== undefined &&
-    (typeof sessionId !== "string" || !sessionId.trim())
-  ) {
+  // Validate sessionId
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
     return {
       isSuccess: false,
-      message: "Invalid session ID provided for path correction",
+      message: "Valid session ID is required for path correction",
+    };
+  }
+
+  // Validate projectDirectory
+  if (!projectDirectory || typeof projectDirectory !== "string" || !projectDirectory.trim()) {
+    return {
+      isSuccess: false,
+      message: "Valid project directory is required for path correction",
     };
   }
 
   try {
     // Parse input paths
-    const pathsArray = paths
+    const pathsArray = pathsToCorrect
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"));
@@ -36,31 +47,38 @@ export async function correctPathsAction(
       return { isSuccess: false, message: "No valid paths found in input" };
     }
 
-    // Call the Tauri command for path correction
-    // The backend will handle model selection and parameter settings
-    const result = await invoke<{ corrected_paths: string[] }>(
-      "correct_path_command",
+    // Call the Tauri command to create a path correction job
+    const result = await invoke<{ jobId: string }>(
+      "create_path_correction_job_command",
       {
-        paths: pathsArray,
-        projectDirectory,
         sessionId,
+        projectDirectory,
+        pathsToCorrect: pathsToCorrect,
+        contextDescription,
+        modelOverride,
+        temperatureOverride,
+        maxTokensOverride,
       }
     );
 
     return {
       isSuccess: true,
-      message: "Successfully corrected paths",
-      data: { correctedPaths: result.corrected_paths },
+      message: "Path correction job created successfully",
+      data: { jobId: result.jobId },
+      metadata: {
+        jobId: result.jobId,
+        isBackgroundJob: true,
+      },
     };
   } catch (error) {
-    console.error("[correctPathsAction]", error);
+    console.error("[createPathCorrectionJobAction]", error);
 
     return {
       isSuccess: false,
       message:
         error instanceof Error
           ? error.message
-          : "Unknown error correcting paths",
+          : "Failed to create path correction job",
       error: error instanceof Error ? error : new Error("Unknown error"),
     };
   }

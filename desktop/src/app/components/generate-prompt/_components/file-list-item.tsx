@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText, Copy } from "lucide-react";
-import { useCallback, memo, MouseEvent, KeyboardEvent } from "react";
+import { useCallback, memo } from "react";
 
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
@@ -12,7 +12,7 @@ interface FileListItemProps {
   file: FileInfo;
   onToggleSelection: (path: string) => void;
   onToggleExclusion: (path: string) => void;
-  onAddPath: (path: string, e: MouseEvent) => void;
+  onAddPath: (path: string, e: React.MouseEvent<HTMLButtonElement>) => void;
   copiedPath: string | null;
   disabled?: boolean;
 }
@@ -35,7 +35,7 @@ function FileListItem({
 
   // Handle copying file path to clipboard (memoized)
   const handleCopyPath = useCallback(
-    (e: MouseEvent) => {
+    (e: React.MouseEvent<HTMLButtonElement>) => {
       e.stopPropagation(); // Prevent selection toggle
       e.preventDefault(); // Prevent form submission
 
@@ -48,13 +48,9 @@ function FileListItem({
   );
 
   // Handle clicking on file name or path (memoized)
-  const handlePathClick = useCallback(
-    (eventOrTarget: MouseEvent | HTMLElement, keyboardEvent?: KeyboardEvent) => {
-      // Handle both mouse events and keyboard events
-      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as KeyboardEvent : eventOrTarget as MouseEvent;
+  const handleItemClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
       e.preventDefault();
-
-      // Only toggle selection if file is not force excluded and not disabled
       if (!file.forceExcluded && !disabled) {
         onToggleSelection(file.path);
       }
@@ -62,35 +58,6 @@ function FileListItem({
     [file.path, file.forceExcluded, onToggleSelection, disabled]
   );
 
-  // Handle toggle selection with proper prevention
-  const handleToggleSelection = useCallback(
-    (eventOrTarget: MouseEvent | HTMLElement, keyboardEvent?: KeyboardEvent) => {
-      // Handle both mouse events and keyboard events
-      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as KeyboardEvent : eventOrTarget as MouseEvent;
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (!disabled) {
-        onToggleSelection(file.path);
-      }
-    },
-    [file.path, onToggleSelection, disabled]
-  );
-
-  // Handle toggle exclusion with proper prevention
-  const handleToggleExclusion = useCallback(
-    (eventOrTarget: MouseEvent | HTMLElement, keyboardEvent?: KeyboardEvent) => {
-      // Handle both mouse events and keyboard events
-      const e = eventOrTarget instanceof HTMLElement ? keyboardEvent as KeyboardEvent : eventOrTarget as MouseEvent;
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (!disabled) {
-        onToggleExclusion(file.path);
-      }
-    },
-    [file.path, onToggleExclusion, disabled]
-  );
 
   // Format file size with appropriate units
   const formatFileSize = (sizeInBytes: number | undefined) => {
@@ -114,22 +81,38 @@ function FileListItem({
       data-path={file.path}
       data-included={String(!!file.included)}
       data-excluded={String(!!file.forceExcluded)}
-      onClick={handlePathClick}
+      onClick={handleItemClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') handlePathClick(e.target as HTMLElement, e);
+      onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (!file.forceExcluded && !disabled) {
+            onToggleSelection(file.path);
+          }
+        }
       }}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {/* Include checkbox */}
         <div
           className="flex items-center cursor-pointer"
-          onClick={handleToggleSelection}
+          onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+            e.stopPropagation();
+            if (!disabled) {
+              onToggleSelection(file.path);
+            }
+          }}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') handleToggleSelection(e.target as HTMLElement, e);
+          onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!disabled) {
+                onToggleSelection(file.path);
+              }
+            }
           }}
         >
           <input
@@ -152,11 +135,22 @@ function FileListItem({
             "flex items-center",
             disabled ? "cursor-not-allowed" : "cursor-pointer"
           )}
-          onClick={handleToggleExclusion}
+          onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+            e.stopPropagation();
+            if (!disabled) {
+              onToggleExclusion(file.path);
+            }
+          }}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') handleToggleExclusion(e.target as HTMLElement, e);
+          onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!disabled) {
+                onToggleExclusion(file.path);
+              }
+            }
           }}
           title="Force Exclude (cannot be included)"
         >
@@ -223,4 +217,6 @@ function FileListItem({
 }
 
 // Use React.memo for performance optimization
+FileListItem.displayName = "FileListItem";
+
 export default memo(FileListItem);

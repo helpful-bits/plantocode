@@ -4,7 +4,7 @@ import { type Session } from "@/types/session-types";
 
 /**
  * Helper function to check if two session arrays are functionally equal
- * Compares sessions by their ID and name
+ * Compares sessions by their ID, name, and updatedAt timestamp
  */
 export function sessionsAreEqual(
   sessionsA: Session[],
@@ -12,21 +12,13 @@ export function sessionsAreEqual(
 ): boolean {
   if (sessionsA.length !== sessionsB.length) return false;
 
-  // Create maps for faster lookup
-  const mapA = new Map(sessionsA.map((s) => [s.id, s]));
+  // Create map for faster lookup
   const mapB = new Map(sessionsB.map((s) => [s.id, s]));
 
-  // Check if all sessions in A exist in B with the same name
-  for (const session of sessionsA) {
-    const sessionB = mapB.get(session.id);
-    if (!sessionB || sessionB.name !== session.name) {
-      return false;
-    }
-  }
-
-  // Check if all sessions in B exist in A
-  for (const session of sessionsB) {
-    if (!mapA.has(session.id)) {
+  // Check if all sessions in A exist in B with matching properties
+  for (const sessionA of sessionsA) {
+    const sessionB = mapB.get(sessionA.id);
+    if (!sessionB || sessionA.name !== sessionB.name || sessionA.updatedAt !== sessionB.updatedAt) {
       return false;
     }
   }

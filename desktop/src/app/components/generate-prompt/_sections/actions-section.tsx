@@ -22,8 +22,6 @@ interface ActionsSectionProps {
   setFindFilesMode: (mode: "ai" | "manual") => void;
   searchSelectedFilesOnly: boolean;
   toggleSearchSelectedFilesOnly: () => void;
-  // Prefix with underscore to mark as deliberately unused
-  _includedFilesCount: number;
   canUndo: boolean;
   canRedo: boolean;
   undoSelection: () => void;
@@ -43,7 +41,6 @@ const ActionsSection = React.memo(function ActionsSection({
   setFindFilesMode,
   searchSelectedFilesOnly,
   toggleSearchSelectedFilesOnly,
-  _includedFilesCount: _, // Rename the param to underscore to explicitly mark as unused
   canUndo,
   canRedo,
   undoSelection,
@@ -124,9 +121,9 @@ const ActionsSection = React.memo(function ActionsSection({
             onClick={executeFindRelevantFiles}
             disabled={
               disabled ||
-              (findFilesMode === "ai" && !taskDescription) ||
-              (findFilesMode === "manual" && !currentSession?.isRegexActive) ||
-              isFindingFiles
+              isFindingFiles ||
+              (findFilesMode === "ai" && !taskDescription.trim()) ||
+              (findFilesMode === "manual") // Disable entirely in manual/regex mode as filtering is live
             }
             isLoading={isFindingFiles}
             loadingText="Finding files..."
@@ -146,5 +143,7 @@ const ActionsSection = React.memo(function ActionsSection({
     </div>
   );
 });
+
+ActionsSection.displayName = "ActionsSection";
 
 export default ActionsSection;

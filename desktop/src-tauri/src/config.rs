@@ -19,27 +19,8 @@ impl Default for RuntimeConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppConfig {
-    pub runtime_ai_config: Option<crate::models::RuntimeAIConfig>,
-}
-
 // Global configuration with RwLock for thread-safe access
-pub static CONFIG: Lazy<RwLock<AppConfig>> = Lazy::new(|| {
-    RwLock::new(AppConfig {
-        runtime_ai_config: None,
-    })
-});
-
-// Initialize configuration
-pub async fn init_config() -> Result<(), String> {
-    info!("Initializing application configuration");
-    
-    // Configuration comes from the server at runtime
-    
-    info!("Application configuration initialized");
-    Ok(())
-}
+pub static CONFIG: Lazy<RwLock<Option<crate::models::RuntimeAIConfig>>> = Lazy::new(|| RwLock::new(None));
 
 // Note: The get_model_context_window function is implemented below
 
@@ -50,23 +31,22 @@ use crate::models::{TaskType, RuntimeAIConfig};
 
 // Update runtime AI configuration
 pub fn update_runtime_ai_config(new_config: RuntimeAIConfig) -> AppResult<()> {
-    let mut config = CONFIG.write().map_err(|e| AppError::InternalError(format!("Failed to acquire write lock: {}", e)))?;
-    config.runtime_ai_config = Some(new_config);
+    let mut config_opt = CONFIG.write().map_err(|e| AppError::InternalError(format!("Failed to acquire write lock: {}", e)))?;
+    *config_opt = Some(new_config);
     info!("Runtime AI configuration updated");
     Ok(())
 }
 
 // Get the runtime AI configuration
 pub fn get_runtime_ai_config() -> AppResult<Option<RuntimeAIConfig>> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
-    Ok(config.runtime_ai_config.clone())
+    let config_opt = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    Ok(config_opt.clone())
 }
 
 // Get the default transcription model ID
 pub fn get_default_transcription_model_id() -> AppResult<String> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
-    
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    if let Some(runtime_config) = &*config_guard {
         if runtime_config.default_transcription_model_id.is_empty() {
             return Err(AppError::ConfigError("Default transcription model ID not available from server config".to_string()));
         }
@@ -80,9 +60,8 @@ pub fn get_default_transcription_model_id() -> AppResult<String> {
 
 /// Get the maximum number of files to include content from for PathFinder
 pub fn get_path_finder_max_files_with_content() -> AppResult<usize> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
-    
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    if let Some(runtime_config) = &*config_guard {
         if let Some(max_files) = runtime_config.path_finder_settings.max_files_with_content {
             return Ok(max_files);
         }
@@ -93,9 +72,8 @@ pub fn get_path_finder_max_files_with_content() -> AppResult<usize> {
 
 /// Get whether to include file contents by default for PathFinder
 pub fn get_path_finder_include_file_contents() -> AppResult<bool> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
-    
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    if let Some(runtime_config) = &*config_guard {
         if let Some(include_file_contents) = runtime_config.path_finder_settings.include_file_contents {
             return Ok(include_file_contents);
         }
@@ -106,9 +84,9 @@ pub fn get_path_finder_include_file_contents() -> AppResult<bool> {
 
 /// Get the maximum content size per file for PathFinder
 pub fn get_path_finder_max_content_size_per_file() -> AppResult<usize> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if let Some(max_content_size) = runtime_config.path_finder_settings.max_content_size_per_file {
             return Ok(max_content_size);
         }
@@ -119,9 +97,9 @@ pub fn get_path_finder_max_content_size_per_file() -> AppResult<usize> {
 
 /// Get the maximum number of paths to return in results for PathFinder
 pub fn get_path_finder_max_file_count() -> AppResult<usize> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if let Some(max_file_count) = runtime_config.path_finder_settings.max_file_count {
             return Ok(max_file_count);
         }
@@ -132,9 +110,9 @@ pub fn get_path_finder_max_file_count() -> AppResult<usize> {
 
 /// Get the initial truncation length for file contents for PathFinder
 pub fn get_path_finder_file_content_truncation_chars() -> AppResult<usize> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if let Some(truncation_chars) = runtime_config.path_finder_settings.file_content_truncation_chars {
             return Ok(truncation_chars);
         }
@@ -145,9 +123,9 @@ pub fn get_path_finder_file_content_truncation_chars() -> AppResult<usize> {
 
 /// Get the token limit buffer for PathFinder
 pub fn get_path_finder_token_limit_buffer() -> AppResult<u32> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if let Some(token_limit_buffer) = runtime_config.path_finder_settings.token_limit_buffer {
             return Ok(token_limit_buffer);
         }
@@ -158,9 +136,9 @@ pub fn get_path_finder_token_limit_buffer() -> AppResult<u32> {
 
 // Get default LLM model ID
 pub fn get_default_llm_model_id() -> AppResult<String> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if runtime_config.default_llm_model_id.is_empty() {
             return Err(AppError::ConfigError("Default LLM model ID not available from server config".to_string()));
         }
@@ -172,9 +150,9 @@ pub fn get_default_llm_model_id() -> AppResult<String> {
 
 // Get model for a specific task type
 pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         let task_key = task_type.to_string();
         
         if let Some(task_config) = runtime_config.tasks.get(&task_key) {
@@ -197,9 +175,9 @@ pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
 
 // Get task-specific configuration
 pub fn get_task_specific_config(task_type: TaskType) -> AppResult<Option<crate::models::TaskSpecificModelConfig>> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         let task_key = task_type.to_string();
         Ok(runtime_config.tasks.get(&task_key).cloned())
     } else {
@@ -209,9 +187,9 @@ pub fn get_task_specific_config(task_type: TaskType) -> AppResult<Option<crate::
 
 // Get default max tokens for a task
 pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult<u32> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if let Some(task) = task_type {
             let task_key = task.to_string();
             
@@ -233,9 +211,9 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
 
 // Get default temperature for a task
 pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResult<f32> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         if let Some(task) = task_type {
             let task_key = task.to_string();
             
@@ -257,9 +235,9 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
 
 // Get context window size for a model
 pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
-    let config = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
+    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
-    if let Some(runtime_config) = &config.runtime_ai_config {
+    if let Some(runtime_config) = &*config_guard {
         // Find model in available_models list by ID
         for model_info in &runtime_config.available_models {
             if model_info.id == model_name {

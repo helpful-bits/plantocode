@@ -1,4 +1,3 @@
-use crate::config::settings::AppSettings;
 use crate::error::AppError;
 use crate::models::auth_jwt_claims::Claims;
 use crate::security::token_binding::hash_token_binding_value;
@@ -20,11 +19,11 @@ static JWT_DECODING_KEY: OnceLock<Arc<Mutex<Option<DecodingKey>>>> = OnceLock::n
 
 /// Initialize the JWT keys from the secret
 /// This should be called once at application startup
-pub fn init_jwt_keys(settings: &AppSettings) -> Result<(), AppError> {
+pub fn init_jwt_keys(jwt_secret_str: &str) -> Result<(), AppError> {
     info!("Initializing JWT keys from configuration");
     
-    // Get the JWT secret from settings
-    let jwt_secret = settings.auth.jwt_secret.as_bytes();
+    // Use the provided JWT secret
+    let jwt_secret = jwt_secret_str.as_bytes();
     
     // Initialize global static variables if not already done
     JWT_ENCODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));

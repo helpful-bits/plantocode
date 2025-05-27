@@ -102,27 +102,6 @@ pub struct SecureAuthenticationMiddleware<S> {
     service: Arc<S>,
 }
 
-// List of public routes (exact paths) that bypass authentication
-use lazy_static::lazy_static;
-use std::collections::HashSet;
-
-lazy_static! {
-    static ref PUBLIC_ROUTES: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        // Health and diagnostic routes
-        set.insert("/api/health");
-        set.insert("/api/heartbeat");
-        
-        // Public auth routes
-        set.insert("/auth/auth0/callback");
-        set.insert("/auth/auth0/initiate");
-        set.insert("/auth/auth0/poll");
-        set.insert("/auth/auth0/finalize");
-        set.insert("/webhooks/stripe");
-        
-        set
-    };
-}
 
 impl<S, B> Service<ServiceRequest> for SecureAuthenticationMiddleware<S>
 where
@@ -147,16 +126,8 @@ where
             return Box::pin(service.call(req));
         }
 
-        // Skip auth check for public routes
-        let path = req.path().to_string();
-        if PUBLIC_ROUTES.contains(path.as_str()) {
-            debug!("Skipping authentication for public route: {}", path);
-            // Mark as processed but don't require auth
-            req.extensions_mut().insert(AuthProcessed);
-            return Box::pin(service.call(req));
-        }
-
         // Skip auth check for OPTIONS requests (CORS pre-flight)
+        let path = req.path().to_string();
         if req.method() == actix_web::http::Method::OPTIONS {
             debug!("Skipping authentication for OPTIONS request to: {}", path);
             // Mark as processed but don't require auth

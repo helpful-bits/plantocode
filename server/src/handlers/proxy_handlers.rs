@@ -37,8 +37,11 @@ pub async fn openrouter_chat_completions_proxy(
         // Get an Arc<ProxyService> from the Data<ProxyService>
         let proxy_arc = Arc::clone(&proxy_service);
         
+        // Extract model from payload for override
+        let model_from_payload = payload.get("model").and_then(|v| v.as_str()).map(String::from);
+        
         // Handle streaming request
-        let stream = proxy_arc.forward_chat_completions_stream_request(user_id.0, payload).await?;
+        let stream = proxy_arc.forward_chat_completions_stream_request(user_id.0, payload, model_from_payload).await?;
         
         // Log initiation
         info!("OpenRouter streaming chat completions initiated in {:?}", start.elapsed());
@@ -50,8 +53,11 @@ pub async fn openrouter_chat_completions_proxy(
             .insert_header((header::CONNECTION, "keep-alive"))
             .streaming(stream))
     } else {
+        // Extract model from payload for override
+        let model_from_payload = payload.get("model").and_then(|v| v.as_str()).map(String::from);
+        
         // Handle non-streaming request
-        let result = proxy_service.forward_chat_completions_request(&user_id.0, payload).await?;
+        let result = proxy_service.forward_chat_completions_request(&user_id.0, payload, model_from_payload).await?;
         
         // Log request duration
         let duration = start.elapsed();
@@ -62,21 +68,22 @@ pub async fn openrouter_chat_completions_proxy(
     }
 }
 
-/// OpenRouter Transcription API proxy
-#[post("/openrouter/audio/transcriptions")]
-pub async fn openrouter_audio_transcriptions_proxy(
+/// Audio Transcription API proxy (Groq)
+#[post("/audio/transcriptions")]
+pub async fn audio_transcriptions_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,
     payload: Multipart,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
     
-    debug!("OpenRouter audio transcription request from user: {}", user_id.0);
+    debug!("Audio transcription request from user: {}", user_id.0);
     
-    // Process the multipart form data to extract the audio file and model
+    // Process the multipart form data to extract the audio file, model, and duration
     let mut audio_data = Vec::new();
     let mut filename = String::from("audio.webm");  // Default filename
-    let mut model = String::from("openai/whisper-1");  // Default model
+    let mut model = String::from("groq/whisper-large-v3");  // Default model
+    let mut input_duration_ms: i64 = 0;
     
     // Define a helper function to process the multipart payload
     let mut multipart = payload;
@@ -116,6 +123,17 @@ pub async fn openrouter_audio_transcriptions_proxy(
                 model = String::from_utf8(model_data)
                     .map_err(|_| AppError::InvalidArgument("Invalid model name encoding".to_string()))?;
             },
+            "duration_ms" => {
+                let mut duration_data = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    let data = chunk?;
+                    duration_data.extend_from_slice(&data);
+                }
+                input_duration_ms = String::from_utf8(duration_data)
+                    .map_err(|_| AppError::InvalidArgument("Invalid duration_ms encoding".to_string()))?
+                    .parse::<i64>()
+                    .map_err(|_| AppError::InvalidArgument("Invalid duration_ms value".to_string()))?;
+            },
             _ => {
                 // Skip other fields
                 while let Some(_) = field.next().await {}
@@ -128,17 +146,29 @@ pub async fn openrouter_audio_transcriptions_proxy(
         return Err(AppError::InvalidArgument("No audio data provided".to_string()));
     }
     
+    // Ensure we got audio duration
+    if input_duration_ms == 0 {
+        return Err(AppError::InvalidArgument("Missing or invalid audio duration_ms".to_string()));
+    }
+    
     // Forward the transcription request to the proxy service
+    let model_from_payload = if model == "groq/whisper-large-v3" { 
+        None // Use default from app_settings
+    } else { 
+        Some(model) 
+    };
+    
     let result = proxy_service.forward_transcription_request(
         &user_id.0, 
         &audio_data, 
         &filename, 
-        &model
+        model_from_payload,
+        input_duration_ms
     ).await?;
     
     // Log request duration
     let duration = start.elapsed();
-    info!("OpenRouter transcription request completed in {:?}", duration);
+    info!("Audio transcription request completed in {:?}", duration);
     
     // Return the response
     Ok(HttpResponse::Ok().json(result))
@@ -163,7 +193,7 @@ pub async fn ai_proxy_endpoint(
     let endpoint = path.into_inner();
     
     // Get the model ID from the X-Model-Id header or from the request payload
-    let model_id = req.headers()
+    let model_id_from_request = req.headers()
         .get("X-Model-Id")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
@@ -171,10 +201,9 @@ pub async fn ai_proxy_endpoint(
             body.get("model")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| "anthropic/claude-3-sonnet".to_string());
+        });
     
-    info!("AI proxy request: endpoint={}, model={}, user_id={}", endpoint, model_id, user_id.0);
+    info!("AI proxy request: endpoint={}, model={:?}, user_id={}", endpoint, model_id_from_request, user_id.0);
     
     // Get the request payload
     let payload = body.into_inner();
@@ -191,11 +220,7 @@ pub async fn ai_proxy_endpoint(
                 // For streaming requests
                 let proxy_arc = Arc::clone(&proxy_service);
                 
-                // Create a payload with the model explicitly set
-                let mut new_payload = payload.clone();
-                new_payload["model"] = serde_json::Value::String(model_id.clone());
-                
-                let stream = proxy_arc.forward_chat_completions_stream_request(user_id.0, new_payload).await?;
+                let stream = proxy_arc.forward_chat_completions_stream_request(user_id.0, payload, model_id_from_request.clone()).await?;
                 
                 info!("AI proxy streaming request initiated in {:?}", start.elapsed());
                 
@@ -206,11 +231,7 @@ pub async fn ai_proxy_endpoint(
                     .streaming(stream))
             } else {
                 // For non-streaming requests
-                // Create a payload with the model explicitly set
-                let mut new_payload = payload.clone();
-                new_payload["model"] = serde_json::Value::String(model_id.clone());
-                
-                let result = proxy_service.forward_chat_completions_request(&user_id.0, new_payload).await?;
+                let result = proxy_service.forward_chat_completions_request(&user_id.0, payload, model_id_from_request).await?;
                 
                 info!("AI proxy request completed in {:?}", start.elapsed());
                 

@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 
 import { type Session } from "@/types/session-types";
-import { normalizePath } from "@/utils/path-utils";
 
 import { useSessionFormState } from "./useSessionFormState";
 import { useSessionListState } from "./useSessionListState";
@@ -72,54 +71,35 @@ export function useSessionManagerOrchestrator({
     deleteSession,
     cloneSession,
     loadSessionDetail,
-    isMutating,
   } = useSessionMutations({
     projectDirectory,
     getCurrentSessionState,
     onSessionNameChangeUISync,
     loadSessions,
     setSessions,
+    sessions,
     sessionNameInput,
     setSessionNameInput,
     editSessionNameInput,
-    editingSessionId,
     setEditingSessionId,
     deletedSessionIdsRef,
   });
 
-  // Initial load on mount and when projectDirectory changes
-  useEffect((): void => {
-    if (!projectDirectory) return undefined;
-
-    const normalizedDir = Promise.resolve(normalizePath(projectDirectory));
-    const lastLoadedDir = lastFetchTimeRef.current ? Promise.resolve(normalizedDir) : null;
-
-    // Only load sessions if project directory changed or sessions haven't been loaded yet
-    if (lastLoadedDir !== normalizedDir || hasLoadedOnceRef.current === false) {
-      if (lastLoadedDir !== normalizedDir) {
-        // Project directory changed
-      } else {
-        // Project directory unchanged but no sessions loaded
-      }
-
-      // Use a timeout to avoid immediate triggers on mount and allow batching of rapid changes
-      setTimeout(() => {
-        if (!pendingLoadRef.current) {
-          void loadSessions();
-        }
-      }, 100);
-
-      return undefined;
+  // Combined effect for project directory changes and session loading
+  useEffect(() => {
+    if (!projectDirectory) {
+      setSessions([] as Session[], true); // Clear sessions if no project directory
+      hasLoadedOnceRef.current = false; // Reset loaded state
+      return;
     }
-    
-    return undefined;
-  }, [
-    projectDirectory,
-    loadSessions,
-    pendingLoadRef,
-    hasLoadedOnceRef,
-    lastFetchTimeRef,
-  ]);
+
+    // If projectDirectory changes, force a refresh.
+    // loadSessions will handle isLoadingSessions and hasLoadedOnceRef.
+    hasLoadedOnceRef.current = false; // Reset for new project
+    loadSessions(true); // forceRefresh = true
+  // This effect depends on projectDirectory and loadSessions.
+  // setSessions is a stable setter and hasLoadedOnceRef is a ref - both don't need to be dependencies.
+  }, [projectDirectory, loadSessions]);
 
   // Adapter for compatibility with existing components
   const startEditingSessionWrapper = (
@@ -165,7 +145,7 @@ export function useSessionManagerOrchestrator({
     cancelEditingWrapper,
 
     // General state
-    isLoading: isLoadingSessions || isMutating,
+    isLoading: isLoadingSessions,
 
     // Direct API access
     loadSessionsFromServer: loadSessions,

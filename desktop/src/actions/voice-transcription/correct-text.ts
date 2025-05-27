@@ -7,10 +7,10 @@ import { type ActionState } from "@/types";
  */
 export async function createVoiceCorrectionJobAction(
   text: string,
-  language: string = "en",
   sessionId: string,
   originalJobId: string | null,
-  projectDirectory: string
+  projectDirectory?: string,
+  language: string = "en"
 ): Promise<ActionState<{ jobId: string }>> {
   try {
     // Validate inputs
@@ -30,25 +30,24 @@ export async function createVoiceCorrectionJobAction(
     }
 
     // Call the Tauri command to create a voice correction job
-    const result = await invoke<{ job_id: string }>(
+    // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
+    const result = await invoke<{ jobId: string }>(
       "correct_transcription_command",
       {
-        args: {
-          session_id: sessionId,
-          text_to_correct: text,
-          language: language,
-          original_job_id: originalJobId || undefined,
-          project_directory: projectDirectory,
-        },
+        sessionId,
+        textToCorrect: text,
+        originalJobId: originalJobId || undefined,
+        projectDirectory: projectDirectory || undefined,
+        language,
       }
     );
 
     return {
       isSuccess: true,
       message: "Text correction job started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
       metadata: {
-        jobId: result.job_id,
+        jobId: result.jobId,
         isBackgroundJob: true,
         originalTranscriptionJobId: originalJobId,
       },

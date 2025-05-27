@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type MutableRefObject } from "react";
+import { useCallback, useRef, useEffect, useMemo, type MutableRefObject } from "react";
 
 import { getSessionAction } from "@/actions";
 import { useProject } from "@/contexts/project-context";
@@ -41,6 +41,18 @@ export function useSessionLoader({
 }) {
   const { projectDirectory } = useProject();
   const { setAppInitializing } = useUILayout();
+  
+  // Use refs to prevent dependency instability and avoid stale closures
+  const onNeedsSaveRef = useRef(onNeedsSave);
+  const currentSessionRef = useRef(currentSession);
+  
+  useEffect(() => {
+    onNeedsSaveRef.current = onNeedsSave;
+  }, [onNeedsSave]);
+  
+  useEffect(() => {
+    currentSessionRef.current = currentSession;
+  }, [currentSession]);
 
   // Load a session by ID
   const loadSessionById = useCallback(
@@ -63,7 +75,7 @@ export function useSessionLoader({
         return;
       }
 
-      if (currentSession?.id === sessionId) {
+      if (currentSessionRef.current?.id === sessionId) {
         completeInitialization();
         return;
       }
@@ -78,7 +90,7 @@ export function useSessionLoader({
       loadingSessionRef.current = { id: sessionId, timestamp: now };
       setSessionLoading(true);
 
-      const previousSessionId = currentSession?.id;
+      const previousSessionId = currentSessionRef.current?.id;
       let loadSuccess = false;
 
       // Create a safety timeout - reduced to 2 seconds
@@ -104,12 +116,13 @@ export function useSessionLoader({
       try {
         // If there's a current session with a different ID that needs saving,
         // use the callback to request a save operation
+        const currentSessionAtStart = currentSessionRef.current;
         if (
-          currentSession?.id &&
-          currentSession.id !== sessionId &&
-          onNeedsSave
+          currentSessionAtStart?.id &&
+          currentSessionAtStart.id !== sessionId &&
+          onNeedsSaveRef.current
         ) {
-          await onNeedsSave(currentSession.id);
+          await onNeedsSaveRef.current(currentSessionAtStart.id);
         }
 
         if (typeof window !== "undefined") {
@@ -210,14 +223,14 @@ export function useSessionLoader({
       setSessionLoading,
       setSessionModified,
       setSessionError,
-      hasCompletedInitRef,
-      loadingSessionRef,
-      onNeedsSave,
       setActiveSessionIdGlobally,
     ]
   );
 
-  return {
-    loadSessionById,
-  };
+  return useMemo(
+    () => ({
+      loadSessionById,
+    }),
+    [loadSessionById]
+  );
 }

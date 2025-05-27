@@ -5,9 +5,13 @@ import { Store } from '@tauri-apps/plugin-store';
 import LoginPage from "@/app/components/auth/login-page";
 import { useRuntimeConfigLoader } from "@/auth/use-runtime-config-loader";
 import { useAuth } from "@/contexts/auth-context";
+import { useUILayout } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
 import { OnboardingFlow } from "@/app/components/onboarding";
 import { APP_SETTINGS_STORE } from "@/utils/constants";
+import { logError } from "@/utils/error-handling";
+import { useNotification } from "@/contexts/notification-context";
+import { useAuthTokenRefresher } from "@/hooks/use-auth-token-refresher";
 
 interface AuthFlowManagerProps {
   children: ReactNode;
@@ -15,6 +19,7 @@ interface AuthFlowManagerProps {
 
 export function AuthFlowManager({ children }: AuthFlowManagerProps) {
   const [isOnboardingNeeded, setIsOnboardingNeeded] = useState<boolean | null>(null);
+  const { showNotification } = useNotification();
   
   // Safe version - early return if not ready
   if (typeof window === 'undefined') {
@@ -34,6 +39,11 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       clearError,
     } = useRuntimeConfigLoader();
 
+    const { setAppInitializing } = useUILayout();
+
+    // Use the token refresher hook to keep the JWT fresh
+    useAuthTokenRefresher(user);
+
     // Check onboarding status on mount
     useEffect(() => {
       const checkOnboardingStatus = async () => {
@@ -42,8 +52,13 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
           const hasSetup = await settingsStore.get<boolean>('hasCompletedOnboarding');
           setIsOnboardingNeeded(!hasSetup);
         } catch (e) {
-          console.error("Error checking onboarding status:", e);
+          await logError(e, "Auth Flow - Onboarding Status Check Failed");
           setIsOnboardingNeeded(true); // Default to needing onboarding if store fails
+          showNotification({
+            title: "Setup Check Failed",
+            message: "Unable to check setup status. Starting fresh setup.",
+            type: "warning"
+          });
         }
       };
       checkOnboardingStatus();
@@ -56,9 +71,14 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
         await settingsStore.save();
         setIsOnboardingNeeded(false);
       } catch (e) {
-        console.error("Error saving onboarding status:", e);
+        await logError(e, "Auth Flow - Onboarding Status Save Failed");
         // Still proceed even if store fails
         setIsOnboardingNeeded(false);
+        showNotification({
+          title: "Setup Save Warning",
+          message: "Setup completed but preferences may not persist. This won't affect functionality.",
+          type: "warning"
+        });
       }
     };
 
@@ -72,7 +92,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
             // Load runtime configuration
             await loadConfig();
           } catch (err) {
-            console.error("[AuthFlow] Error during auth flow initialization:", err);
+            await logError(err, "Auth Flow - Configuration Load Failed", { userId: user?.id });
             // We don't handle the error here because the loadConfig function
             // already updates the error state in the runtime config loader hook
           }
@@ -80,7 +100,27 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
 
         void initializeConfig();
       }
-    }, [user]); // Remove loadConfig from deps to prevent infinite loop
+    }, [user, loadConfig]);
+
+    // Set app initializing to false when all conditions for rendering main app are met
+    useEffect(() => {
+      const onboardingDone = !isOnboardingNeeded;
+      const authResolved = !loading;
+      const configResolved = !configLoading;
+
+      if (onboardingDone && authResolved && configResolved && user && !configError) {
+        // All critical async operations before rendering main app are done
+        setAppInitializing(false);
+      }
+    }, [
+      isOnboardingNeeded,
+      loading,
+      configLoading,
+      user,
+      configError,
+      setAppInitializing,
+      loadConfig
+    ]);
 
     // Show loading screen while checking onboarding status
     if (isOnboardingNeeded === null) {
@@ -127,9 +167,24 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       return <LoginPage />;
     }
 
+    // Main app is ready to render - children include ProjectProvider and other contexts
     return <>{children}</>;
   } catch (error) {
-    console.error("[AuthFlow] Error initializing auth flow:", error);
-    return <LoadingScreen loadingType="initializing" />;
+    logError(error, "Auth Flow - Critical Initialization Error").catch(() => {
+      // Swallow logging errors to prevent recursive failures
+    });
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="max-w-md w-full p-8">
+          <EmptyState
+            variant="error"
+            title="Startup Error"
+            description="Unable to initialize the application. Please restart and try again."
+            actionText="Reload"
+            onAction={() => window.location.reload()}
+          />
+        </div>
+      </div>
+    );
   }
 }

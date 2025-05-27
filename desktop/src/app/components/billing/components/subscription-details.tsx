@@ -44,9 +44,10 @@ export function SubscriptionDetails({
   const isTrialEndingSoon =
     isTrialing && trialDaysLeft !== undefined && trialDaysLeft <= 5;
 
-  // Calculate total tokens
-  const totalTokens =
-    subscription.usage.tokensInput + subscription.usage.tokensOutput;
+  // Calculate total tokens with safe fallbacks
+  const tokensInputSafe = subscription.usage?.tokensInput ?? 0;
+  const tokensOutputSafe = subscription.usage?.tokensOutput ?? 0;
+  const totalTokens = tokensInputSafe + tokensOutputSafe;
 
   // Status badge for subscription status
   function StatusBadge() {
@@ -63,7 +64,7 @@ export function SubscriptionDetails({
         <TokenUsageIndicator
           tokensUsed={totalTokens}
           maxTokens={subscription.monthlyTokenLimit || 1000000}
-          cost={subscription.usage.totalCost}
+          cost={subscription.usage?.totalCost ?? 0}
           trialDaysLeft={trialDaysLeft}
         />
       </div>

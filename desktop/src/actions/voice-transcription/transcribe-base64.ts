@@ -49,18 +49,31 @@ export async function transcribeBase64Audio(
     const response = await invoke<DirectTranscribeAudioResponse>(
       "transcribe_audio_direct_command",
       {
-        args: {
-          audio_data: Array.from(bytes),
-          filename,
-          model: "", // Empty string will use the default model
-        },
+        audioData: Array.from(bytes),
+        filename,
+        model: "", // Empty string will use the default model
       }
     );
 
     return response;
   } catch (error) {
+    let errorMessage = "Tauri audio transcription (base64) failed";
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      try {
+        const parsedError = JSON.parse(error);
+        if (parsedError && parsedError.message) {
+          errorMessage = `Transcription error: ${parsedError.message}`;
+        } else {
+          errorMessage = `Transcription error: ${error}`;
+        }
+      } catch (e) {
+        errorMessage = `Transcription error: ${error}`;
+      }
+    }
     console.error("Error during direct audio transcription via Tauri:", error);
-    throw new Error("Tauri audio transcription failed");
+    throw new Error(errorMessage);
   }
 }
 
@@ -101,24 +114,23 @@ export async function transcribeAudioAction(
       : base64Audio;
 
     // Call the Tauri command to create a transcription job
-    const result = await invoke<{ job_id: string }>(
+    // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
+    const result = await invoke<{ jobId: string }>(
       "create_transcription_job_command",
       {
-        args: {
-          session_id: sessionId,
-          audio_data: cleanBase64,
-          filename,
-          project_directory: projectDirectory,
-        },
+        sessionId,
+        audioData: cleanBase64,
+        filename,
+        projectDirectory: projectDirectory || undefined,
       }
     );
 
     return {
       isSuccess: true,
       message: "Transcription job started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
       metadata: {
-        jobId: result.job_id,
+        jobId: result.jobId,
         isBackgroundJob: true,
       },
     };

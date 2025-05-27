@@ -178,6 +178,7 @@ fn main() {
             // Text commands
             commands::text_commands::improve_text_command,
             commands::text_commands::correct_text_post_transcription_command,
+            commands::text_commands::generate_simple_text_command,
             
             // Implementation plan commands
             commands::implementation_plan_commands::create_implementation_plan_command,
@@ -212,6 +213,7 @@ fn main() {
             commands::settings_commands::set_key_value_command,
             commands::settings_commands::get_project_task_model_settings_command,
             commands::settings_commands::set_project_task_model_settings_command,
+            commands::settings_commands::get_all_task_model_settings_for_project_command,
             
             // Session commands
             commands::session_commands::create_session_command,
@@ -226,6 +228,11 @@ fn main() {
             
             // Setup commands
             commands::setup_commands::trigger_initial_keychain_access,
+            
+            // Database maintenance commands
+            commands::database_maintenance_commands::check_database_health_command,
+            commands::database_maintenance_commands::repair_database_command,
+            commands::database_maintenance_commands::reset_database_command,
         ])
         // Use the context we created earlier
         .run(tauri_context)

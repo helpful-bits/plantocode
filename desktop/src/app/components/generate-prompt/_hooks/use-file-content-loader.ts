@@ -2,8 +2,6 @@
 
 import { useState, useCallback } from "react";
 
-import { makePathRelative } from "@/utils/path-utils";
-
 import { type FilesMap, type FileInfo } from "./file-management/use-project-file-list";
 
 interface UseFileContentLoaderProps {
@@ -67,28 +65,22 @@ export function useFileContentLoader({
       ).some((f: FileInfo) => f.included && !f.forceExcluded);
 
       if (isAnyFileIncludedFromBrowser) {
-        // No pasted paths, use files selected in the browser from the state
-        const selectedPaths = new Set(
-          Object.values(allFilesMap)
-            .filter((f: FileInfo) => f.included && !f.forceExcluded)
-            .map((f: FileInfo) => f.path)
-        );
-
-        // Create a map of normalized paths to original paths for better matching
-        const normalizedToOriginal: Record<string, string> = {};
-
-        for (const originalPath of Object.keys(loadedFileContents)) {
-          const normalizedPath = await makePathRelative(
-            originalPath,
-            projectDirectory
-          );
-          normalizedToOriginal[normalizedPath] = originalPath;
+        // Use files selected in the browser from the state
+        // Use original paths from allFilesMap for consistent file content lookups
+        for (const pathInAllFilesMap in allFilesMap) {
+          if (Object.prototype.hasOwnProperty.call(allFilesMap, pathInAllFilesMap)) {
+            const fileInfo = allFilesMap[pathInAllFilesMap] as FileInfo;
+            if (fileInfo.included && !fileInfo.forceExcluded) {
+              // pathInAllFilesMap is the original path, use it for lookup and storage
+              if (fileContentsMap[pathInAllFilesMap] !== undefined) {
+                loadedFileContents[pathInAllFilesMap] = fileContentsMap[pathInAllFilesMap];
+                selectedFiles.push(pathInAllFilesMap);
+              } else {
+                warningMessages.push(`Content for selected file ${pathInAllFilesMap} not found in cache.`);
+              }
+            }
+          }
         }
-
-        selectedFiles = Object.keys(loadedFileContents).filter(
-          (path) =>
-            selectedPaths.has(path) && loadedFileContents[path] !== undefined
-        );
       } else {
         // No browser selection
         setError(

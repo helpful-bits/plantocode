@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 // Define a selection history item type
 interface SelectionHistoryItem {
@@ -132,12 +132,15 @@ export function useFileSelectionHistory({
     setFutureSelections([]);
   }, []);
 
-  return {
-    pushHistory,
-    undoSelection,
-    redoSelection,
-    canUndo,
-    canRedo,
-    reset,
-  };
+  return useMemo(
+    () => ({
+      pushHistory,
+      undoSelection,
+      redoSelection,
+      canUndo,
+      canRedo,
+      reset,
+    }),
+    [pushHistory, undoSelection, redoSelection, canUndo, canRedo, reset]
+  );
 }

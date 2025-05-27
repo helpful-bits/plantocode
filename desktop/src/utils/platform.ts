@@ -9,25 +9,12 @@
  * Checks if code is running within a Tauri application
  */
 export const isTauriEnvironment = (): boolean => {
-  return typeof window !== "undefined" && !!((window as Window & { __TAURI__?: unknown }).__TAURI__);
+  return typeof window !== "undefined" && 
+         typeof (window as any).__TAURI_IPC__ === 'function' && // Check for the IPC function
+         typeof (window as any).__TAURI_INTERNALS__ === "object" && 
+         (window as any).__TAURI_INTERNALS__ !== null;
 };
 
-/**
- * Checks if code is running within the desktop application
- * This checks for the isDesktopApp marker set by DesktopEnvironmentProvider
- */
-export const isDesktopApp = (): boolean => {
-  return typeof window !== "undefined" && !!((window as Window & { isDesktopApp?: unknown }).isDesktopApp);
-};
-
-/**
- * Checks if code is running in browser environment
- */
-export const isBrowserEnvironment = (): boolean => {
-  return (
-    typeof window !== "undefined" && typeof window.document !== "undefined"
-  );
-};
 
 /**
  * Checks if code is running on server (versus browser)
@@ -38,7 +25,6 @@ export const isServer = (): boolean => {
 
 /**
  * Checks if code is running in browser (versus server)
- * Alternative to isBrowserEnvironment that uses isServer
  */
 export const isBrowser = (): boolean => {
   return !isServer();
@@ -94,7 +80,7 @@ export const getOSInfo = async (): Promise<{
   }
 
   // In browser, make a best guess based on navigator
-  if (isBrowserEnvironment()) {
+  if (isBrowser()) {
     const userAgent = navigator.userAgent.toLowerCase();
     let os = "unknown";
     let arch = "unknown";

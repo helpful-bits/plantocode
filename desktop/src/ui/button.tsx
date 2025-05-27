@@ -1,6 +1,6 @@
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { forwardRef, ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef, ButtonHTMLAttributes } from "react";
 
 import { cn } from "@/utils/utils";
 
@@ -43,7 +43,7 @@ export interface ButtonProps
   asChild?: boolean;
   isLoading?: boolean;
   loadingText?: string;
-  loadingIcon?: ReactNode;
+  loadingIcon?: JSX.Element | null | undefined;
   variant?:
     | "default"
     | "destructive"

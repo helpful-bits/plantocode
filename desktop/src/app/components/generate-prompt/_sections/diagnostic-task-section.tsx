@@ -89,4 +89,6 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
   );
 });
 
+DiagnosticTaskSection.displayName = "DiagnosticTaskSection";
+
 export default DiagnosticTaskSection;

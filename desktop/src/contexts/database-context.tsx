@@ -7,6 +7,9 @@ import {
   useCallback,
 } from "react";
 import type { ReactNode } from "react";
+import { createLogger } from "@/utils/logger";
+
+const logger = createLogger({ namespace: "DatabaseContext" });
 
 // Database context interface
 export interface DatabaseContextValue {
@@ -36,7 +39,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
   // Function to trigger the database error modal - wrapped in useCallback
   const triggerDatabaseErrorModal = useCallback((message: string) => {
-    console.error("Database error:", message);
+    logger.error("Database error:", message);
     setError(message);
     setIsInitialized(false);
 

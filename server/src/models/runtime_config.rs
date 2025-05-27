@@ -59,5 +59,4 @@ pub struct AppState {
     pub subscription_plan_repository: Arc<SubscriptionPlanRepository>,
     pub user_repository: Arc<UserRepository>,
     pub settings_repository: Arc<SettingsRepository>,
-    pub free_tier_token_limit: Option<i64>,
 }

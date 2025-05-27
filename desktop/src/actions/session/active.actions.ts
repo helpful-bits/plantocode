@@ -5,7 +5,7 @@ import { hashString } from "@/utils/hash";
 import {
   getGenericCachedStateAction,
   saveGenericCachedStateAction,
-} from "../project-settings";
+} from "../project-settings/index";
 
 /**
  * Set the active session for a project

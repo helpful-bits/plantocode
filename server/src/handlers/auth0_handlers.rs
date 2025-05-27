@@ -55,7 +55,7 @@ pub async fn initiate_auth0_login(
 ) -> Result<HttpResponse, AppError> {
     let auth0_server_state = Uuid::new_v4().to_string();
     
-    let settings = app_settings.read().unwrap();
+    let settings = app_settings.read().map_err(|_| AppError::Internal("Failed to read app settings".to_string()))?;
     let auth0_domain = &settings.api_keys.auth0_domain;
     
     auth0_state_store.insert(

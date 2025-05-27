@@ -299,6 +299,7 @@ impl JobScheduler {
             created_at: db_job.created_at.to_string(),
             session_id: db_job.session_id.clone(),
             task_type_str: db_job.task_type.clone(),
+            project_directory: db_job.project_directory.clone(),
         };
         
         Ok((job, priority))

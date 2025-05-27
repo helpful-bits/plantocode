@@ -30,7 +30,6 @@ struct SubscriptionPlanData {
     name: String,
     features: Value,
     monthly_token_limit: Option<i64>,
-    cost_per_1k_tokens: Option<f64>,
 }
 
 /// Get usage summary for the current user
@@ -78,34 +77,23 @@ pub async fn get_usage_summary_handler(
     match user_subscription_result {
         Ok(Some(subscription)) => {
             // Get the subscription plan details
-            let plan_info = match plan_repo.get_allowed_models(&subscription.plan_id).await {
-                Ok(_) => {
-                    // Plan exists
-                    // Create a simple plan structure
-                    let plan = SubscriptionPlanData {
-                        id: subscription.plan_id.clone(),
-                        name: "Standard Plan".to_string(),
-                        features: Value::Null,
-                        monthly_token_limit: Some(1_000_000),
-                        cost_per_1k_tokens: Some(0.002),
+            let plan_result = plan_repo.get_plan_by_id(&subscription.plan_id).await;
+
+            match plan_result {
+                Ok(db_plan) => {
+                    let current_plan_data = SubscriptionPlanData {
+                        id: db_plan.id.clone(),
+                        name: db_plan.name.clone(),
+                        features: db_plan.features.clone(),
+                        monthly_token_limit: Some(db_plan.monthly_tokens),
                     };
-                    Ok(plan)
-                },
-                Err(_) => {
-                    // Plan doesn't exist or error occurred
-                    Err(format!("Plan not found: {}", subscription.plan_id))
-                }
-            };
-            
-            match plan_info {
-                Ok(plan) => {
                     // Get token usage for the current billing cycle
                     let usage_result = match Uuid::parse_str(&user_id) {
                         Ok(uuid) => api_usage_repo.get_usage_for_period(
                             &uuid,
                             Some(cycle_start),
                             Some(cycle_end)
-                        ).await.map(|u| vec![u]),
+                        ).await,
                         Err(e) => {
                             log::error!("Failed to parse user ID to UUID for usage: {}", e);
                             return HttpResponse::BadRequest().json(serde_json::json!({
@@ -115,15 +103,12 @@ pub async fn get_usage_summary_handler(
                     };
                     
                     match usage_result {
-                        Ok(usage) => {
+                        Ok(usage_report) => {
                             // Calculate token usage
-                            let total_tokens: i64 = usage.iter()
-                                .map(|u| u.tokens_input + u.tokens_output)
-                                .sum();
+                            let total_tokens: i64 = usage_report.tokens_input + usage_report.tokens_output;
                             
-                            // Calculate estimated cost based on usage
-                            let cost_per_1k_tokens = plan.cost_per_1k_tokens.unwrap_or(0.002);
-                            let estimated_cost = (total_tokens as f64 / 1000.0) * cost_per_1k_tokens;
+                            // Use actual recorded cost instead of recalculating
+                            let estimated_cost = usage_report.total_cost.to_string().parse::<f64>().unwrap_or(0.0);
                             
                             // Calculate trial days remaining if applicable
                             let trial_days_remaining = if subscription.is_trial {
@@ -143,13 +128,13 @@ pub async fn get_usage_summary_handler(
                             // Build response
                             HttpResponse::Ok().json(UsageSummaryResponse {
                                 used_tokens: total_tokens,
-                                monthly_limit: plan.monthly_token_limit.unwrap_or(1_000_000),
+                                monthly_limit: current_plan_data.monthly_token_limit.unwrap_or(0),
                                 cycle_start_date: Some(cycle_start),
                                 cycle_end_date: Some(cycle_end),
                                 estimated_cost,
                                 currency: "USD".to_string(),
                                 trial_days_remaining,
-                                plan_name: Some(plan.name),
+                                plan_name: Some(current_plan_data.name),
                             })
                         },
                         Err(e) => {
@@ -161,24 +146,33 @@ pub async fn get_usage_summary_handler(
                     }
                 },
                 Err(e) => {
-                    log::error!("Failed to get plan: {}", e);
-                    HttpResponse::InternalServerError().json(serde_json::json!({
+                    log::error!("Failed to get plan {}: {}", subscription.plan_id, e);
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
                         "error": "Failed to retrieve subscription plan"
-                    }))
+                    }));
                 }
             }
         },
         Ok(None) => {
-            // User has no active subscription, return free tier data
+            let free_plan = match plan_repo.get_plan_by_id("free").await {
+                Ok(plan) => plan,
+                Err(_) => {
+                    log::error!("Free plan not found in database");
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Free plan configuration missing"
+                    }));
+                }
+            };
+            
             HttpResponse::Ok().json(UsageSummaryResponse {
                 used_tokens: 0,
-                monthly_limit: app_state.free_tier_token_limit.unwrap_or(100_000),
+                monthly_limit: free_plan.monthly_tokens,
                 cycle_start_date: Some(cycle_start),
                 cycle_end_date: Some(cycle_end),
                 estimated_cost: 0.0,
                 currency: "USD".to_string(),
                 trial_days_remaining: None,
-                plan_name: Some("Free".to_string()),
+                plan_name: Some(free_plan.name),
             })
         },
         Err(e) => {

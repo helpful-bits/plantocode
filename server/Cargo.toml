@@ -34,6 +34,7 @@ firebase-auth = "0.5.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 serde_cbor = "0.11.2"
+serde_with = "3.12.0"
 
 # Environment variables
 dotenv = "0.15.0"
@@ -74,7 +75,7 @@ dashmap = "5.5.3"
 tera = "1.19.1"
 
 # Stripe
-async-stripe = { version = "1.0.0-alpha.2", optional = true }
+async-stripe = { version = "0.41.0", optional = true }
 hmac = { version = "0.12.1", optional = true }
 hex = { version = "0.4.3", optional = true }
 

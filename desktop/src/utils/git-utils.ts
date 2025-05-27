@@ -4,13 +4,13 @@
  * This module provides functions to work with Git repositories and file traversal.
  * It's been rewritten to use Tauri APIs instead of Node.js APIs.
  */
-
-import { invoke } from "@tauri-apps/api/core";
 import { join, resolve, extname } from "@tauri-apps/api/path";
 import { exists, readDir } from "@tauri-apps/plugin-fs";
 import { Command } from "@tauri-apps/plugin-shell";
 
-import { BINARY_EXTENSIONS } from "@/utils/file-utils";
+import { BINARY_EXTENSIONS } from "@/utils/file-binary-utils";
+import { normalizePath, ensureProjectRelativePath } from "@/utils/path-utils";
+import { createLogger } from "@/utils/logger";
 
 // File cache with TTL to prevent frequent scans
 const fileCache = new Map<
@@ -18,7 +18,7 @@ const fileCache = new Map<
   { files: string[]; timestamp: number; isGitRepo: boolean }
 >();
 const CACHE_TTL = 30000; // 30 seconds cache lifetime
-const DEBUG_LOGS = import.meta.env.DEV; // Enable logs in development
+const logger = createLogger({ namespace: "GitUtils" });
 
 // Add a global variable to track hot reload state
 let lastReloadTime = Date.now();
@@ -30,10 +30,9 @@ function isInHotReloadCooldown(): boolean {
   const timeSinceReload = now - lastReloadTime;
   const inCooldown = timeSinceReload < HOT_RELOAD_COOLDOWN;
 
-  if (DEBUG_LOGS && inCooldown) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[Git Utils] In hot reload cooldown (${timeSinceReload}ms since last reload)`
+  if (inCooldown) {
+    logger.debug(
+      `In hot reload cooldown (${timeSinceReload}ms since last reload)`
     );
   }
 
@@ -43,15 +42,6 @@ function isInHotReloadCooldown(): boolean {
   return inCooldown;
 }
 
-/**
- * Normalize a path for comparison across platforms
- */
-async function normalizePathForComparison(filePath: string): Promise<string> {
-  // Use Tauri's path normalize
-  return await invoke<string>("normalize_path_for_comparison", {
-    path: filePath,
-  });
-}
 
 /**
  * Recursive directory traversal function with better error handling
@@ -80,10 +70,7 @@ async function readdirRecursive(
     for (const entry of entries) {
       // Skip excluded directories
       if (entry.isDirectory && exclusions.includes(entry.name)) {
-        if (DEBUG_LOGS) {
-          // eslint-disable-next-line no-console
-          console.log(`[Git Utils] Skipping excluded directory: ${entry.name}`);
-        }
+        logger.debug(`Skipping excluded directory: ${entry.name}`);
         continue;
       }
 
@@ -94,7 +81,7 @@ async function readdirRecursive(
 
       // Normalize the path for consistent use across platforms
       const normalizedRelativePath =
-        await normalizePathForComparison(entryRelativePath);
+        await normalizePath(entryRelativePath);
 
       if (entry.isDirectory) {
         try {
@@ -107,8 +94,8 @@ async function readdirRecursive(
           files = files.concat(subDirFiles);
         } catch (error) {
           // Log subdirectory errors but continue with other directories
-          console.warn(
-            `[Git Utils] Error reading subdirectory ${entryRelativePath}:`,
+          logger.warn(
+            `Error reading subdirectory ${entryRelativePath}:`,
             error instanceof Error ? error.message : String(error)
           );
         }
@@ -120,8 +107,8 @@ async function readdirRecursive(
 
     return files;
   } catch (error) {
-    console.error(
-      `[Git Utils] Error in readdirRecursive:`,
+    logger.error(
+      `Error in readdirRecursive:`,
       error instanceof Error ? error.message : String(error)
     );
     throw error; // Propagate the error to caller
@@ -145,8 +132,8 @@ async function execGitCommand(command: string[], cwd: string): Promise<string> {
 
     return result.stdout;
   } catch (error) {
-    console.error(
-      `[Git Utils] Git command failed: ${command.join(" ")}`,
+    logger.error(
+      `Git command failed: ${command.join(" ")}`,
       error
     );
     throw error;
@@ -166,30 +153,21 @@ export async function getAllNonIgnoredFiles(
   const now = Date.now();
 
   if (cachedResult && now - cachedResult.timestamp < CACHE_TTL) {
-    if (DEBUG_LOGS) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[Git Utils] Using cached file list for ${dir}, age: ${now - cachedResult.timestamp}ms`
-      );
-    }
+    logger.debug(
+      `Using cached file list for ${dir}, age: ${now - cachedResult.timestamp}ms`
+    );
     return cachedResult;
   }
 
-  if (DEBUG_LOGS) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[Git Utils] Cache miss or expired, getting fresh files for ${dir}`
-    );
-  }
+  logger.debug(
+    `Cache miss or expired, getting fresh files for ${dir}`
+  );
   // Clear any existing outdated cache
   fileCache.delete(dir);
 
   // Normalize the directory path for consistent handling
   const normalizedDir = await resolve(dir);
-  if (DEBUG_LOGS) {
-    // eslint-disable-next-line no-console
-    console.log(`[Git Utils] Normalized directory path: ${normalizedDir}`);
-  }
+  logger.debug(`Normalized directory path: ${normalizedDir}`);
 
   // Add retry logic
   const MAX_RETRIES = 3;
@@ -201,12 +179,9 @@ export async function getAllNonIgnoredFiles(
       // Assume it's a git repository; the command will fail if not
       let isGitRepo = true;
 
-      if (DEBUG_LOGS) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[Git Utils] Listing all non-ignored files in git repository: ${normalizedDir} (attempt ${retries + 1})`
-        );
-      }
+      logger.debug(
+        `Listing all non-ignored files in git repository: ${normalizedDir} (attempt ${retries + 1})`
+      );
 
       // First, check if this is indeed a git repository
       try {
@@ -214,31 +189,22 @@ export async function getAllNonIgnoredFiles(
           ["rev-parse", "--is-inside-work-tree"],
           normalizedDir
         );
-        if (DEBUG_LOGS) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[Git Utils] Confirmed directory is a git repository: ${normalizedDir}`
-          );
-        }
-      } catch (_) {
+        logger.debug(
+          `Confirmed directory is a git repository: ${normalizedDir}`
+        );
+      } catch (gitError) {
         // Not a git repository, fall back to directory traversal
-        console.warn(`[Git Utils] Not a git repository: ${normalizedDir}`);
+        logger.warn(`Not a git repository: ${normalizedDir}, error: ${gitError instanceof Error ? gitError.message : String(gitError)}`);
         isGitRepo = false;
         // Use directory traversal fallback
         const fallbackFiles = await readdirRecursive(normalizedDir);
-        if (DEBUG_LOGS) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[Git Utils] Found ${fallbackFiles.length} files via directory traversal`
-          );
-        }
+        logger.debug(
+          `Found ${fallbackFiles.length} files via directory traversal`
+        );
 
         // Cache the result if caching is enabled
         const result = { files: fallbackFiles, isGitRepo: false };
-        if (DEBUG_LOGS) {
-          // eslint-disable-next-line no-console
-          console.log(`[Git Utils] Adding directory traversal result to cache`);
-        }
+        logger.debug(`Adding directory traversal result to cache`);
         fileCache.set(normalizedDir, { ...result, timestamp: now });
 
         return result;
@@ -269,16 +235,12 @@ export async function getAllNonIgnoredFiles(
         .filter((item) => !item.isBinary)
         .map((item) => item.file);
 
-      if (DEBUG_LOGS) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[Git Utils] Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`
-        );
-        // eslint-disable-next-line no-console
-        console.log(
-          `[Git Utils] Filtered out ${gitFiles.length - filteredFiles.length} binary files based on extensions`
-        );
-      }
+      logger.debug(
+        `Found ${gitFiles.length} files via git ls-files (tracked and untracked, not ignored)`
+      );
+      logger.debug(
+        `Filtered out ${gitFiles.length - filteredFiles.length} binary files based on extensions`
+      );
 
       // Verify each file exists on disk as an additional check
       const existingFiles: string[] = [];
@@ -297,7 +259,7 @@ export async function getAllNonIgnoredFiles(
               // Check if the file still exists
               const fileExists = await exists(filePath);
               // Normalize the path before adding to ensure consistency
-              const normalizedPath = await normalizePathForComparison(file);
+              const normalizedPath = ensureProjectRelativePath(file);
               return { exists: fileExists, path: normalizedPath };
             } catch (_error) {
               // If error occurs, consider file missing
@@ -316,35 +278,26 @@ export async function getAllNonIgnoredFiles(
         }
       }
 
-      if (DEBUG_LOGS) {
-        if (missingFiles.length > 0) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[Git Utils] Filtered out ${missingFiles.length} missing files of ${filteredFiles.length} non-binary files`
-          );
-          if (missingFiles.length <= 5) {
-            // eslint-disable-next-line no-console
-            console.log(
-              `[Git Utils] Missing files: ${missingFiles.join(", ")}`
-            );
-          } else {
-            // eslint-disable-next-line no-console
-            console.log(
-              `[Git Utils] First 5 missing files: ${missingFiles.slice(0, 5).join(", ")}...`
-            );
-          }
-        }
-        // eslint-disable-next-line no-console
-        console.log(
-          `[Git Utils] Normalized ${existingFiles.length} file paths for consistent comparison`
+      if (missingFiles.length > 0) {
+        logger.debug(
+          `Filtered out ${missingFiles.length} missing files of ${filteredFiles.length} non-binary files`
         );
+        if (missingFiles.length <= 5) {
+          logger.debug(
+            `Missing files: ${missingFiles.join(", ")}`
+          );
+        } else {
+          logger.debug(
+            `First 5 missing files: ${missingFiles.slice(0, 5).join(", ")}...`
+          );
+        }
       }
+      logger.debug(
+        `Normalized ${existingFiles.length} file paths for consistent comparison`
+      );
 
       // Cache the results
-      if (DEBUG_LOGS) {
-        // eslint-disable-next-line no-console
-        console.log(`[Git Utils] Caching results for future use`);
-      }
+      logger.debug(`Caching results for future use`);
       const result = { files: existingFiles, isGitRepo };
       fileCache.set(normalizedDir, { ...result, timestamp: now });
 
@@ -353,22 +306,17 @@ export async function getAllNonIgnoredFiles(
       lastError = error as Error;
       retries++;
 
-      if (DEBUG_LOGS) {
-        console.warn(
-          `[Git Utils] Git operation failed (attempt ${retries}/${MAX_RETRIES}):`,
-          error instanceof Error ? error.message : String(error)
-        );
-      }
+      logger.warn(
+        `Git operation failed (attempt ${retries}/${MAX_RETRIES}):`,
+        error instanceof Error ? error.message : String(error)
+      );
 
       // If we're in a hot reload state, add a delay between retries
       if (isInHotReloadCooldown() && retries < MAX_RETRIES) {
         const delay = retries * 300; // Increasing delay for each retry
-        if (DEBUG_LOGS) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[Git Utils] Waiting ${delay}ms before retry during hot reload...`
-          );
-        }
+        logger.debug(
+          `Waiting ${delay}ms before retry during hot reload...`
+        );
         await new Promise((timeoutResolve) => setTimeout(timeoutResolve, delay));
       }
     }
@@ -376,36 +324,30 @@ export async function getAllNonIgnoredFiles(
 
   // If we reach here, all retries failed
   const errorMsg = `Failed to list files using git after ${MAX_RETRIES} attempts`;
-  console.error(`[Git Utils] ${errorMsg}:`, lastError);
+  logger.error(`${errorMsg}:`, lastError);
 
   // Log more details about the directory and Git state for debugging
-  if (DEBUG_LOGS) {
-    console.error(`[Git Utils] Directory: ${normalizedDir}`);
-    try {
-      // Try a simpler git command to see if git works at all
-      const gitVersion = await execGitCommand(["--version"], normalizedDir);
-      console.error(`[Git Utils] Git version: ${gitVersion.trim()}`);
-    } catch (err) {
-      console.error(
-        `[Git Utils] Git not available:`,
-        err instanceof Error ? err.message : String(err)
-      );
-    }
+  logger.error(`Directory: ${normalizedDir}`);
+  try {
+    // Try a simpler git command to see if git works at all
+    const gitVersion = await execGitCommand(["--version"], normalizedDir);
+    logger.error(`Git version: ${gitVersion.trim()}`);
+  } catch (err) {
+    logger.error(
+      `Git not available:`,
+      err instanceof Error ? err.message : String(err)
+    );
   }
 
   // Fall back to directory traversal if git commands fail
   try {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[Git Utils] Falling back to directory traversal after git failure`
+    logger.info(
+      `Falling back to directory traversal after git failure`
     );
     const fallbackFiles = await readdirRecursive(normalizedDir);
-    if (DEBUG_LOGS) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[Git Utils] Found ${fallbackFiles.length} files via directory traversal fallback`
-      );
-    }
+    logger.debug(
+      `Found ${fallbackFiles.length} files via directory traversal fallback`
+    );
 
     // Cache the fallback result
     const result = { files: fallbackFiles, isGitRepo: false };
@@ -413,16 +355,15 @@ export async function getAllNonIgnoredFiles(
 
     return result;
   } catch (traversalError) {
-    console.error(
-      `[Git Utils] Directory traversal fallback failed too:`,
+    logger.error(
+      `Directory traversal fallback failed too:`,
       traversalError instanceof Error
         ? traversalError.message
         : String(traversalError)
     );
 
     // Final fallback to empty result if everything fails
-    // eslint-disable-next-line no-console
-    console.log(`[Git Utils] Returning empty file list as final fallback`);
+    logger.info(`Returning empty file list as final fallback`);
     const fallbackResult = { files: [], isGitRepo: false };
     fileCache.set(normalizedDir, { ...fallbackResult, timestamp: now });
     return fallbackResult;

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 import { useProjectPersistenceService } from "@/hooks/useProjectPersistenceService";
-import { trackAPICall } from "@/utils/api-call-tracker";
+import { AppError, getErrorMessage } from "@/utils/error-handling";
 import { normalizePath } from "@/utils/path-utils";
 
 import { useNotification } from "../notification-context";
@@ -47,6 +47,9 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
     let isMounted = true;
 
     const loadInitialData = async () => {
+      // Only run if it's truly the initial load for this hook instance
+      if (!isInitialLoadingRef.current) return;
+
       // Set loading state
       setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
@@ -57,41 +60,26 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
         // Safety check for component unmount during async operation
         if (!isMounted) return;
 
-        // Track API call for debugging purposes
-        trackAPICall("loadProjectDirectory", normalizedDir, null, {
-          isInitialLoad: isInitialLoadingRef.current,
-        });
-
         if (normalizedDir) {
-
-          // Set project directory, but ensure it doesn't trigger context cascades
-          if (isInitialLoadingRef.current) {
-            setState((prev) => ({ ...prev, projectDirectory: normalizedDir }));
-            isInitialLoadingRef.current = false;
-          } else {
-            // Only update if it's actually different
-            if (state.projectDirectory !== normalizedDir) {
-              setState((prev) => ({
-                ...prev,
-                projectDirectory: normalizedDir,
-              }));
-            } else {
-              // Skip redundant update
-            
+          // Update state only if it's different or first time
+          setState((prev) => {
+            if (prev.projectDirectory !== normalizedDir) {
+              return { ...prev, projectDirectory: normalizedDir };
             }
-          }
-
-          // Mark project as initialized
-          hasInitializedRef.current = true;
-        } else {
-          // No cached directory found
-          // Mark initialization as completed even if no directory found
-          isInitialLoadingRef.current = false;
-          hasInitializedRef.current = true;
+            return prev;
+          });
         }
+        hasInitializedRef.current = true;
       } catch (err) {
         if (isMounted) {
-          const errorMessage = `Failed to load project data: ${err instanceof Error ? err.message : String(err)}`;
+          // Handle AppError instances with their specific properties
+          let errorMessage: string;
+          if (err instanceof AppError) {
+            errorMessage = `Failed to load project data: ${err.message}`;
+          } else {
+            errorMessage = `Failed to load project data: ${getErrorMessage(err)}`;
+          }
+
           setState((prev) => ({ ...prev, error: errorMessage }));
 
           // Show notification for the error
@@ -103,6 +91,7 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
         }
       } finally {
         if (isMounted) {
+          isInitialLoadingRef.current = false; // Mark initial load as done
           setState((prev) => ({ ...prev, isLoading: false }));
         }
       }
@@ -114,44 +103,61 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
     return () => {
       isMounted = false;
     };
-  }, [showNotification, loadProjectDirectory, state.projectDirectory]);
+  }, [loadProjectDirectory, showNotification]);
 
   // Set project directory with persistence
   const setProjectDirectory = useCallback(
     async (dir: string) => {
       if (!dir) return;
 
-      const now = Date.now();
-      const lastChange = lastProjectDirChangeRef.current;
-
-      // Prevent rapid changes (debounce)
-      if (now - lastChange < PROJECT_DIR_CHANGE_COOLDOWN) {
-        return;
-      }
-
-      lastProjectDirChangeRef.current = now;
-
       try {
-        // Normalize the path
+        // Normalize the path first
         const normalizedDir = await normalizePath(dir);
 
-        // Track API call for debugging purposes
-        trackAPICall("setProjectDirectory", normalizedDir, null, {
-          previous: state.projectDirectory || "none",
-          timestamp: Date.now(),
-        });
+        // Compare with current directory and return early if same
+        if (normalizedDir === state.projectDirectory) {
+          return;
+        }
+
+        const now = Date.now();
+        const lastChange = lastProjectDirChangeRef.current;
+
+        // Prevent rapid changes (debounce) only for different paths
+        if (now - lastChange < PROJECT_DIR_CHANGE_COOLDOWN) {
+          return;
+        }
 
         // Update state for immediate UI response
         setState((prev) => ({ ...prev, projectDirectory: normalizedDir }));
+        lastProjectDirChangeRef.current = now;
 
         // Save the directory to persistent storage
-        const saveResult = await saveProjectDirectory(normalizedDir);
-
-        if (!saveResult.success) {
+        try {
+          await saveProjectDirectory(normalizedDir);
+        } catch (saveErr) {
           // Don't revert the state as the directory may be valid even if persistence failed
+          let persistenceErrorMessage: string;
+          if (saveErr instanceof AppError) {
+            persistenceErrorMessage = `Project directory set for this session, but failed to save for future sessions: ${saveErr.message}`;
+          } else {
+            persistenceErrorMessage = `Project directory set for this session, but failed to save for future sessions: ${getErrorMessage(saveErr)}`;
+          }
+          
+          showNotification({
+            title: "Persistence Warning",
+            message: persistenceErrorMessage,
+            type: "warning",
+          });
         }
       } catch (err) {
-        const errorMessage = `Failed to set project directory: ${err instanceof Error ? err.message : String(err)}`;
+        // Handle AppError instances with their specific properties
+        let errorMessage: string;
+        if (err instanceof AppError) {
+          errorMessage = `Failed to set project directory: ${err.message}`;
+        } else {
+          errorMessage = `Failed to set project directory: ${getErrorMessage(err)}`;
+        }
+        
         setState((prev) => ({ ...prev, error: errorMessage }));
 
         showNotification({
@@ -161,7 +167,7 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
         });
       }
     },
-    [showNotification, state.projectDirectory, saveProjectDirectory]
+    [showNotification, saveProjectDirectory, setState, state.projectDirectory]
   );
 
   return {

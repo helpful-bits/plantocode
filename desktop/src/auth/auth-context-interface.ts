@@ -5,11 +5,11 @@ import { FrontendUser } from '../types';
 export type User = FrontendUser;
 
 export interface AuthContextType {
-  user: User | null;
+  user?: User;
   loading: boolean;
-  error: string | null;
-  token: string | null;
+  error?: string;
+  token?: string;
   signIn: (providerHint?: string) => Promise<void>;
   signOut: () => Promise<void>;
-  getToken: () => Promise<string | null>;
+  getToken: () => Promise<string | undefined>;
 }

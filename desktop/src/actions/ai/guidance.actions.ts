@@ -39,7 +39,7 @@ export async function generateGuidanceForPathsAction(
 
   try {
     // Call the Tauri command to generate guidance
-    const jobId = await invoke<string>("generate_guidance_command", {
+    const result = await invoke<{ jobId: string }>("generate_guidance_command", {
       sessionId,
       projectDirectory,
       taskDescription,
@@ -55,9 +55,9 @@ export async function generateGuidanceForPathsAction(
     return {
       isSuccess: true,
       message: "Guidance generation job queued",
-      data: { jobId },
+      data: { jobId: result.jobId },
       metadata: {
-        jobId,
+        jobId: result.jobId,
         isBackgroundJob: true,
         targetField: "taskDescription",
       },
