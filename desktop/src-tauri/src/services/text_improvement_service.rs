@@ -3,16 +3,16 @@
 use tauri::AppHandle;
 use log::info;
 use crate::error::{AppResult, AppError};
-use crate::models::TaskType;
+use crate::models::{TaskType, JobCommandResponse};
 use crate::SESSION_REPO;
 use crate::utils::job_creation_utils;
-use crate::commands::text_commands::{ImproveTextArgs, ImproveTextResponse};
+use crate::commands::text_commands::ImproveTextArgs;
 
 /// Creates a background job to improve text based on specified improvement type.
 pub async fn create_text_improvement_job_service(
     app_handle: &AppHandle, 
     args: ImproveTextArgs,
-) -> AppResult<ImproveTextResponse> {
+) -> AppResult<JobCommandResponse> {
     info!("Improving text with improvement type: {}", args.improvement_type);
 
     // Validate required fields
@@ -124,5 +124,5 @@ pub async fn create_text_improvement_job_service(
     .map_err(|e| AppError::ApplicationError(format!("Failed to create text improvement job: {}", e.to_string())))?;
 
     info!("Created text improvement job: {}", job_id);
-    Ok(ImproveTextResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }

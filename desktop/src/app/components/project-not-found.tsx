@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderOpen, Loader2 } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { Button } from "@/ui/button";
@@ -16,7 +16,7 @@ interface ProjectNotFoundProps {
   onSelectProject?: () => void;
 }
 
-export default function ProjectNotFound({
+function ProjectNotFound({
   onSelectProject,
 }: ProjectNotFoundProps) {
   const [isSelectingDirectory, setIsSelectingDirectory] = useState(false);
@@ -53,18 +53,20 @@ export default function ProjectNotFound({
         </p>
         <Button
           onClick={handleSelectDirectory}
-          disabled={isSelectingDirectory || !onSelectProject}
+          disabled={!onSelectProject}
+          isLoading={isSelectingDirectory}
+          loadingText="Selecting..."
           className="flex items-center gap-2"
           size="default"
         >
-          {isSelectingDirectory ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <FolderOpen className="h-4 w-4" />
-          )}
-          {isSelectingDirectory ? "Selecting..." : "Select Project Directory"}
+          <FolderOpen className="h-4 w-4" />
+          Select Project Directory
         </Button>
       </CardContent>
     </Card>
   );
 }
+
+ProjectNotFound.displayName = "ProjectNotFound";
+
+export default ProjectNotFound;

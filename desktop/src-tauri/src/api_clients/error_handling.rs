@@ -57,6 +57,7 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
             "authentication_error" => AppError::AuthError(format!("Authentication failed: {}", message)),
             "authorization_error" => AppError::AccessDenied(format!("Access denied: {}", message)),
             "billing_error" => AppError::BillingError(message),
+            "payment_required" => AppError::BillingError(message),
             "rate_limit_error" => AppError::ServerProxyError(format!("Rate limit exceeded: {}", message)),
             "provider_error" => AppError::ServerProxyError(format!("AI provider error: {}", message)),
             "database_error" => AppError::ServerProxyError(format!("Server database error: {}", message)),

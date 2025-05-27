@@ -2,29 +2,26 @@ import { readFileContent } from "./tauri-fs";
 import { pathJoin } from "./tauri-fs";
 
 /**
- * Load file contents - uses existing single-file Tauri command in a loop
+ * Load file contents for specified paths only
  * This is a minimal frontend wrapper for file operations
  *
  * @param projectDirectory The absolute path to the base directory for the files
- * @param filePaths Array of project-relative file paths to load
- * @param existingContents Optional existing file contents map to use as a base
- * @returns A record mapping project-relative file paths to their contents
+ * @param filePathsToLoad Array of project-relative file paths to load
+ * @returns A record mapping project-relative file paths to their contents (only for requested paths)
  */
 export async function loadFileContents(
   projectDirectory: string,
-  filePaths: string[],
-  existingContents: Record<string, string> = {}
+  filePathsToLoad: string[]
 ): Promise<Record<string, string>> {
-  // If no files to load, return existing contents
-  if (!filePaths.length) {
-    return existingContents;
+  // If no files to load, return empty object
+  if (!filePathsToLoad.length) {
+    return {};
   }
 
-  // Start with existing contents
-  const contents = { ...existingContents };
+  const contents: Record<string, string> = {};
 
   // Load each file individually using the existing single-file command
-  for (const filePath of filePaths) {
+  for (const filePath of filePathsToLoad) {
     try {
       // Convert relative path to absolute path
       const absolutePath = await pathJoin(projectDirectory, filePath);

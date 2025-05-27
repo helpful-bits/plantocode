@@ -2,14 +2,18 @@
  * Login Page Component for Vibe Manager Desktop
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../../contexts/auth-context";
+import { createLogger } from "@/utils/logger";
+
+const logger = createLogger({ namespace: "LoginPage" });
 
 export default function LoginPage() {
   const { signIn, loading, error } = useAuth();
   const appName = "Vibe Manager";
   const [authInProgress, setAuthInProgress] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Effect to update the local error state when the auth error changes
   useEffect(() => {
@@ -17,38 +21,70 @@ export default function LoginPage() {
       setLastError(error);
       // Auto-clear auth in progress state if there's an error
       setAuthInProgress(false);
+      // Clear the polling timeout if authentication failed
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
     }
   }, [error]);
 
+  // Clear timeout when auth is no longer in progress (successful auth)
+  useEffect(() => {
+    if (!authInProgress && pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current);
+      pollingTimeoutRef.current = null;
+    }
+  }, [authInProgress]);
+
+  // Cleanup timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Handle sign-in with Auth0
   const handleSignIn = async (providerHint?: string) => {
-    // Clear any previous errors
+    // Clear any previous errors and timeout
     setLastError(null);
     setAuthInProgress(true);
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current);
+      pollingTimeoutRef.current = null;
+    }
     
     try {
-      console.log(`[LoginPage] Initiating Auth0 sign in`);
-      console.log(`[LoginPage] Current URL: ${window.location.href}`);
-      console.log(`[LoginPage] Auth loading state: ${loading}`);
+      logger.debug("Initiating Auth0 sign in");
+      logger.debug(`Current URL: ${window.location.href}`);
+      logger.debug(`Auth loading state: ${loading}`);
       
       await signIn(providerHint);
       // We don't immediately set authInProgress to false since we're waiting for a callback
       // The external browser will be opened and we'll poll for authentication completion
-      console.log(`[LoginPage] Auth0 sign in initiated, browser opened for authentication`);
+      logger.debug("Auth0 sign in initiated, browser opened for authentication");
       
       // Add a timeout to detect if polling takes too long
-      setTimeout(() => {
+      pollingTimeoutRef.current = setTimeout(() => {
         if (authInProgress) {
-          console.log("[LoginPage] Still waiting for authentication after 120 seconds");
+          logger.warn("Still waiting for authentication after 120 seconds");
           setLastError("Authentication is taking longer than expected. If you've completed sign-in in your browser, please try again.");
         }
       }, 120000); // 2 minutes for Auth0
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[LoginPage] Auth0 sign in failed:`, error);
+      logger.error("Auth0 sign in failed:", error);
       setLastError(`Sign in failed: ${errorMessage}`);
       setAuthInProgress(false);
+      // Clear the timeout on error
+      if (pollingTimeoutRef.current) {
+        clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
     }
   };
 

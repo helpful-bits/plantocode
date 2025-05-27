@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Files,
 } from "lucide-react";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 import { useProject } from "@/contexts/project-context";
 import { FilterModeToggle } from "@/ui";
@@ -18,11 +18,20 @@ import { Input } from "@/ui/input";
 import { cn } from "@/utils/utils";
 
 import FileListItem from "./_components/file-list-item";
-import { type GeneratePromptRegexContextShape } from "./_contexts/generate-prompt-context";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
 import { type FilesMap } from "./_hooks/file-management/use-project-file-list";
 
 import type { FileInfo } from "@/types";
+
+// Combined regex state interface for FileBrowser props
+interface RegexState {
+  titleRegex: string;
+  contentRegex: string;
+  negativeTitleRegex: string;
+  negativeContentRegex: string;
+  isRegexActive: boolean;
+  regexGenerationError: string | null;
+}
 
 // This section has been moved to actions-section.tsx
 
@@ -45,9 +54,6 @@ interface FileBrowserProps {
   filterMode: "all" | "selected" | "regex";
   onFilterModeChange: (mode: "all" | "selected" | "regex") => void;
   isRegexAvailable: boolean;
-  // This prop was used in a previous version but is no longer needed
-  // Consider removing completely in future refactoring
-  onInteraction?: () => void;
   refreshFiles?: (preserveState?: boolean) => Promise<void>;
   isLoading?: boolean;
   loadingMessage?: string;
@@ -57,13 +63,13 @@ interface FileBrowserProps {
   fileLoadError?: string | null;
 
   // Regex state
-  regexState: GeneratePromptRegexContextShape;
+  regexState: RegexState;
 
   // Session state
   disabled?: boolean; // Added prop to disable the entire component during session switching
 }
 
-export default function FileBrowser({
+function FileBrowser({
   managedFilesMap,
   fileContentsMap = {},
   searchTerm,
@@ -74,8 +80,6 @@ export default function FileBrowser({
   filterMode,
   onFilterModeChange,
   isRegexAvailable,
-  // _onAddPath was removed as it's no longer needed
-  onInteraction,
   refreshFiles,
   isLoading,
   loadingMessage = "",
@@ -92,10 +96,6 @@ export default function FileBrowser({
   // Use the useFileFiltering hook
   const {
     filteredFiles,
-    titleRegexError: newTitleRegexError,
-    contentRegexError: newContentRegexError,
-    negativeTitleRegexError: newNegativeTitleRegexError,
-    negativeContentRegexError: newNegativeContentRegexError,
   } = useFileFiltering({
     managedFilesMap,
     fileContentsMap,
@@ -109,21 +109,12 @@ export default function FileBrowser({
     },
   });
 
-  // Update the regex errors from the hook
-  useEffect(() => {
-    // No need to store these errors anymore as they're passed to parent components
-  }, [
-    newTitleRegexError,
-    newContentRegexError,
-    newNegativeTitleRegexError,
-    newNegativeContentRegexError,
-  ]);
 
   // Update the handleManualRefresh function to use the refreshFiles prop
   const handleManualRefresh = useCallback(() => {
     // Call refreshFiles if provided (real refresh)
     if (refreshFiles) {
-      refreshFiles(true)
+      refreshFiles()
         .then(() => {
           // Success handling
         })
@@ -131,12 +122,7 @@ export default function FileBrowser({
           // Error handling with no console statements
         });
     }
-
-    // Also call onInteraction for compatibility with the existing code
-    if (onInteraction) {
-      onInteraction();
-    }
-  }, [refreshFiles, onInteraction]);
+  }, [refreshFiles]);
 
   // Sort files for display - group by directories first then alphabetically
   const displayedFiles = useMemo(() => {
@@ -176,7 +162,7 @@ export default function FileBrowser({
   );
 
   const handleAddPath = useCallback(
-    async (path: string, e: React.MouseEvent) => {
+    async (path: string, e: React.MouseEvent<HTMLButtonElement>) => {
       e.stopPropagation(); // Prevent triggering parent click handlers
 
       // Set visual feedback to indicate path was copied
@@ -197,7 +183,7 @@ export default function FileBrowser({
         // Failed to copy path (no console error)
       }
     },
-    []
+    [setCopiedPath]
   );
 
   return (
@@ -363,227 +349,205 @@ export default function FileBrowser({
 
       {/* File Browser Main Container */}
       <div className="border rounded-md bg-background/50 p-3 h-[450px] overflow-auto relative">
-        {/* Loading indicator overlay */}
+        {(() => {
+          // No project directory selected
+          if (!projectDirectory) {
+            return (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
+                <FolderClosed className="h-8 w-8 text-muted-foreground/80" />
+                <p>Please select a project directory first</p>
+              </div>
+            );
+          }
+
+          // Initial loading
+          if (isLoading && !isInitialized) {
+            return (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
+                <div className="opacity-50 transition-opacity duration-300 text-center">
+                  <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                  <p className="font-medium">Initializing file list...</p>
+                  <p className="text-xs mt-2 text-muted-foreground">
+                    {loadingMessage || "This may take a moment for large directories"}
+                  </p>
+                </div>
+              </div>
+            );
+          }
+
+          // Error state
+          if (fileLoadError && isInitialized) {
+            return (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
+                <div className="text-center">
+                  <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                  <p className="font-medium text-red-500">Error loading files</p>
+                  <p className="text-xs mt-2 text-red-400">{fileLoadError}</p>
+                  <p className="text-xs mt-1 text-muted-foreground">
+                    Project directory: {projectDirectory || "none"}
+                  </p>
+                  <div className="w-full mt-4">
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={handleManualRefresh}
+                      className="w-full h-9"
+                      disabled={disabled || isLoading}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Try Again
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // No files found in directory
+          if (!isLoading && isInitialized && Object.keys(managedFilesMap).length === 0) {
+            return (
+              <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6">
+                <div className="text-center">
+                  <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
+                  <p className="font-medium text-warning">
+                    No files found in the selected directory
+                  </p>
+                  <p className="text-xs mt-2 text-muted-foreground">
+                    Project directory: {projectDirectory || "none"}
+                  </p>
+                  <div className="w-full mt-4">
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={handleManualRefresh}
+                      className="w-full h-9"
+                      disabled={disabled}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh Files
+                    </Button>
+                    <p className="text-xs text-warning mt-2">
+                      Files may be loading in the background. If this persists, try
+                      clicking Refresh Files again.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Files exist but none match current filters
+          if (!isLoading && Object.keys(managedFilesMap).length > 0 && displayedFiles.length === 0) {
+            return (
+              <div className="h-full flex items-center justify-center">
+                <div className="bg-card border rounded-lg p-6 max-w-md shadow-md text-center">
+                  {searchTerm ||
+                  (regexState.isRegexActive &&
+                    (regexState.titleRegex ||
+                      regexState.contentRegex ||
+                      regexState.negativeTitleRegex ||
+                      regexState.negativeContentRegex)) ? (
+                    <>
+                      <Info className="h-8 w-8 text-blue-500/80 mx-auto mb-2" />
+                      <p className="font-medium">
+                        No files match your search criteria
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Try adjusting your search terms or regex patterns.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onSearchChange("")}
+                        className="mt-4 h-9"
+                        disabled={disabled}
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Clear Search
+                      </Button>
+                    </>
+                  ) : filterMode === "selected" && includedCount === 0 ? (
+                    <>
+                      <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
+                      <p className="font-medium text-warning">
+                        No files are currently selected
+                      </p>
+                      <p className="text-xs mt-2 text-muted-foreground">
+                        You&apos;re in &quot;Show Selected Files&quot; mode, but no
+                        files are currently selected.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        onClick={() => onFilterModeChange("all")}
+                        className="mt-4 h-9"
+                        disabled={disabled}
+                      >
+                        <Files className="h-4 w-4 mr-2" />
+                        Show All Files
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Info className="h-8 w-8 text-muted-foreground/80 mx-auto mb-2" />
+                      <p>No files to display</p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        This may be due to your current filter settings.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        onClick={handleManualRefresh}
+                        className="mt-4 h-9"
+                        disabled={disabled}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Refresh Files
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          // Default: Render file list
+          return (
+            <div id="file-list-container">
+              {displayedFiles.map((file) => (
+                <FileListItem
+                  key={`file-${file.comparablePath || file.path}`}
+                  file={file}
+                  onToggleSelection={onToggleSelection}
+                  onToggleExclusion={onToggleExclusion}
+                  onAddPath={handleAddPath}
+                  copiedPath={copiedPath}
+                  disabled={disabled}
+                />
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Small loading indicator for background refresh */}
         <div
-          className={`absolute top-2 right-2 bg-background/95 border rounded-md px-3 py-2 shadow-sm flex items-center gap-2 z-10 transition-opacity duration-300 ${isLoading ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`absolute top-2 right-2 bg-background/95 border rounded-md px-3 py-2 shadow-sm flex items-center gap-2 z-10 transition-opacity duration-300 ${isLoading && isInitialized ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         >
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground text-xs">
             {loadingMessage || "Loading files..."}
           </p>
         </div>
-
-        {/* No project directory selected */}
-        <div
-          className={cn(
-            "h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6 absolute top-0 left-0 w-full z-10",
-            projectDirectory ? "invisible" : ""
-          )}
-        >
-          <FolderClosed className="h-8 w-8 text-muted-foreground/80" />
-          <p>Please select a project directory first</p>
-        </div>
-
-        {/* Loading state - files list not yet initialized */}
-        <div
-          className={cn(
-            "h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6 absolute top-0 left-0 w-full z-10",
-            !(projectDirectory && !isInitialized && isLoading)
-              ? "invisible"
-              : ""
-          )}
-        >
-          <div className="opacity-50 transition-opacity duration-300 text-center">
-            <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
-            <p className="font-medium">Initializing file list...</p>
-            <p className="text-xs mt-2 text-muted-foreground">
-              {loadingMessage || "This may take a moment for large directories"}
-            </p>
-          </div>
-        </div>
-
-        {/* Error loading files */}
-        <div
-          className={cn(
-            "h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6 absolute top-0 left-0 w-full z-10",
-            !(projectDirectory && isInitialized && fileLoadError)
-              ? "invisible"
-              : ""
-          )}
-        >
-          <div className="text-center">
-            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-            <p className="font-medium text-red-500">Error loading files</p>
-            <p className="text-xs mt-2 text-red-400">{fileLoadError}</p>
-            <p className="text-xs mt-1 text-muted-foreground">
-              Project directory: {projectDirectory || "none"}
-            </p>
-
-            <div className="w-full mt-4">
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={handleManualRefresh}
-                className="w-full h-9"
-                disabled={disabled || isLoading}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Try Again
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* No files found in directory - initialized but empty */}
-        <div
-          className={cn(
-            "h-full flex flex-col items-center justify-center gap-3 text-muted-foreground p-6 absolute top-0 left-0 w-full z-10",
-            !(
-              projectDirectory &&
-              isInitialized &&
-              !fileLoadError &&
-              !isLoading &&
-              Object.keys(managedFilesMap).length === 0
-            )
-              ? "invisible"
-              : ""
-          )}
-        >
-          <div className="text-center">
-            <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
-            <p className="font-medium text-warning">
-              No files found in the selected directory
-            </p>
-            <p className="text-xs mt-2 text-muted-foreground">
-              Project directory: {projectDirectory || "none"}
-            </p>
-
-            <div className="w-full mt-4">
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={handleManualRefresh}
-                className="w-full h-9"
-                disabled={disabled}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Files
-              </Button>
-
-              <p className="text-xs text-warning mt-2">
-                Files may be loading in the background. If this persists, try
-                clicking Refresh Files again.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Files in directory but nothing to display due to filters */}
-        <div
-          className={cn(
-            "absolute top-0 left-0 w-full h-full flex items-center justify-center bg-background/90 backdrop-blur-[1px] z-10",
-            !(
-              !isLoading &&
-              Object.keys(managedFilesMap).length > 0 &&
-              displayedFiles.length === 0
-            )
-              ? "invisible"
-              : ""
-          )}
-        >
-          <div className="bg-card border rounded-lg p-6 max-w-md shadow-md text-center">
-            {searchTerm ||
-            (regexState.isRegexActive &&
-              (regexState.titleRegex ||
-                regexState.contentRegex ||
-                regexState.negativeTitleRegex ||
-                regexState.negativeContentRegex)) ? (
-              <>
-                <Info className="h-8 w-8 text-blue-500/80 mx-auto mb-2" />
-                <p className="font-medium">
-                  No files match your search criteria
-                </p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Try adjusting your search terms or regex patterns.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSearchChange("")}
-                  className="mt-4 h-9"
-                  disabled={disabled}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Clear Search
-                </Button>
-              </>
-            ) : filterMode === "selected" && includedCount === 0 ? (
-              <>
-                <AlertCircle className="h-8 w-8 text-warning mx-auto mb-2" />
-                <p className="font-medium text-warning">
-                  No files are currently selected
-                </p>
-                <p className="text-xs mt-2 text-muted-foreground">
-                  You&apos;re in &quot;Show Selected Files&quot; mode, but no
-                  files are currently selected.
-                </p>
-
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={() => onFilterModeChange("all")}
-                  className="mt-4 h-9"
-                  disabled={disabled}
-                >
-                  <Files className="h-4 w-4 mr-2" />
-                  Show All Files
-                </Button>
-              </>
-            ) : (
-              <>
-                <Info className="h-8 w-8 text-muted-foreground/80 mx-auto mb-2" />
-                <p>No files to display</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  This may be due to your current filter settings.
-                </p>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={handleManualRefresh}
-                  className="mt-4 h-9"
-                  disabled={disabled}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh Files
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ALWAYS render file list container */}
-        <div id="file-list-container">
-          {/* Only render files when we have files to display */}
-          {Object.keys(managedFilesMap).length > 0 &&
-            // Map filtered and sorted files using displayedFiles
-            displayedFiles.map((file) => (
-              <FileListItem
-                key={`file-${file.comparablePath || file.path}`}
-                file={file}
-                onToggleSelection={onToggleSelection}
-                onToggleExclusion={onToggleExclusion}
-                onAddPath={handleAddPath}
-                copiedPath={copiedPath}
-                disabled={disabled}
-              />
-            ))}
-        </div>
       </div>
     </div>
   );
 }
+
+FileBrowser.displayName = "FileBrowser";
+
+export default FileBrowser;

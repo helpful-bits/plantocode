@@ -91,27 +91,6 @@ export function throttle<A extends unknown[], R>(
   };
 }
 
-/**
- * This function used to provide debounce functionality with Promise support,
- * but has been removed as part of the effort to eliminate time-based mechanisms.
- *
- * @deprecated This function is deprecated and will be removed.
- * Time-based debouncing has been eliminated from the codebase.
- */
-export function debounce<A extends unknown[], R>(
-  fn: (...args: A) => R,
-  _wait: number, // Keeping parameter for compatibility, but not using it
-  _options: {
-    leading?: boolean;
-    trailing?: boolean;
-    maxWait?: number;
-  } = {}
-): (...args: A) => Promise<R> {
-  // Direct execution without debouncing
-  return function (...args: A): Promise<R> {
-    return Promise.resolve(fn(...args));
-  };
-}
 
 /**
  * Creates a memoized version of a function

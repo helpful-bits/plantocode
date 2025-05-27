@@ -1,7 +1,7 @@
 "use client";
 
 import { Sparkles, Loader2 } from "lucide-react";
-import React, { Suspense } from "react";
+import React, { Suspense, useCallback } from "react";
 
 import { Button } from "@/ui/button";
 
@@ -29,7 +29,6 @@ const TaskSection = React.memo(function TaskSection({
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
   
-  const taskDescription = sessionState.currentSession?.taskDescription || "";
   
   // Get the task context for UI state and actions
   const { state: taskState, actions: taskActions } = useTaskContext();
@@ -48,17 +47,18 @@ const TaskSection = React.memo(function TaskSection({
 
   const { handleGenerateGuidance, handleImproveSelection } = taskActions;
   
-  // Create setTaskDescription handler
-  const setTaskDescription = (value: string) => {
+  // Streamlined task change handler
+  const handleTaskChange = useCallback((value: string) => {
     sessionActions.updateCurrentSessionFields({ taskDescription: value });
-  };
+    coreActions.handleInteraction();
+  }, [sessionActions, coreActions]);
 
   // Get file paths from FileManagement context
   const { includedPaths } = fileState;
 
   // Handler for transcribed text from voice input
   const handleTranscribedText = (text: string) => {
-    setTaskDescription(text);
+    handleTaskChange(text);
   };
 
   return (
@@ -73,10 +73,10 @@ const TaskSection = React.memo(function TaskSection({
       >
         <TaskDescriptionArea
           ref={taskDescriptionRef}
-          value={taskDescription}
-          onChange={setTaskDescription}
+          value={sessionState.currentSession?.taskDescription || ""}
+          onChange={handleTaskChange}
           onInteraction={coreActions.handleInteraction}
-          onBlur={coreActions.flushPendingSaves}
+          onBlur={sessionActions.flushSaves}
           isImproving={isImprovingText || false}
           onImproveSelection={handleImproveSelection}
           disabled={disabled}
@@ -88,14 +88,14 @@ const TaskSection = React.memo(function TaskSection({
           <div className="flex flex-col">
             <Button
               type="button"
-              variant={!taskDescription.trim() ? "destructive" : "secondary"}
+              variant={!(sessionState.currentSession?.taskDescription || "").trim() ? "destructive" : "secondary"}
               size="sm"
               onClick={() => handleGenerateGuidance(includedPaths)}
-              disabled={!taskDescription.trim() || disabled}
+              disabled={!(sessionState.currentSession?.taskDescription || "").trim() || disabled}
               isLoading={isGeneratingGuidance}
               loadingText="Generating Guidance..."
               title={
-                !taskDescription.trim()
+                !(sessionState.currentSession?.taskDescription || "").trim()
                   ? "Enter a task description first"
                   : isGeneratingGuidance
                     ? "Generating guidance..."
@@ -105,7 +105,7 @@ const TaskSection = React.memo(function TaskSection({
               }
               className="h-9"
             >
-              {!taskDescription.trim() ? (
+              {!(sessionState.currentSession?.taskDescription || "").trim() ? (
                 <>Task Description Required</>
               ) : (
                 <>
@@ -115,7 +115,7 @@ const TaskSection = React.memo(function TaskSection({
               )}
             </Button>
             <p className="text-xs text-muted-foreground mt-1 text-balance">
-              {!taskDescription.trim() ? (
+              {!(sessionState.currentSession?.taskDescription || "").trim() ? (
                 <span className="text-red-600 dark:text-red-400">
                   Please enter a task description above to enable this feature.
                 </span>
@@ -138,5 +138,7 @@ const TaskSection = React.memo(function TaskSection({
     </div>
   );
 });
+
+TaskSection.displayName = "TaskSection";
 
 export default TaskSection;

@@ -23,29 +23,6 @@ function hashString(str: string): string {
   return Math.abs(hash).toString(36);
 }
 
-// Type for model settings
-export interface ModelSettings {
-  model: string;
-  temperature: number;
-  maxTokens: number;
-}
-
-// Type for project-specific settings (using camelCase keys)
-export interface ProjectSettings {
-  genericLlmStream?: ModelSettings;
-  implementationPlan?: ModelSettings;
-  pathFinder?: ModelSettings;
-  taskEnhancement?: ModelSettings;
-  transcription?: ModelSettings;
-  voiceCorrection?: ModelSettings;
-  textImprovement?: ModelSettings;
-  regexGeneration?: ModelSettings;
-  guidanceGeneration?: ModelSettings;
-  streaming?: ModelSettings;
-  pathCorrection?: ModelSettings;
-  unknown?: ModelSettings;
-  [key: string]: ModelSettings | undefined;
-}
 
 /**
  * Get task model settings for a project
@@ -61,7 +38,7 @@ export async function getModelSettingsForProject(
       return {
         isSuccess: false,
         message: "No project directory provided",
-        data: null,
+        data: undefined,
       };
     }
 
@@ -87,7 +64,7 @@ export async function getModelSettingsForProject(
       return {
         isSuccess: false,
         message: "Error parsing settings",
-        data: null,
+        data: undefined,
       };
     }
   } catch (error) {
@@ -98,7 +75,7 @@ export async function getModelSettingsForProject(
         error instanceof Error
           ? error.message
           : "Unknown error getting settings",
-      data: null,
+      data: undefined,
     };
   }
 }
@@ -148,106 +125,6 @@ export async function saveProjectTaskModelSettingsAction(
   }
 }
 
-/**
- * Get generic cached state (key-value) for projects
- * This is used for persisting UI state and settings
- */
-export async function getGenericCachedStateAction<T = unknown>(
-  key: string,
-  projectDirectory: string
-): Promise<ActionState<T | null>> {
-  try {
-    if (!key || !projectDirectory) {
-      return {
-        isSuccess: false,
-        message: "Missing key or project directory",
-        data: null,
-      };
-    }
-
-    const result = await invoke<string | null>("get_key_value_command", {
-      key,
-      projectDirectory,
-    });
-
-    if (result === null) {
-      return {
-        isSuccess: true,
-        message: "No data found for key",
-        data: null,
-      };
-    }
-
-    // Parse the JSON string result
-    try {
-      const parsedData = JSON.parse(result) as T;
-      return {
-        isSuccess: true,
-        message: "Data retrieved successfully",
-        data: parsedData,
-      };
-    } catch (parseError) {
-      console.error(`Error parsing cached data for key ${key}:`, parseError);
-      return {
-        isSuccess: false,
-        message: "Error parsing cached data",
-        data: null,
-      };
-    }
-  } catch (error) {
-    console.error(`Error getting cached state for key ${key}:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error getting cached state",
-      data: null,
-    };
-  }
-}
-
-/**
- * Save generic cached state (key-value) for projects
- * This is used for persisting UI state and settings
- */
-export async function saveGenericCachedStateAction<T = unknown>(
-  key: string,
-  projectDirectory: string,
-  data: T
-): Promise<ActionState<void>> {
-  try {
-    if (!key || !projectDirectory) {
-      return {
-        isSuccess: false,
-        message: "Missing key or project directory",
-      };
-    }
-
-    // Convert data to JSON string
-    const valueJson = JSON.stringify(data);
-
-    await invoke("set_key_value_command", {
-      key,
-      value: valueJson,
-      projectDirectory,
-    });
-
-    return {
-      isSuccess: true,
-      message: "Data saved successfully",
-    };
-  } catch (error) {
-    console.error(`Error saving cached state for key ${key}:`, error);
-    return {
-      isSuccess: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Unknown error saving cached state",
-    };
-  }
-}
 
 /**
  * Get a project-specific setting value
@@ -261,7 +138,7 @@ export async function getProjectSettingAction(
       return {
         isSuccess: false,
         message: "Missing project directory or key",
-        data: null,
+        data: undefined,
       };
     }
 
@@ -287,7 +164,7 @@ export async function getProjectSettingAction(
         error instanceof Error
           ? error.message
           : "Unknown error getting project setting",
-      data: null,
+      data: undefined,
     };
   }
 }

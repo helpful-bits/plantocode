@@ -2,6 +2,7 @@ use std::env;
 use std::collections::HashMap;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
+use bigdecimal::BigDecimal;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ pub struct ServerConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiKeysConfig {
     pub openrouter_api_key: Option<String>,
+    pub groq_api_key: Option<String>,
     pub auth0_domain: String,
     pub auth0_api_audience: String,
     pub auth0_server_client_id: Option<String>,
@@ -94,9 +96,9 @@ pub struct ModelInfoEntry {
     pub description: Option<String>,
     pub context_window: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub price_input_per_1k_tokens: Option<f64>,
+    pub price_input_per_1k_tokens: Option<BigDecimal>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub price_output_per_1k_tokens: Option<f64>,
+    pub price_output_per_1k_tokens: Option<BigDecimal>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -156,6 +158,7 @@ impl AppSettings {
         
         // API keys
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
+        let groq_api_key = env::var("GROQ_API_KEY").ok();
         
         let auth0_domain = env::var("AUTH0_DOMAIN")
             .map_err(|_| AppError::Configuration("AUTH0_DOMAIN must be set".to_string()))?;
@@ -243,6 +246,7 @@ impl AppSettings {
             },
             api_keys: ApiKeysConfig {
                 openrouter_api_key,
+                groq_api_key,
                 auth0_domain,
                 auth0_api_audience,
                 auth0_server_client_id,

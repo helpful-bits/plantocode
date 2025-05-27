@@ -46,3 +46,5 @@ export const PlanContextProvider = ({
 }: PlanContextProviderProps) => {
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
 };
+
+PlanContextProvider.displayName = "PlanContextProvider";

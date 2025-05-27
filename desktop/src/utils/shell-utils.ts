@@ -7,6 +7,9 @@ import type {
   ChildProcess, 
   SpawnOptions 
 } from '@tauri-apps/plugin-shell';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger({ namespace: "ShellUtils" });
 
 // Define shell object with open method for compatibility
 export const shell = { open };
@@ -19,11 +22,34 @@ export const shell = { open };
  */
 export async function executeCommand(command: string, args: string[] = []): Promise<string> {
   try {
-    const output = await Command.create(command, args).execute();
-    return output.stdout;
+    const cmd = Command.create(command, args);
+    const result = await cmd.execute();
+
+    if (result.code !== 0) {
+      let errMsgDetails = result.stderr || result.stdout || "No specific error output";
+      // If details are empty but code is non-zero, emphasize the exit code.
+      if (errMsgDetails === "No specific error output" && result.code !== 0) {
+        errMsgDetails = `Process exited with code ${result.code}.`;
+      }
+      const errorMessage = `Command "${command} ${args.join(" ")}" failed with code ${result.code}: ${errMsgDetails}`;
+      logger.error(`[ShellUtils] ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+    return result.stdout;
   } catch (error) {
-    console.error(`Error executing command ${command}:`, error);
-    throw error;
+    // Handle errors from Command.create or cmd.execute() itself
+    let errorMessage = `Error executing command "${command} ${args.join(" ")}": `;
+    if (error instanceof Error) {
+      errorMessage += error.message;
+    } else if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+      errorMessage += (error as any).message;
+    } else if (typeof error === 'string') {
+      errorMessage += error;
+    } else {
+      errorMessage += "An unknown error occurred during shell command execution.";
+    }
+    logger.error(`[ShellUtils] ${errorMessage}`, error); // Log the original error object too
+    throw new Error(errorMessage);
   }
 }
 

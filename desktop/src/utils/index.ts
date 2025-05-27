@@ -36,12 +36,9 @@ export * from "./function-utils";
 // File system utilities
 export * from "./file-access-utils";
 export * from "./file-size";
-export * from "./directory-tree";
-export * from "./file-utils"; // Re-exports from specialized file utility modules
-// Remove duplicate exports that are already exported in file-utils
-// export * from "./file-binary-utils"; 
-// export * from "./file-content-loader";
-// export * from "./file-path-validator";
+export * from "./file-binary-utils";
+export * from "./file-content-loader";
+export * from "./file-path-validator";
 export * from "./git-utils";
 
 // UI utilities
@@ -54,12 +51,9 @@ export * from "./platform";
 export * from "./error-handling";
 export * from "./action-utils";
 export * from "./job-comparison-utils";
-// Export specific functions from job-status-utils to avoid conflict with date-utils exports
+// Export specific functions from job-status-utils
 export {
   isJobTerminated,
-  calculateJobDuration,
-  formatJobDuration as formatJobStatusDuration,
-  formatTimestamp as formatJobStatusTimestamp,
 } from "./job-status-utils";
 export * from "./migration-utils";
 export * from "./common-utils";

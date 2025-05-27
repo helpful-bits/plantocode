@@ -9,6 +9,7 @@ use crate::utils::get_timestamp;
 use crate::models::TaskType;
 use crate::db_utils::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
+use crate::models::JobCommandResponse;
 
 /// Request payload for the implementation plan generation command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,11 +24,6 @@ pub struct CreateImplementationPlanArgs {
     pub max_tokens: Option<u32>,
 }
 
-/// Response for the implementation plan generation command
-#[derive(Debug, Serialize)]
-pub struct ImplementationPlanResponse {
-    pub job_id: String,
-}
 
 /// Creates an implementation plan for a development task
 #[command]
@@ -41,7 +37,7 @@ pub async fn create_implementation_plan_command(
     temperature: Option<f32>,
     max_tokens: Option<u32>,
     app_handle: AppHandle,
-) -> AppResult<ImplementationPlanResponse> {
+) -> AppResult<JobCommandResponse> {
     let args = CreateImplementationPlanArgs {
         session_id,
         task_description,
@@ -135,7 +131,7 @@ pub async fn create_implementation_plan_command(
     info!("Created implementation plan job: {}", job_id);
     
     // Return the job ID
-    Ok(ImplementationPlanResponse { job_id })
+    Ok(JobCommandResponse { job_id })
 }
 
 /// Arguments for reading an implementation plan

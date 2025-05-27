@@ -5,6 +5,7 @@ use log::{debug, info};
 use dirs::config_dir;
 use chrono::Local;
 use uuid::Uuid;
+use tauri::Manager;
 
 use crate::error::{AppError, AppResult};
 use crate::utils::fs_utils;
@@ -307,24 +308,21 @@ pub fn filter_paths_by_patterns(
 }
 
 /// Get the application's root data directory (async version)
-pub async fn get_app_data_root_dir() -> AppResult<PathBuf> {
-    if let Some(mut config_dir) = config_dir() {
-        config_dir.push("com.vibe-manager.desktop");
-        
-        // Create the directory if it doesn't exist
-        if !fs_utils::path_exists(&config_dir).await? {
-            fs_utils::create_directory(&config_dir).await?;
-        }
-        
-        Ok(config_dir)
-    } else {
-        Err(AppError::ValidationError("Could not determine config directory".to_string()))
+pub async fn get_app_data_root_dir(app_handle: &tauri::AppHandle) -> AppResult<PathBuf> {
+    let data_dir = app_handle.path().app_local_data_dir()
+        .map_err(|e| AppError::FileSystemError(format!("Could not determine app local data directory: {}", e)))?;
+    
+    // Create the directory if it doesn't exist
+    if !fs_utils::path_exists(&data_dir).await? {
+        fs_utils::create_directory(&data_dir).await?;
     }
+    
+    Ok(data_dir)
 }
 
 /// Get the directory for app output files (async version)
-pub async fn get_app_output_files_directory() -> AppResult<PathBuf> {
-    let mut output_dir = get_app_data_root_dir().await?;
+pub async fn get_app_output_files_directory(app_handle: &tauri::AppHandle) -> AppResult<PathBuf> {
+    let mut output_dir = get_app_data_root_dir(app_handle).await?;
     output_dir.push("output_files");
     
     // Create the directory if it doesn't exist
@@ -405,7 +403,8 @@ pub async fn create_unique_output_filepath(
     task_name: &str, 
     project_dir: Option<&Path>, 
     extension: &str,
-    target_dir_name: Option<&str>
+    target_dir_name: Option<&str>,
+    app_handle: &tauri::AppHandle
 ) -> AppResult<PathBuf> {
     // Generate a timestamp string (YYYYMMDD_HHMMSS)
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
@@ -442,7 +441,7 @@ pub async fn create_unique_output_filepath(
             get_project_output_files_directory(project_dir).await?
         }
     } else {
-        get_app_output_files_directory().await?
+        get_app_output_files_directory(app_handle).await?
     };
     
     // Join base_dir and filename to get the full path
@@ -498,7 +497,8 @@ pub async fn create_custom_unique_filepath(
     session_name: &str,
     project_dir: Option<&Path>,
     extension: &str,
-    target_dir_name: Option<&str>
+    target_dir_name: Option<&str>,
+    app_handle: &tauri::AppHandle
 ) -> AppResult<PathBuf> {
     // Format timestamp as ISO string with T replaced by _ and : replaced by -
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
@@ -529,7 +529,7 @@ pub async fn create_custom_unique_filepath(
             get_project_output_files_directory(project_dir).await?
         }
     } else {
-        get_app_output_files_directory().await?
+        get_app_output_files_directory(app_handle).await?
     };
     
     // Join base_dir and filename to get the full path

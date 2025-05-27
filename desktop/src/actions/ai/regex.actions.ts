@@ -7,11 +7,11 @@ import { type ActionState } from "@/types";
  */
 export async function generateRegexPatternsAction(
   taskDescription: string,
-  _directoryTree?: string,
-  projectDirectory?: string,
+  projectDirectory: string,
   sessionId?: string,
   examples?: string[],
-  targetLanguage?: string
+  targetLanguage?: string,
+  targetField?: string
 ): Promise<ActionState<{ jobId: string }>> {
   try {
     if (!taskDescription || !taskDescription.trim()) {
@@ -25,27 +25,24 @@ export async function generateRegexPatternsAction(
       };
     }
 
-    if (!projectDirectory || !projectDirectory.trim()) {
-      return { isSuccess: false, message: "Project directory is required." };
-    }
-
 
     // Call the Tauri command to generate regex
-    const jobId = await invoke<string>("generate_regex_command", {
+    const invokeResult = await invoke<{ jobId: string }>("generate_regex_command", {
       sessionId,
       projectDirectory,
       description: taskDescription,
-      examples: examples || undefined,
-      targetLanguage: targetLanguage || undefined,
+      examples,
+      targetLanguage,
       modelOverride: undefined,
       temperatureOverride: undefined,
       maxTokensOverride: undefined,
+      targetField: targetField || undefined,
     });
 
     return {
       isSuccess: true,
       message: "Regex generation job started",
-      data: { jobId },
+      data: { jobId: invokeResult.jobId },
     };
   } catch (error) {
     console.error(

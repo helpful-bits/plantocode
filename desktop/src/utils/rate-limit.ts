@@ -5,6 +5,10 @@
  * limits and time windows.
  */
 
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger({ namespace: "RateLimit" });
+
 // Track request timestamps by key
 const rateLimitStore: Map<string, number[]> = new Map();
 
@@ -32,8 +36,7 @@ if (typeof window !== "undefined") {
     }
 
     // Log is used for debugging rate limit cleanup
-    // eslint-disable-next-line no-console
-    console.log(
+    logger.debug(
       `[Rate Limit] Cleaned up rate limit store. Current size: ${rateLimitStore.size} keys`
     );
   }, CLEANUP_INTERVAL);
@@ -87,8 +90,7 @@ export function rateLimitCheck(
     }
 
     // Log is used for debugging rate limit exceeded events
-    // eslint-disable-next-line no-console
-    console.log(
+    logger.debug(
       `[Rate Limit] Rate limit exceeded for key: ${key}. ` +
         `${recentTimestamps.length}/${limit} requests in last ${windowSeconds}s. ` +
         `Reset in ~${resetInSeconds}s. ` +
@@ -109,8 +111,7 @@ export function rateLimitCheck(
   const approachingLimit = recentTimestamps.length >= Math.ceil(limit * 0.75);
   if (approachingLimit) {
     // Log is used for debugging approaching rate limit events
-    // eslint-disable-next-line no-console
-    console.log(
+    logger.debug(
       `[Rate Limit] Approaching limit for key: ${key}. ` +
         `${recentTimestamps.length}/${limit} requests in last ${windowSeconds}s.`
     );

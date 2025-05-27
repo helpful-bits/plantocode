@@ -7,8 +7,8 @@ interface ImplementationPlanDataResponse {
   title?: string;
   description?: string;
   content?: string;
-  content_format?: string;
-  created_at: string;
+  contentFormat?: string;
+  createdAt: string;
 }
 
 /**
@@ -50,7 +50,7 @@ export async function createImplementationPlanAction(params: {
   try {
     // Call the Tauri command to create the implementation plan
     // The backend now handles dynamic title generation and all prompt construction
-    const result = await invoke<{ job_id: string }>(
+    const result = await invoke<{ jobId: string }>(
       "create_implementation_plan_command",
       {
         sessionId,
@@ -58,18 +58,18 @@ export async function createImplementationPlanAction(params: {
         projectDirectory,
         relevantFiles,
         projectStructure,
-        modelOverride: model,
-        temperatureOverride: temperature,
-        maxTokensOverride: maxTokens,
+        model: model,
+        temperature: temperature,
+        maxTokens: maxTokens,
       }
     );
 
     return {
       isSuccess: true,
       message: "Implementation plan generation started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
       metadata: {
-        jobId: result.job_id,
+        jobId: result.jobId,
       },
     };
   } catch (error) {
@@ -126,8 +126,8 @@ export async function readImplementationPlanAction(jobId: string): Promise<
         title: result.title,
         description: result.description,
         content: result.content,
-        contentFormat: result.content_format,
-        createdAt: result.created_at,
+        contentFormat: result.contentFormat,
+        createdAt: result.createdAt,
       },
     };
   } catch (error) {

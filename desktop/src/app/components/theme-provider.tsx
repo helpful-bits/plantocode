@@ -41,20 +41,59 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove("light", "dark");
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
-
-      root.classList.add(systemTheme);
-      return;
+    // Clear existing theme values
+    if (attribute === "class") {
+      root.classList.remove("light", "dark");
+    } else {
+      root.removeAttribute(attribute);
     }
 
-    root.classList.add(theme);
-  }, [theme]);
+    // Function to apply theme
+    const applyTheme = (themeValue: "light" | "dark") => {
+      if (attribute === "class") {
+        root.classList.add(themeValue);
+      } else {
+        root.setAttribute(attribute, themeValue);
+      }
+    };
+
+    // Handle system theme
+    if (theme === "system" && enableSystem) {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      
+      const handleSystemThemeChange = () => {
+        const systemTheme = mediaQuery.matches ? "dark" : "light";
+        
+        // Clear current theme
+        if (attribute === "class") {
+          root.classList.remove("light", "dark");
+        } else {
+          root.removeAttribute(attribute);
+        }
+        
+        applyTheme(systemTheme);
+      };
+
+      // Apply initial system theme
+      handleSystemThemeChange();
+
+      // Listen for system theme changes
+      mediaQuery.addEventListener("change", handleSystemThemeChange);
+
+      // Cleanup listener
+      return () => {
+        mediaQuery.removeEventListener("change", handleSystemThemeChange);
+      };
+    } else if (theme === "system" && !enableSystem) {
+      // If system theme is selected but not enabled, fallback to light
+      applyTheme("light");
+      return undefined;
+    } else {
+      // Apply the specific theme (light or dark)
+      applyTheme(theme as "light" | "dark");
+      return undefined;
+    }
+  }, [theme, attribute, enableSystem]);
 
   const value = {
     theme,

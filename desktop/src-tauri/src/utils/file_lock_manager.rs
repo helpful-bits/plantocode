@@ -117,15 +117,19 @@ impl FileLockManager {
             // If we can't acquire the lock, we need to wait
             // Get or create a Notify for this path
             let path_clone = path_normalized.clone();
-            drop(locks); // Release the mutex before waiting
             
-            let notify = {
-                let mut waiters = self.lock_waiters.lock().await;
-                waiters
-                    .entry(path_clone.clone())
-                    .or_insert_with(|| Arc::new(Notify::new()))
-                    .clone()
-            };
+            // Acquire the lock_waiters mutex BEFORE dropping active_locks
+            // to prevent race conditions where the Notify object might be
+            // removed or changed by another thread
+            let mut waiters = self.lock_waiters.lock().await;
+            let notify = waiters
+                .entry(path_clone.clone())
+                .or_insert_with(|| Arc::new(Notify::new()))
+                .clone();
+            
+            // Now drop both mutexes before waiting
+            drop(locks);
+            drop(waiters);
             
             debug!("Waiting for lock on {}", path_clone.display());
             

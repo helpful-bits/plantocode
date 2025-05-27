@@ -47,46 +47,30 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
     match task_type {
         // Match against PathFinder task type
         path_finder if path_finder == TaskType::PathFinder.to_string() => {
-            debug!("Deserializing PathFinderPayload");
-            // Attempt to deserialize directly as PathFinderPayload
-            match serde_json::from_value::<PathFinderPayload>(payload_json.clone()) {
-                Ok(payload) => {
-                    debug!("Successfully deserialized PathFinderPayload");
-                    Ok(JobPayload::PathFinder(payload))
-                },
-                Err(e1) => {
-                    debug!("Failed to deserialize as PathFinderPayload ({}), trying InputPathFinderPayload from commands", e1);
-                    // Try to deserialize as InputPathFinderPayload from commands
-                    match serde_json::from_value::<crate::jobs::types::InputPathFinderPayload>(payload_json.clone()) {
-                        Ok(input_payload) => {
-                            debug!("Successfully deserialized InputPathFinderPayload from commands");
-                            // Convert input payload to PathFinderPayload for processor
-                            let processor_payload = PathFinderPayload {
-                                session_id: input_payload.session_id,
-                                task_description: input_payload.task_description,
-                                project_directory: input_payload.project_directory,
-                                background_job_id: input_payload.background_job_id,
-                                model_override: input_payload.model_override,
-                                // Default values will be properly set by the processor
-                                system_prompt: String::new(),
-                                temperature: input_payload.temperature_override.unwrap_or(0.7),
-                                max_output_tokens: input_payload.max_tokens_override,
-                                // These will be populated by the processor
-                                directory_tree: String::new(),
-                                relevant_file_contents: std::collections::HashMap::new(),
-                                estimated_input_tokens: None,
-                                options: input_payload.options,
-                            };
-                            Ok(JobPayload::PathFinder(processor_payload))
-                        },
-                        Err(e2) => {
-                            // No more fallback options, return an error
-                            debug!("Failed to deserialize as InputPathFinderPayload ({})", e2);
-                            Err(AppError::JobError(format!("Failed to deserialize PathFinderPayload: {}", e2)))
-                        }
-                    }
-                }
-            }
+            debug!("Deserializing InputPathFinderPayload and converting to PathFinderPayload");
+            // Deserialize as InputPathFinderPayload (the command argument struct)
+            let input_payload: crate::jobs::types::InputPathFinderPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize InputPathFinderPayload: {}", e)))?;
+            
+            debug!("Successfully deserialized InputPathFinderPayload, converting to processor payload");
+            // Convert input payload to PathFinderPayload for processor
+            let processor_payload = PathFinderPayload {
+                session_id: input_payload.session_id,
+                task_description: input_payload.task_description,
+                background_job_id: input_payload.background_job_id,
+                project_directory: input_payload.project_directory,
+                model_override: input_payload.model_override,
+                // Default values will be properly set by the processor
+                system_prompt: String::new(),
+                temperature: input_payload.temperature_override.unwrap_or(0.7),
+                max_output_tokens: input_payload.max_tokens_override,
+                // These will be populated by the processor
+                directory_tree: String::new(),
+                relevant_file_contents: std::collections::HashMap::new(),
+                estimated_input_tokens: None,
+                options: input_payload.options,
+            };
+            Ok(JobPayload::PathFinder(processor_payload))
         },
         
         // Match against ImplementationPlan task type

@@ -36,6 +36,7 @@ use crate::utils::path_utils;
 use crate::utils::fs_utils;
 use crate::utils::token_estimator::{estimate_tokens, estimate_structured_data_tokens, estimate_code_tokens};
 use crate::utils::get_timestamp;
+use crate::utils::xml_utils::extract_xml_from_markdown;
 
 pub struct PathFinderProcessor;
 
@@ -64,11 +65,13 @@ impl PathFinderProcessor {
         debug!("Parsing file paths from XML response");
         let project_dir = Path::new(project_directory);
         
+        let cleaned_xml = extract_xml_from_markdown(response_xml);
+        
         // Initialize result structure
         let mut result = PathFinderResult::new();
         
         // Parse XML response
-        let mut reader = Reader::from_str(response_xml);
+        let mut reader = Reader::from_str(&cleaned_xml);
         reader.config_mut().trim_text(true);
         
         let mut buf = Vec::new();
@@ -218,7 +221,7 @@ impl PathFinderProcessor {
                 Err(e) => {
                     warn!("Error parsing XML: {}", e);
                     // XML parsing failed, try fallback
-                    return self.extract_paths_from_text_fallback(response_xml, project_directory);
+                    return self.extract_paths_from_text_fallback(&cleaned_xml, project_directory);
                 },
                 _ => {}
             }
@@ -228,7 +231,7 @@ impl PathFinderProcessor {
         // If XML parsing failed to find any paths, try a fallback approach
         if result.paths.is_empty() {
             debug!("XML parsing found no files, trying fallback approach");
-            return self.extract_paths_from_text_fallback(response_xml, project_directory);
+            return self.extract_paths_from_text_fallback(&cleaned_xml, project_directory);
         }
         
         // Organize files by directory
@@ -390,7 +393,9 @@ impl JobProcessor for PathFinderProcessor {
 
         // Now do pre-processing that was previously done in the command
         info!("Generating directory tree for project");
-        let project_dir_path = Path::new(&payload.project_directory);
+        let project_directory = job.project_directory.as_ref()
+            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
+        let project_dir_path = Path::new(project_directory);
         
         // Create tree generation options
         let tree_options = DirectoryTreeOptions {
@@ -429,7 +434,7 @@ impl JobProcessor for PathFinderProcessor {
                     let abs_path = if Path::new(file_path).is_absolute() {
                         file_path.clone()
                     } else {
-                        Path::new(&payload.project_directory).join(file_path).to_string_lossy().to_string()
+                        Path::new(project_directory).join(file_path).to_string_lossy().to_string()
                     };
                     
                     // Try to read the file
@@ -473,7 +478,7 @@ impl JobProcessor for PathFinderProcessor {
                     // Take only the most recently modified files up to the limit (already sorted by the function)
                     for file_path in matching_files.into_iter().take(remaining_slots) {
                         // Skip files that are already included
-                        let rel_path = path_utils::make_relative_to(&*file_path.to_string_lossy(), &payload.project_directory)?;
+                        let rel_path = path_utils::make_relative_to(&*file_path.to_string_lossy(), project_directory)?;
                         let rel_path_str = rel_path.to_string_lossy().into_owned();
                         if relevant_file_contents.contains_key(&rel_path_str) {
                             continue;
@@ -895,7 +900,7 @@ impl JobProcessor for PathFinderProcessor {
         // Parse response to extract file paths and structured results
         let mut result = match self.parse_path_finder_xml_response(
             &response_content,
-            &payload.project_directory,
+            project_directory,
         ) {
             Ok(result_data) => result_data,
             Err(e) => {
@@ -940,7 +945,7 @@ impl JobProcessor for PathFinderProcessor {
             let absolute_path = if Path::new(&file.path).is_absolute() {
                 file.path.clone()
             } else {
-                Path::new(&payload.project_directory).join(&file.path).to_string_lossy().to_string()
+                Path::new(project_directory).join(&file.path).to_string_lossy().to_string()
             };
             
             // Check if file exists
@@ -965,7 +970,7 @@ impl JobProcessor for PathFinderProcessor {
             let absolute_path = if Path::new(&file.path).is_absolute() {
                 file.path.clone()
             } else {
-                Path::new(&payload.project_directory).join(&file.path).to_string_lossy().to_string()
+                Path::new(project_directory).join(&file.path).to_string_lossy().to_string()
             };
             
             // Check if file exists
@@ -990,7 +995,7 @@ impl JobProcessor for PathFinderProcessor {
             let absolute_path = if Path::new(&file.path).is_absolute() {
                 file.path.clone()
             } else {
-                Path::new(&payload.project_directory).join(&file.path).to_string_lossy().to_string()
+                Path::new(project_directory).join(&file.path).to_string_lossy().to_string()
             };
             
             // Check if file exists

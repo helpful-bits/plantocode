@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 
 // Define the type for our context
@@ -44,23 +44,35 @@ export function UILayoutProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Create the value object that will be passed to consumers
-  const value: UILayoutContextType = {
-    // Sidebar state
-    isSidebarCollapsed,
-    setIsSidebarCollapsed,
+  const value: UILayoutContextType = useMemo(
+    () => ({
+      // Sidebar state
+      isSidebarCollapsed,
+      setIsSidebarCollapsed,
 
-    // Global loading indicator state
-    isAppBusy,
-    setAppBusy,
+      // Global loading indicator state
+      isAppBusy,
+      setAppBusy,
 
-    // App initialization state
-    isAppInitializing,
-    setAppInitializing: setIsAppInitializing,
+      // App initialization state
+      isAppInitializing,
+      setAppInitializing: setIsAppInitializing,
 
-    // Busy message
-    busyMessage,
-    setBusyMessage,
-  };
+      // Busy message
+      busyMessage,
+      setBusyMessage,
+    }),
+    [
+      isSidebarCollapsed,
+      setIsSidebarCollapsed,
+      isAppBusy,
+      setAppBusy,
+      isAppInitializing,
+      setIsAppInitializing,
+      busyMessage,
+      setBusyMessage,
+    ]
+  );
 
   return (
     <UILayoutContext.Provider value={value}>

@@ -124,7 +124,7 @@ if [[ -f .env ]]; then
     fi
     # Load .env file properly, ignoring comments and empty lines
     set -a  # Automatically export variables
-    source <(grep -v '^#' .env | grep -v '^$' | sed 's/^/export /')
+    source .env
     set +a  # Stop automatically exporting
 fi
 

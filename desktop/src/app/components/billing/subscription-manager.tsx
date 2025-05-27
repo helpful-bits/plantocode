@@ -10,6 +10,9 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/ui/card";
 import { useToast } from "@/ui/use-toast";
+import { securedFetchJson } from "@/utils/secured-fetch";
+import { getErrorMessage } from "@/utils/error-handling";
+import { useNotification } from "@/contexts/notification-context";
 
 import {
   LoadingSkeleton,
@@ -20,11 +23,12 @@ import { SubscriptionDetails } from "./components/subscription-details";
 import { type SubscriptionInfo } from "./types";
 
 // Server URL from environment variables
-const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string) || "http://localhost:8080";
+const SERVER_URL = (import.meta.env.VITE_MAIN_SERVER_BASE_URL as string) || "http://localhost:8080";
 
 export default function SubscriptionManager() {
-  const { user, getToken } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const { showNotification } = useNotification();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(
     null
   );
@@ -43,26 +47,39 @@ export default function SubscriptionManager() {
         setLoading(true);
         setError(null);
 
-        const token = await getToken();
-        if (!token) {
-          throw new Error("Authentication token not found");
-        }
-
-        const response = await fetch(`${SERVER_URL}/api/billing/subscription`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch subscription: ${response.statusText}`);
-        }
-
-        const result = await response.json() as SubscriptionInfo;
+        const result = await securedFetchJson<SubscriptionInfo>(
+          `${SERVER_URL}/api/billing/subscription`,
+          { method: "GET" }
+        );
         setSubscription(result);
-      } catch (_err) {
-        setError("Failed to load subscription information");
+      } catch (err) {
+        const errorMessage = getErrorMessage(err);
+        console.error("Subscription fetch error:", err);
+        
+        // Provide specific error messages based on error type
+        let userMessage = "Failed to load subscription information";
+        
+        if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
+          userMessage = "Authentication required. Please log in again.";
+        } else if (errorMessage.includes("403") || errorMessage.includes("forbidden")) {
+          userMessage = "Access denied. Please check your subscription permissions.";
+        } else if (errorMessage.includes("network") || errorMessage.includes("offline")) {
+          userMessage = "Network error. Please check your internet connection.";
+        } else if (errorMessage.includes("timeout")) {
+          userMessage = "Request timed out. Please try again.";
+        }
+        
+        setError(userMessage);
+        showNotification({
+          title: "Subscription Error",
+          message: userMessage,
+          type: "error",
+          actionButton: {
+            label: "Retry",
+            onClick: () => handleRetry(),
+            variant: "outline"
+          }
+        });
       } finally {
         setLoading(false);
       }
@@ -72,34 +89,20 @@ export default function SubscriptionManager() {
       void fetchSubscription();
     }
   // SERVER_URL is a constant and doesn't need to be in the dependency array
-  }, [user, refreshCounter, getToken]);
+  }, [user, refreshCounter]);
 
   /**
    * Handle subscription upgrade
    */
   const handleUpgrade = async () => {
     try {
-      const token = await getToken();
-      if (!token) {
-        throw new Error("Authentication token not found");
-      }
-
-      const response = await fetch(`${SERVER_URL}/api/billing/checkout`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ plan: "pro" }),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to create checkout session: ${response.statusText}`
-        );
-      }
-
-      const result = await response.json() as { url: string };
+      const result = await securedFetchJson<{ url: string }>(
+        `${SERVER_URL}/api/billing/checkout`,
+        {
+          method: "POST",
+          body: JSON.stringify({ plan: "pro" }),
+        }
+      );
 
       // Open the URL in the default browser
       if (result && result.url) {
@@ -114,15 +117,30 @@ export default function SubscriptionManager() {
         description: "Opening the upgrade page in your browser...",
         variant: "success",
       });
-    } catch (_err) {
-      setError("Failed to start checkout process");
-
-      // Show error toast
-      toast({
+    } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      console.error("Checkout error:", err);
+      
+      let userMessage = "Failed to start checkout process";
+      
+      if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
+        userMessage = "Authentication required. Please log in again.";
+      } else if (errorMessage.includes("payment") || errorMessage.includes("billing")) {
+        userMessage = "Payment service unavailable. Please try again later.";
+      } else if (errorMessage.includes("network")) {
+        userMessage = "Network error. Please check your connection and try again.";
+      }
+      
+      setError(userMessage);
+      showNotification({
         title: "Checkout Failed",
-        description:
-          "There was a problem starting the checkout process. Please try again.",
-        variant: "destructive",
+        message: userMessage,
+        type: "error",
+        actionButton: {
+          label: "Try Again",
+          onClick: () => handleUpgrade(),
+          variant: "outline"
+        }
       });
     }
   };
@@ -132,25 +150,10 @@ export default function SubscriptionManager() {
    */
   const handleManageSubscription = async () => {
     try {
-      const token = await getToken();
-      if (!token) {
-        throw new Error("Authentication token not found");
-      }
-
-      const response = await fetch(`${SERVER_URL}/api/billing/portal`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to create portal session: ${response.statusText}`
-        );
-      }
-
-      const result = await response.json() as { url: string };
+      const result = await securedFetchJson<{ url: string }>(
+        `${SERVER_URL}/api/billing/portal`,
+        { method: "GET" }
+      );
 
       // Open the URL in the default browser
       if (result && result.url) {
@@ -166,15 +169,30 @@ export default function SubscriptionManager() {
           "Opening the subscription management page in your browser...",
         variant: "success",
       });
-    } catch (_err) {
-      setError("Failed to open customer portal");
-
-      // Show error toast
-      toast({
+    } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      console.error("Customer portal error:", err);
+      
+      let userMessage = "Failed to open customer portal";
+      
+      if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
+        userMessage = "Authentication required. Please log in again.";
+      } else if (errorMessage.includes("subscription") || errorMessage.includes("no active")) {
+        userMessage = "No active subscription found. Please upgrade first.";
+      } else if (errorMessage.includes("network")) {
+        userMessage = "Network error. Please check your connection and try again.";
+      }
+      
+      setError(userMessage);
+      showNotification({
         title: "Portal Access Failed",
-        description:
-          "There was a problem opening the customer portal. Please try again.",
-        variant: "destructive",
+        message: userMessage,
+        type: "error",
+        actionButton: {
+          label: "Try Again",
+          onClick: () => handleManageSubscription(),
+          variant: "outline"
+        }
       });
     }
   };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { type useNotification } from "@/contexts/notification-context";
 import {
@@ -10,20 +10,12 @@ import {
 
 import { useGenerateFormState } from "./use-generate-form-state";
 import { useSessionMetadata } from "./use-session-metadata";
-import { generateDirectoryTree } from "@/utils/directory-tree";
+import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
 
-// Import type properly
-import type { TaskDescriptionHandle } from "../_components/task-description";
 
 export interface UseGeneratePromptCoreStateProps {
   projectDirectory: string | null;
-  activeSessionId: string | null;
-  isTransitioningSession: boolean;
-  isSessionLoading?: boolean;
   showNotification: ReturnType<typeof useNotification>["showNotification"];
-  taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
-  resetTaskState?: () => void;
-  resetRegexState?: () => void;
 }
 
 /**
@@ -33,11 +25,7 @@ export interface UseGeneratePromptCoreStateProps {
  */
 export function useGeneratePromptCoreState({
   projectDirectory,
-  activeSessionId,
-  isTransitioningSession,
   showNotification,
-  resetTaskState,
-  resetRegexState,
 }: UseGeneratePromptCoreStateProps) {
   // Access global session context
   const sessionState = useSessionStateContext();
@@ -46,15 +34,13 @@ export function useGeneratePromptCoreState({
   // Create refs for tracking session state management - not currently used but reserved for future state tracking
 
   // Extract session data from global context
-  const currentSession = sessionState.currentSession;
-  const isSessionLoading = sessionState.isSessionLoading;
-  const isSessionModified = sessionState.isSessionModified;
+  const { activeSessionId, currentSession, isSessionLoading, isSessionModified } = sessionState;
   const currentSessionName = currentSession?.name || "Untitled Session";
 
   // Initialize form state hooks
   const formState = useGenerateFormState({
     activeSessionId,
-    isTransitioningSession,
+    isTransitioningSession: sessionState.isSessionLoading,
     projectDirectory,
   });
 
@@ -65,17 +51,26 @@ export function useGeneratePromptCoreState({
   });
 
   // Create a function to get the current session state
-  // This now relies on the global session context rather than managing state locally
+  // Simplified to directly return session data with fallbacks
   const getCurrentSessionState = useCallback(() => {
+    // Ensure all required fields have fallbacks if currentSession might be null initially
     return {
+      projectDirectory: projectDirectory || "",
       taskDescription: currentSession?.taskDescription || "",
       titleRegex: currentSession?.titleRegex || "",
       contentRegex: currentSession?.contentRegex || "",
       negativeTitleRegex: currentSession?.negativeTitleRegex || "",
       negativeContentRegex: currentSession?.negativeContentRegex || "",
       isRegexActive: currentSession?.isRegexActive ?? true,
+      searchTerm: currentSession?.searchTerm || "",
+      includedFiles: currentSession?.includedFiles || [],
+      forceExcludedFiles: currentSession?.forceExcludedFiles || [],
+      searchSelectedFilesOnly: currentSession?.searchSelectedFilesOnly ?? false,
+      codebaseStructure: currentSession?.codebaseStructure || "",
+      createdAt: currentSession?.createdAt || Date.now(),
+      modelUsed: currentSession?.modelUsed,
     };
-  }, [currentSession]);
+  }, [currentSession, projectDirectory]);
 
   // Complete state reset function
   const resetAllState = useCallback(() => {
@@ -94,15 +89,9 @@ export function useGeneratePromptCoreState({
       });
     }
 
-    // Reset task and regex states if provided
-    if (resetTaskState) resetTaskState();
-    if (resetRegexState) resetRegexState();
   }, [
     sessionMetadata,
     formState,
-    resetTaskState,
-    resetRegexState,
-    activeSessionId,
     sessionActions,
   ]);
 
@@ -117,17 +106,17 @@ export function useGeneratePromptCoreState({
       return;
     }
 
-    const jobId = await generateDirectoryTree(projectDirectory);
-    if (!jobId) {
+    const result = await createGenerateDirectoryTreeJobAction("system", projectDirectory, undefined);
+    if (!result.isSuccess || !result.data?.jobId) {
       showNotification({
-        title: "Generate Codebase",
-        message: "Failed to start directory tree generation",
+        title: "Error",
+        message: result.message || "Failed to start generation",
         type: "error",
       });
     } else {
       showNotification({
-        title: "Generate Codebase",
-        message: "Directory tree generation started",
+        title: "Success", 
+        message: "Generation started",
         type: "success",
       });
     }
@@ -138,32 +127,55 @@ export function useGeneratePromptCoreState({
     sessionActions.setSessionModified(true);
   }, [sessionActions]);
 
-  return {
-    // Session state
-    activeSessionId,
-    isStateLoaded: formState.isStateLoaded,
-    isSwitchingSession: isTransitioningSession,
-    isRestoringSession: formState.isRestoringSession,
-    sessionInitialized: formState.sessionInitialized,
-    sessionName: currentSessionName,
-    hasUnsavedChanges: isSessionModified,
-    isFormSaving: isSessionLoading || formState.isFormSaving,
-    error: formState.error,
+  return useMemo(
+    () => ({
+      // Session state
+      activeSessionId,
+      isStateLoaded: formState.isStateLoaded,
+      isSwitchingSession: sessionState.isSessionLoading,
+      isRestoringSession: formState.isRestoringSession,
+      sessionInitialized: formState.sessionInitialized,
+      sessionName: currentSessionName,
+      hasUnsavedChanges: isSessionModified,
+      isFormSaving: isSessionLoading || formState.isFormSaving,
+      error: formState.error,
 
-    // Project data
-    projectDirectory,
-    projectDataLoading: formState.projectDataLoading,
+      // Project data
+      projectDirectory,
+      projectDataLoading: formState.projectDataLoading,
 
-    // Action methods
-    resetAllState,
-    setSessionName: sessionMetadata.setSessionName,
-    saveSessionState: () => sessionActions.saveCurrentSession(),
-    flushPendingSaves: () => sessionActions.flushSaves(),
-    getCurrentSessionState,
-    setSessionInitialized: formState.setSessionInitialized,
-    setHasUnsavedChanges: (value: boolean) =>
-      sessionActions.setSessionModified(value),
-    handleInteraction,
-    handleGenerateCodebase,
-  };
+      // Action methods
+      resetAllState,
+      setSessionName: sessionMetadata.setSessionName,
+      saveSessionState: () => sessionActions.saveCurrentSession(),
+      flushPendingSaves: () => sessionActions.flushSaves(),
+      getCurrentSessionState,
+      setSessionInitialized: formState.setSessionInitialized,
+      setHasUnsavedChanges: (value: boolean) =>
+        sessionActions.setSessionModified(value),
+      handleInteraction,
+      handleGenerateCodebase,
+    }),
+    [
+      activeSessionId,
+      formState.isStateLoaded,
+      formState.isRestoringSession,
+      formState.sessionInitialized,
+      formState.isFormSaving,
+      formState.error,
+      formState.projectDataLoading,
+      formState.setSessionInitialized,
+      sessionState.isSessionLoading,
+      currentSessionName,
+      isSessionModified,
+      isSessionLoading,
+      projectDirectory,
+      resetAllState,
+      sessionMetadata.setSessionName,
+      sessionActions,
+      getCurrentSessionState,
+      handleInteraction,
+      handleGenerateCodebase,
+    ]
+  );
 }

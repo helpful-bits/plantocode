@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { type BackgroundJob } from "@/types/session-types";
+import { type BackgroundJob, JOB_STATUSES, type JobStatus } from "@/types/session-types";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -56,7 +56,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         "tokensTotal",
         "lastUpdateTime", // This is redundant with the updatedAt field
         "outputFilePath", // This is shown separately in the UI
-        "regexPatterns", // This will be displayed separately if present
+        "regexData", // This will be displayed separately if present
       ];
 
       keysToRemove.forEach((key) => {
@@ -73,22 +73,58 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   };
 
   // Format regex patterns for display
-  const formatRegexPatterns = (regexPatterns: string | Record<string, unknown> | null | undefined): string | null => {
-    if (!regexPatterns) return null;
+  const formatRegexPatterns = (regexDataInput: string | Record<string, unknown> | null | undefined): string | null => {
+    if (!regexDataInput) return null;
 
     try {
+      let regexData: Record<string, unknown>;
+      
       // If it's a string, try to parse it as JSON
-      if (typeof regexPatterns === "string") {
+      if (typeof regexDataInput === "string") {
         try {
-          regexPatterns = JSON.parse(regexPatterns) as Record<string, string>;
+          regexData = JSON.parse(regexDataInput) as Record<string, unknown>;
         } catch (_e) {
-          return regexPatterns as string;
+          return regexDataInput;
         }
+      } else {
+        regexData = regexDataInput;
       }
 
-      // Type the regex patterns and create a nicely formatted section
-      const regexPatternsTyped = regexPatterns as Record<string, string>;
-      const patterns = [
+      // Cast to any for flexible access to the data structure from Rust backend
+      const data = regexData as any;
+      const patternsOutput: string[] = [];
+      
+      // Extract primary pattern
+      const primaryPattern = data?.primaryPattern?.pattern;
+      if (primaryPattern) {
+        patternsOutput.push(`Primary: /${primaryPattern}/`);
+      }
+
+      // Extract alternative patterns
+      const alternatives = data?.alternativePatterns;
+      if (Array.isArray(alternatives)) {
+        alternatives.forEach((alt: any, index: number) => {
+          const altPattern = alt?.pattern;
+          if (altPattern) {
+            patternsOutput.push(`Alt ${index + 1}: /${altPattern}/`);
+          }
+        });
+      }
+
+      // Extract flags
+      const flags = data?.flags;
+      if (Array.isArray(flags) && flags.length > 0) {
+        patternsOutput.push(`Flags: ${flags.join("")}`);
+      }
+
+      // Return structured output if we found patterns
+      if (patternsOutput.length > 0) {
+        return patternsOutput.join("\n");
+      }
+
+      // Fallback: try the old structure for backward compatibility
+      const regexPatternsTyped = data as Record<string, string>;
+      const fallbackPatterns = [
         regexPatternsTyped.titleRegex && `Title: ${regexPatternsTyped.titleRegex}`,
         regexPatternsTyped.contentRegex && `Content: ${regexPatternsTyped.contentRegex}`,
         regexPatternsTyped.negativeTitleRegex &&
@@ -97,9 +133,14 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           `Negative Content: ${regexPatternsTyped.negativeContentRegex}`,
       ].filter(Boolean);
 
-      return patterns.join("\n");
+      if (fallbackPatterns.length > 0) {
+        return fallbackPatterns.join("\n");
+      }
+
+      // Final fallback
+      return "No regex patterns found in metadata.";
     } catch (_e) {
-      return JSON.stringify(regexPatterns, null, 2);
+      return JSON.stringify(regexDataInput, null, 2);
     }
   };
 
@@ -127,7 +168,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     // Standard streaming response handling for details view
     if (
       job.taskType === "implementation_plan" &&
-      job.status === "running" &&
+      (job.status === "running" || job.status === "processing_stream") &&
       job.metadata?.isStreaming === true
     ) {
       if (job.response) {
@@ -138,7 +179,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     }
 
     // Standard completed response handling for details view
-    if (job.taskType === "implementation_plan" && job.status === "completed") {
+    if (job.taskType === "implementation_plan" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
       if (job.response) {
         return job.response;
       }
@@ -147,46 +188,44 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     }
 
     // Path finder job handling - improved structured data display
-    if (job.taskType === "path_finder" && job.status === "completed") {
+    if (job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
       // Try to get structured data from metadata first (prioritize this for better formatting)
-      if (job.metadata?.pathData) {
-        try {
-          // Parse the JSON stored in metadata
-          const pathData = JSON.parse(job.metadata.pathData) as unknown;
-          
-          // Type-guard and display paths in a formatted way with count
-          if (pathData && typeof pathData === 'object' && 'paths' in pathData && Array.isArray(pathData.paths)) {
-            const pathCount = pathData.paths.length;
-            return `Found ${pathCount} relevant file${pathCount !== 1 ? "s" : ""}:\n\n${pathData.paths.join("\n")}`;
-          }
+      let paths: string[] = [];
+      let pathCountFromMeta: number | undefined;
 
-          // If nested under 'result' or other field
-          if (
-            pathData && 
-            typeof pathData === 'object' && 
-            'result' in pathData && 
-            pathData.result && 
-            typeof pathData.result === 'object' && 
-            'paths' in pathData.result && 
-            Array.isArray(pathData.result.paths)
-          ) {
-            const pathCount = pathData.result.paths.length;
-            return `Found ${pathCount} relevant file${pathCount !== 1 ? "s" : ""}:\n\n${pathData.result.paths.join("\n")}`;
+      if (job.metadata?.pathFinderData && typeof job.metadata.pathFinderData === 'string') {
+        try {
+          const pathDataParsed = JSON.parse(job.metadata.pathFinderData) as { paths?: string[]; allFiles?: string[] };
+          // Use camelCase allFiles or paths
+          const pathsArray = pathDataParsed?.allFiles || pathDataParsed?.paths;
+          if (Array.isArray(pathsArray) && pathsArray.every(p => typeof p === 'string')) {
+            paths = pathsArray;
           }
-        } catch (_e) {
-          // Fall back to response string below
+        } catch (e) {
+          console.warn("Failed to parse pathFinderData from metadata for path_finder job:", e);
         }
       }
 
-      // If metadata parsing failed, but we have path count, use that with response
-      if (job.metadata?.pathCount && job.response) {
-        const count = job.metadata.pathCount;
-        return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${job.response}`;
+      if (typeof job.metadata?.pathCount === 'number') {
+        pathCountFromMeta = job.metadata.pathCount;
       }
+
+      // If paths were successfully parsed from metadata, use them
+      if (paths.length > 0) {
+        const pathCount = pathCountFromMeta ?? paths.length; // Prefer explicit count if available
+        return `Found ${pathCount} relevant file${pathCount !== 1 ? "s" : ""}:\n\n${paths.join("\n")}`;
+      }
+
+      // Fallback to job.response if pathData parsing failed or paths were empty
+      if (job.response) {
+          const count = pathCountFromMeta ?? job.response.split('\n').filter(Boolean).length;
+          return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${job.response}`;
+      }
+      return "Path finder job completed, but no path data found.";
     }
 
     // Streaming jobs special handling - for jobs with isStreaming flag
-    if (job.status === "running" && job.metadata?.isStreaming === true) {
+    if ((job.status === "running" || job.status === "processing_stream") && job.metadata?.isStreaming === true) {
       if (job.response) {
         // For streaming jobs, show the response with a note that it's streaming
         return `${job.response}\n\n[Streaming in progress...]`;
@@ -215,26 +254,22 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     }
 
     // Customize the fallback based on job status
-    switch (job.status) {
-      case "completed":
-        return "Job completed but no response data is available.";
-      case "failed":
-        return (
-          job.errorMessage || "Job failed but no error details are available."
-        );
-      case "canceled":
-        return job.errorMessage || "Job was canceled by the user.";
-      case "running":
-        return job.statusMessage || "Job is currently processing...";
-      case "preparing":
-      case "queued":
-      case "created":
-      case "acknowledged_by_worker":
-        return job.statusMessage || "Job is preparing to run...";
-      case "idle":
-        return "Job is waiting to start...";
-      default:
-        return "No response data available";
+    if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+      return "Job completed but no response data is available.";
+    } else if (job.status === "failed") {
+      return (
+        job.errorMessage || "Job failed but no error details are available."
+      );
+    } else if (job.status === "canceled") {
+      return job.errorMessage || "Job was canceled by the user.";
+    } else if (job.status === "running" || job.status === "processing_stream") {
+      return job.statusMessage || "Job is currently processing...";
+    } else if (["preparing", "queued", "created", "acknowledged_by_worker", "preparing_input", "generating_stream"].includes(job.status)) {
+      return job.statusMessage || "Job is preparing to run...";
+    } else if (job.status === "idle") {
+      return "Job is waiting to start...";
+    } else {
+      return "No response data available";
     }
   };
 
@@ -258,7 +293,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
                 return (
                   <div className="flex items-center gap-2">
                     <span>Implementation Plan Content</span>
-                    {job.status === "running" && parsedMeta?.isStreaming && (
+                    {(job.status === "running" || job.status === "processing_stream") && parsedMeta?.isStreaming && (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     )}
                   </div>
@@ -278,7 +313,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
               const parsedMeta = getParsedMetadata(job.metadata);
 
               if (parsedMeta?.showPureContent === true) {
-                if (job.status === "running" && parsedMeta?.isStreaming) {
+                if ((job.status === "running" || job.status === "processing_stream") && parsedMeta?.isStreaming) {
                   return <>Live updates in progress</>;
                 } else {
                   return <>Content View</>;

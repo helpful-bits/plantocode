@@ -140,7 +140,7 @@ impl JobProcessor for GenericLlmStreamProcessor {
         let mut stream = match llm_client.stream_complete(&combined_prompt, api_options).await {
             Ok(response_stream) => response_stream,
             Err(e) => {
-                let error_message = format!("Failed to start LLM stream: {}", e);
+                let error_message = e.to_string();
                 error!("{}", error_message);
                 
                 // Update job status to failed

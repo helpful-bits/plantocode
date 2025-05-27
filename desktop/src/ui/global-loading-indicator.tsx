@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface GlobalLoadingIndicatorProps {
   isLoading: boolean;
@@ -22,21 +22,28 @@ export function GlobalLoadingIndicator({
 }: GlobalLoadingIndicatorProps) {
   // Delay hiding the indicator to provide a smoother transition
   const [isVisible, setIsVisible] = useState(isLoading);
+  const timeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Ref for timeout
 
   // Control visibility with a small delay for hide to prevent flickering
   // Show immediately, hide with delay
   useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout>;
-
     if (isLoading) {
+      if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current); // Clear pending hide timeout
+        timeoutIdRef.current = null;
+      }
       setIsVisible(true);
     } else {
-      // Delay hiding by 500ms to ensure smooth transition
-      timeout = setTimeout(() => setIsVisible(false), 500);
+      timeoutIdRef.current = setTimeout(() => {
+        setIsVisible(false);
+        timeoutIdRef.current = null;
+      }, 500); // Delay hiding
     }
 
     return () => {
-      if (timeout) clearTimeout(timeout);
+      if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current); // Cleanup on unmount or re-run
+      }
     };
   }, [isLoading]);
 

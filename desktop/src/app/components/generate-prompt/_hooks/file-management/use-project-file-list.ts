@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
-import { useNotification } from "@/contexts/notification-context";
-import {
-  normalizePath,
-  normalizePathForComparison,
-} from "@/utils/path-utils";
+import { ensureProjectRelativePath } from "@/utils/path-utils";
+import { invalidateFileCache } from "@/utils/git-utils";
+import { areFileMapsEqual } from "./_utils/managed-files-map-utils";
 
 // Types
 export type FileInfo = {
@@ -20,74 +18,82 @@ export type FileInfo = {
 
 export type FilesMap = { [path: string]: FileInfo };
 
+
 export function useProjectFileList(
-  projectDirectory: string | null,
-  sessionId: string | null
+  projectDirectory?: string,
+  sessionId?: string | null
 ) {
   // State
   const [rawFilesMap, setRawFilesMap] = useState<FilesMap>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
-  const { showNotification: _showNotification } = useNotification();
+  
+  // Ref to prevent concurrent fetches
+  const isFetchingRef = useRef(false);
 
   // Refresh files list method - uses direct Tauri command
-  const refreshFiles = useCallback(async (): Promise<boolean> => {
+  const refreshFiles = useCallback(async (force?: boolean): Promise<boolean> => {
     if (!projectDirectory) {
       return false;
     }
 
+    if (isFetchingRef.current) {
+      console.debug("[useProjectFileList] Skipping refresh, already in progress.");
+      return false;
+    }
+    isFetchingRef.current = true;
+
+    // If force refresh is requested, invalidate the file cache
+    if (force) {
+      invalidateFileCache(projectDirectory);
+    }
+
     setIsLoading(true);
-    setError(null);
+    setError(undefined);
 
     try {
       // Call the direct Tauri command to list files
       const result = await listProjectFilesAction({
         directory: projectDirectory,
         pattern: "**/*", // Default pattern for all files
-        include_stats: false, // Don't need file stats for this use case
+        includeStats: false, // Don't need file stats for this use case
         exclude: [], // No exclude patterns by default
       });
 
-      if (!result.isSuccess) {
-        setError(result.message || "Failed to list project files");
+      if (!result.isSuccess || !result.data || !Array.isArray(result.data.files)) {
+        setError(result.message || "Failed to list project files or invalid data returned");
         setIsLoading(false);
-        return false;
-      }
-
-      if (!result.data) {
-        setError("No data returned from file listing");
-        setIsLoading(false);
+        isFetchingRef.current = false;
         return false;
       }
 
       // Process file paths from the direct response
       const filesMap: FilesMap = {};
 
-      for (const projectRelativePath of result.data.files) {
+      for (const fileInfo of result.data.files) {
         try {
+          if (!fileInfo || !fileInfo.path) continue;
+
+          const projectRelativePath = fileInfo.path; // Already project-relative from backend
+
+          // If projectRelativePath is empty or null, skip.
           if (!projectRelativePath) continue;
-
-          // Normalize the project-relative path.
-          // The normalizePath command can handle relative paths and clean them up (e.g. slashes, dots).
-          const normalizedProjectRelativePath = await normalizePath(projectRelativePath);
-
-          // If normalizedProjectRelativePath is empty or null after normalization, skip.
-          if (!normalizedProjectRelativePath) continue;
 
           // No automatic inclusion
           const include = false;
 
-          // The comparablePath should be derived from the already relative path.
-          const comparablePath = await normalizePathForComparison(normalizedProjectRelativePath);
+          // comparablePath is used for consistent lookups and comparisons.
+          // It should be a consistently formatted version of fileInfo.path.
+          const comparablePath = ensureProjectRelativePath(projectRelativePath);
 
           // Add to file map
-          filesMap[normalizedProjectRelativePath] = {
-            path: normalizedProjectRelativePath,
-            size: undefined, // Size not requested
+          filesMap[projectRelativePath] = {
+            path: projectRelativePath,
+            size: fileInfo.size || undefined,
             included: include,
             forceExcluded: false,
-            comparablePath,
+            comparablePath: comparablePath, // Use the consistently formatted relative path
           };
         } catch (_err) {
           // Skip files that can't be processed
@@ -96,10 +102,10 @@ export function useProjectFileList(
       }
 
       // Update state
-      setRawFilesMap(filesMap);
+      setRawFilesMap(prevMap => areFileMapsEqual(prevMap, filesMap) ? prevMap : filesMap);
       setIsInitialized(true);
       setIsLoading(false);
-      setError(null);
+      setError(undefined);
 
       return true;
     } catch (readError) {
@@ -109,6 +115,8 @@ export function useProjectFileList(
       setError(errorMessage);
       setIsLoading(false);
       return false;
+    } finally {
+      isFetchingRef.current = false;
     }
   }, [projectDirectory]);
 
@@ -116,15 +124,23 @@ export function useProjectFileList(
   useEffect(() => {
     // Reset state when project directory changes
     setRawFilesMap({});
-    setError(null);
+    setError(undefined);
     setIsInitialized(false);
+    
+    // Invalidate file cache when project directory changes
+    if (projectDirectory) {
+      invalidateFileCache(projectDirectory);
+    }
   }, [projectDirectory, sessionId]);
 
-  return {
-    rawFilesMap,
-    isLoading,
-    isInitialized,
-    error,
-    refreshFiles,
-  };
+  return useMemo(
+    () => ({
+      rawFilesMap,
+      isLoading,
+      isInitialized,
+      error,
+      refreshFiles,
+    }),
+    [rawFilesMap, isLoading, isInitialized, error, refreshFiles]
+  );
 }

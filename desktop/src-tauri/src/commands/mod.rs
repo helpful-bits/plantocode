@@ -19,6 +19,7 @@ pub mod path_finding_commands;
 pub mod voice_commands;
 pub mod generic_task_commands;
 pub mod setup_commands;
+pub mod database_maintenance_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::generate_regex_command;
@@ -44,6 +45,7 @@ pub use app_commands::{
 pub use text_commands::{
     improve_text_command,
     correct_text_post_transcription_command,
+    generate_simple_text_command,
 };
 
 // Re-exports from implementation plan commands module
@@ -137,5 +139,12 @@ pub use session_commands::{
 
 // Re-exports from setup commands module
 pub use setup_commands::trigger_initial_keychain_access;
+
+// Re-exports from database maintenance commands module
+pub use database_maintenance_commands::{
+    check_database_health_command,
+    repair_database_command,
+    reset_database_command,
+};
 
 // All command functions will return AppResult<T> directly

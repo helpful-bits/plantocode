@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 
 import { setupMedia, cleanupMedia } from "./voice-media-handler";
+import { getErrorMessage } from "@/utils/error-handling";
 
 interface UseVoiceMediaStateProps {
   onError: (error: string) => void;
@@ -164,7 +165,7 @@ export function useVoiceMediaState({
           console.error(
             `[VoiceRecording] Audio blob size too small: ${audioBlob.size} bytes - minimum required: 1000 bytes`
           );
-          onError("No audio recorded or audio too short");
+          onError("No audio recorded or audio too short. Please check your microphone and try again.");
           return null;
         }
 
@@ -209,15 +210,7 @@ export function useVoiceMediaState({
               };
 
               fallbackRecorder.onerror = (error) => {
-                // Error could be of various types, safely convert to string
-                const errorMessage = error instanceof Error 
-                  ? error.message 
-                  : (typeof error === 'object' && error !== null)
-                    ? 'MediaRecorder error: ' + JSON.stringify(error)
-                    : (typeof error === 'number' || typeof error === 'boolean' || error === null)
-                      ? String(error)
-                      : 'Unknown error';
-                reject(new Error(errorMessage));
+                reject(new Error(getErrorMessage(error)));
               };
 
               // Start recording for a short time
@@ -251,26 +244,27 @@ export function useVoiceMediaState({
                 lastAudioBlobRef.current = fallbackBlob;
                 return fallbackBlob;
               }
+            } else {
+              onError("No audio data captured even with fallback method. Please check your microphone permissions and try again.");
             }
           } catch (fallbackError) {
             console.error(
               "[VoiceRecording] Fallback recording method failed:",
               fallbackError
             );
+            onError(`Recording capture failed: ${getErrorMessage(fallbackError)}. Please check your microphone and try again.`);
           }
         }
 
         // If we get here, even the fallback didn't work
         onError(
-          "No audio recorded. Please check your microphone and try again."
+          "No audio recorded. Please check your microphone permissions and settings, then try again."
         );
         return null;
       }
     } catch (err) {
       console.error("[VoiceRecording] Error in stopMediaRecording:", err);
-      onError(
-        err instanceof Error ? err.message : "Error processing recording"
-      );
+      onError(`Failed to stop recording: ${getErrorMessage(err)}`);
       return null;
     } finally {
       // Clean up media resources

@@ -67,8 +67,11 @@ impl JobProcessor for PathCorrectionProcessor {
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
             
+        let project_directory = job.project_directory.as_ref()
+            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
+            
         // Generate path correction prompt
-        let prompt = generate_path_correction_prompt(&paths, &payload.project_directory, None);
+        let prompt = generate_path_correction_prompt(&paths, project_directory, None);
         
         // Set system prompt
         let system_prompt = payload.system_prompt_override.clone()

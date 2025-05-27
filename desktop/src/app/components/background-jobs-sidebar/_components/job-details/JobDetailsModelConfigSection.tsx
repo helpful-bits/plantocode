@@ -17,7 +17,7 @@ export function JobDetailsModelConfigSection({
           <div>
             <h5 className="text-xs text-muted-foreground mb-1">Model</h5>
             <p className="text-sm font-medium">
-              {job.modelUsed || job.metadata?.modelUsed || "Default"}
+              {job.modelUsed || "Default"}
             </p>
           </div>
           <div>

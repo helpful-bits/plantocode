@@ -7,6 +7,7 @@ import {
   useRef,
   useImperativeHandle,
   forwardRef,
+  useMemo,
 } from "react";
 import type { SyntheticEvent, ChangeEvent } from "react";
 
@@ -45,7 +46,7 @@ interface TaskDescriptionProps {
   disabled?: boolean; // Flag to disable the component
 }
 
-export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
+const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
     function TaskDescriptionArea(
       {
         value,
@@ -159,7 +160,7 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
         focus: () => {
           internalTextareaRef.current?.focus();
         },
-      }));
+      }), [insertTextAtCursor, value]);
 
       // Track selection in state to properly update the button's disabled status
       const handleSelect = (_e: SyntheticEvent<HTMLTextAreaElement>) => {
@@ -220,11 +221,11 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
       // The hasSelection const has been replaced by the hasActiveSelection state
 
       // Simplified change handler without localStorage logic
-      const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+      const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
         // Call original onChange handler
         onChange(e.target.value);
         onInteraction();
-      };
+      }, [onChange, onInteraction]);
 
       // Use the auto-resize hook to handle textarea height adjustments
       useTextareaResize(internalTextareaRef, value, {
@@ -233,11 +234,10 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
         extraHeight: 50,
       });
 
-      // Determine if task description is empty
-      const isEmpty = !value || value.trim() === "";
-
-      // Calculate effective emptiness
-      const effectiveIsEmpty = isEmpty;
+      // Determine if task description is empty - memoized to prevent re-renders
+      const effectiveIsEmpty = useMemo(() => {
+        return !value || value.trim() === "";
+      }, [value]);
 
       return (
         <div className="flex flex-col gap-2">
@@ -334,4 +334,8 @@ export default forwardRef<TaskDescriptionHandle, TaskDescriptionProps>(
         </div>
       );
     }
-  )
+  );
+
+TaskDescriptionArea.displayName = "TaskDescriptionArea";
+
+export default TaskDescriptionArea;

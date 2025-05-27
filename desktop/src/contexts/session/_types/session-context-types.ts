@@ -13,7 +13,7 @@ export interface SessionStateContextType {
   // Active session ID management
   activeSessionId: string | null;
   // Session error
-  sessionError?: Error | null;
+  sessionError: Error | null;
 }
 
 // Define the actions context type (functions that modify session state)
@@ -38,4 +38,5 @@ export interface SessionActionsContextType {
   deleteActiveSession: () => Promise<void>;
   deleteNonActiveSession: (sessionId: string) => Promise<void>;
   renameActiveSession: (newName: string) => Promise<void>;
+  renameSession: (sessionId: string, newName: string) => Promise<void>;
 }

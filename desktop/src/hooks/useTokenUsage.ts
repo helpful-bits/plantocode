@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { createLogger } from "@/utils/logger";
@@ -44,7 +44,7 @@ export function useTokenUsage(options: UseTokenUsageOptions = {}) {
   const auth = useAuth();
 
   // Configuration options with defaults
-  const serverUrlDefault = import.meta.env.VITE_SERVER_URL as string || "http://localhost:8080";
+  const serverUrlDefault = import.meta.env.VITE_MAIN_SERVER_BASE_URL as string || "http://localhost:8080";
   const getAuthTokenDefault = auth.getToken;
   
   const {
@@ -109,18 +109,28 @@ export function useTokenUsage(options: UseTokenUsageOptions = {}) {
     }
   }, [serverUrl, getAuthToken, lastRefreshTime]);
 
+  // Use ref for fetchUsage to prevent dependency instability in auto-refresh
+  const fetchUsageRef = useRef(fetchUsage);
+  useEffect(() => {
+    fetchUsageRef.current = fetchUsage;
+  }, [fetchUsage]);
+
   // Initial fetch on mount
   useEffect(() => {
+    // We want this to run once on mount.
+    // fetchUsage itself has a 5-second throttle via lastRefreshTime.
     void fetchUsage();
-  }, [fetchUsage]);
+    // Provide an empty dependency array to run only on mount.
+    // fetchUsage will use the latest values from its closure due to useCallback.
+  }, []); // Empty dependency array
 
   // Set up auto-refresh if enabled
   useEffect(() => {
     if (!autoRefreshInterval) return;
 
-    const intervalId = setInterval(() => void fetchUsage(), autoRefreshInterval);
+    const intervalId = setInterval(() => void fetchUsageRef.current(), autoRefreshInterval);
     return () => clearInterval(intervalId);
-  }, [fetchUsage, autoRefreshInterval]);
+  }, [autoRefreshInterval]);
 
   return {
     usage,

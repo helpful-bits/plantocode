@@ -13,6 +13,7 @@ use crate::prompts::task_enhancement::{generate_task_enhancement_system_prompt, 
 use crate::db_utils::BackgroundJobRepository;
 use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
 use crate::api_clients::client_factory;
+use crate::utils::xml_utils::extract_xml_from_markdown;
 
 // Define structs for parsing the XML response
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -115,11 +116,25 @@ impl JobProcessor for TaskEnhancementProcessor {
         let db_job = repo.get_job_by_id(&job_id).await?
             .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
         
-        // Determine the model to use from config
-        let model_to_use = match db_job.model_used {
+        // Determine the model to use from config with robust fallback
+        let mut model_to_use = match db_job.model_used {
             Some(model) if !model.is_empty() => model,
-            _ => crate::config::get_model_for_task(crate::models::TaskType::TaskEnhancement)?,
+            _ => {
+                // Try to get task-specific model first
+                match crate::config::get_model_for_task(crate::models::TaskType::TaskEnhancement) {
+                    Ok(model) => model,
+                    Err(_) => {
+                        // If task-specific model fails, fall back to default LLM model
+                        crate::config::get_default_llm_model_id()?
+                    }
+                }
+            }
         };
+        
+        // Final safety check - if model is still empty, try default fallback
+        if model_to_use.is_empty() {
+            model_to_use = crate::config::get_default_llm_model_id()?;
+        }
         
         // Get max tokens and temperature from config
         let max_tokens = Some(crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::TaskEnhancement))?);
@@ -146,17 +161,22 @@ impl JobProcessor for TaskEnhancementProcessor {
             return Err(AppError::JobError("No response content received from API".to_string()));
         };
         
-        // Parse the XML from the response content
-        let xml_response: Result<TaskEnhancementResponseXml, _> = quick_xml::de::from_str(&response_content);
+        let clean_xml_content = extract_xml_from_markdown(&response_content);
+        
+        // Parse the XML from the cleaned content
+        let xml_response: Result<TaskEnhancementResponseXml, _> = quick_xml::de::from_str(&clean_xml_content);
         
         let parsed_response = match xml_response {
             Ok(result) => result,
             Err(e) => {
                 error!("Failed to parse XML response: {}", e);
                 
-                // Attempt to extract just the enhanced task if XML parsing fails
-                // This is a fallback if the AI doesn't properly format as XML
-                let enhanced_task = response_content;
+                // Use cleaned XML content as fallback, or original response if cleaning resulted in empty string
+                let enhanced_task = if !clean_xml_content.is_empty() {
+                    clean_xml_content
+                } else {
+                    response_content
+                };
                 
                 // Create a basic response with just the text
                 TaskEnhancementResponseXml {

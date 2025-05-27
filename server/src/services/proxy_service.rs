@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
-use crate::db::repositories::api_usage_repository::ApiUsageRepository;
-use crate::clients::{OpenRouterClient, open_router_client::OpenRouterUsage};
+use crate::db::repositories::api_usage_repository::{ApiUsageRepository, ApiUsageEntryDto};
+use crate::clients::{OpenRouterClient, GroqClient, open_router_client::OpenRouterUsage};
 use actix_web::web::{self, Bytes};
 use futures_util::{Stream, StreamExt};
 use log::{debug, error, info, warn};
@@ -71,9 +71,10 @@ impl StreamUsageTracker {
     }
 }
 
-/// Proxy service that routes requests through OpenRouter
+/// Proxy service that routes requests through OpenRouter and Groq
 pub struct ProxyService {
     openrouter_client: OpenRouterClient,
+    groq_client: GroqClient,
     billing_service: Arc<BillingService>,
     api_usage_repository: Arc<ApiUsageRepository>,
     app_settings: crate::config::settings::AppSettings,
@@ -88,8 +89,12 @@ impl ProxyService {
         // Initialize OpenRouter client with app settings
         let openrouter_client = OpenRouterClient::new(app_settings);
         
+        // Initialize Groq client with app settings
+        let groq_client = GroqClient::new(app_settings)?;
+        
         Ok(Self {
             openrouter_client,
+            groq_client,
             billing_service,
             api_usage_repository,
             app_settings: app_settings.clone(),
@@ -101,21 +106,34 @@ impl ProxyService {
         &self,
         user_id: &Uuid,
         payload: Value,
+        model_id_override: Option<String>,
     ) -> Result<Value, AppError> {
-        // Extract model ID for billing checks
-        let model_id = match payload.get("model") {
-            Some(model) => model.as_str().unwrap_or("anthropic/claude-3-sonnet-20240229"),
-            None => "anthropic/claude-3-sonnet-20240229", // Default if model not specified
-        };
+        // Determine model ID: override > payload > app_settings default
+        let model_id = model_id_override
+            .or_else(|| payload.get("model").and_then(|v| v.as_str()).map(String::from))
+            .unwrap_or_else(|| self.app_settings.ai_models.default_llm_model_id.clone());
         
         // Check if user has access to this model
-        self.billing_service.check_service_access(user_id, model_id).await?;
+        self.billing_service.check_service_access(user_id, &model_id).await?;
+        
+        // Ensure payload has the determined model ID
+        let mut request_payload = payload.clone();
+        request_payload["model"] = serde_json::Value::String(model_id.clone());
         
         // Convert payload to OpenRouter chat request
-        let request = self.openrouter_client.convert_to_chat_request(payload.clone())?;
+        let request = self.openrouter_client.convert_to_chat_request(request_payload)?;
         
         // Make the request to OpenRouter
-        let response = self.openrouter_client.chat_completion(request, &user_id.to_string()).await?;
+        let (response, headers) = self.openrouter_client.chat_completion(request, &user_id.to_string()).await?;
+        
+        // Extract processing_ms and request_id from headers
+        let processing_ms = headers.get("openai-processing-ms")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<i32>().ok());
+        let request_id = headers.get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from)
+            .or_else(|| Some(response.id.clone()));
         
         // Extract usage data from response
         let input_tokens = response.usage.prompt_tokens;
@@ -132,7 +150,7 @@ impl ProxyService {
                 .find(|m| m.id == model_id);
                 
             if let Some(info) = model_info {
-                if let (Some(in_price), Some(out_price)) = (info.price_input_per_1k_tokens, info.price_output_per_1k_tokens) {
+                if let (Some(in_price), Some(out_price)) = (&info.price_input_per_1k_tokens, &info.price_output_per_1k_tokens) {
                     ApiUsageRepository::calculate_cost(input_tokens, output_tokens, in_price, out_price)?
                 } else {
                     log::warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model_id);
@@ -145,13 +163,18 @@ impl ProxyService {
         };
         
         // Record API usage in the database
-        self.api_usage_repository.record_usage(
-            user_id,
-            model_id,
-            input_tokens,
-            output_tokens,
-            final_cost_bd,
-        ).await?;
+        let entry = ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: model_id,
+            tokens_input: input_tokens,
+            tokens_output: output_tokens,
+            cost: final_cost_bd,
+            request_id,
+            metadata: None,
+            processing_ms,
+            input_duration_ms: None,
+        };
+        self.api_usage_repository.record_usage(entry).await?;
         
         // Return the raw JSON response - actix-web will convert it to JSON
         Ok(serde_json::to_value(response)?)
@@ -162,22 +185,27 @@ impl ProxyService {
         self: Arc<Self>,
         user_id: Uuid,
         payload: Value,
+        model_id_override: Option<String>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes, actix_web::Error>> + Send + 'static>>, AppError> {
-        // Extract model ID for billing checks
-        let model_id = match payload.get("model") {
-            Some(model) => model.as_str().unwrap_or("anthropic/claude-3-sonnet-20240229"),
-            None => "anthropic/claude-3-sonnet-20240229", // Default if model not specified
-        };
+        // Determine model ID: override > payload > app_settings default
+        let model_id = model_id_override
+            .or_else(|| payload.get("model").and_then(|v| v.as_str()).map(String::from))
+            .unwrap_or_else(|| self.app_settings.ai_models.default_llm_model_id.clone());
         
         // Check if user has access to this model
-        self.billing_service.check_service_access(&user_id, model_id).await?;
+        self.billing_service.check_service_access(&user_id, &model_id).await?;
+        
+        // Ensure payload has the determined model ID
+        let mut request_payload = payload.clone();
+        request_payload["model"] = serde_json::Value::String(model_id.clone());
         
         // Convert payload to OpenRouter chat request
-        let request = self.openrouter_client.convert_to_chat_request(payload.clone())?;
+        let request = self.openrouter_client.convert_to_chat_request(request_payload)?;
         
         // Create independently owned copies of all required components
         let openrouter_client_owned = self.openrouter_client.clone();
         let api_usage_repository_clone = self.api_usage_repository.clone();
+        let app_settings_clone = self.app_settings.clone();
         let model_id_string = model_id.to_string();
         let user_id_string = user_id.to_string();
         
@@ -187,7 +215,15 @@ impl ProxyService {
             // First, perform the request and get a result
             async move {
                 // This is now an owned client inside this async block
-                let stream_result = openrouter_client_owned.stream_chat_completion(request, &user_id_string).await?;
+                let (headers, stream_result) = openrouter_client_owned.stream_chat_completion(request, user_id_string).await?;
+                
+                // Extract processing_ms and request_id from headers
+                let processing_ms = headers.get("openai-processing-ms")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<i32>().ok());
+                let request_id = headers.get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
                 
                 // We'll track usage information as we process the stream
                 let usage_tracking = Arc::new(Mutex::new(StreamUsageTracker::new()));
@@ -197,6 +233,7 @@ impl ProxyService {
                 let usage_tracking_for_task = usage_tracking.clone();
                 let user_id_for_task = user_id;
                 let model_id_for_task = model_id_string.clone();
+                let app_settings_for_task = app_settings_clone.clone();
                 
                 tokio::spawn(async move {
                     // After stream completes, record the usage
@@ -220,33 +257,78 @@ impl ProxyService {
                                 }
                             }
                         } else {
-                            // Default to zero cost if not provided
-                            bigdecimal::BigDecimal::from(0)
+                            // Fallback: find model in AppSettings and calculate using recorded token usage
+                            let model_info = app_settings_for_task.ai_models.available_models.iter()
+                                .find(|m| m.id == model_id_for_task);
+                                
+                            if let Some(info) = model_info {
+                                if let (Some(in_price), Some(out_price)) = (&info.price_input_per_1k_tokens, &info.price_output_per_1k_tokens) {
+                                    match ApiUsageRepository::calculate_cost(tracker.prompt_tokens, tracker.completion_tokens, in_price, out_price) {
+                                        Ok(cost) => cost,
+                                        Err(e) => {
+                                            error!("Failed to calculate cost for streaming model {}: {}", model_id_for_task, e);
+                                            bigdecimal::BigDecimal::from(0)
+                                        }
+                                    }
+                                } else {
+                                    warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model_id_for_task);
+                                    bigdecimal::BigDecimal::from(0)
+                                }
+                            } else {
+                                warn!("Model {} not found in AppSettings for pricing. Cost will be zero.", model_id_for_task);
+                                bigdecimal::BigDecimal::from(0)
+                            }
                         };
                         
-                        if let Err(e) = api_usage_repository_clone.record_usage(
-                            &user_id_for_task,
-                            &model_id_for_task,
-                            tracker.prompt_tokens,
-                            tracker.completion_tokens,
-                            final_cost_bd,
-                        ).await {
+                        let entry = ApiUsageEntryDto {
+                            user_id: user_id_for_task,
+                            service_name: model_id_for_task.clone(),
+                            tokens_input: tracker.prompt_tokens,
+                            tokens_output: tracker.completion_tokens,
+                            cost: final_cost_bd,
+                            request_id: request_id.clone(),
+                            metadata: None,
+                            processing_ms,
+                            input_duration_ms: None,
+                        };
+                        if let Err(e) = api_usage_repository_clone.record_usage(entry).await {
                             error!("Failed to record API usage: {}", e);
                         }
                     } else {
                         // If no usage data was found in the stream at all, use minimal values 
                         // to ensure we have a record of the API call
                         warn!("No usage data found in stream, recording minimal usage values");
-                        // Use a minimal default cost of zero
-                        let minimal_cost = bigdecimal::BigDecimal::from(0);
                         
-                        if let Err(e) = api_usage_repository_clone.record_usage(
-                            &user_id_for_task,
-                            &model_id_for_task,
-                            1, // Minimal value to ensure a record exists
-                            1, // Minimal value to ensure a record exists
-                            minimal_cost,
-                        ).await {
+                        let model_info_for_min_cost = app_settings_for_task.ai_models.available_models.iter()
+                            .find(|m| m.id == model_id_for_task);
+                        let minimal_cost = if let Some(info) = model_info_for_min_cost {
+                            if let (Some(in_price), Some(out_price)) = (&info.price_input_per_1k_tokens, &info.price_output_per_1k_tokens) {
+                                ApiUsageRepository::calculate_cost(1, 1, in_price, out_price)
+                                    .unwrap_or_else(|e| {
+                                        error!("Failed to calculate minimal cost for {}: {}", model_id_for_task, e);
+                                        bigdecimal::BigDecimal::from(0)
+                                    })
+                            } else {
+                                warn!("Pricing not configured for model {} in AppSettings. Minimal cost will be zero.", model_id_for_task);
+                                bigdecimal::BigDecimal::from(0)
+                            }
+                        } else {
+                            warn!("Model {} not found in AppSettings for minimal pricing. Minimal cost will be zero.", model_id_for_task);
+                            bigdecimal::BigDecimal::from(0)
+                        };
+                        
+                        let entry = ApiUsageEntryDto {
+                            user_id: user_id_for_task,
+                            service_name: model_id_for_task.clone(),
+                            tokens_input: 1,
+                            tokens_output: 1,
+                            cost: minimal_cost,
+                            request_id: request_id.clone(),
+                            metadata: None,
+                            processing_ms,
+                            input_duration_ms: None,
+                        };
+                        if let Err(e) = api_usage_repository_clone.record_usage(entry).await {
                             error!("Failed to record API usage: {}", e);
                         }
                     }
@@ -324,69 +406,59 @@ impl ProxyService {
         Ok(stream)
     }
     
-    /// Forward a transcription request to OpenRouter
+    /// Forward a transcription request to Groq
     pub async fn forward_transcription_request(
         &self,
         user_id: &Uuid,
         audio_data: &[u8],
         filename: &str,
-        model: &str, // model ID like "openai/whisper-1"
+        model_override: Option<String>,
+        duration_ms: i64,
     ) -> Result<Value, AppError> {
+        // Determine model ID: override or app_settings default
+        let model_id = model_override
+            .unwrap_or_else(|| self.app_settings.ai_models.default_transcription_model_id.clone());
+        
         // Check if user has access to this model
-        self.billing_service.check_service_access(user_id, model).await?;
+        self.billing_service.check_service_access(user_id, &model_id).await?;
         
-        // Make the transcription request
-        let response = self.openrouter_client.transcribe(audio_data, filename, model, &user_id.to_string()).await?;
+        // Make the transcription request to Groq
+        let (transcribed_text, headers) = self.groq_client.transcribe(audio_data, filename, &model_id, &user_id.to_string(), duration_ms).await?;
         
-        // Extract usage data if available, or use minimal fallback values
-        let (input_tokens, output_tokens) = match &response.usage {
-            Some(usage) => (usage.prompt_tokens, usage.completion_tokens),
-            None => {
-                // For whisper, OpenRouter typically bills by minute rather than tokens
-                // but includes token counts in the usage field. If for some reason they're
-                // missing, we'll use minimal values until they provide better data.
-                warn!("No usage data provided by OpenRouter for transcription. Using minimal values.");
-                (0, 1) // Minimal non-zero values to create a record
-            }
-        };
+        // Extract processing_ms and request_id from headers
+        let processing_ms = headers.get("openai-processing-ms")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<i32>().ok());
+        let request_id = headers.get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from)
+            .or_else(|| Some(Uuid::new_v4().to_string()));
         
-        // Get cost if provided by OpenRouter
-        let openrouter_cost = self.openrouter_client.extract_cost_from_transcription(&response);
+        // Calculate tokens for usage tracking
+        let input_tokens = duration_ms / 1000; // Duration in seconds as input tokens
+        let output_tokens = (transcribed_text.len() / 4) as i32; // Approximate chars per token
         
-        // Calculate the final cost
-        let final_cost_bd = if let Some(cost_f64) = openrouter_cost {
-            // If OpenRouter provides a cost, use it
-            bigdecimal::BigDecimal::try_from(cost_f64)
-                .map_err(|_| AppError::Internal("Invalid cost from OpenRouter transcription".to_string()))?
-        } else {
-            // Fallback: find model in AppSettings and calculate
-            let model_info = self.app_settings.ai_models.available_models.iter()
-                .find(|m| m.id == model);
-                
-            if let Some(info) = model_info {
-                if let (Some(in_price), Some(out_price)) = (info.price_input_per_1k_tokens, info.price_output_per_1k_tokens) {
-                    ApiUsageRepository::calculate_cost(input_tokens, output_tokens, in_price, out_price)?
-                } else {
-                    log::warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model);
-                    bigdecimal::BigDecimal::from(0)
-                }
-            } else {
-                log::warn!("Model {} not found in AppSettings for pricing. Cost will be zero.", model);
-                bigdecimal::BigDecimal::from(0)
-            }
-        };
+        // Calculate cost using Groq's rate ($0.00067 per minute)
+        let cost_f64 = (duration_ms as f64 / 60000.0) * 0.00067;
+        let final_cost_bd = bigdecimal::BigDecimal::try_from(cost_f64)
+            .map_err(|_| AppError::Internal("Invalid cost calculation for Groq".to_string()))?;
         
         // Record API usage
-        self.api_usage_repository.record_usage(
-            user_id,
-            model,
-            input_tokens,
-            output_tokens,
-            final_cost_bd,
-        ).await?;
+        let entry = ApiUsageEntryDto {
+            user_id: *user_id,
+            service_name: model_id.to_string(),
+            tokens_input: input_tokens as i32,
+            tokens_output: output_tokens,
+            cost: final_cost_bd,
+            request_id,
+            metadata: None,
+            processing_ms,
+            input_duration_ms: Some(duration_ms),
+        };
+        self.api_usage_repository.record_usage(entry).await?;
         
-        // Return as JSON
-        Ok(serde_json::to_value(response)?)
+        // Return as JSON wrapped in a structure similar to what OpenRouter might return
+        Ok(json!({ "text": transcribed_text }))
     }
     
     // OpenRouter provides accurate token usage information, so no estimation is needed
@@ -396,6 +468,7 @@ impl Clone for ProxyService {
     fn clone(&self) -> Self {
         Self {
             openrouter_client: self.openrouter_client.clone(),
+            groq_client: GroqClient::new(&self.app_settings).expect("Failed to clone GroqClient"),
             billing_service: self.billing_service.clone(),
             api_usage_repository: self.api_usage_repository.clone(),
             app_settings: self.app_settings.clone(),

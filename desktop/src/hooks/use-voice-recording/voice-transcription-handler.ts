@@ -2,6 +2,7 @@
 
 import { type ActionState } from "@/types";
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
+import { createTranscriptionErrorMessage } from "@/utils/error-handling";
 
 // Validation function to check if transcription text is valid
 /**
@@ -331,7 +332,7 @@ export async function handleTranscription(
       typeof projectDirectory === "string" &&
       projectDirectory.trim() !== ""
         ? projectDirectory
-        : "/"; // Use root as fallback
+        : undefined; // Pass undefined instead of "/" as fallback
 
     if (!projectDirectory) {
       console.warn(
@@ -358,8 +359,7 @@ export async function handleTranscription(
     // Call the action
     const result = await createTranscriptionJobFromBlobAction(
       audioBlob,
-      "en", // Default language
-      sessionId, // TypeScript needs this cast
+      sessionId,
       effectiveProjectDirectory
     );
 
@@ -371,7 +371,7 @@ export async function handleTranscription(
       console.error(`[Transcription] Error: ${result.message}`);
       return {
         isSuccess: false,
-        message: result.message,
+        message: createTranscriptionErrorMessage(result.message),
         data: "",
       };
     }
@@ -389,7 +389,7 @@ export async function handleTranscription(
     console.error("Error in handleTranscription:", error);
     return {
       isSuccess: false,
-      message: error instanceof Error ? error.message : "Transcription failed",
+      message: createTranscriptionErrorMessage(error),
       data: "",
     };
   }
@@ -425,9 +425,11 @@ export async function handleCorrection(
 
     // Ensure we have a valid project directory
     const effectiveProjectDirectory =
-      projectDirectory && typeof projectDirectory === "string"
+      projectDirectory &&
+      typeof projectDirectory === "string" &&
+      projectDirectory.trim() !== ""
         ? projectDirectory
-        : "/";
+        : undefined; // Pass undefined instead of "/"
 
     try {
       // Import the renamed action
@@ -438,7 +440,6 @@ export async function handleCorrection(
       // Call the action
       const result = await createVoiceCorrectionJobAction(
         text,
-        "en", // Default language
         sessionId, // TypeScript needs this cast
         transcriptionJobId,
         effectiveProjectDirectory

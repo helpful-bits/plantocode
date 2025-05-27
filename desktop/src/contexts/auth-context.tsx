@@ -1,9 +1,9 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 
 import { type AuthContextType } from "../auth/auth-context-interface";
 import { useAuth0AuthHandler } from "../auth/use-auth0-auth-handler";
-import { useAuthTokenRefresher } from "../hooks/use-auth-token-refresher";
+import { logError } from "@/utils/error-handling";
 
 // No more need for separate handleRedirectResult in the context
 export type DesktopAuthContextType = AuthContextType;
@@ -22,11 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut: auth0SignOut,
     getToken,
   } = useAuth0AuthHandler();
-  
-  // Use the token refresher hook to keep the JWT fresh
-  useAuthTokenRefresher();
 
-  const value: DesktopAuthContextType = {
+  const value: DesktopAuthContextType = useMemo(() => ({
     user,
     loading,
     error,
@@ -34,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signOut: auth0SignOut,
     getToken,
-  };
+  }), [user, loading, error, token, signIn, auth0SignOut, getToken]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -42,7 +39,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): DesktopAuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    const error = new Error("useAuth must be used within an AuthProvider");
+    logError(error, "Auth Context - Hook Used Outside Provider").catch(() => {
+      // Swallow logging errors to prevent recursive failures
+    });
+    throw error;
   }
   return context;
 }

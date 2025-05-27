@@ -91,7 +91,8 @@ export function useDeepLinkHandler() {
         // eslint-disable-next-line no-console
         console.log("[Desktop] Unknown deep link format:", url);
       } catch (error) {
-        console.error("[Desktop] Failed to process deep link:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[Desktop] Failed to process deep link "${url}": ${errorMessage}`, error);
       }
     };
 

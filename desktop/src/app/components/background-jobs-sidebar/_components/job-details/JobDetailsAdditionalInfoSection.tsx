@@ -9,7 +9,8 @@ interface JobDetailsAdditionalInfoSectionProps {
 export function JobDetailsAdditionalInfoSection({
   job,
 }: JobDetailsAdditionalInfoSectionProps) {
-  if (!job.outputFilePath && !job.statusMessage) {
+  const outputPathFromMeta = job.metadata?.outputPath as string | undefined;
+  if (!outputPathFromMeta && !job.statusMessage) {
     return null;
   }
 
@@ -20,16 +21,16 @@ export function JobDetailsAdditionalInfoSection({
           Additional Information
         </h4>
 
-        {job.outputFilePath && (
+        {outputPathFromMeta && (
           <div className="mb-3">
             <h5 className="text-xs text-muted-foreground mb-1">File Output</h5>
             <div className="flex items-center gap-2">
               <FileCode className="h-4 w-4 text-muted-foreground" />
               <p
                 className="text-sm font-medium truncate text-balance"
-                title={job.outputFilePath || ""}
+                title={outputPathFromMeta || ""}
               >
-                {job.outputFilePath}
+                {outputPathFromMeta}
               </p>
             </div>
           </div>

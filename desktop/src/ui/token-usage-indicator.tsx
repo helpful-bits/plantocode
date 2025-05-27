@@ -57,20 +57,20 @@ export function TokenUsageIndicator({
     autoRefreshInterval
   });
 
-  // Use provided values or fetched values
-  const actualTokensUsed = tokensUsed ?? usage?.usedTokens ?? 0;
-  const actualMaxTokens = maxTokens ?? usage?.monthlyLimit;
-  const actualCost = cost ?? usage?.estimatedCost ?? 0;
+  // Use provided values or fetched values with safe fallbacks
+  const actualTokensUsed = (tokensUsed ?? usage?.usedTokens) ?? 0;
+  const actualMaxTokens = (maxTokens ?? usage?.monthlyLimit); // Can remain null/undefined if no limit
+  const actualCost = (cost ?? usage?.estimatedCost) ?? 0;
   const actualCurrency = currency ?? usage?.currency ?? "USD";
   const actualTrialDaysLeft = trialDaysLeft ?? usage?.trialDaysRemaining;
 
-  // Calculate progress percentage if max tokens is available
-  const progressPercentage = actualMaxTokens
+  // Calculate progress percentage with safe fallbacks
+  const progressPercentage = actualMaxTokens && actualMaxTokens > 0
     ? Math.min(100, Math.round((actualTokensUsed / actualMaxTokens) * 100))
     : undefined;
 
-  // Format cost with 2 decimal places
-  const formattedCost = actualCost.toFixed(2);
+  // Format cost with 2 decimal places (handle potential NaN)
+  const formattedCost = (typeof actualCost === 'number' && !isNaN(actualCost) ? actualCost : 0).toFixed(2);
 
   // Format currency symbol
   const currencySymbol = actualCurrency === "USD" ? "$" : actualCurrency;

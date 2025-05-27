@@ -6,8 +6,88 @@ use serde::{Serialize, Deserialize};
 use crate::error::{AppResult, AppError};
 use crate::utils::path_utils;
 use crate::utils::fs_utils;
-use crate::models::ListFilesResponse;
+use crate::models::{ListFilesResponse, NativeFileInfoRs};
 use crate::utils::git_utils;
+
+/// Helper function to create NativeFileInfoRs from a file path
+async fn create_file_info(absolute_path: &std::path::PathBuf, relative_path: &std::path::PathBuf, include_stats: bool) -> AppResult<NativeFileInfoRs> {
+    let file_name = relative_path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| relative_path.to_string_lossy().to_string());
+    
+    let relative_path_str = relative_path.to_string_lossy().to_string();
+    
+    // Get basic file info
+    let metadata = std::fs::metadata(absolute_path)
+        .map_err(|e| AppError::FileSystemError(format!("Failed to get metadata for {}: {}", absolute_path.display(), e)))?;
+    
+    let is_dir = metadata.is_dir();
+    let is_file = metadata.is_file();
+    let is_symlink = metadata.file_type().is_symlink();
+    
+    // Get optional stats if requested
+    let (size, created_at, modified_at, accessed_at) = if include_stats {
+        let size = if is_file { Some(metadata.len()) } else { None };
+        
+        let created_at = metadata.created()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64);
+            
+        let modified_at = metadata.modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64);
+            
+        let accessed_at = metadata.accessed()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as i64);
+        
+        (size, created_at, modified_at, accessed_at)
+    } else {
+        (None, None, None, None)
+    };
+    
+    // Platform-specific hidden file detection
+    let is_hidden = Some(file_name.starts_with('.'));
+    
+    // Check permissions if stats are requested
+    let (is_readable, is_writable) = if include_stats {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = metadata.permissions();
+            let mode = perms.mode();
+            let readable = (mode & 0o400) != 0; // Owner read permission
+            let writable = (mode & 0o200) != 0; // Owner write permission
+            (Some(readable), Some(writable))
+        }
+        #[cfg(not(unix))]
+        {
+            // On Windows, use basic permission check
+            let readable = !metadata.permissions().readonly();
+            (Some(readable), Some(!metadata.permissions().readonly()))
+        }
+    } else {
+        (None, None)
+    };
+    
+    Ok(NativeFileInfoRs {
+        path: relative_path_str,
+        name: file_name,
+        is_dir,
+        is_file,
+        is_symlink,
+        size,
+        created_at,
+        modified_at,
+        accessed_at,
+        is_hidden,
+        is_readable,
+        is_writable,
+    })
+}
 
 /// Arguments struct for list_files_with_options function, mirroring ListFilesRequestArgs
 #[derive(Debug, Deserialize)]
@@ -130,7 +210,6 @@ pub async fn list_files_with_options(args: ListFilesArgs) -> AppResult<ListFiles
                 total_found_before_filtering = Some(git_files.len());
                 
                 // Filter and process files
-                let mut relative_paths = Vec::new();
                 for relative_path in git_files {
                     let absolute_path = path_utils::join_paths(&directory, &relative_path);
                     
@@ -168,14 +247,12 @@ pub async fn list_files_with_options(args: ListFilesArgs) -> AppResult<ListFiles
                         }
                     }
                     
-                    // For git paths, we're already dealing with relative paths
-                    // Just normalize them
-                    let normalized_path = relative_path.to_string_lossy().to_string();
-                    relative_paths.push(normalized_path);
+                    // Create NativeFileInfoRs with file metadata
+                    let file_info = create_file_info(&absolute_path, &relative_path, args.include_stats.unwrap_or(false)).await;
+                    if let Ok(info) = file_info {
+                        files.push(info);
+                    }
                 }
-                
-                // Store the filtered paths
-                files = relative_paths;
             } else {
                 debug!("Directory is not a git repository, using filesystem operations: {}", directory.display());
                 // Not a git repository, use filesystem operations
@@ -223,11 +300,18 @@ pub async fn list_files_with_options(args: ListFilesArgs) -> AppResult<ListFiles
                             filtered_files.push(path.clone());
                         }
                         
-                        // Convert to string paths
-                        files = filtered_files
-                            .into_iter()
-                            .map(|p| path_utils::normalize_path(&p).to_string_lossy().to_string())
-                            .collect();
+                        // Convert to NativeFileInfoRs objects
+                        for file_path in filtered_files {
+                            let relative_path = match path_utils::make_relative_to(&file_path, &directory) {
+                                Ok(rel_path) => rel_path,
+                                Err(_) => continue,
+                            };
+                            
+                            let file_info = create_file_info(&file_path, &relative_path, args.include_stats.unwrap_or(false)).await;
+                            if let Ok(info) = file_info {
+                                files.push(info);
+                            }
+                        }
                     },
                     Err(e) => {
                         return Err(AppError::FileSystemError(format!("Failed to find files matching pattern: {}", e)));
@@ -286,16 +370,18 @@ pub async fn list_files_with_options(args: ListFilesArgs) -> AppResult<ListFiles
                         filtered_files.push(file_path);
                     }
                     
-                    // Convert the filtered files to relative paths
-                    files = filtered_files.into_iter()
-                        .filter_map(|path| {
-                            // Convert each path to be relative to directory
-                            match path_utils::make_relative_to(&path, &directory) {
-                                Ok(rel_path) => Some(rel_path.to_string_lossy().to_string()),
-                                Err(_) => None, // Skip paths that can't be made relative
-                            }
-                        })
-                        .collect();
+                    // Convert the filtered files to NativeFileInfoRs objects
+                    for file_path in filtered_files {
+                        let relative_path = match path_utils::make_relative_to(&file_path, &directory) {
+                            Ok(rel_path) => rel_path,
+                            Err(_) => continue,
+                        };
+                        
+                        let file_info = create_file_info(&file_path, &relative_path, args.include_stats.unwrap_or(false)).await;
+                        if let Ok(info) = file_info {
+                            files.push(info);
+                        }
+                    }
                 },
                 Err(e) => {
                     return Err(AppError::FileSystemError(format!("Failed to read directory: {}", e)));
@@ -305,53 +391,11 @@ pub async fn list_files_with_options(args: ListFilesArgs) -> AppResult<ListFiles
     }
     
     // Prepare the response
-    let mut response = ListFilesResponse {
+    let response = ListFilesResponse {
         files,
-        stats: None,
         warning,
         total_found_before_filtering,
     };
-    
-    // Add file stats if requested
-    if args.include_stats.unwrap_or(false) {
-        let mut stats = Vec::new();
-        
-        for file_rel_path in &response.files {
-            // Create absolute path for accessing file metadata
-            let abs_path = path_utils::join_paths(&directory, file_rel_path);
-            
-            if let Ok(metadata) = std::fs::metadata(&abs_path) {
-                let modified_ms = metadata.modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0);
-                    
-                let created_ms = metadata.created()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis() as i64);
-                    
-                let accessed_ms = metadata.accessed()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis() as i64);
-                
-                // Use the relative path in the stats
-                let stat_info = crate::models::FileStatInfo {
-                    path: file_rel_path.clone(),
-                    size: metadata.len(),
-                    modified_ms,
-                    created_ms,
-                    accessed_ms,
-                };
-                
-                stats.push(stat_info);
-            }
-        }
-        
-        response.stats = Some(stats);
-    }
     
     Ok(response)
 }

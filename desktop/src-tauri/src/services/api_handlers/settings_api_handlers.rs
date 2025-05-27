@@ -3,7 +3,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use log::{info, error};
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, SerializableError};
 use crate::models::FetchResponse;
 
 // Settings handlers
@@ -32,9 +32,7 @@ pub async fn handle_get_settings(app_handle: AppHandle) -> AppResult<FetchRespon
             Ok(FetchResponse {
                 status: 500,
                 headers,
-                body: json!({
-                    "error": format!("Failed to get settings: {}", e)
-                }),
+                body: json!(SerializableError::from(e)),
             })
         }
     }
@@ -71,9 +69,7 @@ pub async fn handle_set_settings(app_handle: AppHandle, args: &crate::models::Fe
                 Ok(FetchResponse {
                     status: 500,
                     headers,
-                    body: json!({
-                        "error": format!("Failed to save settings: {}", e)
-                    }),
+                    body: json!(SerializableError::from(e)),
                 })
             }
         }
@@ -84,9 +80,7 @@ pub async fn handle_set_settings(app_handle: AppHandle, args: &crate::models::Fe
         Ok(FetchResponse {
             status: 400,
             headers,
-            body: json!({
-                "error": "Request body is required"
-            }),
+            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
         })
     }
 }

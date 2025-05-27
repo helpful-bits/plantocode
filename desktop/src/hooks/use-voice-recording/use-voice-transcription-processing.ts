@@ -2,9 +2,10 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
-import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
+import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
 import { type ActionState } from "@/types";
-import { type BackgroundJob, type JobStatus } from "@/types/session-types";
+import { JOB_STATUSES, type JobStatus } from "@/types/session-types";
+import { getErrorMessage, createTranscriptionErrorMessage } from "@/utils/error-handling";
 
 import {
   handleTranscription,
@@ -15,7 +16,7 @@ import {
 
 interface UseVoiceTranscriptionProcessingProps {
   sessionId?: string | null;
-  projectDirectory?: string;
+  projectDirectory?: string | null;
   autoCorrect?: boolean;
   onTranscribed?: (text: string) => void;
   onCorrectionComplete?: (rawText: string, correctedText: string) => void;
@@ -25,7 +26,7 @@ interface UseVoiceTranscriptionProcessingProps {
 
 export function useVoiceTranscriptionProcessing({
   sessionId = null,
-  projectDirectory = "",
+  projectDirectory = null,
   autoCorrect = true,
   onTranscribed,
   onCorrectionComplete,
@@ -47,15 +48,17 @@ export function useVoiceTranscriptionProcessing({
   // Keep track of already processed jobs to prevent duplicate processing
   const processedJobsRef = useRef<Set<string>>(new Set());
 
-  // Get the background job from context
-  const backgroundJobs = useBackgroundJobs();
-  const transcriptionJob = transcriptionJobId ? { job: backgroundJobs.jobs.find(job => job.id === transcriptionJobId) } : null;
+  // Get the background job from context using typed hook
+  const { job: transcriptionJobData } = useTypedBackgroundJob(transcriptionJobId);
 
   // Unified function to update state
   const updateState = useCallback(
     (state: { error?: string | null; isProcessing?: boolean }) => {
       if (state.error !== undefined) {
-        onError(state.error || "");
+        // Only call onError if there's actually an error message
+        if (state.error) {
+          onError(state.error);
+        }
       }
       if (state.isProcessing !== undefined) {
         setIsProcessing(state.isProcessing);
@@ -74,8 +77,9 @@ export function useVoiceTranscriptionProcessing({
       try {
         // Handle failure case first
         if (!result.isSuccess) {
+          const errorMessage = result.message || "Failed to process voice recording";
           updateState({
-            error: result.message || "Failed to process voice recording",
+            error: errorMessage,
             isProcessing: false,
           });
           setTextStatus("error");
@@ -118,7 +122,7 @@ export function useVoiceTranscriptionProcessing({
               autoCorrect,
               sessionId,
               transcriptionJobId,
-              projectDirectory,
+              projectDirectory ?? undefined,
               setRawText,
               setCorrectedText,
               setTextStatus,
@@ -139,7 +143,7 @@ export function useVoiceTranscriptionProcessing({
             autoCorrect,
             sessionId,
             transcriptionJobId,
-            projectDirectory,
+            projectDirectory ?? undefined,
             setRawText,
             setCorrectedText,
             setTextStatus,
@@ -153,13 +157,8 @@ export function useVoiceTranscriptionProcessing({
           "[VoiceRecording] Error processing transcription result:",
           error
         );
-        updateState({
-          error:
-            error instanceof Error
-              ? error.message
-              : "Error processing recording",
-          isProcessing: false,
-        });
+        const errorMessage = createTranscriptionErrorMessage(error);
+        updateState({ error: errorMessage, isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -203,18 +202,15 @@ export function useVoiceTranscriptionProcessing({
         const result = await handleTranscription(
           audioBlob,
           sessionId,
-          projectDirectory
+          projectDirectory ?? undefined
         );
 
         // Process the result
         await processTranscriptionResult(result, false);
       } catch (err) {
         console.error("[VoiceRecording] Error in processTranscription:", err);
-        updateState({
-          error:
-            err instanceof Error ? err.message : "Error processing recording",
-          isProcessing: false,
-        });
+        const errorMessage = createTranscriptionErrorMessage(err);
+        updateState({ error: errorMessage, isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -241,18 +237,15 @@ export function useVoiceTranscriptionProcessing({
         const result = await handleTranscription(
           audioBlob,
           sessionId,
-          projectDirectory
+          projectDirectory ?? undefined
         );
 
         // Process the result
         await processTranscriptionResult(result, false);
       } catch (err) {
         console.error("[VoiceRecording] Error in retryTranscription:", err);
-        updateState({
-          error:
-            err instanceof Error ? err.message : "Error processing recording",
-          isProcessing: false,
-        });
+        const errorMessage = createTranscriptionErrorMessage(err);
+        updateState({ error: errorMessage, isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -270,56 +263,46 @@ export function useVoiceTranscriptionProcessing({
 
   // Monitor transcription job - handles both transcription and correction phases
   useEffect(() => {
+    let isCurrentJobEffect = true; // Flag for this effect instance
     // Keep local reference to the job ID to avoid closure issues
-    const currentJobId = transcriptionJobId;
+    const currentJobIdBeingProcessed = transcriptionJobId;
 
-    if (!currentJobId || !transcriptionJob?.job) {
-      return;
+    if (!currentJobIdBeingProcessed || !transcriptionJobData) {
+      return () => {
+        isCurrentJobEffect = false;
+      };
     }
 
-    // Create a safer version of the job with proper type checking
-    const safeJob: BackgroundJob = {
-      id: typeof transcriptionJob.job.id === 'string' ? transcriptionJob.job.id : '',
-      taskType: typeof transcriptionJob.job.taskType === 'string' ? transcriptionJob.job.taskType : 'unknown',
-      status: typeof transcriptionJob.job.status === 'string' ? 
-        (transcriptionJob.job.status as JobStatus) : 
-        'idle' as JobStatus, // Default to 'idle' as a valid JobStatus
-      apiType: 'openrouter', // Default value
-      createdAt: Date.now(), // Current timestamp in ms
-      prompt: typeof transcriptionJob.job.prompt === 'string' ? transcriptionJob.job.prompt : '',
-      sessionId: typeof transcriptionJob.job.sessionId === 'string' ? transcriptionJob.job.sessionId : '',
-      // Add other values from the job if available, with safe type checking
-      response: typeof transcriptionJob.job.response === 'string' ? transcriptionJob.job.response : '',
-      projectDirectory: typeof transcriptionJob.job.projectDirectory === 'string' ? transcriptionJob.job.projectDirectory : null,
-      tokensSent: typeof transcriptionJob.job.tokensSent === 'number' ? transcriptionJob.job.tokensSent : null,
-      tokensReceived: typeof transcriptionJob.job.tokensReceived === 'number' ? transcriptionJob.job.tokensReceived : null,
-      errorMessage: typeof transcriptionJob.job.errorMessage === 'string' ? transcriptionJob.job.errorMessage : null,
-    };
-    
+    // Process the job directly without reconstruction - trust the backend data
     const jobProcessingResult = processBackgroundJob(
-      safeJob,
+      transcriptionJobData || undefined,
       processedJobsRef.current
     );
 
     if (jobProcessingResult.processed) {
+      if (!isCurrentJobEffect || currentJobIdBeingProcessed !== transcriptionJobId) {
+        // This effect is for a stale job, ignore its result
+        return;
+      }
+      
       // eslint-disable-next-line no-console
       console.log(
-        `[VoiceRecording] Processed job ${currentJobId} with status: ${jobProcessingResult.status}`
+        `[VoiceRecording] Processed job ${currentJobIdBeingProcessed} with status: ${jobProcessingResult.status}`
       );
 
       try {
-        // Use the safe job object that we created above
-        const taskType = safeJob.taskType;
-        const status = safeJob.status;
+        // Access job properties safely with optional chaining
+        const taskType = transcriptionJobData?.taskType;
+        const status = transcriptionJobData?.status;
 
         // Handle completed job
-        if (status === "completed") {
+        if (JOB_STATUSES.COMPLETED.includes(status as JobStatus)) {
           const responseText = jobProcessingResult.text;
 
           if (!responseText) {
             console.warn(`[VoiceRecording] Completed job has no text response`);
             updateState({
-              error: "No text in completed job",
+              error: "Transcription completed but no text was received. Please try again.",
               isProcessing: false,
             });
             setTextStatus("error");
@@ -377,8 +360,8 @@ export function useVoiceTranscriptionProcessing({
               handleCorrection(
                 responseText,
                 sessionId,
-                currentJobId,
-                projectDirectory
+                currentJobIdBeingProcessed,
+                projectDirectory ?? undefined
               )
                 .then((correctionResult) => {
                   if (correctionResult.isSuccess) {
@@ -407,9 +390,14 @@ export function useVoiceTranscriptionProcessing({
                     if (onTranscribed) {
                       onTranscribed(responseText);
                     }
-                    setTextStatus("done");
+                    // Update error state to reflect the correction failure
+                    const errorMessage = createTranscriptionErrorMessage(`Correction failed: ${correctionResult.message || "Unknown error"}`);
+                    updateState({ 
+                      error: errorMessage,
+                      isProcessing: false 
+                    });
+                    setTextStatus("done"); // Processing is finished, error state handles the failure
                     setTranscriptionJobId(null);
-                    updateState({ isProcessing: false });
                   }
                 })
                 .catch((error) => {
@@ -420,9 +408,14 @@ export function useVoiceTranscriptionProcessing({
                   if (onTranscribed) {
                     onTranscribed(responseText);
                   }
-                  setTextStatus("done");
+                  // Update error state to reflect the correction failure
+                  const errorMessage = createTranscriptionErrorMessage(`Correction failed: ${getErrorMessage(error)}`);
+                  updateState({ 
+                    error: errorMessage,
+                    isProcessing: false 
+                  });
+                  setTextStatus("done"); // Processing is finished, error state handles the failure
                   setTranscriptionJobId(null);
-                  updateState({ isProcessing: false });
                 });
             } else {
               // No correction needed
@@ -449,9 +442,9 @@ export function useVoiceTranscriptionProcessing({
           }
         }
         // Handle failed job
-        else if (status === "failed") {
+        else if (JOB_STATUSES.FAILED.includes(status as JobStatus)) {
           console.warn(
-            `[VoiceRecording] Job ${currentJobId} failed: ${jobProcessingResult.error}`
+            `[VoiceRecording] Job ${currentJobIdBeingProcessed} failed: ${jobProcessingResult.error}`
           );
 
           // If we have already received raw text but correction failed, still consider success
@@ -466,8 +459,9 @@ export function useVoiceTranscriptionProcessing({
             setTextStatus("done");
           } else {
             // True error case
+            const errorMessage = jobProcessingResult.error || "Transcription job failed. Please try again.";
             updateState({
-              error: jobProcessingResult.error || "Job failed",
+              error: errorMessage,
               isProcessing: false,
             });
             setTextStatus("error");
@@ -477,31 +471,23 @@ export function useVoiceTranscriptionProcessing({
         }
       } catch (error) {
         console.error("[VoiceRecording] Error processing job result:", error);
-        updateState({
-          error:
-            error instanceof Error ? error.message : "Error processing result",
-          isProcessing: false,
-        });
+        const errorMessage = createTranscriptionErrorMessage(error);
+        updateState({ error: errorMessage, isProcessing: false });
         setTextStatus("error");
         setTranscriptionJobId(null);
       }
     }
     // Handle active job states
-    else if (safeJob) {
-      const status = safeJob.status;
+    else if (transcriptionJobData) {
+      if (!isCurrentJobEffect || currentJobIdBeingProcessed !== transcriptionJobId) {
+        // This effect is for a stale job, ignore its result
+        return;
+      }
+      
+      const status = transcriptionJobData.status;
 
       // Check if job is in an active state
-      const activeStates = [
-        "running",
-        "pending",
-        "queued",
-        "acknowledged_by_worker",
-        "preparing",
-        "generating_stream",
-        "processing_stream",
-      ];
-
-      if (status && activeStates.includes(status)) {
+      if (status && JOB_STATUSES.ACTIVE.includes(status as JobStatus)) {
         setTextStatus("loading");
         setIsProcessing(true);
       }
@@ -514,16 +500,25 @@ export function useVoiceTranscriptionProcessing({
         // Don't update UI state for warnings, just log them
       }
     }
+    
+    return () => {
+      isCurrentJobEffect = false; // Cleanup function for when effect re-runs or component unmounts
+    };
   }, [
-    transcriptionJobId,
-    transcriptionJob,
-    rawText,
-    correctedText,
+    transcriptionJobId, // Trigger when the ID of job to watch changes
+    transcriptionJobData?.status, // Trigger when the status of the watched job changes
+    transcriptionJobData?.response, // Trigger when the response of the watched job changes
+    transcriptionJobData?.errorMessage, // Trigger on error message change
+    transcriptionJobData?.taskType, // Trigger when task type changes
+    // State dependencies used within the effect:
+    rawText, // Used in correction completion and fallback logic
+    correctedText, // Used in onTranscribed callback condition
+    // Stable dependencies (or assumed stable from context/props):
+    autoCorrect,
+    sessionId,
+    projectDirectory,
     onTranscribed,
     onCorrectionComplete,
-    projectDirectory,
-    sessionId,
-    autoCorrect,
     updateState,
     setIsProcessing,
   ]);

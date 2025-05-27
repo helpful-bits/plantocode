@@ -24,7 +24,7 @@ import PlanContentModal from "./_components/PlanContentModal";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
 
 interface ImplementationPlansPanelProps {
-  sessionId?: string | null;
+  sessionId: string | null;
 }
 
 export function ImplementationPlansPanel({
@@ -136,7 +136,7 @@ export function ImplementationPlansPanel({
       {/* Delete Confirmation Dialog */}
       <AlertDialog
         open={!!jobToDelete}
-        onOpenChange={(open) => !open && setJobToDelete(null)}
+        onOpenChange={(open) => !open && setJobToDelete(undefined)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -147,7 +147,7 @@ export function ImplementationPlansPanel({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setJobToDelete(null)}>
+            <AlertDialogCancel onClick={() => setJobToDelete(undefined)}>
               Cancel
             </AlertDialogCancel>
             <Button

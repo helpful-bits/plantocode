@@ -1,8 +1,17 @@
 use serde::{Serialize, Deserialize};
+use serde_with::skip_serializing_none;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+// Common response for job-creating commands
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobCommandResponse {
+    pub job_id: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct FrontendUser {
     pub id: String,
     pub email: String,
@@ -11,6 +20,7 @@ pub struct FrontendUser {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AuthDataResponse {
     pub user: FrontendUser,
     pub token: String, // This will be the application JWT
@@ -243,6 +253,7 @@ impl std::str::FromStr for TaskType {
 
 // Background job model that matches the TypeScript BackgroundJob interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackgroundJob {
     pub id: String,
     pub session_id: String,
@@ -274,6 +285,7 @@ pub struct BackgroundJob {
 
 // Task settings model
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskSettings {
     pub session_id: String,
     pub task_type: String,
@@ -294,12 +306,14 @@ pub enum ActionState<T> {
 
 // Job metadata types
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImplementationPlanMetadata {
     pub title: Option<String>,
     pub file_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VoiceTranscriptionMetadata {
     pub file_size: Option<i32>,
     pub duration_seconds: Option<f32>,
@@ -307,6 +321,7 @@ pub struct VoiceTranscriptionMetadata {
 
 // Models for the fetch polyfill
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchRequestArgs {
     pub method: String,
     pub headers: Option<HashMap<String, String>>,
@@ -315,6 +330,7 @@ pub struct FetchRequestArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchResponse {
     pub status: u16,
     pub headers: HashMap<String, String>,
@@ -323,6 +339,7 @@ pub struct FetchResponse {
 
 // Models for streaming request handlers
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StreamRequestArgs {
     pub url: String,
     pub method: String,
@@ -332,6 +349,7 @@ pub struct StreamRequestArgs {
 
 // DTO for file operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileInfo {
     pub path: String,
     pub name: String,
@@ -341,6 +359,7 @@ pub struct FileInfo {
 }
 
 // OpenRouter API types
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterRequestMessage {
     pub role: String,
@@ -367,6 +386,7 @@ pub struct ImageUrl {
     pub url: String,
 }
 
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterRequest {
     pub model: String,
@@ -427,6 +447,7 @@ pub struct OpenRouterDelta {
 
 // Directory information model
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DirectoryInfo {
     pub name: String,
     pub path: String,
@@ -434,9 +455,27 @@ pub struct DirectoryInfo {
 }
 
 
-// File statistic information for list_files_command
-// Note: 'path' is expected to be relative to the queried directory
+// Native file information that matches TypeScript NativeFileInfo
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeFileInfoRs {
+    pub path: String,        // Relative path to the queried directory
+    pub name: String,        // Base name of the file/directory
+    pub is_dir: bool,        // Whether this is a directory
+    pub is_file: bool,       // Whether this is a regular file
+    pub is_symlink: bool,    // Whether this is a symbolic link
+    pub size: Option<u64>,   // File size in bytes (None for directories)
+    pub created_at: Option<i64>,   // Creation timestamp in milliseconds
+    pub modified_at: Option<i64>,  // Modification timestamp in milliseconds
+    pub accessed_at: Option<i64>,  // Access timestamp in milliseconds
+    pub is_hidden: Option<bool>,   // Whether the file is hidden
+    pub is_readable: Option<bool>, // Whether the file is readable
+    pub is_writable: Option<bool>, // Whether the file is writable
+}
+
+// Legacy FileStatInfo for backward compatibility (can be removed later)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileStatInfo {
     pub path: String,  // Relative path to the queried directory
     pub size: u64,
@@ -448,15 +487,16 @@ pub struct FileStatInfo {
 // Response for list_files_command
 // Note: All file paths in this struct are expected to be relative to the queried directory
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListFilesResponse {
-    pub files: Vec<String>,  // List of file paths relative to the queried directory
-    pub stats: Option<Vec<FileStatInfo>>,
+    pub files: Vec<NativeFileInfoRs>,  // List of file information objects
     pub warning: Option<String>,
     pub total_found_before_filtering: Option<usize>,
 }
 
 // Request arguments for create_path_finder_job command
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderRequestArgs {
     pub session_id: String,
     pub task_description: String,
@@ -469,20 +509,17 @@ pub struct PathFinderRequestArgs {
     pub excluded_files: Option<Vec<String>>,
 }
 
-// Response for create_path_finder_job command
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PathFinderCommandResponse {
-    pub job_id: String,
-}
 
 // Request arguments for read_implementation_plan command
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadImplementationPlanArgs {
     pub job_id: String,
 }
 
 // Response for read_implementation_plan command
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadImplementationPlanResponse {
     pub content: String,
     pub file_path: String,
@@ -493,6 +530,7 @@ pub struct ReadImplementationPlanResponse {
 
 // Runtime AI configuration structures
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskSpecificModelConfig {
     pub model: String,
     pub max_tokens: u32,
@@ -500,6 +538,7 @@ pub struct TaskSpecificModelConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
     pub name: String,
@@ -512,6 +551,7 @@ pub struct ModelInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeAIConfig {
     pub default_llm_model_id: String,
     pub default_voice_model_id: String,
@@ -529,6 +569,7 @@ pub struct RuntimeAIConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenLimits {
     // Maximum tokens per request
     pub max_tokens_per_request: Option<u32>,
@@ -537,6 +578,7 @@ pub struct TokenLimits {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PathFinderSettings {
     // Max number of files to include content from
     pub max_files_with_content: Option<usize>,
@@ -553,12 +595,14 @@ pub struct PathFinderSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TableInfo {
     pub name: String,
     pub row_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DatabaseInfo {
     pub file_path: Option<String>,
     pub tables: Vec<TableInfo>,
@@ -572,6 +616,7 @@ pub struct DatabaseInfo {
 
 /// Main Settings struct to store and retrieve application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     // App options
     pub theme: Option<String>,
@@ -602,9 +647,30 @@ pub type SessionUpdateData = Session;
 
 /// Global settings for the application
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GlobalSettings {
     pub default_project_directory: Option<String>,
     pub theme: Option<String>,
     pub recent_directories: Option<Vec<String>>,
     pub last_updated: Option<i64>,
+}
+
+/// Database health data for diagnostic purposes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseHealthData {
+    pub status: String, // "ok" | "error" | "warning" | "checking"
+    pub file_exists: bool,
+    pub file_size: Option<u64>,
+    pub file_permissions: Option<String>, // e.g., "0o644"
+    pub setup_success: bool, // From app initialization
+    pub integrity_status: Option<String>, // Result of PRAGMA integrity_check
+    pub integrity_details: Option<serde_json::Value>,
+    pub recovery_mode: bool,
+    pub needs_repair: bool,
+    pub error: Option<String>,
+    pub error_category: Option<String>, // Corresponds to DatabaseErrorCategory
+    pub error_severity: Option<String>, // Corresponds to DatabaseErrorSeverity
+    pub details: Option<serde_json::Value>, // Other diagnostic details
+    pub last_modified: Option<String>, // ISO 8601 string
 }

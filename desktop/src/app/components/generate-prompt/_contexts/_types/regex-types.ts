@@ -9,9 +9,9 @@ export interface RegexContextState {
   regexGenerationError: string | null;
   
   // Individual field generation state
-  generatingFieldType: 'title' | 'content' | 'negativeTitle' | 'negativeContent' | null;
-  generatingFieldJobId: string | null;
-  fieldRegexGenerationError: string | null;
+  generatingFieldType: 'title' | 'content' | 'negativeTitle' | 'negativeContent' | undefined;
+  generatingFieldJobId: string | undefined;
+  fieldRegexGenerationError: string | undefined;
   
   // New description fields
   titleRegexDescription: string;
@@ -22,8 +22,8 @@ export interface RegexContextState {
   
   // Summary generation state
   isGeneratingSummaryExplanation: boolean;
-  generatingSummaryJobId: string | null;
-  summaryGenerationError: string | null;
+  generatingSummaryJobId: string | undefined;
+  summaryGenerationError: string | undefined;
 }
 
 export interface RegexContextActions {

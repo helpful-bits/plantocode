@@ -3,16 +3,15 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 import { improveSelectedTextAction } from "@/actions/ai/text-improvement.actions";
-import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
+import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
-import { useSessionActionsContext } from "@/contexts/session";
+import { useSessionActionsContext, useSessionStateContext } from "@/contexts/session";
 
 // Import TaskDescriptionHandle type directly
 import type { TaskDescriptionHandle } from "../_components/task-description";
 
 interface UseTaskDescriptionStateProps {
-  taskDescription: string;
   activeSessionId: string | null;
   taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
   isSwitchingSession?: boolean;
@@ -20,7 +19,6 @@ interface UseTaskDescriptionStateProps {
 }
 
 export function useTaskDescriptionState({
-  taskDescription,
   activeSessionId,
   taskDescriptionRef,
   isSwitchingSession = false,
@@ -29,21 +27,22 @@ export function useTaskDescriptionState({
   // Get the necessary states from project and session contexts
   const { projectDirectory } = useProject();
   const sessionActions = useSessionActionsContext();
+  const sessionState = useSessionStateContext();
+  
+  // Get taskDescription from session context
+  const taskDescription = sessionState.currentSession?.taskDescription || "";
 
   // State for UI feedback and improvement features
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
   const [isImprovingText, setIsImprovingText] = useState(false);
   const [textImprovementJobId, setTextImprovementJobId] = useState<
-    string | null
-  >(null);
+    string | undefined
+  >(undefined);
 
   // External hooks
   const { showNotification } = useNotification();
-  // Fetch the background job
-  const backgroundJobs = useBackgroundJobs();
-  const textImprovementJobResult = textImprovementJobId && backgroundJobs.jobs 
-    ? backgroundJobs.jobs.find(job => job.id === textImprovementJobId) 
-    : null;
+  // Fetch the background job using typed hook
+  const textImprovementJob = useTypedBackgroundJob(textImprovementJobId ?? null);
   
   // Type guard to check if a job object has a specific property
   const hasProperty = <T extends object, K extends string>(obj: T, prop: K): obj is T & Record<K, unknown> => {
@@ -55,7 +54,7 @@ export function useTaskDescriptionState({
   const reset = useCallback(() => {
     setTaskCopySuccess(false);
     setIsImprovingText(false);
-    setTextImprovementJobId(null);
+    setTextImprovementJobId(undefined);
   }, []);
 
   // Store selection range for text improvement
@@ -63,6 +62,7 @@ export function useTaskDescriptionState({
     start: number;
     end: number;
     text: string;
+    originalTaskDescription: string;
   } | null>(null);
 
   // Monitor background job for text improvement
@@ -71,12 +71,12 @@ export function useTaskDescriptionState({
     if (
       isSwitchingSession ||
       !textImprovementJobId ||
-      !textImprovementJobResult
+      !textImprovementJob.job
     ) {
       return;
     }
 
-    const job = textImprovementJobResult;
+    const job = textImprovementJob.job;
     if (!job || typeof job !== 'object') {
       return;
     }
@@ -93,30 +93,15 @@ export function useTaskDescriptionState({
           selectionRangeRef.current
         ) {
           // Parse the response - backend should return a clean string
-          let improvedText = "";
-          if (typeof job.response === "string") {
-            improvedText = job.response;
-          } else if (job.response && typeof job.response === "object") {
-            try {
-              const responseStr = typeof job.response === 'string' ? job.response : JSON.stringify(job.response);
-              const parsedResponse = JSON.parse(responseStr) as { text?: string };
-              improvedText = parsedResponse && typeof parsedResponse.text === "string" 
-                ? parsedResponse.text 
-                : "";
-            } catch (err) {
-              console.error("Error parsing job response:", err);
-              improvedText = "";
-            }
-          }
+          let improvedText = (typeof job.response === "string") ? job.response : "";
 
           // Apply the improved text at the selection range
           if (improvedText && improvedText.trim()) {
-            const { start, end } = selectionRangeRef.current;
-            const currentValue = taskDescription;
+            const { start, end, originalTaskDescription } = selectionRangeRef.current;
             const newValue =
-              currentValue.substring(0, start) +
+              originalTaskDescription.substring(0, start) +
               improvedText +
-              currentValue.substring(end);
+              originalTaskDescription.substring(end);
 
             // Update session
             sessionActions.updateCurrentSessionFields({
@@ -145,7 +130,7 @@ export function useTaskDescriptionState({
       }
 
       // Always reset state after processing
-      setTextImprovementJobId(null);
+      setTextImprovementJobId(undefined);
       selectionRangeRef.current = null;
     } else if (
       hasProperty(job, 'status') && 
@@ -153,7 +138,7 @@ export function useTaskDescriptionState({
     ) {
       // Job failed or was canceled
       setIsImprovingText(false);
-      setTextImprovementJobId(null);
+      setTextImprovementJobId(undefined);
       selectionRangeRef.current = null;
 
       // Only show notification for current session
@@ -170,15 +155,13 @@ export function useTaskDescriptionState({
       }
     }
   }, [
-    textImprovementJobResult,
+    textImprovementJob,
     textImprovementJobId,
     isSwitchingSession,
-    showNotification,
     activeSessionId,
-    sessionActions,
-    taskDescription,
-    taskDescriptionRef,
     onInteraction,
+    sessionActions,
+    showNotification,
   ]);
 
   // Handle text improvement
@@ -223,13 +206,14 @@ export function useTaskDescriptionState({
           start: selectionStart,
           end: selectionEnd,
           text: selectedText,
+          originalTaskDescription: taskDescription,
         };
       } else if (taskDescriptionRef.current) {
         const start = taskDescriptionRef.current.selectionStart;
         const end = taskDescriptionRef.current.selectionEnd;
 
         if (typeof start === "number" && typeof end === "number") {
-          selectionRangeRef.current = { start, end, text: selectedText };
+          selectionRangeRef.current = { start, end, text: selectedText, originalTaskDescription: taskDescription };
         } else {
           // Fallback: find text in description
           const index = taskDescription.indexOf(selectedText);
@@ -238,6 +222,7 @@ export function useTaskDescriptionState({
               start: index,
               end: index + selectedText.length,
               text: selectedText,
+              originalTaskDescription: taskDescription,
             };
           } else {
             selectionRangeRef.current = null;

@@ -13,12 +13,13 @@ import { getModelSettingsForProject } from "./project-settings.actions";
 
 /**
  * Send a prompt to AI model and receive streaming response
+ * Specifically designed for implementation plan generation with appropriate model settings
  */
 export async function sendPromptToAiAction(
   promptText: string,
   sessionId: string,
   options?: { temperature?: number; streamingUpdates?: { onStart?: () => void } }
-): Promise<ActionState<{ requestId: string; savedFilePath: string | null }>> {
+): Promise<ActionState<{ jobId: string }>> {
   // Validate inputs
   if (!promptText) {
     return { isSuccess: false, message: "Prompt cannot be empty." };
@@ -43,9 +44,10 @@ export async function sendPromptToAiAction(
 
     const projectDirectory = sessionDetails.projectDirectory;
 
-    // Get the project-specific model settings
+    // Get the project-specific model settings - use generic LLM stream settings or fallback to unknown
     const allSettings = await getModelSettingsForProject(projectDirectory);
-    const modelSettings = allSettings.data?.implementationPlan || {
+    const modelSettings = allSettings.data?.genericLlmStream || 
+                         allSettings.data?.unknown || {
       model: undefined,
       temperature: undefined,
       maxTokens: undefined,
@@ -64,22 +66,21 @@ export async function sendPromptToAiAction(
       "generic_llm_stream_command",
       {
         sessionId,
-        promptText,
-        projectDirectory,
+        promptText: promptText,
+        systemPrompt: null,
+        projectDirectory: projectDirectory,
         model: modelSettings.model,
         temperature:
           restOptions?.temperature || modelSettings.temperature || 0.7,
-        maxTokens: modelSettings.maxTokens || 1000,
+        maxOutputTokens: modelSettings.maxTokens || 1000,
+        metadata: null,
       }
     );
 
     return {
       isSuccess: true,
       message: "Streaming job created",
-      data: {
-        requestId: result.jobId,
-        savedFilePath: null,
-      },
+      data: { jobId: result.jobId },
       metadata: {
         jobId: result.jobId,
       },
@@ -184,6 +185,8 @@ export async function cancelSessionRequestsAction(sessionId: string): Promise<
 
 /**
  * Initiate a generic AI streaming request as a background job
+ * More flexible than sendPromptToAiAction - allows explicit model/temperature/token parameters
+ * or fetches settings for "genericLlmStream" task type by default
  */
 export async function initiateGenericAiStreamAction(params: {
   sessionId: string;
@@ -253,13 +256,13 @@ export async function initiateGenericAiStreamAction(params: {
         promptText,
         systemPrompt,
         projectDirectory,
-        modelOverride: explicitModel || modelSettings.model,
-        temperatureOverride:
+        model: explicitModel || modelSettings.model,
+        temperature:
           explicitTemperature !== undefined
             ? explicitTemperature
             : modelSettings.temperature,
-        maxTokensOverride: explicitMaxTokens || modelSettings.maxTokens,
-        metadata: metadata ? JSON.stringify(metadata) : undefined,
+        maxOutputTokens: explicitMaxTokens || modelSettings.maxTokens,
+        metadata: metadata ? JSON.stringify(metadata) : null,
       }
     );
 
@@ -289,7 +292,7 @@ export async function initiateGenericAiStreamAction(params: {
  * Generate simple text using a non-streaming AI model
  *
  * This action is used for quick text generation tasks such as titles or summaries
- * where streaming is not needed.
+ * where streaming is not needed. Uses the direct `generate_simple_text_command` for efficiency.
  */
 export async function generateSimpleTextAction(params: {
   prompt: string;
@@ -297,7 +300,6 @@ export async function generateSimpleTextAction(params: {
   model?: string;
   temperature?: number;
   maxOutputTokens?: number;
-  projectDirectory?: string;
   taskTypeForSettings?: TaskType;
 }): Promise<ActionState<string>> {
   const {
@@ -306,8 +308,7 @@ export async function generateSimpleTextAction(params: {
     model: explicitModel,
     temperature: explicitTemperature,
     maxOutputTokens: explicitMaxTokens,
-    projectDirectory,
-    taskTypeForSettings = "title_generation",
+    taskTypeForSettings = "unknown",
   } = params;
 
   if (!prompt || !prompt.trim()) {
@@ -315,15 +316,37 @@ export async function generateSimpleTextAction(params: {
   }
 
   try {
+    // Map frontend TaskType values to backend-expected snake_case strings
+    const mapFrontendTaskTypeToBackend = (frontendType: string): string => {
+      switch (frontendType) {
+        case "implementationPlan": return "implementation_plan";
+        case "pathFinder": return "path_finder";
+        case "textImprovement": return "text_improvement";
+        case "transcription": return "voice_transcription"; // Explicitly voice_transcription
+        case "voiceCorrection": return "voice_correction";
+        case "pathCorrection": return "path_correction";
+        case "regexGeneration": return "regex_generation";
+        case "guidanceGeneration": return "guidance_generation";
+        case "taskEnhancement": return "task_enhancement";
+        case "genericLlmStream": return "generic_llm_stream";
+        case "regexSummaryGeneration": return "regex_summary_generation";
+        case "generateDirectoryTree": return "generate_directory_tree";
+        case "textCorrectionPostTranscription": return "text_correction_post_transcription";
+        // Add any other camelCase keys from TaskSettings if they differ from snake_case TaskType
+        default: return frontendType; // Assume already snake_case or unknown
+      }
+    };
+    
+    const backendTaskTypeString = mapFrontendTaskTypeToBackend(taskTypeForSettings);
+
     // Instead of using OpenRouterClientAdapter, call Tauri command directly
     const response = await invoke<string>("generate_simple_text_command", {
       prompt,
-      systemPrompt,
-      model: explicitModel,
-      temperature: explicitTemperature,
-      maxTokens: explicitMaxTokens,
-      projectDirectory,
-      taskType: taskTypeForSettings,
+      systemPrompt: systemPrompt,
+      modelOverride: explicitModel,
+      temperatureOverride: explicitTemperature,
+      maxTokensOverride: explicitMaxTokens,
+      taskType: backendTaskTypeString,
     });
 
     return {

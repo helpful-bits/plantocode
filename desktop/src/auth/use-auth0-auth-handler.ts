@@ -1,15 +1,19 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { shell } from "@/utils/shell-utils";
+import { createLogger } from "@/utils/logger";
+import { getErrorMessage } from "@/utils/error-handling";
 
 import { type User } from "./auth-context-interface";
 import { type FrontendUser } from "../types";
 
+const logger = createLogger({ namespace: "Auth0Handler" });
+
 interface Auth0AuthState {
-  user: User | null;
+  user?: User;
   loading: boolean;
-  error: string | null;
-  token: string | null;
+  error?: string;
+  token?: string;
 }
 
 /**
@@ -18,103 +22,170 @@ interface Auth0AuthState {
  */
 export function useAuth0AuthHandler() {
   const [state, setState] = useState<Auth0AuthState>({
-    user: null,
+    user: undefined,
     loading: true,
-    error: null,
-    token: null
+    error: undefined,
+    token: undefined
   });
+
+  // Track component mount status to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+  
+  useEffect(() => {
+    // Reset mount status on mount (important for StrictMode)
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Initialize auth when component mounts
   useEffect(() => {
+    const abortController = new AbortController();
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     const initializeAuth = async () => {
-      setState((prev: Auth0AuthState) => ({ ...prev, loading: true }));
+      if (!isMountedRef.current || abortController.signal.aborted) return;
       
-      console.log("[Auth] Initializing Auth0 authentication...");
+      setState((prev: Auth0AuthState) => ({ ...prev, loading: true }));
+      logger.debug("Initializing Auth0 authentication...");
       
       try {
         // Check if we have a stored token
-        console.log("[Auth] Checking for stored token");
-        const storedToken = await invoke<string | null>('get_app_jwt');
+        logger.debug("Checking for stored token");
+        if (abortController.signal.aborted) return;
+        
+        const storedToken = await invoke<string | undefined>('get_app_jwt');
+        
+        if (abortController.signal.aborted) return;
         
         if (storedToken) {
           try {
-            console.log("[Auth] Found stored token, validating...");
+            logger.debug("Found stored token, validating...");
+            if (abortController.signal.aborted) return;
+            
             // Validate token by fetching user info
             const userInfo = await invoke<FrontendUser>('get_user_info_with_app_jwt', { 
               appToken: storedToken 
             });
             
-            console.log("[Auth] Token validated, user authenticated:", userInfo.id);
-            setState((prev: Auth0AuthState) => ({ 
-              ...prev, 
-              user: userInfo, 
-              token: storedToken, 
-              loading: false, 
-              error: null
-            }));
-          } catch (error) {
-            // Token is invalid, clear it
-            console.error("[Auth] Stored token invalid:", error);
-            await invoke('set_app_jwt', { token: null });
+            if (abortController.signal.aborted) return;
             
-            setState((prev: Auth0AuthState) => ({ 
-              ...prev, 
-              user: null, 
-              token: null, 
-              loading: false, 
-              error: "Your session has expired. Please log in again."
-            }));
+            logger.debug("Token validated, user authenticated:", userInfo.id);
+            if (isMountedRef.current && !abortController.signal.aborted) {
+              setState((prev: Auth0AuthState) => ({ 
+                ...prev, 
+                user: userInfo, 
+                token: storedToken, 
+                loading: false, 
+                error: undefined
+              }));
+            }
+          } catch (error) {
+            if (abortController.signal.aborted) return;
+            
+            // Token is invalid, clear it
+            logger.error("Stored token invalid:", error);
+            try {
+              await invoke('set_app_jwt', { token: undefined });
+            } catch (clearError) {
+              logger.error("Failed to clear invalid token:", clearError);
+            }
+            
+            if (isMountedRef.current && !abortController.signal.aborted) {
+              setState((prev: Auth0AuthState) => ({ 
+                ...prev, 
+                user: undefined, 
+                token: undefined, 
+                loading: false, 
+                error: undefined
+              }));
+            }
           }
         } else {
           // No stored token, ready for login
-          console.log("[Auth] No stored token, ready for login");
-          setState((prev: Auth0AuthState) => ({ 
-            ...prev, 
-            user: null, 
-            token: null, 
-            loading: false, 
-            error: null
-          }));
+          logger.debug("No stored token, ready for login");
+          if (isMountedRef.current && !abortController.signal.aborted) {
+            setState((prev: Auth0AuthState) => ({ 
+              ...prev, 
+              user: undefined, 
+              token: undefined, 
+              loading: false, 
+              error: undefined
+            }));
+          }
         }
       } catch (error) {
-        console.error("[Auth] Initialization failed:", error);
-        setState((prev: Auth0AuthState) => ({ 
-          ...prev, 
-          loading: false, 
-          error: error instanceof Error ? error.message : "Failed to initialize authentication" 
-        }));
+        if (abortController.signal.aborted) return;
+        
+        logger.error("Initialization failed:", error);
+        if (isMountedRef.current && !abortController.signal.aborted) {
+          setState((prev: Auth0AuthState) => ({ 
+            ...prev, 
+            loading: false, 
+            error: getErrorMessage(error) || "Failed to initialize authentication" 
+          }));
+        }
       }
     };
     
-    // Execute initialization
-    initializeAuth();
+    // Set up timeout protection
+    timeoutId = setTimeout(() => {
+      if (isMountedRef.current && !abortController.signal.aborted) {
+        logger.error("Auth initialization timeout - setting loading to false");
+        setState((prev: Auth0AuthState) => ({ 
+          ...prev, 
+          loading: false, 
+          error: "Authentication initialization timed out. Please try refreshing the app."
+        }));
+      }
+      abortController.abort();
+    }, 30000); // 30 second timeout (increased for reliability)
+    
+    // Start initialization
+    initializeAuth().finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    });
+    
+    // Cleanup function
+    return () => {
+      abortController.abort();
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, []);
 
   // Sign in with Auth0 using the polling flow
   const signIn = useCallback(
     async (providerHint?: string): Promise<void> => {
-      setState((prev: Auth0AuthState) => ({ ...prev, loading: true, error: null }));
+      if (!isMountedRef.current) return;
+      setState((prev: Auth0AuthState) => ({ ...prev, loading: true, error: undefined }));
       
       try {
-        console.log("[Auth] Starting Auth0 authentication flow");
+        logger.debug("Starting Auth0 authentication flow");
         
         // Step 1: Start Auth0 login flow - get auth URL and polling ID
         const [authUrl, pollingId] = await invoke<[string, string]>('start_auth0_login_flow', { providerHint });
         
-        console.log(`[Auth] Got auth URL: ${authUrl}`);
-        console.log(`[Auth] Got polling ID: ${pollingId}`);
+        logger.debug(`Got auth URL: ${authUrl}`);
+        logger.debug(`Got polling ID: ${pollingId}`);
         
         // Step 2: Open browser with the auth URL
         await shell.open(authUrl);
         
         // Step 3: Start polling for authentication result
+        if (!isMountedRef.current) return;
         setState((prev: Auth0AuthState) => ({ 
           ...prev, 
           loading: true, 
-          error: null
+          error: undefined
         }));
         
-        console.log("[Auth] Polling for authentication result...");
+        logger.debug("Polling for authentication result...");
         
         // Keep polling until we get a result or hit the timeout
         let pollingAttempts = 0;
@@ -123,64 +194,78 @@ export function useAuth0AuthHandler() {
         
         const pollForToken = async (): Promise<void> => {
           try {
+            if (!isMountedRef.current) return;
+            
             if (pollingAttempts >= maxPollingAttempts) {
-              console.error("[Auth] Polling timeout reached");
-              setState((prev: Auth0AuthState) => ({
-                ...prev,
-                loading: false,
-                error: "Authentication timed out. Please try again.",
-              }));
+              logger.error(`Auth0 polling timeout reached after ${maxPollingAttempts} attempts`);
+              if (isMountedRef.current) {
+                setState((prev: Auth0AuthState) => ({
+                  ...prev,
+                  loading: false,
+                  error: "Authentication timed out. Please try again.",
+                }));
+              }
               return;
             }
             
             pollingAttempts++;
             
             // Check auth status and exchange token if ready
-            const result = await invoke<FrontendUser | null>('check_auth_status_and_exchange_token', {
+            const result = await invoke<FrontendUser | undefined>('check_auth_status_and_exchange_token', {
               pollingId
             });
             
             if (result) {
               // Authentication successful
-              console.log("[Auth] Authentication successful for user:", result.email);
+              logger.debug("Authentication successful for user:", result.email);
               
               // Get the token that was stored by the Tauri command
-              const storedToken = await invoke<string | null>('get_app_jwt');
+              const storedToken = await invoke<string | undefined>('get_app_jwt');
               
-              setState((prev: Auth0AuthState) => ({
-                ...prev,
-                user: result,
-                token: storedToken,
-                loading: false,
-                error: null,
-              }));
+              if (isMountedRef.current) {
+                setState((prev: Auth0AuthState) => ({
+                  ...prev,
+                  user: result,
+                  token: storedToken,
+                  loading: false,
+                  error: undefined,
+                }));
+              }
               
               return;
             }
             
             // Still pending, continue polling
-            console.log(`[Auth] Still waiting for authentication... (attempt ${pollingAttempts})`);
-            setTimeout(pollForToken, pollingInterval);
+            logger.debug(`Still waiting for authentication... (attempt ${pollingAttempts})`);
+            setTimeout(() => {
+              if (!isMountedRef.current || state.error) return;
+              pollForToken();
+            }, pollingInterval);
             
           } catch (error: any) {
-            console.error("[Auth] Polling error:", error);
-            setState((prev: Auth0AuthState) => ({
-              ...prev,
-              loading: false,
-              error: error?.message || "Failed to check authentication status",
-            }));
+            logger.error("Polling error:", error);
+            if (isMountedRef.current) {
+              setState((prev: Auth0AuthState) => ({
+                ...prev,
+                loading: false,
+                error: getErrorMessage(error) || "Failed to check authentication status",
+              }));
+            }
+            return;
           }
         };
         
         // Start the polling
         pollForToken();
       } catch (error: any) {
-        console.error("[Auth] Sign-in error:", error);
-        setState((prev: Auth0AuthState) => ({
-          ...prev,
-          loading: false,
-          error: error?.message || "Failed to start authentication flow",
-        }));
+        logger.error("Sign-in error:", error);
+        if (isMountedRef.current) {
+          setState((prev: Auth0AuthState) => ({
+            ...prev,
+            loading: false,
+            error: getErrorMessage(error) || "Failed to start authentication flow",
+          }));
+        }
       }
     },
     []
@@ -188,31 +273,36 @@ export function useAuth0AuthHandler() {
 
   // Sign out
   const signOut = useCallback(async (): Promise<void> => {
-    setState((prev: Auth0AuthState) => ({ ...prev, loading: true, error: null }));
+    if (!isMountedRef.current) return;
+    setState((prev: Auth0AuthState) => ({ ...prev, loading: true, error: undefined }));
 
     try {
       // Call Auth0 logout which clears token and opens logout URL
       await invoke('logout_auth0');
       
-      setState({
-        user: null,
-        token: null,
-        loading: false,
-        error: null
-      });
+      if (isMountedRef.current) {
+        setState({
+          user: undefined,
+          token: undefined,
+          loading: false,
+          error: undefined
+        });
+      }
     } catch (error: any) {
-      console.error("[Auth] Sign out error:", error);
-      setState((prev: Auth0AuthState) => ({
-        ...prev,
-        loading: false,
-        error: error?.message || "Sign out failed",
-      }));
+      logger.error("Sign out error:", error);
+      if (isMountedRef.current) {
+        setState((prev: Auth0AuthState) => ({
+          ...prev,
+          loading: false,
+          error: getErrorMessage(error) || "Sign out failed",
+        }));
+      }
     }
   }, []);
 
   // Get token from backend
-  const getToken = useCallback(async (): Promise<string | null> => {
-    return state.token || await invoke<string | null>('get_app_jwt');
+  const getToken = useCallback(async (): Promise<string | undefined> => {
+    return state.token || await invoke<string | undefined>('get_app_jwt');
   }, [state.token]);
 
   // Return the auth state and methods

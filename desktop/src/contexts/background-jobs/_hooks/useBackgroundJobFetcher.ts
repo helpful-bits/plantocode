@@ -4,6 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 
 import { type BackgroundJob } from "@/types";
+import { createLogger } from "@/utils/logger";
+
+const logger = createLogger({ namespace: "BackgroundJobsFetcher" });
 
 export interface UseBackgroundJobFetcherParams {
   initialLoad?: boolean;
@@ -38,9 +41,7 @@ export function useBackgroundJobFetcher({
 
     // Prevent multiple concurrent fetches
     if (isFetchingRef.current) {
-      console.debug(
-        `[BackgroundJobs] [${fetchAttemptTime}] Skipping fetch - already in progress`
-      );
+      logger.debug(`[${fetchAttemptTime}] Skipping fetch - already in progress`);
       return null;
     }
 
@@ -57,9 +58,7 @@ export function useBackgroundJobFetcher({
         setIsLoading(true);
       }
 
-      console.debug(
-        `[BackgroundJobs] [${fetchAttemptTime}] Fetching jobs: initialLoad=${initialLoad}`
-      );
+      logger.debug(`[${fetchAttemptTime}] Fetching jobs: initialLoad=${initialLoad}`);
 
       // Performance tracking - measure fetch duration
       const fetchStartTime = performance.now();
@@ -70,9 +69,7 @@ export function useBackgroundJobFetcher({
       // Calculate fetch duration for monitoring
       const fetchDuration = performance.now() - fetchStartTime;
 
-      console.debug(
-        `[BackgroundJobs] [${fetchAttemptTime}] Fetch completed in ${Math.round(fetchDuration)}ms with success`
-      );
+      logger.debug(`[${fetchAttemptTime}] Fetch completed in ${Math.round(fetchDuration)}ms with success`);
 
       // Record the fetch time for tracking
       const fetchTimeMs = Date.now();
@@ -84,9 +81,7 @@ export function useBackgroundJobFetcher({
       // Enhanced logging with job status breakdown for monitoring
       if (jobsData.length > 0) {
         // Log job details for debugging
-        console.debug(
-          `[BackgroundJobs] [${fetchAttemptTime}] Retrieved ${jobsData.length} jobs`
-        );
+        logger.debug(`[${fetchAttemptTime}] Retrieved ${jobsData.length} jobs`);
 
         // Count jobs by status for easier monitoring
         const statusCounts = jobsData.reduce(
@@ -97,7 +92,7 @@ export function useBackgroundJobFetcher({
           {} as Record<string, number>
         );
 
-        console.debug(`[BackgroundJobs] Jobs by status:`, statusCounts);
+        logger.debug("Jobs by status:", statusCounts);
       }
 
       return jobsData;
@@ -106,10 +101,7 @@ export function useBackgroundJobFetcher({
       consecutiveErrorsRef.current += 1;
 
       // Log the error with additional context
-      console.error(
-        `[BackgroundJobs] [${fetchAttemptTime}] Error fetching jobs (attempt #${consecutiveErrorsRef.current}):`,
-        err
-      );
+      logger.error(`[${fetchAttemptTime}] Error fetching jobs (attempt #${consecutiveErrorsRef.current}):`, err);
 
       // Update error state for UI display
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -126,9 +118,7 @@ export function useBackgroundJobFetcher({
         setIsLoading(false);
         setInitialLoad(false);
 
-        console.debug(
-          `[BackgroundJobs] [${fetchAttemptTime}] Initial load completed`
-        );
+        logger.debug(`[${fetchAttemptTime}] Initial load completed`);
       }
     }
   }, [initialLoad]);

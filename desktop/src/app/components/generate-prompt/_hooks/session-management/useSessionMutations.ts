@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import { useNotification } from "@/contexts/notification-context";
 import {
   useSessionStateContext,
@@ -17,10 +15,10 @@ interface UseSessionMutationsProps {
   onSessionNameChangeUISync: (name: string) => void;
   loadSessions: (forceRefresh?: boolean) => Promise<void>;
   setSessions: (sessions: Session[], forceUpdate?: boolean) => void;
+  sessions: Session[];
   sessionNameInput: string;
   setSessionNameInput: (name: string) => void;
   editSessionNameInput: string;
-  editingSessionId: string | null;
   setEditingSessionId: (id: string | null) => void;
   deletedSessionIdsRef: React.MutableRefObject<Set<string>>;
 }
@@ -34,6 +32,7 @@ export function useSessionMutations({
   onSessionNameChangeUISync,
   loadSessions,
   setSessions,
+  sessions,
   sessionNameInput,
   setSessionNameInput,
   editSessionNameInput,
@@ -54,12 +53,10 @@ export function useSessionMutations({
     deleteActiveSession,
     deleteNonActiveSession,
     renameActiveSession,
+    renameSession,
   } = useSessionActionsContext();
 
   const { showNotification } = useNotification();
-
-  // Loading state for mutation operations
-  const [isMutating, setIsMutating] = useState(false);
 
 
   /**
@@ -83,8 +80,6 @@ export function useSessionMutations({
       });
       return;
     }
-
-    setIsMutating(true);
 
     // Create operation ID for tracking this specific creation
     // Generate a temporary ID for the new session
@@ -113,7 +108,7 @@ export function useSessionMutations({
       };
 
       // Optimistic UI update - add the new session to the list immediately
-      setSessions([tempSession], false);
+      setSessions([tempSession, ...sessions], false);
 
       // Create a new session using the SessionContext
       const sessionId = await createNewSession(sessionNameInput, {
@@ -123,6 +118,8 @@ export function useSessionMutations({
 
       if (sessionId) {
         // Session created successfully
+        // Note: createNewSession already calls onSessionNeedsReload(sessionId) 
+        // which triggers loadSessionById to activate the new session
 
         // Force refresh the session list to ensure the new session appears with correct data
         await loadSessions(true);
@@ -153,7 +150,7 @@ export function useSessionMutations({
         type: "error",
       });
     } finally {
-      setIsMutating(false);
+      // Loading state managed by SessionContext
     }
   };
 
@@ -181,8 +178,6 @@ export function useSessionMutations({
       return;
     }
 
-    setIsMutating(true);
-
     try {
       // If this is the active session, update the name in UI
       if (sessionId === activeSessionId) {
@@ -191,8 +186,8 @@ export function useSessionMutations({
         // Update the session name in context
         await renameActiveSession(editSessionNameInput);
       } else {
-        // For non-active sessions, we need to use the server action directly
-        // Already handled in SessionContext's renameActiveSession
+        // For non-active sessions, use the dedicated renameSession action
+        await renameSession(sessionId, editSessionNameInput);
       }
 
       // Clear editing state
@@ -218,7 +213,7 @@ export function useSessionMutations({
         type: "error",
       });
     } finally {
-      setIsMutating(false);
+      // Loading state managed by SessionContext
     }
   };
 
@@ -236,9 +231,6 @@ export function useSessionMutations({
       });
       return;
     }
-
-    setIsMutating(true);
-
 
     // Add to recently deleted sessions set
     deletedSessionIdsRef.current.add(sessionId);
@@ -302,7 +294,7 @@ export function useSessionMutations({
         type: "error",
       });
     } finally {
-      setIsMutating(false);
+      // Loading state managed by SessionContext
     }
   };
 
@@ -320,8 +312,6 @@ export function useSessionMutations({
       });
       return;
     }
-
-    setIsMutating(true);
 
     try {
       // Generate clone name
@@ -367,7 +357,7 @@ export function useSessionMutations({
         type: "error",
       });
     } finally {
-      setIsMutating(false);
+      // Loading state managed by SessionContext
     }
   };
 
@@ -396,8 +386,6 @@ export function useSessionMutations({
     try {
       // Starting session load operation
 
-      setIsMutating(true);
-
       // Save any pending changes to the current session
       // Use flushSaves for maximum reliability rather than just saveCurrentSession
       if (isSessionModified && currentSession) {
@@ -425,7 +413,7 @@ export function useSessionMutations({
         type: "error",
       });
     } finally {
-      setIsMutating(false);
+      // Loading state managed by SessionContext
     }
   };
 
@@ -435,6 +423,5 @@ export function useSessionMutations({
     deleteSession,
     cloneSession,
     loadSessionDetail,
-    isMutating,
   };
 }

@@ -71,18 +71,27 @@ impl SettingsRepository {
         let task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry> = serde_json::from_value(task_specific_configs_val)
             .map_err(|e| AppError::Configuration(format!("Failed to parse task_specific_configs: {}", e)))?;
 
-        let available_models_val = self.get_config_value("ai_settings_available_models").await?
-            .ok_or_else(|| AppError::Configuration("Missing ai_settings_available_models".to_string()))?;
-        let available_models: Vec<ModelInfoEntry> = serde_json::from_value(available_models_val)
-            .map_err(|e| AppError::Configuration(format!("Failed to parse available_models: {}", e)))?;
+        let available_models_val = self.get_config_value("ai_settings_available_models").await?;
+        let available_models: Vec<ModelInfoEntry> = match available_models_val {
+            Some(val) => {
+                serde_json::from_value(val)
+                    .map_err(|e| {
+                        log::warn!("Failed to parse available_models from database, using empty list: {}", e);
+                        Vec::new()
+                    })
+                    .unwrap_or_else(|v| v)
+            }
+            None => {
+                log::warn!("ai_settings_available_models key missing from database, using empty list. Will be populated from models table.");
+                Vec::new()
+            }
+        };
 
         let path_finder_settings_val = self.get_config_value("ai_settings_path_finder_settings").await?
             .ok_or_else(|| AppError::Configuration("Missing ai_settings_path_finder_settings".to_string()))?;
         let path_finder_settings: PathFinderSettingsEntry = serde_json::from_value(path_finder_settings_val)
             .map_err(|e| AppError::Configuration(format!("Failed to parse path_finder_settings: {}", e)))?;
 
-        // After fetching available_models, populate/update the service_pricing table
-        self.update_service_pricing_table(&available_models).await?;
 
         Ok(AIModelSettings {
             default_llm_model_id,
@@ -114,9 +123,6 @@ impl SettingsRepository {
         self.set_config_value("ai_settings_path_finder_settings", &settings.path_finder_settings, 
             Some("Settings for the PathFinder agent functionality")).await?;
         
-        // Also update the service pricing table
-        self.update_service_pricing_table(&settings.available_models).await?;
-        
         info!("AI model settings updated in database");
         
         Ok(())
@@ -142,32 +148,4 @@ impl SettingsRepository {
         Ok(())
     }
 
-    async fn update_service_pricing_table(&self, models: &[ModelInfoEntry]) -> Result<(), AppError> {
-        let mut tx = self.db_pool.begin().await.map_err(|e| AppError::Database(format!("Failed to begin transaction for service_pricing update: {}", e)))?;
-        for model_info in models {
-            if let (Some(input_price), Some(output_price)) = (model_info.price_input_per_1k_tokens, model_info.price_output_per_1k_tokens) {
-                let input_price_decimal = bigdecimal::BigDecimal::try_from(input_price).map_err(|e| AppError::Internal(format!("Invalid input price format for {}: {}", model_info.id, e)))?;
-                let output_price_decimal = bigdecimal::BigDecimal::try_from(output_price).map_err(|e| AppError::Internal(format!("Invalid output price format for {}: {}", model_info.id, e)))?;
-
-                sqlx::query!(
-                    r#"
-                    INSERT INTO service_pricing (service_name, input_token_price, output_token_price, updated_at)
-                    VALUES ($1, $2, $3, NOW())
-                    ON CONFLICT (service_name) DO UPDATE SET
-                    input_token_price = EXCLUDED.input_token_price,
-                    output_token_price = EXCLUDED.output_token_price,
-                    updated_at = NOW();
-                    "#,
-                    model_info.id,
-                    input_price_decimal,
-                    output_price_decimal
-                )
-                .execute(&mut *tx) // Use &mut *tx for the executor
-                .await
-                .map_err(|e| AppError::Database(format!("Failed to upsert service_pricing for {}: {}", model_info.id, e)))?;
-            }
-        }
-        tx.commit().await.map_err(|e| AppError::Database(format!("Failed to commit transaction for service_pricing update: {}", e)))?;
-        Ok(())
-    }
 }

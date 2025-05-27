@@ -56,8 +56,9 @@ async fn main() -> std::io::Result<()> {
     }
     log::info!("Global key config initialized successfully");
     
-    // Initialize JWT keys with app settings
-    if let Err(e) = jwt::init_jwt_keys(&env_app_settings) {
+    // Get JWT secret from key management and initialize JWT keys
+    let jwt_secret_for_init = security::key_management::get_key_config().jwt_secret.clone();
+    if let Err(e) = jwt::init_jwt_keys(&jwt_secret_for_init) {
         log::error!("Failed to initialize JWT keys: {}", e);
         log::error!("Cannot start server without working JWT keys");
         std::process::exit(1);
@@ -255,7 +256,6 @@ async fn main() -> std::io::Result<()> {
             subscription_plan_repository,
             user_repository: user_repository.clone(),
             settings_repository,
-            free_tier_token_limit: Some(100_000), // Default free tier limit
         });
         
         // Create the App with common middleware and data

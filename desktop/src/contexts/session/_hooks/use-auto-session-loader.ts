@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, type MutableRefObject } from "react";
+import { useEffect, type MutableRefObject } from "react";
 
 import { type Session } from "@/types";
+import { DRAFT_SESSION_ID } from "./use-session-state";
 
 interface UseAutoSessionLoaderProps {
   projectDirectory: string | undefined;
@@ -25,74 +26,65 @@ export function useAutoSessionLoader({
   setSessionLoading,
   hasCompletedInitRef,
 }: UseAutoSessionLoaderProps) {
-  const initialAutoLoadCompleteRef = useRef<boolean>(false);
-  const prevActiveSessionIdRef = useRef<string | null>(null);
-
   useEffect(() => {
-    // Helper function to complete initialization
-    const completeInitialization = () => {
+    const completeInit = () => {
       if (!hasCompletedInitRef.current) {
         hasCompletedInitRef.current = true;
         setAppInitializing(false);
       }
-      if (!initialAutoLoadCompleteRef.current) {
-        initialAutoLoadCompleteRef.current = true;
-      }
     };
 
-    // Skip if there's no projectDirectory or activeSessionId
-    if (!projectDirectory || !activeSessionId) {
-      completeInitialization();
+    if (!projectDirectory) {
+      // No project, ensure init is marked complete if it wasn't
+      completeInit();
       return;
     }
 
-    // Skip conditions
-    if (
-      isSessionLoading ||
-      currentSession?.id === activeSessionId ||
-      activeSessionId === prevActiveSessionIdRef.current
-    ) {
-      // Handle case where session is already loaded
-      if (
-        currentSession?.id === activeSessionId &&
-        !initialAutoLoadCompleteRef.current
-      ) {
-        completeInitialization();
+    if (!activeSessionId) {
+      // No active session to load, ensure init is marked complete
+      // This also handles the case where active session becomes null (e.g., last session deleted)
+      if (currentSession?.id !== DRAFT_SESSION_ID) {
+        // If not already on a draft, setCurrentSession(null) or a new draft might be needed
+        // This part is handled by SessionProvider's draft session logic.
       }
-
-      // Update reference even when skipping
-      if (activeSessionId !== prevActiveSessionIdRef.current) {
-        prevActiveSessionIdRef.current = activeSessionId;
-      }
-
+      completeInit();
       return;
     }
 
-    // First load handling
-    if (!initialAutoLoadCompleteRef.current) {
-      initialAutoLoadCompleteRef.current = true;
-      prevActiveSessionIdRef.current = activeSessionId;
+    // If already loading this session, or it's already the current one, do nothing.
+    if (isSessionLoading || currentSession?.id === activeSessionId) {
+      completeInit(); // Ensure init completes if conditions met
+      return;
+    }
 
-      setSessionLoading(true);
-      loadSessionById(activeSessionId).catch(() => {
-        setSessionLoading(false);
-        completeInitialization();
+    // At this point, we have a project, an activeSessionId, not currently loading,
+    // and the activeSessionId is different from the currentSession.id.
+    // This means we should load the session.
+
+    setSessionLoading(true);
+    loadSessionById(activeSessionId)
+      .catch((error) => {
+        // Error is handled by loadSessionById (sets sessionError)
+        console.error(`[AutoSessionLoader] Error loading session ${activeSessionId}:`, error);
+      })
+      .finally(() => {
+        // setSessionLoading(false) is handled by loadSessionById
+        completeInit();
       });
 
-      return;
-    }
-
-    // Normal subsequent loads
-    prevActiveSessionIdRef.current = activeSessionId;
-    loadSessionById(activeSessionId).catch(() => {});
+    // Dependencies:
+    // - projectDirectory: If it changes, we might need to re-evaluate.
+    // - activeSessionId: The primary trigger for loading a session.
+    // - currentSession?.id: To check if the target session is already loaded.
+    // - isSessionLoading: To prevent concurrent loads.
+    // - loadSessionById, setAppInitializing, setSessionLoading, hasCompletedInitRef: Stable functions/refs.
   }, [
-    activeSessionId,
-    currentSession,
-    loadSessionById,
     projectDirectory,
+    activeSessionId,
+    currentSession?.id, // Only depend on the ID part of currentSession
     isSessionLoading,
+    loadSessionById,
     setAppInitializing,
-    hasCompletedInitRef,
     setSessionLoading,
   ]);
 }

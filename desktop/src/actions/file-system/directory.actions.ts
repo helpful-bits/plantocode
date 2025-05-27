@@ -12,11 +12,11 @@ export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
 
     // Ensure we have a non-empty string
     if (!homeDir || homeDir.trim() === "") {
-      console.error(`[HomeDir] Got empty home directory path`);
+      console.error(`[getHomeDirectoryAction] Received empty home directory path from Tauri.`);
       return {
         isSuccess: false,
-        message: "Home directory path is empty",
-        data: "/", // Provide fallback data
+        message: "Failed to retrieve a valid home directory path.",
+        data: undefined,
       };
     }
 
@@ -31,7 +31,7 @@ export async function getHomeDirectoryAction(): Promise<ActionState<string>> {
       isSuccess: false,
       message:
         error instanceof Error ? error.message : "Failed to get home directory",
-      data: "/", // Always provide fallback data
+      data: undefined,
     };
   }
 }

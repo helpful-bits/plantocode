@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::error::AppResult;
-use crate::models::TaskType;
+use crate::models::{TaskType, JobCommandResponse};
 use crate::db_utils::session_repository::SessionRepository;
 use crate::jobs::processors::RegexSummaryGenerationPayload;
 use crate::utils::job_creation_utils::create_and_queue_background_job;
@@ -22,7 +22,7 @@ pub struct GenerateRegexSummaryArgs {
 pub async fn generate_regex_summary_command(
     app_handle: AppHandle,
     args: GenerateRegexSummaryArgs,
-) -> AppResult<String> {
+) -> AppResult<JobCommandResponse> {
     log::debug!("Generating regex summary for session: {}", args.session_id);
 
     // Get the session repository
@@ -67,5 +67,5 @@ pub async fn generate_regex_summary_command(
     ).await?;
 
     log::info!("Created regex summary generation job: {}", job_id);
-    Ok(job_id)
+    Ok(JobCommandResponse { job_id })
 }
