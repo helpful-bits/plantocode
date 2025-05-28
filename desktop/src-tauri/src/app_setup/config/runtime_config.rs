@@ -44,24 +44,25 @@ pub async fn fetch_and_update_runtime_ai_config(app_handle: &AppHandle) -> Resul
         }
     };
     
-    // Check if regex_generation task configuration exists, if not add default
-    let regex_generation_key = crate::models::TaskType::RegexGeneration.to_string();
-    if !runtime_config.tasks.contains_key(&regex_generation_key) {
-        warn!("Task-specific configuration not found for task {}, using default", regex_generation_key);
+    
+    // Check if regex_pattern_generation task configuration exists, if not add default
+    let regex_pattern_generation_key = crate::models::TaskType::RegexPatternGeneration.to_string();
+    if !runtime_config.tasks.contains_key(&regex_pattern_generation_key) {
+        warn!("Task-specific configuration not found for task {}, using default", regex_pattern_generation_key);
         
-        let default_model = if !runtime_config.default_llm_model_id.is_empty() {
-            runtime_config.default_llm_model_id.clone()
-        } else {
-            "gpt-4o-mini".to_string()
-        };
+        if runtime_config.default_llm_model_id.is_empty() {
+            error!("Server configuration is incomplete: missing default LLM model ID and task-specific config for {:?}", regex_pattern_generation_key);
+            return Err(AppError::ConfigError("Server configuration incomplete: missing default model configuration".to_string()));
+        }
         
+        warn!("Using server default model for missing task-specific config: {:?}", regex_pattern_generation_key);
         let default_config = crate::models::TaskSpecificModelConfig {
-            model: default_model,
-            max_tokens: 500,
-            temperature: 0.5,
+            model: runtime_config.default_llm_model_id.clone(),
+            max_tokens: 1000, // Minimal sensible default
+            temperature: 0.2,  // Minimal sensible default
         };
         
-        runtime_config.tasks.insert(regex_generation_key, default_config);
+        runtime_config.tasks.insert(regex_pattern_generation_key, default_config);
     }
     
     // Validate that we have models available

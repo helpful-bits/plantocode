@@ -51,10 +51,6 @@ const taskTypeDefinitions: Record<
     label: "Voice Transcription",
     defaultApiType: "openai",
   },
-  regex_generation: {
-    label: "Regex Generation",
-    defaultApiType: "anthropic",
-  },
   regex_summary_generation: {
     label: "Regex Summary Generation",
     defaultApiType: "anthropic",
@@ -87,10 +83,6 @@ const taskTypeDefinitions: Record<
     label: "Generic LLM Stream",
     defaultApiType: "google",
   },
-  generate_directory_tree: {
-    label: "Generate Directory Tree",
-    defaultApiType: "google",
-  },
   text_correction_post_transcription: {
     label: "Post-Transcription Correction",
     defaultApiType: "anthropic",
@@ -110,12 +102,10 @@ const taskTypeToSettingsKey: Record<string, string> = {
   voice_transcription: "transcription",
   voice_correction: "voiceCorrection",
   path_correction: "pathCorrection",
-  regex_generation: "regexGeneration",
   guidance_generation: "guidanceGeneration",
   task_enhancement: "taskEnhancement",
   generic_llm_stream: "genericLlmStream",
   regex_summary_generation: "regexSummaryGeneration",
-  generate_directory_tree: "generateDirectoryTree",
   text_correction_post_transcription: "textCorrectionPostTranscription",
   streaming: "streaming",
   unknown: "unknown",
@@ -388,8 +378,7 @@ export default function TaskModelSettings({
                           />
                         </div>
                         <p className="text-xs text-muted-foreground text-balance">
-                          {taskType === "path_correction" ||
-                          taskType === "regex_generation"
+                          {taskType === "path_correction"
                             ? "Lower values produce more accurate results"
                             : "Lower (0.0-0.3): factual. Higher (0.7-1.0): creative."}
                         </p>

@@ -82,33 +82,33 @@ impl JobProcessor for GenericLlmStreamProcessor {
         
         let model = match &payload.model {
             Some(m) => m.clone(),
-            None => match crate::config::get_model_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory).await {
+            None => match crate::config::get_model_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await {
                 Ok(m) => m,
                 Err(_) => {
                     // Try TextImprovement as fallback
-                    crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory).await?
+                    crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?
                 },
             },
         };
         
         let temperature = match payload.temperature {
             Some(t) => t,
-            None => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory).await {
+            None => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await {
                 Ok(t) => t,
                 Err(_) => {
                     // Try TextImprovement as fallback
-                    crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory).await?
+                    crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?
                 },
             },
         };
         
         let max_tokens = match payload.max_output_tokens {
             Some(t) => t,
-            None => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory).await {
+            None => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await {
                 Ok(t) => t,
                 Err(_) => {
                     // Try TextImprovement as fallback
-                    crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory).await?
+                    crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?
                 },
             },
         };

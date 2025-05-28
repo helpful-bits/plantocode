@@ -109,9 +109,9 @@ pub async fn correct_text_post_transcription_command(
     
     // Get the model and settings for this task - check project settings first, then server defaults
     let project_dir = args.project_directory.clone().unwrap_or_default();
-    let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir).await {
+    let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir, &app_handle).await {
         Ok(model) => model,
-        Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir).await {
+        Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
             Ok(model) => model,
             Err(e) => return Err(AppError::ConfigError(
                 format!("Failed to get model for text correction: {}", e)
@@ -119,9 +119,9 @@ pub async fn correct_text_post_transcription_command(
         },
     };
     
-    let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir).await {
+    let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir, &app_handle).await {
         Ok(temp) => temp,
-        Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir).await {
+        Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
             Ok(temp) => temp,
             Err(e) => return Err(AppError::ConfigError(
                 format!("Failed to get temperature for text correction: {}", e)
@@ -129,9 +129,9 @@ pub async fn correct_text_post_transcription_command(
         },
     };
     
-    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir).await {
+    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir, &app_handle).await {
         Ok(tokens) => tokens,
-        Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir).await {
+        Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => return Err(AppError::ConfigError(
                 format!("Failed to get max tokens for text correction: {}", e)

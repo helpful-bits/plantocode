@@ -9,7 +9,9 @@ interface JobSectionProps {
   title: string;
   jobs: BackgroundJob[];
   handleCancel: (jobId: string) => Promise<void>;
+  handleDelete: (jobId: string) => Promise<void>;
   isCancelling: Record<string, boolean>;
+  isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
 }
 
@@ -20,7 +22,9 @@ export const JobSection = ({
   title,
   jobs,
   handleCancel,
+  handleDelete,
   isCancelling,
+  isDeleting,
   onSelect,
 }: JobSectionProps) => {
   if (jobs.length === 0) return null;
@@ -36,7 +40,9 @@ export const JobSection = ({
             key={job.id}
             job={job}
             handleCancel={handleCancel}
+            handleDelete={handleDelete}
             isCancelling={isCancelling}
+            isDeleting={isDeleting}
             onSelect={onSelect}
           />
         ))}

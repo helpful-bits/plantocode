@@ -10,7 +10,7 @@ import {
 
 import { useGenerateFormState } from "./use-generate-form-state";
 import { useSessionMetadata } from "./use-session-metadata";
-import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
+import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 
 
 export interface UseGeneratePromptCoreStateProps {
@@ -127,18 +127,32 @@ export function useGeneratePromptCoreState({
       return;
     }
 
-    const result = await createGenerateDirectoryTreeJobAction("system", projectDirectory, undefined);
-    if (!result.isSuccess || !result.data?.jobId) {
+    try {
+      const result = await generateDirectoryTreeAction(projectDirectory);
+      if (result.isSuccess && result.data?.directoryTree) {
+        // Update the session with the generated directory tree
+        if (activeSessionId) {
+          sessionActions.updateCurrentSessionFields({
+            codebaseStructure: result.data.directoryTree,
+          });
+        }
+        showNotification({
+          title: "Success", 
+          message: "Directory tree generated successfully",
+          type: "success",
+        });
+      } else {
+        showNotification({
+          title: "Error",
+          message: result.message || "Failed to generate directory tree",
+          type: "error",
+        });
+      }
+    } catch (error) {
       showNotification({
         title: "Error",
-        message: result.message || "Failed to start generation",
+        message: "Failed to generate directory tree",
         type: "error",
-      });
-    } else {
-      showNotification({
-        title: "Success", 
-        message: "Generation started",
-        type: "success",
       });
     }
   };

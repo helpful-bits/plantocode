@@ -79,12 +79,10 @@ fn snake_to_camel_case(snake_str: &str) -> String {
         "voice_transcription" => "transcription".to_string(), // Note: frontend uses "transcription"
         "voice_correction" => "voiceCorrection".to_string(),
         "path_correction" => "pathCorrection".to_string(),
-        "regex_generation" => "regexGeneration".to_string(),
         "guidance_generation" => "guidanceGeneration".to_string(),
         "task_enhancement" => "taskEnhancement".to_string(),
         "generic_llm_stream" => "genericLlmStream".to_string(),
         "regex_summary_generation" => "regexSummaryGeneration".to_string(),
-        "generate_directory_tree" => "generateDirectoryTree".to_string(),
         "text_correction_post_transcription" => "textCorrectionPostTranscription".to_string(),
         "streaming" => "streaming".to_string(),
         "unknown" => "unknown".to_string(),
@@ -108,7 +106,6 @@ fn get_required_frontend_task_types() -> Vec<&'static str> {
         "guidanceGeneration",
         "implementationPlan",
         "genericLlmStream",
-        "generateDirectoryTree",
         "streaming",
         "unknown",
     ]

@@ -31,6 +31,7 @@ interface UseVoiceRecordingResult {
   stopRecording: () => void;
   reset: () => void;
   retryLastRecording: () => Promise<void>;
+  requestPermissionAndRefreshDevices: () => Promise<boolean>;
   textStatus?: "loading" | "done" | "error";
   availableAudioInputs: MediaDeviceInfo[];
   selectedAudioInputId: string;
@@ -108,14 +109,21 @@ export function useVoiceRecording({
     selectedAudioInputId,
     selectAudioInput,
     refreshDeviceList,
+    requestPermissionAndRefreshDevices,
   } = useAudioInputDevices();
+
+  // Create a stable error handler to avoid circular dependencies
+  const updateStateRef = useRef(updateState);
+  useEffect(() => {
+    updateStateRef.current = updateState;
+  }, [updateState]);
 
   // Ensure error propagation to main hook
   const handleError = useCallback(
     (errorMessage: string) => {
-      updateState({ error: errorMessage, isProcessing: false });
+      updateStateRef.current({ error: errorMessage, isProcessing: false });
     },
-    [updateState]
+    []
   );
 
   const {
@@ -279,6 +287,7 @@ export function useVoiceRecording({
     stopRecording,
     reset,
     retryLastRecording,
+    requestPermissionAndRefreshDevices,
     textStatus,
     availableAudioInputs,
     selectedAudioInputId,

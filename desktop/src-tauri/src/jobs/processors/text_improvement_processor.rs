@@ -127,13 +127,13 @@ impl JobProcessor for TextImprovementProcessor {
         let project_directory = payload.project_directory.as_deref().unwrap_or("");
         let model_to_use = match db_job.model_used {
             Some(model) if !model.is_empty() => model,
-            _ => crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory).await?,
+            _ => crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?,
         };
         
         // Get max tokens and temperature - prefer job's stored values, then project settings, then server defaults
         let max_tokens = match db_job.max_output_tokens {
             Some(tokens) if tokens > 0 => Some(tokens as u32),
-            _ => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory).await {
+            _ => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await {
                 Ok(tokens) => Some(tokens),
                 Err(_) => Some(4000), // Fallback only if config error occurs
             }
@@ -141,7 +141,7 @@ impl JobProcessor for TextImprovementProcessor {
         
         let temperature = match db_job.temperature {
             Some(temp) => Some(temp),
-            _ => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory).await {
+            _ => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await {
                 Ok(temp) => Some(temp),
                 Err(_) => Some(0.5), // Fallback only if config error occurs
             }

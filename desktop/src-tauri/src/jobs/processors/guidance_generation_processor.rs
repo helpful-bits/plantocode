@@ -89,14 +89,14 @@ impl JobProcessor for GuidanceGenerationProcessor {
         let model_to_use = if let Some(model_override) = payload.model_override.clone() {
             model_override
         } else {
-            crate::config::get_model_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory).await?
+            crate::config::get_model_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await?
         };
         
         // Get max tokens and temperature from payload or project/server config
         let max_tokens = if let Some(tokens) = payload.max_output_tokens {
             tokens
         } else {
-            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory).await {
+            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await {
                 Ok(tokens) => tokens,
                 Err(_) => 2000, // Fallback only if config error occurs
             }
@@ -105,7 +105,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
         let temperature = if let Some(temp) = payload.temperature {
             temp
         } else {
-            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory).await {
+            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await {
                 Ok(temp) => temp,
                 Err(_) => 0.7, // Fallback only if config error occurs
             }

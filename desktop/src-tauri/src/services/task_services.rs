@@ -58,7 +58,7 @@ pub async fn create_path_finder_job_service(
     let model = if let Some(override_model) = args.model.clone() {
         override_model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::PathFinder, &project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::PathFinder, &project_directory, app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for path finder: {}", e)));
@@ -70,7 +70,7 @@ pub async fn create_path_finder_job_service(
     let temperature = if let Some(override_temp) = args.temperature {
         override_temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::PathFinder, &project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::PathFinder, &project_directory, app_handle).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for path finder: {}", e)));
@@ -82,7 +82,7 @@ pub async fn create_path_finder_job_service(
     let max_tokens = if let Some(override_tokens) = args.max_tokens {
         override_tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathFinder, &project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathFinder, &project_directory, app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for path finder: {}", e)));
@@ -107,6 +107,7 @@ pub async fn create_path_finder_job_service(
         project_directory: project_directory.clone(),
         model_override: Some(model.clone()),
         temperature_override: Some(temperature),
+        directory_tree: None, // Will be populated by the processor
         max_tokens_override: Some(max_tokens),
         options,
     };

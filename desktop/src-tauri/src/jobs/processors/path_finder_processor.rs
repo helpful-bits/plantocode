@@ -5,8 +5,6 @@ use std::sync::Arc;
 use log::{debug, info, warn, error};
 use serde_json::json;
 use tauri::{AppHandle, Manager};
-use quick_xml::Reader;
-use quick_xml::events::Event;
 
 use crate::api_clients::{ApiClient, client_trait::ApiClientOptions};
 use crate::constants::{
@@ -24,7 +22,7 @@ use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, PathFinderPayload};
-use crate::jobs::processors::path_finder_types::{PathFinderResult, PathFinderOptions, PathFinderResultFile};
+use crate::jobs::processors::path_finder_types::{PathFinderResult, PathFinderOptions};
 use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent};
 use crate::prompts::path_finder::{
     generate_path_finder_prompt, 
@@ -36,7 +34,6 @@ use crate::utils::path_utils;
 use crate::utils::fs_utils;
 use crate::utils::token_estimator::{estimate_tokens, estimate_structured_data_tokens, estimate_code_tokens};
 use crate::utils::get_timestamp;
-use crate::utils::xml_utils::extract_xml_from_markdown;
 
 pub struct PathFinderProcessor;
 
@@ -46,297 +43,64 @@ impl PathFinderProcessor {
     }
     
     
-    // Parse file paths from XML response
-    fn parse_path_finder_xml_response(&self, response_xml: &str, project_directory: &str) -> AppResult<PathFinderResult> {
-        debug!("Parsing file paths from XML response");
-        let project_dir = Path::new(project_directory);
-        
-        let cleaned_xml = extract_xml_from_markdown(response_xml);
-        
-        // Initialize result structure
-        let mut result = PathFinderResult::new();
-        
-        // Parse XML response
-        let mut reader = Reader::from_str(&cleaned_xml);
-        reader.config_mut().trim_text(true);
-        
-        let mut buf = Vec::new();
-        let mut current_element = String::new();
-        let mut in_file_element = false;
-        let mut current_file_path = String::new();
-        let mut current_file_relevance = String::new();
-        let mut current_file_content = String::new();
-        
-        // Stack to track XML element hierarchy
-        let mut tag_stack: Vec<String> = Vec::new();
-        
-        loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    
-                    // Push tag to stack to track hierarchy
-                    tag_stack.push(tag_name.clone());
-                    
-                    match tag_name.as_str() {
-                        "path_finder_results" => {
-                            // Root element, no special handling needed
-                        },
-                        "analysis" | "overview" => {
-                            current_element = tag_name;
-                        },
-                        "primary_files" | "secondary_files" | "potential_files" => {
-                            // Section start, no special handling needed
-                        },
-                        "file" => {
-                            in_file_element = true;
-                            current_file_content = String::new();
-                            
-                            // Extract path and relevance attributes
-                            for attr in e.attributes() {
-                                if let Ok(attr) = attr {
-                                    let attr_name = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                                    let attr_value = String::from_utf8_lossy(&attr.value).to_string();
-                                    
-                                    if attr_name == "path" {
-                                        current_file_path = attr_value;
-                                    } else if attr_name == "relevance" {
-                                        current_file_relevance = attr_value;
-                                    }
-                                }
-                            }
-                        },
-                        _ => {
-                            // Unknown element, ignore
-                        }
-                    }
-                },
-                Ok(Event::Text(e)) => {
-                    let text = e.unescape().unwrap_or_default().to_string();
-                    
-                    if in_file_element {
-                        current_file_content.push_str(&text);
-                    } else if current_element == "analysis" {
-                        result.analysis = Some(text);
-                        current_element = String::new();
-                    } else if current_element == "overview" {
-                        result.overview = Some(text);
-                        current_element = String::new();
-                    }
-                },
-                Ok(Event::End(ref e)) => {
-                    let ended_tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    
-                    match ended_tag_name.as_str() {
-                        "file" => {
-                            in_file_element = false;
-                            
-                            // Normalize path - ensure all paths are relative to project_directory
-                            let normalized_path = if Path::new(&current_file_path).is_absolute() {
-                                // Convert absolute path to relative
-                                match path_utils::make_relative_to(&current_file_path, project_directory) {
-                                    Ok(rel_path) => rel_path,
-                                    Err(e) => {
-                                        // Log the error but continue with the normalized path
-                                        // This isn't ideal but better than failing entirely
-                                        log::warn!("Failed to make path relative: {}", e);
-                                        // For consistency, we'll skip paths outside the project
-                                        continue;
-                                    }
-                                }
-                            } else {
-                                // Path is already relative, keep it as is
-                                PathBuf::from(&current_file_path)
-                            };
-                            
-                            let file_result = PathFinderResultFile {
-                                path: normalized_path.to_string_lossy().to_string(),
-                                relevance: if current_file_relevance.is_empty() { None } else { Some(current_file_relevance.clone()) },
-                                explanation: if current_file_content.is_empty() { None } else { Some(current_file_content.clone()) },
-                            };
-                            
-                            // Determine parent category from tag stack
-                            // The parent tag will be the second-to-last element in the stack
-                            // (last element is the "file" tag that's being closed)
-                            if tag_stack.len() >= 2 {
-                                let parent_tag = &tag_stack[tag_stack.len() - 2];
-                                
-                                match parent_tag.as_str() {
-                                    "primary_files" => {
-                                        result.primary_files.push(file_result);
-                                        result.paths.push(normalized_path.to_string_lossy().to_string());
-                                    },
-                                    "secondary_files" => {
-                                        result.secondary_files.push(file_result);
-                                        result.paths.push(normalized_path.to_string_lossy().to_string());
-                                    },
-                                    "potential_files" => {
-                                        result.potential_files.push(file_result);
-                                        result.paths.push(normalized_path.to_string_lossy().to_string());
-                                    },
-                                    _ => {
-                                        // If we're not in a known file list, default to potential_files
-                                        debug!("Unknown parent tag '{}' for file, defaulting to potential_files", parent_tag);
-                                        result.potential_files.push(file_result);
-                                        result.paths.push(normalized_path.to_string_lossy().to_string());
-                                    }
-                                }
-                            } else {
-                                // Something went wrong with our tag stack tracking
-                                // Default to potential_files
-                                debug!("Tag stack depth insufficient ({}) for determining file parent, defaulting to potential_files", tag_stack.len());
-                                result.potential_files.push(file_result);
-                                result.paths.push(normalized_path.to_string_lossy().to_string());
-                            }
-                            
-                            current_file_path = String::new();
-                            current_file_relevance = String::new();
-                            current_file_content = String::new();
-                        },
-                        _ => {
-                            // Other end tags, ignore
-                        }
-                    }
-                    
-                    // Pop the tag stack when any tag ends
-                    if !tag_stack.is_empty() && tag_stack.last().map_or(false, |tag| tag == &ended_tag_name) {
-                        tag_stack.pop();
-                    }
-                },
-                Ok(Event::Eof) => break,
-                Err(e) => {
-                    warn!("Error parsing XML: {}", e);
-                    // XML parsing failed, try fallback
-                    return self.extract_paths_from_text_fallback(&cleaned_xml, project_directory);
-                },
-                _ => {}
-            }
-            buf.clear();
-        }
-        
-        // If XML parsing failed to find any paths, try a fallback approach
-        if result.paths.is_empty() {
-            debug!("XML parsing found no files, trying fallback approach");
-            return self.extract_paths_from_text_fallback(&cleaned_xml, project_directory);
-        }
-        
-        // Organize files by directory
-        for file in &result.paths {
-            let path = Path::new(file);
-            if let Some(parent) = path.parent() {
-                let parent_str = parent.to_string_lossy().to_string();
-                let entry = result.files_by_directory.entry(parent_str).or_insert_with(Vec::new);
-                if let Some(file_name) = path.file_name() {
-                    entry.push(file_name.to_string_lossy().to_string());
-                }
-            }
-        }
-        
-        // Compile all_files list from unique paths across all categories
-        let mut unique_paths = std::collections::HashSet::new();
-        
-        for file in &result.primary_files {
-            unique_paths.insert(file.path.clone());
-        }
-        
-        for file in &result.secondary_files {
-            unique_paths.insert(file.path.clone());
-        }
-        
-        for file in &result.potential_files {
-            unique_paths.insert(file.path.clone());
-        }
-        
-        result.all_files = unique_paths.into_iter().collect();
-        result.count = result.paths.len();
-        
-        Ok(result)
-    }
-    
-    // Extract paths from text as a fallback method
-    fn extract_paths_from_text_fallback(&self, text: &str, project_directory: &str) -> AppResult<PathFinderResult> {
-        debug!("Using text-based fallback for path extraction");
-        let project_dir = Path::new(project_directory);
-        
-        let mut result = PathFinderResult::new();
-        result.analysis = Some("Note: Structured XML parsing failed. Files were extracted using fallback text parsing.".to_string());
-        
-        // Extract paths from text
-        let paths = self.extract_paths_from_text(text, project_dir);
-        
-        // Add paths to result
-        for path in &paths {
-            result.potential_files.push(PathFinderResultFile {
-                path: path.clone(),
-                relevance: Some("unknown".to_string()),
-                explanation: None,
-            });
-        }
-        
-        result.paths = paths.clone();
-        result.all_files = paths;
-        result.count = result.paths.len();
-        
-        // Organize files by directory
-        for file in &result.paths {
-            let path = Path::new(file);
-            if let Some(parent) = path.parent() {
-                let parent_str = parent.to_string_lossy().to_string();
-                let entry = result.files_by_directory.entry(parent_str).or_insert_with(Vec::new);
-                if let Some(file_name) = path.file_name() {
-                    entry.push(file_name.to_string_lossy().to_string());
-                }
-            }
-        }
-        
-        Ok(result)
-    }
-    
-    // Extract paths from a text block
-    // Returns paths relative to the project directory
-    fn extract_paths_from_text(&self, text: &str, project_dir: &Path) -> Vec<String> {
+    // Parse paths from simple text response (one path per line)
+    fn parse_paths_from_text_response(&self, response_text: &str, project_directory: &str) -> AppResult<Vec<String>> {
+        debug!("Parsing paths from text response");
         let mut paths = Vec::new();
         
-        // Split text into lines and process each line
-        for line in text.lines() {
+        // Split by newlines and process each line
+        for line in response_text.lines() {
             let line = line.trim();
             
-            // Skip empty lines and lines that don't look like file paths
-            if line.is_empty() || line.starts_with("//") || line.starts_with("#") {
+            // Filter out empty lines or lines that are clearly not paths
+            if line.is_empty() || 
+               line.starts_with("//") || 
+               line.starts_with("#") ||
+               line.starts_with("Note:") ||
+               line.starts_with("Analysis:") ||
+               line.len() < 2 {
                 continue;
             }
             
-            // Check if line contains a path
-            let potential_path = line.split_whitespace()
-                .next()
-                .unwrap_or("")
-                .trim_matches(|c| c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == '-' || c == '*' || c == '.');
+            // Clean the line of potential prefixes/suffixes
+            let cleaned_path = line
+                .trim_matches(|c| c == '\"' || c == '\'' || c == '`' || c == ',' || c == ':' || c == '-' || c == '*')
+                .trim();
             
-            if !potential_path.is_empty() {
-                let path_to_process = if Path::new(potential_path).is_absolute() {
-                    // For absolute paths, ensure they're relative to project_dir
-                    match path_utils::make_relative_to(potential_path, project_dir) {
-                        Ok(rel_path) => rel_path.to_string_lossy().to_string(),
-                        Err(_) => {
-                            // Skip paths outside project directory for consistency
-                            continue;
-                        }
+            if cleaned_path.is_empty() {
+                continue;
+            }
+            
+            // Normalize the path and make it relative to project directory
+            let normalized_path = if Path::new(cleaned_path).is_absolute() {
+                match path_utils::make_relative_to(cleaned_path, project_directory) {
+                    Ok(rel_path) => rel_path.to_string_lossy().to_string(),
+                    Err(e) => {
+                        debug!("Failed to make path relative, skipping: {} - {}", cleaned_path, e);
+                        continue;
                     }
-                } else {
-                    // For relative paths, keep them as is
-                    potential_path.to_string()
-                };
-                
-                paths.push(path_to_process);
+                }
+            } else {
+                // Normalize relative path
+                let normalized = path_utils::normalize_path(cleaned_path);
+                normalized.to_string_lossy().to_string()
+            };
+            
+            paths.push(normalized_path);
+        }
+        
+        // Remove duplicates while preserving order
+        let mut unique_paths = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths {
+            if seen.insert(path.clone()) {
+                unique_paths.push(path);
             }
         }
         
-        // Remove duplicates
-        paths.sort();
-        paths.dedup();
-        
-        paths
+        Ok(unique_paths)
     }
+    
 }
 
 #[async_trait::async_trait]
@@ -375,25 +139,49 @@ impl JobProcessor for PathFinderProcessor {
         db_job.start_time = Some(timestamp);
         repo.update_job(&db_job).await?;
 
-        // Now do pre-processing that was previously done in the command
-        info!("Generating directory tree for project");
+        // Check if directory tree is provided, otherwise generate it
         let project_directory = job.project_directory.as_ref()
             .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
         let project_dir_path = Path::new(project_directory);
         
-        // Create tree generation options
-        let tree_options = DirectoryTreeOptions {
-            max_depth: None,
-            include_ignored: false,
-            respect_gitignore: true,
-            exclude_patterns: Some(EXCLUDED_DIRS_FOR_SCAN.iter().map(|&s| s.to_string()).collect()),
-            include_files: true,
-            include_dirs: true,
-            include_hidden: false,
+        let directory_tree = if let Some(tree) = &payload.directory_tree {
+            if !tree.is_empty() {
+                info!("Using provided directory tree for PathFinder");
+                tree.clone()
+            } else {
+                info!("Generating directory tree for project");
+                
+                // Create tree generation options
+                let tree_options = DirectoryTreeOptions {
+                    max_depth: None,
+                    include_ignored: false,
+                    respect_gitignore: true,
+                    exclude_patterns: Some(EXCLUDED_DIRS_FOR_SCAN.iter().map(|&s| s.to_string()).collect()),
+                    include_files: true,
+                    include_dirs: true,
+                    include_hidden: false,
+                };
+                
+                // Generate the directory tree asynchronously
+                generate_directory_tree(project_dir_path, tree_options).await?
+            }
+        } else {
+            info!("Generating directory tree for project");
+            
+            // Create tree generation options
+            let tree_options = DirectoryTreeOptions {
+                max_depth: None,
+                include_ignored: false,
+                respect_gitignore: true,
+                exclude_patterns: Some(EXCLUDED_DIRS_FOR_SCAN.iter().map(|&s| s.to_string()).collect()),
+                include_files: true,
+                include_dirs: true,
+                include_hidden: false,
+            };
+            
+            // Generate the directory tree asynchronously
+            generate_directory_tree(project_dir_path, tree_options).await?
         };
-        
-        // Generate the directory tree asynchronously
-        let directory_tree = generate_directory_tree(project_dir_path, tree_options).await?;
         
         // Use PathFinderOptions directly from payload
         let options = &payload.options;
@@ -402,7 +190,7 @@ impl JobProcessor for PathFinderProcessor {
         let mut relevant_file_contents = HashMap::new();
         
         // Get include_file_contents from config, use constant if not found
-        let include_file_contents = config::get_path_finder_include_file_contents()
+        let include_file_contents = config::get_path_finder_include_file_contents_async(&app_handle).await
             .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
         
         // Use the value from options if specified, otherwise use the config/constant value
@@ -411,7 +199,7 @@ impl JobProcessor for PathFinderProcessor {
             if let Some(included_files) = &options.included_files {
                 info!("Processing explicitly included files for content extraction");
                 // Get max_content_size from config, use constant if not found
-                let max_content_size = config::get_path_finder_max_content_size_per_file()
+                let max_content_size = config::get_path_finder_max_content_size_per_file_async(&app_handle).await
                     .unwrap_or(crate::constants::PATH_FINDER_MAX_CONTENT_SIZE_PER_FILE);
                 
                 for file_path in included_files {
@@ -443,7 +231,7 @@ impl JobProcessor for PathFinderProcessor {
             
             // Process priority file types if still under max files limit
             // Get max_files_with_content from config, use constant if not found
-            let config_max_files = config::get_path_finder_max_files_with_content()
+            let config_max_files = config::get_path_finder_max_files_with_content_async(&app_handle).await
                 .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT);
             // Use the value from options if specified, otherwise use the config/constant value
             let max_files_with_content = options.max_files_with_content.unwrap_or(config_max_files);
@@ -514,7 +302,7 @@ impl JobProcessor for PathFinderProcessor {
             Some(model) => model.to_string(),
             None => {
                 let project_dir = job.project_directory.as_deref().unwrap_or("");
-                match config::get_model_for_task_with_project(crate::models::TaskType::PathFinder, project_dir).await {
+                match config::get_model_for_task_with_project(crate::models::TaskType::PathFinder, project_dir, &app_handle).await {
                     Ok(model) => model,
                     Err(e) => {
                         error!("Failed to get model for PathFinder task: {}", e);
@@ -533,7 +321,7 @@ impl JobProcessor for PathFinderProcessor {
             Some(tokens) => tokens,
             None => {
                 let project_dir = job.project_directory.as_deref().unwrap_or("");
-                match config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathFinder, project_dir).await {
+                match config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathFinder, project_dir, &app_handle).await {
                     Ok(tokens) => tokens,
                     Err(e) => {
                         error!("Failed to get max tokens for PathFinder task: {}", e);
@@ -545,7 +333,7 @@ impl JobProcessor for PathFinderProcessor {
         };
         
         // Get token_limit_buffer from config, use constant if not found
-        let token_limit_buffer = config::get_path_finder_token_limit_buffer()
+        let token_limit_buffer = config::get_path_finder_token_limit_buffer_async(&app_handle).await
             .unwrap_or(crate::constants::PATH_FINDER_TOKEN_LIMIT_BUFFER);
             
         let max_input_tokens_for_model = max_allowed_model_tokens - max_output_tokens - token_limit_buffer;
@@ -562,9 +350,9 @@ impl JobProcessor for PathFinderProcessor {
         let mut file_contents_xml_str = String::new();
         
         // Get values from config, use constants if not found
-        let config_max_files = config::get_path_finder_max_files_with_content()
+        let config_max_files = config::get_path_finder_max_files_with_content_async(&app_handle).await
             .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT);
-        let config_truncation_chars = config::get_path_finder_file_content_truncation_chars()
+        let config_truncation_chars = config::get_path_finder_file_content_truncation_chars_async(&app_handle).await
             .unwrap_or(crate::constants::PATH_FINDER_FILE_CONTENT_TRUNCATION_CHARS);
         
         // Initialize with values from options or config/constants
@@ -892,15 +680,12 @@ impl JobProcessor for PathFinderProcessor {
         // Extract the response content
         let response_content = llm_response.choices[0].message.content.clone();
         
-        // Parse response to extract file paths and structured results
-        let mut result = match self.parse_path_finder_xml_response(
-            &response_content,
-            project_directory,
-        ) {
-            Ok(result_data) => result_data,
+        // Parse paths from the LLM response
+        let raw_paths = match self.parse_paths_from_text_response(&response_content, project_directory) {
+            Ok(paths) => paths,
             Err(e) => {
-                error!("Failed to parse file paths from response: {}", e);
-                let error_msg = format!("Failed to parse file paths from response: {}", e);
+                error!("Failed to parse paths from response: {}", e);
+                let error_msg = format!("Failed to parse paths from response: {}", e);
                 
                 // Update job to failed
                 let timestamp = get_timestamp();
@@ -915,7 +700,51 @@ impl JobProcessor for PathFinderProcessor {
                 return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
             }
         };
+
+        // Validate paths against the file system
+        info!("Validating {} parsed paths against filesystem...", raw_paths.len());
+        let mut validated_paths = Vec::new();
+        let mut unverified_paths_raw = Vec::new();
+
+        for relative_path in raw_paths {
+            // Construct absolute path
+            let absolute_path = Path::new(project_directory).join(&relative_path);
+            
+            // Check if file exists and is a file
+            match tokio::fs::metadata(&absolute_path).await {
+                Ok(metadata) if metadata.is_file() => {
+                    validated_paths.push(relative_path);
+                },
+                _ => {
+                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
+                    unverified_paths_raw.push(relative_path);
+                }
+            }
+        }
+
+        // Create simplified PathFinderResult
+        let mut result = PathFinderResult::new();
+        result.paths = validated_paths.clone();
+        result.all_files = validated_paths.clone();
+        result.count = validated_paths.len();
+        result.unverified_paths = unverified_paths_raw;
         
+        // Build files_by_directory from validated paths
+        for file_path in &validated_paths {
+            let path = Path::new(file_path);
+            if let Some(parent) = path.parent() {
+                let parent_str = parent.to_string_lossy().to_string();
+                let entry = result.files_by_directory.entry(parent_str).or_insert_with(Vec::new);
+                if let Some(file_name) = path.file_name() {
+                    entry.push(file_name.to_string_lossy().to_string());
+                }
+            } else {
+                // File is in the root directory, use empty string as parent
+                let entry = result.files_by_directory.entry("".to_string()).or_insert_with(Vec::new);
+                entry.push(file_path.clone());
+            }
+        }
+
         // Check if job has been canceled after LLM processing
         let job_id = &payload.background_job_id;
         let job_status = match repo.get_job_by_id(job_id).await {
@@ -927,191 +756,15 @@ impl JobProcessor for PathFinderProcessor {
             info!("Job {} has been canceled after LLM processing", job_id);
             return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
         }
-
-        // Validate the paths against the file system
-        info!("Validating suggested paths against filesystem...");
-        
-        // Extract valid and invalid paths from primary files
-        let mut valid_primary_files = Vec::new();
-        let mut unverified_paths = Vec::new();
-        
-        for file in result.primary_files.drain(..) {
-            // Construct absolute path
-            let absolute_path = if Path::new(&file.path).is_absolute() {
-                file.path.clone()
-            } else {
-                Path::new(project_directory).join(&file.path).to_string_lossy().to_string()
-            };
-            
-            // Check if file exists
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    // File exists and is a regular file
-                    valid_primary_files.push(file);
-                },
-                _ => {
-                    // File doesn't exist or isn't a regular file
-                    debug!("Primary file doesn't exist or isn't a regular file: {}", absolute_path);
-                    unverified_paths.push(file);
-                }
-            }
-        }
-        
-        // Extract valid and invalid paths from secondary files
-        let mut valid_secondary_files = Vec::new();
-        
-        for file in result.secondary_files.drain(..) {
-            // Construct absolute path
-            let absolute_path = if Path::new(&file.path).is_absolute() {
-                file.path.clone()
-            } else {
-                Path::new(project_directory).join(&file.path).to_string_lossy().to_string()
-            };
-            
-            // Check if file exists
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    // File exists and is a regular file
-                    valid_secondary_files.push(file);
-                },
-                _ => {
-                    // File doesn't exist or isn't a regular file
-                    debug!("Secondary file doesn't exist or isn't a regular file: {}", absolute_path);
-                    unverified_paths.push(file);
-                }
-            }
-        }
-        
-        // Extract valid and invalid paths from potential files
-        let mut valid_potential_files = Vec::new();
-        
-        for file in result.potential_files.drain(..) {
-            // Construct absolute path
-            let absolute_path = if Path::new(&file.path).is_absolute() {
-                file.path.clone()
-            } else {
-                Path::new(project_directory).join(&file.path).to_string_lossy().to_string()
-            };
-            
-            // Check if file exists
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    // File exists and is a regular file
-                    valid_potential_files.push(file);
-                },
-                _ => {
-                    // File doesn't exist or isn't a regular file
-                    debug!("Potential file doesn't exist or isn't a regular file: {}", absolute_path);
-                    unverified_paths.push(file);
-                }
-            }
-        }
-        
-        // Update result with validated paths
-        result.primary_files = valid_primary_files;
-        result.secondary_files = valid_secondary_files;
-        result.potential_files = valid_potential_files;
-        result.unverified_paths = unverified_paths;
-        
-        // Rebuild paths and all_files based on validated paths
-        // All paths should consistently be relative to project_directory
-        let mut unique_paths = std::collections::HashSet::new();
-        result.paths.clear();
-        
-        for file in &result.primary_files {
-            // Ensure path is relative to project_directory
-            result.paths.push(file.path.clone());
-            unique_paths.insert(file.path.clone());
-        }
-        
-        for file in &result.secondary_files {
-            result.paths.push(file.path.clone());
-            unique_paths.insert(file.path.clone());
-        }
-        
-        for file in &result.potential_files {
-            result.paths.push(file.path.clone());
-            unique_paths.insert(file.path.clone());
-        }
-        
-        result.all_files = unique_paths.into_iter().collect();
-        result.count = result.paths.len();
-        
-        // Rebuild files_by_directory map with relative directory paths
-        result.files_by_directory.clear();
-        for file in &result.paths {
-            let path = Path::new(file);
-            if let Some(parent) = path.parent() {
-                // Use the relative parent path
-                let parent_str = parent.to_string_lossy().to_string();
-                let entry = result.files_by_directory.entry(parent_str).or_insert_with(Vec::new);
-                if let Some(file_name) = path.file_name() {
-                    entry.push(file_name.to_string_lossy().to_string());
-                }
-            } else {
-                // File is in the root directory, use empty string as parent
-                let entry = result.files_by_directory.entry("".to_string()).or_insert_with(Vec::new);
-                entry.push(file.clone());
-            }
-        }
         
         // Create a human-readable display of the results
         let mut paths_list_display = String::new();
         
-        // Add analysis section if available
-        if let Some(analysis) = &result.analysis {
-            paths_list_display.push_str("Path Finding Analysis:\n");
-            paths_list_display.push_str(analysis);
-            paths_list_display.push_str("\n\n");
-        }
-        
-        // Add primary files section
-        if !result.primary_files.is_empty() {
-            paths_list_display.push_str("Primary Files:\n");
-            for file in &result.primary_files {
-                let relevance_str = file.relevance.as_ref().map_or("", |r| r.as_str());
-                let relevance_display = if !relevance_str.is_empty() {
-                    format!(" (relevance: {})", relevance_str)
-                } else {
-                    String::new()
-                };
-                
-                let explanation = file.explanation.as_ref().map_or("", |e| e.as_str());
-                paths_list_display.push_str(&format!("- {}{}: {}\n", file.path, relevance_display, explanation));
-            }
-            paths_list_display.push_str("\n");
-        }
-        
-        // Add secondary files section
-        if !result.secondary_files.is_empty() {
-            paths_list_display.push_str("Secondary Files:\n");
-            for file in &result.secondary_files {
-                let relevance_str = file.relevance.as_ref().map_or("", |r| r.as_str());
-                let relevance_display = if !relevance_str.is_empty() {
-                    format!(" (relevance: {})", relevance_str)
-                } else {
-                    String::new()
-                };
-                
-                let explanation = file.explanation.as_ref().map_or("", |e| e.as_str());
-                paths_list_display.push_str(&format!("- {}{}: {}\n", file.path, relevance_display, explanation));
-            }
-            paths_list_display.push_str("\n");
-        }
-        
-        // Add potential files section
-        if !result.potential_files.is_empty() {
-            paths_list_display.push_str("Potential Files:\n");
-            for file in &result.potential_files {
-                let relevance_str = file.relevance.as_ref().map_or("", |r| r.as_str());
-                let relevance_display = if !relevance_str.is_empty() {
-                    format!(" (relevance: {})", relevance_str)
-                } else {
-                    String::new()
-                };
-                
-                let explanation = file.explanation.as_ref().map_or("", |e| e.as_str());
-                paths_list_display.push_str(&format!("- {}{}: {}\n", file.path, relevance_display, explanation));
+        // Add validated files section
+        if !validated_paths.is_empty() {
+            paths_list_display.push_str("Validated Files:\n");
+            for path in &validated_paths {
+                paths_list_display.push_str(&format!("- {}\n", path));
             }
             paths_list_display.push_str("\n");
         }
@@ -1119,30 +772,19 @@ impl JobProcessor for PathFinderProcessor {
         // Add unverified paths section
         if !result.unverified_paths.is_empty() {
             paths_list_display.push_str("Unverified or Non-existent Files Suggested by AI:\n");
-            for file in &result.unverified_paths {
-                let relevance_str = file.relevance.as_ref().map_or("", |r| r.as_str());
-                let relevance_display = if !relevance_str.is_empty() {
-                    format!(" (relevance: {})", relevance_str)
-                } else {
-                    String::new()
-                };
-                
-                let explanation = file.explanation.as_ref().map_or("", |e| e.as_str());
-                paths_list_display.push_str(&format!("- {}{}: {}\n", file.path, relevance_display, explanation));
+            for path in &result.unverified_paths {
+                paths_list_display.push_str(&format!("- {}\n", path));
             }
             paths_list_display.push_str("\n");
         }
         
-        // Add overview section if available
-        if let Some(overview) = &result.overview {
-            paths_list_display.push_str("Overview:\n");
-            paths_list_display.push_str(overview);
-        }
-        
-        // If no structured results were found, show fallback message
-        if result.all_files.is_empty() {
+        // If no results were found, show fallback message
+        if validated_paths.is_empty() && result.unverified_paths.is_empty() {
             paths_list_display = "No relevant files found for this task.".to_string();
         }
+        
+        // Create response string with validated paths (one per line)
+        let response_string = validated_paths.join("\n");
         
         // Final check if job has been canceled
         let job_id = &payload.background_job_id;
@@ -1162,7 +804,7 @@ impl JobProcessor for PathFinderProcessor {
         let mut db_job = repo.get_job_by_id(&payload.background_job_id).await?
             .ok_or_else(|| AppError::JobError(format!("Background job {} not found", payload.background_job_id)))?;
         db_job.status = "completed".to_string();
-        db_job.response = Some(paths_list_display.clone());
+        db_job.response = Some(response_string); // Store validated paths as newline-separated string
         db_job.updated_at = Some(timestamp);
         db_job.end_time = Some(timestamp);
         db_job.model_used = Some(model);
@@ -1174,7 +816,7 @@ impl JobProcessor for PathFinderProcessor {
             db_job.total_tokens = Some(usage.total_tokens as i32);
         }
         
-        // Merge with path finder result data
+        // Store simplified PathFinderResult as metadata
         let metadata_json = json!({
             "pathFinderData": serde_json::to_value(&result).unwrap_or_default()
         }).to_string();
@@ -1184,7 +826,7 @@ impl JobProcessor for PathFinderProcessor {
         // Update the job
         repo.update_job(&db_job).await?;
         
-        // Return success result
+        // Return success result with human-readable display
         Ok(JobProcessResult::success(payload.background_job_id.clone(), paths_list_display))
     }
 }

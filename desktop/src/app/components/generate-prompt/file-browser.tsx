@@ -23,9 +23,7 @@ import { cn } from "@/utils/utils";
 import FileListItem from "./_components/file-list-item";
 import FindModeToggle from "./_components/find-mode-toggle";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
-import { type FilesMap } from "./_hooks/file-management/use-project-file-list";
-
-import type { FileInfo } from "@/types";
+import { useFileManagement } from "./_contexts/file-management-context";
 
 // Minimal regex state interface for compatibility
 interface RegexState {
@@ -34,40 +32,13 @@ interface RegexState {
   negativeTitleRegex: string;
   negativeContentRegex: string;
   isRegexActive: boolean;
-  regexGenerationError: string | null;
+  regexPatternGenerationError: string | null;
 }
 
 
 interface FileBrowserProps {
-  managedFilesMap: FilesMap;
-  fileContentsMap: { [key: string]: string };
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
-  onToggleSelection: (path: string) => void;
-  onToggleExclusion: (path: string) => void;
-  onBulkToggle: (shouldInclude: boolean, targetFiles: FileInfo[]) => void;
-  filterMode: "all" | "selected";
-  onFilterModeChange: (mode: "all" | "selected") => void;
-  refreshFiles?: (preserveState?: boolean) => Promise<void>;
-  isLoading?: boolean;
-  loadingMessage?: string;
-
-  // Initialization and error state
-  isInitialized?: boolean;
-  fileLoadError?: string | null;
-
   // Regex state
   regexState: RegexState;
-
-  // File management actions (moved from ActionsSection)
-  isFindingFiles: boolean;
-  executeFindRelevantFiles: () => Promise<void>;
-  findFilesMode: "replace" | "extend";
-  setFindFilesMode: (mode: "replace" | "extend") => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  undoSelection: () => void;
-  redoSelection: () => void;
   taskDescription?: string;
 
   // Session state
@@ -75,33 +46,69 @@ interface FileBrowserProps {
 }
 
 function FileBrowser({
-  managedFilesMap,
-  fileContentsMap = {},
-  searchTerm,
-  onSearchChange,
-  onToggleSelection,
-  onToggleExclusion,
-  onBulkToggle,
-  filterMode,
-  onFilterModeChange,
-  refreshFiles,
-  isLoading,
-  loadingMessage = "",
-  isInitialized = false,
-  fileLoadError = null,
   regexState,
-  isFindingFiles,
-  executeFindRelevantFiles,
-  findFilesMode,
-  setFindFilesMode,
-  canUndo,
-  canRedo,
-  undoSelection,
-  redoSelection,
   taskDescription = "",
   disabled = false,
 }: FileBrowserProps) {
   const { projectDirectory } = useProject();
+  const fileManagement = useFileManagement();
+  
+  // Destructure needed values from file management context
+  const {
+    managedFilesMap,
+    fileContentsMap,
+    searchTerm,
+    setSearchTerm: onSearchChange,
+    toggleFileSelection: onToggleSelection,
+    toggleFileExclusion: onToggleExclusion,
+    handleBulkToggle: onBulkToggle,
+    filterMode,
+    setFilterMode: onFilterModeChange,
+    refreshFiles,
+    isLoadingFiles: isLoading,
+    isInitialized,
+    fileLoadError,
+    isFindingFiles,
+    findRelevantFiles: executeFindRelevantFiles,
+    findFilesMode,
+    setFindFilesMode,
+    canUndo,
+    canRedo,
+    undoSelection,
+    redoSelection,
+    currentWorkflowStage,
+    workflowError,
+  } = fileManagement;
+  
+  // Function to get user-friendly workflow stage message
+  const getWorkflowStageMessage = useCallback((stage: string | null) => {
+    if (!stage) return "Finding files...";
+    
+    switch (stage) {
+      case 'GENERATING_DIR_TREE':
+        return "Generating directory tree...";
+      case 'GENERATING_REGEX':
+        return "Finding initial files...";
+      case 'LOCAL_FILTERING':
+        return "Filtering files locally...";
+      case 'INITIAL_PATH_FINDER':
+        return "Finding relevant files...";
+      case 'INITIAL_PATH_CORRECTION':
+        return "Correcting paths...";
+      case 'EXTENDED_PATH_FINDER':
+        return "Finding additional files...";
+      case 'EXTENDED_PATH_CORRECTION':
+        return "Correcting additional paths...";
+      case 'COMPLETED':
+        return "Workflow completed";
+      case 'FAILED':
+        return "Workflow failed";
+      default:
+        return "Finding files...";
+    }
+  }, []);
+
+  const loadingMessage = getWorkflowStageMessage(currentWorkflowStage ?? null);
 
   // State for copied path feedback
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
@@ -195,7 +202,7 @@ function FileBrowser({
 
   return (
     <div className="space-y-4 mt-4 border border-border/60 rounded-xl p-6 bg-background/95 backdrop-blur-sm shadow-soft">
-      {/* AI File Search Controls */}
+      {/* File Search Controls */}
       <div className="flex items-center gap-3 justify-between mb-4">
         <FindModeToggle
           currentMode={findFilesMode}
@@ -218,7 +225,7 @@ function FileBrowser({
         >
           <>
             <Sparkles className="h-4 w-4 mr-2" />
-            Find Relevant Files with AI
+            Find Relevant Files
           </>
         </Button>
 
@@ -298,9 +305,20 @@ function FileBrowser({
       </div>
 
       {/* Show error message if regex generation fails */}
-      {regexState.regexGenerationError && (
+      {regexState.regexPatternGenerationError && (
         <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/20 bg-destructive/10 backdrop-blur-sm p-3 rounded-lg">
-          {regexState.regexGenerationError}
+          {regexState.regexPatternGenerationError}
+        </div>
+      )}
+
+      {/* Show workflow error message if file finder workflow fails */}
+      {workflowError && (
+        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/20 bg-destructive/10 backdrop-blur-sm p-3 rounded-lg flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">File Finder Error</p>
+            <p className="mt-1">{workflowError}</p>
+          </div>
         </div>
       )}
 
@@ -349,7 +367,7 @@ function FileBrowser({
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => onBulkToggle(false, filteredFiles)}
+                onClick={() => onBulkToggle(filteredFiles, false)}
                 disabled={
                   disabled || filteredFiles.length === 0 || includedCount === 0
                 }
@@ -361,7 +379,7 @@ function FileBrowser({
                 type="button"
                 variant={includedCount === 0 ? "destructive" : "secondary"}
                 size="sm"
-                onClick={() => onBulkToggle(true, filteredFiles)}
+                onClick={() => onBulkToggle(filteredFiles, true)}
                 disabled={
                   disabled ||
                   filteredFiles.length === 0 ||

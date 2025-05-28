@@ -17,7 +17,7 @@ import { useGuidanceGeneration } from "../_hooks/use-guidance-generation";
 import { useImplementationPlanActions } from "../_hooks/use-implementation-plan-actions";
 import { useSessionMetadata } from "../_hooks/use-session-metadata";
 import { useTaskDescriptionState } from "../_hooks/use-task-description-state";
-import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
+import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 
 // Import the granular context providers
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
@@ -111,21 +111,35 @@ export function GeneratePromptFeatureProvider({
       return;
     }
 
-    const result = await createGenerateDirectoryTreeJobAction("system", projectDirectory, undefined);
-    if (!result.isSuccess || !result.data?.jobId) {
+    try {
+      const result = await generateDirectoryTreeAction(projectDirectory);
+      if (result.isSuccess && result.data?.directoryTree) {
+        // Update the session with the generated directory tree
+        if (sessionState.activeSessionId) {
+          sessionActions.updateCurrentSessionFields({
+            codebaseStructure: result.data.directoryTree,
+          });
+        }
+        showNotification({
+          title: "Success",
+          message: "Directory tree generated successfully",
+          type: "success"
+        });
+      } else {
+        showNotification({
+          title: "Error",
+          message: result.message || "Failed to generate directory tree",
+          type: "error"
+        });
+      }
+    } catch (error) {
       showNotification({
         title: "Error",
-        message: result.message || "Failed to start generation", 
+        message: "Failed to generate directory tree",
         type: "error"
       });
-    } else {
-      showNotification({
-        title: "Success",
-        message: "Generation started",
-        type: "success"
-      });
     }
-  }, [projectDirectory, showNotification]);
+  }, [projectDirectory, showNotification, sessionState.activeSessionId, sessionActions]);
 
   // Create memoized context values
   const coreContextValue = useMemo<CorePromptContextValue>(
