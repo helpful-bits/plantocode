@@ -268,6 +268,7 @@ export async function generateSimpleTextAction(params: {
 
   try {
     // Map frontend TaskType values to backend-expected snake_case strings
+    // TODO: Consider a more comprehensive mapping if more frontend TaskType strings diverge from backend TaskType enum string values.
     const mapFrontendTaskTypeToBackend = (frontendType: string): string => {
       if (frontendType === "transcription") return "voice_transcription";
       return frontendType; // Most frontend TaskType strings are already snake_case

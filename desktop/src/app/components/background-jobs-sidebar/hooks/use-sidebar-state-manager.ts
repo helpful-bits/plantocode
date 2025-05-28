@@ -115,7 +115,7 @@ export function useSidebarStateManager(): SidebarManager {
   // daysToKeep parameter determines the clearing behavior:
   // - When -1: Delete all completed/failed/canceled jobs
   // - When undefined or 0: Only permanently deletes very old jobs (90+ days)
-  // - When > 0: Hides jobs older than the specified number of days from view (marks as cleared=1)
+  // - When > 0: Delete jobs older than the specified number of days
   const handleClearHistory = useCallback(
     async (daysToKeep?: number) => {
       setState((prev: SidebarState) => ({ ...prev, isClearing: true }));
@@ -129,7 +129,7 @@ export function useSidebarStateManager(): SidebarManager {
             ? "All completed, failed, and canceled jobs have been deleted"
             : daysToKeep === undefined || daysToKeep === 0
               ? "Jobs older than 90 days permanently deleted"
-              : `Jobs older than ${daysToKeep} day${daysToKeep > 1 ? "s" : ""} have been hidden from view`;
+              : `Jobs older than ${daysToKeep} day${daysToKeep > 1 ? "s" : ""} have been deleted`;
 
         setState((prev: SidebarState) => ({ ...prev, clearFeedback: feedbackMessage }));
       } catch (err) {

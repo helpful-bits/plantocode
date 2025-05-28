@@ -192,23 +192,8 @@ impl BackgroundJobRepository {
         Ok(())
     }
     
-    /// Update the cleared status of a job
-    pub async fn update_job_cleared_status(&self, job_id: &str, cleared: bool) -> AppResult<()> {
-        let current_ts = get_timestamp();
-        let cleared_value = if cleared { 1 } else { 0 };
-        
-        sqlx::query("UPDATE background_jobs SET cleared = $1, updated_at = $2 WHERE id = $3")
-            .bind(cleared_value)
-            .bind(current_ts)
-            .bind(job_id)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to update job cleared status: {}", e)))?;
-            
-        Ok(())
-    }
     
-    /// Clear or delete job history based on days_to_keep
+    /// Delete job history based on days_to_keep
     pub async fn clear_job_history(&self, days_to_keep: i64) -> AppResult<()> {
         let current_ts = get_timestamp();
         
@@ -221,8 +206,20 @@ impl BackgroundJobRepository {
                 .execute(&*self.pool)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete job history: {}", e)))?;
+        } else if days_to_keep > 0 {
+            // Delete jobs older than specified days
+            let target_date_ts = current_ts - (days_to_keep * 24 * 60 * 60 * 1000); // Convert days to milliseconds
+            
+            sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4")
+                .bind(JobStatus::Completed.to_string())
+                .bind(JobStatus::Failed.to_string())
+                .bind(JobStatus::Canceled.to_string())
+                .bind(target_date_ts)
+                .execute(&*self.pool)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to delete job history: {}", e)))?;
         } else {
-            // Always delete jobs older than 90 days
+            // Delete jobs older than 90 days (default cleanup)
             let ninety_days_ago_ts = current_ts - (90 * 24 * 60 * 60 * 1000); // Convert days to milliseconds
             
             sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3) AND created_at < $4")
@@ -233,21 +230,6 @@ impl BackgroundJobRepository {
                 .execute(&*self.pool)
                 .await
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete old job history: {}", e)))?;
-                
-            if days_to_keep > 0 {
-                // Mark jobs as cleared if they're older than days_to_keep
-                let target_date_ts = current_ts - (days_to_keep * 24 * 60 * 60 * 1000); // Convert days to milliseconds
-                
-                sqlx::query("UPDATE background_jobs SET cleared = 1, updated_at = $1 WHERE status IN ($2, $3, $4) AND cleared = 0 AND created_at < $5")
-                    .bind(current_ts)
-                    .bind(JobStatus::Completed.to_string())
-                    .bind(JobStatus::Failed.to_string())
-                    .bind(JobStatus::Canceled.to_string())
-                    .bind(target_date_ts)
-                    .execute(&*self.pool)
-                    .await
-                    .map_err(|e| AppError::DatabaseError(format!("Failed to update job cleared status for history: {}", e)))?;
-            }
         }
         
         Ok(())
@@ -324,12 +306,11 @@ impl BackgroundJobRepository {
         Ok(jobs)
     }
     
-    /// Get all visible (non-cleared) jobs, sorted by status priority and updated time
+    /// Get all jobs, sorted by status priority and updated time
     pub async fn get_all_visible_jobs(&self) -> AppResult<Vec<BackgroundJob>> {
         let rows = sqlx::query(
             r#"
             SELECT * FROM background_jobs 
-            WHERE cleared = 0 OR cleared IS NULL
             ORDER BY 
                 CASE 
                     WHEN status IN ('running', 'pending', 'queued', 'acknowledged_by_worker', 'created', 'idle') THEN 0
@@ -352,7 +333,7 @@ impl BackgroundJobRepository {
             "#)
             .fetch_all(&*self.pool)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch visible jobs: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs: {}", e)))?;
             
         let mut jobs = Vec::new();
         
@@ -374,8 +355,8 @@ impl BackgroundJobRepository {
                 prompt, response, project_directory, tokens_sent, tokens_received,
                 total_tokens, chars_received, status_message, error_message,
                 model_used, max_output_tokens, temperature, include_syntax,
-                cleared, visible, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+                metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -400,8 +381,6 @@ impl BackgroundJobRepository {
             .bind(job.max_output_tokens.map(|v| v as i64))
             .bind(job.temperature.map(|v| v as f64))
             .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(job.cleared.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(job.visible.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
             .execute(&*self.pool)
             .await
@@ -436,10 +415,8 @@ impl BackgroundJobRepository {
                 max_output_tokens = $19,
                 temperature = $20,
                 include_syntax = $21,
-                cleared = $22,
-                visible = $23,
-                metadata = $24
-            WHERE id = $25
+                metadata = $22
+            WHERE id = $23
             "#)
             .bind(&job.session_id)
             .bind(&job.api_type)
@@ -462,8 +439,6 @@ impl BackgroundJobRepository {
             .bind(job.max_output_tokens.map(|v| v as i64))
             .bind(job.temperature.map(|v| v as f64))
             .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(job.cleared.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(job.visible.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
             .bind(&job.id)
             .execute(&*self.pool)
@@ -560,15 +535,6 @@ impl BackgroundJobRepository {
         self.update_job(&job).await
     }
     
-    /// Update job visibility and cleared status
-    pub async fn update_job_visibility(&self, job_id: &str, visible: bool, cleared: bool) -> AppResult<()> {
-        let mut job = self.get_job_by_id(job_id).await?
-            .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
-        job.visible = Some(visible);
-        job.cleared = Some(cleared);
-        job.updated_at = Some(get_timestamp());
-        self.update_job(&job).await
-    }
     
     /// Delete a job
     pub async fn delete_job(&self, id: &str) -> AppResult<()> {
@@ -876,8 +842,6 @@ impl BackgroundJobRepository {
         let max_output_tokens: Option<i32> = row.try_get::<'_, Option<i64>, _>("max_output_tokens").map(|v| v.map(|val| val as i32)).unwrap_or(None);
         let temperature: Option<f32> = row.try_get::<'_, Option<f64>, _>("temperature").map(|v| v.map(|val| val as f32)).unwrap_or(None);
         let include_syntax: Option<bool> = row.try_get::<'_, Option<i64>, _>("include_syntax").map(|v| v.map(|val| val == 1)).unwrap_or(None);
-        let cleared: Option<bool> = row.try_get::<'_, Option<i64>, _>("cleared").map(|v| v.map(|val| val == 1)).unwrap_or(None);
-        let visible: Option<bool> = row.try_get::<'_, Option<i64>, _>("visible").map(|v| v.map(|val| val == 1)).unwrap_or(None);
         let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
         
         Ok(BackgroundJob {
@@ -904,8 +868,6 @@ impl BackgroundJobRepository {
             max_output_tokens,
             temperature,
             include_syntax,
-            cleared,
-            visible,
             metadata,
         })
     }
@@ -1061,52 +1023,31 @@ impl BackgroundJobRepository {
         Ok(result.rows_affected() as usize)
     }
     
-    /// Clear all completed jobs by marking them as cleared
+    /// Delete all completed jobs
     pub async fn clear_all_completed_jobs(&self) -> AppResult<usize> {
-        let current_ts = get_timestamp();
-        
-        // Mark completed, failed, or canceled jobs as cleared
-        let result = sqlx::query(
-            r#"
-            UPDATE background_jobs
-            SET cleared = 1, 
-                updated_at = $1
-            WHERE status IN ($2, $3, $4)
-            AND (cleared = 0 OR cleared IS NULL)
-            "#)
-            .bind(current_ts)
+        // Delete completed, failed, or canceled jobs
+        let result = sqlx::query("DELETE FROM background_jobs WHERE status IN ($1, $2, $3)")
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
             .bind(JobStatus::Canceled.to_string())
             .execute(&*self.pool)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to clear all completed jobs: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete all completed jobs: {}", e)))?;
             
         Ok(result.rows_affected() as usize)
     }
     
-    /// Clear completed jobs for a specific session by marking them as cleared
+    /// Delete completed jobs for a specific session
     pub async fn clear_completed_jobs_for_session(&self, session_id: &str) -> AppResult<usize> {
-        let current_ts = get_timestamp();
-        
-        // Mark completed, failed, or canceled jobs for the session as cleared
-        let result = sqlx::query(
-            r#"
-            UPDATE background_jobs
-            SET cleared = 1, 
-                updated_at = $1
-            WHERE session_id = $2
-            AND status IN ($3, $4, $5)
-            AND (cleared = 0 OR cleared IS NULL)
-            "#)
-            .bind(current_ts)
+        // Delete completed, failed, or canceled jobs for the session
+        let result = sqlx::query("DELETE FROM background_jobs WHERE session_id = $1 AND status IN ($2, $3, $4)")
             .bind(session_id)
             .bind(JobStatus::Completed.to_string())
             .bind(JobStatus::Failed.to_string())
             .bind(JobStatus::Canceled.to_string())
             .execute(&*self.pool)
             .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to clear completed jobs for session: {}", e)))?;
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete completed jobs for session: {}", e)))?;
             
         Ok(result.rows_affected() as usize)
     }

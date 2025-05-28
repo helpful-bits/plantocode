@@ -112,6 +112,7 @@ export class TrackedFetch {
     const method = init?.method || "GET";
     const requestId = generateId();
     const startTime = Date.now();
+    const enableDetailedLogging = import.meta.env.DEV && import.meta.env.VITE_DEBUG_FETCH === "true";
 
     // Record request start
     this.requestsInProgress.set(requestId, { url, startTime, method });
@@ -122,7 +123,7 @@ export class TrackedFetch {
 
     if (isPostRequest || isRootPath) {
       // Get debug info if needed for detailed logging
-      const debug = import.meta.env.VITE_DEBUG_FETCH === "true" ? getDebugInfo() : null;
+      const debug = enableDetailedLogging ? getDebugInfo() : null;
 
       // Logging request information
       logger.debug(
@@ -186,7 +187,7 @@ export class TrackedFetch {
         error
       );
 
-      if (isPostRequest || isRootPath) {
+      if ((isPostRequest || isRootPath) && enableDetailedLogging) {
         // Log additional debug info for failed request
         const debug = getDebugInfo();
         logger.debug(

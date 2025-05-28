@@ -105,7 +105,7 @@ The compiled binaries will be available in the `desktop/src-tauri/target/release
 ## Features
 
 - Local file system access via Tauri's API
-- User authentication via Firebase
+- User authentication via Auth0
 - Secure token storage using Tauri's Stronghold plugin
 - LLM API access via the cloud server
 - Reuses UI components from the core application

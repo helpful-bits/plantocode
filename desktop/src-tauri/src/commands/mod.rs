@@ -101,7 +101,6 @@ pub use fetch_handler_command::handle_fetch_request;
 
 // Re-exports from job commands module
 pub use job_commands::{
-    update_job_cleared_status_command,
     clear_job_history_command,
     get_active_jobs_command,
     delete_background_job_command,

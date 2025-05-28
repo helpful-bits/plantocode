@@ -62,24 +62,6 @@ impl SpendingRepository {
     }
 
     // User Spending Limits
-    pub async fn get_user_spending_limit(&self, user_id: &Uuid) -> Result<Option<UserSpendingLimit>, AppError> {
-        let result = sqlx::query_as!(
-            UserSpendingLimit,
-            r#"
-            SELECT id, user_id, plan_id, billing_period_start, billing_period_end,
-                   included_allowance, current_spending, hard_limit, services_blocked,
-                   currency, created_at, updated_at
-            FROM user_spending_limits 
-            WHERE user_id = $1
-            "#,
-            user_id
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to get user spending limit: {}", e)))?;
-
-        Ok(result)
-    }
 
     pub async fn get_user_spending_limit_for_period(&self, user_id: &Uuid, billing_period_start: &chrono::DateTime<chrono::Utc>) -> Result<Option<UserSpendingLimit>, AppError> {
         let result = sqlx::query_as!(
@@ -250,7 +232,7 @@ impl SpendingRepository {
             threshold_amount: row.threshold_amount,
             current_spending: row.current_spending,
             billing_period_start: row.billing_period_start,
-            alert_sent_at: row.alert_sent_at.unwrap_or_else(|| Utc::now()),
+            alert_sent_at: row.alert_sent_at.unwrap_or_else(Utc::now),
             acknowledged: row.acknowledged.unwrap_or(false),
         }).collect();
 
@@ -287,7 +269,7 @@ impl SpendingRepository {
             threshold_amount: result.threshold_amount,
             current_spending: result.current_spending,
             billing_period_start: result.billing_period_start,
-            alert_sent_at: result.alert_sent_at.unwrap_or_else(|| Utc::now()),
+            alert_sent_at: result.alert_sent_at.unwrap_or_else(Utc::now),
             acknowledged: result.acknowledged.unwrap_or(false),
         })
     }
@@ -347,24 +329,4 @@ impl SpendingRepository {
         Ok(())
     }
 
-    // Reset monthly spending (called at billing cycle)
-    pub async fn reset_monthly_spending(&self, user_id: &Uuid) -> Result<(), AppError> {
-        sqlx::query!(
-            r#"
-            UPDATE user_spending_limits 
-            SET current_spending = 0.0,
-                billing_period_start = NOW(),
-                billing_period_end = NOW() + INTERVAL '1 month',
-                services_blocked = false,
-                updated_at = NOW()
-            WHERE user_id = $1
-            "#,
-            user_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to reset monthly spending: {}", e)))?;
-
-        Ok(())
-    }
 }

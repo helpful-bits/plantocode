@@ -25,21 +25,6 @@ impl ImplementationPlanProcessor {
         Self {}
     }
     
-    // Ensure job is visible to the user
-    async fn ensure_job_visible(&self, repo: &BackgroundJobRepository, job_id: &str) -> AppResult<()> {
-        // Get the current job
-        if let Some(mut job) = repo.get_job_by_id(job_id).await? {
-            // Set visibility flags
-            job.visible = Some(true);
-            job.cleared = Some(false);
-            
-            // Update the job
-            repo.update_job(&job).await?;
-        }
-        
-        Ok(())
-    }
-    
     // Parse implementation plan from the XML response with enhanced error handling
     fn parse_implementation_plan(&self, clean_xml_content: &str) -> AppResult<(StructuredImplementationPlan, String)> {
         debug!("Parsing implementation plan from cleaned XML content");
@@ -169,8 +154,6 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Get LLM client using the standardized factory function
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
-        // Ensure job is visible
-        self.ensure_job_visible(&repo, &payload.background_job_id).await?;
         
         // Update job status to running
         let timestamp = get_timestamp();
@@ -489,7 +472,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             
         // Update job fields for completion
         job.status = JobStatus::Completed.to_string();
-        job.response = Some(human_readable_summary.clone());
+        job.response = Some(clean_xml_content.clone());
         job.updated_at = Some(timestamp);
         job.end_time = Some(timestamp);
         job.model_used = Some(payload.model.clone());

@@ -94,17 +94,19 @@ impl BillingService {
         _model_id: &str, // Model restrictions removed - all models available
     ) -> Result<bool, AppError> {
         // Get user's subscription
-        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
+        let mut sub_option = self.subscription_repository.get_by_user_id(user_id).await?;
         
-        // If no subscription, check if they should get a trial
-        if subscription.is_none() {
+        if sub_option.is_none() {
             debug!("No subscription found for user {}, creating trial", user_id);
             self.create_trial_subscription(user_id).await?;
-            // Even trial users get cost-based limits
+            // Re-fetch the subscription after creating the trial
+            sub_option = self.subscription_repository.get_by_user_id(user_id).await?;
         }
         
-        let subscription = subscription.ok_or_else(|| {
-            AppError::Internal("Failed to create trial subscription".to_string())
+        let subscription = sub_option.ok_or_else(|| {
+            // This error should ideally not be reached if trial creation succeeds and re-fetch works.
+            // It implies failure to create or retrieve the trial subscription.
+            AppError::Internal(format!("No active subscription found for user {} after attempting trial creation.", user_id))
         })?;
         
         // Check subscription status first

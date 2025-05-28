@@ -1,10 +1,9 @@
 "use client";
 
-import { RefreshCw, X, Trash2, ChevronRight, Clock } from "lucide-react";
-import { FC } from "react";
+import { RefreshCw, Trash2, ChevronRight, ChevronLeft, Clock, Calendar, CalendarDays } from "lucide-react";
+import { FC, ComponentType } from "react";
 
 import { Button } from "@/ui/button";
-import { CollapsibleTrigger } from "@/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +24,7 @@ interface SidebarHeaderProps {
   refreshDisabled: boolean;
   onRefresh: () => void;
   onClearHistory: (daysToKeep?: number) => void;
+  CollapsibleTrigger: ComponentType<any>;
 }
 
 /**
@@ -41,105 +41,113 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
   refreshDisabled,
   onRefresh,
   onClearHistory,
+  CollapsibleTrigger,
 }) => {
   return (
-    <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between h-14 bg-background/80 backdrop-blur-sm">
-      <h2
-        className={`font-medium text-sm text-balance text-foreground ${isCollapsed ? "opacity-0" : "opacity-100"}`}
-        style={{ minWidth: "100px", transition: "opacity 150ms ease" }}
-      >
-        Background Tasks
-      </h2>
+    <div className={`${isCollapsed ? 'px-2' : 'px-4'} border-b border-border/60 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} bg-background/80 backdrop-blur-sm`} style={{ height: '48px' }}>
+      {!isCollapsed && (
+        <h2
+          className="font-medium text-sm text-balance text-foreground"
+          style={{ minWidth: "100px", transition: "opacity 150ms ease" }}
+        >
+          Background Tasks
+        </h2>
+      )}
 
-      <div className="flex items-center gap-2 ml-auto">
+      <div className={`flex items-center gap-2 ${isCollapsed ? 'w-full justify-center' : 'ml-auto'}`}>
         {!isCollapsed && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={onRefresh}
-                  disabled={isRefreshing || refreshDisabled}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Refresh</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-        {!isCollapsed && (
-          <DropdownMenu>
+          <>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8"
-                      disabled={isClearing}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    onClick={onRefresh}
+                    disabled={isRefreshing || refreshDisabled}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Job history options</p>
+                  <p>Refresh</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => onClearHistory(-1)}
-                disabled={isClearing}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                <span>Delete all completed/failed/canceled jobs</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onClearHistory()}
-                disabled={isClearing}
-              >
-                <Clock className="mr-2 h-4 w-4" />
-                <span>Delete jobs older than 90 days</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onClearHistory(7)}
-                disabled={isClearing}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                <span>Hide jobs older than 7 days</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onClearHistory(3)}
-                disabled={isClearing}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                <span>Hide jobs older than 3 days</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onClearHistory(1)}
-                disabled={isClearing}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                <span>Hide jobs older than 1 day</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
+            <DropdownMenu>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        disabled={isClearing}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent className="z-[9999]">
+                    <p>Delete job history options</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => onClearHistory()}
+                  disabled={isClearing}
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  <span>Delete jobs older than 90 days</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onClearHistory(7)}
+                  disabled={isClearing}
+                >
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  <span>Delete jobs older than 7 days</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onClearHistory(3)}
+                  disabled={isClearing}
+                >
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  <span>Delete jobs older than 3 days</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onClearHistory(1)}
+                  disabled={isClearing}
+                >
+                  <Clock className="mr-2 h-4 w-4" />
+                  <span>Delete jobs older than 1 day</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onClearHistory(-1)}
+                  disabled={isClearing}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  <span>Delete all completed jobs</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         )}
 
         <CollapsibleTrigger asChild>
-          <Button size="icon" variant="ghost" className="h-8 w-8 flex-shrink-0">
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            className="h-8 w-8 flex-shrink-0"
+          >
             {isCollapsed ? (
               <ChevronRight className="h-4 w-4" />
             ) : (
-              <X className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" />
             )}
           </Button>
         </CollapsibleTrigger>

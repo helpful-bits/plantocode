@@ -126,34 +126,88 @@ pub async fn get_available_plans(
             "month".to_string()
         };
         
-        // Extract features from JSONB - ALL data must come from database
-        let features = plan.features
-            .get("features")
-            .and_then(|f| f.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_else(|| Vec::new());
+        // Extract features from JSONB - support both old and new structure
+        let features = if let Some(core_features) = plan.features.get("core_features") {
+            // New structure: features are in "core_features" array
+            core_features
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_else(|| Vec::new())
+        } else {
+            // Old structure: features are in "features" array
+            plan.features
+                .get("features")
+                .and_then(|f| f.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_else(|| Vec::new())
+        };
         
-        // Extract models from features - NO hardcoded fallbacks
-        let models = plan.features
-            .get("models")
-            .and_then(|m| m.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_else(|| Vec::new());
+        // Extract models from features - support both structures
+        let models = if plan.features.get("core_features").is_some() {
+            // New structure: all plans have all models, extract from core_features if mentioned
+            let model_features: Vec<String> = features.iter()
+                .filter(|feat| feat.contains("AI models") || feat.contains("Claude") || feat.contains("GPT") || feat.contains("Gemini"))
+                .cloned()
+                .collect();
+            
+            if model_features.is_empty() {
+                // If no specific models mentioned, assume all models are available
+                vec!["All AI models available".to_string()]
+            } else {
+                model_features
+            }
+        } else {
+            // Old structure: models are in "models" array
+            plan.features
+                .get("models")
+                .and_then(|m| m.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_else(|| Vec::new())
+        };
         
-        // Extract support level from features JSON - NO hardcoded fallbacks
-        let support = plan.features
-            .get("support")
-            .and_then(|s| s.as_str())
-            .unwrap_or("Support not specified")
-            .to_string();
+        // Extract support level - support both structures
+        let support = if plan.features.get("core_features").is_some() {
+            // New structure: infer support from spending_details or use plan-based defaults
+            if let Some(spending_details) = plan.features.get("spending_details") {
+                if spending_details.get("overage_policy").is_some() {
+                    "Enterprise".to_string()
+                } else {
+                    match plan.id.as_str() {
+                        "free" => "Community".to_string(),
+                        "pro" => "Priority".to_string(),
+                        "enterprise" => "Dedicated".to_string(),
+                        _ => "Standard".to_string(),
+                    }
+                }
+            } else {
+                // Fallback based on plan ID
+                match plan.id.as_str() {
+                    "free" => "Community".to_string(),
+                    "pro" => "Priority".to_string(),
+                    "enterprise" => "Dedicated".to_string(),
+                    _ => "Standard".to_string(),
+                }
+            }
+        } else {
+            // Old structure: support is directly in "support" field
+            plan.features
+                .get("support")
+                .and_then(|s| s.as_str())
+                .unwrap_or("Support not specified")
+                .to_string()
+        };
         
         response.insert(plan.id.clone(), PlanDetails {
             name: plan.name,
@@ -289,24 +343,83 @@ pub async fn stripe_webhook(
                                     sub_repo.update(&db_subscription).await?;
                                     info!("Updated subscription for user: {}", user.id);
                                 } else {
-                                    // Create new subscription
-                                    let plan_id_from_meta = session.metadata
+                                    // Create new subscription - determine plan_id more reliably
+                                    let mut plan_id = session.metadata
                                         .as_ref()
-                                        .and_then(|m| m.get("plan_id").map(|s| s.as_str().to_string()))
-                                        .unwrap_or_else(|| "pro".to_string());
+                                        .and_then(|m| m.get("plan_id").map(|s| s.as_str().to_string()));
 
-                                    let end_date_fallback = Utc::now() + Duration::days(30);
+                                    // If plan_id not in metadata, try to derive from price_id in line items
+                                    if plan_id.is_none() {
+                                        if let Some(line_items) = &session.line_items {
+                                            for line_item in &line_items.data {
+                                                if let Some(price) = &line_item.price {
+                                                    let price_id = price.id.as_str();
+                                                    
+                                                    // Map Stripe price IDs to internal plan IDs
+                                                    if Some(price_id) == app_state.settings.stripe.price_id_pro.as_deref() {
+                                                        plan_id = Some("pro".to_string());
+                                                        break;
+                                                    } else if Some(price_id) == app_state.settings.stripe.price_id_enterprise.as_deref() {
+                                                        plan_id = Some("enterprise".to_string());
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // If still no plan_id, log error and use safer fallback
+                                    let final_plan_id = plan_id.unwrap_or_else(|| {
+                                        error!("Unable to determine plan_id from Stripe checkout session metadata or line items for user: {}", user.id);
+                                        "free".to_string() // Safer fallback than "pro"
+                                    });
+
+                                    // Determine current_period_ends_at from Stripe subscription
+                                    let current_period_ends_at = if let Some(subscription_ref) = &session.subscription {
+                                        match subscription_ref {
+                                            stripe::Expandable::Object(subscription) => {
+                                                // Subscription is already expanded
+                                                if let Some(period_end) = subscription.current_period_end {
+                                                    DateTime::<Utc>::from_timestamp(period_end as i64, 0)
+                                                        .unwrap_or(Utc::now() + Duration::days(30))
+                                                } else {
+                                                    Utc::now() + Duration::days(30)
+                                                }
+                                            },
+                                            stripe::Expandable::Id(subscription_id) => {
+                                                // Need to fetch the subscription
+                                                let client = stripe::Client::new(app_state.settings.stripe.secret_key.clone());
+                                                match stripe::Subscription::retrieve(&client, subscription_id, &[]).await {
+                                                    Ok(subscription) => {
+                                                        if let Some(period_end) = subscription.current_period_end {
+                                                            DateTime::<Utc>::from_timestamp(period_end as i64, 0)
+                                                                .unwrap_or(Utc::now() + Duration::days(30))
+                                                        } else {
+                                                            Utc::now() + Duration::days(30)
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        error!("Failed to fetch Stripe subscription {}: {}", subscription_id, e);
+                                                        Utc::now() + Duration::days(30)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        error!("No subscription reference in checkout session for user: {}", user.id);
+                                        Utc::now() + Duration::days(30)
+                                    };
 
                                     sub_repo.create(
                                         &user.id,
-                                        &plan_id_from_meta,
+                                        &final_plan_id,
                                         "active",
                                         session.customer.as_ref().map(|c| c.id().as_str()),
                                         session.subscription.as_ref().map(|s| s.id().as_str()),
                                         None, // No trial for new paid subscriptions from checkout
-                                        end_date_fallback,
+                                        current_period_ends_at,
                                     ).await?;
-                                    info!("Created new subscription via checkout for user: {}", user.id);
+                                    info!("Created new subscription via checkout for user: {} with plan: {}", user.id, final_plan_id);
                                 }
                             } else {
                                 error!("User with ID {} from Stripe metadata not found in database.", user_id_str);

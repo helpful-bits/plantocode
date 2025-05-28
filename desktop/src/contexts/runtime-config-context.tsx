@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { createLogger } from "@/utils/logger";
+import { logError } from "@/utils/error-handling";
 
 const logger = createLogger({ namespace: "RuntimeConfigContext" });
 
@@ -163,9 +164,11 @@ export function useRuntimeConfig() {
   const context = useContext(RuntimeConfigContext);
 
   if (context === undefined) {
-    throw new Error(
+    const error = new Error(
       "useRuntimeConfig must be used within a RuntimeConfigProvider"
     );
+    logError(error, "Runtime Config Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
 
   return context;

@@ -205,14 +205,20 @@ export function useAuth0AuthHandler() {
         const pollForToken = async (): Promise<void> => {
           try {
             if (!isMountedRef.current) {
-              if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+              if (pollingTimeoutId) {
+                clearTimeout(pollingTimeoutId);
+                pollingTimeoutId = null;
+              }
               return;
             }
             
             // Check both attempt count and elapsed time for robust timeout handling
             const elapsedTime = Date.now() - startTime;
             if (pollingAttempts >= maxPollingAttempts || elapsedTime >= maxPollingDuration) {
-              if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+              if (pollingTimeoutId) {
+                clearTimeout(pollingTimeoutId);
+                pollingTimeoutId = null;
+              }
               logger.error(`Auth0 polling timeout reached after ${pollingAttempts} attempts (${Math.round(elapsedTime/1000)}s elapsed)`);
               if (isMountedRef.current) {
                 setState((prev: Auth0AuthState) => ({
@@ -233,7 +239,10 @@ export function useAuth0AuthHandler() {
             
             if (result) {
               // Authentication successful
-              if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+              if (pollingTimeoutId) {
+                clearTimeout(pollingTimeoutId);
+                pollingTimeoutId = null;
+              }
               logger.debug("Authentication successful for user:", result.email);
               
               // Get the token that was stored by the Tauri command
@@ -263,7 +272,10 @@ export function useAuth0AuthHandler() {
             logger.debug(`Still waiting for authentication... (attempt ${pollingAttempts}/${maxPollingAttempts})`);
             pollingTimeoutId = setTimeout(() => {
               if (!isMountedRef.current || state.error) {
-                if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+                if (pollingTimeoutId) {
+                  clearTimeout(pollingTimeoutId);
+                  pollingTimeoutId = null;
+                }
                 return;
               }
               pollForToken();
@@ -271,7 +283,11 @@ export function useAuth0AuthHandler() {
             
           } catch (error: any) {
             logger.error("Polling error:", error);
-            if (pollingTimeoutId) clearTimeout(pollingTimeoutId);
+            // Ensure timeout is cleared to prevent further polling attempts
+            if (pollingTimeoutId) {
+              clearTimeout(pollingTimeoutId);
+              pollingTimeoutId = null;
+            }
             if (isMountedRef.current) {
               setState((prev: Auth0AuthState) => ({
                 ...prev,

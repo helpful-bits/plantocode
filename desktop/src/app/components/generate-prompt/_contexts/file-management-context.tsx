@@ -6,6 +6,7 @@ import {
   type FilesMap,
   type FileInfo,
 } from "../_hooks/file-management/use-project-file-list";
+import { logError } from "@/utils/error-handling";
 
 export interface FileManagementContextValue {
   // State
@@ -59,9 +60,11 @@ const FileManagementContext = createContext<FileManagementContextValue | null>(
 export function useFileManagement(): FileManagementContextValue {
   const context = useContext(FileManagementContext);
   if (!context) {
-    throw new Error(
+    const error = new Error(
       "useFileManagement must be used within a FileManagementProvider"
     );
+    logError(error, "File Management Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 }

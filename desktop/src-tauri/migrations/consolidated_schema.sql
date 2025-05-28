@@ -130,7 +130,6 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   last_update INTEGER,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   updated_at INTEGER DEFAULT (strftime('%s', 'now')),
-  cleared INTEGER DEFAULT 0 CHECK(cleared IN (0, 1)),
   api_type TEXT DEFAULT 'gemini' NOT NULL,
   task_type TEXT DEFAULT 'xml_generation' NOT NULL,
   model_used TEXT,
@@ -139,7 +138,6 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   error_message TEXT,
   metadata TEXT,
   project_directory TEXT,
-  visible BOOLEAN DEFAULT 1,
   temperature REAL,
   include_syntax INTEGER DEFAULT 0,
   total_tokens INTEGER DEFAULT 0,
@@ -149,8 +147,6 @@ CREATE TABLE IF NOT EXISTS background_jobs (
 -- Create indexes for background_jobs table
 CREATE INDEX IF NOT EXISTS idx_background_jobs_session_id ON background_jobs(session_id);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_status ON background_jobs(status);
-CREATE INDEX IF NOT EXISTS idx_background_jobs_cleared ON background_jobs(cleared);
-CREATE INDEX IF NOT EXISTS idx_background_jobs_status_cleared ON background_jobs(status, cleared);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_api_type ON background_jobs(api_type);
 CREATE INDEX IF NOT EXISTS idx_background_jobs_task_type ON background_jobs(task_type);
 -- index on output_file_path has been removed

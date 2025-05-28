@@ -79,12 +79,7 @@ DEFAULT DATABASE LOCATIONS:
     Linux: ~/.local/share/com.vibe-manager.app/appdata.db
     Windows: %APPDATA%/com.vibe-manager.app/appdata.db
 
-NOTE: The actual database path differs from what's shown above. The correct paths are:
-    macOS: ~/Library/Application Support/com.vibe-manager.app/appdata.db
-    Linux: ~/.local/share/com.vibe-manager.app/appdata.db
-    Windows: %APPDATA%/com.vibe-manager.app/appdata.db
-
-The database filename is 'appdata.db' and the app identifier is 'com.vibe-manager.app' (with hyphens).
+NOTE: The database filename is 'appdata.db' and the app identifier is 'com.vibe-manager.app'.
 EOF
 }
 

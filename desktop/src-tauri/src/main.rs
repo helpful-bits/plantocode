@@ -150,7 +150,6 @@ fn main() {
             commands::fetch_handler_command::handle_fetch_request,
             
             // Job commands
-            commands::job_commands::update_job_cleared_status_command,
             commands::job_commands::clear_job_history_command,
             commands::job_commands::get_active_jobs_command,
             commands::job_commands::cancel_background_job_command,

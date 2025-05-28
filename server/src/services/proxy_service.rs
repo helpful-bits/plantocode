@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, ApiUsageEntryDto};
+use crate::db::repositories::model_repository::ModelRepository;
 use crate::clients::{OpenRouterClient, GroqClient, open_router_client::OpenRouterUsage};
 use actix_web::web::{self, Bytes};
 use futures_util::{Stream, StreamExt};
@@ -77,6 +78,7 @@ pub struct ProxyService {
     groq_client: GroqClient,
     billing_service: Arc<BillingService>,
     api_usage_repository: Arc<ApiUsageRepository>,
+    model_repository: Arc<ModelRepository>,
     app_settings: crate::config::settings::AppSettings,
 }
 
@@ -84,6 +86,7 @@ impl ProxyService {
     pub fn new(
         billing_service: Arc<BillingService>,
         api_usage_repository: Arc<ApiUsageRepository>,
+        model_repository: Arc<ModelRepository>,
         app_settings: &crate::config::settings::AppSettings,
     ) -> Result<Self, AppError> {
         // Initialize OpenRouter client with app settings
@@ -97,6 +100,7 @@ impl ProxyService {
             groq_client,
             billing_service,
             api_usage_repository,
+            model_repository,
             app_settings: app_settings.clone(),
         })
     }
@@ -435,13 +439,23 @@ impl ProxyService {
             .or_else(|| Some(Uuid::new_v4().to_string()));
         
         // Calculate tokens for usage tracking
-        let input_tokens = duration_ms / 1000; // Duration in seconds as input tokens
-        let output_tokens = (transcribed_text.len() / 4) as i32; // Approximate chars per token
+        // For audio, input_tokens represents seconds of audio, as a conventional unit.
+        // Actual billing for Groq/Whisper is typically per minute of audio.
+        let input_tokens = duration_ms / 1000;
+        let output_tokens = (transcribed_text.len() / 4) as i32; // Approximate chars per token for output text
         
-        // Calculate cost using Groq's rate ($0.00067 per minute)
-        let cost_f64 = (duration_ms as f64 / 60000.0) * 0.00067;
-        let final_cost_bd = bigdecimal::BigDecimal::try_from(cost_f64)
-            .map_err(|_| AppError::Internal("Invalid cost calculation for Groq".to_string()))?;
+        // Calculate cost using model-specific pricing from database
+        let model = self.model_repository.find_by_id(&model_id).await?
+            .ok_or_else(|| AppError::Internal(format!("Model {} not found", model_id)))?;
+        
+        let final_cost_bd = if model.is_duration_based() {
+            // Use duration-based pricing with automatic minimum billing enforcement
+            model.calculate_duration_cost(duration_ms)?
+        } else {
+            // Fallback for token-based models (shouldn't happen for transcription)
+            warn!("Transcription model {} is not configured for duration-based pricing, using fallback", model_id);
+            bigdecimal::BigDecimal::from(0)
+        };
         
         // Record API usage
         let entry = ApiUsageEntryDto {
@@ -471,6 +485,7 @@ impl Clone for ProxyService {
             groq_client: GroqClient::new(&self.app_settings).expect("Failed to clone GroqClient"),
             billing_service: self.billing_service.clone(),
             api_usage_repository: self.api_usage_repository.clone(),
+            model_repository: self.model_repository.clone(),
             app_settings: self.app_settings.clone(),
         }
     }

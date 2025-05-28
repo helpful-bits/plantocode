@@ -236,17 +236,12 @@ export function getErrorMessage(error: unknown): string {
           return parsed.message;
         }
         
-        // If no useful message property, try to stringify the parsed object
-        try {
-          const stringified = JSON.stringify(parsed);
-          if (stringified && stringified !== "{}" && stringified !== "") {
-            return stringified;
-          }
-        } catch {
-          // Fallback if stringification fails
+        // If parsed.message was not useful, and the original string 'error'
+        // is not just a generic placeholder, return the original string.
+        if (error.trim() && error !== "[object Object]") {
+          return error;
         }
-        
-        // Final fallback for parsed JSON without useful content
+        // Final fallback for parsed JSON without useful content or generic original string
         return "A structured error occurred";
       }
       // If JSON but not an object, fall back to original string

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { setupDatabase, closeDatabase, db } from "../../core/lib/db";
+import { setupDatabase, closeDatabase } from "../../core/lib/db";
 import path from "path";
 import fs from "fs";
 import connectionPool from "../../core/lib/db/connection-pool";

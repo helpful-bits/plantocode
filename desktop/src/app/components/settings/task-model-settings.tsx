@@ -2,6 +2,7 @@
 
 
 import { type TaskSettings, type TaskType } from "@/types";
+import { type ModelInfo } from "@/actions/config.actions";
 import {
   Select,
   SelectContent,
@@ -29,129 +30,74 @@ import type React from "react";
 // Interface for component props
 interface TaskModelSettingsProps {
   taskSettings: TaskSettings;
+  availableModels: ModelInfo[] | null;
   onSettingsChange: (settings: TaskSettings) => void;
 }
 
-// Model options by API type
-const modelOptions = {
-  gemini: [
-    {
-      value: "google/gemini-2.5-flash-preview-05-20:thinking",
-      label: "Gemini 2.5 Flash Thinking",
-      description: "Latest 2025 model with advanced reasoning capabilities.",
-    },
-    {
-      value: "google/gemini-2.5-flash-preview-05-20",
-      label: "Gemini 2.5 Flash Preview",
-      description: "Fast response, great for most tasks.",
-    },
-    {
-      value: "google/gemini-2.5-pro-preview",
-      label: "Gemini 2.5 Pro Preview",
-      description: "Higher quality, better reasoning for complex tasks.",
-    },
-  ],
-  claude: [
-    {
-      value: "anthropic/claude-sonnet-4",
-      label: "Claude Sonnet 4",
-      description: "Latest 2025 model with advanced coding and reasoning capabilities.",
-    },
-    {
-      value: "claude-3-7-sonnet-20250219",
-      label: "Claude 3.7 Sonnet",
-      description: "High quality for complex text processing.",
-    },
-    {
-      value: "claude-opus-4-20250522",
-      label: "Claude Opus 4",
-      description: "Most intelligent model with state-of-the-art agent capabilities.",
-    },
-  ],
-  whisper: [
-    {
-      value: "whisper-large-v3",
-      label: "Whisper Large v3",
-      description: "Latest model for accurate transcription.",
-    },
-  ],
-  reasoning: [
-    {
-      value: "deepseek/deepseek-r1",
-      label: "DeepSeek R1",
-      description: "State-of-the-art reasoning model, performance on par with OpenAI o1.",
-    },
-    {
-      value: "deepseek/deepseek-r1-distill-qwen-32b",
-      label: "DeepSeek R1 Distill 32B",
-      description: "Distilled reasoning model with excellent performance.",
-    },
-  ],
-};
 
 // Task type definitions with user-friendly names and default settings
 const taskTypeDefinitions: Record<
   TaskType,
   {
     label: string;
-    defaultApiType: "gemini" | "claude" | "whisper" | "reasoning";
+    defaultApiType: "google" | "anthropic" | "openai" | "deepseek";
   }
 > = {
   path_finder: {
     label: "Path Finder",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   voice_transcription: {
     label: "Voice Transcription",
-    defaultApiType: "whisper",
+    defaultApiType: "openai",
   },
   regex_generation: {
     label: "Regex Generation",
-    defaultApiType: "claude",
+    defaultApiType: "anthropic",
   },
   regex_summary_generation: {
     label: "Regex Summary Generation",
-    defaultApiType: "claude",
+    defaultApiType: "anthropic",
   },
   path_correction: {
     label: "Path Correction",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   text_improvement: {
     label: "Text Improvement",
-    defaultApiType: "claude",
+    defaultApiType: "anthropic",
   },
   voice_correction: {
     label: "Voice Correction",
-    defaultApiType: "claude",
+    defaultApiType: "anthropic",
   },
   task_enhancement: {
     label: "Task Enhancement",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   guidance_generation: {
     label: "Guidance Generation",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   implementation_plan: {
     label: "Implementation Plan",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   generic_llm_stream: {
     label: "Generic LLM Stream",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   generate_directory_tree: {
     label: "Generate Directory Tree",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
   text_correction_post_transcription: {
     label: "Post-Transcription Correction",
-    defaultApiType: "claude",
+    defaultApiType: "anthropic",
   },
   unknown: {
     label: "Unknown Task",
-    defaultApiType: "gemini",
+    defaultApiType: "google",
   },
 };
 
@@ -178,6 +124,7 @@ const taskTypeToSettingsKey: Record<string, string> = {
 // Task model settings component
 export default function TaskModelSettings({
   taskSettings,
+  availableModels,
   onSettingsChange,
 }: TaskModelSettingsProps) {
   // Helper to ensure all task types have settings and map snake_case to camelCase
@@ -256,8 +203,12 @@ export default function TaskModelSettings({
 
   // Get available models based on the task type's default API
   const getModelsForTask = (taskType: TaskType) => {
+    if (!availableModels || availableModels.length === 0) {
+      return [];
+    }
+    
     const apiType = taskTypeDefinitions[taskType].defaultApiType;
-    return modelOptions[apiType];
+    return availableModels.filter(model => model.provider === apiType);
   };
 
   return (
@@ -327,15 +278,15 @@ export default function TaskModelSettings({
                               Models
                             </SelectLabel>
                             {models.map((model) => (
-                              <SelectItem key={model.value} value={model.value}>
-                                {model.label}
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name}
                               </SelectItem>
                             ))}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        {models.find((m) => m.value === settings.model)
+                        {models.find((m) => m.id === settings.model)
                           ?.description || "Select a model"}
                         {settings.model && (
                           <span className="block text-[10px] text-muted-foreground/70 mt-0.5 font-mono">

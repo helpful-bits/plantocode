@@ -7,6 +7,7 @@ import {
   useProjectDirectoryManager,
   type ProjectDirectoryState,
 } from "./_hooks/use-project-directory-manager";
+import { logError } from "@/utils/error-handling";
 
 export interface ProjectContextValue extends ProjectDirectoryState {
   setProjectDirectory: (dir: string) => Promise<void>;
@@ -46,7 +47,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 export function useProject(): ProjectContextValue {
   const context = useContext(ProjectContext);
   if (!context) {
-    throw new Error("useProject must be used within a ProjectProvider");
+    const error = new Error("useProject must be used within a ProjectProvider");
+    logError(error, "Project Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 }

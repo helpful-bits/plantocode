@@ -38,19 +38,9 @@ pub async fn get_usage_summary_handler(
             let monthly_allowance = spending_status.included_allowance.to_f64().unwrap_or(0.0);
             let hard_limit = spending_status.hard_limit.to_f64().unwrap_or(0.0);
             
-            // Calculate cycle start date (beginning of current month)
+            // Use correct billing period dates from spending status
+            let cycle_start_date = spending_status.billing_period_start;
             let cycle_end_date = spending_status.next_billing_date;
-            let cycle_start_date = cycle_end_date
-                .with_day(1)
-                .unwrap()
-                .with_hour(0)
-                .unwrap()
-                .with_minute(0)
-                .unwrap()
-                .with_second(0)
-                .unwrap()
-                .with_nanosecond(0)
-                .unwrap();
                 
             // Get subscription details for plan name and trial info
             let (plan_name, trial_days_remaining) = match app_state.subscription_repository.get_by_user_id(&user_id.0).await {

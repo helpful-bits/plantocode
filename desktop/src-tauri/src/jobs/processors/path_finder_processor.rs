@@ -45,20 +45,6 @@ impl PathFinderProcessor {
         Self {}
     }
     
-    // Ensure job is visible to the user
-    async fn ensure_job_visible(&self, repo: &BackgroundJobRepository, job_id: &str) -> AppResult<()> {
-        // Get the current job
-        if let Some(mut job) = repo.get_job_by_id(job_id).await? {
-            // Set visibility flags
-            job.visible = Some(true);
-            job.cleared = Some(false);
-            
-            // Update the job
-            repo.update_job(&job).await?;
-        }
-        
-        Ok(())
-    }
     
     // Parse file paths from XML response
     fn parse_path_finder_xml_response(&self, response_xml: &str, project_directory: &str) -> AppResult<PathFinderResult> {
@@ -377,8 +363,6 @@ impl JobProcessor for PathFinderProcessor {
         // Get the API client from factory
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
-        // Ensure job is visible
-        self.ensure_job_visible(&repo, &payload.background_job_id).await?;
         
         // Get the background job from the repository
         let mut db_job = repo.get_job_by_id(&payload.background_job_id).await?

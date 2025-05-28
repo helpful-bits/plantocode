@@ -59,32 +59,47 @@ export function useVoiceRecording({
     onStateChangeRef.current = onStateChange;
   }, [onStateChange]);
 
+  // Create refs to hold the latest values of state variables
+  const isRecordingRef = useRef(isRecording);
+  const isProcessingRef = useRef(isProcessing);
+  const errorRef = useRef(error);
+  
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+  useEffect(() => { errorRef.current = error; }, [error]);
+
   // Updates the state and calls the onStateChange callback
   const updateState = useCallback(
     (newStateUpdates: Partial<{ isRecording: boolean; isProcessing: boolean; error: string | null }>) => {
-      let finalIsRecording = isRecording;
-      let finalIsProcessing = isProcessing;
-      let finalError = error;
+      // Store which states are being updated in this specific call
+      const stateKeysUpdatedInThisCall: (keyof typeof newStateUpdates)[] = [];
 
       if (newStateUpdates.isRecording !== undefined) {
-        finalIsRecording = newStateUpdates.isRecording;
-        setIsRecording(finalIsRecording);
+        setIsRecording(newStateUpdates.isRecording);
+        stateKeysUpdatedInThisCall.push('isRecording');
       }
       if (newStateUpdates.isProcessing !== undefined) {
-        finalIsProcessing = newStateUpdates.isProcessing;
-        setIsProcessing(finalIsProcessing);
+        setIsProcessing(newStateUpdates.isProcessing);
+        stateKeysUpdatedInThisCall.push('isProcessing');
       }
-      if (newStateUpdates.error !== undefined) {
-        finalError = newStateUpdates.error;
-        setError(finalError);
+      // Use Object.prototype.hasOwnProperty.call to correctly check if 'error' key is present,
+      // even if its value is null.
+      if (Object.prototype.hasOwnProperty.call(newStateUpdates, 'error')) {
+        setError(newStateUpdates.error!); // Assert non-null as we checked presence
+        stateKeysUpdatedInThisCall.push('error');
       }
-      onStateChangeRef.current?.({
-        isRecording: finalIsRecording,
-        isProcessing: finalIsProcessing,
-        error: finalError,
-      });
+      
+      // Construct the state for the onStateChangeRef callback.
+      // For fields updated in this call, use their new values.
+      // For fields not updated in this call, use the latest values from refs.
+      const callbackState = {
+        isRecording: stateKeysUpdatedInThisCall.includes('isRecording') ? newStateUpdates.isRecording! : isRecordingRef.current,
+        isProcessing: stateKeysUpdatedInThisCall.includes('isProcessing') ? newStateUpdates.isProcessing! : isProcessingRef.current,
+        error: stateKeysUpdatedInThisCall.includes('error') ? newStateUpdates.error! : errorRef.current,
+      };
+      onStateChangeRef.current?.(callbackState);
     },
-    [isRecording, isProcessing, error] // Add state dependencies
+    [onStateChangeRef] // Depends only on the stable ref now. Setters are stable.
   );
 
   // Use the specialized hooks

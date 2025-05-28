@@ -19,25 +19,31 @@ import { Badge } from "@/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { useSpendingData } from "@/hooks/use-spending-data";
+import { type SpendingStatus } from "@/actions/spending.actions";
 
 interface CostBasedSpendingOverviewProps {
+  spendingData?: SpendingStatus | null;
   onUpgrade?: () => void;
   onManageSpending?: () => void;
 }
 
 export function CostBasedSpendingOverview({ 
+  spendingData,
   onUpgrade,
   onManageSpending 
 }: CostBasedSpendingOverviewProps) {
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   
-  // Use real spending data from API
+  // Use provided spending data or fetch from API as fallback
   const { 
-    spendingStatus, 
+    spendingStatus: fetchedSpendingStatus, 
     isLoading, 
     error, 
     refreshSpendingData
   } = useSpendingData();
+  
+  // Use provided spendingData if available, otherwise use fetched data
+  const spendingStatus = spendingData || fetchedSpendingStatus;
 
   const formatCurrency = (amount: number) => {
     const currency = spendingStatus?.currency || 'USD';
@@ -49,8 +55,8 @@ export function CostBasedSpendingOverview({
     }).format(amount);
   };
   
-  // Show loading state
-  if (isLoading && !spendingStatus) {
+  // Show loading state only if no data is provided and hook is loading
+  if (!spendingData && isLoading && !spendingStatus) {
     return (
       <Card className="border border-border/50 bg-card/80 backdrop-blur-sm">
         <CardContent className="pt-6">
@@ -62,8 +68,8 @@ export function CostBasedSpendingOverview({
     );
   }
   
-  // Show error state
-  if (error && !spendingStatus) {
+  // Show error state only if no data is provided and hook has error
+  if (!spendingData && error && !spendingStatus) {
     return (
       <Card className="border border-border/50 bg-card/80 backdrop-blur-sm">
         <CardContent className="pt-6">

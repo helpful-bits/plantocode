@@ -3,6 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import {
   type DisplayContextValue,
 } from "./_types/generated-prompt-display-types";
+import { logError } from "@/utils/error-handling";
 
 // Create the context with a default value
 const defaultValue: DisplayContextValue = {
@@ -26,9 +27,11 @@ export const DisplayContext = createContext<DisplayContextValue>(defaultValue);
 export const useDisplayContext = () => {
   const context = useContext(DisplayContext);
   if (!context) {
-    throw new Error(
+    const error = new Error(
       "useDisplayContext must be used within a DisplayContextProvider"
     );
+    logError(error, "Display Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 };

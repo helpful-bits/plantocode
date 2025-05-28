@@ -41,7 +41,6 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
         "get_active_jobs" => crate::services::api_handlers::handle_get_active_jobs(app_handle).await,
         "cancel_job" => crate::services::api_handlers::handle_cancel_job(app_handle, path_param).await,
         "cancel_session_jobs" => crate::services::api_handlers::handle_cancel_session_jobs(app_handle, path_param).await,
-        "update_job_cleared_status" => crate::services::api_handlers::handle_update_job_cleared_status(app_handle, &args).await,
         "clear_job_history" => crate::services::api_handlers::handle_clear_job_history(app_handle, &args).await,
         "delete_job" => crate::services::api_handlers::handle_delete_job(app_handle, path_param).await,
         

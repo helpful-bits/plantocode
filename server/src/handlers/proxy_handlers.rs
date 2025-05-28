@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProxyRequest {
     #[serde(flatten)]
     pub payload: serde_json::Value,

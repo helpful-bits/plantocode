@@ -49,8 +49,6 @@ impl JobProcessor for GuidanceGenerationProcessor {
         // Get LLM client using the standardized factory function
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
-        // Ensure job is visible in UI
-        job_helpers::ensure_job_visible(&repo, &job.id).await?;
         
         // Update job status to running
         job_helpers::update_job_status_running(&repo, &job.id).await?;

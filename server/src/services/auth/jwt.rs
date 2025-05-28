@@ -82,12 +82,8 @@ fn get_decoding_key() -> Result<DecodingKey, AppError> {
 }
 
 /// Generate a JWT token for a user
-pub fn generate_token(user_id: Uuid, email: &str) -> Result<String, AppError> {
-    // Get token duration from environment or use default
-    let duration_days = std::env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
-        .ok()
-        .and_then(|days| days.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_JWT_DURATION_DAYS);
+pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> Result<String, AppError> {
+    let duration_days = token_duration_days;
 
     // Calculate timestamps
     let iat = Utc::now();
@@ -158,12 +154,9 @@ pub fn create_token(
     role: &str,
     email: &str,
     token_binding_value: Option<&str>,
+    token_duration_days: i64,
 ) -> Result<String, AppError> {
-    // Get token duration from environment or use default
-    let duration_days = std::env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
-        .ok()
-        .and_then(|days| days.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_JWT_DURATION_DAYS);
+    let duration_days = token_duration_days;
 
     // Calculate timestamps
     let iat_dt = Utc::now();

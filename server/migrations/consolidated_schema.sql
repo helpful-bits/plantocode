@@ -71,9 +71,9 @@ CREATE TABLE IF NOT EXISTS user_spending_limits (
     plan_id VARCHAR(50) NOT NULL REFERENCES subscription_plans(id),
     billing_period_start TIMESTAMPTZ NOT NULL,
     billing_period_end TIMESTAMPTZ NOT NULL,
-    included_allowance DECIMAL(10, 2) NOT NULL,
-    current_spending DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    hard_limit DECIMAL(10, 2) NOT NULL,
+    included_allowance DECIMAL(10, 4) NOT NULL,
+    current_spending DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
+    hard_limit DECIMAL(10, 4) NOT NULL,
     services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -139,8 +139,8 @@ CREATE TABLE IF NOT EXISTS spending_alerts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     alert_type VARCHAR(50) NOT NULL, -- '75_percent', '90_percent', 'limit_reached', 'services_blocked'
-    threshold_amount DECIMAL(10, 2) NOT NULL,
-    current_spending DECIMAL(10, 2) NOT NULL,
+    threshold_amount DECIMAL(10, 4) NOT NULL,
+    current_spending DECIMAL(10, 4) NOT NULL,
     alert_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     billing_period_start TIMESTAMPTZ NOT NULL,
     acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
@@ -176,27 +176,42 @@ CREATE TABLE IF NOT EXISTS models (
     context_window INTEGER NOT NULL DEFAULT 4096,
     price_input DECIMAL(10,6) NOT NULL DEFAULT 0,
     price_output DECIMAL(10,6) NOT NULL DEFAULT 0,
+    pricing_type VARCHAR(20) DEFAULT 'token_based',
+    price_per_hour DECIMAL(12,6) DEFAULT 0.000000,
+    minimum_billable_seconds INTEGER DEFAULT 0,
+    billing_unit VARCHAR(10) DEFAULT 'tokens',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Add index for faster lookup by name
 CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
+CREATE INDEX IF NOT EXISTS idx_models_pricing_type ON models(pricing_type);
 
 
--- OpenRouter billing rates – generated 2025-05-26
-INSERT INTO models (id, name, context_window, price_input, price_output)
+-- AI model pricing data - Updated 2025-05-28 with correct Groq transcription pricing
+INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit)
 VALUES
-('anthropic/claude-opus-4',        'Claude 4 Opus',       200000, 0.015000, 0.075000),
-('anthropic/claude-sonnet-4',      'Claude 4 Sonnet',     200000, 0.003000, 0.015000),
-('openai/gpt-4.1',                 'GPT-4.1',            1000000, 0.002000, 0.008000),
-('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.000400, 0.001600),
-('google/gemini-2.5-pro-preview',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000),
-('groq/whisper-large-v3',          'Whisper Large V3 (Groq)', 0, 0.000000, 0.000000)
+-- OpenRouter text generation models (token-based pricing)
+('anthropic/claude-opus-4',        'Claude 4 Opus',       200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens'),
+('anthropic/claude-sonnet-4',      'Claude 4 Sonnet',     200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens'),
+('openai/gpt-4.1',                 'GPT-4.1',            1000000, 0.002000, 0.008000, 'token_based', 0.000000, 0, 'tokens'),
+('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.000400, 0.001600, 'token_based', 0.000000, 0, 'tokens'),
+('google/gemini-2.5-pro-preview',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens'),
+
+-- Groq transcription models (duration-based pricing) - 2025 rates
+('groq/whisper-large-v3',          'Whisper Large V3 (Groq)',          0, 0.000000, 0.000000, 'duration_based', 0.111000, 10, 'hours'),
+('groq/whisper-large-v3-turbo',    'Whisper Large V3 Turbo (Groq)',    0, 0.000000, 0.000000, 'duration_based', 0.040000, 10, 'hours'),
+('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 English (Groq)', 0, 0.000000, 0.000000, 'duration_based', 0.020000, 10, 'hours')
+
 ON CONFLICT (id) DO UPDATE SET
-name           = EXCLUDED.name,
-context_window = EXCLUDED.context_window,
-price_input    = EXCLUDED.price_input,
-price_output   = EXCLUDED.price_output;
+name                       = EXCLUDED.name,
+context_window            = EXCLUDED.context_window,
+price_input               = EXCLUDED.price_input,
+price_output              = EXCLUDED.price_output,
+pricing_type              = EXCLUDED.pricing_type,
+price_per_hour            = EXCLUDED.price_per_hour,
+minimum_billable_seconds  = EXCLUDED.minimum_billable_seconds,
+billing_unit              = EXCLUDED.billing_unit;
 
 
 
@@ -227,7 +242,7 @@ INSERT INTO subscription_plans (
  
 ('enterprise', 'Enterprise', 'For organizations with high AI usage', 
  100.00, 1000.00, 200.00, 0.9000, 5.00, 'USD',
- '{"features": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"], "models": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "openai/gpt-4.1-mini", "google/gemini-2.5-pro-preview", "groq/whisper-large-v3"], "support": "Dedicated", "limits": {"hard_cutoff": false, "overage_allowed": true, "custom_limits": true}}'::jsonb)
+ '{"features": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"], "models": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "openai/gpt-4.1-mini", "google/gemini-2.5-pro-preview", "groq/whisper-large-v3", "groq/whisper-large-v3-turbo", "groq/distil-whisper-large-v3-en"], "support": "Dedicated", "limits": {"hard_cutoff": false, "overage_allowed": true, "custom_limits": true}}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 
@@ -236,7 +251,7 @@ INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
 ('ai_settings_default_llm_model_id', '"google/gemini-2.5-pro-preview"'::jsonb, 'Default LLM model for new installations'),
 ('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default voice processing model'),
-('ai_settings_default_transcription_model_id', '"groq/whisper-large-v3"'::jsonb, 'Default transcription model'),
+('ai_settings_default_transcription_model_id', '"groq/whisper-large-v3-turbo"'::jsonb, 'Default transcription model'),
 ('ai_settings_latest_claude_models', '["anthropic/claude-opus-4", "anthropic/claude-sonnet-4"]'::jsonb, 'Latest Claude models available'),
 ('ai_settings_latest_openai_models', '["openai/gpt-4.1", "openai/gpt-4.1-mini"]'::jsonb, 'Latest OpenAI models available'),
 ('ai_settings_latest_google_models', '["google/gemini-2.5-pro-preview"]'::jsonb, 'Latest Google models available')
@@ -256,7 +271,7 @@ VALUES
   "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
   "path_finder": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.3},
   "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
-  "voice_transcription": {"model": "groq/whisper-large-v3", "max_tokens": 4096, "temperature": 0.0},
+  "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
   "voice_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
   "path_correction": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.3},
   "regex_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},

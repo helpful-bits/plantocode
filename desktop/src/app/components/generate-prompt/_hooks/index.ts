@@ -3,7 +3,6 @@ export * from "./use-file-management-state";
 export * from "./use-generate-form-state";
 export * from "./use-guidance-generation";
 export * from "./use-implementation-plan-actions";
-// export * from './use-prompt-generator'; // This module doesn't exist
 export * from "./use-session-form-ui-manager";
 export * from "./use-session-metadata";
 export * from "./use-task-description-state";

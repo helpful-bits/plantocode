@@ -100,41 +100,32 @@ export function safeFetch(
 }
 
 /**
- * Helper function to strip common markdown code fences from the beginning and end of a string.
- * Handles variations like ```diff, ```patch, ```, etc.
+ * Helper function to strip markdown code fences from XML content.
+ * Prioritizes explicit ```xml fences, then generic fences containing XML-like content.
  * @param content The string content potentially containing code fences.
- * @returns The content with leading/trailing fences removed.
+ * @returns The content with fences removed if they contain XML, otherwise original content.
  */
 export function stripMarkdownCodeFences(content: string): string {
-  // Regex to find content between the outermost triple backticks,
-  // allowing for an optional language specifier after the opening fence.
-  // It uses a non-greedy match for the content.
-  const fenceRegex = /^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n([\s\S]*?)\r?\n\s*```\s*$/;
-  const match = content.match(fenceRegex);
+  const trimmed_content = content.trim();
+  if (!trimmed_content) return "";
 
-  if (match && match[1] !== undefined) {
-    return match[1].trim(); // Return the captured content
+  const xmlFencePattern = /^\s*```xml\s*\r?\n([\s\S]*?)\r?\n\s*```\s*$/;
+  const xmlMatch = trimmed_content.match(xmlFencePattern);
+  if (xmlMatch && xmlMatch[1] !== undefined) {
+    return xmlMatch[1].trim();
   }
 
-  // Fallback for cases where only one fence might be present or formatting is unusual
-  // This tries to remove leading/trailing fences more loosely.
-  let processedContent = content.trim();
-  const startsWithFence = /^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n/.test(processedContent);
-  const endsWithFence = /\r?\n\s*```\s*$/.test(processedContent);
-
-  if (startsWithFence) {
-    processedContent = processedContent.replace(/^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n/, "");
-  }
-  if (endsWithFence) {
-    processedContent = processedContent.replace(/\r?\n\s*```\s*$/, "");
+  // Optional: If you still want to catch generic fences that happen to contain XML:
+  const genericFencePattern = /^\s*```(?:[a-zA-Z0-9\-_]+)?\s*\r?\n([\s\S]*?)\r?\n\s*```\s*$/;
+  const genericMatch = trimmed_content.match(genericFencePattern);
+  if (genericMatch && genericMatch[1] !== undefined) {
+    const innerContent = genericMatch[1].trim();
+    // Only return if it looks like XML
+    if (innerContent.startsWith("&lt;") || innerContent.startsWith("<")) { // Check for escaped or raw XML
+      return innerContent;
+    }
   }
 
-  // Only return the processed content if fences were actually removed,
-  // otherwise return original if no clear outer fences were found.
-  // This check prevents accidental stripping if the content itself contains "```".
-  if (startsWithFence || endsWithFence) {
-    return processedContent.trim();
-  }
-
-  return content; // Return original content if no clear outer fences are matched
+  // If no specific XML or generic fence containing XML is found, return original trimmed content
+  return trimmed_content;
 }

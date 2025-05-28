@@ -33,11 +33,16 @@ function Router() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
   useEffect(() => {
+    let lastKnownPath = window.location.pathname; // Initialize with current path
+    
     const handlePathChange = () => {
       const newPath = window.location.pathname;
-      setCurrentPath(newPath);
-      // Dispatch custom event for other components
-      window.dispatchEvent(new CustomEvent('routeChange', { detail: { path: newPath } }));
+      if (newPath !== lastKnownPath) { // Only if path truly changed
+        setCurrentPath(newPath);
+        lastKnownPath = newPath; // Update last known path
+        // Dispatch custom event for other components
+        window.dispatchEvent(new CustomEvent('routeChange', { detail: { path: newPath } }));
+      }
     };
 
     // Initial dispatch

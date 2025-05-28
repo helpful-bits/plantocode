@@ -21,20 +21,6 @@ impl RegexGenerationProcessor {
         Self {}
     }
     
-    // Ensure job is visible to the user
-    async fn ensure_job_visible(&self, repo: &BackgroundJobRepository, job_id: &str) -> AppResult<()> {
-        // Get the current job
-        if let Some(mut job) = repo.get_job_by_id(job_id).await? {
-            // Set visibility flags
-            job.visible = Some(true);
-            job.cleared = Some(false);
-            
-            // Update the job
-            repo.update_job(&job).await?;
-        }
-        
-        Ok(())
-    }
     
     // Parse regex patterns from the XML response
     fn parse_regex_patterns(&self, response: &str) -> AppResult<serde_json::Value> {
@@ -223,8 +209,6 @@ impl JobProcessor for RegexGenerationProcessor {
         
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
-        // Ensure job is visible
-        self.ensure_job_visible(&repo, &job.id).await?;
         
         // Update job status to running
         let timestamp = get_timestamp();

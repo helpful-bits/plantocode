@@ -10,18 +10,6 @@ use crate::models::BackgroundJob;
 /// Maximum number of job retries
 pub const MAX_RETRY_COUNT: u32 = 3;
 
-/// Ensure a job is marked as visible in the database
-pub async fn ensure_job_visible(repo: &Arc<BackgroundJobRepository>, job_id: &str) -> AppResult<()> {
-    let job = repo.get_job_by_id(job_id).await?
-        .ok_or_else(|| AppError::NotFoundError(format!("Job with ID {} not found", job_id)))?;
-    
-    // Only update if not already visible
-    if job.visible.unwrap_or(false) == false {
-        repo.update_job_visibility(job_id, true, false).await?;
-    }
-    
-    Ok(())
-}
 
 /// Update job status to running
 pub async fn update_job_status_running(repo: &Arc<BackgroundJobRepository>, job_id: &str) -> AppResult<()> {

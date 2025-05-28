@@ -247,56 +247,6 @@ pub async fn handle_cancel_session_jobs(app_handle: AppHandle, session_id: Optio
     }
 }
 
-pub async fn handle_update_job_cleared_status(app_handle: AppHandle, args: &crate::models::FetchRequestArgs) -> AppResult<FetchResponse> {
-    info!("Handling update_job_cleared_status command");
-    
-    if let Some(body) = &args.body {
-        // Parse job ID and cleared status from request body
-        let job_id = body.get("jobId").and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::ValidationError("jobId is required".to_string()))?;
-        
-        let cleared = body.get("cleared").and_then(|v| v.as_bool())
-            .ok_or_else(|| AppError::ValidationError("cleared status is required".to_string()))?;
-        
-        let job_repo = app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>()
-            .inner().clone();
-        
-        match job_repo.update_job_cleared_status(job_id, cleared).await {
-            Ok(_) => {
-                let mut headers = HashMap::new();
-                headers.insert("Content-Type".to_string(), "application/json".to_string());
-                
-                Ok(FetchResponse {
-                    status: 200,
-                    headers,
-                    body: json!({
-                        "success": true
-                    }),
-                })
-            },
-            Err(e) => {
-                error!("Failed to update job cleared status: {}", e);
-                let mut headers = HashMap::new();
-                headers.insert("Content-Type".to_string(), "application/json".to_string());
-                
-                Ok(FetchResponse {
-                    status: 500,
-                    headers,
-                    body: json!(SerializableError::from(e)),
-                })
-            }
-        }
-    } else {
-        let mut headers = HashMap::new();
-        headers.insert("Content-Type".to_string(), "application/json".to_string());
-        
-        Ok(FetchResponse {
-            status: 400,
-            headers,
-            body: json!(SerializableError::from(AppError::ValidationError("Request body is required".to_string()))),
-        })
-    }
-}
 
 pub async fn handle_clear_job_history(app_handle: AppHandle, args: &crate::models::FetchRequestArgs) -> AppResult<FetchResponse> {
     info!("Handling clear_job_history command");

@@ -397,6 +397,36 @@ pub fn sanitize_filename(name: &str) -> String {
     }
 }
 
+/// Ensure a filepath is unique by appending suffixes as needed
+async fn ensure_unique_filepath(base_dir: &Path, base_filename: &str, extension: &str) -> AppResult<PathBuf> {
+    let filename = format!("{}.{}", base_filename, extension);
+    let mut output_path = base_dir.join(filename);
+    
+    // If the path already exists, append a short random suffix
+    if fs_utils::path_exists(&output_path).await? {
+        info!("Output path already exists, adding a unique suffix");
+        let mut counter = 0;
+        while fs_utils::path_exists(&output_path).await? && counter < 10 {
+            // Generate a short unique suffix using UUID
+            let suffix = Uuid::new_v4().simple().to_string();
+            let suffix = &suffix[0..6]; // Use just 6 characters from the UUID
+            
+            let filename_with_suffix = format!("{}_{}.{}", base_filename, suffix, extension);
+            output_path = base_dir.join(filename_with_suffix);
+            counter += 1;
+        }
+        
+        // If we still have a conflict after 10 tries, append the full timestamp
+        if fs_utils::path_exists(&output_path).await? {
+            let full_timestamp = Local::now().timestamp_nanos();
+            let filename_with_timestamp = format!("{}_{}.{}", base_filename, full_timestamp, extension);
+            output_path = base_dir.join(filename_with_timestamp);
+        }
+    }
+    
+    Ok(output_path)
+}
+
 /// Create a unique output filepath for job outputs (async version)
 pub async fn create_unique_output_filepath(
     session_id: &str, 
@@ -419,8 +449,9 @@ pub async fn create_unique_output_filepath(
         session_id
     };
     
-    // Create the filename
-    let filename = format!("{}_{}_{}_.{}", timestamp, sanitized_task_name, session_id_short, extension);
+    // Create the base filename (without extension)
+    let base_filename = format!("{}_{}_{}_{}", timestamp, sanitized_task_name, session_id_short, "");
+    let base_filename = base_filename.trim_end_matches('_'); // Remove trailing underscore
     
     // Determine the base directory
     let base_dir = if let Some(project_dir) = project_dir {
@@ -444,48 +475,8 @@ pub async fn create_unique_output_filepath(
         get_app_output_files_directory(app_handle).await?
     };
     
-    // Join base_dir and filename to get the full path
-    let mut output_path = base_dir.join(filename);
-    
-    // If the path already exists, append a short random suffix
-    if fs_utils::path_exists(&output_path).await? {
-        info!("Output path already exists, adding a unique suffix");
-        let mut counter = 0;
-        while fs_utils::path_exists(&output_path).await? && counter < 10 {
-            // Generate a short unique suffix using UUID
-            let suffix = Uuid::new_v4().simple().to_string();
-            let suffix = &suffix[0..6]; // Use just 6 characters from the UUID
-            
-            let filename_with_suffix = format!(
-                "{}_{}_{}_{}_.{}", 
-                timestamp, 
-                sanitized_task_name, 
-                session_id_short, 
-                suffix, 
-                extension
-            );
-            
-            output_path = base_dir.join(filename_with_suffix);
-            counter += 1;
-        }
-        
-        // If we still have a conflict after 10 tries, append the full timestamp
-        if fs_utils::path_exists(&output_path).await? {
-            let full_timestamp = Local::now().timestamp_nanos();
-            let filename_with_timestamp = format!(
-                "{}_{}_{}_{}_.{}", 
-                timestamp, 
-                sanitized_task_name, 
-                session_id_short, 
-                full_timestamp, 
-                extension
-            );
-            
-            output_path = base_dir.join(filename_with_timestamp);
-        }
-    }
-    
-    Ok(output_path)
+    // Use the shared helper to ensure uniqueness
+    ensure_unique_filepath(&base_dir, base_filename, extension).await
 }
 
 /// Creates a unique file path for an output file, similar to TypeScript's createUniqueFilePath
@@ -513,8 +504,9 @@ pub async fn create_custom_unique_filepath(
         request_id
     };
     
-    // Create the filename
-    let filename = format!("{}_{}_{}_.{}", timestamp, safe_session_name, request_id_short, extension);
+    // Create the base filename (without extension)
+    let base_filename = format!("{}_{}_{}_{}", timestamp, safe_session_name, request_id_short, "");
+    let base_filename = base_filename.trim_end_matches('_'); // Remove trailing underscore
     
     // Determine the base directory
     let base_dir = if let Some(project_dir) = project_dir {
@@ -532,30 +524,8 @@ pub async fn create_custom_unique_filepath(
         get_app_output_files_directory(app_handle).await?
     };
     
-    // Join base_dir and filename to get the full path
-    let file_path = base_dir.join(&filename);
-    
-    // Check if file exists and add random suffix if needed
-    if fs_utils::path_exists(&file_path).await? {
-        debug!("Output path already exists, adding a unique suffix");
-        
-        // Generate a random suffix
-        let suffix = Uuid::new_v4().simple().to_string();
-        let suffix = &suffix[0..8]; // Use 8 characters from the UUID
-        
-        let filename_with_suffix = format!(
-            "{}_{}_{}_{}_.{}", 
-            timestamp, 
-            safe_session_name, 
-            request_id_short, 
-            suffix, 
-            extension
-        );
-        
-        return Ok(base_dir.join(filename_with_suffix));
-    }
-    
-    Ok(file_path)
+    // Use the shared helper to ensure uniqueness
+    ensure_unique_filepath(&base_dir, base_filename, extension).await
 }
 
 /// Safe project-scoped file discovery for path finder

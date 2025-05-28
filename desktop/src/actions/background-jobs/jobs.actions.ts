@@ -52,20 +52,6 @@ export async function clearJobHistoryAction(
   }
 }
 
-/**
- * Updates the cleared status of a background job
- */
-export async function updateJobClearedStatusAction(
-  jobId: string,
-  cleared: boolean
-): Promise<ActionState<null>> {
-  try {
-    await invoke("update_job_cleared_status_command", { jobId, cleared });
-    return { isSuccess: true };
-  } catch (e) {
-    return handleActionError(e) as ActionState<null>;
-  }
-}
 
 /**
  * Gets a specific background job by ID
