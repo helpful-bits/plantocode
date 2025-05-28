@@ -13,6 +13,7 @@ export interface SidebarState {
   isClearing: boolean;
   clearFeedback: string | null;
   isCancelling: Record<string, boolean>;
+  isDeleting: Record<string, boolean>;
   isRefreshing: boolean;
 }
 
@@ -21,6 +22,7 @@ export interface SidebarManager extends SidebarState {
   handleRefresh: () => Promise<void>;
   handleClearHistory: (daysToKeep?: number) => Promise<void>;
   handleCancelJob: (jobId: string) => Promise<void>;
+  handleDeleteJob: (jobId: string) => Promise<void>;
   handleSelectJob: (job: BackgroundJob) => void;
   handleCollapseChange: (open: boolean) => void;
   setSelectedJob: (job: BackgroundJob | null) => void;
@@ -31,7 +33,7 @@ export interface SidebarManager extends SidebarState {
  */
 export function useSidebarStateManager(): SidebarManager {
   const backgroundJobsContext = useContext(BackgroundJobsContext);
-  const { cancelJob, clearHistory, refreshJobs } = backgroundJobsContext;
+  const { cancelJob, deleteJob, clearHistory, refreshJobs } = backgroundJobsContext;
 
   // Use the UI layout context
   const { setIsSidebarCollapsed } = useUILayout();
@@ -43,6 +45,7 @@ export function useSidebarStateManager(): SidebarManager {
     isClearing: false,
     clearFeedback: null,
     isCancelling: {},
+    isDeleting: {},
     isRefreshing: false,
   });
 
@@ -165,6 +168,26 @@ export function useSidebarStateManager(): SidebarManager {
     [cancelJob]
   );
 
+  // Handle job deletion
+  const handleDeleteJob = useCallback(
+    async (jobId: string) => {
+      setState((prev: SidebarState) => ({
+        ...prev,
+        isDeleting: { ...prev.isDeleting, [jobId]: true },
+      }));
+
+      try {
+        await deleteJob(jobId);
+      } finally {
+        setState((prev: SidebarState) => ({
+          ...prev,
+          isDeleting: { ...prev.isDeleting, [jobId]: false },
+        }));
+      }
+    },
+    [deleteJob]
+  );
+
   // Handle sidebar collapse toggle
   const handleCollapseChange = useCallback((open: boolean) => {
     setState((prev: SidebarState) => ({ ...prev, activeCollapsed: !open }));
@@ -187,6 +210,7 @@ export function useSidebarStateManager(): SidebarManager {
     handleRefresh,
     handleClearHistory,
     handleCancelJob,
+    handleDeleteJob,
     handleSelectJob,
     handleCollapseChange,
     setSelectedJob,

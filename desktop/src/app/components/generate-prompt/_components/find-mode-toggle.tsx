@@ -17,16 +17,11 @@ const FindModeToggle = ({
   disabled = false,
 }: FindModeToggleProps) => {
   return (
-    <div className="flex items-center border rounded-md overflow-hidden dark:border-border">
+    <div className="flex items-center border border-border/60 rounded-lg overflow-hidden shadow-soft backdrop-blur-sm bg-background/80">
       <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "rounded-none border-0 h-8 px-3",
-          currentMode === "extend"
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90"
-        )}
+        variant={currentMode === "extend" ? "filter-active" : "filter"}
+        size="xs"
+        className="px-3"
         onClick={() => onModeChange("extend")}
         disabled={disabled}
         title="Add AI-found files to your existing selection"
@@ -35,17 +30,12 @@ const FindModeToggle = ({
         Extend
       </Button>
 
-      <div className="w-[1px] h-6 bg-border" />
+      <div className="w-[1px] h-6 bg-border/40" />
 
       <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "rounded-none border-0 h-8 px-3",
-          currentMode === "replace"
-            ? "bg-primary/10 text-primary font-medium dark:bg-primary/20 dark:text-primary-foreground"
-            : "text-muted-foreground dark:text-muted-foreground/90"
-        )}
+        variant={currentMode === "replace" ? "filter-active" : "filter"}
+        size="xs"
+        className="px-3"
         onClick={() => onModeChange("replace")}
         disabled={disabled}
         title="Replace your current selection with AI-found files"

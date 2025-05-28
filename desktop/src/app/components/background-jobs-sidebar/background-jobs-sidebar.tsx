@@ -29,11 +29,13 @@ export const BackgroundJobsSidebar = () => {
     isClearing,
     clearFeedback,
     isCancelling,
+    isDeleting,
     isRefreshing,
     refreshClickedRef,
     handleRefresh,
     handleClearHistory,
     handleCancelJob,
+    handleDeleteJob,
     handleSelectJob,
     handleCollapseChange,
     setSelectedJob,
@@ -85,7 +87,9 @@ export const BackgroundJobsSidebar = () => {
               shouldShowEmpty={shouldShowEmpty}
               allJobsSorted={allJobsSorted}
               handleCancel={handleCancelJob}
+              handleDelete={handleDeleteJob}
               isCancelling={isCancelling}
+              isDeleting={isDeleting}
               onSelect={handleSelectJob}
             />
           </CollapsibleContent>

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useCallback } from "react";
 
-
+import { useSessionStateContext } from "@/contexts/session";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 import FileBrowser from "../file-browser";
@@ -17,6 +17,7 @@ const FileSection = React.memo(function FileSection({
   // Get state and actions from contexts
   const fileState = useFileManagement();
   const coreContext = useCorePromptContext();
+  const { currentSession } = useSessionStateContext();
 
 
   // Handle filter mode changes
@@ -75,6 +76,15 @@ const FileSection = React.memo(function FileSection({
                 : ""
         }
         regexState={regexState}
+        isFindingFiles={fileState.isFindingFiles}
+        executeFindRelevantFiles={fileState.findRelevantFiles}
+        findFilesMode={fileState.findFilesMode}
+        setFindFilesMode={fileState.setFindFilesMode}
+        canUndo={fileState.canUndo}
+        canRedo={fileState.canRedo}
+        undoSelection={fileState.undoSelection}
+        redoSelection={fileState.redoSelection}
+        taskDescription={currentSession?.taskDescription || ""}
         disabled={disabled}
       />
     </>

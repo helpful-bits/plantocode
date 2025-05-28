@@ -8,6 +8,9 @@ import {
   X,
   RefreshCw,
   Files,
+  Sparkles,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 
@@ -18,6 +21,7 @@ import { Input } from "@/ui/input";
 import { cn } from "@/utils/utils";
 
 import FileListItem from "./_components/file-list-item";
+import FindModeToggle from "./_components/find-mode-toggle";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
 import { type FilesMap } from "./_hooks/file-management/use-project-file-list";
 
@@ -33,15 +37,6 @@ interface RegexState {
   regexGenerationError: string | null;
 }
 
-// This section has been moved to actions-section.tsx
-
-// These constants were previously used for auto-retry logic but are no longer used
-// They're kept commented out for future reference
-// const AUTO_RETRY_DELAY = 2000; // 2 seconds delay for auto-retry
-// const MAX_AUTO_RETRIES = 3; // Maximum number of automatic retries
-
-// This constant was previously used for localStorage but is no longer used
-// const SHOW_ONLY_SELECTED_KEY = "file-browser-show-only-selected";
 
 interface FileBrowserProps {
   managedFilesMap: FilesMap;
@@ -64,6 +59,17 @@ interface FileBrowserProps {
   // Regex state
   regexState: RegexState;
 
+  // File management actions (moved from ActionsSection)
+  isFindingFiles: boolean;
+  executeFindRelevantFiles: () => Promise<void>;
+  findFilesMode: "replace" | "extend";
+  setFindFilesMode: (mode: "replace" | "extend") => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoSelection: () => void;
+  redoSelection: () => void;
+  taskDescription?: string;
+
   // Session state
   disabled?: boolean; // Added prop to disable the entire component during session switching
 }
@@ -84,6 +90,15 @@ function FileBrowser({
   isInitialized = false,
   fileLoadError = null,
   regexState,
+  isFindingFiles,
+  executeFindRelevantFiles,
+  findFilesMode,
+  setFindFilesMode,
+  canUndo,
+  canRedo,
+  undoSelection,
+  redoSelection,
+  taskDescription = "",
   disabled = false,
 }: FileBrowserProps) {
   const { projectDirectory } = useProject();
@@ -180,6 +195,56 @@ function FileBrowser({
 
   return (
     <div className="space-y-4 mt-4 border border-border/60 rounded-xl p-6 bg-background/95 backdrop-blur-sm shadow-soft">
+      {/* AI File Search Controls */}
+      <div className="flex items-center gap-3 justify-between mb-4">
+        <FindModeToggle
+          currentMode={findFilesMode}
+          onModeChange={setFindFilesMode}
+          disabled={disabled || !taskDescription.trim()}
+        />
+
+        <Button
+          variant="default"
+          size="sm"
+          onClick={executeFindRelevantFiles}
+          disabled={
+            disabled ||
+            isFindingFiles ||
+            !taskDescription.trim()
+          }
+          isLoading={isFindingFiles}
+          loadingText="Finding files..."
+          className="flex-1"
+        >
+          <>
+            <Sparkles className="h-4 w-4 mr-2" />
+            Find Relevant Files with AI
+          </>
+        </Button>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={undoSelection}
+            disabled={!canUndo || disabled}
+            title="Undo last file selection"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={redoSelection}
+            disabled={!canRedo || disabled}
+            title="Redo undone file selection"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center gap-4">
           <div className="relative flex-1">
@@ -239,7 +304,6 @@ function FileBrowser({
         </div>
       )}
 
-      {/* Find Relevant Files and Regex Accordion moved to actions-section.tsx */}
 
       {/* Status bar with file counts */}
       {!isLoading && totalFilesCount > 0 && (
