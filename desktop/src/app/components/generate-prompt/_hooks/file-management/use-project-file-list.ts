@@ -57,7 +57,7 @@ export function useProjectFileList(
       const result = await listProjectFilesAction({
         directory: projectDirectory,
         pattern: "**/*", // Default pattern for all files
-        includeStats: false, // Don't need file stats for this use case
+        includeStats: true, // Include file stats to get size information
         exclude: [], // No exclude patterns by default
       });
 

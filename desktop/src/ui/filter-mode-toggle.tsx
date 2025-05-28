@@ -1,17 +1,15 @@
 "use client";
 
-import { Files, FileCheck, FilterX } from "lucide-react";
+import { Files, FileCheck } from "lucide-react";
 import { FC } from "react";
 
 import { Button } from "@/ui/button";
-import { cn } from "@/utils/utils";
 
-export type FilterMode = "all" | "selected" | "regex";
+export type FilterMode = "all" | "selected";
 
 interface FilterModeToggleProps {
   currentMode: FilterMode;
   onModeChange: (mode: FilterMode) => void;
-  isRegexAvailable: boolean;
   disabled?: boolean;
 }
 
@@ -21,7 +19,6 @@ interface FilterModeToggleProps {
 export const FilterModeToggle: FC<FilterModeToggleProps> = ({
   currentMode,
   onModeChange,
-  isRegexAvailable,
   disabled = false,
 }) => {
   return (
@@ -52,26 +49,6 @@ export const FilterModeToggle: FC<FilterModeToggleProps> = ({
         Selected
       </Button>
 
-      <div className="w-[1px] h-6 bg-border/40" />
-
-      <Button
-        variant={currentMode === "regex" ? "filter-active" : "filter"}
-        size="xs"
-        className={cn(
-          "px-3",
-          !isRegexAvailable && "opacity-40"
-        )}
-        onClick={() => onModeChange("regex")}
-        disabled={disabled || !isRegexAvailable}
-        title={
-          isRegexAvailable
-            ? "Filter files using regex patterns"
-            : "Define regex patterns to enable this filter mode"
-        }
-      >
-        <FilterX className="h-3.5 w-3.5 mr-1.5" />
-        Regex
-      </Button>
     </div>
   );
 };

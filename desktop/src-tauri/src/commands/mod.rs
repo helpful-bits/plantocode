@@ -52,6 +52,8 @@ pub use text_commands::{
 pub use implementation_plan_commands::{
     create_implementation_plan_command,
     read_implementation_plan_command,
+    get_implementation_plan_prompt_command,
+    estimate_implementation_plan_tokens_command,
 };
 
 // Re-exports from path finding commands module

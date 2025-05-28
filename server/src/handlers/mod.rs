@@ -5,3 +5,4 @@ pub mod billing_handlers;
 pub mod config_handlers;
 pub mod usage_handlers;
 pub mod auth0_handlers;
+pub mod spending_handlers;

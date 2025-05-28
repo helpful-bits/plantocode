@@ -1,4 +1,4 @@
-import { AlertCircle, ChevronRight, Calendar, CreditCard, Users, Zap } from "lucide-react";
+import { AlertCircle, Calendar, CreditCard, Users } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
@@ -44,12 +44,12 @@ export function SubscriptionDetails({
   const isTrialEndingSoon =
     isTrialing && trialDaysLeft !== undefined && trialDaysLeft <= 5;
 
-  // Calculate total tokens with safe fallbacks
-  const tokensInputSafe = subscription.usage?.tokensInput ?? 0;
-  const tokensOutputSafe = subscription.usage?.tokensOutput ?? 0;
-  const totalTokens = tokensInputSafe + tokensOutputSafe;
-  const monthlyLimit = subscription.monthlyTokenLimit || 1000000;
-  const usagePercentage = Math.min(100, Math.round((totalTokens / monthlyLimit) * 100));
+  // Calculate cost usage with safe fallbacks - NO HARDCODED VALUES
+  const currentSpending = subscription.usage?.currentSpending ?? 0;
+  const monthlyAllowance = subscription.monthlySpendingAllowance ?? 0;
+  const usagePercentage = monthlyAllowance > 0 
+    ? Math.min(100, Math.round((currentSpending / monthlyAllowance) * 100))
+    : 0;
 
   // Status badge for subscription status
   function StatusBadge() {
@@ -67,33 +67,24 @@ export function SubscriptionDetails({
           <AlertCircle className="h-4 w-4" />
           <AlertTitle className="font-semibold">Trial ending in {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</AlertTitle>
           <AlertDescription className="mt-2">
-            <p className="text-sm leading-7 mb-4">
+            <p className="text-sm leading-7">
               Upgrade now to continue enjoying unlimited access to all features.
             </p>
-            <Button
-              onClick={onUpgrade}
-              size="sm"
-              className="shadow-soft hover:shadow-soft-md backdrop-blur-sm transition-all duration-200"
-            >
-              <Zap className="mr-2 h-4 w-4" />
-              Upgrade Now
-              <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Token Usage Card - Aligned with app design */}
+      {/* AI Usage Card - Aligned with app design */}
       <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300 backdrop-blur-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CreditCard className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-medium text-sm">Token Usage</h3>
+              <h3 className="font-medium text-sm">AI Usage</h3>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs rounded-full border px-2.5 py-0.5 font-medium transition-all duration-200 backdrop-blur-sm">
-                ${(subscription.usage?.totalCost ?? 0).toFixed(2)}
+                ${currentSpending.toFixed(2)}
               </Badge>
               {trialDaysLeft !== undefined && (
                 <Badge 
@@ -110,20 +101,20 @@ export function SubscriptionDetails({
           <div className="space-y-3">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Monthly Usage</span>
+                <span className="text-sm text-muted-foreground">Monthly Spending</span>
                 <span className="text-sm font-medium">{usagePercentage}% used</span>
               </div>
               <Progress value={usagePercentage} className="h-1.5" />
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{totalTokens.toLocaleString()} used</span>
-                <span>{monthlyLimit.toLocaleString()} limit</span>
+                <span>${currentSpending.toFixed(2)} spent</span>
+                <span>${monthlyAllowance.toFixed(2)} allowance</span>
               </div>
             </div>
             {usagePercentage > 80 && (
               <Alert variant="warning" className="rounded-lg border p-3 backdrop-blur-sm shadow-soft">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription className="text-xs">
-                  Approaching usage limit - consider upgrading
+                  Approaching spending limit - consider upgrading
                 </AlertDescription>
               </Alert>
             )}

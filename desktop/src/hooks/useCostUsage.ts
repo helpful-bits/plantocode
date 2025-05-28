@@ -3,39 +3,41 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { createLogger } from "@/utils/logger";
 
-const logger = createLogger({ namespace: "TokenUsage" });
+const logger = createLogger({ namespace: "CostUsage" });
 
 /**
- * Token usage data interface
- * Represents the token usage information returned from the server
+ * Cost usage data interface
+ * Represents the cost-based usage information returned from the server
  */
-export interface TokenUsageData {
-  usedTokens: number;
-  monthlyLimit: number;
+export interface CostUsageData {
+  currentSpending: number;
+  monthlyAllowance: number;
+  hardLimit: number;
   cycleStartDate?: string;
   cycleEndDate?: string;
-  estimatedCost?: number;
+  usagePercentage: number;
+  servicesBlocked: boolean;
   currency?: string;
   trialDaysRemaining?: number | null;
   planName?: string;
 }
 
-interface UseTokenUsageOptions {
+interface UseCostUsageOptions {
   serverUrl?: string;
   getAuthToken?: () => Promise<string | null>;
   autoRefreshInterval?: number | null; // Milliseconds, null for no auto-refresh
 }
 
-type TokenUsageResponse = TokenUsageData;
+type CostUsageResponse = CostUsageData;
 
 /**
- * Hook to fetch token usage data from the server
+ * Hook to fetch cost-based usage data from the server
  *
  * @param options Configuration options for the hook
- * @returns Token usage data, loading state, error state, and a refresh function
+ * @returns Cost usage data, loading state, error state, and a refresh function
  */
-export function useTokenUsage(options: UseTokenUsageOptions = {}) {
-  const [usage, setUsage] = useState<TokenUsageData | null>(null);
+export function useCostUsage(options: UseCostUsageOptions = {}) {
+  const [usage, setUsage] = useState<CostUsageData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
@@ -80,30 +82,17 @@ export function useTokenUsage(options: UseTokenUsageOptions = {}) {
 
       if (!response.ok) {
         throw new Error(
-          `Failed to fetch token usage: ${response.status} ${response.statusText}`
+          `Failed to fetch cost usage: ${response.status} ${response.statusText}`
         );
       }
 
-      const data = (await response.json()) as TokenUsageResponse;
+      const data = (await response.json()) as CostUsageResponse;
       setUsage(data);
       setLastRefreshTime(now);
     } catch (e) {
       logger.error("Error:", e);
       setError(e instanceof Error ? e.message : "Unknown error");
-
-      // If in development or testing, use mock data
-      if (import.meta.env.DEV) {
-        logger.warn("Using mock data in development");
-        const mockData: TokenUsageData = {
-          usedTokens: 750000,
-          monthlyLimit: 2000000,
-          estimatedCost: 12.5,
-          currency: "USD",
-          trialDaysRemaining: 7,
-          planName: "Pro Trial",
-        };
-        setUsage(mockData);
-      }
+      // NO MOCK DATA - Real data from server only
     } finally {
       setIsLoading(false);
     }

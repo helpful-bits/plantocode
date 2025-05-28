@@ -6,19 +6,11 @@ import { type FilesMap } from "./use-project-file-list";
 
 import type { FileInfo } from "@/types";
 
-interface RegexPatterns {
-  titleRegex: string;
-  contentRegex: string;
-  negativeTitleRegex: string;
-  negativeContentRegex: string;
-}
-
 interface UseFileFilteringProps {
   managedFilesMap: FilesMap;
   fileContentsMap: { [key: string]: string };
   searchTerm: string;
-  filterMode: "all" | "selected" | "regex";
-  regexPatterns: RegexPatterns;
+  filterMode: "all" | "selected";
 }
 
 /**
@@ -29,76 +21,7 @@ export function useFileFiltering({
   fileContentsMap,
   searchTerm,
   filterMode,
-  regexPatterns,
 }: UseFileFilteringProps) {
-  // Memoize regex objects to prevent unnecessary recreation
-  const compiledRegexObjects = useMemo(() => {
-    const titleRegexTrimmed = regexPatterns.titleRegex?.trim() ?? '';
-    const contentRegexTrimmed = regexPatterns.contentRegex?.trim() ?? '';
-    const negativeTitleRegexTrimmed = regexPatterns.negativeTitleRegex?.trim() ?? '';
-    const negativeContentRegexTrimmed = regexPatterns.negativeContentRegex?.trim() ?? '';
-
-    // Compile title regex with error handling
-    let titleRegexObj: RegExp | null = null;
-    if (titleRegexTrimmed) {
-      try {
-        titleRegexObj = new RegExp(titleRegexTrimmed, "i");
-      } catch (e) {
-        console.warn("Invalid title regex in useFileFiltering:", e);
-        titleRegexObj = null;
-      }
-    }
-
-    // Compile content regex with error handling
-    let contentRegexObj: RegExp | null = null;
-    if (contentRegexTrimmed) {
-      try {
-        contentRegexObj = new RegExp(contentRegexTrimmed, "im");
-      } catch (e) {
-        console.warn("Invalid content regex in useFileFiltering:", e);
-        contentRegexObj = null;
-      }
-    }
-
-    // Compile negative title regex with error handling
-    let negativeTitleRegexObj: RegExp | null = null;
-    if (negativeTitleRegexTrimmed) {
-      try {
-        negativeTitleRegexObj = new RegExp(negativeTitleRegexTrimmed, "i");
-      } catch (e) {
-        console.warn("Invalid negative title regex in useFileFiltering:", e);
-        negativeTitleRegexObj = null;
-      }
-    }
-
-    // Compile negative content regex with error handling
-    let negativeContentRegexObj: RegExp | null = null;
-    if (negativeContentRegexTrimmed) {
-      try {
-        negativeContentRegexObj = new RegExp(negativeContentRegexTrimmed, "im");
-      } catch (e) {
-        console.warn("Invalid negative content regex in useFileFiltering:", e);
-        negativeContentRegexObj = null;
-      }
-    }
-
-    return {
-      titleRegexObj,
-      contentRegexObj,
-      negativeTitleRegexObj,
-      negativeContentRegexObj,
-      titleRegexTrimmed,
-      contentRegexTrimmed,
-      negativeTitleRegexTrimmed,
-      negativeContentRegexTrimmed
-    };
-  }, [
-    regexPatterns.titleRegex,
-    regexPatterns.contentRegex,
-    regexPatterns.negativeTitleRegex,
-    regexPatterns.negativeContentRegex
-  ]);
-
   // Extract the filtering logic from FileBrowser component
   const filteredFiles = useMemo(() => {
     // Skip filtering if files are empty
@@ -108,14 +31,8 @@ export function useFileFiltering({
     
     // Early return if all filters are empty or disabled
     const hasSearchTerm = searchTerm.trim().length > 0;
-    const hasRegexFilters = filterMode === 'regex' && (
-      compiledRegexObjects.titleRegexTrimmed ||
-      compiledRegexObjects.contentRegexTrimmed ||
-      compiledRegexObjects.negativeTitleRegexTrimmed ||
-      compiledRegexObjects.negativeContentRegexTrimmed
-    );
     
-    if (filterMode === 'all' && !hasSearchTerm && !hasRegexFilters) {
+    if (filterMode === 'all' && !hasSearchTerm) {
       return Object.values(managedFilesMap);
     }
 
@@ -146,93 +63,12 @@ export function useFileFiltering({
       });
     }
 
-    // --- 3. THIRD, Apply Regex Filtering (if filter mode is 'regex') ---
-    if (filterMode === "regex") {
-      const hasFileContents = Object.keys(fileContentsMap).length > 0;
-      
-      // Skip content-based filtering if no content is loaded to avoid expensive operations
-      if ((compiledRegexObjects.contentRegexTrimmed || compiledRegexObjects.negativeContentRegexTrimmed) && !hasFileContents) {
-        // If content filtering is required but no content is available, return empty to avoid confusion
-        return [];
-      }
-      
-      const {
-        titleRegexObj,
-        contentRegexObj,
-        negativeTitleRegexObj,
-        negativeContentRegexObj,
-        titleRegexTrimmed,
-        contentRegexTrimmed,
-        negativeTitleRegexTrimmed,
-        negativeContentRegexTrimmed
-      } = compiledRegexObjects;
-
-      // Apply positive title regex filter
-      if (titleRegexObj && titleRegexTrimmed) {
-        filteredFilesInLoop = filteredFilesInLoop.filter((file) => {
-          // Use comparablePath for matching if available
-          const pathToTest = file.comparablePath || file.path;
-          return titleRegexObj.test(pathToTest);
-        });
-      }
-
-      // Apply positive content regex filter
-      if (contentRegexObj && contentRegexTrimmed && hasFileContents) {
-        filteredFilesInLoop = filteredFilesInLoop.filter((file) => {
-          const pathToTest = file.comparablePath || file.path;
-
-          // Get content using comparablePath first, then fallback to path
-          const content = fileContentsMap[pathToTest];
-
-          // If content is available and matches the regex, keep the file
-          if (typeof content === "string") {
-            return contentRegexObj.test(content);
-          }
-
-          // If content isn't loaded yet, exclude the file
-          // This is a design decision - we exclude files without content when filtering by content
-          return false;
-        });
-      }
-
-      // Apply negative title regex filter (exclude matches)
-      if (negativeTitleRegexObj && negativeTitleRegexTrimmed) {
-        filteredFilesInLoop = filteredFilesInLoop.filter((file) => {
-          // Use comparablePath for matching if available
-          const pathToTest = file.comparablePath || file.path;
-          return !negativeTitleRegexObj.test(pathToTest);
-        });
-      }
-
-      // Apply negative content regex filter (exclude matches)
-      if (
-        negativeContentRegexObj &&
-        negativeContentRegexTrimmed &&
-        hasFileContents
-      ) {
-        filteredFilesInLoop = filteredFilesInLoop.filter((file) => {
-          const pathToTest = file.comparablePath || file.path;
-
-          // Get content using comparablePath first, then fallback to path
-          const content = fileContentsMap[pathToTest];
-
-          // Only exclude if content is available and matches
-          if (typeof content === "string") {
-            return !negativeContentRegexObj.test(content);
-          }
-
-          // If content isn't loaded yet, keep the file (don't exclude it based on unknown content)
-          return true;
-        });
-      }
-    }
 
     return filteredFilesInLoop;
   }, [
     managedFilesMap,
     searchTerm,
     filterMode,
-    compiledRegexObjects,
     fileContentsMap,
   ]);
 

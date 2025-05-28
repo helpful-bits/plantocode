@@ -13,7 +13,6 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/ui";
 import { logError, getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 
-import SubscriptionManager from "@/app/components/billing/subscription-manager";
 import SystemSettings from "./system-settings";
 import TaskModelSettings from "./task-model-settings";
 
@@ -179,8 +178,6 @@ export default function SettingsForm() {
       )}
 
       <SystemSettings projectDirectory={projectDirectory} />
-
-      <SubscriptionManager />
     </div>
   );
 }

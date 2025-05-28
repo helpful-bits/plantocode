@@ -2,6 +2,8 @@ use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::SubscriptionRepository;
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
+use crate::db::repositories::spending_repository::SpendingRepository;
+use crate::services::cost_based_billing_service::CostBasedBillingService;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -27,6 +29,7 @@ pub struct BillingService {
     subscription_repository: Arc<SubscriptionRepository>,
     subscription_plan_repository: Arc<SubscriptionPlanRepository>,
     api_usage_repository: Arc<ApiUsageRepository>,
+    cost_based_billing_service: Arc<CostBasedBillingService>,
     #[cfg(feature = "stripe")]
     stripe_client: Option<StripeClient>,
     default_trial_days: i64,
@@ -41,7 +44,17 @@ impl BillingService {
         // Create repositories
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pool.clone()));
         let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pool.clone()));
-        let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pool));
+        let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pool.clone()));
+        let spending_repository = Arc::new(SpendingRepository::new(db_pool.clone()));
+        
+        // Create cost-based billing service
+        let cost_based_billing_service = Arc::new(CostBasedBillingService::new(
+            db_pool,
+            api_usage_repository.clone(),
+            subscription_repository.clone(),
+            subscription_plan_repository.clone(),
+            spending_repository,
+        ));
         
         // Get default trial days from environment
         let default_trial_days = env::var("DEFAULT_TRIAL_DAYS")
@@ -66,6 +79,7 @@ impl BillingService {
             subscription_repository,
             subscription_plan_repository,
             api_usage_repository,
+            cost_based_billing_service,
             #[cfg(feature = "stripe")]
             stripe_client,
             default_trial_days,
@@ -73,13 +87,12 @@ impl BillingService {
         }
     }
     
-    // Check if a user has access to a specific model
+    // COST-BASED BILLING: Check if user can access AI services based on spending limits
     pub async fn check_service_access(
         &self,
         user_id: &Uuid,
-        model_id: &str,
+        _model_id: &str, // Model restrictions removed - all models available
     ) -> Result<bool, AppError> {
-    
         // Get user's subscription
         let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
         
@@ -87,12 +100,14 @@ impl BillingService {
         if subscription.is_none() {
             debug!("No subscription found for user {}, creating trial", user_id);
             self.create_trial_subscription(user_id).await?;
-            return Ok(true);
+            // Even trial users get cost-based limits
         }
         
-        let subscription = subscription.unwrap();
+        let subscription = subscription.ok_or_else(|| {
+            AppError::Internal("Failed to create trial subscription".to_string())
+        })?;
         
-        // Check subscription status
+        // Check subscription status first
         match subscription.status.as_str() {
             "active" | "trialing" => {
                 // Check if trial or subscription has expired
@@ -112,40 +127,8 @@ impl BillingService {
                     }
                 }
                 
-                // Determine allowed models dynamically from subscription_plans.features
-                let allowed_model_patterns = self
-                    .subscription_plan_repository
-                    .get_allowed_models(&subscription.plan_id)
-                    .await
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to load allowed models for plan {}: {}", subscription.plan_id, e);
-                        Vec::new()
-                    });
-                
-                // All models are available on all plans, only token usage is limited
-                // Skip model restriction check - enforce only token limits
-                
-                let plan = self.get_plan_by_id(&subscription.plan_id).await?;
-                
-                let now = Utc::now();
-                let start_of_month = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-                    .unwrap()
-                    .and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc();
-                
-                let usage = self.api_usage_repository
-                    .get_usage_for_period(user_id, Some(start_of_month), None)
-                    .await?;
-                
-                let total_tokens = usage.tokens_input + usage.tokens_output;
-                
-                if plan.monthly_tokens > 0 && total_tokens >= plan.monthly_tokens {
-                    debug!("Token limit reached for user {}", user_id);
-                    return Err(AppError::Payment("Token limit reached for this billing period".to_string()));
-                }
-                
-                Ok(true)
+                // COST-BASED ACCESS CHECK: Use spending limits instead of token limits
+                self.cost_based_billing_service.check_service_access(user_id).await
             },
             "canceled" | "unpaid" | "past_due" => {
                 debug!("Subscription is not active for user {}: {}", user_id, subscription.status);
@@ -156,6 +139,37 @@ impl BillingService {
                 Err(AppError::Payment("Invalid subscription status".to_string()))
             }
         }
+    }
+    
+    // COST-BASED BILLING: Record usage with real-time spending tracking
+    pub async fn record_ai_service_usage(
+        &self,
+        user_id: &Uuid,
+        service_name: &str,
+        tokens_input: i32,
+        tokens_output: i32,
+        cost: &bigdecimal::BigDecimal,
+        request_id: Option<String>,
+        metadata: Option<serde_json::Value>,
+        processing_ms: Option<i32>,
+        input_duration_ms: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.cost_based_billing_service.record_usage_and_update_spending(
+            user_id,
+            service_name,
+            tokens_input,
+            tokens_output,
+            cost,
+            request_id,
+            metadata,
+            processing_ms,
+            input_duration_ms,
+        ).await
+    }
+    
+    // Get current spending status for user
+    pub async fn get_spending_status(&self, user_id: &Uuid) -> Result<crate::services::cost_based_billing_service::SpendingStatus, AppError> {
+        self.cost_based_billing_service.get_current_spending_status(user_id).await
     }
     
     // Create a trial subscription for a new user
@@ -360,31 +374,37 @@ impl BillingService {
             .get_usage_for_period(user_id, Some(start_of_month), None)
             .await?;
         
-        // Get the total cost from the api_usage records
-        // This is the actual recorded cost from OpenRouter or our cost calculations
-        let cost = if subscription.plan_id != "free" {
-            // Get the cost directly from the api_usage repository
-            // The total_cost is already in BigDecimal format from the database
-            let cost_decimal = &usage.total_cost;
-            // Convert to f64 for the JSON response
-            cost_decimal.to_f64().unwrap_or(0.0)
-        } else {
-            0.0
-        };
+        // COST-BASED BILLING: Get spending status instead of just usage cost
+        let spending_status = self.cost_based_billing_service.get_current_spending_status(user_id).await?;
+        let cost = spending_status.current_spending.to_f64().unwrap_or(0.0);
         
-        // Build the response
+        // Get plan details for allowance and currency
+        let plan = self.get_plan_by_id(&subscription.plan_id).await?;
+        
+        // Build the response matching frontend SubscriptionInfo interface
         let response = serde_json::json!({
             "plan": subscription.plan_id,
             "status": subscription.status,
             "trialEndsAt": subscription.trial_ends_at,
             "currentPeriodEndsAt": subscription.current_period_ends_at,
+            "monthlySpendingAllowance": spending_status.included_allowance.to_f64().unwrap_or(0.0),
+            "hardSpendingLimit": spending_status.hard_limit.to_f64().unwrap_or(0.0),
+            "isTrialing": subscription.status == "trialing",
+            "hasCancelled": subscription.status == "canceled",
+            "nextInvoiceAmount": null, // TODO: Calculate next invoice amount based on overage
+            "currency": spending_status.currency,
             "usage": {
-                "tokensInput": usage.tokens_input,
-                "tokensOutput": usage.tokens_output,
-                "totalCost": cost
+                "totalCost": spending_status.current_spending.to_f64().unwrap_or(0.0),
+                "usagePercentage": spending_status.usage_percentage,
+                "servicesBlocked": spending_status.services_blocked
             }
         });
         
         Ok(response)
+    }
+
+    /// Get access to the cost-based billing service
+    pub fn get_cost_based_billing_service(&self) -> &Arc<CostBasedBillingService> {
+        &self.cost_based_billing_service
     }
 }

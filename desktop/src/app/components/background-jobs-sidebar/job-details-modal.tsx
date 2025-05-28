@@ -21,7 +21,7 @@ import { JobDetailsPromptSection } from "./_components/job-details/JobDetailsPro
 import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsResponseSection";
 import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
 import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
-import { JobDetailsTokenUsageSection } from "./_components/job-details/JobDetailsTokenUsageSection";
+import { JobDetailsCostUsageSection } from "./_components/job-details/JobDetailsCostUsageSection";
 import { getParsedMetadata } from "./utils";
 
 interface JobDetailsModalProps {
@@ -336,7 +336,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <JobDetailsTimingSection job={job} jobDuration={jobDuration} />
-            <JobDetailsTokenUsageSection job={job} />
+            <JobDetailsCostUsageSection job={job} />
           </div>
 
           <JobDetailsAdditionalInfoSection job={job} />

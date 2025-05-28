@@ -24,9 +24,20 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/billing")
             .service(handlers::billing_handlers::get_subscription)
+            .service(handlers::billing_handlers::get_available_plans)
             .service(handlers::billing_handlers::create_checkout_session)
             .service(handlers::billing_handlers::create_billing_portal)
             .service(handlers::billing_handlers::get_usage_summary)
+    );
+    
+    // Spending routes (/api/spending/*)
+    cfg.service(
+        web::scope("/spending")
+            .service(handlers::spending_handlers::get_spending_status)
+            .service(handlers::spending_handlers::check_service_access)
+            .service(handlers::spending_handlers::update_spending_limits)
+            .service(handlers::spending_handlers::acknowledge_alert)
+            .service(handlers::spending_handlers::get_spending_history)
     );
     
     // Usage routes (/api/usage/*)

@@ -2,10 +2,14 @@ use actix_web::{web, HttpResponse, get, post, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::billing_service::BillingService;
+use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepository;
+use crate::models::runtime_config::AppState;
+use sqlx::PgPool;
 use log::{debug, error, info};
 use crate::middleware::secure_auth::UserId;
 use chrono::{DateTime, Utc, Duration};
 use uuid::Uuid;
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 pub struct CheckoutRequest {
@@ -13,13 +17,35 @@ pub struct CheckoutRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CheckoutResponse {
     pub url: String,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PortalResponse {
     pub url: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanLimits {
+    pub monthly_allowance: f64,
+    pub overage_rate: f64,
+    pub hard_limit_multiplier: f64,
+    pub models: Vec<String>,
+    pub support: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanDetails {
+    pub name: String,
+    pub price: String,
+    pub period: String,
+    pub features: Vec<String>,
+    pub limits: PlanLimits,
 }
 
 /// Get subscription info for the current user
@@ -74,6 +100,77 @@ pub async fn create_billing_portal(
     
     // Return the billing portal URL
     Ok(HttpResponse::Ok().json(PortalResponse { url }))
+}
+
+/// Get available subscription plans
+#[get("/plans")]
+pub async fn get_available_plans(
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting available subscription plans");
+    
+    let plans = app_state.subscription_plan_repository.get_all_plans().await?;
+    
+    let mut response: HashMap<String, PlanDetails> = HashMap::new();
+    
+    for plan in plans {
+        let price = if plan.base_price_monthly == 0.0 {
+            "$0".to_string()
+        } else {
+            format!("${}", plan.base_price_monthly as i32)
+        };
+        
+        let period = if plan.base_price_monthly == 0.0 {
+            "forever".to_string()
+        } else {
+            "month".to_string()
+        };
+        
+        // Extract features from JSONB - ALL data must come from database
+        let features = plan.features
+            .get("features")
+            .and_then(|f| f.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_else(|| Vec::new());
+        
+        // Extract models from features - NO hardcoded fallbacks
+        let models = plan.features
+            .get("models")
+            .and_then(|m| m.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_else(|| Vec::new());
+        
+        // Extract support level from features JSON - NO hardcoded fallbacks
+        let support = plan.features
+            .get("support")
+            .and_then(|s| s.as_str())
+            .unwrap_or("Support not specified")
+            .to_string();
+        
+        response.insert(plan.id.clone(), PlanDetails {
+            name: plan.name,
+            price,
+            period,
+            features,
+            limits: PlanLimits {
+                monthly_allowance: plan.included_spending_monthly,
+                overage_rate: plan.overage_rate,
+                hard_limit_multiplier: plan.hard_limit_multiplier,
+                models,
+                support,
+            },
+        });
+    }
+    
+    Ok(HttpResponse::Ok().json(response))
 }
 
 /// Get API usage summary

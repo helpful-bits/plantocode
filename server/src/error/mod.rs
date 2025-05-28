@@ -113,5 +113,11 @@ impl From<serde_json::Error> for AppError {
     }
 }
 
+impl From<bigdecimal::ParseBigDecimalError> for AppError {
+    fn from(error: bigdecimal::ParseBigDecimalError) -> Self {
+        AppError::Validation(format!("Invalid decimal value: {}", error))
+    }
+}
+
 // Define AppResult type alias for Result<T, AppError>
 pub type AppResult<T> = Result<T, AppError>;

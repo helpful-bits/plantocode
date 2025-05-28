@@ -80,6 +80,142 @@ export async function createImplementationPlanAction(params: {
 }
 
 /**
+ * Estimate the number of tokens an implementation plan prompt would use
+ */
+export async function estimateImplementationPlanTokensAction(params: {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+  relevantFiles: string[];
+  projectStructure?: string;
+}): Promise<ActionState<{
+  estimatedTokens: number;
+  systemPromptTokens: number;
+  userPromptTokens: number;
+  totalTokens: number;
+}>> {
+  const {
+    sessionId,
+    taskDescription,
+    projectDirectory,
+    relevantFiles,
+    projectStructure,
+  } = params;
+
+  if (!taskDescription.trim()) {
+    return { isSuccess: false, message: "Task description cannot be empty" };
+  }
+
+  if (!relevantFiles.length) {
+    return { isSuccess: false, message: "No relevant files provided" };
+  }
+
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    return { isSuccess: false, message: "Invalid or missing session ID" };
+  }
+
+  try {
+    const result = await invoke<{
+      estimatedTokens: number;
+      systemPromptTokens: number;
+      userPromptTokens: number;
+      totalTokens: number;
+    }>("estimate_implementation_plan_tokens_command", {
+      sessionId,
+      taskDescription,
+      projectDirectory,
+      relevantFiles,
+      projectStructure,
+    });
+
+    return {
+      isSuccess: true,
+      message: "Token estimation completed successfully",
+      data: {
+        estimatedTokens: result.estimatedTokens,
+        systemPromptTokens: result.systemPromptTokens,
+        userPromptTokens: result.userPromptTokens,
+        totalTokens: result.totalTokens,
+      },
+    };
+  } catch (error) {
+    console.error("[estimateImplementationPlanTokensAction]", error);
+    return handleActionError(error) as ActionState<{
+      estimatedTokens: number;
+      systemPromptTokens: number;
+      userPromptTokens: number;
+      totalTokens: number;
+    }>;
+  }
+}
+
+/**
+ * Get the prompt that would be used to generate an implementation plan
+ */
+export async function getImplementationPlanPromptAction(params: {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+  relevantFiles: string[];
+  projectStructure?: string;
+}): Promise<ActionState<{
+  systemPrompt: string;
+  userPrompt: string;
+  combinedPrompt: string;
+}>> {
+  const {
+    sessionId,
+    taskDescription,
+    projectDirectory,
+    relevantFiles,
+    projectStructure,
+  } = params;
+
+  if (!taskDescription.trim()) {
+    return { isSuccess: false, message: "Task description cannot be empty" };
+  }
+
+  if (!relevantFiles.length) {
+    return { isSuccess: false, message: "No relevant files provided" };
+  }
+
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    return { isSuccess: false, message: "Invalid or missing session ID" };
+  }
+
+  try {
+    const result = await invoke<{
+      systemPrompt: string;
+      userPrompt: string;
+      combinedPrompt: string;
+    }>("get_implementation_plan_prompt_command", {
+      sessionId,
+      taskDescription,
+      projectDirectory,
+      relevantFiles,
+      projectStructure,
+    });
+
+    return {
+      isSuccess: true,
+      message: "Implementation plan prompt retrieved successfully",
+      data: {
+        systemPrompt: result.systemPrompt,
+        userPrompt: result.userPrompt,
+        combinedPrompt: result.combinedPrompt,
+      },
+    };
+  } catch (error) {
+    console.error("[getImplementationPlanPromptAction]", error);
+    return handleActionError(error) as ActionState<{
+      systemPrompt: string;
+      userPrompt: string;
+      combinedPrompt: string;
+    }>;
+  }
+}
+
+/**
  * Read an implementation plan by its job ID
  */
 export async function readImplementationPlanAction(jobId: string): Promise<

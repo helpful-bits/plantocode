@@ -18,7 +18,6 @@ export interface RuntimeAIConfig {
   tasks: Record<string, TaskModelSettings>;
   availableModels: ModelInfo[];
   pathFinderSettings: PathFinderSettings;
-  limits: TokenLimits;
 }
 
 /**
@@ -52,15 +51,7 @@ export interface PathFinderSettings {
   maxContentSizePerFile?: number;
   maxFileCount?: number;
   fileContentTruncationChars?: number;
-  tokenLimitBuffer?: number;
-}
-
-/**
- * Token limits interface
- */
-export interface TokenLimits {
-  maxTokensPerRequest?: number;
-  maxTokensPerMonth?: number;
+  contentLimitBuffer?: number;
 }
 
 /**

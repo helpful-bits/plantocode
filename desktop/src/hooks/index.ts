@@ -6,7 +6,7 @@
  */
 
 // Core hooks
-export * from "./useTokenUsage";
+export * from "./useCostUsage";
 export * from "./useProjectPersistenceService";
 export * from "./use-async-state";
 export * from "./use-textarea-resize";

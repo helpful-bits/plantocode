@@ -128,6 +128,9 @@ export interface BackgroundJob {
   tokensSent?: number;
   tokensReceived?: number;
   totalTokens?: number;
+  inputCost?: number;
+  outputCost?: number;
+  totalCost?: number;
   charsReceived?: number;
   statusMessage?: string;
   errorMessage?: string;

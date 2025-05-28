@@ -5,7 +5,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../../contexts/auth-context";
 import { createLogger } from "@/utils/logger";
-import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { AlertCircle, Info } from "lucide-react";

@@ -184,6 +184,8 @@ fn main() {
             // Implementation plan commands
             commands::implementation_plan_commands::create_implementation_plan_command,
             commands::implementation_plan_commands::read_implementation_plan_command,
+            commands::implementation_plan_commands::get_implementation_plan_prompt_command,
+            commands::implementation_plan_commands::estimate_implementation_plan_tokens_command,
             
             // Path finding commands
             commands::path_finding_commands::find_relevant_files_command,

@@ -20,8 +20,6 @@ interface FileManagementContentProps {
 function FileManagementContent({ hasSession }: FileManagementContentProps) {
   // Access contexts directly
   const fileState = useFileManagement();
-  // Note: regex errors are not currently exposed in the new context structure
-  // For now, we pass null to ActionsSection for regex error props
 
   // Get task data from context
   const coreContext = useCorePromptContext();
@@ -36,10 +34,6 @@ function FileManagementContent({ hasSession }: FileManagementContentProps) {
       {/* Actions section */}
       <div className="mt-4">
         <ActionsSection
-          titleRegexError={null}
-          contentRegexError={null}
-          negativeTitleRegexError={null}
-          negativeContentRegexError={null}
           isFindingFiles={fileState.isFindingFiles}
           executeFindRelevantFiles={fileState.findRelevantFiles}
           findFilesMode={

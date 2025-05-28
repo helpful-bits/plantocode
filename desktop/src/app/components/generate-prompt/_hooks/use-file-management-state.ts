@@ -40,17 +40,12 @@ export function useFileManagementState({
 
   // SECTION 1: UI STATE - Managed directly in this hook as it's UI coordination
   const [filterMode, setFilterModeState] = useState<
-    "all" | "selected" | "regex"
+    "all" | "selected"
   >("all");
   const [findFilesMode, setFindFilesMode] = useState<"replace" | "extend">(
     "extend"
   );
 
-  // File contents are loaded on-demand only for UI preview purposes
-  // The backend will handle reading file contents for AI operations directly
-  const [fileContentsMap, setFileContentsMap] = useState<
-    Record<string, string>
-  >({});
 
   // Track previous includedPaths length to detect new selections
   const prevIncludedPathsLengthRef = useRef<number>(0);
@@ -190,27 +185,11 @@ export function useFileManagementState({
   // SECTION 8: UI EVENT HANDLERS - For UI interactions
   // Handler for filter mode changes
   const handleFilterModeChange = useCallback(
-    (mode: "all" | "selected" | "regex") => {
+    (mode: "all" | "selected") => {
       setFilterModeState(mode);
     },
     []
   );
-
-  // Set up an event listener to handle filter mode changes from regex generation
-  useEffect(() => {
-    const handleSetFilterModeToRegex = () => {
-      setFilterModeState("regex");
-    };
-
-    window.addEventListener("setFilterModeToRegex", handleSetFilterModeToRegex);
-
-    return () => {
-      window.removeEventListener(
-        "setFilterModeToRegex",
-        handleSetFilterModeToRegex
-      );
-    };
-  }, []);
 
   // Track previous includedPaths length for potential future use
   useEffect(() => {
@@ -220,54 +199,8 @@ export function useFileManagementState({
     prevIncludedPathsLengthRef.current = currentLength;
   }, [fileSelectionManager.includedPaths]);
 
-  // Lazy-load file contents ONLY for UI preview purposes
-  // This is separate from the backend operations which read files directly
-  useEffect(() => {
-    // Only load file contents when we have files selected and need to show them in the UI
-    if (fileSelectionManager.includedPaths.length === 0 || !projectDirectory) {
-      return;
-    }
-
-    // Calculate files that need to be loaded for UI preview
-    const filesToLoadForUI = fileSelectionManager.includedPaths.filter(
-      (path) =>
-        !fileContentsMap[path] ||
-        fileContentsMap[path].includes("[Error") ||
-        fileContentsMap[path].includes("[File not found]")
-    );
-
-    // Skip if no new files to load
-    if (filesToLoadForUI.length === 0) {
-      return;
-    }
-
-    // Import and use the file content loader utility only when needed
-    void import("@/utils/file-content-loader").then(({ loadFileContents }) => {
-      // Load file contents for UI preview only - limited to first 5 files
-      // for performance reasons. The backend will load complete files when needed.
-      const MAX_FILES_FOR_UI_PREVIEW = 5;
-      loadFileContents(projectDirectory, filesToLoadForUI.slice(0, MAX_FILES_FOR_UI_PREVIEW))
-        .then((newlyLoadedContents) => {
-          // Merge newly loaded contents with existing contents
-          setFileContentsMap(prevContents => ({ ...prevContents, ...newlyLoadedContents }));
-        })
-        .catch((error) => {
-          console.error(
-            "[FileManagementState] Error loading file contents for UI preview:",
-            error
-          );
-        });
-    });
-  }, [projectDirectory, fileSelectionManager.includedPaths, fileContentsMap]);
 
   // Calculate if regex is available based on patterns from session
-  const isRegexAvailable = Boolean(
-    currentSession?.titleRegex?.trim() ||
-      currentSession?.contentRegex?.trim() ||
-      currentSession?.negativeTitleRegex?.trim() ||
-      currentSession?.negativeContentRegex?.trim()
-  );
-
   // SECTION 9: CONTEXT VALUE CONSTRUCTION - Organized by feature area
   const contextValue = useMemo(
     () => ({
@@ -281,7 +214,6 @@ export function useFileManagementState({
       // SELECTION STATE
       searchTerm,
       filterMode,
-      isRegexAvailable,
       externalPathWarnings: fileSelectionManager.externalPathWarnings,
       includedPaths: fileSelectionManager.includedPaths,
       excludedPaths: fileSelectionManager.excludedPaths,
@@ -290,8 +222,8 @@ export function useFileManagementState({
       canRedo: fileSelectionManager.canRedo,
       findFilesMode,
 
-      // FILE CONTENTS
-      fileContentsMap, // Now an empty object, backend handles file content loading
+      // FILE CONTENTS - Backend handles file content loading, no UI preview needed
+      fileContentsMap: {},
 
       // AI INTEGRATION STATE
       isFindingFiles: Boolean(relevantFilesFinder.isFindingFiles),
@@ -329,7 +261,6 @@ export function useFileManagementState({
       // Search and filter state
       searchTerm,
       filterMode,
-      isRegexAvailable,
       searchSelectedFilesOnly,
       findFilesMode,
 

@@ -5,6 +5,7 @@ import { useCallback, memo } from "react";
 
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
+import { humanFileSize } from "@/utils/file-size";
 
 import type { FileInfo } from "@/types";
 
@@ -51,7 +52,7 @@ function FileListItem({
   const handleItemClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       e.preventDefault();
-      if (!file.forceExcluded && !disabled) {
+      if (!disabled) {
         onToggleSelection(file.path);
       }
     },
@@ -59,15 +60,6 @@ function FileListItem({
   );
 
 
-  // Format file size with appropriate units
-  const formatFileSize = (sizeInBytes: number | undefined) => {
-    // Handle undefined size values
-    const bytes = sizeInBytes ?? 0;
-
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
 
   return (
     <div
@@ -87,7 +79,7 @@ function FileListItem({
       onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          if (!file.forceExcluded && !disabled) {
+          if (!disabled) {
             onToggleSelection(file.path);
           }
         }
@@ -124,7 +116,8 @@ function FileListItem({
               "appearance-none flex-shrink-0 w-3.5 h-3.5 border rounded-[2px] transition-colors",
               "bg-input border-border/50",
               "checked:bg-primary checked:border-primary checked:text-primary-foreground",
-              "hover:border-border/70 hover:bg-input/80",
+              "hover:border-border/70",
+              "checked:hover:bg-primary/90 checked:hover:border-primary",
               "focus:ring-offset-0 focus:ring-1 focus:ring-primary/50",
               "relative",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
@@ -177,7 +170,8 @@ function FileListItem({
             className={cn(
               "appearance-none flex-shrink-0 w-3.5 h-3.5 border border-destructive rounded-[2px] bg-background transition-colors",
               "checked:bg-destructive checked:border-destructive checked:text-destructive-foreground",
-              "hover:border-destructive/70 hover:bg-background/80",
+              "hover:border-destructive/70",
+              "checked:hover:bg-destructive/90 checked:hover:border-destructive",
               "focus:ring-offset-0 focus:ring-1 focus:ring-destructive/50",
               "relative",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
@@ -225,7 +219,7 @@ function FileListItem({
       <div className="flex items-center gap-2">
         {/* File size */}
         <span className="text-muted-foreground text-xs font-mono">
-          {formatFileSize(file.size)}
+          {humanFileSize(file.size ?? 0)}
         </span>
 
         {/* Copy path button */}

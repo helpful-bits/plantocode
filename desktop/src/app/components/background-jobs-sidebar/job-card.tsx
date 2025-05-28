@@ -20,8 +20,6 @@ import { Progress } from "@/ui/progress";
 
 import {
   getStatusIconClass,
-  getApiTypeBadgeClasses,
-  formatApiType,
   formatTaskType,
   formatTimeAgo,
   formatTokenCount,

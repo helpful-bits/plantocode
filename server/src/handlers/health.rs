@@ -2,6 +2,7 @@ use actix_web::{HttpResponse, web, Responder};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HealthResponse {
     status: String,
     version: String,

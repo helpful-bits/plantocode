@@ -19,6 +19,7 @@ import { ProvidersWrapper } from "@/app/components/providers-wrapper";
 import { ThemeProvider } from "@/app/components/theme-provider";
 import CoreHomePage from "@/app/page";
 import SettingsPage from "@/app/settings/page";
+import AccountPage from "@/app/account/page";
 import { AuthProvider } from "@/contexts/auth-context";
 import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
@@ -59,6 +60,8 @@ function Router() {
   switch (currentPath) {
     case '/settings':
       return <SettingsPage />;
+    case '/account':
+      return <AccountPage />;
     case '/':
     default:
       return <CoreHomePage />;
