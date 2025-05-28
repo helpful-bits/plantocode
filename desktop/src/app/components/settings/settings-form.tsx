@@ -150,11 +150,13 @@ export default function SettingsForm() {
         {isLoading && (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         )}
-        {saveSuccess && (
-          <div className="flex items-center gap-1 text-xs text-success">
-            <CheckCircle className="h-4 w-4" /> Saved
-          </div>
-        )}
+        <div className="h-5 text-xs flex items-center min-w-[60px]">
+          {saveSuccess && (
+            <span className="text-success flex items-center gap-1">
+              <CheckCircle className="h-4 w-4" /> Saved
+            </span>
+          )}
+        </div>
         {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
 

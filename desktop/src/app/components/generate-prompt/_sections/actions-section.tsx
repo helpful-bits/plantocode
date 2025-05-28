@@ -58,7 +58,7 @@ const ActionsSection = React.memo(function ActionsSection({
   return (
     <div className="space-y-4">
       <div className="bg-card p-6 rounded-lg border shadow-sm">
-        <h3 className="text-sm font-medium mb-3 text-foreground">File Search Options</h3>
+        <h3 className="text-lg font-semibold mb-3 text-foreground">File Search Options</h3>
 
         <div className="flex flex-col space-y-4">
           <div className="flex justify-between items-center">

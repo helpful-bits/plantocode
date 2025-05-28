@@ -87,6 +87,10 @@ impl JobProcessor for TextImprovementProcessor {
         
         let user_prompt_text = generate_text_improvement_user_prompt(&payload.text_to_improve);
         
+        info!("Text Improvement prompts for job {}", job_id);
+        info!("System prompt: {}", system_prompt_text);
+        info!("User prompt: {}", user_prompt_text);
+        
         // Get the LLM client using the standardized factory function
         let client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
@@ -156,24 +160,36 @@ impl JobProcessor for TextImprovementProcessor {
         // Send the request with the messages
         let response = client.chat_completion(messages, options).await?;
         
+        // LOG: Full OpenRouter response for debugging
+        info!("OpenRouter Text Improvement Response - Job ID: {}", job_id);
+        info!("Full Response: {:#?}", response);
+        
         // Extract the response content
         let response_content = if !response.choices.is_empty() {
-            response.choices[0].message.content.clone()
+            let content = response.choices[0].message.content.clone();
+            info!("Extracted content from OpenRouter response: {}", content);
+            content
         } else {
+            error!("No response choices received from OpenRouter API");
             return Err(AppError::JobError("No response content received from API".to_string()));
         };
         
         // Extract XML from markdown code blocks if present
         let clean_xml_content = extract_xml_from_markdown(&response_content);
-        debug!("Original response length: {}, Cleaned XML length: {}", response_content.len(), clean_xml_content.len());
+        info!("XML Processing - Original response length: {}, Cleaned XML length: {}", response_content.len(), clean_xml_content.len());
+        info!("Cleaned XML content: {}", clean_xml_content);
         
         // Parse the XML from the cleaned content
         let xml_response: Result<TextImprovementResponseXml, _> = quick_xml::de::from_str(&clean_xml_content);
         
         let parsed_response = match xml_response {
-            Ok(result) => result,
+            Ok(result) => {
+                info!("Successfully parsed XML response: {:#?}", result);
+                result
+            },
             Err(e) => {
                 error!("Failed to parse XML response: {}", e);
+                error!("Raw content that failed to parse: {}", clean_xml_content);
                 
                 // Use cleaned XML content as fallback, or original response if cleaning resulted in empty string
                 let improved_text = if !clean_xml_content.is_empty() {
@@ -181,6 +197,8 @@ impl JobProcessor for TextImprovementProcessor {
                 } else {
                     response_content
                 };
+                
+                info!("Using fallback text improvement: {}", improved_text);
                 
                 // Create a basic response with just the text
                 TextImprovementResponseXml {
@@ -197,10 +215,14 @@ impl JobProcessor for TextImprovementProcessor {
         let tokens_received = response.usage.as_ref().map(|u| u.completion_tokens as i32);
         let total_tokens = response.usage.as_ref().map(|u| u.total_tokens as i32);
         
+        info!("Token usage - Sent: {:?}, Received: {:?}, Total: {:?}", tokens_sent, tokens_received, total_tokens);
+        
         // Get the improved text, falling back to original if missing
         let improved_text = parsed_response.improved_text
             .clone()
             .unwrap_or_else(|| payload.text_to_improve.clone());
+            
+        info!("Final improved text (length: {}): {}", improved_text.len(), improved_text);
         
         // Serialize the detailed analysis data for storing in metadata
         let metadata = serde_json::json!({

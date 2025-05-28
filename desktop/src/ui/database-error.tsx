@@ -196,7 +196,7 @@ export default function DatabaseErrorHandler() {
 
     if (!healthData.fileExists) {
       return (
-        <Alert className="my-4 bg-warning/5 border-warning/30">
+        <Alert className="my-4 bg-warning/10 border-warning/30">
           <AlertTitle className="flex items-center gap-2">
             <FileDown className="h-4 w-4 text-warning" />
             Database File Missing
@@ -220,7 +220,7 @@ export default function DatabaseErrorHandler() {
       parseInt(healthData.filePermissions, 8) < 600
     ) {
       return (
-        <Alert className="my-4 bg-warning/5 border-warning/30">
+        <Alert className="my-4 bg-warning/10 border-warning/30">
           <AlertTitle className="flex items-center gap-2">
             <HardDrive className="h-4 w-4 text-warning" />
             Permission Issues
@@ -240,7 +240,7 @@ export default function DatabaseErrorHandler() {
 
     if (healthData.integrityStatus === "invalid") {
       return (
-        <Alert className="my-4 bg-warning/5 border-warning/30">
+        <Alert className="my-4 bg-warning/10 border-warning/30">
           <AlertTitle className="flex items-center gap-2">
             <Database className="h-4 w-4 text-warning" />
             Database Integrity Issues

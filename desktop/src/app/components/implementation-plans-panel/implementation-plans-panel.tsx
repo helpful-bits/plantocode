@@ -1,8 +1,11 @@
 "use client";
 
-import { RefreshCw, Loader2 } from "lucide-react";
+import { RefreshCw, Loader2, FileCode } from "lucide-react";
+import { useCallback } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
+import { useNotification } from "@/contexts/notification-context";
+import { useSessionStateContext } from "@/contexts/session";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -25,10 +28,23 @@ import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogi
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
+  // Props from the create functionality
+  projectDirectory?: string;
+  taskDescription?: string;
+  includedPaths?: string[];
+  isCreatingPlan?: boolean;
+  planCreationState?: "idle" | "submitted";
+  onCreatePlan?: (taskDescription: string, includedPaths: string[]) => Promise<void>;
 }
 
 export function ImplementationPlansPanel({
   sessionId,
+  projectDirectory,
+  taskDescription,
+  includedPaths,
+  isCreatingPlan,
+  planCreationState,
+  onCreatePlan,
 }: ImplementationPlansPanelProps) {
   const {
     implementationPlans,
@@ -51,10 +67,50 @@ export function ImplementationPlansPanel({
     refreshJobs,
   } = useImplementationPlansLogic({ sessionId });
 
+  const { currentSession } = useSessionStateContext();
+  const { showNotification } = useNotification();
+
+  // Validation for create functionality
+  const canCreatePlan = Boolean(
+    projectDirectory &&
+    (taskDescription || currentSession?.taskDescription)?.trim() &&
+    includedPaths?.length &&
+    sessionId &&
+    !isCreatingPlan
+  );
+
+  // Handle plan creation with error feedback
+  const handleCreatePlan = useCallback(async () => {
+    if (!onCreatePlan || !canCreatePlan) return;
+
+    const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
+    const finalIncludedPaths = includedPaths || [];
+
+    try {
+      await onCreatePlan(finalTaskDescription, finalIncludedPaths);
+    } catch (error) {
+      showNotification({
+        title: "Implementation Plan Creation Failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to create implementation plan",
+        type: "error",
+      });
+    }
+  }, [onCreatePlan, canCreatePlan, taskDescription, currentSession?.taskDescription, includedPaths, showNotification]);
+
+  // Button text based on state
+  const buttonText = isCreatingPlan
+    ? "Creating..."
+    : planCreationState === "submitted"
+      ? "Started!"
+      : "Create Implementation Plan";
+
   return (
     <div className="space-y-4 p-4">
       <header className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-foreground">Implementation Plans</h2>
+        <h2 className="text-lg font-semibold text-foreground">Implementation Plans</h2>
         <Button
           variant="outline"
           size="sm"
@@ -66,6 +122,31 @@ export function ImplementationPlansPanel({
           Refresh
         </Button>
       </header>
+
+      {/* Create Implementation Plan Section */}
+      {onCreatePlan && (
+        <Card className="bg-card p-6 rounded-lg border shadow-sm mb-6">
+          <div>
+            <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
+            
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleCreatePlan}
+              disabled={!canCreatePlan}
+              className="flex items-center justify-center w-full h-9"
+            >
+              <FileCode className="h-4 w-4 mr-2" />
+              {buttonText}
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground mt-3 text-balance">
+            Creates an implementation plan based on your task description and
+            selected files.
+          </p>
+        </Card>
+      )}
 
       {/* Loading state */}
       {isLoading && implementationPlans.length === 0 && (
@@ -82,9 +163,10 @@ export function ImplementationPlansPanel({
             <div className="text-center space-y-3">
               <h3 className="text-lg font-medium text-foreground">No Implementation Plans</h3>
               <p className="text-sm text-muted-foreground max-w-[400px] text-balance">
-                You haven&apos;t created any implementation plans yet for this
-                project. Use the &quot;Create Implementation Plan&quot; option in the file
-                manager to get started.
+                {onCreatePlan 
+                  ? "Create your first implementation plan using the button above."
+                  : "You haven't created any implementation plans yet for this project. Use the \"Create Implementation Plan\" option in the file manager to get started."
+                }
               </p>
             </div>
           </CardContent>
@@ -93,7 +175,7 @@ export function ImplementationPlansPanel({
 
       {/* Implementation Plans List */}
       {implementationPlans.length > 0 && (
-        <ScrollArea className="h-[calc(100vh-200px)] pr-4">
+        <ScrollArea className="h-[calc(100vh-300px)] pr-4">
           <div className="space-y-3">
             {implementationPlans.map((plan) => (
               <ImplementationPlanCard
