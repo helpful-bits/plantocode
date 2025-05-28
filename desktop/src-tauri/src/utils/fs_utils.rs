@@ -255,10 +255,26 @@ pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
             if let Ok(mut file) = fs::File::open(path).await {
                 let mut buffer = [0u8; 1024];
                 if let Ok(n) = file.read(&mut buffer).await {
+                    // First check for null bytes (strong indicator of binary)
                     for i in 0..n {
                         if buffer[i] == 0 {
                             return true;
                         }
+                    }
+                    
+                    // If no null bytes found, check for high ratio of non-printable characters
+                    let mut non_printable_count = 0;
+                    for i in 0..n {
+                        let byte = buffer[i];
+                        // Non-printable characters excluding tab (9), LF (10), CR (13)
+                        if (byte < 32 && byte != 9 && byte != 10 && byte != 13) || byte >= 127 {
+                            non_printable_count += 1;
+                        }
+                    }
+                    
+                    // If more than 10% are non-printable, consider it binary
+                    if n > 0 && (non_printable_count as f64 / n as f64) > 0.1 {
+                        return true;
                     }
                 }
             }

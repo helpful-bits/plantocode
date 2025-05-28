@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 // API URLs
 pub const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
 pub const OPENROUTER_AUDIO_URL: &str = "https://openrouter.ai/api/v1/audio/transcriptions";
+// Default fallback URL for the server API. Prefer environment variables.
 pub const SERVER_API_URL: &str = "http://localhost:8080";
 
 // HTTP Headers for API requests
@@ -48,6 +49,24 @@ pub static BINARY_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     set.insert("db");
     set.insert("sqlite");
     set.insert("db3");
+    set.insert("map");        // Source maps
+    set.insert("wasm");       // WebAssembly
+    set.insert("jar");        // Java Archives
+    set.insert("war");        // Java Web Archives
+    set.insert("ear");        // Java Enterprise Archives
+    set.insert("ttf");        // TrueType Fonts
+    set.insert("woff");       // Web Open Font Format
+    set.insert("woff2");      // Web Open Font Format 2
+    set.insert("otf");        // OpenType Fonts
+    set.insert("eot");        // Embedded OpenType
+    set.insert("pyc");        // Python compiled
+    set.insert("lockb");      // pnpm lockfile binary variant
+    set.insert("doc");        // Microsoft Word Document
+    set.insert("docx");       // Microsoft Word Document (XML)
+    set.insert("xls");        // Microsoft Excel Spreadsheet
+    set.insert("xlsx");       // Microsoft Excel Spreadsheet (XML)
+    set.insert("ppt");        // Microsoft PowerPoint Presentation
+    set.insert("pptx");       // Microsoft PowerPoint Presentation (XML)
     set
 });
 

@@ -3,6 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import {
   type PlanContextValue,
 } from "./_types/implementation-plan-types";
+import { logError } from "@/utils/error-handling";
 
 // Create the context with a default value
 const defaultValue: PlanContextValue = {
@@ -29,7 +30,9 @@ export const PlanContext = createContext<PlanContextValue>(defaultValue);
 export const usePlanContext = () => {
   const context = useContext(PlanContext);
   if (!context) {
-    throw new Error("usePlanContext must be used within a PlanContextProvider");
+    const error = new Error("usePlanContext must be used within a PlanContextProvider");
+    logError(error, "Plan Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 };

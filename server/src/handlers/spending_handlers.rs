@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::error::AppError;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::middleware::secure_auth::UserId;
-use log::{debug, error};
+use log::{debug, warn};
 use bigdecimal::ToPrimitive;
 
 #[derive(Debug, Serialize)]
@@ -122,7 +122,7 @@ pub async fn update_spending_limits(
 ) -> Result<HttpResponse, AppError> {
     debug!("Updating spending limits for user: {}", user_id.0);
     
-    error!("Update spending limits not yet implemented");
+    warn!("Update spending limits not yet implemented");
     Err(AppError::Internal("Feature not yet implemented".to_string()))
 }
 
@@ -138,7 +138,7 @@ pub async fn acknowledge_alert(
     let alert_id = Uuid::parse_str(&request.alert_id)
         .map_err(|_| AppError::InvalidArgument("Invalid alert ID format".to_string()))?;
     
-    error!("Acknowledge alert not yet implemented");
+    warn!("Acknowledge alert not yet implemented");
     Err(AppError::Internal("Feature not yet implemented".to_string()))
 }
 

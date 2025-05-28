@@ -111,7 +111,8 @@
       "Bash(do echo \"=== $file ===\")",
       "Bash(done)",
       "WebFetch(domain:docs.stripe.com)",
-      "Bash(./scripts/migrate.sh:*)"
+      "Bash(./scripts/migrate.sh:*)",
+      "WebFetch(domain:groq.com)"
     ],
     "deny": []
   }

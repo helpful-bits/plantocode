@@ -96,6 +96,7 @@ pub struct Auth0OAuthService {
     auth0_server_client_secret: Option<String>,
     db_pool: PgPool,
     jwks_cache: Arc<std::sync::Mutex<Option<(Auth0Jwks, std::time::Instant)>>>,
+    jwt_token_duration_days: i64,
 }
 
 impl Auth0OAuthService {
@@ -108,6 +109,7 @@ impl Auth0OAuthService {
             auth0_server_client_secret: settings.api_keys.auth0_server_client_secret.clone(),
             db_pool,
             jwks_cache: Arc::new(std::sync::Mutex::new(None)),
+            jwt_token_duration_days: settings.auth.token_duration_days,
         }
     }
 
@@ -272,18 +274,13 @@ impl Auth0OAuthService {
 
         let token = if let Some(client_id) = client_id_from_header {
             debug!("Creating token with client binding for client_id: {}", client_id);
-            jwt::create_token(user.id, &user.role, &email, Some(client_id))?
+            jwt::create_token(user.id, &user.role, &email, Some(client_id), self.jwt_token_duration_days)?
         } else {
             debug!("Creating token without client binding");
-            jwt::create_token(user.id, &user.role, &email, None)?
+            jwt::create_token(user.id, &user.role, &email, None, self.jwt_token_duration_days)?
         };
 
-        let duration_days = std::env::var("JWT_ACCESS_TOKEN_DURATION_DAYS")
-            .ok()
-            .and_then(|days| days.parse::<i64>().ok())
-            .unwrap_or(jwt::DEFAULT_JWT_DURATION_DAYS);
-
-        let expires_in = duration_days * 24 * 60 * 60;
+        let expires_in = self.jwt_token_duration_days * 24 * 60 * 60;
 
         Ok(AuthDataResponse {
             user: FrontendUser {
@@ -309,6 +306,7 @@ impl Clone for Auth0OAuthService {
             auth0_server_client_secret: self.auth0_server_client_secret.clone(),
             db_pool: self.db_pool.clone(),
             jwks_cache: self.jwks_cache.clone(),
+            jwt_token_duration_days: self.jwt_token_duration_days,
         }
     }
 }

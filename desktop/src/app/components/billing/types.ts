@@ -1,4 +1,20 @@
 /**
+ * Cost usage data type - subset of spending information from subscription
+ */
+export interface CostUsageData {
+  currentSpending: number;
+  monthlyAllowance: number;
+  hardLimit: number;
+  cycleStartDate?: string | null;
+  cycleEndDate?: string | null;
+  usagePercentage: number;
+  servicesBlocked: boolean;
+  currency: string;
+  trialDaysRemaining?: number | null;
+  planName?: string | null;
+}
+
+/**
  * Subscription information interface
  */
 export interface SubscriptionInfo {
@@ -13,16 +29,5 @@ export interface SubscriptionInfo {
   hasCancelled?: boolean;
   nextInvoiceAmount?: number | null;
   currency?: string;
-  usage: {
-    currentSpending: number;
-    monthlyAllowance: number;
-    hardLimit: number;
-    cycleStartDate?: string | null;
-    cycleEndDate?: string | null;
-    usagePercentage: number;
-    servicesBlocked: boolean;
-    currency: string;
-    trialDaysRemaining?: number | null;
-    planName?: string | null;
-  };
+  usage: CostUsageData;
 }

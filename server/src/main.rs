@@ -202,6 +202,7 @@ async fn main() -> std::io::Result<()> {
         
         // Initialize repositories
         let api_usage_repository = ApiUsageRepository::new(db_pool.clone());
+        let model_repository_for_proxy = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pool.clone())));
         
         // Initialize services
         let billing_service = BillingService::new(db_pool.clone(), app_settings.clone());
@@ -210,6 +211,7 @@ async fn main() -> std::io::Result<()> {
         let proxy_service = match ProxyService::new(
             std::sync::Arc::new(billing_service.clone()),
             api_usage_repository.clone(),
+            model_repository_for_proxy,
             &app_settings
         ) {
             Ok(service) => {

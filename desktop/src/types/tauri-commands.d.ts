@@ -241,10 +241,6 @@ export interface ImplementationPlanTokenEstimateResponse {
 
 
 // Commands from job_commands
-export interface UpdateJobClearedStatusCommandArgs {
-  jobId: string;
-  cleared: boolean;
-}
 
 export interface GetBackgroundJobByIdCommandArgs {
   jobId: string;
@@ -477,7 +473,6 @@ export type TauriInvoke = {
     contentFormat?: string | null;
     createdAt: string;
   }>;
-  "update_job_cleared_status_command": (args: UpdateJobClearedStatusCommandArgs) => Promise<void>;
   "get_background_job_by_id_command": (args: GetBackgroundJobByIdCommandArgs) => Promise<import("@/types").BackgroundJob | null>;
   "clear_job_history_command": (args: ClearJobHistoryCommandArgs) => Promise<void>;
   "get_active_jobs_command": () => Promise<import("@/types").BackgroundJob[]>;

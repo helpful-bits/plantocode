@@ -4,15 +4,12 @@
 import { type BackgroundJob } from "@/types/session-types";
 
 import { EmptyState, LoadingState } from "../sidebar-states";
-
-import { JobSection } from "./job-section";
+import { JobCard } from "../job-card";
 
 interface JobContentProps {
   shouldShowLoading: boolean;
   shouldShowEmpty: boolean;
-  activeJobsToShow: BackgroundJob[];
-  completedJobs: BackgroundJob[];
-  failedJobs: BackgroundJob[];
+  allJobsSorted: BackgroundJob[];
   handleCancel: (jobId: string) => Promise<void>;
   isCancelling: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
@@ -24,9 +21,7 @@ interface JobContentProps {
 export const JobContent = ({
   shouldShowLoading,
   shouldShowEmpty,
-  activeJobsToShow,
-  completedJobs,
-  failedJobs,
+  allJobsSorted,
   handleCancel,
   isCancelling,
   onSelect,
@@ -38,34 +33,17 @@ export const JobContent = ({
       ) : shouldShowEmpty ? (
         <EmptyState />
       ) : (
-        <>
-          {/* Active Jobs Section */}
-          <JobSection
-            title="Active"
-            jobs={activeJobsToShow}
-            handleCancel={handleCancel}
-            isCancelling={isCancelling}
-            onSelect={onSelect}
-          />
-
-          {/* Completed Jobs Section */}
-          <JobSection
-            title="Completed"
-            jobs={completedJobs}
-            handleCancel={handleCancel}
-            isCancelling={isCancelling}
-            onSelect={onSelect}
-          />
-
-          {/* Failed/Canceled Jobs Section */}
-          <JobSection
-            title="Failed/Canceled"
-            jobs={failedJobs}
-            handleCancel={handleCancel}
-            isCancelling={isCancelling}
-            onSelect={onSelect}
-          />
-        </>
+        <div className="space-y-3 w-full max-w-full overflow-hidden">
+          {allJobsSorted.map((job) => (
+            <JobCard
+              key={job.id}
+              job={job}
+              handleCancel={handleCancel}
+              isCancelling={isCancelling}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

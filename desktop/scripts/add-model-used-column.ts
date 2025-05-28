@@ -1,6 +1,5 @@
 // Add model_used column to sessions table if not exists
 import connectionPool from "../../core/lib/db/connection-pool";
-import { GEMINI_FLASH_MODEL } from "../src/utils/constants";
 
 async function addModelUsedColumn() {
   try {
@@ -26,7 +25,7 @@ async function addModelUsedColumn() {
       // Add the column
       database.prepare(
         `
-        ALTER TABLE sessions ADD COLUMN model_used TEXT DEFAULT '${GEMINI_FLASH_MODEL}'
+        ALTER TABLE sessions ADD COLUMN model_used TEXT DEFAULT 'google/gemini-2.5-flash-preview-05-20'
       `
       ).run();
 
