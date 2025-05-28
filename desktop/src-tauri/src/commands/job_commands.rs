@@ -4,18 +4,6 @@ use crate::error::{AppError, AppResult};
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
-#[command]
-pub async fn update_job_cleared_status_command(job_id: String, cleared: bool, app_handle: AppHandle) -> AppResult<()> {
-    info!("Updating job cleared status: job_id={}, cleared={}", job_id, cleared);
-
-    let repo = app_handle.state::<Arc<crate::db_utils::BackgroundJobRepository>>()
-        .inner()
-        .clone();
-
-    repo.update_job_cleared_status(&job_id, cleared)
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to update job cleared status: {}", e)))
-}
 
 #[command]
 pub async fn get_background_job_by_id_command(job_id: String, app_handle: AppHandle) -> AppResult<Option<crate::models::BackgroundJob>> {

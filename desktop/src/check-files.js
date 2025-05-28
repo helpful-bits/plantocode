@@ -3,8 +3,7 @@ const path = require('node:path');
 
 // Paths to check
 const filePaths = [
-  './app/components/generate-prompt/_hooks/use-guidance-generation.ts',
-  './app/components/generate-prompt/_hooks/use-regex-state.ts'
+  './app/components/generate-prompt/_hooks/use-guidance-generation.ts'
 ];
 
 // Check for unsafe TypeScript usage

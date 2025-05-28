@@ -138,8 +138,6 @@ export interface BackgroundJob {
   maxOutputTokens?: number;
   temperature?: number;
   includeSyntax?: boolean;
-  cleared?: boolean;
-  visible?: boolean;
   metadata?: JobMetadata;
   outputFilePath?: string;
 }

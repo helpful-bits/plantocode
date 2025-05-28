@@ -42,29 +42,38 @@ impl ApiUsageRepository {
 
     /// Records API usage for billing purposes
     pub async fn record_usage(&self, entry: ApiUsageEntryDto) -> Result<(), AppError> {
-        let mut final_metadata_json = entry.metadata.unwrap_or_else(|| json!({}));
+        let final_metadata_to_store: Option<serde_json::Value>;
+
         if let Some(ms) = entry.processing_ms {
-            if let Some(obj) = final_metadata_json.as_object_mut() {
-                obj.insert("processing_ms".to_string(), json!(ms));
-            } else {
-                // This case implies original metadata was not an object (e.g., null, string, array)
-                // or entry.metadata was None and json!({}) was created.
-                // If it was None, it's already an empty object, so this branch might be less likely
-                // if json!({}) always creates an object.
-                // For safety, if it's not an object, we create a new one with processing_ms.
-                // However, standardizing on metadata being an object is better.
-                // Assuming metadata should always be an object if present.
-                final_metadata_json = json!({ "processing_ms": ms });
-                // If entry.metadata was Some but not an object, it gets overwritten.
-                // A more robust merge would be needed if entry.metadata could be non-object.
-                // For now, this prioritizes adding processing_ms.
+            // If processing_ms is present, we ensure the stored metadata is an object.
+            let mut map_to_store = serde_json::Map::new();
+            map_to_store.insert("processing_ms".to_string(), json!(ms));
+
+            if let Some(original_metadata) = entry.metadata {
+                if let serde_json::Value::Object(original_map) = original_metadata {
+                    // Merge original object metadata, avoiding overwrite of the new processing_ms
+                    for (k, v) in original_map {
+                        if k != "processing_ms" {
+                            map_to_store.insert(k, v);
+                        }
+                    }
+                } else {
+                    // Original metadata was not an object; store it under a special key
+                    log::warn!("Original metadata (type: {:?}) was not an object but processing_ms was present. Storing original metadata under '_original_metadata_value_'.", std::any::type_name_of_val(&original_metadata));
+                    map_to_store.insert("_original_metadata_value_".to_string(), original_metadata);
+                }
             }
-        }
-        // If final_metadata_json is an empty object after this, store it as NULL in DB.
-        let metadata_to_store = if final_metadata_json.as_object().map_or(false, |m| m.is_empty()) {
-            None
+            final_metadata_to_store = Some(serde_json::Value::Object(map_to_store));
         } else {
-            Some(final_metadata_json)
+            // No processing_ms, so use the original metadata as-is (it can be any JSON type, or None).
+            final_metadata_to_store = entry.metadata;
+        }
+
+        // Ensure that if the final metadata is an explicitly empty JSON object, it's stored as NULL in the DB.
+        // Other JSON types (null, string, number, array, non-empty object) are stored as themselves.
+        let metadata_to_store = match final_metadata_to_store {
+            Some(serde_json::Value::Object(ref map)) if map.is_empty() => None,
+            other => other,
         };
 
         query!(

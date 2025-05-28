@@ -124,25 +124,43 @@ export async function parseFilePathsFromAIResponse(
         continue;
       }
 
-      // If we have a project directory and the path is relative, make it absolute using Rust pathJoin
-      const processedPath = projectDirectory
-        ? await tauriFs.pathJoin(projectDirectory, foundPath)
-        : foundPath;
+      let absolutePathToConsider: string;
+      // Check if foundPath is absolute (simple platform-agnostic check)
+      const isFoundPathAbsolute = foundPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(foundPath);
 
-      // Normalize the path and make it project-relative if possible
-      let finalPathToAdd = await normalizePath(processedPath);
-      if (projectDirectory) {
-        try {
-          // Attempt to make it relative. If it fails (e.g., path outside project), keep it absolute for now,
-          // further validation might occur elsewhere, or it's an erroneous path from AI.
-          finalPathToAdd = await makePathRelative(finalPathToAdd, projectDirectory);
-        } catch (e) {
-          // Log or handle error if path cannot be made relative, or keep absolute.
-          // console.warn(`Could not make path relative: ${finalPathToAdd}`, e);
-        }
+      if (isFoundPathAbsolute) {
+          absolutePathToConsider = await normalizePath(foundPath);
+      } else if (projectDirectory) {
+          // Join relative path with project directory
+          const joinedPath = await tauriFs.pathJoin(projectDirectory, foundPath);
+          absolutePathToConsider = await normalizePath(joinedPath);
+      } else {
+          // No project directory, normalize foundPath as is (might be relative to CWD or invalid)
+          absolutePathToConsider = await normalizePath(foundPath);
       }
-      if (!paths.includes(finalPathToAdd)) { // Check after making relative
-        paths.push(finalPathToAdd);
+
+      // Attempt to make it relative to the project directory
+      let projectRelativePath: string;
+      if (projectDirectory) {
+          try {
+              const normalizedProjectDir = await normalizePath(projectDirectory); // Ensure base is also normalized
+              projectRelativePath = await makePathRelative(absolutePathToConsider, normalizedProjectDir);
+          } catch (e) {
+              // Path is likely outside the project or cannot be made relative.
+              console.warn(`AI suggested path '${foundPath}' (resolved to '${absolutePathToConsider}') is outside project directory '${projectDirectory}' or invalid.`);
+              continue; // Skip this path
+          }
+      } else {
+          // No project directory to make it relative to; use the normalized (potentially absolute) path.
+          // This case should be rare if projectDirectory is usually available.
+          projectRelativePath = absolutePathToConsider;
+      }
+      
+      // Ensure consistent relative path format (e.g., no leading './') using the existing utility
+      const finalComparablePath = ensureProjectRelativePath(projectRelativePath);
+
+      if (!paths.includes(finalComparablePath)) {
+        paths.push(finalComparablePath);
       }
     }
   }
@@ -166,18 +184,35 @@ export async function parseFilePathsFromAIResponse(
         const extractedPath = numberedMatch[1].trim();
         // Skip if it looks like a version number or URL
         if (!/^\d+\.\d+/.test(extractedPath) && !extractedPath.includes("http")) {
-          const joinedPath = projectDirectory
-            ? await tauriFs.pathJoin(projectDirectory, extractedPath)
-            : extractedPath;
-          let finalPathToAdd = await normalizePath(joinedPath);
-          if (projectDirectory) {
-            try {
-              finalPathToAdd = await makePathRelative(finalPathToAdd, projectDirectory);
-            } catch (e) {
-              // Keep absolute if cannot make relative
-            }
+          let absolutePathToConsider: string;
+          const isExtractedPathAbsolute = extractedPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(extractedPath);
+
+          if (isExtractedPathAbsolute) {
+              absolutePathToConsider = await normalizePath(extractedPath);
+          } else if (projectDirectory) {
+              const joinedPath = await tauriFs.pathJoin(projectDirectory, extractedPath);
+              absolutePathToConsider = await normalizePath(joinedPath);
+          } else {
+              absolutePathToConsider = await normalizePath(extractedPath);
           }
-          paths.push(finalPathToAdd);
+
+          let projectRelativePath: string;
+          if (projectDirectory) {
+              try {
+                  const normalizedProjectDir = await normalizePath(projectDirectory);
+                  projectRelativePath = await makePathRelative(absolutePathToConsider, normalizedProjectDir);
+              } catch (e) {
+                  console.warn(`AI suggested path '${extractedPath}' (resolved to '${absolutePathToConsider}') is outside project directory '${projectDirectory}' or invalid.`);
+                  continue;
+              }
+          } else {
+              projectRelativePath = absolutePathToConsider;
+          }
+          
+          const finalComparablePath = ensureProjectRelativePath(projectRelativePath);
+          if (!paths.includes(finalComparablePath)) {
+            paths.push(finalComparablePath);
+          }
         }
         continue;
       }
@@ -190,25 +225,39 @@ export async function parseFilePathsFromAIResponse(
         !bulletMatch[1].includes(" ")
       ) {
         const extractedPath = bulletMatch[1].trim();
-        const joinedPath = projectDirectory
-          ? await tauriFs.pathJoin(projectDirectory, extractedPath)
-          : extractedPath;
-        let finalPathToAdd = await normalizePath(joinedPath);
-        if (projectDirectory) {
-          try {
-            finalPathToAdd = await makePathRelative(finalPathToAdd, projectDirectory);
-          } catch (e) {
-            // Keep absolute if cannot make relative
-          }
+        let absolutePathToConsider: string;
+        const isExtractedPathAbsolute = extractedPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(extractedPath);
+
+        if (isExtractedPathAbsolute) {
+            absolutePathToConsider = await normalizePath(extractedPath);
+        } else if (projectDirectory) {
+            const joinedPath = await tauriFs.pathJoin(projectDirectory, extractedPath);
+            absolutePathToConsider = await normalizePath(joinedPath);
+        } else {
+            absolutePathToConsider = await normalizePath(extractedPath);
         }
-        paths.push(finalPathToAdd);
+
+        let projectRelativePath: string;
+        if (projectDirectory) {
+            try {
+                const normalizedProjectDir = await normalizePath(projectDirectory);
+                projectRelativePath = await makePathRelative(absolutePathToConsider, normalizedProjectDir);
+            } catch (e) {
+                console.warn(`AI suggested path '${extractedPath}' (resolved to '${absolutePathToConsider}') is outside project directory '${projectDirectory}' or invalid.`);
+                continue;
+            }
+        } else {
+            projectRelativePath = absolutePathToConsider;
+        }
+        
+        const finalComparablePath = ensureProjectRelativePath(projectRelativePath);
+        if (!paths.includes(finalComparablePath)) {
+          paths.push(finalComparablePath);
+        }
       }
     }
   }
 
-  // Return the deduplicated, normalized list of paths
-  const normalizedPaths = await Promise.all(
-    [...new Set(paths)].map((p) => normalizePath(p))
-  );
-  return [...new Set(normalizedPaths)];
+  // Return the deduplicated list of paths (already normalized and made project-relative)
+  return [...new Set(paths)];
 }

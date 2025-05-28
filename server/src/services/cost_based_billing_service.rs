@@ -23,6 +23,7 @@ pub struct SpendingStatus {
     pub overage_amount: BigDecimal,
     pub usage_percentage: f64,
     pub services_blocked: bool,
+    pub billing_period_start: DateTime<Utc>,
     pub next_billing_date: DateTime<Utc>,
     pub currency: String,
     pub alerts: Vec<SpendingAlert>,
@@ -155,6 +156,7 @@ impl CostBasedBillingService {
             overage_amount,
             usage_percentage,
             services_blocked: spending_limit.services_blocked,
+            billing_period_start: spending_limit.billing_period_start,
             next_billing_date: spending_limit.billing_period_end,
             currency: spending_limit.currency,
             alerts,
@@ -180,20 +182,21 @@ impl CostBasedBillingService {
     async fn get_or_create_current_spending_limit(&self, user_id: &Uuid) -> Result<UserSpendingLimit, AppError> {
         let now = Utc::now();
         let billing_period_start = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct date for billing_period_start".to_string()))?
             .and_hms_opt(0, 0, 0)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
             .and_utc();
         
-        let billing_period_end = if now.month() == 12 {
+        let naive_next_month_date = if now.month() == 12 {
             chrono::NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
         } else {
             chrono::NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
-        }
-        .unwrap()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc();
+        };
+        let billing_period_end = naive_next_month_date
+            .ok_or_else(|| AppError::Internal("Failed to construct date for billing_period_end".to_string()))?
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_end".to_string()))?
+            .and_utc();
 
         // Try to get existing spending limit using repository
         if let Some(spending_limit) = self.spending_repository.get_user_spending_limit_for_period(user_id, &billing_period_start).await? {
@@ -241,10 +244,12 @@ impl CostBasedBillingService {
     /// Check spending thresholds and send alerts
     async fn check_spending_thresholds(&self, user_id: &Uuid) -> Result<(), AppError> {
         let spending_status = self.get_current_spending_status(user_id).await?;
+        // Get the spending limit once to avoid redundant fetches in send_spending_alert
+        let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
         
         let usage_percentage = spending_status.usage_percentage;
         let current_spending = spending_status.current_spending;
-        let billing_period_start = spending_status.next_billing_date;
+        let billing_period_start = spending_status.billing_period_start;
 
         // Check thresholds: 75%, 90%, 100% (limit reached), hard limit
         let thresholds = vec![
@@ -262,7 +267,7 @@ impl CostBasedBillingService {
                 });
 
                 if !has_existing_alert {
-                    self.send_spending_alert(user_id, alert_type, &current_spending, &billing_period_start).await?;
+                    self.send_spending_alert(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit).await?;
                 }
             }
         }
@@ -270,7 +275,7 @@ impl CostBasedBillingService {
         // Check hard limit
         if current_spending >= spending_status.hard_limit && !spending_status.services_blocked {
             self.block_services(user_id).await?;
-            self.send_spending_alert(user_id, "services_blocked", &current_spending, &billing_period_start).await?;
+            self.send_spending_alert(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit).await?;
         }
 
         Ok(())
@@ -280,9 +285,9 @@ impl CostBasedBillingService {
     async fn block_services(&self, user_id: &Uuid) -> Result<(), AppError> {
         let now = Utc::now();
         let billing_period_start = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct date for billing_period_start".to_string()))?
             .and_hms_opt(0, 0, 0)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
             .and_utc();
 
         // Use repository instead of direct SQL
@@ -296,9 +301,9 @@ impl CostBasedBillingService {
     pub async fn unblock_services(&self, user_id: &Uuid) -> Result<(), AppError> {
         let now = Utc::now();
         let billing_period_start = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct date for billing_period_start".to_string()))?
             .and_hms_opt(0, 0, 0)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
             .and_utc();
 
         // Use repository instead of direct SQL
@@ -315,20 +320,18 @@ impl CostBasedBillingService {
         alert_type: &str,
         current_spending: &BigDecimal,
         billing_period_start: &DateTime<Utc>,
+        user_spending_limit: &UserSpendingLimit,
     ) -> Result<(), AppError> {
         let threshold_amount = match alert_type {
             "75_percent" | "90_percent" => {
-                let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
                 let percent = if alert_type == "75_percent" { 0.75 } else { 0.90 };
-                &spending_limit.included_allowance * BigDecimal::from_f64(percent).unwrap()
+                &user_spending_limit.included_allowance * BigDecimal::from_f64(percent).unwrap()
             },
             "limit_reached" => {
-                let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
-                spending_limit.included_allowance
+                user_spending_limit.included_allowance.clone()
             },
             "services_blocked" => {
-                let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
-                spending_limit.hard_limit
+                user_spending_limit.hard_limit.clone()
             },
             _ => BigDecimal::from(0),
         };

@@ -174,3 +174,7 @@ export async function normalizePath(
 export async function getTempDir(): Promise<string> {
   return tauriInvoke("get_temp_dir_command");
 }
+
+export async function isAbsolute(path: string): Promise<boolean> {
+  return tauriInvoke("path_is_absolute_command", { path });
+}

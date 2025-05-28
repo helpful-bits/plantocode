@@ -3,6 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import {
   type CorePromptContextValue,
 } from "./_types/generate-prompt-core-types";
+import { logError } from "@/utils/error-handling";
 
 // Create the context with a default value
 const defaultValue: CorePromptContextValue = {
@@ -60,9 +61,11 @@ export const CorePromptContext =
 export const useCorePromptContext = () => {
   const context = useContext(CorePromptContext);
   if (!context) {
-    throw new Error(
+    const error = new Error(
       "useCorePromptContext must be used within a CorePromptContextProvider"
     );
+    logError(error, "Core Prompt Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 };

@@ -5,6 +5,7 @@ import {
   type TaskContextState as _TaskContextState,
   type TaskContextActions as _TaskContextActions,
 } from "./_types/task-description-types";
+import { logError } from "@/utils/error-handling";
 
 // Create the context with a default value
 const defaultValue: TaskContextValue = {
@@ -29,7 +30,9 @@ export const TaskContext = createContext<TaskContextValue>(defaultValue);
 export const useTaskContext = () => {
   const context = useContext(TaskContext);
   if (!context) {
-    throw new Error("useTaskContext must be used within a TaskContextProvider");
+    const error = new Error("useTaskContext must be used within a TaskContextProvider");
+    logError(error, "Task Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 };

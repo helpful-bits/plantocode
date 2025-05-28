@@ -6,7 +6,6 @@ use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{ModelInfo, RuntimeAIConfig, TaskSpecificModelConfig};
-use crate::api_clients::client_factory::ClientFactory;
 use crate::utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
 
 /// Retrieves the list of available AI models from the RuntimeAIConfig

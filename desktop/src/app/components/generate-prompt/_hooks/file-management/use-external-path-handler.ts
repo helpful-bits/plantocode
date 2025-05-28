@@ -57,32 +57,16 @@ export function useExternalPathHandler({
     filesMap: FilesMap
   ): {
     byComparablePath: Map<string, string>;
-    byFileName: Map<string, string[]>;
-    byPath: Map<string, string>;
   } => {
     const byComparablePath = new Map<string, string>(); // Map comparablePath -> actual path
-    const byFileName = new Map<string, string[]>(); // Map filename -> array of paths
-    const byPath = new Map<string, string>(); // Map actual path -> actual path (for direct lookup)
 
     for (const [path, fileInfo] of Object.entries(filesMap)) {
       // Store by comparable path (main lookup method)
       const comparablePath = fileInfo.comparablePath || path;
       byComparablePath.set(comparablePath, path);
-
-      // Store by path directly
-      byPath.set(path, path);
-
-      // Store by filename for fallback lookup
-      const fileName = path.split("/").pop() || "";
-      if (fileName) {
-        if (!byFileName.has(fileName)) {
-          byFileName.set(fileName, []);
-        }
-        byFileName.get(fileName)?.push(path);
-      }
     }
 
-    return { byComparablePath, byFileName, byPath };
+    return { byComparablePath };
   };
 
   // Apply selections from paths (add to existing selection)
@@ -239,77 +223,6 @@ export function useExternalPathHandler({
           }
         }
 
-        // 3. Filename match (fallback for less specific paths)
-        if (!found) {
-          const fileName = normalizedPath.split("/").pop() || "";
-          if (fileName && fileIndices.byFileName.has(fileName)) {
-            const candidates = fileIndices.byFileName.get(fileName) || [];
-
-            // If we have a single match by filename, use it
-            if (candidates.length === 1 && !matchedPaths.has(candidates[0])) {
-              const actualPath = candidates[0];
-              matchedFileUpdates.set(actualPath, { included: true, forceExcluded: false });
-              found = true;
-              matchedPaths.add(actualPath);
-
-              // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
-              const fileInfo = managedFilesMap[actualPath];
-              if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
-                matchedNormalizedPaths.push(fileInfo.comparablePath);
-                pathMatchingSet.add(fileInfo.comparablePath);
-              }
-            }
-            // If multiple matches, try to find the best one by path similarity
-            else if (candidates.length > 1) {
-              // Find best match by comparing common path segments
-              // E.g., if normalizedPath is "src/utils/helper.js", prefer matches with more path parts in common
-              const pathParts = normalizedPath.split("/");
-              let bestMatch = null;
-              let bestMatchScore = 0;
-
-              for (const candidatePath of candidates) {
-                if (matchedPaths.has(candidatePath)) continue;
-
-                const candidateParts = candidatePath.split("/");
-                let matchScore = 0;
-
-                // Count matching segments from the end (filename always matches)
-                for (
-                  let i = 1;
-                  i <= Math.min(pathParts.length, candidateParts.length);
-                  i++
-                ) {
-                  if (
-                    pathParts[pathParts.length - i] ===
-                    candidateParts[candidateParts.length - i]
-                  ) {
-                    matchScore++;
-                  } else {
-                    break; // Stop at first non-match
-                  }
-                }
-
-                if (matchScore > bestMatchScore) {
-                  bestMatchScore = matchScore;
-                  bestMatch = candidatePath;
-                }
-              }
-
-              if (bestMatch) {
-                matchedFileUpdates.set(bestMatch, { included: true, forceExcluded: false });
-                found = true;
-                matchedPaths.add(bestMatch);
-
-                // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
-                const fileInfo = managedFilesMap[bestMatch];
-                if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
-                  matchedNormalizedPaths.push(fileInfo.comparablePath);
-                  pathMatchingSet.add(fileInfo.comparablePath);
-                }
-              }
-            }
-          }
-        }
 
         if (!found) {
           warnings.push(`Path not found: ${normalizedPath}`);

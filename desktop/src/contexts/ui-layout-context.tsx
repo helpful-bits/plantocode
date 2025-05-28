@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
+import { logError } from "@/utils/error-handling";
 
 // Define the type for our context
 export interface UILayoutContextType {
@@ -86,7 +87,9 @@ export function useUILayout(): UILayoutContextType {
   const context = useContext(UILayoutContext);
 
   if (context === undefined) {
-    throw new Error("useUILayout must be used within a UILayoutProvider");
+    const error = new Error("useUILayout must be used within a UILayoutProvider");
+    logError(error, "UI Layout Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
 
   return context;

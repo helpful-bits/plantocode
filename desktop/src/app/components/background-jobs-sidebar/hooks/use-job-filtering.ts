@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 
-import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
+import { type BackgroundJob } from "@/types/session-types";
 import { createLogger } from "@/utils/logger";
 
 const logger = createLogger({ namespace: "JobFiltering" });
@@ -22,8 +22,7 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
   }, [jobs, initialLoad]);
 
   // Memoize job filtering to prevent unnecessary recalculations on render
-  const { activeJobsToShow, completedJobs, failedJobs, hasJobs } =
-    useMemo(() => {
+  const { allJobsSorted, hasJobs } = useMemo(() => {
       // Track start time for performance measurement
       const startTime = performance.now();
 
@@ -31,7 +30,7 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
       const jobsToUse = isLoading && cachedJobs.length > 0 ? cachedJobs : jobs;
 
       logger.debug(
-        `Filtering ${jobsToUse.length} jobs (cached=${isLoading && cachedJobs.length > 0})`
+        `Sorting ${jobsToUse.length} jobs (cached=${isLoading && cachedJobs.length > 0})`
       );
 
       // Log job status distribution for debugging
@@ -47,11 +46,6 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
         `Jobs status distribution:`,
         statusCounts
       );
-
-      // Use the centralized constants for status categories to ensure consistency
-      const ACTIVE_STATUSES = JOB_STATUSES.ACTIVE;
-      const COMPLETED_STATUSES = JOB_STATUSES.COMPLETED;
-      const FAILED_STATUSES = JOB_STATUSES.FAILED;
 
       // Create a safe compare function for timestamps that handles undefined/null values
       const safeCompare = (
@@ -74,42 +68,18 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
         return (b.createdAt || 0) - (a.createdAt || 0);
       };
 
-      // Active jobs - filter for status and sort by most recently updated
-      const activeList = jobsToUse
-        .filter((job: BackgroundJob) => ACTIVE_STATUSES.includes(job.status))
-        .sort((a: BackgroundJob, b: BackgroundJob) =>
-          safeCompare(a, b, ["updatedAt", "startTime", "lastUpdate"])
-        );
-
-      // Completed jobs - filter for status and sort by most recently completed
-      const completedList = jobsToUse
-        .filter((job: BackgroundJob) => COMPLETED_STATUSES.includes(job.status))
-        .sort((a: BackgroundJob, b: BackgroundJob) =>
-          safeCompare(a, b, ["endTime", "updatedAt", "lastUpdate"])
-        );
-
-      // Failed or canceled jobs - filter for status and sort by most recent
-      const failedList = jobsToUse
-        .filter((job: BackgroundJob) => FAILED_STATUSES.includes(job.status))
-        .sort((a: BackgroundJob, b: BackgroundJob) =>
-          safeCompare(a, b, ["endTime", "updatedAt", "lastUpdate"])
-        );
+      // Sort all jobs by most recent activity (endTime for completed jobs, updatedAt for others)
+      const sortedJobs = [...jobsToUse].sort((a: BackgroundJob, b: BackgroundJob) =>
+        safeCompare(a, b, ["endTime", "updatedAt", "startTime", "lastUpdate"])
+      );
 
       const duration = performance.now() - startTime;
       logger.debug(
-        `Filtered jobs in ${Math.round(duration)}ms:`,
-        {
-          active: activeList.length,
-          completed: completedList.length,
-          failed: failedList.length,
-          total: jobsToUse.length,
-        }
+        `Sorted ${sortedJobs.length} jobs in ${Math.round(duration)}ms`
       );
 
       return {
-        activeJobsToShow: activeList,
-        completedJobs: completedList,
-        failedJobs: failedList,
+        allJobsSorted: sortedJobs,
         hasJobs: jobsToUse.length > 0,
       };
     }, [jobs, cachedJobs, isLoading]);
@@ -119,9 +89,7 @@ export function useJobFiltering(jobs: BackgroundJob[], isLoading: boolean) {
   const shouldShowEmpty = !shouldShowLoading && !hasJobs;
 
   return {
-    activeJobsToShow,
-    completedJobs,
-    failedJobs,
+    allJobsSorted,
     hasJobs,
     shouldShowLoading,
     shouldShowEmpty,

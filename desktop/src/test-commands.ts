@@ -6,7 +6,6 @@ import {
   getBackgroundJobAction,
   cancelBackgroundJobAction,
   clearJobHistoryAction,
-  updateJobClearedStatusAction,
 } from "./actions";
 
 import type { BackgroundJob } from "./types/session-types";
@@ -37,13 +36,6 @@ async function testBackgroundJobCommands() {
         await cancelBackgroundJobAction(firstJob.id);
       }
 
-      // Test job status update
-      await updateJobClearedStatusAction(
-        firstJob.id,
-        true
-      );
-      // eslint-disable-next-line no-console
-      console.log(`Updated cleared status for job ${firstJob.id}`);
 
       // Get updated job
       const updatedJobResult = await getBackgroundJobAction(firstJob.id);
@@ -52,7 +44,7 @@ async function testBackgroundJobCommands() {
       console.log(`Retrieved updated job ${firstJob.id}`);
     }
 
-    // Test clear job history (0 days keeps all jobs but marks them as cleared)
+    // Test clear job history (0 days deletes jobs older than 90 days)
     await clearJobHistoryAction(0);
   } catch (error) {
     console.error("Error testing background job commands:", error);

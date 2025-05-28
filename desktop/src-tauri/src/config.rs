@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use log::{info, warn, error};
 use crate::constants::SERVER_API_URL;
+use crate::utils::env_utils::read_env;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -12,9 +13,7 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            server_url: std::env::var("MAIN_SERVER_BASE_URL")
-                .or_else(|_| std::env::var("SERVER_URL"))
-                .unwrap_or_else(|_| SERVER_API_URL.to_string()),
+            server_url: read_env("MAIN_SERVER_BASE_URL", &read_env("SERVER_URL", SERVER_API_URL, false), true),
         }
     }
 }

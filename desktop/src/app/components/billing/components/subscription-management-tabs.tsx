@@ -21,6 +21,7 @@ import { Alert, AlertDescription } from "@/ui/alert";
 import { useNotification } from "@/contexts/notification-context";
 import { securedFetchJson } from "@/utils/secured-fetch";
 import { getErrorMessage } from "@/utils/error-handling";
+import { useSpendingData } from "@/hooks/use-spending-data";
 
 import { type SubscriptionInfo } from "../types";
 import { CostBasedSpendingOverview } from "./cost-based-spending-overview";
@@ -38,6 +39,9 @@ interface SubscriptionManagementTabsProps {
 export function SubscriptionManagementTabs({ subscription }: SubscriptionManagementTabsProps) {
   const { showNotification } = useNotification();
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Fetch spending data to pass to CostBasedSpendingOverview
+  const { spendingStatus } = useSpendingData();
 
   const isActive = subscription.status === "active";
   const isTrialing = subscription.status === "trialing";
@@ -166,6 +170,7 @@ export function SubscriptionManagementTabs({ subscription }: SubscriptionManagem
           <TabsContent value="overview" className="space-y-4 mt-4">
             {/* Cost-Based Spending Overview */}
             <CostBasedSpendingOverview 
+              spendingData={spendingStatus}
               onUpgrade={() => handlePlanChange('pro')}
               onManageSpending={handleManageBilling}
             />

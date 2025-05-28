@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, useEffect, useCallback, useRef } fr
 
 import { useProject } from "@/contexts/project-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
+import { logError } from "@/utils/error-handling";
 
 import { useActiveSessionManager } from "./_hooks/use-active-session-manager";
 import { useSessionActions } from "./_hooks/use-session-actions";
@@ -24,9 +25,11 @@ const SessionActionsContext = createContext<SessionActionsContextType | null>(
 export function useSessionStateContext(): SessionStateContextType {
   const context = useContext(SessionStateContext);
   if (!context) {
-    throw new Error(
+    const error = new Error(
       "useSessionStateContext must be used within a SessionProvider"
     );
+    logError(error, "Session State Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 }
@@ -34,9 +37,11 @@ export function useSessionStateContext(): SessionStateContextType {
 export function useSessionActionsContext(): SessionActionsContextType {
   const context = useContext(SessionActionsContext);
   if (!context) {
-    throw new Error(
+    const error = new Error(
       "useSessionActionsContext must be used within a SessionProvider"
     );
+    logError(error, "Session Actions Context - Hook Used Outside Provider").catch(() => {});
+    throw error;
   }
   return context;
 }

@@ -7,6 +7,7 @@ import {
   getModelSettingsForProject,
   saveProjectTaskModelSettingsAction,
 } from "@/actions/project-settings.actions";
+import { getAvailableAIModels, type ModelInfo } from "@/actions/config.actions";
 import { useProject } from "@/contexts/project-context";
 import { type TaskSettings } from "@/types";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/ui";
@@ -22,6 +23,7 @@ export default function SettingsForm() {
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   const [taskSettings, setTaskSettings] = useState<TaskSettings | null>(null);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -35,13 +37,19 @@ export default function SettingsForm() {
       setError(null);
 
       try {
-        const result = await getModelSettingsForProject(projectDirectory);
-        if (result.isSuccess && result.data) {
-          setTaskSettings(result.data);
+        const [settingsResult, modelsResult] = await Promise.all([
+          getModelSettingsForProject(projectDirectory),
+          getAvailableAIModels(),
+        ]);
+        
+        if (settingsResult.isSuccess && settingsResult.data) {
+          setTaskSettings(settingsResult.data);
         } else {
-          setError(result.message || "Failed to load project settings");
+          setError(settingsResult.message || "Failed to load project settings");
           setTaskSettings(null);
         }
+        
+        setAvailableModels(modelsResult || []);
       } catch (err) {
         const errorMessage = getErrorMessage(err);
         await logError(err, "Settings Form - Load Project Settings Failed", { projectDirectory });
@@ -130,18 +138,6 @@ export default function SettingsForm() {
     }
   };
 
-  if (!projectDirectory) {
-    return (
-      <Card className="bg-card/80 backdrop-blur-sm border shadow-soft rounded-xl">
-        <CardHeader>
-          <CardTitle>No Active Project</CardTitle>
-          <CardDescription>
-            Please select or create a project to manage settings
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -162,6 +158,7 @@ export default function SettingsForm() {
       {taskSettings && (
         <TaskModelSettings
           taskSettings={taskSettings}
+          availableModels={availableModels}
           onSettingsChange={handleSettingsChange}
         />
       )}

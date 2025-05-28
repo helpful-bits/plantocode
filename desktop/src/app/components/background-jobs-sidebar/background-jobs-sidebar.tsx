@@ -4,7 +4,7 @@ import { useContext } from "react";
 
 import { BackgroundJobsContext } from "@/contexts/background-jobs";
 import { SidebarHeader, StatusMessages } from "@/ui";
-import { Collapsible, CollapsibleContent } from "@/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { getSidebarStyle } from "@/utils/ui-utils";
 
 import { JobContent } from "./_components/job-content";
@@ -41,9 +41,7 @@ export const BackgroundJobsSidebar = () => {
 
   // Use the extracted job filtering hook
   const {
-    activeJobsToShow,
-    completedJobs,
-    failedJobs,
+    allJobsSorted,
     shouldShowLoading,
     shouldShowEmpty,
   } = useJobFiltering(jobs, isLoading);
@@ -66,12 +64,13 @@ export const BackgroundJobsSidebar = () => {
             refreshDisabled={refreshClickedRef.current ?? false}
             onRefresh={handleRefresh}
             onClearHistory={handleClearHistory}
+            CollapsibleTrigger={CollapsibleTrigger}
           />
 
           <CollapsibleContent
             forceMount
             className="overflow-y-auto"
-            style={{ height: "calc(100vh - 3.5rem)" }}
+            style={{ height: "calc(100vh - 48px)" }}
           >
             {/* Status messages (errors, feedback) */}
             <StatusMessages
@@ -84,9 +83,7 @@ export const BackgroundJobsSidebar = () => {
             <JobContent
               shouldShowLoading={shouldShowLoading}
               shouldShowEmpty={shouldShowEmpty}
-              activeJobsToShow={activeJobsToShow}
-              completedJobs={completedJobs}
-              failedJobs={failedJobs}
+              allJobsSorted={allJobsSorted}
               handleCancel={handleCancelJob}
               isCancelling={isCancelling}
               onSelect={handleSelectJob}

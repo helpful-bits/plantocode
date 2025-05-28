@@ -9,7 +9,6 @@ use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{OpenRouterRequestMessage, OpenRouterContent, JobStatus};
 use crate::prompts::path_correction::generate_path_correction_prompt;
 use crate::error::{AppError, AppResult};
-use crate::jobs::job_helpers::ensure_job_visible;
 use crate::api_clients::client_trait::ApiClientOptions;
 
 /// Processor for path correction jobs
@@ -47,8 +46,6 @@ impl JobProcessor for PathCorrectionProcessor {
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
-        // Ensure job is visible in UI
-        ensure_job_visible(&repo, &job.id).await?;
         
         // Get the full job details
         let db_job = repo.get_job_by_id(&job.id).await?

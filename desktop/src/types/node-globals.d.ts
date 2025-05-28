@@ -7,5 +7,4 @@ declare module "node:util";
 // Define NodeJS.Timeout to fix type errors
 declare namespace NodeJS {
   type Timeout = Record<string, never>;
-  type ProcessEnv = Record<string, string | undefined>;
 }
