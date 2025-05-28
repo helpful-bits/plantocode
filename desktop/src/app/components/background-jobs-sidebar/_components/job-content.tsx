@@ -11,7 +11,9 @@ interface JobContentProps {
   shouldShowEmpty: boolean;
   allJobsSorted: BackgroundJob[];
   handleCancel: (jobId: string) => Promise<void>;
+  handleDelete: (jobId: string) => Promise<void>;
   isCancelling: Record<string, boolean>;
+  isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
 }
 
@@ -23,7 +25,9 @@ export const JobContent = ({
   shouldShowEmpty,
   allJobsSorted,
   handleCancel,
+  handleDelete,
   isCancelling,
+  isDeleting,
   onSelect,
 }: JobContentProps) => {
   return (
@@ -39,7 +43,9 @@ export const JobContent = ({
               key={job.id}
               job={job}
               handleCancel={handleCancel}
+              handleDelete={handleDelete}
               isCancelling={isCancelling}
+              isDeleting={isDeleting}
               onSelect={onSelect}
             />
           ))}
