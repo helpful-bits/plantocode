@@ -109,7 +109,9 @@
       "WebFetch(domain:tailwindflex.com)",
       "Bash(for file in *.rs)",
       "Bash(do echo \"=== $file ===\")",
-      "Bash(done)"
+      "Bash(done)",
+      "WebFetch(domain:docs.stripe.com)",
+      "Bash(./scripts/migrate.sh:*)"
     ],
     "deny": []
   }

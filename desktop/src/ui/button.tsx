@@ -61,19 +61,6 @@ export interface ButtonProps
   isLoading?: boolean;
   loadingText?: string;
   loadingIcon?: React.ReactElement | null | undefined;
-  variant?:
-    | "default"
-    | "destructive"
-    | "warning"
-    | "outline"
-    | "secondary"
-    | "ghost"
-    | "link"
-    | "navigation"
-    | "navigation-active"
-    | "filter"
-    | "filter-active"
-    | "compact";
   size?: "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg" | "compact" | "compact-sm";
 }
 

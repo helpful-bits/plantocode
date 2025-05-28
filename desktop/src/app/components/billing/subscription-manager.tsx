@@ -6,10 +6,8 @@
 
 import { open } from "@tauri-apps/plugin-shell";
 import { useState, useEffect } from "react";
-import { CreditCard } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
-import { Card } from "@/ui/card";
 import { securedFetchJson } from "@/utils/secured-fetch";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
@@ -19,7 +17,7 @@ import {
   ErrorState,
   NoSubscriptionState,
 } from "./components/loading-and-error-states";
-import { SubscriptionDetails } from "./components/subscription-details";
+import { SubscriptionManagementTabs } from "./components/subscription-management-tabs";
 import { type SubscriptionInfo } from "./types";
 
 // Server URL from environment variables
@@ -217,21 +215,12 @@ export default function SubscriptionManager() {
     }
 
     return (
-      <SubscriptionDetails
+      <SubscriptionManagementTabs
         subscription={subscription}
-        onUpgrade={handleUpgrade}
-        onManage={handleManageSubscription}
+        onRefresh={handleRetry}
       />
     );
   };
 
-  return (
-    <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300 backdrop-blur-sm p-6">
-      <div className="flex items-center gap-2 mb-6">
-        <CreditCard className="h-5 w-5 text-muted-foreground" />
-        <h3 className="text-lg font-semibold">Subscription</h3>
-      </div>
-      {renderContent()}
-    </Card>
-  );
+  return renderContent();
 }

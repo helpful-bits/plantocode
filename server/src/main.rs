@@ -205,6 +205,7 @@ async fn main() -> std::io::Result<()> {
         
         // Initialize services
         let billing_service = BillingService::new(db_pool.clone(), app_settings.clone());
+        let cost_based_billing_service = billing_service.get_cost_based_billing_service().clone();
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let proxy_service = match ProxyService::new(
             std::sync::Arc::new(billing_service.clone()),
@@ -266,6 +267,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
+            .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))
             .app_data(proxy_service.clone())
             .app_data(app_state.clone())
             .app_data(tera.clone())

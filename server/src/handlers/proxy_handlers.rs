@@ -2,6 +2,7 @@ use actix_web::{web, HttpResponse, post, http::header, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::proxy_service::ProxyService;
+use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::middleware::secure_auth::UserId;
 use futures_util::StreamExt;
 use actix_multipart::Multipart;
@@ -20,11 +21,23 @@ pub struct ProxyRequest {
 pub async fn openrouter_chat_completions_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,
+    cost_billing_service: web::Data<CostBasedBillingService>,
     body: web::Json<ProxyRequest>,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
     
     debug!("OpenRouter chat completions request from user: {}", user_id.0);
+    
+    // Check spending limits BEFORE processing request
+    let has_access = cost_billing_service.check_service_access(&user_id.0).await?;
+    if !has_access {
+        return Ok(HttpResponse::PaymentRequired().json(serde_json::json!({
+            "error": {
+                "type": "spending_limit_exceeded",
+                "message": "AI services blocked due to spending limit. Please upgrade your plan or wait for your billing cycle to reset."
+            }
+        })));
+    }
     
     let payload = body.into_inner().payload;
     
@@ -73,11 +86,23 @@ pub async fn openrouter_chat_completions_proxy(
 pub async fn audio_transcriptions_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,
+    cost_billing_service: web::Data<CostBasedBillingService>,
     payload: Multipart,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
     
     debug!("Audio transcription request from user: {}", user_id.0);
+    
+    // Check spending limits BEFORE processing request
+    let has_access = cost_billing_service.check_service_access(&user_id.0).await?;
+    if !has_access {
+        return Ok(HttpResponse::PaymentRequired().json(serde_json::json!({
+            "error": {
+                "type": "spending_limit_exceeded",
+                "message": "AI services blocked due to spending limit. Please upgrade your plan or wait for your billing cycle to reset."
+            }
+        })));
+    }
     
     // Process the multipart form data to extract the audio file, model, and duration
     let mut audio_data = Vec::new();
@@ -184,10 +209,22 @@ pub async fn ai_proxy_endpoint(
     user_id: UserId,
     req: HttpRequest,
     proxy_service: web::Data<ProxyService>,
+    cost_billing_service: web::Data<CostBasedBillingService>,
     path: web::Path<String>,
     body: web::Json<serde_json::Value>,
 ) -> Result<HttpResponse, AppError> {
     let start = Instant::now();
+    
+    // Check spending limits BEFORE processing request
+    let has_access = cost_billing_service.check_service_access(&user_id.0).await?;
+    if !has_access {
+        return Ok(HttpResponse::PaymentRequired().json(serde_json::json!({
+            "error": {
+                "type": "spending_limit_exceeded",
+                "message": "AI services blocked due to spending limit. Please upgrade your plan or wait for your billing cycle to reset."
+            }
+        })));
+    }
     
     // Get the endpoint from the path
     let endpoint = path.into_inner();

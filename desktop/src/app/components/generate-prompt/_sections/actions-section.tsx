@@ -8,14 +8,9 @@ import { SearchScopeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 
 import FindModeToggle from "../_components/find-mode-toggle";
-import RegexAccordion from "../_components/regex-accordion";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 
 interface ActionsSectionProps {
-  titleRegexError: string | null;
-  contentRegexError: string | null;
-  negativeTitleRegexError: string | null;
-  negativeContentRegexError: string | null;
   isFindingFiles: boolean;
   executeFindRelevantFiles: () => Promise<void>;
   findFilesMode: "ai" | "manual";
@@ -31,10 +26,6 @@ interface ActionsSectionProps {
 }
 
 const ActionsSection = React.memo(function ActionsSection({
-  titleRegexError,
-  contentRegexError,
-  negativeTitleRegexError,
-  negativeContentRegexError,
   isFindingFiles,
   executeFindRelevantFiles,
   findFilesMode,
@@ -49,9 +40,7 @@ const ActionsSection = React.memo(function ActionsSection({
 }: ActionsSectionProps) {
   // Get states and actions from the granular contexts
   const { currentSession } = useSessionStateContext();
-  const {
-    actions: { handleInteraction },
-  } = useCorePromptContext();
+  const {} = useCorePromptContext();
 
   const taskDescription = currentSession?.taskDescription || "";
 
@@ -65,8 +54,8 @@ const ActionsSection = React.memo(function ActionsSection({
             <div>
               <FindModeToggle
                 currentMode={findFilesMode === "ai" ? "replace" : "extend"}
-                onModeChange={(mode: "replace" | "extend") =>
-                  setFindFilesMode(mode === "replace" ? "ai" : "manual")
+                onModeChange={(_mode: "replace" | "extend") =>
+                  setFindFilesMode("ai")
                 }
                 disabled={disabled || !taskDescription}
               />
@@ -75,7 +64,7 @@ const ActionsSection = React.memo(function ActionsSection({
                 <SearchScopeToggle
                   searchSelectedFilesOnly={searchSelectedFilesOnly}
                   onToggle={toggleSearchSelectedFilesOnly}
-                  disabled={disabled || findFilesMode !== "manual"}
+                  disabled={disabled}
                 />
               </div>
             </div>
@@ -103,15 +92,6 @@ const ActionsSection = React.memo(function ActionsSection({
             </div>
           </div>
 
-          <RegexAccordion
-            titleRegexError={titleRegexError}
-            contentRegexError={contentRegexError}
-            negativeTitleRegexError={negativeTitleRegexError}
-            negativeContentRegexError={negativeContentRegexError}
-            hasTaskDescription={!!taskDescription}
-            disabled={disabled || findFilesMode !== "manual"}
-            onInteraction={handleInteraction}
-          />
 
           <Button
             variant="default"
@@ -120,21 +100,16 @@ const ActionsSection = React.memo(function ActionsSection({
             disabled={
               disabled ||
               isFindingFiles ||
-              (findFilesMode === "ai" && !taskDescription.trim()) ||
-              (findFilesMode === "manual") // Disable entirely in manual/regex mode as filtering is live
+              !taskDescription.trim()
             }
             isLoading={isFindingFiles}
             loadingText="Finding files..."
             className="w-full"
           >
-            {findFilesMode === "ai" ? (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Find Relevant Files with AI
-              </>
-            ) : (
-              <>Find Files with Regex</>
-            )}
+            <>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Find Relevant Files with AI
+            </>
           </Button>
         </div>
       </div>

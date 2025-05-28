@@ -2,7 +2,6 @@
 
 
 import { DatabaseErrorHandler } from "@/ui";
-import { isTauriEnvironment } from "@/utils/platform";
 
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
 

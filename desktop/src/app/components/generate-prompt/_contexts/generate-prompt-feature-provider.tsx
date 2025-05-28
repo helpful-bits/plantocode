@@ -15,7 +15,6 @@ import { useGeneratePromptDisplayState } from "../_hooks/use-generate-prompt-dis
 // Removed backward compatibility hook
 import { useGuidanceGeneration } from "../_hooks/use-guidance-generation";
 import { useImplementationPlanActions } from "../_hooks/use-implementation-plan-actions";
-import { useGeneratePromptRegexState } from "../_hooks/use-generate-prompt-regex-state";
 import { useSessionMetadata } from "../_hooks/use-session-metadata";
 import { useTaskDescriptionState } from "../_hooks/use-task-description-state";
 import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
@@ -24,12 +23,10 @@ import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/dire
 import { type CorePromptContextValue } from "./_types/generate-prompt-core-types";
 import { type DisplayContextValue } from "./_types/generated-prompt-display-types";
 import { type PlanContextValue } from "./_types/implementation-plan-types";
-import { type RegexContextValue } from "./_types/regex-types";
 import { type TaskContextValue } from "./_types/task-description-types";
 import { CorePromptContextProvider } from "./core-prompt-context";
 import { DisplayContextProvider } from "./display-context";
 import { PlanContextProvider } from "./plan-context";
-import { RegexContextProvider } from "./regex-context";
 import { TaskContextProvider } from "./task-context";
 import { FileManagementProvider } from "./file-management-provider";
 
@@ -83,9 +80,6 @@ export function GeneratePromptFeatureProvider({
     onInteraction: handleInteraction,
   });
 
-  const regexState = useGeneratePromptRegexState({
-    handleInteraction,
-  });
 
   const guidanceGeneration = useGuidanceGeneration({
     projectDirectory: projectDirectory || "",
@@ -104,8 +98,7 @@ export function GeneratePromptFeatureProvider({
     formState.resetFormState();
     sessionActions.setSessionModified(false);
     taskState.reset();
-    regexState.reset();
-  }, [sessionMetadata.reset, formState.resetFormState, sessionActions.setSessionModified, taskState.reset, regexState.reset]);
+  }, [sessionMetadata.reset, formState.resetFormState, sessionActions.setSessionModified, taskState.reset]);
 
   // Handler for generating codebase directory tree
   const handleGenerateCodebase = useCallback(async () => {
@@ -247,92 +240,6 @@ export function GeneratePromptFeatureProvider({
     ]
   );
 
-  const regexContextValue = useMemo<RegexContextValue>(
-    () => ({
-      state: {
-        // Regex UI state only (validation errors, generation status)
-        titleRegexError: null,
-        contentRegexError: null,
-        negativeTitleRegexError: null,
-        negativeContentRegexError: null,
-        isGeneratingTaskRegex: regexState.isGeneratingTaskRegex,
-        generatingRegexJobId: regexState.generatingRegexJobId,
-        regexGenerationError: regexState.regexGenerationError,
-        
-        // Individual field generation state
-        generatingFieldType: regexState.generatingFieldType,
-        generatingFieldJobId: regexState.generatingFieldJobId,
-        fieldRegexGenerationError: regexState.fieldRegexGenerationError,
-        
-        // Description fields
-        titleRegexDescription: regexState.titleRegexDescription,
-        contentRegexDescription: regexState.contentRegexDescription,
-        negativeTitleRegexDescription: regexState.negativeTitleRegexDescription,
-        negativeContentRegexDescription: regexState.negativeContentRegexDescription,
-        regexSummaryExplanation: regexState.regexSummaryExplanation,
-        
-        // Summary generation state
-        isGeneratingSummaryExplanation: regexState.isGeneratingSummaryExplanation,
-        generatingSummaryJobId: regexState.generatingSummaryJobId,
-        summaryGenerationError: regexState.summaryGenerationError,
-      },
-      actions: {
-        // Regex actions - these should use sessionActions for actual updates
-        setTitleRegex: regexState.setTitleRegex,
-        setContentRegex: regexState.setContentRegex,
-        setNegativeTitleRegex: regexState.setNegativeTitleRegex,
-        setNegativeContentRegex: regexState.setNegativeContentRegex,
-        setIsRegexActive: regexState.setIsRegexActive,
-        
-        // Description setters
-        setTitleRegexDescription: regexState.setTitleRegexDescription,
-        setContentRegexDescription: regexState.setContentRegexDescription,
-        setNegativeTitleRegexDescription: regexState.setNegativeTitleRegexDescription,
-        setNegativeContentRegexDescription: regexState.setNegativeContentRegexDescription,
-        
-        // Generation functions
-        handleGenerateRegexForField: regexState.handleGenerateRegexForField,
-        handleGenerateSummaryExplanation: regexState.handleGenerateSummaryExplanation,
-        handleGenerateRegexFromTask: regexState.handleGenerateRegexFromTask,
-        applyRegexPatterns: (patterns) => {
-          regexState.applyRegexPatterns(patterns);
-        },
-        handleClearPatterns: regexState.handleClearPatterns,
-        reset: regexState.reset,
-      },
-    }),
-    [
-      regexState.isGeneratingTaskRegex,
-      regexState.generatingRegexJobId,
-      regexState.regexGenerationError,
-      regexState.titleRegexDescription,
-      regexState.contentRegexDescription,
-      regexState.negativeTitleRegexDescription,
-      regexState.negativeContentRegexDescription,
-      regexState.regexSummaryExplanation,
-      regexState.generatingFieldType,
-      regexState.generatingFieldJobId,
-      regexState.fieldRegexGenerationError,
-      regexState.isGeneratingSummaryExplanation,
-      regexState.generatingSummaryJobId,
-      regexState.summaryGenerationError,
-      regexState.setTitleRegex,
-      regexState.setContentRegex,
-      regexState.setNegativeTitleRegex,
-      regexState.setNegativeContentRegex,
-      regexState.setIsRegexActive,
-      regexState.setTitleRegexDescription,
-      regexState.setContentRegexDescription,
-      regexState.setNegativeTitleRegexDescription,
-      regexState.setNegativeContentRegexDescription,
-      regexState.handleGenerateRegexFromTask,
-      regexState.handleGenerateRegexForField,
-      regexState.handleGenerateSummaryExplanation,
-      regexState.applyRegexPatterns,
-      regexState.handleClearPatterns,
-      regexState.reset
-    ]
-  );
 
   const displayContextValue = useMemo<DisplayContextValue>(
     () => ({
@@ -397,15 +304,13 @@ export function GeneratePromptFeatureProvider({
   return (
     <CorePromptContextProvider value={coreContextValue}>
       <TaskContextProvider value={taskContextValue}>
-        <RegexContextProvider value={regexContextValue}>
-          <DisplayContextProvider value={displayContextValue}>
-            <PlanContextProvider value={planContextValue}>
-              <FileManagementProvider>
-                {children}
-              </FileManagementProvider>
-            </PlanContextProvider>
-          </DisplayContextProvider>
-        </RegexContextProvider>
+        <DisplayContextProvider value={displayContextValue}>
+          <PlanContextProvider value={planContextValue}>
+            <FileManagementProvider>
+              {children}
+            </FileManagementProvider>
+          </PlanContextProvider>
+        </DisplayContextProvider>
       </TaskContextProvider>
     </CorePromptContextProvider>
   );

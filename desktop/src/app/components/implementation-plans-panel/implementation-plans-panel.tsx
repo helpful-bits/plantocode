@@ -1,7 +1,7 @@
 "use client";
 
-import { RefreshCw, Loader2, FileCode } from "lucide-react";
-import { useCallback } from "react";
+import { RefreshCw, Loader2, FileCode, Eye } from "lucide-react";
+import { useCallback, useState, useEffect } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
 import { useNotification } from "@/contexts/notification-context";
@@ -22,9 +22,12 @@ import {
 } from "@/ui/card";
 import { ScrollArea } from "@/ui/scroll-area";
 
+import { estimateImplementationPlanTokensAction } from "@/actions/ai/implementation-plan.actions";
 import ImplementationPlanCard from "./_components/ImplementationPlanCard";
 import PlanContentModal from "./_components/PlanContentModal";
+import PromptCopyModal from "./_components/PromptCopyModal";
 import { useImplementationPlansLogic } from "./_hooks/useImplementationPlansLogic";
+import { usePromptCopyModal } from "./_hooks/usePromptCopyModal";
 
 interface ImplementationPlansPanelProps {
   sessionId: string | null;
@@ -33,7 +36,7 @@ interface ImplementationPlansPanelProps {
   taskDescription?: string;
   includedPaths?: string[];
   isCreatingPlan?: boolean;
-  planCreationState?: "idle" | "submitted";
+  planCreationState?: "idle" | "submitting" | "submitted";
   onCreatePlan?: (taskDescription: string, includedPaths: string[]) => Promise<void>;
 }
 
@@ -69,6 +72,13 @@ export function ImplementationPlansPanel({
 
   const { currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
+  
+  // Prompt copy modal hook
+  const promptCopyModal = usePromptCopyModal();
+  
+  // Token estimation state
+  const [estimatedTokens, setEstimatedTokens] = useState<number | null>(null);
+  const [isEstimatingTokens, setIsEstimatingTokens] = useState(false);
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -79,7 +89,78 @@ export function ImplementationPlansPanel({
     !isCreatingPlan
   );
 
-  // Handle plan creation with error feedback
+  // Token estimation effect
+  useEffect(() => {
+    if (!canCreatePlan) {
+      setEstimatedTokens(null);
+      return;
+    }
+
+    const estimateTokens = async () => {
+      setIsEstimatingTokens(true);
+      try {
+        const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
+        const finalIncludedPaths = includedPaths || [];
+
+        const result = await estimateImplementationPlanTokensAction({
+          sessionId: sessionId!,
+          taskDescription: finalTaskDescription,
+          projectDirectory: projectDirectory!,
+          relevantFiles: finalIncludedPaths,
+          projectStructure: undefined,
+        });
+
+        if (result.isSuccess && result.data) {
+          setEstimatedTokens(result.data.totalTokens);
+        } else {
+          setEstimatedTokens(null);
+        }
+      } catch (error) {
+        console.error("Failed to estimate tokens:", error);
+        setEstimatedTokens(null);
+      } finally {
+        setIsEstimatingTokens(false);
+      }
+    };
+
+    // Debounce token estimation
+    const timeoutId = setTimeout(estimateTokens, 500);
+    return () => clearTimeout(timeoutId);
+  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths]);
+
+
+  // Handle view prompt (renamed from copy prompt)
+  const handleViewPrompt = useCallback(async () => {
+    if (!canCreatePlan) {
+      showNotification({
+        title: "Cannot View Prompt",
+        message: "Please ensure you have a project directory, task description, and selected files.",
+        type: "error",
+      });
+      return;
+    }
+
+    const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
+    const finalIncludedPaths = includedPaths || [];
+
+    try {
+      await promptCopyModal.openModal({
+        sessionId: sessionId!,
+        taskDescription: finalTaskDescription,
+        projectDirectory: projectDirectory!,
+        relevantFiles: finalIncludedPaths,
+        projectStructure: undefined, // Could be enhanced later
+      });
+    } catch (error) {
+      showNotification({
+        title: "Failed to Load Prompt",
+        message: error instanceof Error ? error.message : "An unknown error occurred",
+        type: "error",
+      });
+    }
+  }, [canCreatePlan, sessionId, taskDescription, currentSession?.taskDescription, projectDirectory, includedPaths, promptCopyModal, showNotification]);
+
+  // Handle create plan using the context-provided function
   const handleCreatePlan = useCallback(async () => {
     if (!onCreatePlan || !canCreatePlan) return;
 
@@ -91,10 +172,7 @@ export function ImplementationPlansPanel({
     } catch (error) {
       showNotification({
         title: "Implementation Plan Creation Failed",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to create implementation plan",
+        message: error instanceof Error ? error.message : "Failed to create implementation plan",
         type: "error",
       });
     }
@@ -129,21 +207,48 @@ export function ImplementationPlansPanel({
           <div>
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
             
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleCreatePlan}
-              disabled={!canCreatePlan}
-              className="flex items-center justify-center w-full h-9"
-            >
-              <FileCode className="h-4 w-4 mr-2" />
-              {buttonText}
-            </Button>
+            {/* Token count display */}
+            {(estimatedTokens !== null || isEstimatingTokens) && (
+              <div className="mb-3 text-xs text-muted-foreground">
+                {isEstimatingTokens ? (
+                  <span className="flex items-center">
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                    Estimating tokens...
+                  </span>
+                ) : (
+                  <span>Estimated tokens: {estimatedTokens?.toLocaleString()}</span>
+                )}
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleViewPrompt}
+                disabled={!canCreatePlan}
+                className="flex items-center justify-center w-full h-9"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                View Prompt
+              </Button>
+
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleCreatePlan}
+                disabled={!canCreatePlan}
+                className="flex items-center justify-center w-full h-9"
+              >
+                <FileCode className="h-4 w-4 mr-2" />
+                {buttonText}
+              </Button>
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground mt-3 text-balance">
             Creates an implementation plan based on your task description and
-            selected files.
+            selected files. Token count is estimated automatically. Use "View Prompt" to see the exact prompt that would be sent to the AI.
           </p>
         </Card>
       )}
@@ -216,6 +321,18 @@ export function ImplementationPlansPanel({
           onRefreshContent={refreshJobContent}
         />
       )}
+
+      {/* Prompt Copy Modal */}
+      <PromptCopyModal
+        open={promptCopyModal.isOpen}
+        onOpenChange={promptCopyModal.closeModal}
+        systemPrompt={promptCopyModal.promptData?.systemPrompt}
+        userPrompt={promptCopyModal.promptData?.userPrompt}
+        combinedPrompt={promptCopyModal.promptData?.combinedPrompt}
+        isLoading={promptCopyModal.isLoading}
+        error={promptCopyModal.error}
+        sessionName={currentSession?.name || "Implementation Plan"}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

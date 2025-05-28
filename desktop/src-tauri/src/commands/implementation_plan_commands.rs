@@ -153,6 +153,195 @@ pub struct ImplementationPlanDataResponse {
     pub created_at: String,
 }
 
+/// Response for the get implementation plan prompt command
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImplementationPlanPromptResponse {
+    pub system_prompt: String,
+    pub user_prompt: String,
+    pub combined_prompt: String,
+}
+
+/// Response for the estimate implementation plan tokens command
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImplementationPlanTokenEstimateResponse {
+    pub estimated_tokens: u32,
+    pub system_prompt_tokens: u32,
+    pub user_prompt_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// Estimates the number of tokens an implementation plan prompt would use
+#[command]
+pub async fn estimate_implementation_plan_tokens_command(
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    relevant_files: Vec<String>,
+    project_structure: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<ImplementationPlanTokenEstimateResponse> {
+    info!("Estimating tokens for implementation plan prompt");
+    
+    // Validate required fields
+    if session_id.is_empty() {
+        return Err(AppError::ValidationError("Session ID is required".to_string()));
+    }
+    
+    if task_description.is_empty() {
+        return Err(AppError::ValidationError("Task description is required".to_string()));
+    }
+    
+    if project_directory.is_empty() {
+        return Err(AppError::ValidationError("Project directory is required".to_string()));
+    }
+    
+    // Read file contents for relevant files (SAME LOGIC AS ImplementationPlanProcessor)
+    let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    
+    for relative_path_str in &relevant_files {
+        // Construct full path
+        let full_path = std::path::Path::new(&project_directory).join(relative_path_str);
+        
+        // Read file content
+        match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            Ok(content) => {
+                // Add to map with relative path as key
+                file_contents_map.insert(relative_path_str.clone(), content);
+            },
+            Err(e) => {
+                // Log warning but continue with other files
+                log::warn!("Failed to read file {}: {}", full_path.display(), e);
+            }
+        }
+    }
+    
+    // Generate the EXACT SAME prompt as ImplementationPlanProcessor
+    let prompt = crate::prompts::implementation_plan::generate_enhanced_implementation_plan_prompt(
+        &task_description,
+        project_structure.as_deref(),
+        &file_contents_map
+    );
+    
+    // Estimate the number of tokens in the prompt (SAME LOGIC AS ImplementationPlanProcessor)
+    let estimated_prompt_tokens = crate::utils::token_estimator::estimate_tokens(&prompt);
+    
+    Ok(ImplementationPlanTokenEstimateResponse {
+        estimated_tokens: estimated_prompt_tokens,
+        system_prompt_tokens: 0, // The processor sends this as a single user message
+        user_prompt_tokens: estimated_prompt_tokens,
+        total_tokens: estimated_prompt_tokens,
+    })
+}
+
+/// Gets the prompt that would be used to generate an implementation plan
+#[command]
+pub async fn get_implementation_plan_prompt_command(
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    relevant_files: Vec<String>,
+    project_structure: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<ImplementationPlanPromptResponse> {
+    info!("Getting implementation plan prompt for task: {}", task_description);
+    
+    // Validate required fields
+    if session_id.is_empty() {
+        return Err(AppError::ValidationError("Session ID is required".to_string()));
+    }
+    
+    if task_description.is_empty() {
+        return Err(AppError::ValidationError("Task description is required".to_string()));
+    }
+    
+    if project_directory.is_empty() {
+        return Err(AppError::ValidationError("Project directory is required".to_string()));
+    }
+    
+    // Read file contents for relevant files (SAME LOGIC AS ImplementationPlanProcessor)
+    let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    
+    for relative_path_str in &relevant_files {
+        // Construct full path
+        let full_path = std::path::Path::new(&project_directory).join(relative_path_str);
+        
+        // Read file content
+        match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+            Ok(content) => {
+                // Add to map with relative path as key
+                file_contents_map.insert(relative_path_str.clone(), content);
+            },
+            Err(e) => {
+                // Log warning but continue with other files
+                log::warn!("Failed to read file {}: {}", full_path.display(), e);
+            }
+        }
+    }
+    
+    // Generate the EXACT SAME prompt as ImplementationPlanProcessor
+    let prompt = crate::prompts::implementation_plan::generate_enhanced_implementation_plan_prompt(
+        &task_description,
+        project_structure.as_deref(),
+        &file_contents_map
+    );
+    
+    // Extract the system prompt from the agent_instructions section
+    let system_prompt = if prompt.contains("<agent_instructions>") {
+        // Extract the content between <agent_instructions> and </agent_instructions>
+        if let Some(start) = prompt.find("<agent_instructions>") {
+            if let Some(end) = prompt.find("</agent_instructions>") {
+                let start_content = start + "<agent_instructions>".len();
+                if start_content < end {
+                    prompt[start_content..end]
+                        .trim()
+                        .lines()
+                        .map(|line| line.trim())
+                        .filter(|line| !line.is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    
+    // Create user prompt without the agent_instructions section
+    let user_prompt = if prompt.contains("<agent_instructions>") {
+        // Remove the entire agent_instructions section
+        let mut result = prompt.clone();
+        if let Some(start) = prompt.find("<agent_instructions>") {
+            if let Some(end) = prompt.find("</agent_instructions>") {
+                let end_tag = end + "</agent_instructions>".len();
+                // Find the next newline after the closing tag to keep formatting clean
+                let next_newline = prompt[end_tag..].find('\n').unwrap_or(0);
+                result.replace_range(start..end_tag + next_newline, "");
+                result.trim().to_string()
+            } else {
+                prompt.clone()
+            }
+        } else {
+            prompt.clone()
+        }
+    } else {
+        prompt.clone()
+    };
+    
+    Ok(ImplementationPlanPromptResponse {
+        system_prompt,
+        user_prompt,
+        combined_prompt: prompt,
+    })
+}
+
 /// Reads an implementation plan from the file system
 #[command]
 pub async fn read_implementation_plan_command(
