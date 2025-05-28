@@ -6,6 +6,7 @@ import {
   Loader2,
   X,
   FileCode,
+  Trash2,
 } from "lucide-react";
 import React from "react";
 
@@ -30,12 +31,14 @@ import {
 export interface JobCardProps {
   job: BackgroundJob;
   handleCancel: (id: string) => Promise<void>;
+  handleDelete: (id: string) => Promise<void>;
   isCancelling: Record<string, boolean>;
+  isDeleting: Record<string, boolean>;
   onSelect: (job: BackgroundJob) => void;
 }
 
 export const JobCard = React.memo(
-  ({ job, handleCancel, isCancelling, onSelect }: JobCardProps) => {
+  ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect }: JobCardProps) => {
 
     // Choose best timestamp for display
     // Priority: startTime > lastUpdate > createdAt
@@ -144,7 +147,7 @@ export const JobCard = React.memo(
           </div>
 
           <div className="w-6 h-6 flex-shrink-0">
-            {canCancel && (
+            {canCancel ? (
               <Button
                 variant="ghost"
                 size="icon-xs"
@@ -152,11 +155,25 @@ export const JobCard = React.memo(
                   e.stopPropagation(); // Prevent triggering the card's onClick
                   void handleCancel(job.id);
                 }}
-                isLoading={isCancelling[job.id]}
+                isLoading={isCancelling?.[job.id]}
                 loadingIcon={<Loader2 className="h-3 w-3 animate-spin" />}
                 aria-label="Cancel job"
               >
                 <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation(); // Prevent triggering the card's onClick
+                  void handleDelete(job.id);
+                }}
+                isLoading={isDeleting?.[job.id]}
+                loadingIcon={<Loader2 className="h-3 w-3 animate-spin" />}
+                aria-label="Delete job"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
