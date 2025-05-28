@@ -33,7 +33,7 @@ export { Spinner } from "./loading-indicators";
 export * from "./progress";
 export * from "./notification-banner";
 export * from "./empty-state";
-export * from "./token-usage-indicator";
+export * from "./cost-usage-indicator";
 
 // Dialogs and overlays
 export * from "./dialog";

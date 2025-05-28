@@ -2,11 +2,9 @@
 
 import React, { useMemo, useCallback } from "react";
 
-import { useSessionStateContext } from "@/contexts/session";
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
-import { useRegexContext } from "../_contexts/regex-context";
 import FileBrowser from "../file-browser";
 
 interface FileSectionProps {
@@ -18,20 +16,11 @@ const FileSection = React.memo(function FileSection({
 }: FileSectionProps) {
   // Get state and actions from contexts
   const fileState = useFileManagement();
-  const regexContext = useRegexContext();
   const coreContext = useCorePromptContext();
-  const { currentSession } = useSessionStateContext();
 
-  // Calculate if regex is available based on regex patterns
-  const isRegexAvailable = !!(
-    currentSession?.titleRegex?.trim() ||
-    currentSession?.contentRegex?.trim() ||
-    currentSession?.negativeTitleRegex?.trim() ||
-    currentSession?.negativeContentRegex?.trim()
-  );
 
   // Handle filter mode changes
-  const handleFilterModeChange = useCallback((newMode: "all" | "selected" | "regex") => {
+  const handleFilterModeChange = useCallback((newMode: "all" | "selected") => {
     fileState.setFilterMode(newMode);
     coreContext.actions.handleInteraction();
   }, [
@@ -50,27 +39,15 @@ const FileSection = React.memo(function FileSection({
     await fileState.refreshFiles();
   }, [fileState.refreshFiles]);
 
-  // Memoize regex state to prevent unnecessary re-renders
+  // Create a minimal regex state for compatibility
   const regexState = useMemo(() => ({
-    // Provide regex pattern data from SessionContext
-    titleRegex: currentSession?.titleRegex || "",
-    contentRegex: currentSession?.contentRegex || "",
-    negativeTitleRegex: currentSession?.negativeTitleRegex || "",
-    negativeContentRegex: currentSession?.negativeContentRegex || "",
-    isRegexActive: currentSession?.isRegexActive || false,
-    // Provide UI state from RegexContext
-    ...regexContext.state,
-    // Provide actions from RegexContext
-    ...regexContext.actions
-  }), [
-    currentSession?.titleRegex,
-    currentSession?.contentRegex,
-    currentSession?.negativeTitleRegex,
-    currentSession?.negativeContentRegex,
-    currentSession?.isRegexActive,
-    regexContext.state,
-    regexContext.actions
-  ]);
+    titleRegex: "",
+    contentRegex: "",
+    negativeTitleRegex: "",
+    negativeContentRegex: "",
+    isRegexActive: false,
+    regexGenerationError: null,
+  }), []);
 
   return (
     <>
@@ -84,7 +61,6 @@ const FileSection = React.memo(function FileSection({
         onBulkToggle={handleBulkToggle}
         filterMode={fileState.filterMode}
         onFilterModeChange={handleFilterModeChange}
-        isRegexAvailable={isRegexAvailable}
         refreshFiles={handleRefreshFiles}
         isLoading={fileState.isLoadingFiles || fileState.isFindingFiles}
         isInitialized={fileState.isInitialized}

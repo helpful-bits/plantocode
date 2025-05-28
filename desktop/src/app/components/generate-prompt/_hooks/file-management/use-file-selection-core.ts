@@ -54,18 +54,17 @@ export function useFileSelectionCore({
         return;
       }
 
-      // Save current state before making changes
-      // Note: currentIncludedFiles and currentExcludedFiles represent the state *before* this toggle action
-      // This is the correct behavior for history tracking - we capture the "before" state for undo operations
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
-      if (fileInfo.included) {
-        // If it was included, now deselecting it (neutral state, not force excluded)
+      // Check if file is currently in excluded state
+      const isCurrentlyExcluded = currentExcludedFiles.includes(targetComparablePath);
+      
+      if (fileInfo.included && !isCurrentlyExcluded) {
+        // Currently included and not excluded -> deselect to neutral
         const newIncludedFiles = currentIncludedFiles.filter(p => p !== targetComparablePath);
-        
         onUpdateIncludedFiles(newIncludedFiles);
       } else {
-        // If it wasn't included, now including it and removing from excluded
+        // Either not included OR force excluded -> include and remove from excluded
         const newIncludedFiles = Array.from(new Set([...currentIncludedFiles, targetComparablePath]));
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
         

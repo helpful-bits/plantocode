@@ -23,7 +23,7 @@ import { type FilesMap } from "./_hooks/file-management/use-project-file-list";
 
 import type { FileInfo } from "@/types";
 
-// Combined regex state interface for FileBrowser props
+// Minimal regex state interface for compatibility
 interface RegexState {
   titleRegex: string;
   contentRegex: string;
@@ -51,9 +51,8 @@ interface FileBrowserProps {
   onToggleSelection: (path: string) => void;
   onToggleExclusion: (path: string) => void;
   onBulkToggle: (shouldInclude: boolean, targetFiles: FileInfo[]) => void;
-  filterMode: "all" | "selected" | "regex";
-  onFilterModeChange: (mode: "all" | "selected" | "regex") => void;
-  isRegexAvailable: boolean;
+  filterMode: "all" | "selected";
+  onFilterModeChange: (mode: "all" | "selected") => void;
   refreshFiles?: (preserveState?: boolean) => Promise<void>;
   isLoading?: boolean;
   loadingMessage?: string;
@@ -79,7 +78,6 @@ function FileBrowser({
   onBulkToggle,
   filterMode,
   onFilterModeChange,
-  isRegexAvailable,
   refreshFiles,
   isLoading,
   loadingMessage = "",
@@ -101,12 +99,6 @@ function FileBrowser({
     fileContentsMap,
     searchTerm,
     filterMode,
-    regexPatterns: {
-      titleRegex: regexState.titleRegex,
-      contentRegex: regexState.contentRegex,
-      negativeTitleRegex: regexState.negativeTitleRegex,
-      negativeContentRegex: regexState.negativeContentRegex,
-    },
   });
 
 
@@ -217,7 +209,6 @@ function FileBrowser({
           <FilterModeToggle
             currentMode={filterMode}
             onModeChange={onFilterModeChange}
-            isRegexAvailable={isRegexAvailable}
             disabled={disabled}
           />
 
@@ -237,9 +228,6 @@ function FileBrowser({
         {/* Removed Generate Regex button - moved to RegexAccordion.tsx */}
         <div className="flex items-center gap-2 justify-between">
           <p className="text-xs text-muted-foreground text-balance flex-1">
-            {filterMode === "regex"
-              ? "Use regex patterns to filter files. Click 'Regex File Filtering' below to configure."
-              : ""}
           </p>
         </div>
       </div>
@@ -444,19 +432,14 @@ function FileBrowser({
             return (
               <div className="h-full flex items-center justify-center">
                 <div className="bg-background/95 backdrop-blur-sm border border-border/60 rounded-xl p-6 max-w-md shadow-soft text-center">
-                  {searchTerm ||
-                  (regexState.isRegexActive &&
-                    (regexState.titleRegex ||
-                      regexState.contentRegex ||
-                      regexState.negativeTitleRegex ||
-                      regexState.negativeContentRegex)) ? (
+                  {searchTerm ? (
                     <>
                       <Info className="h-8 w-8 text-info mx-auto mb-2" />
                       <p className="font-medium">
                         No files match your search criteria
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Try adjusting your search terms or regex patterns.
+                        Try adjusting your search terms.
                       </p>
                       <Button
                         type="button"

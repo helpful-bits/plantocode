@@ -11,8 +11,7 @@ export interface FileManagementContextValue {
   // State
   managedFilesMap: FilesMap;
   searchTerm: string;
-  filterMode: "all" | "selected" | "regex";
-  isRegexAvailable: boolean;
+  filterMode: "all" | "selected";
   externalPathWarnings: string[];
   includedPaths: string[];
   excludedPaths: string[];
@@ -29,7 +28,7 @@ export interface FileManagementContextValue {
 
   // Actions
   setSearchTerm: (searchTerm: string) => void;
-  setFilterMode: (mode: "all" | "selected" | "regex") => void;
+  setFilterMode: (mode: "all" | "selected") => void;
   toggleFileSelection: (filePath: string) => void;
   toggleFileExclusion: (filePath: string) => void;
   toggleSearchSelectedFilesOnly: (value?: boolean) => void;

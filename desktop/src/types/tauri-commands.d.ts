@@ -210,6 +210,35 @@ export interface ReadImplementationPlanCommandArgs {
   jobId: string;
 }
 
+export interface GetImplementationPlanPromptCommandArgs {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+  relevantFiles: Array<string>;
+  projectStructure?: string | null;
+}
+
+export interface ImplementationPlanPromptResponse {
+  systemPrompt: string;
+  userPrompt: string;
+  combinedPrompt: string;
+}
+
+export interface EstimateImplementationPlanTokensCommandArgs {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+  relevantFiles: Array<string>;
+  projectStructure?: string | null;
+}
+
+export interface ImplementationPlanTokenEstimateResponse {
+  estimatedTokens: number;
+  systemPromptTokens: number;
+  userPromptTokens: number;
+  totalTokens: number;
+}
+
 
 // Commands from job_commands
 export interface UpdateJobClearedStatusCommandArgs {

@@ -50,13 +50,13 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 CREATE TABLE IF NOT EXISTS api_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    service_name TEXT NOT NULL, -- e.g., model_id or a general service identifier
+    service_name TEXT NOT NULL,
     tokens_input INTEGER NOT NULL DEFAULT 0,
     tokens_output INTEGER NOT NULL DEFAULT 0,
-    cost DECIMAL(12, 6) NOT NULL, -- Sufficient precision for cost
+    cost DECIMAL(12, 6) NOT NULL,
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    request_id TEXT, -- Optional: for tracing back to provider
-    metadata JSONB, -- Optional: for additional details
+    request_id TEXT,
+    metadata JSONB,
     input_duration_ms BIGINT NULL,
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -64,28 +64,39 @@ CREATE TABLE IF NOT EXISTS api_usage (
 CREATE INDEX IF NOT EXISTS idx_api_usage_user_id_timestamp ON api_usage(user_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_api_usage_service_name ON api_usage(service_name);
 
--- API rate limiting and quotas
-CREATE TABLE IF NOT EXISTS api_quotas (
-    id BIGSERIAL PRIMARY KEY,
+-- User spending limits and real-time tracking
+CREATE TABLE IF NOT EXISTS user_spending_limits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id VARCHAR(50) NOT NULL,
-    service_name VARCHAR(50) NOT NULL,
-    monthly_tokens_limit INTEGER,
-    daily_requests_limit INTEGER,
+    plan_id VARCHAR(50) NOT NULL REFERENCES subscription_plans(id),
+    billing_period_start TIMESTAMPTZ NOT NULL,
+    billing_period_end TIMESTAMPTZ NOT NULL,
+    included_allowance DECIMAL(10, 2) NOT NULL,
+    current_spending DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    hard_limit DECIMAL(10, 2) NOT NULL,
+    services_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT unique_user_service_quota UNIQUE (user_id, service_name)
+    CONSTRAINT fk_plan FOREIGN KEY (plan_id) REFERENCES subscription_plans(id),
+    CONSTRAINT unique_user_billing_period UNIQUE (user_id, billing_period_start)
 );
 
+CREATE INDEX IF NOT EXISTS idx_user_spending_limits_user_period ON user_spending_limits(user_id, billing_period_start, billing_period_end);
+CREATE INDEX IF NOT EXISTS idx_user_spending_limits_blocked ON user_spending_limits(services_blocked);
 
--- Subscription plan configuration
+
 CREATE TABLE IF NOT EXISTS subscription_plans (
-    id VARCHAR(50) PRIMARY KEY, -- 'free', 'pro', 'enterprise'
+    id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    price_monthly DECIMAL(10, 2) NOT NULL,
-    price_yearly DECIMAL(10, 2) NOT NULL,
+    base_price_monthly DECIMAL(10, 2) NOT NULL,
+    base_price_yearly DECIMAL(10, 2) NOT NULL,
+    included_spending_monthly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    overage_rate DECIMAL(5, 4) NOT NULL DEFAULT 1.0000,
+    hard_limit_multiplier DECIMAL(3, 2) NOT NULL DEFAULT 2.00,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
     stripe_price_id_monthly VARCHAR(100),
     stripe_price_id_yearly VARCHAR(100),
     features JSONB NOT NULL DEFAULT '{}',
@@ -123,8 +134,40 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
-CREATE INDEX IF NOT EXISTS idx_api_quotas_user_id ON api_quotas(user_id);
-CREATE INDEX IF NOT EXISTS idx_api_quotas_service_name ON api_quotas(service_name);
+-- Spending alerts and notifications
+CREATE TABLE IF NOT EXISTS spending_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    alert_type VARCHAR(50) NOT NULL, -- '75_percent', '90_percent', 'limit_reached', 'services_blocked'
+    threshold_amount DECIMAL(10, 2) NOT NULL,
+    current_spending DECIMAL(10, 2) NOT NULL,
+    alert_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    billing_period_start TIMESTAMPTZ NOT NULL,
+    acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_spending_alerts_user_period ON spending_alerts(user_id, billing_period_start);
+CREATE INDEX IF NOT EXISTS idx_spending_alerts_type ON spending_alerts(alert_type, acknowledged);
+
+-- User preferences for currency and notifications
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    preferred_currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    timezone VARCHAR(50) DEFAULT 'UTC',
+    locale VARCHAR(10) DEFAULT 'en-US',
+    cost_alerts_enabled BOOLEAN DEFAULT TRUE,
+    spending_alert_75_percent BOOLEAN DEFAULT TRUE,
+    spending_alert_90_percent BOOLEAN DEFAULT TRUE,
+    spending_alert_limit_reached BOOLEAN DEFAULT TRUE,
+    spending_alert_services_blocked BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT fk_user_preferences_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_preferences_currency ON user_preferences(preferred_currency);
+CREATE INDEX IF NOT EXISTS idx_user_preferences_alerts ON user_preferences(cost_alerts_enabled);
 
 -- Create models table for storing AI model metadata
 CREATE TABLE IF NOT EXISTS models (
@@ -167,17 +210,24 @@ updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 
 CREATE INDEX IF NOT EXISTS idx_application_configurations_config_key ON application_configurations(config_key);
 
--- Insert default subscription plans
-INSERT INTO subscription_plans (id, name, description, price_monthly, price_yearly, features)
-VALUES 
-('free', 'Free Tier', 'Basic access with limited usage', 0.00, 0.00, 
- '{"monthly_tokens": 100000, "services": ["openai/gpt-4.1-mini"], "concurrency": 1}'::jsonb),
+-- Insert subscription plans
+INSERT INTO subscription_plans (
+    id, name, description, 
+    base_price_monthly, base_price_yearly,
+    included_spending_monthly, overage_rate, hard_limit_multiplier,
+    currency, features
+) VALUES 
+('free', 'Free', 'Perfect for trying out AI features', 
+ 0.00, 0.00, 5.00, 1.0000, 2.00, 'USD',
+ '{"features": ["Basic AI models", "Community support", "Usage analytics"], "models": ["anthropic/claude-sonnet-4", "openai/gpt-4.1-mini"], "support": "Community", "limits": {"hard_cutoff": true, "overage_allowed": false}}'::jsonb),
  
-('pro', 'Pro', 'Full access with higher usage limits', 9.99, 99.99, 
- '{"monthly_tokens": 1000000, "services": ["anthropic/claude-sonnet-4", "openai/gpt-4.1", "google/gemini-2.5-pro-preview", "openai/gpt-4.1-mini"], "concurrency": 3}'::jsonb),
+('pro', 'Pro', 'For power users and small teams', 
+ 20.00, 200.00, 50.00, 1.0000, 3.00, 'USD',
+ '{"features": ["All AI models", "Priority support", "Advanced analytics", "API access"], "models": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "openai/gpt-4.1-mini", "google/gemini-2.5-pro-preview"], "support": "Priority", "limits": {"hard_cutoff": true, "overage_allowed": true}}'::jsonb),
  
-('enterprise', 'Enterprise', 'Custom solutions for teams', 49.99, 499.99, 
- '{"monthly_tokens": 0, "services": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "google/gemini-2.5-pro-preview", "openai/gpt-4.1-mini"], "concurrency": 10, "team_members": 5}'::jsonb)
+('enterprise', 'Enterprise', 'For organizations with high AI usage', 
+ 100.00, 1000.00, 200.00, 0.9000, 5.00, 'USD',
+ '{"features": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"], "models": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "openai/gpt-4.1-mini", "google/gemini-2.5-pro-preview", "groq/whisper-large-v3"], "support": "Dedicated", "limits": {"hard_cutoff": false, "overage_allowed": true, "custom_limits": true}}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 
@@ -197,7 +247,7 @@ ON CONFLICT (config_key) DO UPDATE SET
 
 -- Insert comprehensive AI task configurations into application_configurations
 -- Migration: 003_insert_ai_task_configurations.sql
--- This migration ensures ALL AI defaults come from the database, not hardcoded values
+-- All AI defaults come from the database
 
 -- Insert comprehensive task-specific model configurations
 INSERT INTO application_configurations (config_key, config_value, description)
@@ -225,7 +275,7 @@ VALUES
   "max_content_size_per_file": 5000,
   "max_file_count": 50,
   "file_content_truncation_chars": 2000,
-  "token_limit_buffer": 1000
+  "content_limit_buffer": 1000
 }'::jsonb, 'Settings for the PathFinder agent functionality'),
 
 ('ai_settings_available_models', '[]'::jsonb, 'List of available AI models with their properties - will be populated from models table at startup')
