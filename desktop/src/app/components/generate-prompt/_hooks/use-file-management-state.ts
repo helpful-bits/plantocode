@@ -212,24 +212,13 @@ export function useFileManagementState({
     };
   }, []);
 
-  // Automatically switch to "selected" filter mode ONLY when files are NEWLY selected (0 to N)
+  // Track previous includedPaths length for potential future use
   useEffect(() => {
     const currentLength = fileSelectionManager.includedPaths.length;
-
-    // Only switch to "selected" mode if:
-    // 1. We previously had no files AND now we have files (newly selected)
-    // 2. Current filter mode is "all" (respect user's explicit choice otherwise)
-    if (
-      prevIncludedPathsLengthRef.current === 0 &&
-      currentLength > 0 &&
-      filterMode === "all"
-    ) {
-      setFilterModeState("selected");
-    }
-
+    
     // Update our reference for next render
     prevIncludedPathsLengthRef.current = currentLength;
-  }, [fileSelectionManager.includedPaths, filterMode]);
+  }, [fileSelectionManager.includedPaths]);
 
   // Lazy-load file contents ONLY for UI preview purposes
   // This is separate from the backend operations which read files directly

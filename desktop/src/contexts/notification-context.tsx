@@ -1,23 +1,27 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 
-import { toast } from "@/ui/use-toast";
+import { NotificationBanner } from "@/ui/notification-banner";
 import type { ButtonProps } from "@/ui/button";
-
-import type { ToastOptions } from "@/ui/use-toast";
-
-// Re-export ToastOptions for use elsewhere
-export type { ToastOptions };
+import { Button } from "@/ui/button";
 
 export interface NotificationType {
   title: string;
-  message: string;
-  type?: "default" | "success" | "error" | "warning" | "info";
+  message?: string;
+  type?: "info" | "success" | "warning" | "error";
   duration?: number;
-  clipboardFeedback?: boolean;
-  actionButton?: { label: string; onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; variant?: ButtonProps['variant']; className?: string };
+  actionButton?: { 
+    label: string; 
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void; 
+    variant?: ButtonProps['variant']; 
+    className?: string 
+  };
+}
+
+interface ActiveNotification extends NotificationType {
+  id: string;
 }
 
 export interface NotificationContextValue {
@@ -29,51 +33,69 @@ const NotificationContext = createContext<NotificationContextValue>({
 });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const showNotification = ({
+  const [notifications, setNotifications] = useState<ActiveNotification[]>([]);
+
+  const showNotification = useCallback(({
     title,
     message,
-    type = "default",
+    type = "info",
     duration = 5000,
-    clipboardFeedback = false,
     actionButton,
   }: NotificationType) => {
-    const options: ToastOptions = {
+    const id = Math.random().toString(36).substr(2, 9);
+    const notification: ActiveNotification = {
+      id,
       title,
-      description: message,
+      message,
+      type,
       duration,
       actionButton,
     };
 
-    // Map type to variant
-    if (type === "error") {
-      options.variant = "destructive";
-    } else if (type === "success") {
-      // Use a custom class for better success indication since toast doesn't have a success variant
-      options.variant = "default";
-      options.className = "border-green-200 bg-green-50 text-green-800";
-    } else if (type === "warning") {
-      // Use the warning variant defined in toast.tsx
-      options.variant = "warning";
-    } else if (type === "info") {
-      // Use a custom class for info messages
-      options.variant = "default";
-      options.className = "border-blue-200 bg-blue-50 text-blue-800";
-    }
+    setNotifications(prev => [...prev, notification]);
 
-    // If clipboard feedback is enabled, add a custom class or style
-    if (clipboardFeedback) {
-      // You can either add a custom class or modify the options to indicate clipboard feedback
-      if (typeof options === 'object') {
-        (options as { clipboardFeedback?: string }).clipboardFeedback = 'true';
-      }
+    // Auto-dismiss after duration
+    if (duration > 0) {
+      setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+      }, duration);
     }
+  }, []);
 
-    toast(options);
-  };
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
 
   return (
     <NotificationContext.Provider value={{ showNotification }}>
       {children}
+      
+      {/* Render active notifications */}
+      <div className="fixed top-0 right-0 z-[100] max-w-[420px] w-full p-4 space-y-3 pointer-events-none">
+        {notifications.map(notification => (
+          <div key={notification.id} className="pointer-events-auto">
+            <NotificationBanner
+              variant={notification.type}
+              title={notification.title}
+              message={notification.message}
+              isVisible={true}
+              onDismiss={() => dismissNotification(notification.id)}
+              autoClose={false} // We handle auto-close ourselves
+            >
+              {notification.actionButton && (
+                <Button
+                  size="sm"
+                  variant={notification.actionButton.variant || "outline"}
+                  onClick={notification.actionButton.onClick}
+                  className={notification.actionButton.className}
+                >
+                  {notification.actionButton.label}
+                </Button>
+              )}
+            </NotificationBanner>
+          </div>
+        ))}
+      </div>
     </NotificationContext.Provider>
   );
 }

@@ -31,6 +31,7 @@ import { DisplayContextProvider } from "./display-context";
 import { PlanContextProvider } from "./plan-context";
 import { RegexContextProvider } from "./regex-context";
 import { TaskContextProvider } from "./task-context";
+import { FileManagementProvider } from "./file-management-provider";
 
 // Import context types
 
@@ -399,7 +400,9 @@ export function GeneratePromptFeatureProvider({
         <RegexContextProvider value={regexContextValue}>
           <DisplayContextProvider value={displayContextValue}>
             <PlanContextProvider value={planContextValue}>
-              {children}
+              <FileManagementProvider>
+                {children}
+              </FileManagementProvider>
             </PlanContextProvider>
           </DisplayContextProvider>
         </RegexContextProvider>

@@ -17,7 +17,7 @@ import {
   SelectValue,
   Label,
 } from "@/ui";
-import { toast } from "@/ui/use-toast";
+import { useNotification } from "@/contexts/notification-context";
 import { createTranscriptionErrorMessage } from "@/utils/error-handling"; // Import error handling utility
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
@@ -47,6 +47,8 @@ const VoiceTranscription = function VoiceTranscription({
   const {
     state: { projectDirectory, activeSessionId },
   } = useCorePromptContext();
+  
+  const { showNotification } = useNotification();
 
   // Track active session ID
   useEffect(() => {
@@ -75,10 +77,10 @@ const VoiceTranscription = function VoiceTranscription({
       // The transcription should have been validated by voice-transcription-handler.ts
       // but we'll add extra validation here for better stability
       if (!text || typeof text !== "string") {
-        toast({
+        showNotification({
           title: "Transcription Error",
-          description: "No valid transcription result received.",
-          variant: "destructive",
+          message: "No valid transcription result received.",
+          type: "error",
         });
         return;
       }
@@ -86,11 +88,11 @@ const VoiceTranscription = function VoiceTranscription({
       // Check for meaningful content
       const trimmedText = text.trim();
       if (!trimmedText) {
-        toast({
+        showNotification({
           title: "Empty Transcription",
-          description:
+          message:
             "The transcription result was empty. Please try speaking more clearly.",
-          variant: "warning",
+          type: "warning",
         });
         return;
       }
@@ -101,10 +103,10 @@ const VoiceTranscription = function VoiceTranscription({
         console.warn(
           "[VoiceTranscription] No active session when trying to insert transcription"
         );
-        toast({
+        showNotification({
           title: "Session Error",
-          description: "Cannot insert transcription text - no active session.",
-          variant: "destructive",
+          message: "Cannot insert transcription text - no active session.",
+          type: "error",
         });
         return;
       }
@@ -126,10 +128,10 @@ const VoiceTranscription = function VoiceTranscription({
           }
 
           // Provide feedback that transcription was inserted
-          toast({
+          showNotification({
             title: "Transcription Added",
-            description: "Your transcribed text has been inserted.",
-            variant: "success",
+            message: "Your transcribed text has been inserted.",
+            type: "success",
           });
         } catch (_error) {
 
@@ -142,18 +144,18 @@ const VoiceTranscription = function VoiceTranscription({
               onInteraction();
             }
 
-            toast({
+            showNotification({
               title: "Insertion Fallback",
-              description:
+              message:
                 "Couldn't insert at cursor position. Text has been added at the end instead.",
-              variant: "warning",
+              type: "warning",
             });
           } catch (_fallbackError) {
-            toast({
+            showNotification({
               title: "Insertion Failed",
-              description:
+              message:
                 "Could not insert transcription text. Please try again or type manually.",
-              variant: "destructive",
+              type: "error",
             });
           }
         }
@@ -240,10 +242,10 @@ const VoiceTranscription = function VoiceTranscription({
 
     // Skip if there's no active session
     if (!activeSessionId) {
-      toast({
+      showNotification({
         title: "Session Error",
-        description: "Cannot record - no active session.",
-        variant: "destructive",
+        message: "Cannot record - no active session.",
+        type: "error",
       });
       return;
     }
@@ -260,10 +262,10 @@ const VoiceTranscription = function VoiceTranscription({
         stopRecording();
       }
     } catch (_error) {
-      toast({
+      showNotification({
         title: "Recording Error",
-        description: "Could not toggle recording state.",
-        variant: "destructive",
+        message: "Could not toggle recording state.",
+        type: "error",
       });
     }
   };
@@ -282,10 +284,10 @@ const VoiceTranscription = function VoiceTranscription({
 
     // Skip if there's no active session
     if (!activeSessionId) {
-      toast({
+      showNotification({
         title: "Session Error",
-        description: "Cannot retry - no active session.",
-        variant: "destructive",
+        message: "Cannot retry - no active session.",
+        type: "error",
       });
       return;
     }
@@ -294,16 +296,16 @@ const VoiceTranscription = function VoiceTranscription({
       await retryLastRecording();
 
       // Provide feedback that retry has started
-      toast({
+      showNotification({
         title: "Retrying Transcription",
-        description: "Processing your previous recording again...",
-        variant: "success",
+        message: "Processing your previous recording again...",
+        type: "success",
       });
     } catch (_error) {
-      toast({
+      showNotification({
         title: "Retry Failed",
-        description: "Unable to retry the last recording. Please try recording again.",
-        variant: "destructive",
+        message: "Unable to retry the last recording. Please try recording again.",
+        type: "error",
       });
     }
   };
@@ -317,20 +319,20 @@ const VoiceTranscription = function VoiceTranscription({
 
     // Skip if we're in the middle of a session switch or there's no active session
     if (!activeSessionId) {
-      toast({
+      showNotification({
         title: "Session Error",
-        description: "Cannot revert to raw text - no active session.",
-        variant: "destructive",
+        message: "Cannot revert to raw text - no active session.",
+        type: "error",
       });
       return;
     }
 
     // Validate the raw text
     if (!rawText || typeof rawText !== "string") {
-      toast({
+      showNotification({
         title: "Revert Error",
-        description: "No raw transcription text available to revert to.",
-        variant: "destructive",
+        message: "No raw transcription text available to revert to.",
+        type: "error",
       });
       return;
     }
@@ -338,10 +340,10 @@ const VoiceTranscription = function VoiceTranscription({
     // Check for meaningful content
     const trimmedRawText = rawText.trim();
     if (!trimmedRawText) {
-      toast({
+      showNotification({
         title: "Empty Raw Text",
-        description: "The raw transcription was empty. Nothing to revert to.",
-        variant: "warning",
+        message: "The raw transcription was empty. Nothing to revert to.",
+        type: "warning",
       });
       return;
     }
@@ -364,11 +366,11 @@ const VoiceTranscription = function VoiceTranscription({
         }
 
         // Provide clear feedback about using the original transcription
-        toast({
+        showNotification({
           title: "Using Original Groq Transcription",
-          description:
+          message:
             "Using the direct transcription without Claude&apos;s improvements.",
-          variant: "success",
+          type: "success",
         });
 
         // Hide the revert option since we've now used it
@@ -385,21 +387,21 @@ const VoiceTranscription = function VoiceTranscription({
           }
 
           // Provide feedback about the fallback with clearer explanation
-          toast({
+          showNotification({
             title: "Original Groq Transcription Used",
-            description:
+            message:
               "Using direct transcription without improvements. Added at document end (couldn&apos;t insert at cursor).",
-            variant: "warning",
+            type: "warning",
           });
 
           // Hide the revert option since we've now used it
           setShowRevertOption(false);
         } catch (_fallbackError) {
-          toast({
+          showNotification({
             title: "Transcription Switch Failed",
-            description:
+            message:
               "Could not switch to original Groq transcription. Please try again or type manually.",
-            variant: "destructive",
+            type: "error",
           });
         }
       }
@@ -434,7 +436,7 @@ const VoiceTranscription = function VoiceTranscription({
           type="button"
           onClick={handleToggleRecording}
           disabled={!activeSessionId || disabled}
-          variant={isRecording ? "destructive" : "secondary"}
+          variant={isRecording ? "error" : "secondary"}
           size="sm"
           className="min-w-[120px]"
           title={

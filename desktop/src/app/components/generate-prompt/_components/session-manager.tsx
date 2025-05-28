@@ -112,7 +112,7 @@ const SessionManager = ({
       {/* Sessions List */}
       <div className="border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
         <div className="p-3 bg-muted/80 backdrop-blur-sm border-b flex justify-between items-center rounded-t-xl">
-          <h3 className="text-sm font-medium text-foreground">Sessions</h3>
+          <h3 className="text-lg font-semibold text-foreground">Sessions</h3>
         </div>
 
         <SessionList

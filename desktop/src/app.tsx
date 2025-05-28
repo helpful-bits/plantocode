@@ -22,7 +22,6 @@ import SettingsPage from "@/app/settings/page";
 import { AuthProvider } from "@/contexts/auth-context";
 import { UILayoutProvider } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
-import { Toaster } from "@/ui/toaster";
 
 import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
@@ -82,8 +81,6 @@ function SafeAppContent() {
                     {/* Router handles different pages */}
                     <Router />
                   </AppShell>
-                  {/* Toaster needs to be within ProvidersWrapper to access notification context */}
-                  <Toaster />
                 </ProvidersWrapper>
               </AuthFlowManager>
             </UILayoutProvider>

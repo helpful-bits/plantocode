@@ -60,12 +60,10 @@ export function useFileSelectionCore({
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.included) {
-        // If it was included, now excluding it (mutually exclusive behavior)
+        // If it was included, now deselecting it (neutral state, not force excluded)
         const newIncludedFiles = currentIncludedFiles.filter(p => p !== targetComparablePath);
-        const newExcludedFiles = Array.from(new Set([...currentExcludedFiles, targetComparablePath]));
         
         onUpdateIncludedFiles(newIncludedFiles);
-        onUpdateExcludedFiles(newExcludedFiles);
       } else {
         // If it wasn't included, now including it and removing from excluded
         const newIncludedFiles = Array.from(new Set([...currentIncludedFiles, targetComparablePath]));
@@ -110,12 +108,10 @@ export function useFileSelectionCore({
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.forceExcluded) {
-        // If it was excluded, now including it (mutually exclusive behavior)
+        // If it was excluded, now removing exclusion (neutral state, not auto-included)
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
-        const newIncludedFiles = Array.from(new Set([...currentIncludedFiles, targetComparablePath]));
         
         onUpdateExcludedFiles(newExcludedFiles);
-        onUpdateIncludedFiles(newIncludedFiles);
       } else {
         // If it wasn't excluded, now excluding it and removing from included
         const newExcludedFiles = Array.from(new Set([...currentExcludedFiles, targetComparablePath]));
