@@ -34,7 +34,7 @@ r#"Please provide your response in the following format:
   </analysis>
   
   <corrected_paths>
-    <path original="original/path/example.js" corrected="/absolute/corrected/path/example.js">
+    <path original="original/path/example.js" corrected="src/corrected/path/example.js">
       Explanation of what was corrected and why.
     </path>
     <!-- Repeat for each path -->
@@ -46,12 +46,14 @@ r#"Please provide your response in the following format:
 </path_correction>
 
 When correcting paths:
-1. Ensure all paths are absolute (start from the project root)
+1. Ensure all 'corrected' paths are RELATIVE to the PROJECT ROOT DIRECTORY provided (e.g., "src/main.rs" not "/absolute/path/src/main.rs")
 2. Verify file extensions match the expected file type
 3. Correct any obvious typos or case issues
-4. If a path seems to reference a file that doesn't exist, suggest the most likely correct path
+4. If a path seems to reference a file that doesn't exist, suggest the most likely correct path relative to project root
 5. If a path is ambiguous, provide the most likely interpretation but note alternative possibilities
 6. If a path seems correct as is, indicate that no correction was needed
+
+IMPORTANT: All 'corrected' paths should be relative to the PROJECT ROOT DIRECTORY provided.
 
 Be sure to use your knowledge of common file structures in software projects to inform your corrections. If multiple interpretations are possible, choose the most likely one based on the codebase structure and standard practices."#);
 

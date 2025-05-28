@@ -74,7 +74,7 @@ pub async fn generate_guidance_command(
     let model = if let Some(model) = args.model_override.clone() {
         model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory, &app_handle).await {
             Ok(model) => model,
             Err(e) => return Err(AppError::ConfigError(format!("Failed to get model for guidance generation: {}", e))),
         }
@@ -84,7 +84,7 @@ pub async fn generate_guidance_command(
     let temperature = if let Some(temp) = args.temperature_override {
         temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory, &app_handle).await {
             Ok(temp) => temp,
             Err(e) => return Err(AppError::ConfigError(format!("Failed to get temperature for guidance generation: {}", e))),
         }
@@ -94,7 +94,7 @@ pub async fn generate_guidance_command(
     let max_output_tokens = if let Some(tokens) = args.max_tokens_override {
         tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory, &app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => return Err(AppError::ConfigError(format!("Failed to get max tokens for guidance generation: {}", e))),
         }

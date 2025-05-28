@@ -79,7 +79,6 @@ export type TaskType =
   | "voice_transcription"
   | "voice_correction"
   | "path_correction"
-  | "regex_generation"
   | "guidance_generation"
   | "task_enhancement"
   | "generate_directory_tree"
@@ -139,7 +138,6 @@ export interface BackgroundJob {
   temperature?: number;
   includeSyntax?: boolean;
   metadata?: JobMetadata;
-  outputFilePath?: string;
 }
 
 // Session structure including background jobs and task settings

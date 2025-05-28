@@ -20,4 +20,5 @@ export type FileInfo = {
   included: boolean;
   forceExcluded: boolean;
   comparablePath: string; // Required to match the project-file-list.ts definition
+  isDir?: boolean; // Whether this is a directory
 };

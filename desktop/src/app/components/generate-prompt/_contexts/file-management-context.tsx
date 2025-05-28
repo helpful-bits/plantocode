@@ -6,6 +6,7 @@ import {
   type FilesMap,
   type FileInfo,
 } from "../_hooks/file-management/use-project-file-list";
+import type { FileFinderWorkflowStage } from "../_hooks/file-management/workflow/workflowTypes";
 import { logError } from "@/utils/error-handling";
 
 export interface FileManagementContextValue {
@@ -21,6 +22,8 @@ export interface FileManagementContextValue {
   isInitialized: boolean;
   isFindingFiles: boolean;
   findingFilesJobId?: string;
+  currentWorkflowStage?: FileFinderWorkflowStage;
+  workflowError?: string | null;
   fileContentsMap: Record<string, string>;
   fileLoadError?: string;
   findFilesMode: "replace" | "extend";

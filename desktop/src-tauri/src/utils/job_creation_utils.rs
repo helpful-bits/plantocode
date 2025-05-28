@@ -46,7 +46,7 @@ pub async fn create_and_queue_background_job(
     // Clone and inject job_id into payload if it's an object
     let mut payload_with_job_id = payload_for_worker.clone();
     if let Value::Object(ref mut obj) = payload_with_job_id {
-        obj.insert("background_job_id".to_string(), Value::String(job_id.clone()));
+        obj.insert("backgroundJobId".to_string(), Value::String(job_id.clone()));
     }
     
     // Serialize the payload for inclusion in metadata
@@ -122,12 +122,6 @@ pub async fn create_and_queue_background_job(
     
     // Create the appropriate JobPayload based on task type
     let job_payload = match task_type_enum {
-        TaskType::RegexGeneration => {
-            let regex_payload: crate::jobs::types::RegexGenerationPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize RegexGenerationPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::RegexGeneration(regex_payload)
-        },
         TaskType::PathFinder => {
             let path_finder_payload: crate::jobs::types::PathFinderPayload = 
                 serde_json::from_value(payload_with_job_id)
@@ -170,12 +164,6 @@ pub async fn create_and_queue_background_job(
                 .map_err(|e| AppError::SerializationError(format!("Failed to deserialize VoiceCorrectionPayload: {}", e)))?;
             crate::jobs::types::JobPayload::VoiceCorrection(voice_correction_payload)
         },
-        TaskType::GenerateDirectoryTree => {
-            let directory_tree_payload: crate::jobs::types::GenerateDirectoryTreePayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize GenerateDirectoryTreePayload: {}", e)))?;
-            crate::jobs::types::JobPayload::GenerateDirectoryTree(directory_tree_payload)
-        },
         TaskType::TextCorrectionPostTranscription => {
             let text_correction_payload: crate::jobs::types::TextCorrectionPostTranscriptionPayload = 
                 serde_json::from_value(payload_with_job_id)
@@ -199,6 +187,12 @@ pub async fn create_and_queue_background_job(
                 serde_json::from_value(payload_with_job_id)
                 .map_err(|e| AppError::SerializationError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
             crate::jobs::types::JobPayload::RegexSummaryGeneration(regex_summary_payload)
+        },
+        TaskType::RegexPatternGeneration => {
+            let regex_pattern_payload: crate::jobs::types::RegexPatternGenerationPayload = 
+                serde_json::from_value(payload_with_job_id)
+                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
+            crate::jobs::types::JobPayload::RegexPatternGeneration(regex_pattern_payload)
         },
         _ => {
             return Err(AppError::JobError(format!("Unsupported task type for job creation: {:?}", task_type_enum)));

@@ -180,6 +180,7 @@ const VoiceTranscription = function VoiceTranscription({
     startRecording, // Function to start recording
     stopRecording, // Function to stop recording
     retryLastRecording, // Extract the retry function
+    requestPermissionAndRefreshDevices, // Function to request permission early
     availableAudioInputs, // Available microphones
     selectedAudioInputId, // Currently selected microphone ID
     activeAudioInputLabel, // Label of the active microphone
@@ -193,6 +194,34 @@ const VoiceTranscription = function VoiceTranscription({
     projectDirectory: projectDirectory || undefined, // Convert null to undefined for projectDirectory
     autoCorrect: true, // Explicitly set to true to ensure Claude improves Groq transcription
   });
+
+  // Request microphone permission early to populate device labels
+  useEffect(() => {
+    // Only request permission if we have an active session and component is not disabled
+    if (activeSessionId && !disabled && requestPermissionAndRefreshDevices) {
+      // Add a small delay to ensure component is fully mounted
+      const timeoutId = setTimeout(async () => {
+        try {
+          const permissionGranted = await requestPermissionAndRefreshDevices();
+          if (permissionGranted) {
+            // eslint-disable-next-line no-console
+            console.log("[VoiceTranscription] Microphone permission granted early, device labels populated");
+          } else {
+            // eslint-disable-next-line no-console
+            console.log("[VoiceTranscription] Microphone permission denied or unavailable");
+            // Don't show a notification for permission denial as it's expected behavior
+            // Device labels will be populated when user starts recording
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn("[VoiceTranscription] Error requesting early microphone permission:", error);
+          // Silently handle permission errors - this is expected in many cases
+        }
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [activeSessionId, disabled, requestPermissionAndRefreshDevices]);
 
   // Try to identify the default device based on current information
   useEffect(() => {

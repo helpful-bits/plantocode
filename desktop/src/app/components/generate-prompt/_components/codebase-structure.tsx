@@ -1,11 +1,9 @@
 "use client";
 
 import { FolderTree } from "lucide-react";
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, ChangeEvent } from "react";
 
-import { createGenerateDirectoryTreeJobAction } from "@/actions/file-system/directory-tree.actions";
-
-import { useBackgroundJobs } from "@/contexts/background-jobs";
+import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 import { useProject } from "@/contexts/project-context";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
@@ -31,17 +29,13 @@ export default function CodebaseStructure({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-
-  // Track background job
-  const { getJobById } = useBackgroundJobs();
 
   // Handle text input change
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   };
 
-  // Generate directory tree using the background job system
+  // Generate directory tree directly
   const handleGenerateStructure = async () => {
     if (!projectDirectory) {
       setError(
@@ -54,53 +48,22 @@ export default function CodebaseStructure({
     setIsGenerating(true);
 
     try {
-      // Create the background job and store the returned job ID
-      const result = await createGenerateDirectoryTreeJobAction("system", projectDirectory, undefined);
+      const result = await generateDirectoryTreeAction(projectDirectory);
 
-      if (!result.isSuccess || !result.data?.jobId) {
-        throw new Error(result.message || "Failed to create job");
+      if (result.isSuccess && result.data?.directoryTree) {
+        onChange(result.data.directoryTree);
+        setIsExpanded(true);
+        setError(null);
+      } else {
+        setError(result.message || "Failed to generate directory tree");
       }
-
-      setJobId(result.data.jobId);
-    } catch (_error) {
+    } catch (error) {
       setError("Failed to generate directory tree.");
+    } finally {
       setIsGenerating(false);
     }
   };
 
-  // Monitor job completion
-  useEffect(() => {
-    if (!jobId) {
-      return;
-    }
-    
-    const job = getJobById(jobId);
-    if (!job) {
-      return;
-    }
-
-    if (job.status === "completed" && job.response) {
-      try {
-        const parsed = JSON.parse(job.response) as { directory: string; tree: string };
-        if (parsed.tree && parsed.tree.trim()) {
-          onChange(parsed.tree);
-          setIsExpanded(true);
-          setError(null);
-        } else {
-          setError("Could not generate a meaningful directory tree.");
-        }
-      } catch (_err) {
-        setError("Failed to parse directory tree result");
-      }
-
-      setIsGenerating(false);
-      setJobId(null);
-    } else if (job.status === "failed" || job.status === "canceled") {
-      setError(job.errorMessage || "Failed to generate directory tree");
-      setIsGenerating(false);
-      setJobId(null);
-    }
-  }, [getJobById, onChange, jobId]);
 
   return (
     <div className="flex flex-col gap-2">

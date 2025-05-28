@@ -11,11 +11,12 @@ export async function createPathCorrectionJobAction(params: {
   projectDirectory: string;
   pathsToCorrect: string;
   contextDescription?: string;
+  directoryTree?: string;
   modelOverride?: string;
   temperatureOverride?: number;
   maxTokensOverride?: number;
 }): Promise<ActionState<{ jobId: string }>> {
-  const { sessionId, projectDirectory, pathsToCorrect, contextDescription, modelOverride, temperatureOverride, maxTokensOverride } = params;
+  const { sessionId, projectDirectory, pathsToCorrect, contextDescription, directoryTree, modelOverride, temperatureOverride, maxTokensOverride } = params;
 
   if (!pathsToCorrect.trim()) {
     return { isSuccess: false, message: "No paths provided to correct" };
@@ -56,6 +57,7 @@ export async function createPathCorrectionJobAction(params: {
         projectDirectory,
         pathsToCorrect: pathsToCorrect,
         contextDescription,
+        directoryTree,
         modelOverride,
         temperatureOverride,
         maxTokensOverride,

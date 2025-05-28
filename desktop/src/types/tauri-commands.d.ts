@@ -297,9 +297,8 @@ export interface FindRelevantFilesCommandArgs {
   options?: PathFinderOptions | null;
 }
 
-export interface CreateGenerateDirectoryTreeJobCommandArgs {
+export interface GenerateDirectoryTreeCommandArgs {
   projectDirectory: string;
-  sessionId: string;
   options?: DirectoryTreeOptions | null;
 }
 
@@ -480,7 +479,7 @@ export type TauriInvoke = {
   "cancel_background_job_command": (args: CancelBackgroundJobCommandArgs) => Promise<void>;
   "cancel_session_jobs_command": (args: CancelSessionJobsCommandArgs) => Promise<void>;
   "find_relevant_files_command": (args: FindRelevantFilesCommandArgs) => Promise<JobResult>;
-  "create_generate_directory_tree_job_command": (args: CreateGenerateDirectoryTreeJobCommandArgs) => Promise<JobResult>;
+  "generate_directory_tree_command": (args: GenerateDirectoryTreeCommandArgs) => Promise<string>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
   "correct_text_post_transcription_command": (args: CorrectTextPostTranscriptionCommandArgs) => Promise<JobResult>;

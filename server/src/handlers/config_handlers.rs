@@ -6,6 +6,7 @@ use bigdecimal::{BigDecimal, ToPrimitive};
 
 use crate::config::settings::AppSettings;
 use crate::db::repositories::model_repository::ModelRepository;
+use crate::db::repositories::settings_repository::SettingsRepository;
 use crate::error::AppError;
 use crate::models::runtime_config::{RuntimeAIConfig, TaskSpecificModelConfig, ModelInfo, PathFinderSettings, AppState};
 use serde::{Serialize, Deserialize};
@@ -115,4 +116,24 @@ pub async fn get_desktop_runtime_ai_config(
     info!("Returning desktop runtime AI configuration with {} models", response.available_models.len());
     
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Handler for GET /api/config/all-configurations endpoint
+///
+/// Retrieves all application configurations from the database
+#[instrument(skip(app_state))]
+pub async fn get_all_application_configurations_handler(
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, AppError> {
+    info!("Fetching all application configurations");
+    
+    // Use the settings repository from app state
+    let settings_repo = &app_state.settings_repository;
+    
+    // Fetch all configurations
+    let configurations = settings_repo.get_all_application_configurations().await?;
+    
+    info!("Returning {} application configurations", configurations.len());
+    
+    Ok(HttpResponse::Ok().json(configurations))
 }

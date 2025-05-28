@@ -1,20 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
+import { type DirectoryTreeOptions } from "@/types/tauri-commands";
 import { handleActionError } from "@/utils/action-utils";
 
 /**
- * Creates a background job to generate a directory tree
- * @param sessionId The session ID
+ * Generates a directory tree directly as a utility function
  * @param directoryPath The directory path to process
- * @param excludePatterns Optional patterns to exclude from results
- * @returns A promise resolving to an ActionState with job ID
+ * @param options Optional DirectoryTreeOptions
+ * @returns A promise resolving to an ActionState with the directory tree string
  */
-export async function createGenerateDirectoryTreeJobAction(
-  sessionId: string,
+export async function generateDirectoryTreeAction(
   directoryPath: string,
-  excludePatterns?: string[]
-): Promise<ActionState<{ jobId?: string }>> {
+  options?: DirectoryTreeOptions
+): Promise<ActionState<{ directoryTree: string }>> {
   try {
     if (!directoryPath || !directoryPath.trim()) {
       return {
@@ -23,27 +22,23 @@ export async function createGenerateDirectoryTreeJobAction(
       };
     }
 
-    // Create a background job for directory tree generation
-    const invokeResult = await invoke<{ jobId: string }>(
-      "create_generate_directory_tree_job_command",
+    // Generate directory tree directly
+    const directoryTree = await invoke<string>(
+      "generate_directory_tree_command",
       {
-        sessionId,
         projectDirectory: directoryPath,
-        options: excludePatterns && excludePatterns.length > 0 ? { excludePatterns: excludePatterns } : null,
+        options: options || null,
       }
     );
 
-    // Return success with the job ID
+    // Return success with the directory tree
     return {
       isSuccess: true,
-      message: "Directory tree generation job created",
-      data: { jobId: invokeResult.jobId },
-      metadata: {
-        jobId: invokeResult.jobId,
-      },
+      message: "Directory tree generated successfully",
+      data: { directoryTree },
     };
   } catch (error) {
-    console.error("[createGenerateDirectoryTreeJobAction] Error:", error);
-    return handleActionError(error) as ActionState<{ jobId?: string }>;
+    console.error("[generateDirectoryTreeAction] Error:", error);
+    return handleActionError(error) as ActionState<{ directoryTree: string }>;
   }
 }

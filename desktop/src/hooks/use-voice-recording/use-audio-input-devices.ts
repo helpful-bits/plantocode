@@ -78,10 +78,45 @@ export function useAudioInputDevices() {
     }
   }, []);
 
+  // Function to request microphone permission and populate device labels early
+  const requestPermissionAndRefreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error("[AudioDevices] getUserMedia not supported");
+      return false;
+    }
+
+    try {
+      // Request basic microphone access to get permission
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } 
+      });
+      
+      // Immediately stop the stream since we only needed permission
+      stream.getTracks().forEach(track => track.stop());
+      
+      // eslint-disable-next-line no-console
+      console.log("[AudioDevices] Microphone permission granted, refreshing device list");
+      
+      // Refresh the device list to get proper labels
+      await refreshDeviceList();
+      
+      return true;
+    } catch (error) {
+      // Permission denied or other error
+      console.warn("[AudioDevices] Microphone permission denied or unavailable:", error);
+      return false;
+    }
+  }, [refreshDeviceList]);
+
   return {
     availableAudioInputs,
     selectedAudioInputId,
     selectAudioInput,
     refreshDeviceList,
+    requestPermissionAndRefreshDevices,
   };
 }

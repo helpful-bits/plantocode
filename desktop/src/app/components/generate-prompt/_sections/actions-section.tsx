@@ -103,7 +103,7 @@ const ActionsSection = React.memo(function ActionsSection({
               !taskDescription.trim()
             }
             isLoading={isFindingFiles}
-            loadingText="Finding files..."
+            loadingText="AI is working..."
             className="w-full"
           >
             <>

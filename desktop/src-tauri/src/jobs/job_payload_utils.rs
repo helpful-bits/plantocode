@@ -6,12 +6,10 @@ use crate::jobs::types::{
     JobPayload,
     PathFinderPayload,
     ImplementationPlanPayload, 
-    RegexGenerationPayload,
     GuidanceGenerationPayload,
     PathCorrectionPayload,
     TextImprovementPayload,
     TaskEnhancementPayload,
-    GenerateDirectoryTreePayload,
     OpenRouterTranscriptionPayload,
     TextCorrectionPostTranscriptionPayload,
     VoiceCorrectionPayload,
@@ -66,8 +64,8 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
                 system_prompt: String::new(),
                 temperature: input_payload.temperature_override.unwrap_or(0.7),
                 max_output_tokens: input_payload.max_tokens_override,
-                // These will be populated by the processor
-                directory_tree: String::new(),
+                // Use provided directory_tree if available, otherwise empty string (processor will generate it)
+                directory_tree: Some(input_payload.directory_tree.unwrap_or_default()),
                 relevant_file_contents: std::collections::HashMap::new(),
                 estimated_input_tokens: None,
                 options: input_payload.options,
@@ -83,13 +81,6 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
             Ok(JobPayload::ImplementationPlan(payload))
         },
         
-        // Match against RegexGeneration task type
-        regex_generation if regex_generation == TaskType::RegexGeneration.to_string() => {
-            debug!("Deserializing RegexGenerationPayload");
-            let payload: RegexGenerationPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexGenerationPayload: {}", e)))?;
-            Ok(JobPayload::RegexGeneration(payload))
-        },
         
         // Match against GuidanceGeneration task type
         guidance_generation if guidance_generation == TaskType::GuidanceGeneration.to_string() => {
@@ -123,13 +114,6 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
             Ok(JobPayload::TaskEnhancement(payload))
         },
         
-        // Match against GenerateDirectoryTree task type
-        generate_directory_tree if generate_directory_tree == "generate_directory_tree" => {
-            debug!("Deserializing GenerateDirectoryTreePayload");
-            let payload: GenerateDirectoryTreePayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize GenerateDirectoryTreePayload: {}", e)))?;
-            Ok(JobPayload::GenerateDirectoryTree(payload))
-        },
         
         // Match against OpenRouterLlm task type (generic LLM streaming)
         openrouter_llm if openrouter_llm == "generic_llm_stream" || openrouter_llm == TaskType::GenericLlmStream.to_string() => {

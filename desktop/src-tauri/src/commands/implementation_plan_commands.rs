@@ -68,7 +68,7 @@ pub async fn create_implementation_plan_command(
     let model = if let Some(model) = args.model {
         model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory, &app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for implementation plan: {}", e)));
@@ -80,7 +80,7 @@ pub async fn create_implementation_plan_command(
     let temperature = if let Some(temp) = args.temperature {
         temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory, &app_handle).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for implementation plan: {}", e)));
@@ -92,7 +92,7 @@ pub async fn create_implementation_plan_command(
     let max_tokens = if let Some(tokens) = args.max_tokens {
         tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory, &app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for implementation plan: {}", e)));

@@ -274,7 +274,7 @@ VALUES
   "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
   "voice_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
   "path_correction": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.3},
-  "regex_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
+  "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
   "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
   "generate_directory_tree": {"model": "openai/gpt-4.1-mini", "max_tokens": 4096, "temperature": 0.3},

@@ -79,7 +79,7 @@ export async function parseFilePathsFromAIResponse(
   // Common patterns for file paths in AI responses
   const patterns = [
     // Paths on their own lines or with numbers (improved to handle more file extensions)
-    /^\s*(?:\d+\.\s*)?([^:\n\r\s]+\.[a-zA-Z0-9]+)\s*$/gm,
+    /^\s*(?:\d+\.\s*)?([a-zA-Z0-9_./~-]+[a-zA-Z0-9_~-]*(?:\.[a-zA-Z0-9_~-]+)*)\s*$/gm,
 
     // Paths in markdown lists (improved whitespace handling)
     /^\s*[-*•]\s+([^:\n\r\s]+\.[a-zA-Z0-9]+)\s*$/gm,

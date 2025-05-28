@@ -16,17 +16,16 @@ use crate::error::AppResult;
 use self::processors::{
     PathFinderProcessor,
     ImplementationPlanProcessor,
-    RegexGenerationProcessor,
     GuidanceGenerationProcessor,
     PathCorrectionProcessor,
     TextImprovementProcessor,
     TaskEnhancementProcessor,
     VoiceCorrectionProcessor,
-    GenerateDirectoryTreeProcessor,
     TextCorrectionPostTranscriptionProcessor,
     GenericLlmStreamProcessor,
     ServerProxyTranscriptionProcessor,
-    RegexSummaryGenerationProcessor
+    RegexSummaryGenerationProcessor,
+    RegexPatternGenerationProcessor
 };
 use self::registry::get_job_registry;
 use self::scheduler::{init_job_scheduler, get_job_scheduler};
@@ -53,32 +52,30 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     // Create processor instances
     let path_finder_processor = Arc::new(PathFinderProcessor::new());
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
-    let regex_generation_processor = Arc::new(RegexGenerationProcessor::new());
     let guidance_generation_processor = Arc::new(GuidanceGenerationProcessor::new());
     let path_correction_processor = Arc::new(PathCorrectionProcessor::new());
     let text_improvement_processor = Arc::new(TextImprovementProcessor::new());
     let task_enhancement_processor = Arc::new(TaskEnhancementProcessor::new());
     let voice_correction_processor = Arc::new(VoiceCorrectionProcessor::new());
-    let generate_directory_tree_processor = Arc::new(GenerateDirectoryTreeProcessor::new());
     let text_correction_post_transcription_processor = Arc::new(TextCorrectionPostTranscriptionProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
     let server_proxy_transcription_processor = Arc::new(ServerProxyTranscriptionProcessor::new(app_handle.clone()));
     let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
+    let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     
     // Register processors
     registry.register(path_finder_processor).await;
     registry.register(implementation_plan_processor).await;
-    registry.register(regex_generation_processor).await;
     registry.register(guidance_generation_processor).await;
     registry.register(path_correction_processor).await;
     registry.register(text_improvement_processor).await;
     registry.register(task_enhancement_processor).await;
     registry.register(voice_correction_processor).await;
-    registry.register(generate_directory_tree_processor).await;
     registry.register(text_correction_post_transcription_processor).await;
     registry.register(generic_llm_stream_processor).await;
     registry.register(server_proxy_transcription_processor).await;
     registry.register(regex_summary_generation_processor).await;
+    registry.register(regex_pattern_generation_processor).await;
     
     debug!("Job processors registered");
     Ok(())

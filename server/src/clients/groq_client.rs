@@ -45,6 +45,13 @@ impl GroqClient {
     ) -> Result<(String, HeaderMap), AppError> {
         let url = format!("{}/audio/transcriptions", self.base_url);
 
+        // Strip "groq/" prefix from model name if present, as Groq API expects just the model name
+        let groq_model = if model.starts_with("groq/") {
+            &model[5..] // Remove "groq/" prefix
+        } else {
+            model
+        };
+
         // Create multipart form
         let audio_part = Part::bytes(audio_data.to_vec())
             .file_name(filename.to_string())
@@ -53,7 +60,7 @@ impl GroqClient {
 
         let form = Form::new()
             .part("file", audio_part)
-            .text("model", model.to_string())
+            .text("model", groq_model.to_string())
             .text("response_format", "text");
 
         let response = self

@@ -1,7 +1,9 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
+use std::collections::HashMap;
 use log::{info, warn, error};
+use tauri::AppHandle;
 use crate::constants::SERVER_API_URL;
 use crate::utils::env_utils::read_env;
 
@@ -149,7 +151,7 @@ pub fn get_default_llm_model_id() -> AppResult<String> {
     }
 }
 
-// Get model for a specific task type
+// Get model for a specific task type (sync version for backward compatibility)
 pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
@@ -165,13 +167,20 @@ pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
         
         // If task-specific config not found, use default LLM model
         if runtime_config.default_llm_model_id.is_empty() {
-            return Err(AppError::ConfigError("Default LLM model ID not available from server config".to_string()));
+            return Err(AppError::ConfigError(format!("Server default model ID is empty for task {:?}. Please check server configuration.", task_type)));
         }
         
         return Ok(runtime_config.default_llm_model_id.clone());
     }
     
-    Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+    // Server config not available - this is an error, not a fallback case
+    Err(AppError::ConfigError(format!("Server configuration not loaded for task {:?}. Please check server connection and configuration.", task_type)))
+}
+
+// Async version: Get model for a specific task type with AppHandle
+pub async fn get_model_for_task_async(task_type: TaskType, app_handle: &AppHandle) -> AppResult<String> {
+    // Get from server configuration - no fallbacks
+    get_model_for_task(task_type)
 }
 
 // Get task-specific configuration
@@ -186,7 +195,7 @@ pub fn get_task_specific_config(task_type: TaskType) -> AppResult<Option<crate::
     }
 }
 
-// Get default max tokens for a task
+// Get default max tokens for a task (sync version)
 pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult<u32> {
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
@@ -195,22 +204,25 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
             let task_key = task.to_string();
             
             if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-                if task_config.max_tokens == 0 {
-                    return Err(AppError::ConfigError(format!("Max tokens configuration for task {} is zero", task_key)));
-                }
                 return Ok(task_config.max_tokens);
             }
             
-            return Err(AppError::ConfigError(format!("Task-specific configuration not found for task {}", task_key)));
+            return Err(AppError::ConfigError(format!("No max_tokens configuration found for task {:?}. Please check server configuration.", task)));
         }
         
         return Err(AppError::ConfigError("No task type provided for max tokens configuration".to_string()));
     }
     
-    Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+    Err(AppError::ConfigError(format!("Server configuration not loaded for max_tokens. Please check server connection and configuration.")))
 }
 
-// Get default temperature for a task
+// Async version: Get max tokens for a task with AppHandle
+pub async fn get_max_tokens_for_task_async(task_type: TaskType, app_handle: &AppHandle) -> AppResult<u32> {
+    // Get from server configuration - no fallbacks
+    get_default_max_tokens_for_task(Some(task_type))
+}
+
+// Get default temperature for a task (sync version)
 pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResult<f32> {
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
@@ -219,19 +231,25 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
             let task_key = task.to_string();
             
             if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-                if task_config.temperature < 0.0 || task_config.temperature > 1.0 {
-                    return Err(AppError::ConfigError(format!("Temperature configuration for task {} is out of range [0.0, 1.0]", task_key)));
+                if task_config.temperature < 0.0 || task_config.temperature > 2.0 {
+                    return Err(AppError::ConfigError(format!("Invalid temperature {} for task {:?}. Must be between 0.0 and 2.0.", task_config.temperature, task)));
                 }
                 return Ok(task_config.temperature);
             }
             
-            return Err(AppError::ConfigError(format!("Task-specific configuration not found for task {}", task_key)));
+            return Err(AppError::ConfigError(format!("No temperature configuration found for task {:?}. Please check server configuration.", task)));
         }
         
         return Err(AppError::ConfigError("No task type provided for temperature configuration".to_string()));
     }
     
-    Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+    Err(AppError::ConfigError(format!("Server configuration not loaded for temperature. Please check server connection and configuration.")))
+}
+
+// Async version: Get temperature for a task with AppHandle
+pub async fn get_temperature_for_task_async(task_type: TaskType, app_handle: &AppHandle) -> AppResult<f32> {
+    // Get from server configuration - no fallbacks
+    get_default_temperature_for_task(Some(task_type))
 }
 
 // Get context window size for a model
@@ -247,44 +265,16 @@ pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
                     return Ok(context_window);
                 }
                 
-                // Fallback to known models if context_window not explicitly set
-                // Common models and their typical context sizes
-                match model_info.id.to_lowercase().as_str() {
-                    // Claude models
-                    m if m.contains("claude-3-opus") => return Ok(200_000),
-                    m if m.contains("claude-3-sonnet") => return Ok(200_000),
-                    m if m.contains("claude-3-haiku") => return Ok(200_000),
-                    m if m.contains("claude-2") => return Ok(100_000),
-                    
-                    // GPT models
-                    m if m.contains("gpt-4-turbo") => return Ok(128_000),
-                    m if m.contains("gpt-4-32k") => return Ok(32_768),
-                    m if m.contains("gpt-4") => return Ok(8_192),
-                    m if m.contains("gpt-3.5-turbo-16k") => return Ok(16_384),
-                    m if m.contains("gpt-3.5-turbo") => return Ok(4_096),
-                    
-                    // Gemini models
-                    m if m.contains("gemini-1.5-pro") => return Ok(1_000_000),
-                    m if m.contains("gemini-1.0-pro") => return Ok(32_768),
-                    
-                    // Anthropic models with specific versions
-                    m if m.contains("claude-instant") => return Ok(100_000),
-                    
-                    // Mistral models
-                    m if m.contains("mistral") => return Ok(32_768),
-                    
-                    // Llama models
-                    m if m.contains("llama") => return Ok(8_192),
-                    
-                    // Default for other models - break out to use default
-                    _ => break,
-                }
+                // Model found but context_window is None - this should not happen with database-sourced models
+                return Err(AppError::ConfigError(format!("Model {} found but context_window is missing from server config", model_name)));
             }
         }
         
-        // If model-specific context window not found, use a reasonable default
-        // to prevent unintentionally small context windows
-        return Ok(32_000);
+        // Model not found in available_models list - this should not happen in normal operation
+        // as all models should be loaded from the database
+        return Err(AppError::ConfigError(format!("Model {} not found in server configuration. Available models: {}", 
+            model_name, 
+            runtime_config.available_models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>().join(", "))));
     }
     
     Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
@@ -304,12 +294,11 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::VoiceTranscription => "transcription",
         TaskType::VoiceCorrection => "voiceCorrection",
         TaskType::PathCorrection => "pathCorrection",
-        TaskType::RegexGeneration => "regexGeneration",
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
-        TaskType::GenerateDirectoryTree => "generateDirectoryTree",
+        TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
         _ => return None,
     };
@@ -331,12 +320,11 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::VoiceTranscription => "transcription",
         TaskType::VoiceCorrection => "voiceCorrection",
         TaskType::PathCorrection => "pathCorrection",
-        TaskType::RegexGeneration => "regexGeneration",
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
-        TaskType::GenerateDirectoryTree => "generateDirectoryTree",
+        TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
         _ => return None,
     };
@@ -358,12 +346,11 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::VoiceTranscription => "transcription",
         TaskType::VoiceCorrection => "voiceCorrection",
         TaskType::PathCorrection => "pathCorrection",
-        TaskType::RegexGeneration => "regexGeneration",
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
-        TaskType::GenerateDirectoryTree => "generateDirectoryTree",
+        TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
         _ => return None,
     };
@@ -375,7 +362,7 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
 }
 
 /// Async version: Get model for a task, checking project-specific settings first, then falling back to server config
-pub async fn get_model_for_task_with_project(task_type: TaskType, project_directory: &str) -> AppResult<String> {
+pub async fn get_model_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<String> {
     // First try to get project-specific settings
     if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
         AppError::InitializationError("SettingsRepository not initialized".to_string())
@@ -394,13 +381,13 @@ pub async fn get_model_for_task_with_project(task_type: TaskType, project_direct
         }
     }
     
-    // Fall back to server config
+    // Fall back to server config (with async version)
     log::debug!("Using server default model for {:?}", task_type);
-    get_model_for_task(task_type)
+    get_model_for_task_async(task_type, app_handle).await
 }
 
 /// Async version: Get temperature for a task, checking project-specific settings first, then falling back to server config
-pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_directory: &str) -> AppResult<f32> {
+pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<f32> {
     // First try to get project-specific settings
     if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
         AppError::InitializationError("SettingsRepository not initialized".to_string())
@@ -417,13 +404,13 @@ pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_
         }
     }
     
-    // Fall back to server config
+    // Fall back to server config (with async version)
     log::debug!("Using server default temperature for {:?}", task_type);
-    get_default_temperature_for_task(Some(task_type))
+    get_temperature_for_task_async(task_type, app_handle).await
 }
 
 /// Async version: Get max tokens for a task, checking project-specific settings first, then falling back to server config
-pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_directory: &str) -> AppResult<u32> {
+pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<u32> {
     // First try to get project-specific settings
     if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
         AppError::InitializationError("SettingsRepository not initialized".to_string())
@@ -440,7 +427,46 @@ pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_d
         }
     }
     
-    // Fall back to server config
+    // Fall back to server config (with async version)
     log::debug!("Using server default max_tokens for {:?}", task_type);
-    get_default_max_tokens_for_task(Some(task_type))
+    get_max_tokens_for_task_async(task_type, app_handle).await
+}
+
+
+// PathFinder settings with async AppHandle versions
+
+/// Async version: Get the maximum number of files to include content from for PathFinder
+pub async fn get_path_finder_max_files_with_content_async(app_handle: &AppHandle) -> AppResult<usize> {
+    // Get from server configuration - no fallbacks
+    get_path_finder_max_files_with_content()
+}
+
+/// Async version: Get whether to include file contents by default for PathFinder
+pub async fn get_path_finder_include_file_contents_async(app_handle: &AppHandle) -> AppResult<bool> {
+    // Get from server configuration - no fallbacks
+    get_path_finder_include_file_contents()
+}
+
+/// Async version: Get the maximum content size per file for PathFinder
+pub async fn get_path_finder_max_content_size_per_file_async(app_handle: &AppHandle) -> AppResult<usize> {
+    // Get from server configuration - no fallbacks
+    get_path_finder_max_content_size_per_file()
+}
+
+/// Async version: Get the maximum number of paths to return in results for PathFinder
+pub async fn get_path_finder_max_file_count_async(app_handle: &AppHandle) -> AppResult<usize> {
+    // Get from server configuration - no fallbacks
+    get_path_finder_max_file_count()
+}
+
+/// Async version: Get the initial truncation length for file contents for PathFinder
+pub async fn get_path_finder_file_content_truncation_chars_async(app_handle: &AppHandle) -> AppResult<usize> {
+    // Get from server configuration - no fallbacks
+    get_path_finder_file_content_truncation_chars()
+}
+
+/// Async version: Get the token limit buffer for PathFinder
+pub async fn get_path_finder_token_limit_buffer_async(app_handle: &AppHandle) -> AppResult<u32> {
+    // Get from server configuration - no fallbacks
+    get_path_finder_token_limit_buffer()
 }

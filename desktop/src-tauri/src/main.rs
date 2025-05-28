@@ -21,6 +21,7 @@ pub mod app_setup;
 pub mod auth;
 
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use tauri::Manager;
 use log::{info, error, warn};
 use tokio::sync::OnceCell;
@@ -32,6 +33,7 @@ use crate::error::AppError;
 use crate::utils::FileLockManager;
 use crate::auth::TokenManager;
 use crate::auth::auth0_state::Auth0StateStore;
+use crate::services::server_config_service::ServerConfigCache;
 
 // App state struct for Tauri
 pub struct AppState {
@@ -85,6 +87,7 @@ fn main() {
             settings: config::RuntimeConfig::default(),
             auth0_state_store: Auth0StateStore::default(),
         })
+        .manage(ServerConfigCache::new(Mutex::new(HashMap::new())))
         // TokenManager will be created in initialize_api_clients with the AppHandle
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             info!("Another instance tried to launch. Focusing existing window.");
@@ -188,7 +191,7 @@ fn main() {
             
             // Path finding commands
             commands::path_finding_commands::find_relevant_files_command,
-            commands::path_finding_commands::create_generate_directory_tree_job_command,
+            commands::path_finding_commands::generate_directory_tree_command,
             commands::path_finding_commands::create_path_correction_job_command,
             
             // Voice commands
@@ -201,7 +204,7 @@ fn main() {
             commands::generic_task_commands::enhance_task_description_command,
             
             // Other task-specific commands
-            commands::regex_commands::generate_regex_command,
+            commands::regex_commands::generate_regex_patterns_command,
             commands::regex_summary_commands::generate_regex_summary_command,
             commands::guidance_commands::generate_guidance_command,
             
@@ -237,6 +240,12 @@ fn main() {
             commands::database_maintenance_commands::check_database_health_command,
             commands::database_maintenance_commands::repair_database_command,
             commands::database_maintenance_commands::reset_database_command,
+            
+            // Server configuration commands
+            commands::server_config_commands::fetch_server_configurations_command,
+            commands::server_config_commands::get_cached_config_value_command,
+            commands::server_config_commands::get_all_cached_config_values_command,
+            commands::server_config_commands::refresh_server_config_cache_command,
         ])
         // Use the context we created earlier
         .run(tauri_context)

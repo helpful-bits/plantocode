@@ -51,6 +51,12 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/ai-proxy")
             .route("/{endpoint:.*}", web::post().to(handlers::proxy_handlers::ai_proxy_endpoint))
     );
+    
+    // Configuration routes (/api/config/*)
+    cfg.service(
+        web::scope("/config")
+            .route("/all-configurations", web::get().to(handlers::config_handlers::get_all_application_configurations_handler))
+    );
 }
 
 /// Configures public authentication routes (not part of /api).

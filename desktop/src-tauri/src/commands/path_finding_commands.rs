@@ -8,14 +8,6 @@ use crate::utils::job_creation_utils;
 use crate::db_utils::SessionRepository;
 
 
-/// Request payload for the directory tree generation job
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateGenerateDirectoryTreeJobArgs {
-    pub project_directory: String,
-    pub session_id: String,
-    pub options: Option<crate::utils::directory_tree::DirectoryTreeOptions>,
-}
 
 /// Options for the PathFinder command
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -39,6 +31,7 @@ pub struct PathFinderRequestArgs {
     pub temperature_override: Option<f32>,
     pub max_tokens_override: Option<u32>,
     pub options: Option<PathFinderOptionsArgs>,
+    pub directory_tree: Option<String>,
 }
 
 /// Request arguments for path correction job
@@ -49,6 +42,7 @@ pub struct CreatePathCorrectionJobArgs {
     pub project_directory: String,
     pub paths_to_correct: String,
     pub context_description: Option<String>,
+    pub directory_tree: Option<String>,
     pub model_override: Option<String>,
     pub temperature_override: Option<f32>,
     pub max_tokens_override: Option<u32>,
@@ -64,6 +58,7 @@ pub async fn find_relevant_files_command(
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
     options: Option<PathFinderOptionsArgs>,
+    directory_tree: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<JobCommandResponse> {
     let args = PathFinderRequestArgs {
@@ -74,6 +69,7 @@ pub async fn find_relevant_files_command(
         temperature_override,
         max_tokens_override,
         options,
+        directory_tree,
     };
     info!("Finding relevant files for task: {}", args.task_description);
     
@@ -112,7 +108,7 @@ pub async fn find_relevant_files_command(
     let model = if let Some(override_model) = args.model_override.clone() {
         override_model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::PathFinder, &project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::PathFinder, &project_directory, &app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for path finder: {}", e)));
@@ -123,7 +119,7 @@ pub async fn find_relevant_files_command(
     let temperature = if let Some(override_temp) = args.temperature_override {
         override_temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::PathFinder, &project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::PathFinder, &project_directory, &app_handle).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for path finder: {}", e)));
@@ -134,7 +130,7 @@ pub async fn find_relevant_files_command(
     let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
         override_tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathFinder, &project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathFinder, &project_directory, &app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for path finder: {}", e)));
@@ -162,6 +158,7 @@ pub async fn find_relevant_files_command(
         temperature_override: Some(temperature),
         max_tokens_override: Some(max_tokens),
         options: path_finder_options,
+        directory_tree: args.directory_tree,
     };
     
     // Queue the job
@@ -185,57 +182,37 @@ pub async fn find_relevant_files_command(
     Ok(JobCommandResponse { job_id })
 }
 
-/// Create a background job to generate a directory tree
+/// Generate a directory tree directly
 #[command]
-pub async fn create_generate_directory_tree_job_command(
+pub async fn generate_directory_tree_command(
     project_directory: String,
-    session_id: String,
     options: Option<crate::utils::directory_tree::DirectoryTreeOptions>,
-    app_handle: AppHandle,
-) -> AppResult<JobCommandResponse> {
-    let args = CreateGenerateDirectoryTreeJobArgs {
-        project_directory,
-        session_id,
-        options,
-    };
-    info!("Creating generate directory tree job for path: {}", args.project_directory);
+) -> AppResult<String> {
+    info!("Generating directory tree for path: {}", project_directory);
     
     // Validate project directory
-    if args.project_directory.is_empty() {
+    if project_directory.is_empty() {
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
-    // Validate session ID
-    if args.session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
+    let path = std::path::Path::new(&project_directory);
+    
+    // Check if the directory exists
+    if !crate::utils::fs_utils::file_exists(path).await {
+        return Err(AppError::FileSystemError(format!("Directory does not exist: {}", project_directory)));
     }
     
-    // Create the payload for the GenerateDirectoryTreeProcessor
-    let payload = crate::jobs::types::GenerateDirectoryTreePayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
-        project_directory: args.project_directory.clone(),
-        options: args.options.clone(),
-    };
+    // Check if the path is a directory
+    if !crate::utils::fs_utils::is_directory(path).await? {
+        return Err(AppError::FileSystemError(format!("Path is not a directory: {}", project_directory)));
+    }
     
-    // Use job creation utility to create and queue the job
-    let job_id = job_creation_utils::create_and_queue_background_job(
-        &args.session_id,
-        &args.project_directory,
-        "filesystem",
-        TaskType::GenerateDirectoryTree,
-        "GENERATE_DIRECTORY_TREE",
-        &format!("Generate directory tree for: {}", args.project_directory),
-        (String::new(), 0.0, 0), // No model needed for filesystem operations
-        serde_json::to_value(payload).map_err(|e| 
-            AppError::SerdeError(e.to_string()))?,
-        1, // Priority
-        None, // No extra metadata
-        &app_handle, // Add app_handle parameter
-    ).await?;
+    // Generate the directory tree using the existing utility
+    let options = options.unwrap_or_default();
+    let tree = crate::utils::directory_tree::generate_directory_tree(path, options).await?;
     
-    info!("Created generate directory tree job: {}", job_id);
-    Ok(JobCommandResponse { job_id })
+    info!("Successfully generated directory tree for: {}", project_directory);
+    Ok(tree)
 }
 
 /// Create a background job to correct file paths
@@ -245,6 +222,7 @@ pub async fn create_path_correction_job_command(
     project_directory: String,
     paths_to_correct: String,
     context_description: Option<String>,
+    directory_tree: Option<String>,
     model_override: Option<String>,
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
@@ -255,6 +233,7 @@ pub async fn create_path_correction_job_command(
         project_directory,
         paths_to_correct,
         context_description,
+        directory_tree,
         model_override,
         temperature_override,
         max_tokens_override,
@@ -279,7 +258,7 @@ pub async fn create_path_correction_job_command(
     let model = if let Some(override_model) = args.model_override.clone() {
         override_model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::PathCorrection, &args.project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::PathCorrection, &args.project_directory, &app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for path correction: {}", e)));
@@ -290,7 +269,7 @@ pub async fn create_path_correction_job_command(
     let temperature = if let Some(override_temp) = args.temperature_override {
         override_temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::PathCorrection, &args.project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::PathCorrection, &args.project_directory, &app_handle).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for path correction: {}", e)));
@@ -301,7 +280,7 @@ pub async fn create_path_correction_job_command(
     let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
         override_tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathCorrection, &args.project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathCorrection, &args.project_directory, &app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for path correction: {}", e)));
@@ -315,6 +294,7 @@ pub async fn create_path_correction_job_command(
         session_id: args.session_id.clone(),
         paths_to_correct: args.paths_to_correct.clone(),
         context_description: args.context_description.unwrap_or_else(|| "No additional context provided".to_string()),
+        directory_tree: args.directory_tree,
         system_prompt_override: None,
         model_override: Some(model.clone()),
         temperature: Some(temperature),
