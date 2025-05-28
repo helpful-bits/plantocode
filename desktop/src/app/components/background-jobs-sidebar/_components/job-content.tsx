@@ -2,7 +2,6 @@
 
 
 import { type BackgroundJob } from "@/types/session-types";
-import { ScrollArea } from "@/ui/scroll-area";
 
 import { EmptyState, LoadingState } from "../sidebar-states";
 
@@ -33,47 +32,42 @@ export const JobContent = ({
   onSelect,
 }: JobContentProps) => {
   return (
-    <ScrollArea
-      className="px-3 py-3 pb-24 h-full min-h-[calc(100vh-8rem)]"
-      style={{ width: "100%", maxWidth: "100%", display: "block !important", minWidth: "0 !important" }}
-    >
-      <div className="min-h-[calc(100vh-10rem)] w-full max-w-full overflow-hidden">
-        {shouldShowLoading ? (
-          <LoadingState />
-        ) : shouldShowEmpty ? (
-          <EmptyState />
-        ) : (
-          <>
-            {/* Active Jobs Section */}
-            <JobSection
-              title="Active"
-              jobs={activeJobsToShow}
-              handleCancel={handleCancel}
-              isCancelling={isCancelling}
-              onSelect={onSelect}
-            />
+    <div className="flex flex-col w-full min-h-full px-3 py-3 pb-24">
+      {shouldShowLoading ? (
+        <LoadingState />
+      ) : shouldShowEmpty ? (
+        <EmptyState />
+      ) : (
+        <>
+          {/* Active Jobs Section */}
+          <JobSection
+            title="Active"
+            jobs={activeJobsToShow}
+            handleCancel={handleCancel}
+            isCancelling={isCancelling}
+            onSelect={onSelect}
+          />
 
-            {/* Completed Jobs Section */}
-            <JobSection
-              title="Completed"
-              jobs={completedJobs}
-              handleCancel={handleCancel}
-              isCancelling={isCancelling}
-              onSelect={onSelect}
-            />
+          {/* Completed Jobs Section */}
+          <JobSection
+            title="Completed"
+            jobs={completedJobs}
+            handleCancel={handleCancel}
+            isCancelling={isCancelling}
+            onSelect={onSelect}
+          />
 
-            {/* Failed/Canceled Jobs Section */}
-            <JobSection
-              title="Failed/Canceled"
-              jobs={failedJobs}
-              handleCancel={handleCancel}
-              isCancelling={isCancelling}
-              onSelect={onSelect}
-            />
-          </>
-        )}
-      </div>
-    </ScrollArea>
+          {/* Failed/Canceled Jobs Section */}
+          <JobSection
+            title="Failed/Canceled"
+            jobs={failedJobs}
+            handleCancel={handleCancel}
+            isCancelling={isCancelling}
+            onSelect={onSelect}
+          />
+        </>
+      )}
+    </div>
   );
 };
 

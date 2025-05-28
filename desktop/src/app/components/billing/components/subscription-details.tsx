@@ -1,4 +1,4 @@
-import { AlertCircle, ChevronRight, Calendar, CreditCard, Users } from "lucide-react";
+import { AlertCircle, ChevronRight, Calendar, CreditCard, Users, Zap } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Badge } from "@/ui/badge";
@@ -60,21 +60,22 @@ export function SubscriptionDetails({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Trial ending soon alert */}
+    <div className="space-y-6">
+      {/* Trial ending soon alert - Aligned with app design */}
       {isTrialEndingSoon && (
-        <Alert variant="warning">
+        <Alert variant="warning" className="rounded-xl border border-border/60 backdrop-blur-sm shadow-soft">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Your trial is ending soon</AlertTitle>
-          <AlertDescription>
-            <p className="mb-3">
+          <AlertTitle className="font-semibold">Trial ending in {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</AlertTitle>
+          <AlertDescription className="mt-2">
+            <p className="text-sm leading-7 mb-4">
               Upgrade now to continue enjoying unlimited access to all features.
             </p>
             <Button
               onClick={onUpgrade}
               size="sm"
-              variant="warning"
+              className="shadow-soft hover:shadow-soft-md backdrop-blur-sm transition-all duration-200"
             >
+              <Zap className="mr-2 h-4 w-4" />
               Upgrade Now
               <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
@@ -82,8 +83,8 @@ export function SubscriptionDetails({
         </Alert>
       )}
 
-      {/* Token Usage Card */}
-      <Card className="overflow-hidden">
+      {/* Token Usage Card - Aligned with app design */}
+      <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300 backdrop-blur-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -91,13 +92,13 @@ export function SubscriptionDetails({
               <h3 className="font-medium text-sm">Token Usage</h3>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs rounded-full border px-2.5 py-0.5 font-medium transition-all duration-200 backdrop-blur-sm">
                 ${(subscription.usage?.totalCost ?? 0).toFixed(2)}
               </Badge>
               {trialDaysLeft !== undefined && (
                 <Badge 
                   variant={isTrialEndingSoon ? "warning" : "secondary"}
-                  className="text-xs"
+                  className="text-xs rounded-full border px-2.5 py-0.5 font-medium transition-all duration-200 backdrop-blur-sm"
                 >
                   {trialDaysLeft} day{trialDaysLeft !== 1 ? "s" : ""} left
                 </Badge>
@@ -108,18 +109,30 @@ export function SubscriptionDetails({
         <CardContent className="pt-0">
           <div className="space-y-3">
             <div className="space-y-2">
-              <Progress value={usagePercentage} className="h-2" />
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Monthly Usage</span>
+                <span className="text-sm font-medium">{usagePercentage}% used</span>
+              </div>
+              <Progress value={usagePercentage} className="h-1.5" />
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{totalTokens.toLocaleString()} used</span>
                 <span>{monthlyLimit.toLocaleString()} limit</span>
               </div>
             </div>
+            {usagePercentage > 80 && (
+              <Alert variant="warning" className="rounded-lg border p-3 backdrop-blur-sm shadow-soft">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  Approaching usage limit - consider upgrading
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Subscription Details Card */}
-      <Card className="overflow-hidden">
+      {/* Subscription Details Card - Aligned with app design */}
+      <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300 backdrop-blur-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -167,20 +180,20 @@ export function SubscriptionDetails({
         </CardContent>
       </Card>
 
-      {/* Action Buttons */}
-      <div className="space-y-3">
+      {/* Action Buttons - Aligned with app design */}
+      <div className="space-y-4">
         {isFree || isTrialing ? (
           <>
             <Button
               onClick={onUpgrade}
-              className="w-full"
+              className="w-full shadow-soft hover:shadow-soft-md backdrop-blur-sm transition-all duration-200"
               size={isTrialEndingSoon ? "lg" : "default"}
             >
               {isTrialing ? "Upgrade To Pro Plan" : "Upgrade to Pro"}
             </Button>
 
             {isTrialing && (
-              <p className="text-xs text-center text-muted-foreground">
+              <p className="text-xs text-center text-muted-foreground leading-7">
                 Upgrade before your trial ends to keep all your projects and
                 data. No credit card required for trial.
               </p>
@@ -188,12 +201,16 @@ export function SubscriptionDetails({
           </>
         ) : (
           <>
-            <Button onClick={onManage} variant="secondary" className="w-full">
+            <Button 
+              onClick={onManage} 
+              variant="outline" 
+              className="w-full shadow-soft hover:shadow-soft-md backdrop-blur-sm transition-all duration-200"
+            >
               Manage Subscription
             </Button>
 
             {isActive && (
-              <p className="text-xs text-center text-muted-foreground">
+              <p className="text-xs text-center text-muted-foreground leading-7">
                 You&apos;re on the Pro plan. Manage your billing, update payment
                 methods, or change plans.
               </p>

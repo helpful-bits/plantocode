@@ -2,17 +2,44 @@
 
 import { RequireProjectDirectory } from "@/app/components/with-project-directory";
 import { useSessionStateContext } from "@/contexts/session";
+import { useProject } from "@/contexts/project-context";
 
 import { GeneratePromptFeatureProvider as GeneratePromptProvider } from "./components/generate-prompt/_contexts";
+import { useCorePromptContext } from "./components/generate-prompt/_contexts/core-prompt-context";
+import { useFileManagement } from "./components/generate-prompt/_contexts/file-management-context";
+import { usePlanContext } from "./components/generate-prompt/_contexts/plan-context";
 import GeneratePromptForm from "./components/generate-prompt/generate-prompt-form";
 import { ImplementationPlansPanel } from "./components/implementation-plans-panel/implementation-plans-panel";
 
+function HomeContent() {
+  const { activeSessionId, currentSession } = useSessionStateContext();
+  const { projectDirectory } = useProject();
+  
+  // Access contexts from the GeneratePrompt provider
+  const { state: coreState } = useCorePromptContext();
+  const fileState = useFileManagement();
+  const { state: planState, actions: planActions } = usePlanContext();
+
+  return (
+    <div className="relative w-full">
+      {/* GeneratePrompt Component */}
+      <GeneratePromptForm />
+
+      {/* Merged Implementation Plans Panel */}
+      <ImplementationPlansPanel 
+        sessionId={activeSessionId}
+        projectDirectory={projectDirectory}
+        taskDescription={currentSession?.taskDescription}
+        includedPaths={fileState.includedPaths}
+        isCreatingPlan={planState.isCreatingPlan}
+        planCreationState={planState.planCreationState}
+        onCreatePlan={planActions.handleCreateImplementationPlan}
+      />
+    </div>
+  );
+}
+
 export default function Home() {
-  const { activeSessionId } = useSessionStateContext();
-
-  // We no longer show a full-screen loading UI to avoid interrupting the experience
-  // Instead, we'll let child components handle their own loading states
-
   return (
     <main className="flex flex-col items-start">
       {/* Descriptive text for project selection */}
@@ -24,16 +51,9 @@ export default function Home() {
       {/* RequireProjectDirectory will handle the case when no project is selected */}
       <RequireProjectDirectory>
         {/* Show main app content when a project directory is selected */}
-        <div className="relative w-full">
-
-          {/* GeneratePrompt Component */}
-          <GeneratePromptProvider>
-            <GeneratePromptForm />
-          </GeneratePromptProvider>
-
-          {/* Implementation Plans Panel */}
-          <ImplementationPlansPanel sessionId={activeSessionId} />
-        </div>
+        <GeneratePromptProvider>
+          <HomeContent />
+        </GeneratePromptProvider>
       </RequireProjectDirectory>
     </main>
   );

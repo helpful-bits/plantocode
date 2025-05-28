@@ -66,19 +66,19 @@ export const NotificationBanner: FC<NotificationBannerProps> = ({
   // Variant-specific styles
   const variantStyles = {
     info: {
-      container: "bg-info/5 border-info/30",
+      container: "bg-info/10 border-info/30",
       icon: <Info className="h-5 w-5 text-info" />,
       title: "text-info",
       message: "text-info",
     },
     success: {
-      container: "bg-success/5 border-success/30",
+      container: "bg-success/15 border-success/30",
       icon: <CheckCircle2 className="h-5 w-5 text-success" />,
       title: "text-success",
       message: "text-success",
     },
     warning: {
-      container: "bg-warning/5 border-warning/30",
+      container: "bg-warning/10 border-warning/30",
       icon: <AlertCircle className="h-5 w-5 text-warning" />,
       title: "text-warning",
       message: "text-warning",

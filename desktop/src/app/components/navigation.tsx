@@ -88,7 +88,7 @@ export function Navigation() {
               onClick={() => (window.location.href = "/")}
               title="Reload application"
             >
-              <RotateCcw className="h-[1.2rem] w-[1.2rem] text-current" />
+              <RotateCcw className="h-[1.2rem] w-[1.2rem] text-foreground" />
               <span className="sr-only">Reload application</span>
             </Button>
             {/* Token usage indicator in the top right */}

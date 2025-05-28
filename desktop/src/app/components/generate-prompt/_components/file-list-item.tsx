@@ -72,9 +72,9 @@ function FileListItem({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2 text-sm py-2 rounded-lg px-3",
+        "flex items-center justify-between gap-2 text-xs py-2 rounded-lg px-3",
         "transition-colors duration-150",
-        file.included && !file.forceExcluded ? "bg-primary/10 backdrop-blur-sm border border-primary/20" : "",
+        file.included && !file.forceExcluded ? "bg-muted border border-border/30" : "",
         file.forceExcluded ? "opacity-60" : "hover:bg-muted/80 hover:backdrop-blur-sm",
         disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
       )}

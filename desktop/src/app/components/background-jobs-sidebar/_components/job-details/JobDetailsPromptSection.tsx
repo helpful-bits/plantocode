@@ -26,7 +26,7 @@ export function JobDetailsPromptSection({
     <Card>
       <Collapsible open={isPromptOpen} onOpenChange={setIsPromptOpen}>
         <CollapsibleTrigger asChild>
-          <CardHeader className="pb-3 cursor-pointer hover:bg-accent/50 transition-colors">
+          <CardHeader className="py-4 cursor-pointer hover:bg-accent/50 transition-colors">
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle className="text-sm">Prompt</CardTitle>

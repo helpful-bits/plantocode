@@ -6,11 +6,10 @@
 
 import { open } from "@tauri-apps/plugin-shell";
 import { useState, useEffect } from "react";
+import { CreditCard } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/ui/card";
-import { useToast } from "@/ui/use-toast";
-import { H3 } from "@/ui/typography";
 import { securedFetchJson } from "@/utils/secured-fetch";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
@@ -28,7 +27,6 @@ const SERVER_URL = (import.meta.env.VITE_MAIN_SERVER_BASE_URL as string) || "htt
 
 export default function SubscriptionManager() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const { showNotification } = useNotification();
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(
     null
@@ -112,11 +110,11 @@ export default function SubscriptionManager() {
         throw new Error("Invalid response format");
       }
 
-      // Show toast notification
-      toast({
+      // Show notification
+      showNotification({
         title: "Checkout Session Created",
-        description: "Opening the upgrade page in your browser...",
-        variant: "success",
+        message: "Opening the upgrade page in your browser...",
+        type: "success",
       });
     } catch (err) {
       const errorMessage = getErrorMessage(err);
@@ -163,12 +161,11 @@ export default function SubscriptionManager() {
         throw new Error("Invalid response format");
       }
 
-      // Show toast notification
-      toast({
+      // Show notification
+      showNotification({
         title: "Customer Portal",
-        description:
-          "Opening the subscription management page in your browser...",
-        variant: "success",
+        message: "Opening the subscription management page in your browser...",
+        type: "success",
       });
     } catch (err) {
       const errorMessage = getErrorMessage(err);
@@ -229,8 +226,11 @@ export default function SubscriptionManager() {
   };
 
   return (
-    <Card className="p-4">
-      <H3 className="mb-4">Subscription</H3>
+    <Card className="rounded-xl border border-border/60 bg-card text-card-foreground shadow-soft hover:shadow-soft-md transition-all duration-300 backdrop-blur-sm p-6">
+      <div className="flex items-center gap-2 mb-6">
+        <CreditCard className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-lg font-semibold">Subscription</h3>
+      </div>
       {renderContent()}
     </Card>
   );

@@ -4,7 +4,6 @@ import { H3, P, Subtle } from "@/ui/typography";
 
 import { MemoizedFileManagementWrapper } from "./_components/file-management-wrapper";
 import { useCorePromptContext } from "./_contexts/core-prompt-context";
-import { FileManagementProvider } from "./_contexts/file-management-provider";
 import { useTaskContext } from "./_contexts/task-context";
 import ProjectSection from "./_sections/project-section";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -60,13 +59,11 @@ function GeneratePromptFormContent() {
               </div>
             }
           >
-            <FileManagementProvider>
-              <div className="relative">
-                <MemoizedFileManagementWrapper
-                  hasSession={hasSession}
-                />
-              </div>
-            </FileManagementProvider>
+            <div className="relative">
+              <MemoizedFileManagementWrapper
+                hasSession={hasSession}
+              />
+            </div>
           </ErrorBoundary>
         ) : (
           <div className="text-center text-muted-foreground italic p-6 border border-dashed rounded-xl border-border/60 bg-background/80 backdrop-blur-sm shadow-soft">

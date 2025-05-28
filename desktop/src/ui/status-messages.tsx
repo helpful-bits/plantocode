@@ -25,7 +25,7 @@ export const StatusMessages: FC<StatusMessagesProps> = ({
     <>
       {/* Error message */}
       {error && (
-        <div className="bg-warning/5 border border-warning/30 text-warning px-4 py-3 text-xs mx-4 mt-3 rounded-lg shadow-soft backdrop-blur-sm">
+        <div className="bg-warning/10 border border-warning/30 text-warning px-4 py-3 text-xs mx-4 mt-3 rounded-lg shadow-soft backdrop-blur-sm">
           <div className="flex items-center gap-2 mb-1.5">
             <AlertCircle className="h-4 w-4 text-warning" />
             <span className="font-medium">Error</span>
@@ -36,7 +36,7 @@ export const StatusMessages: FC<StatusMessagesProps> = ({
 
       {/* Feedback message for clear operations */}
       {clearFeedback && (
-        <div className="bg-success/5 border border-success/30 text-success px-4 py-3 text-xs mx-4 mt-3 mb-3 rounded-lg shadow-soft backdrop-blur-sm">
+        <div className="bg-success/15 border border-success/30 text-success px-4 py-3 text-xs mx-4 mt-3 mb-3 rounded-lg shadow-soft backdrop-blur-sm">
           <div className="text-xs text-balance text-success">{clearFeedback}</div>
         </div>
       )}

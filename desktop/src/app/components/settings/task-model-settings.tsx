@@ -135,7 +135,7 @@ const taskTypeDefinitions: Record<
   },
   implementation_plan: {
     label: "Implementation Plan",
-    defaultApiType: "reasoning",
+    defaultApiType: "gemini",
   },
   generic_llm_stream: {
     label: "Generic LLM Stream",
@@ -296,9 +296,9 @@ export default function TaskModelSettings({
 
             return (
               <TabsContent key={type} value={type} className="w-full">
-                <div className="w-full max-w-full">
+                <div className="w-full">
                   {/* Model, Max Tokens, and Temperature in the same row */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1fr] gap-6">
                     {/* Model Selection */}
                     <div className="space-y-2">
                       <Label
@@ -354,7 +354,7 @@ export default function TaskModelSettings({
                         Max Tokens
                       </Label>
                       <div className="flex items-center gap-3 w-full">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-[120px]">
                           <Slider
                             id={`max-tokens-${type}`}
                             defaultValue={[settings.maxTokens]}
@@ -384,7 +384,7 @@ export default function TaskModelSettings({
                               handleMaxTokensChange(taskType, [value]);
                             }
                           }}
-                          className="w-20 font-mono text-sm text-right"
+                          className="w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2"
                           min={1000}
                           max={100000}
                         />
@@ -404,7 +404,7 @@ export default function TaskModelSettings({
                           Temperature
                         </Label>
                         <div className="flex items-center gap-3 w-full">
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-[120px]">
                             <Slider
                               id={`temperature-${type}`}
                               defaultValue={[settings.temperature]}
@@ -430,7 +430,7 @@ export default function TaskModelSettings({
                                 handleTemperatureChange(taskType, [value]);
                               }
                             }}
-                            className="w-16 font-mono text-sm text-right"
+                            className="w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2"
                             min={0}
                             max={1}
                             step={0.05}

@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
 import { useProject } from "@/contexts/project-context";
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
-import { toast } from "@/ui/use-toast";
+import { useNotification } from "@/contexts/notification-context";
 import { createLogger } from "@/utils/logger";
 
 const logger = createLogger({ namespace: "ImplPlansLogic" });
@@ -19,6 +19,7 @@ export function useImplementationPlansLogic({
 }: UseImplementationPlansLogicProps) {
   const { jobs, isLoading, deleteJob, refreshJobs } = useBackgroundJobs();
   const { projectDirectory } = useProject();
+  const { showNotification } = useNotification();
 
   // UI state
   const [copiedPlanId, setCopiedPlanId] = useState<string | undefined>(undefined);
@@ -76,10 +77,10 @@ export function useImplementationPlansLogic({
         await navigator.clipboard.writeText(text);
         setCopiedPlanId(jobId);
 
-        toast({
+        showNotification({
           title: "Copied!",
-          description: "Implementation plan copied to clipboard.",
-          variant: "success",
+          message: "Implementation plan copied to clipboard.",
+          type: "success",
         });
 
         // Reset copied state after 2 seconds
@@ -88,10 +89,10 @@ export function useImplementationPlansLogic({
         }, 2000);
       } catch (error) {
         logger.error("Failed to copy text: ", error);
-        toast({
+        showNotification({
           title: "Copy Failed",
-          description: "Could not copy to clipboard.",
-          variant: "destructive",
+          message: "Could not copy to clipboard.",
+          type: "error",
         });
       }
     },
@@ -112,10 +113,10 @@ export function useImplementationPlansLogic({
         setIsDeleting((prev) => ({ ...prev, [jobId]: false }));
         setJobToDelete(undefined);
 
-        toast({
+        showNotification({
           title: "Success",
-          description: "Implementation plan deleted successfully.",
-          variant: "success",
+          message: "Implementation plan deleted successfully.",
+          type: "success",
         });
 
         // Refresh jobs list
@@ -123,10 +124,10 @@ export function useImplementationPlansLogic({
       } catch (error) {
         logger.error("Error deleting job:", error);
 
-        toast({
+        showNotification({
           title: "Error",
-          description: "Failed to delete implementation plan.",
-          variant: "destructive",
+          message: "Failed to delete implementation plan.",
+          type: "error",
         });
 
         setIsDeleting((prev) => ({ ...prev, [jobId]: false }));

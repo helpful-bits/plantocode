@@ -17,7 +17,6 @@ import {
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Progress } from "@/ui/progress";
-import { ScrollArea } from "@/ui/scroll-area";
 
 import {
   getStatusIconClass,
@@ -356,11 +355,11 @@ export const JobCard = React.memo(
           {job.response &&
             !(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) && (
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-muted-foreground break-words text-balance overflow-hidden">
-                <ScrollArea className="h-[40px] w-full overflow-hidden">
+                <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
                   <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
                     {getResponsePreview()}
                   </div>
-                </ScrollArea>
+                </div>
               </div>
             )}
 
@@ -368,11 +367,11 @@ export const JobCard = React.memo(
           {JOB_STATUSES.FAILED.includes(job.status as JobStatus) &&
             job.errorMessage && (
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-destructive break-words text-balance overflow-hidden">
-                <ScrollArea className="h-[40px] w-full overflow-hidden">
+                <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
                   <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
                     {getErrorPreview()}
                   </div>
-                </ScrollArea>
+                </div>
               </div>
             )}
 

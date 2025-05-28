@@ -187,7 +187,7 @@ function FileBrowser({
   );
 
   return (
-    <div className="space-y-4 mb-4 border border-border/60 rounded-xl p-6 bg-background/95 backdrop-blur-sm shadow-soft">
+    <div className="space-y-4 mt-4 border border-border/60 rounded-xl p-6 bg-background/95 backdrop-blur-sm shadow-soft">
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center gap-4">
           <div className="relative flex-1">

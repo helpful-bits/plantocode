@@ -46,7 +46,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
       <div className="relative w-full">
         <textarea
           className={cn(
-            "flex min-h-[80px] w-full rounded-lg border border-border/60 bg-input/50 backdrop-blur-sm px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200 hover:border-border/80 focus:border-primary/40",
+            "flex min-h-[80px] w-full rounded-lg border border-border/60 bg-input/50 backdrop-blur-sm px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 disabled:cursor-not-allowed disabled:opacity-50 transition-colors transition-shadow duration-200 hover:border-border/80 focus:border-primary/40",
             loadingClasses,
             className
           )}

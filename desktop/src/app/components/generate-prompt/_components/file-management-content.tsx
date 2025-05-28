@@ -8,15 +8,13 @@ import ActionsSection from "../_sections/actions-section";
 import FileSection from "../_sections/file-section";
 import TaskSection from "../_sections/task-section";
 
-import { default as IPlanActions } from "./implementation-plan-actions";
-
 interface FileManagementContentProps {
   hasSession: boolean;
 }
 
 /**
  * Component responsible for rendering the content when a file management context is available
- * Handles task section, actions section, file section, and implementation plan actions
+ * Handles task section, actions section, and file section
  * Uses contexts directly instead of receiving props
  */
 function FileManagementContent({ hasSession }: FileManagementContentProps) {
@@ -65,11 +63,6 @@ function FileManagementContent({ hasSession }: FileManagementContentProps) {
 
       {/* File section */}
       <FileSection disabled={!hasSession} />
-
-      {/* Implementation Plan Actions Section */}
-      <div className="mt-8">
-        <IPlanActions disabled={!hasSession} />
-      </div>
     </>
   );
 }
