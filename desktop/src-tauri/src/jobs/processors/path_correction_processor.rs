@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use tauri::{AppHandle, Manager};
 use log::{debug, info, warn, error};
 use serde_json;
+use regex::Regex;
 
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, PathCorrectionPayload};
@@ -17,6 +18,60 @@ pub struct PathCorrectionProcessor;
 impl PathCorrectionProcessor {
     pub fn new() -> Self {
         Self {}
+    }
+    
+    /// Parse XML response and extract corrected paths
+    fn parse_corrected_paths(xml_response: &str) -> AppResult<(Vec<String>, serde_json::Value)> {
+        // Extract corrected paths using regex
+        let path_regex = Regex::new(r#"<path[^>]+original="([^"]*)"[^>]+corrected="([^"]*)"[^>]*>([^<]*)</path>"#)
+            .map_err(|e| AppError::JobError(format!("Failed to create regex: {}", e)))?;
+        
+        let mut corrected_paths = Vec::new();
+        let mut detailed_corrections = Vec::new();
+        
+        for captures in path_regex.captures_iter(xml_response) {
+            let original = captures.get(1).map_or("", |m| m.as_str()).trim();
+            let corrected = captures.get(2).map_or("", |m| m.as_str()).trim();
+            let explanation = captures.get(3).map_or("", |m| m.as_str()).trim();
+            
+            // Add corrected path to simple list
+            corrected_paths.push(corrected.to_string());
+            
+            // Add detailed information for metadata
+            detailed_corrections.push(serde_json::json!({
+                "original": original,
+                "corrected": corrected,
+                "explanation": explanation
+            }));
+        }
+        
+        // If no paths were found, try fallback parsing
+        if corrected_paths.is_empty() {
+            // Look for any corrected="..." attributes
+            let fallback_regex = Regex::new(r#"corrected="([^"]*)""#)
+                .map_err(|e| AppError::JobError(format!("Failed to create fallback regex: {}", e)))?;
+            
+            for captures in fallback_regex.captures_iter(xml_response) {
+                if let Some(corrected) = captures.get(1) {
+                    let path = corrected.as_str().trim();
+                    if !path.is_empty() {
+                        corrected_paths.push(path.to_string());
+                        detailed_corrections.push(serde_json::json!({
+                            "original": "",
+                            "corrected": path,
+                            "explanation": "Extracted via fallback parsing"
+                        }));
+                    }
+                }
+            }
+        }
+        
+        let metadata = serde_json::json!({
+            "correctedPathDetails": detailed_corrections,
+            "fullResponse": xml_response
+        });
+        
+        Ok((corrected_paths, metadata))
     }
 }
 
@@ -68,7 +123,7 @@ impl JobProcessor for PathCorrectionProcessor {
             .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
             
         // Generate path correction prompt
-        let prompt = generate_path_correction_prompt(&paths, project_directory, None);
+        let prompt = generate_path_correction_prompt(&paths, project_directory, payload.directory_tree.as_deref());
         
         // Set system prompt
         let system_prompt = payload.system_prompt_override.clone()
@@ -97,14 +152,14 @@ impl JobProcessor for PathCorrectionProcessor {
         let model_to_use = if let Some(model_override) = payload.model_override.clone() {
             model_override
         } else {
-            crate::config::get_model_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir).await?
+            crate::config::get_model_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await?
         };
         
         // Get max tokens and temperature from payload or project/server config
         let max_tokens = if let Some(tokens) = payload.max_output_tokens {
             tokens
         } else {
-            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir).await {
+            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await {
                 Ok(tokens) => tokens,
                 Err(_) => 2000, // Fallback only if config error occurs
             }
@@ -113,7 +168,7 @@ impl JobProcessor for PathCorrectionProcessor {
         let temperature = if let Some(temp) = payload.temperature {
             temp
         } else {
-            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir).await {
+            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await {
                 Ok(temp) => temp,
                 Err(_) => 0.7, // Fallback only if config error occurs
             }
@@ -137,17 +192,36 @@ impl JobProcessor for PathCorrectionProcessor {
                 if let Some(choice) = llm_response.choices.first() {
                     let content = &choice.message.content;
                     
+                    // Parse XML response to extract corrected paths
+                    let (corrected_paths, metadata) = match Self::parse_corrected_paths(content) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            warn!("Failed to parse XML response, using raw content: {}", e);
+                            // Fallback: use the raw content as a single "path"
+                            let fallback_metadata = serde_json::json!({
+                                "correctedPathDetails": [],
+                                "fullResponse": content,
+                                "parseError": format!("{}", e)
+                            });
+                            (vec![content.clone()], fallback_metadata)
+                        }
+                    };
+                    
+                    // Create simple newline-separated response
+                    let simple_response = corrected_paths.join("\n");
+                    
                     // Update job status to completed
                     repo.update_job_status(&job.id, &JobStatus::Completed.to_string(), None).await?;
                     
                     // Get updated job
                     let mut updated_job = db_job.clone();
                     updated_job.status = JobStatus::Completed.to_string();
-                    updated_job.response = Some(content.clone());
+                    updated_job.response = Some(simple_response.clone());
+                    updated_job.metadata = Some(metadata.to_string());
                     updated_job.tokens_sent = llm_response.usage.as_ref().map(|u| u.prompt_tokens as i32);
                     updated_job.tokens_received = llm_response.usage.as_ref().map(|u| u.completion_tokens as i32);
                     updated_job.total_tokens = llm_response.usage.as_ref().map(|u| u.total_tokens as i32);
-                    updated_job.chars_received = Some(content.len() as i32);
+                    updated_job.chars_received = Some(simple_response.len() as i32);
                     
                     // Update model used
                     if let Some(model) = payload.model_override.clone() {
@@ -159,13 +233,16 @@ impl JobProcessor for PathCorrectionProcessor {
                     // Save updated job
                     repo.update_job(&updated_job).await?;
                     
+                    info!("Path correction completed: {} paths corrected", corrected_paths.len());
+                    debug!("Corrected paths: {:?}", corrected_paths);
+                    
                     // Return success result
-                    Ok(JobProcessResult::success(job.id.clone(), content.clone())
+                    Ok(JobProcessResult::success(job.id.clone(), simple_response.clone())
                         .with_tokens(
                             llm_response.usage.as_ref().map(|u| u.prompt_tokens as i32),
                             llm_response.usage.as_ref().map(|u| u.completion_tokens as i32),
                             llm_response.usage.as_ref().map(|u| u.total_tokens as i32),
-                            Some(content.len() as i32)
+                            Some(simple_response.len() as i32)
                         ))
                 } else {
                     // No choices in response

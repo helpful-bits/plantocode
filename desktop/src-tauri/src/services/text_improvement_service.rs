@@ -57,7 +57,7 @@ pub async fn create_text_improvement_job_service(
     let model = if let Some(override_model) = args.model_override.clone() {
         override_model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::TextImprovement, &project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::TextImprovement, &project_directory, app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get model for text improvement: {}", e)));
@@ -69,7 +69,7 @@ pub async fn create_text_improvement_job_service(
     let temperature = if let Some(override_temp) = args.temperature_override {
         override_temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::TextImprovement, &project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::TextImprovement, &project_directory, app_handle).await {
             Ok(temp) => temp,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get temperature for text improvement: {}", e)));
@@ -81,7 +81,7 @@ pub async fn create_text_improvement_job_service(
     let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
         override_tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::TextImprovement, &project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::TextImprovement, &project_directory, app_handle).await {
             Ok(tokens) => tokens,
             Err(e) => {
                 return Err(AppError::ConfigError(format!("Failed to get max tokens for text improvement: {}", e)));

@@ -129,6 +129,27 @@ impl SettingsRepository {
     }
 
 
+    /// Fetches all application configurations from the database
+    #[instrument(skip(self))]
+    pub async fn get_all_application_configurations(&self) -> Result<HashMap<String, JsonValue>, AppError> {
+        info!("Fetching all application configurations from database");
+        
+        let records = sqlx::query!(
+            "SELECT config_key, config_value FROM application_configurations ORDER BY config_key"
+        )
+        .fetch_all(&self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch all application configurations: {}", e)))?;
+        
+        let configurations = records
+            .into_iter()
+            .map(|record| (record.config_key, record.config_value))
+            .collect::<HashMap<String, JsonValue>>();
+        
+        info!("Retrieved {} application configurations", configurations.len());
+        Ok(configurations)
+    }
+
     // Ensure AI settings exist in database (should be populated by migrations)
     #[instrument(skip(self))]
     pub async fn ensure_ai_settings_exist(&self) -> Result<(), AppError> {

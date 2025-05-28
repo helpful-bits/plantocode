@@ -112,8 +112,10 @@
       "Bash(done)",
       "WebFetch(domain:docs.stripe.com)",
       "Bash(./scripts/migrate.sh:*)",
-      "WebFetch(domain:groq.com)"
+      "WebFetch(domain:groq.com)",
+      "Bash(rg \"TaskType::VoiceTranscription\" -A 10 -B 3)"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": false
 }

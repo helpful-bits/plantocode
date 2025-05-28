@@ -122,7 +122,7 @@ impl JobProcessor for TaskEnhancementProcessor {
             Some(model) if !model.is_empty() => model,
             _ => {
                 // Try to get task-specific model from project settings first, then server defaults
-                match crate::config::get_model_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir).await {
+                match crate::config::get_model_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await {
                     Ok(model) => model,
                     Err(_) => {
                         // If task-specific model fails, fall back to default LLM model
@@ -138,12 +138,12 @@ impl JobProcessor for TaskEnhancementProcessor {
         }
         
         // Get max tokens and temperature from project/server config
-        let max_tokens = Some(match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir).await {
+        let max_tokens = Some(match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await {
             Ok(tokens) => tokens,
             Err(_) => 4000, // Fallback
         });
         
-        let temperature = Some(match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir).await {
+        let temperature = Some(match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await {
             Ok(temp) => temp,
             Err(_) => 0.4, // Fallback
         });

@@ -82,6 +82,14 @@ pub async fn create_transcription_job_command(
     let audio_data = BASE64.decode(&args.audio_data)
         .map_err(|e| AppError::ValidationError(format!("Invalid base64 audio data: {}", e)))?;
     
+    // Estimate duration from audio data size (rough approximation)
+    // For uncompressed audio at 44.1kHz, 16-bit, mono: 44100 * 2 bytes per second = 88200 bytes/sec
+    // For typical compressed audio: estimate ~8000-12000 bytes per second
+    let estimated_duration_ms = (audio_data.len() as f64 / 10000.0 * 1000.0) as i64;
+    let duration_ms = std::cmp::max(estimated_duration_ms, 1000); // Minimum 1 second
+    
+    debug!("Estimated audio duration: {}ms for {} bytes", duration_ms, audio_data.len());
+    
     // Generate a job ID
     let job_id = format!("job_{}", Uuid::new_v4());
     
@@ -100,6 +108,7 @@ pub async fn create_transcription_job_command(
         audio_data,
         filename: filename.clone(),
         model: transcription_model.clone(),
+        duration_ms,
     };
     
     // Serialize the payload for the job creation utility
@@ -191,7 +200,7 @@ pub async fn correct_transcription_command(
     };
     
     // Get model for this task - check project settings first, then server defaults
-    let model = match crate::config::get_model_for_task_with_project(TaskType::VoiceCorrection, &project_dir).await {
+    let model = match crate::config::get_model_for_task_with_project(TaskType::VoiceCorrection, &project_dir, &app_handle).await {
         Ok(model) => model,
         Err(e) => {
             return Err(AppError::ConfigError(format!("Failed to get model for voice correction: {}", e)));
@@ -199,7 +208,7 @@ pub async fn correct_transcription_command(
     };
     
     // Get temperature for this task - check project settings first, then server defaults
-    let temperature = match crate::config::get_temperature_for_task_with_project(TaskType::VoiceCorrection, &project_dir).await {
+    let temperature = match crate::config::get_temperature_for_task_with_project(TaskType::VoiceCorrection, &project_dir, &app_handle).await {
         Ok(temp) => temp,
         Err(e) => {
             return Err(AppError::ConfigError(format!("Failed to get temperature for voice correction: {}", e)));
@@ -207,7 +216,7 @@ pub async fn correct_transcription_command(
     };
     
     // Get max tokens for this task - check project settings first, then server defaults
-    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(TaskType::VoiceCorrection, &project_dir).await {
+    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(TaskType::VoiceCorrection, &project_dir, &app_handle).await {
         Ok(tokens) => tokens,
         Err(e) => {
             return Err(AppError::ConfigError(format!("Failed to get max tokens for voice correction: {}", e)));
@@ -302,9 +311,17 @@ pub async fn transcribe_audio_direct_command(
     let transcription_client = client_factory::get_transcription_client(&app_handle)?;
     debug!("Using transcription client to send request to server proxy");
     
+    // Estimate duration from audio data size (rough approximation)
+    // For uncompressed audio at 44.1kHz, 16-bit, mono: 44100 * 2 bytes per second = 88200 bytes/sec
+    // For typical compressed audio: estimate ~8000-12000 bytes per second
+    let estimated_duration_ms = (args.audio_data.len() as f64 / 10000.0 * 1000.0) as i64;
+    let duration_ms = std::cmp::max(estimated_duration_ms, 1000); // Minimum 1 second
+    
+    debug!("Estimated audio duration: {}ms for {} bytes", duration_ms, args.audio_data.len());
+    
     // Call the transcribe method
     let transcribed_text = transcription_client
-        .transcribe(&args.audio_data, &args.filename, &transcription_model)
+        .transcribe(&args.audio_data, &args.filename, &transcription_model, duration_ms)
         .await
         .map_err(|e| {
             error!("Transcription failed via server proxy: {}", e);

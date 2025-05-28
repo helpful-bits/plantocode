@@ -42,5 +42,5 @@ pub trait ApiClient: Send + Sync {
 #[async_trait]
 pub trait TranscriptionClient: Send + Sync {
     /// Transcribe audio data
-    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str) -> AppResult<String>;
+    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64) -> AppResult<String>;
 }

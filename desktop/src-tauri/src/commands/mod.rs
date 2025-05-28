@@ -20,9 +20,10 @@ pub mod voice_commands;
 pub mod generic_task_commands;
 pub mod setup_commands;
 pub mod database_maintenance_commands;
+pub mod server_config_commands;
 
 // Re-export all command functions for easier imports
-pub use regex_commands::generate_regex_command;
+pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
 pub use regex_summary_commands::generate_regex_summary_command;
 pub use guidance_commands::generate_guidance_command;
 pub use file_system_commands::{
@@ -59,7 +60,7 @@ pub use implementation_plan_commands::{
 // Re-exports from path finding commands module
 pub use path_finding_commands::{
     find_relevant_files_command,
-    create_generate_directory_tree_job_command,
+    generate_directory_tree_command,
     create_path_correction_job_command,
 };
 
@@ -147,6 +148,14 @@ pub use database_maintenance_commands::{
     check_database_health_command,
     repair_database_command,
     reset_database_command,
+};
+
+// Re-exports from server config commands module
+pub use server_config_commands::{
+    fetch_server_configurations_command,
+    get_cached_config_value_command,
+    get_all_cached_config_values_command,
+    refresh_server_config_cache_command,
 };
 
 // All command functions will return AppResult<T> directly

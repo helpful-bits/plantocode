@@ -162,6 +162,10 @@ export function useFileSelectionManager({
       applySelectionsFromPaths: externalPathHandler.applySelectionsFromPaths,
       replaceAllSelectionsWithPaths:
         externalPathHandler.replaceAllSelectionsWithPaths,
+      
+      // Workflow integration aliases
+      addPathsToSelection: externalPathHandler.applySelectionsFromPaths,
+      replaceSelectionWithPaths: externalPathHandler.replaceAllSelectionsWithPaths,
 
       // History operations
       undoSelection: fileSelectionHistory.undoSelection,

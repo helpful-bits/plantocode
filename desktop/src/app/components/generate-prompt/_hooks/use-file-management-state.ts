@@ -13,7 +13,7 @@ import {
   useProjectFileList,
   type FileInfo,
 } from "./file-management/use-project-file-list";
-import { useRelevantFilesFinder } from "./file-management/use-relevant-files-finder";
+import { useFileFinderWorkflow } from "./file-management/workflow/useFileFinderWorkflow";
 
 
 
@@ -129,49 +129,35 @@ export function useFileManagementState({
     [fileSelectionManager]
   );
 
-  // Handler for paths found by AI - translates paths into selection actions
-  const handlePathsFoundByAI = useCallback(
-    (paths: string[]) => {
-      if (paths.length > 0) {
-        // Use the appropriate function based on the mode
-        if (findFilesMode === "replace") {
-          replaceSelectionWithPaths(paths);
-        } else {
-          addPathsToSelection(paths);
-        }
 
-        // Explicitly set filter mode to 'selected' when we get results
-        setFilterModeState("selected");
-      }
-    },
-    [findFilesMode, replaceSelectionWithPaths, addPathsToSelection]
-  );
-
-  // SECTION 6: AI INTEGRATION - For finding relevant files with AI
-  const relevantFilesFinder = useRelevantFilesFinder({
-    activeSessionId,
-    projectDirectory,
+  // SECTION 6: FILE FINDER INTEGRATION - For finding relevant files
+  const fileFinderWorkflow = useFileFinderWorkflow({
+    activeSessionId: activeSessionId || "",
+    projectDirectory: projectDirectory || "",
     taskDescription,
-    includedPaths: fileSelectionManager.includedPaths,
-    searchSelectedFilesOnly,
-    onComplete: handlePathsFoundByAI,
+    excludedPaths: fileSelectionManager.excludedPaths,
+    rawFilesMap: rawFilesMap || {},
+    replaceSelection: replaceSelectionWithPaths,
+    extendSelection: addPathsToSelection,
+    timeout: 120000, // 2 minute timeout
   });
 
-  // Function to find relevant files - coordination between user action and AI service
+  // Function to find relevant files - coordination between user action and file finder service
+  // Handles cases where activeSessionId or projectDirectory might not be ready yet
   const findRelevantFilesCallback = useCallback(async (): Promise<void> => {
-    if (!taskDescription.trim() || relevantFilesFinder.isFindingFiles) {
+    if (!taskDescription.trim() || fileFinderWorkflow.isWorkflowRunning || !activeSessionId || !projectDirectory) {
       return;
     }
 
     try {
-      await relevantFilesFinder.executeFindRelevantFiles();
+      await fileFinderWorkflow.executeWorkflow();
     } catch (error) {
       console.error(
         "[FileManagementState] Error finding relevant files:",
         error
       );
     }
-  }, [taskDescription, relevantFilesFinder]);
+  }, [taskDescription, fileFinderWorkflow, activeSessionId, projectDirectory]);
 
   // SECTION 7: UI ADAPTERS - Interface adapters for consumer components
   // Adapter for bulk toggle to match expected interface
@@ -225,9 +211,11 @@ export function useFileManagementState({
       // FILE CONTENTS - Backend handles file content loading, no UI preview needed
       fileContentsMap: {},
 
-      // AI INTEGRATION STATE
-      isFindingFiles: Boolean(relevantFilesFinder.isFindingFiles),
-      findingFilesJobId: relevantFilesFinder.findingFilesJobId,
+      // FILE FINDER INTEGRATION STATE
+      isFindingFiles: Boolean(fileFinderWorkflow.isWorkflowRunning),
+      findingFilesJobId: undefined, // No longer available in new workflow
+      currentWorkflowStage: fileFinderWorkflow.currentStage,
+      workflowError: fileFinderWorkflow.workflowError,
 
       // SELECTION ACTIONS
       setSearchTerm: updateSearchTerm,
@@ -271,9 +259,10 @@ export function useFileManagementState({
       fileSelectionManager.canUndo,
       fileSelectionManager.canRedo,
 
-      // AI integration state
-      relevantFilesFinder.isFindingFiles,
-      relevantFilesFinder.findingFilesJobId,
+      // File finder integration state
+      fileFinderWorkflow.isWorkflowRunning,
+      fileFinderWorkflow.currentStage,
+      fileFinderWorkflow.workflowError,
 
       // Action callbacks
       updateSearchTerm,

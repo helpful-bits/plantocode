@@ -90,18 +90,18 @@ impl JobProcessor for VoiceCorrectionProcessor {
             Some(model) if !model.is_empty() => model,
             _ => {
                 let project_dir = payload.project_directory.as_deref().unwrap_or("");
-                crate::config::get_model_for_task_with_project(crate::models::TaskType::VoiceCorrection, project_dir).await?
+                crate::config::get_model_for_task_with_project(crate::models::TaskType::VoiceCorrection, project_dir, &app_handle).await?
             }
         };
         
         // Get max tokens and temperature from project/server config
         let project_dir = payload.project_directory.as_deref().unwrap_or("");
-        let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::VoiceCorrection, project_dir).await {
+        let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::VoiceCorrection, project_dir, &app_handle).await {
             Ok(tokens) => Some(tokens),
             Err(_) => Some(4000), // Fallback only if config error occurs
         };
         
-        let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::VoiceCorrection, project_dir).await {
+        let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::VoiceCorrection, project_dir, &app_handle).await {
             Ok(temp) => Some(temp),
             Err(_) => Some(0.3), // Fallback only if config error occurs
         };

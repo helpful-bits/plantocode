@@ -3,7 +3,6 @@
 import { Replace, Plus } from "lucide-react";
 
 import { Button } from "@/ui/button";
-import { cn } from "@/utils/utils";
 
 interface FindModeToggleProps {
   currentMode: "replace" | "extend";

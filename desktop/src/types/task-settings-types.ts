@@ -15,7 +15,6 @@ export interface TaskModelSettings {
 export interface TaskSettings {
   pathFinder: TaskModelSettings;
   transcription: TaskModelSettings; // maps to voice_transcription
-  regexGeneration: TaskModelSettings;
   regexSummaryGeneration: TaskModelSettings;
   pathCorrection: TaskModelSettings;
   textImprovement: TaskModelSettings;
@@ -25,7 +24,6 @@ export interface TaskSettings {
   guidanceGeneration: TaskModelSettings;
   implementationPlan: TaskModelSettings;
   genericLlmStream: TaskModelSettings;
-  generateDirectoryTree: TaskModelSettings;
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
 }

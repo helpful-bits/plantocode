@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use log::{info, error, debug};
+use log::{info, error, debug, warn};
 use tauri::{AppHandle, Manager};
 use async_trait::async_trait;
 
@@ -39,6 +39,63 @@ impl TextCorrectionPostTranscriptionProcessor {
             Return ONLY the corrected text without comments or explanations."#, 
             language = language
         )
+    }
+
+    /// Helper method to get model with fallback logic
+    async fn get_model_with_fallback(
+        app_handle: &AppHandle,
+        project_dir: &str,
+        primary_task: crate::models::TaskType,
+        fallback_task: crate::models::TaskType,
+    ) -> AppResult<String> {
+        match crate::config::get_model_for_task_with_project(primary_task, project_dir, app_handle).await {
+            Ok(model) => Ok(model),
+            Err(e_primary) => {
+                warn!("Failed to get model for primary task {}: {}. Trying fallback.", primary_task.to_string(), e_primary);
+                crate::config::get_model_for_task_with_project(fallback_task, project_dir, app_handle).await.map_err(|e_fallback| {
+                    error!("Failed to get model for fallback task {}: {}. No model determined.", fallback_task.to_string(), e_fallback);
+                    AppError::ConfigError(format!("Failed to determine model for {} (primary error: {}) or {} (fallback error: {})", primary_task.to_string(), e_primary, fallback_task.to_string(), e_fallback))
+                })
+            }
+        }
+    }
+
+    /// Helper method to get temperature with fallback logic
+    async fn get_temperature_with_fallback(
+        app_handle: &AppHandle,
+        project_dir: &str,
+        primary_task: crate::models::TaskType,
+        fallback_task: crate::models::TaskType,
+    ) -> AppResult<f32> {
+        match crate::config::get_temperature_for_task_with_project(primary_task, project_dir, app_handle).await {
+            Ok(val) => Ok(val),
+            Err(e_primary) => {
+                warn!("Failed to get temperature for primary task {}: {}. Trying fallback.", primary_task.to_string(), e_primary);
+                crate::config::get_temperature_for_task_with_project(fallback_task, project_dir, app_handle).await.map_err(|e_fallback| {
+                    error!("Failed to get temperature for fallback task {}: {}. No config determined.", fallback_task.to_string(), e_fallback);
+                    AppError::ConfigError(format!("Failed to determine temperature for {} (primary error: {}) or {} (fallback error: {})", primary_task.to_string(), e_primary, fallback_task.to_string(), e_fallback))
+                })
+            }
+        }
+    }
+
+    /// Helper method to get max_tokens with fallback logic
+    async fn get_max_tokens_with_fallback(
+        app_handle: &AppHandle,
+        project_dir: &str,
+        primary_task: crate::models::TaskType,
+        fallback_task: crate::models::TaskType,
+    ) -> AppResult<u32> {
+        match crate::config::get_max_tokens_for_task_with_project(primary_task, project_dir, app_handle).await {
+            Ok(val) => Ok(val),
+            Err(e_primary) => {
+                warn!("Failed to get max_tokens for primary task {}: {}. Trying fallback.", primary_task.to_string(), e_primary);
+                crate::config::get_max_tokens_for_task_with_project(fallback_task, project_dir, app_handle).await.map_err(|e_fallback| {
+                    error!("Failed to get max_tokens for fallback task {}: {}. No config determined.", fallback_task.to_string(), e_fallback);
+                    AppError::ConfigError(format!("Failed to determine max_tokens for {} (primary error: {}) or {} (fallback error: {})", primary_task.to_string(), e_primary, fallback_task.to_string(), e_fallback))
+                })
+            }
+        }
     }
 }
 
@@ -95,29 +152,26 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
         // Get the model and settings from project/server config
         // Default to text improvement models if the specific ones aren't available
         let project_dir = payload.project_directory.as_deref().unwrap_or("");
-        let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, project_dir).await {
-            Ok(m) => m,
-            Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_dir).await {
-                Ok(m) => m,
-                Err(e) => return Err(AppError::ConfigError(format!("Failed to get model: {}", e))),
-            },
-        };
+        let model = Self::get_model_with_fallback(
+            &app_handle,
+            project_dir,
+            crate::models::TaskType::TextCorrectionPostTranscription,
+            crate::models::TaskType::TextImprovement,
+        ).await?;
         
-        let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, project_dir).await {
-            Ok(t) => t,
-            Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_dir).await {
-                Ok(t) => t,
-                Err(_) => 0.7, // Default fallback
-            },
-        };
+        let temperature = Self::get_temperature_with_fallback(
+            &app_handle,
+            project_dir,
+            crate::models::TaskType::TextCorrectionPostTranscription,
+            crate::models::TaskType::TextImprovement,
+        ).await?;
         
-        let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, project_dir).await {
-            Ok(t) => t,
-            Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_dir).await {
-                Ok(t) => t,
-                Err(_) => 2000, // Default fallback
-            },
-        };
+        let max_tokens = Self::get_max_tokens_with_fallback(
+            &app_handle,
+            project_dir,
+            crate::models::TaskType::TextCorrectionPostTranscription,
+            crate::models::TaskType::TextImprovement,
+        ).await?;
         
         // Create options for the API client
         let api_options = ApiClientOptions {

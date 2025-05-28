@@ -100,6 +100,7 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
                 path_finder_args.temperature_override,
                 path_finder_args.max_tokens_override,
                 path_finder_args.options,
+                path_finder_args.directory_tree,
                 app_handle.clone()
             ).await {
                 Ok(result) => {

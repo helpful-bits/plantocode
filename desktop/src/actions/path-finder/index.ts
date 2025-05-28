@@ -1,7 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import { getModelSettingsForProject } from "@/actions/project-settings";
-import { getRuntimeAIConfig } from "@/actions/config.actions";
 import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
 
@@ -17,12 +15,15 @@ export async function findRelevantFilesAction({
   taskDescription: string;
   options?: Partial<{
     modelOverride?: string;
+    temperatureOverride?: number;
+    maxTokensOverride?: number;
     projectDirectory?: string;
     includedFiles?: string[];
     forceExcludedFiles?: string[];
     includeFileContents?: boolean;
     maxFilesWithContent?: number;
     priorityFileTypes?: string[];
+    directoryTree?: string;
   }>;
 }): Promise<ActionState<{ jobId: string }>> {
   try {
@@ -42,46 +43,8 @@ export async function findRelevantFilesAction({
       };
     }
 
-    // Get path finder settings from RuntimeAIConfig (loaded from server database)
-    const runtimeConfig = await getRuntimeAIConfig();
-    if (!runtimeConfig?.isSuccess || !runtimeConfig.data?.tasks?.pathFinder) {
-      return {
-        isSuccess: false,
-        message: "Runtime AI configuration not available. Please ensure server connection is established.",
-      };
-    }
-
-    const pathfinderDefaults = runtimeConfig.data.tasks.pathFinder;
-    const pathfinderSettings = {
-      model: pathfinderDefaults.model,
-      temperature: pathfinderDefaults.temperature,
-      maxTokens: pathfinderDefaults.maxTokens,
-    };
-
-    if (options.projectDirectory) {
-      try {
-        const modelSettingsResult = await getModelSettingsForProject(
-          options.projectDirectory
-        );
-        if (modelSettingsResult?.isSuccess && modelSettingsResult.data?.pathFinder) {
-          const pathFinderSettings = modelSettingsResult.data.pathFinder;
-          if (pathFinderSettings.model) {
-            pathfinderSettings.model = pathFinderSettings.model;
-          }
-
-          if (pathFinderSettings.temperature !== undefined) {
-            pathfinderSettings.temperature = pathFinderSettings.temperature;
-          }
-
-          if (pathFinderSettings.maxTokens) {
-            pathfinderSettings.maxTokens = pathFinderSettings.maxTokens;
-          }
-        }
-      } catch (err) {
-        // Could not load project settings for path finder, continuing with defaults
-        // Continue with defaults
-      }
-    }
+    // Backend will handle model configuration resolution using crate::config
+    // We only pass overrides if explicitly provided
 
     // Construct PathFinderOptionsArgs to match Rust struct
     const currentOptions = options || {};
@@ -103,10 +66,11 @@ export async function findRelevantFilesAction({
         sessionId: sessionId,
         taskDescription: taskDescription,
         projectDirectory: currentOptions.projectDirectory,
-        modelOverride: currentOptions.modelOverride || pathfinderSettings.model,
-        temperatureOverride: pathfinderSettings.temperature,
-        maxTokensOverride: pathfinderSettings.maxTokens,
+        modelOverride: currentOptions.modelOverride || null,
+        temperatureOverride: currentOptions.temperatureOverride || null,
+        maxTokensOverride: currentOptions.maxTokensOverride || null,
         options: allOptionsNull ? null : pathFinderOptionsArg,
+        directoryTree: currentOptions.directoryTree,
       }
     );
 

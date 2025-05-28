@@ -67,7 +67,7 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
         
         // Call the transcribe method
         let result = transcription_client
-            .transcribe(&payload.audio_data, &payload.filename, &payload.model)
+            .transcribe(&payload.audio_data, &payload.filename, &payload.model, payload.duration_ms)
             .await;
             
         match result {

@@ -185,20 +185,21 @@ impl ServerProxyClient {
 
 #[async_trait]
 impl TranscriptionClient for ServerProxyClient {
-    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str) -> AppResult<String> {
+    async fn transcribe(&self, audio_data: &[u8], filename: &str, model: &str, duration_ms: i64) -> AppResult<String> {
         info!("Sending transcription request through server proxy with model: {}", model);
         debug!("Audio file: {}, size: {} bytes", filename, audio_data.len());
 
         // Get auth token
         let auth_token = self.get_auth_token().await?;
         
-        // Use the OpenRouter audio transcriptions endpoint
-        let transcription_url = format!("{}/api/proxy/openrouter/audio/transcriptions", self.server_url);
+        // Use the audio transcriptions endpoint
+        let transcription_url = format!("{}/api/proxy/audio/transcriptions", self.server_url);
 
         let mime_type_str = Self::get_mime_type_from_filename(filename)?;
 
         let form = multipart::Form::new()
             .text("model", model.to_string())
+            .text("duration_ms", duration_ms.to_string())
             .part("file", multipart::Part::bytes(audio_data.to_vec())
                 .file_name(filename.to_string())
                 .mime_str(mime_type_str).map_err(|e| AppError::InternalError(format!("Invalid mime type: {}", e)))?); 

@@ -12,18 +12,18 @@ use crate::models::{BackgroundJob, JobStatus};
 pub enum JobType {
     OpenRouterLlm,
     OpenRouterTranscription,
+    VoiceTranscription,
     PathFinder,
     ImplementationPlan,
-    RegexGeneration,
     GuidanceGeneration,
     PathCorrection,
     TextImprovement,
     TaskEnhancement,
     VoiceCorrection,
-    GenerateDirectoryTree,
     TextCorrectionPostTranscription,
     GenericLlmStream,
-    RegexSummaryGeneration
+    RegexSummaryGeneration,
+    RegexPatternGeneration
 }
 
 impl TryFrom<&str> for JobType {
@@ -33,18 +33,18 @@ impl TryFrom<&str> for JobType {
         match value {
             "OPENROUTER_LLM" => Ok(JobType::OpenRouterLlm),
             "OPENROUTER_TRANSCRIPTION" => Ok(JobType::OpenRouterTranscription),
+            "VOICE_TRANSCRIPTION" => Ok(JobType::VoiceTranscription),
             "PATH_FINDER" => Ok(JobType::PathFinder),
             "IMPLEMENTATION_PLAN" => Ok(JobType::ImplementationPlan),
-            "REGEX_GENERATION" => Ok(JobType::RegexGeneration),
             "GUIDANCE_GENERATION" => Ok(JobType::GuidanceGeneration),
             "PATH_CORRECTION" => Ok(JobType::PathCorrection),
             "TEXT_IMPROVEMENT" => Ok(JobType::TextImprovement),
             "TASK_ENHANCEMENT" => Ok(JobType::TaskEnhancement),
             "VOICE_CORRECTION" => Ok(JobType::VoiceCorrection),
-            "GENERATE_DIRECTORY_TREE" => Ok(JobType::GenerateDirectoryTree),
             "TEXT_CORRECTION_POST_TRANSCRIPTION" => Ok(JobType::TextCorrectionPostTranscription),
             "GENERIC_LLM_STREAM" => Ok(JobType::GenericLlmStream),
             "REGEX_SUMMARY_GENERATION" => Ok(JobType::RegexSummaryGeneration),
+            "REGEX_PATTERN_GENERATION" => Ok(JobType::RegexPatternGeneration),
             _ => Err(AppError::JobError(format!("Unknown job type: {}", value))),
         }
     }
@@ -55,18 +55,18 @@ impl std::fmt::Display for JobType {
         match self {
             JobType::OpenRouterLlm => write!(f, "OPENROUTER_LLM"),
             JobType::OpenRouterTranscription => write!(f, "OPENROUTER_TRANSCRIPTION"),
+            JobType::VoiceTranscription => write!(f, "VOICE_TRANSCRIPTION"),
             JobType::PathFinder => write!(f, "PATH_FINDER"),
             JobType::ImplementationPlan => write!(f, "IMPLEMENTATION_PLAN"),
-            JobType::RegexGeneration => write!(f, "REGEX_GENERATION"),
             JobType::GuidanceGeneration => write!(f, "GUIDANCE_GENERATION"),
             JobType::PathCorrection => write!(f, "PATH_CORRECTION"),
             JobType::TextImprovement => write!(f, "TEXT_IMPROVEMENT"),
             JobType::TaskEnhancement => write!(f, "TASK_ENHANCEMENT"),
             JobType::VoiceCorrection => write!(f, "VOICE_CORRECTION"),
-            JobType::GenerateDirectoryTree => write!(f, "GENERATE_DIRECTORY_TREE"),
             JobType::TextCorrectionPostTranscription => write!(f, "TEXT_CORRECTION_POST_TRANSCRIPTION"),
             JobType::GenericLlmStream => write!(f, "GENERIC_LLM_STREAM"),
             JobType::RegexSummaryGeneration => write!(f, "REGEX_SUMMARY_GENERATION"),
+            JobType::RegexPatternGeneration => write!(f, "REGEX_PATTERN_GENERATION"),
         }
     }
 }
@@ -105,6 +105,7 @@ pub struct OpenRouterTranscriptionPayload {
     pub audio_data: Vec<u8>,
     pub filename: String,
     pub model: String, // Model identifier to use (e.g., "openai/whisper-large-v3")
+    pub duration_ms: i64, // Duration of audio in milliseconds
 }
 
 // Input payload for Path Finder job (used for deserialization from frontend)
@@ -119,6 +120,7 @@ pub struct InputPathFinderPayload {
     pub temperature_override: Option<f32>,
     pub max_tokens_override: Option<u32>,
     pub options: crate::jobs::processors::path_finder_types::PathFinderOptions,
+    pub directory_tree: Option<String>,
 }
 
 // Payload for Path Finder job with additional fields needed by the processor
@@ -133,7 +135,7 @@ pub struct PathFinderPayload {
     pub system_prompt: String,
     pub temperature: f32,
     pub max_output_tokens: Option<u32>,
-    pub directory_tree: String,
+    pub directory_tree: Option<String>,
     pub relevant_file_contents: std::collections::HashMap<String, String>,
     pub estimated_input_tokens: Option<u32>,
     pub options: crate::jobs::processors::path_finder_types::PathFinderOptions,
@@ -157,21 +159,6 @@ pub struct ImplementationPlanPayload {
     pub project_directory: String,
 }
 
-// Payload for Regex Generation job
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegexGenerationPayload {
-    pub background_job_id: String,
-    pub session_id: String,
-    pub description: String,
-    pub examples: Option<Vec<String>>,
-    pub target_language: Option<String>,
-    pub model_override: Option<String>,
-    pub temperature: f32,
-    pub max_output_tokens: Option<u32>,
-    pub target_field: Option<String>,
-    pub project_directory: String,
-}
 
 // Payload for Guidance Generation job
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +184,7 @@ pub struct PathCorrectionPayload {
     pub session_id: String,
     pub paths_to_correct: String,
     pub context_description: String,
+    pub directory_tree: Option<String>,
     pub system_prompt_override: Option<String>,
     pub model_override: Option<String>,
     pub temperature: Option<f32>,
@@ -241,15 +229,6 @@ pub struct VoiceCorrectionPayload {
 }
 
 
-// Payload for Generate Directory Tree job
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GenerateDirectoryTreePayload {
-    pub background_job_id: String,
-    pub session_id: String,
-    pub options: Option<crate::utils::directory_tree::DirectoryTreeOptions>,
-    pub project_directory: String,
-}
 
 // Payload for Text Correction Post Transcription job
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -278,6 +257,20 @@ pub struct GenericLlmStreamPayload {
     pub project_directory: Option<String>,
 }
 
+// Payload for Regex Pattern Generation job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegexPatternGenerationPayload {
+    pub background_job_id: String,
+    pub session_id: String,
+    pub task_description: String,
+    pub project_directory: String, // For model/temp config
+    pub directory_tree: Option<String>, // For context
+    pub model_override: Option<String>,
+    pub temperature_override: Option<f32>,
+    pub max_tokens_override: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum JobPayload {
@@ -285,16 +278,15 @@ pub enum JobPayload {
     OpenRouterTranscription(OpenRouterTranscriptionPayload),
     PathFinder(PathFinderPayload),
     ImplementationPlan(ImplementationPlanPayload),
-    RegexGeneration(RegexGenerationPayload),
     GuidanceGeneration(GuidanceGenerationPayload),
     PathCorrection(PathCorrectionPayload),
     TextImprovement(TextImprovementPayload),
     TaskEnhancement(TaskEnhancementPayload),
     VoiceCorrection(VoiceCorrectionPayload),
-    GenerateDirectoryTree(GenerateDirectoryTreePayload),
     TextCorrectionPostTranscription(TextCorrectionPostTranscriptionPayload),
     GenericLlmStream(GenericLlmStreamPayload),
     RegexSummaryGeneration(crate::jobs::processors::RegexSummaryGenerationPayload),
+    RegexPatternGeneration(RegexPatternGenerationPayload),
 }
 
 // Structured types for Implementation Plan parsing

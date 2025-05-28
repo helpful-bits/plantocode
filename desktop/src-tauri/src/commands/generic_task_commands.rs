@@ -65,9 +65,9 @@ pub async fn generic_llm_stream_command(
     let model = if let Some(model) = args.model.clone() {
         model
     } else {
-        match crate::config::get_model_for_task_with_project(TaskType::GenericLlmStream, &project_dir).await {
+        match crate::config::get_model_for_task_with_project(TaskType::GenericLlmStream, &project_dir, &app_handle).await {
             Ok(model) => model,
-            Err(_) => match crate::config::get_model_for_task_with_project(TaskType::TextImprovement, &project_dir).await {
+            Err(_) => match crate::config::get_model_for_task_with_project(TaskType::TextImprovement, &project_dir, &app_handle).await {
                 Ok(model) => model,
                 Err(e) => return Err(AppError::ConfigError(
                     format!("Failed to get model for generic LLM stream: {}", e)
@@ -80,9 +80,9 @@ pub async fn generic_llm_stream_command(
     let temperature = if let Some(temp) = args.temperature {
         temp
     } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::GenericLlmStream, &project_dir).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::GenericLlmStream, &project_dir, &app_handle).await {
             Ok(temp) => temp,
-            Err(_) => match crate::config::get_temperature_for_task_with_project(TaskType::TextImprovement, &project_dir).await {
+            Err(_) => match crate::config::get_temperature_for_task_with_project(TaskType::TextImprovement, &project_dir, &app_handle).await {
                 Ok(temp) => temp,
                 Err(e) => return Err(AppError::ConfigError(
                     format!("Failed to get temperature for generic LLM stream: {}", e)
@@ -95,9 +95,9 @@ pub async fn generic_llm_stream_command(
     let max_tokens = if let Some(tokens) = args.max_output_tokens {
         tokens
     } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::GenericLlmStream, &project_dir).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::GenericLlmStream, &project_dir, &app_handle).await {
             Ok(tokens) => tokens,
-            Err(_) => match crate::config::get_max_tokens_for_task_with_project(TaskType::TextImprovement, &project_dir).await {
+            Err(_) => match crate::config::get_max_tokens_for_task_with_project(TaskType::TextImprovement, &project_dir, &app_handle).await {
                 Ok(tokens) => tokens,
                 Err(e) => return Err(AppError::ConfigError(
                     format!("Failed to get max tokens for generic LLM stream: {}", e)
@@ -241,7 +241,7 @@ pub async fn enhance_task_description_command(
         task_model
     } else {
         // Get from project settings first, then server config
-        match crate::config::get_model_for_task_with_project(TaskType::TaskEnhancement, &project_directory).await {
+        match crate::config::get_model_for_task_with_project(TaskType::TaskEnhancement, &project_directory, &app_handle).await {
             Ok(model) => model,
             Err(e) => {
                 info!("Failed to get model from config, will use fallback in job creation: {}", e);
@@ -257,7 +257,7 @@ pub async fn enhance_task_description_command(
         task_temp
     } else {
         // Get from project settings first, then server config
-        match crate::config::get_temperature_for_task_with_project(TaskType::TaskEnhancement, &project_directory).await {
+        match crate::config::get_temperature_for_task_with_project(TaskType::TaskEnhancement, &project_directory, &app_handle).await {
             Ok(temp) => temp,
             Err(_) => 0.4, // Fallback for task enhancement
         }
@@ -270,7 +270,7 @@ pub async fn enhance_task_description_command(
         task_tokens
     } else {
         // Get from project settings first, then server config
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::TaskEnhancement, &project_directory).await {
+        match crate::config::get_max_tokens_for_task_with_project(TaskType::TaskEnhancement, &project_directory, &app_handle).await {
             Ok(tokens) => tokens,
             Err(_) => 4000, // Fallback for task enhancement
         }

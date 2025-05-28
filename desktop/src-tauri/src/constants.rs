@@ -72,7 +72,7 @@ pub static BINARY_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
 // Job settings
 pub const DEFAULT_JOB_TIMEOUT_MS: u64 = 300000; // 5 minutes
-pub const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 600; // 10 minutes
+pub const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 300; // 5 minutes
 pub const DEFAULT_JOB_RETRY_COUNT: u32 = 3;
 pub const DEFAULT_JOB_RETRY_DELAY_MS: u64 = 1000; // 1 second
 

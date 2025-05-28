@@ -397,6 +397,16 @@ export function useVoiceTranscriptionProcessing({
                       setTextStatus("done");
                       setTranscriptionJobId(null);
                       updateState({ isProcessing: false });
+                    } else if (
+                      typeof correctionResult.data === "object" &&
+                      correctionResult.data &&
+                      "isBackgroundJob" in correctionResult.data &&
+                      "jobId" in correctionResult.data
+                    ) {
+                      // Correction submitted as background job, update job ID to track the correction job
+                      const newJobId = correctionResult.data.jobId;
+                      console.log(`[VoiceRecording] Switching to monitor correction job: ${newJobId}`);
+                      setTranscriptionJobId(newJobId);
                     }
                     // If background job, it will be picked up in the next useEffect cycle
                   } else {
