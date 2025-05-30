@@ -221,6 +221,8 @@ const VoiceTranscription = function VoiceTranscription({
 
       return () => clearTimeout(timeoutId);
     }
+    
+    return undefined;
   }, [activeSessionId, disabled, requestPermissionAndRefreshDevices]);
 
   // Try to identify the default device based on current information
