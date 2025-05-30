@@ -192,15 +192,13 @@ pub enum TaskType {
     PathFinder,
     TextImprovement,
     VoiceTranscription,
-    VoiceCorrection,
+    TextCorrection,
     PathCorrection,
     GuidanceGeneration,
     TaskEnhancement,
-    TextCorrectionPostTranscription,
     GenericLlmStream,
     RegexSummaryGeneration,
     RegexPatternGeneration,
-    ServerProxyTranscription,
     Streaming,
     Unknown,
 }
@@ -212,15 +210,13 @@ impl ToString for TaskType {
             TaskType::PathFinder => "path_finder".to_string(),
             TaskType::TextImprovement => "text_improvement".to_string(),
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
-            TaskType::VoiceCorrection => "voice_correction".to_string(),
+            TaskType::TextCorrection => "text_correction".to_string(),
             TaskType::PathCorrection => "path_correction".to_string(),
             TaskType::GuidanceGeneration => "guidance_generation".to_string(),
             TaskType::TaskEnhancement => "task_enhancement".to_string(),
-            TaskType::TextCorrectionPostTranscription => "text_correction_post_transcription".to_string(),
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
             TaskType::RegexSummaryGeneration => "regex_summary_generation".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
-            TaskType::ServerProxyTranscription => "server_proxy_transcription".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -236,15 +232,13 @@ impl std::str::FromStr for TaskType {
             "path_finder" => Ok(TaskType::PathFinder),
             "text_improvement" => Ok(TaskType::TextImprovement),
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
-            "voice_correction" => Ok(TaskType::VoiceCorrection),
+            "text_correction" => Ok(TaskType::TextCorrection),
             "path_correction" => Ok(TaskType::PathCorrection),
             "guidance_generation" => Ok(TaskType::GuidanceGeneration),
             "task_enhancement" => Ok(TaskType::TaskEnhancement),
-            "text_correction_post_transcription" => Ok(TaskType::TextCorrectionPostTranscription),
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
             "regex_summary_generation" => Ok(TaskType::RegexSummaryGeneration),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
-            "server_proxy_transcription" => Ok(TaskType::ServerProxyTranscription),
             "streaming" => Ok(TaskType::Streaming),
             _ => Ok(TaskType::Unknown),
         }
@@ -279,6 +273,7 @@ pub struct BackgroundJob {
     pub temperature: Option<f32>,
     pub include_syntax: Option<bool>,
     pub metadata: Option<String>,
+    pub system_prompt_id: Option<String>, // Track which system prompt was used for this job
 }
 
 // Task settings model (DB struct - no camelCase conversion)
@@ -290,6 +285,32 @@ pub struct TaskSettings {
     pub model: String, // OpenRouter model string
     pub max_tokens: i32,
     pub temperature: Option<f32>,
+}
+
+// System prompt for a specific task type and session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemPrompt {
+    pub id: String,
+    pub session_id: String,
+    pub task_type: String,
+    pub system_prompt: String,
+    pub is_default: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+// Default system prompt template
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultSystemPrompt {
+    pub id: String,
+    pub task_type: String,
+    pub system_prompt: String,
+    pub description: Option<String>,
+    pub version: String,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 // Generic action state type for async operations

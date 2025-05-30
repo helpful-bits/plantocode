@@ -27,8 +27,7 @@ export function FileManagementProvider({
   const prevSessionIdRef = useRef<string | null>(null);
   const prevTransitionStateRef = useRef<boolean>(false);
 
-  // Initialize file management state - it gets projectDirectory from useProject context internally
-  const fileManagementState = useFileManagementState({});
+  const fileManagementState = useFileManagementState();
 
   // Update refs for debugging purposes (kept for debugging)
   prevSessionIdRef.current = activeSessionId;

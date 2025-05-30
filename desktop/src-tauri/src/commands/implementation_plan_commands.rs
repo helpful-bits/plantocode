@@ -10,6 +10,8 @@ use crate::models::TaskType;
 use crate::db_utils::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::models::JobCommandResponse;
+use crate::utils::{PromptComposer, CompositionContextBuilder};
+use crate::db_utils::SettingsRepository;
 
 /// Request payload for the implementation plan generation command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -217,15 +219,28 @@ pub async fn estimate_implementation_plan_tokens_command(
         }
     }
     
-    // Generate the EXACT SAME prompt as ImplementationPlanProcessor
-    let prompt = crate::prompts::implementation_plan::generate_enhanced_implementation_plan_prompt(
-        &task_description,
-        project_structure.as_deref(),
-        &file_contents_map
-    );
+    // Get settings repository for PromptComposer
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Estimate the number of tokens in the prompt (SAME LOGIC AS ImplementationPlanProcessor)
-    let estimated_prompt_tokens = crate::utils::token_estimator::estimate_tokens(&prompt);
+    // Create composition context
+    let composition_context = CompositionContextBuilder::new(
+        session_id.clone(),
+        TaskType::ImplementationPlan,
+        task_description.clone(),
+    )
+    .project_directory(Some(project_directory.clone()))
+    .project_structure(project_structure.clone())
+    .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
+    .build();
+
+    // Use PromptComposer to generate the complete prompt
+    let prompt_composer = PromptComposer::new();
+    let composed_prompt = prompt_composer
+        .compose_prompt(&composition_context, &settings_repo)
+        .await?;
+    
+    // Estimate the number of tokens in the final prompt
+    let estimated_prompt_tokens = composed_prompt.estimated_tokens.unwrap_or(0) as u32;
     
     Ok(ImplementationPlanTokenEstimateResponse {
         estimated_tokens: estimated_prompt_tokens,
@@ -280,65 +295,47 @@ pub async fn get_implementation_plan_prompt_command(
         }
     }
     
-    // Generate the EXACT SAME prompt as ImplementationPlanProcessor
-    let prompt = crate::prompts::implementation_plan::generate_enhanced_implementation_plan_prompt(
-        &task_description,
-        project_structure.as_deref(),
-        &file_contents_map
-    );
+    // Get settings repository for PromptComposer
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Extract the system prompt from the agent_instructions section
-    let system_prompt = if prompt.contains("<agent_instructions>") {
-        // Extract the content between <agent_instructions> and </agent_instructions>
-        if let Some(start) = prompt.find("<agent_instructions>") {
-            if let Some(end) = prompt.find("</agent_instructions>") {
-                let start_content = start + "<agent_instructions>".len();
-                if start_content < end {
-                    prompt[start_content..end]
-                        .trim()
-                        .lines()
-                        .map(|line| line.trim())
-                        .filter(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
+    // Create composition context
+    let composition_context = CompositionContextBuilder::new(
+        session_id.clone(),
+        TaskType::ImplementationPlan,
+        task_description.clone(),
+    )
+    .project_directory(Some(project_directory.clone()))
+    .project_structure(project_structure.clone())
+    .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
+    .build();
+
+    // Use PromptComposer to generate the complete prompt
+    let prompt_composer = PromptComposer::new();
+    let composed_prompt = prompt_composer
+        .compose_prompt(&composition_context, &settings_repo)
+        .await?;
+    
+    // Extract system and user prompts from the composed result
+    let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
+    let system_prompt = parts.get(0).unwrap_or(&"").to_string();
+    let user_prompt = parts.get(1).unwrap_or(&"").to_string();
+    
+    // Create combined prompt for backward compatibility
+    let combined_prompt = composed_prompt.final_prompt.clone();
+    
+    // Clean up the system prompt (already extracted above)
+    let final_system_prompt = if !system_prompt.is_empty() {
+        system_prompt
     } else {
-        String::new()
+        "You are an AI assistant specialized in creating detailed implementation plans for software development tasks.".to_string()
     };
     
-    // Create user prompt without the agent_instructions section
-    let user_prompt = if prompt.contains("<agent_instructions>") {
-        // Remove the entire agent_instructions section
-        let mut result = prompt.clone();
-        if let Some(start) = prompt.find("<agent_instructions>") {
-            if let Some(end) = prompt.find("</agent_instructions>") {
-                let end_tag = end + "</agent_instructions>".len();
-                // Find the next newline after the closing tag to keep formatting clean
-                let next_newline = prompt[end_tag..].find('\n').unwrap_or(0);
-                result.replace_range(start..end_tag + next_newline, "");
-                result.trim().to_string()
-            } else {
-                prompt.clone()
-            }
-        } else {
-            prompt.clone()
-        }
-    } else {
-        prompt.clone()
-    };
+    // The user prompt is already extracted above
     
     Ok(ImplementationPlanPromptResponse {
-        system_prompt,
-        user_prompt,
-        combined_prompt: prompt,
+        system_prompt: final_system_prompt,
+        user_prompt: user_prompt,
+        combined_prompt: combined_prompt,
     })
 }
 

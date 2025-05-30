@@ -3,13 +3,12 @@ use serde_json::json;
 use tauri::{AppHandle, Manager};
 
 use crate::api_clients::{ApiClient, client_trait::ApiClientOptions};
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, RegexPatternGenerationPayload};
 use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
-use crate::prompts::regex_pattern_generation::generate_regex_pattern_prompt;
-use crate::utils::get_timestamp;
+use crate::utils::{get_timestamp, PromptComposer, CompositionContextBuilder};
 
 pub struct RegexPatternGenerationProcessor;
 
@@ -39,6 +38,7 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         // Get dependencies from app state
         let repo_state = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>();
         let repo = repo_state.inner().clone();
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
         
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
@@ -51,12 +51,33 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         db_job.start_time = Some(timestamp);
         repo.update_job(&db_job).await?;
         
-        // Generate the regex pattern prompt
+        // Create enhanced composition context for sophisticated prompt generation
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::RegexPatternGeneration,
+            payload.task_description.clone(),
+        )
+        .project_directory(Some(payload.project_directory.clone()))
+        .codebase_structure(payload.directory_tree.clone())
+        .build();
+
+        // Use the enhanced prompt composer to generate sophisticated prompts
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Regex Pattern Generation prompt composition for job {}", job.id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        let prompt = composed_prompt.final_prompt;
+        let system_prompt_id = composed_prompt.system_prompt_id;
+        
         info!("Generating regex patterns for task: {}", &payload.task_description);
-        let prompt = generate_regex_pattern_prompt(
-            &payload.task_description,
-            payload.directory_tree.as_deref()
-        );
         
         // Create messages for the LLM
         let messages = vec![
@@ -158,6 +179,7 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         }
         
         db_job.metadata = Some(serde_json::Value::Object(metadata_map).to_string());
+        db_job.system_prompt_id = Some(system_prompt_id);
         
         // Update the job
         repo.update_job(&db_job).await?;

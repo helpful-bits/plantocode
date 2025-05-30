@@ -5,12 +5,12 @@ use serde_json;
 
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, GuidanceGenerationPayload};
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent, JobStatus};
-use crate::prompts::guidance::{generate_guidance_system_prompt, generate_guidance_user_prompt, generate_guidance_for_paths_user_prompt};
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
+use crate::models::{OpenRouterRequestMessage, OpenRouterContent, JobStatus, TaskType};
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_helpers;
 use crate::api_clients::client_trait::ApiClientOptions;
+use crate::utils::{PromptComposer, CompositionContextBuilder};
 
 /// Processor for guidance generation jobs
 pub struct GuidanceGenerationProcessor;
@@ -43,8 +43,9 @@ impl JobProcessor for GuidanceGenerationProcessor {
             }
         };
         
-        // Get repository from app state
+        // Get repositories from app state
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
         
         // Get LLM client using the standardized factory function
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
@@ -56,16 +57,44 @@ impl JobProcessor for GuidanceGenerationProcessor {
         info!("Processing guidance generation job: {}", job.id);
         debug!("Task description: {}", payload.task_description);
         
-        // Create system and user messages
-        let system_prompt = payload.system_prompt_override.clone()
-            .unwrap_or_else(|| generate_guidance_system_prompt());
-            
-        // Generate user prompt based on whether paths are provided
-        let user_prompt = if let Some(paths) = &payload.paths {
-            generate_guidance_for_paths_user_prompt(&payload.task_description, paths, payload.file_contents_summary.as_deref())
+        // Create enhanced composition context for sophisticated prompt generation
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::GuidanceGeneration,
+            payload.task_description.clone(),
+        )
+        .project_directory(Some(payload.project_directory.clone()))
+        .relevant_files(payload.paths.clone())
+        .custom_instructions(payload.file_contents_summary.clone())
+        .build();
+
+        // Use the enhanced prompt composer to generate sophisticated prompts
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = if let Some(override_prompt) = &payload.system_prompt_override {
+            // Handle override case - create a simple composed prompt
+            crate::utils::prompt_composition::ComposedPrompt {
+                final_prompt: format!("{}\n\n{}", override_prompt, payload.task_description),
+                system_prompt_id: "override".to_string(),
+                context_sections: vec![],
+                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(override_prompt) as usize),
+            }
         } else {
-            generate_guidance_user_prompt(&payload.task_description)
+            prompt_composer
+                .compose_prompt(&composition_context, &settings_repo)
+                .await?
         };
+
+        info!("Enhanced Guidance Generation prompt composition for job {}", job.id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        // Extract system and user parts from the composed prompt
+        let system_prompt = composed_prompt.final_prompt.split("\n\n").next().unwrap_or("").to_string();
+        let user_prompt = composed_prompt.final_prompt.split("\n\n").skip(1).collect::<Vec<&str>>().join("\n\n");
+        let system_prompt_id = composed_prompt.system_prompt_id;
         
         // Build messages array
         let messages = vec![
@@ -96,19 +125,15 @@ impl JobProcessor for GuidanceGenerationProcessor {
         let max_tokens = if let Some(tokens) = payload.max_output_tokens {
             tokens
         } else {
-            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await {
-                Ok(tokens) => tokens,
-                Err(_) => 2000, // Fallback only if config error occurs
-            }
+            crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for GuidanceGeneration task: {}. Please ensure server database is properly configured.", e)))?
         };
         
         let temperature = if let Some(temp) = payload.temperature {
             temp
         } else {
-            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await {
-                Ok(temp) => temp,
-                Err(_) => 0.7, // Fallback only if config error occurs
-            }
+            crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GuidanceGeneration, &payload.project_directory, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for GuidanceGeneration task: {}. Please ensure server database is properly configured.", e)))?
         };
         
         let api_options = ApiClientOptions {
@@ -154,6 +179,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
                     // Update the job with complete information
                     if let Some(mut job) = repo.get_job_by_id(&job.id).await? {
                         job.model_used = Some(model_used);
+                        job.system_prompt_id = Some(system_prompt_id);
                         repo.update_job(&job).await?;
                     }
                     

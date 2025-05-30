@@ -2,6 +2,7 @@
 
 import { CheckCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import {
   getModelSettingsForProject,
@@ -37,6 +38,9 @@ export default function SettingsForm() {
       setError(null);
 
       try {
+        // First refresh runtime config to ensure we have latest task configurations
+        await invoke("fetch_runtime_ai_config");
+        
         const [settingsResult, modelsResult] = await Promise.all([
           getModelSettingsForProject(projectDirectory),
           getAvailableAIModels(),

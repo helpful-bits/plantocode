@@ -10,10 +10,10 @@ use crate::jobs::types::{
     PathCorrectionPayload,
     TextImprovementPayload,
     TaskEnhancementPayload,
-    OpenRouterTranscriptionPayload,
-    TextCorrectionPostTranscriptionPayload,
-    VoiceCorrectionPayload,
-    GenericLlmStreamPayload
+    VoiceTranscriptionPayload,
+    TextCorrectionPayload,
+    GenericLlmStreamPayload,
+    RegexPatternGenerationPayload
 };
 use crate::models::TaskType;
 
@@ -62,7 +62,11 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
                 model_override: input_payload.model_override,
                 // Default values will be properly set by the processor
                 system_prompt: String::new(),
-                temperature: input_payload.temperature_override.unwrap_or(0.7),
+                temperature: match input_payload.temperature_override {
+                    Some(temp) => temp,
+                    None => crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::PathFinder))
+                        .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for PathFinder: {}", e)))?,
+                },
                 max_output_tokens: input_payload.max_tokens_override,
                 // Use provided directory_tree if available, otherwise empty string (processor will generate it)
                 directory_tree: Some(input_payload.directory_tree.unwrap_or_default()),
@@ -123,28 +127,58 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
             Ok(JobPayload::GenericLlmStream(payload))
         },
         
-        // Match against VoiceCorrection task type
-        voice_correction if voice_correction == TaskType::VoiceCorrection.to_string() => {
-            debug!("Deserializing VoiceCorrectionPayload");
-            let payload: VoiceCorrectionPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize VoiceCorrectionPayload: {}", e)))?;
-            Ok(JobPayload::VoiceCorrection(payload))
+        // Match against TextCorrection task type (consolidates voice correction and post-transcription correction)
+        text_correction if text_correction == TaskType::TextCorrection.to_string() => {
+            debug!("Deserializing TextCorrectionPayload");
+            let payload: TextCorrectionPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextCorrectionPayload: {}", e)))?;
+            Ok(JobPayload::TextCorrection(payload))
         },
         
-        // Match against TextCorrectionPostTranscription task type
-        text_correction if text_correction == TaskType::TextCorrectionPostTranscription.to_string() => {
-            debug!("Deserializing TextCorrectionPostTranscriptionPayload");
-            let payload: TextCorrectionPostTranscriptionPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextCorrectionPostTranscriptionPayload: {}", e)))?;
-            Ok(JobPayload::TextCorrectionPostTranscription(payload))
+        // Match against VoiceTranscription task type
+        voice_transcription if voice_transcription == TaskType::VoiceTranscription.to_string() => {
+            debug!("Deserializing VoiceTranscriptionPayload");
+            let payload: VoiceTranscriptionPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize VoiceTranscriptionPayload: {}", e)))?;
+            Ok(JobPayload::VoiceTranscription(payload))
         },
         
-        // Match against OpenRouterTranscription task type
-        openrouter_transcription if openrouter_transcription == TaskType::VoiceTranscription.to_string() => {
-            debug!("Deserializing OpenRouterTranscriptionPayload");
-            let payload: OpenRouterTranscriptionPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize OpenRouterTranscriptionPayload: {}", e)))?;
-            Ok(JobPayload::OpenRouterTranscription(payload))
+        // Match against RegexPatternGeneration task type
+        regex_pattern_generation if regex_pattern_generation == TaskType::RegexPatternGeneration.to_string() => {
+            debug!("Deserializing RegexPatternGenerationPayload");
+            let payload: RegexPatternGenerationPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
+            Ok(JobPayload::RegexPatternGeneration(payload))
+        },
+        
+        // Match against RegexSummaryGeneration task type
+        regex_summary_generation if regex_summary_generation == TaskType::RegexSummaryGeneration.to_string() => {
+            debug!("Deserializing RegexSummaryGenerationPayload");
+            let payload: crate::jobs::processors::RegexSummaryGenerationPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
+            Ok(JobPayload::RegexSummaryGeneration(payload))
+        },
+        
+        // Match against VoiceTranscription task type
+        voice_transcription if voice_transcription == TaskType::VoiceTranscription.to_string() => {
+            debug!("Deserializing VoiceTranscriptionPayload for VoiceTranscription");
+            let payload: VoiceTranscriptionPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize VoiceTranscriptionPayload for VoiceTranscription: {}", e)))?;
+            Ok(JobPayload::VoiceTranscription(payload))
+        },
+        
+        // Match against Streaming task type (uses GenericLlmStream payload)
+        streaming if streaming == TaskType::Streaming.to_string() => {
+            debug!("Deserializing GenericLlmStreamPayload for Streaming");
+            let payload: GenericLlmStreamPayload = serde_json::from_value(payload_json.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize GenericLlmStreamPayload for Streaming: {}", e)))?;
+            Ok(JobPayload::GenericLlmStream(payload))
+        },
+        
+        // Handle Unknown task type
+        unknown if unknown == TaskType::Unknown.to_string() => {
+            error!("Received Unknown task type");
+            Err(AppError::JobError("Unknown task type cannot be processed".to_string()))
         },
         
         // For other task types not yet implemented

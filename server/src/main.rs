@@ -84,72 +84,17 @@ async fn main() -> std::io::Result<()> {
         }
     };
     
-    // Initialize repositories
+    // Verify database is accessible and properly migrated
     let settings_repo = SettingsRepository::new(db_pool.clone());
-    let model_repo = ModelRepository::new(std::sync::Arc::new(db_pool.clone()));
-    
-    // Step 1: Ensure AI settings exist in database (should be populated by migrations)
     if let Err(e) = settings_repo.ensure_ai_settings_exist().await {
         log::error!("AI settings missing from database: {}", e);
         log::error!("Please run database migrations to populate AI settings.");
         std::process::exit(1);
     }
+    log::info!("Database AI settings verified - all configuration loaded dynamically from database");
     
-    // Step 2: Load AI model settings from the database
-    let mut loaded_ai_model_settings = match settings_repo.get_ai_model_settings().await {
-        Ok(settings) => {
-            log::info!("Successfully loaded AI model settings from database.");
-            settings
-        }
-        Err(e) => {
-            log::error!("Failed to load AI model settings from database: {}", e);
-            log::error!("Database AI settings are corrupted or incomplete.");
-            std::process::exit(1);
-        }
-    };
-    
-    // Step 3: Populate available_models from ModelRepository
-    let models_from_db = match model_repo.get_all().await {
-        Ok(models) => {
-            log::info!("Successfully loaded {} models from database.", models.len());
-            models
-        }
-        Err(e) => {
-            log::error!("Failed to load models from database: {}", e);
-            log::error!("Database must contain model data. Please run database migrations.");
-            std::process::exit(1);
-        }
-    };
-    
-    // Step 4: Convert DB models to ModelInfoEntry format and update available_models
-    loaded_ai_model_settings.available_models = models_from_db.into_iter().map(|model| {
-        // Extract provider from model ID (e.g., "anthropic/claude-sonnet-4" -> "anthropic")
-        let provider = model.id.split('/').next().unwrap_or("unknown").to_string();
-        
-        crate::config::settings::ModelInfoEntry {
-            id: model.id.clone(),
-            name: model.name,
-            provider,
-            description: None, // Models table doesn't have description field
-            context_window: Some(model.context_window as u32),
-            price_input_per_1k_tokens: Some(model.price_input),
-            price_output_per_1k_tokens: Some(model.price_output),
-        }
-    }).collect();
-    
-    // Step 5: Persist the updated AI settings (with populated available_models) back to database
-    if let Err(e) = settings_repo.update_ai_model_settings(&loaded_ai_model_settings).await {
-        log::error!("Failed to persist updated AI model settings to database: {}", e);
-        log::error!("Cannot continue without proper AI settings persistence.");
-        std::process::exit(1);
-    }
-    
-    log::info!("AI model settings successfully loaded and updated with {} available models.", loaded_ai_model_settings.available_models.len());
-    
-    // Create the final app_settings with database-loaded AI model settings
-    let mut app_settings = env_app_settings;
-    app_settings.ai_models = loaded_ai_model_settings;
-    log::info!("Application settings updated with database-loaded AI model settings");
+    // Create app_settings (no AI model configuration - everything is database-driven)
+    let app_settings = env_app_settings;
     
     // Initialize Auth0 OAuth service
     let auth0_oauth_service = Auth0OAuthService::new(&app_settings, db_pool.clone());
@@ -203,6 +148,7 @@ async fn main() -> std::io::Result<()> {
         // Initialize repositories
         let api_usage_repository = ApiUsageRepository::new(db_pool.clone());
         let model_repository_for_proxy = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pool.clone())));
+        let settings_repository_for_proxy = std::sync::Arc::new(SettingsRepository::new(db_pool.clone()));
         
         // Initialize services
         let billing_service = BillingService::new(db_pool.clone(), app_settings.clone());
@@ -212,6 +158,7 @@ async fn main() -> std::io::Result<()> {
             std::sync::Arc::new(billing_service.clone()),
             api_usage_repository.clone(),
             model_repository_for_proxy,
+            settings_repository_for_proxy,
             &app_settings
         ) {
             Ok(service) => {

@@ -321,8 +321,6 @@ export interface GenerateRegexCommandArgs {
 export interface ImproveTextCommandArgs {
   sessionId: string;
   text: string;
-  improvementType: string;
-  language?: string | null;
   projectDirectory?: string | null;
   modelOverride?: string | null;
   temperatureOverride?: number | null;
@@ -330,7 +328,7 @@ export interface ImproveTextCommandArgs {
   targetField?: string | null;
 }
 
-export interface CorrectTextPostTranscriptionCommandArgs {
+export interface CorrectTextCommandArgs {
   sessionId: string;
   textToCorrect: string;
   language: string;
@@ -356,13 +354,6 @@ export interface CreateTranscriptionJobCommandArgs {
   projectDirectory?: string | null;
 }
 
-export interface CorrectTranscriptionCommandArgs {
-  sessionId: string;
-  textToCorrect: string;
-  language: string;
-  originalJobId?: string | null;
-  projectDirectory?: string | null;
-}
 
 export interface TranscribeAudioDirectCommandArgs {
   audioData: Array<number>;
@@ -400,6 +391,33 @@ export interface RepairDatabaseCommandArgs {
 }
 
 export interface ResetDatabaseCommandArgs {
+}
+
+
+// Commands from system_prompt_commands
+export interface GetSystemPromptCommandArgs {
+  sessionId: string;
+  taskType: string;
+}
+
+export interface SetSystemPromptCommandArgs {
+  sessionId: string;
+  taskType: string;
+  systemPrompt: string;
+}
+
+export interface ResetSystemPromptCommandArgs {
+  sessionId: string;
+  taskType: string;
+}
+
+export interface GetDefaultSystemPromptCommandArgs {
+  taskType: string;
+}
+
+export interface HasCustomSystemPromptCommandArgs {
+  sessionId: string;
+  taskType: string;
 }
 
 
@@ -482,10 +500,9 @@ export type TauriInvoke = {
   "generate_directory_tree_command": (args: GenerateDirectoryTreeCommandArgs) => Promise<string>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
-  "correct_text_post_transcription_command": (args: CorrectTextPostTranscriptionCommandArgs) => Promise<JobResult>;
+  "correct_text_command": (args: CorrectTextCommandArgs) => Promise<JobResult>;
   "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<string>;
   "create_transcription_job_command": (args: CreateTranscriptionJobCommandArgs) => Promise<JobResult>;
-  "correct_transcription_command": (args: CorrectTranscriptionCommandArgs) => Promise<JobResult>;
   "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<string>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;
@@ -495,7 +512,96 @@ export type TauriInvoke = {
   "check_database_health_command": (args: CheckDatabaseHealthCommandArgs) => Promise<Record<string, unknown>>;
   "repair_database_command": (args: RepairDatabaseCommandArgs) => Promise<Record<string, unknown>>;
   "reset_database_command": (args: ResetDatabaseCommandArgs) => Promise<Record<string, unknown>>;
+  "get_system_prompt_command": (args: GetSystemPromptCommandArgs) => Promise<import("@/types").SystemPromptResponse | null>;
+  "set_system_prompt_command": (args: SetSystemPromptCommandArgs) => Promise<void>;
+  "reset_system_prompt_command": (args: ResetSystemPromptCommandArgs) => Promise<void>;
+  "get_default_system_prompts_command": () => Promise<import("@/types").DefaultSystemPrompt[]>;
+  "get_default_system_prompt_command": (args: GetDefaultSystemPromptCommandArgs) => Promise<import("@/types").DefaultSystemPrompt | null>;
+  "has_custom_system_prompt_command": (args: HasCustomSystemPromptCommandArgs) => Promise<boolean>;
+  
+  // Billing commands
+  "get_subscription_details_command": () => Promise<SubscriptionDetails>;
+  "create_checkout_session_command": (args: { plan: string }) => Promise<CheckoutSessionResponse>;
+  "create_billing_portal_command": () => Promise<BillingPortalResponse>;
+  "get_spending_status_command": () => Promise<SpendingStatusInfo>;
+  "acknowledge_spending_alert_command": (args: { alertId: string }) => Promise<boolean>;
+  "update_spending_limits_command": (args: { monthlySpendingLimit?: number; hardLimit?: number }) => Promise<boolean>;
+  "get_invoice_history_command": () => Promise<InvoiceHistoryResponse>;
+  "get_spending_history_command": () => Promise<any>;
+  "check_service_access_command": () => Promise<any>;
 };
+
+// Billing-related types
+export interface SubscriptionDetails {
+  plan: string;
+  planName?: string;
+  status: string;
+  trialEndsAt?: string;
+  currentPeriodEndsAt?: string;
+  monthlySpendingAllowance?: number;
+  hardSpendingLimit?: number;
+  isTrialing?: boolean;
+  hasCancelled?: boolean;
+  nextInvoiceAmount?: number;
+  currency?: string;
+  usage: UsageInfo;
+}
+
+export interface UsageInfo {
+  totalCost: number;
+  usagePercentage: number;
+  servicesBlocked: boolean;
+  currentSpending: number;
+  monthlyAllowance: number;
+}
+
+export interface CheckoutSessionResponse {
+  url: string;
+}
+
+export interface BillingPortalResponse {
+  url: string;
+}
+
+export interface SpendingStatusInfo {
+  currentSpending: number;
+  includedAllowance: number;
+  remainingAllowance: number;
+  overageAmount: number;
+  usagePercentage: number;
+  servicesBlocked: boolean;
+  hardLimit: number;
+  nextBillingDate: string;
+  currency: string;
+  alerts: SpendingAlert[];
+}
+
+export interface SpendingAlert {
+  id: string;
+  alertType: string;
+  thresholdAmount: number;
+  currentSpending: number;
+  alertSentAt: string;
+  acknowledged: boolean;
+}
+
+export interface InvoiceHistoryEntry {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  createdDate: string;
+  dueDate?: string;
+  paidDate?: string;
+  invoicePdf?: string;
+  description: string;
+}
+
+export interface InvoiceHistoryResponse {
+  invoices: InvoiceHistoryEntry[];
+  totalCount: number;
+  hasMore: boolean;
+}
 
 // Strongly typed invoke function
 export declare function invoke<T extends keyof TauriInvoke>(

@@ -41,115 +41,120 @@ const taskTypeDefinitions: Record<
   {
     label: string;
     defaultApiType: "google" | "anthropic" | "openai" | "deepseek";
+    description?: string;
+    hidden?: boolean; // Hide from UI while keeping backend functionality
   }
 > = {
   path_finder: {
-    label: "Path Finder",
+    label: "File Finder",
     defaultApiType: "google",
+    description: "AI model used to find relevant files in your project",
   },
   voice_transcription: {
     label: "Voice Transcription",
     defaultApiType: "openai",
-  },
-  regex_summary_generation: {
-    label: "Regex Summary Generation",
-    defaultApiType: "anthropic",
+    description: "Convert speech to text using AI transcription",
   },
   path_correction: {
     label: "Path Correction",
     defaultApiType: "google",
+    description: "Automatically correct and improve file paths",
   },
   text_improvement: {
     label: "Text Improvement",
     defaultApiType: "anthropic",
+    description: "Enhance and refine text using AI",
   },
-  voice_correction: {
-    label: "Voice Correction",
+  text_correction: {
+    label: "Text Correction",
     defaultApiType: "anthropic",
+    description: "Correct and improve text for accuracy and clarity",
   },
+  guidance_generation: {
+    label: "AI Guidance",
+    defaultApiType: "google",
+    description: "Generate contextual guidance for your tasks",
+  },
+  implementation_plan: {
+    label: "Implementation Plans",
+    defaultApiType: "google",
+    description: "Create detailed implementation plans for features",
+  },
+  // Hidden task types - backend functionality exists but not exposed in UI
   task_enhancement: {
     label: "Task Enhancement",
     defaultApiType: "google",
-  },
-  guidance_generation: {
-    label: "Guidance Generation",
-    defaultApiType: "google",
-  },
-  implementation_plan: {
-    label: "Implementation Plan",
-    defaultApiType: "google",
+    hidden: true,
   },
   generic_llm_stream: {
     label: "Generic LLM Stream",
     defaultApiType: "google",
+    hidden: true,
   },
-  text_correction_post_transcription: {
-    label: "Post-Transcription Correction",
+  regex_pattern_generation: {
+    label: "Regex Pattern Generation",
     defaultApiType: "anthropic",
+    hidden: true,
+  },
+  regex_summary_generation: {
+    label: "Regex Summary Generation",
+    defaultApiType: "anthropic",
+    hidden: true,
   },
   unknown: {
-    label: "Unknown Task",
+    label: "Default/Fallback",
     defaultApiType: "google",
+    description: "Default settings for unspecified tasks",
+    hidden: true,
   },
 };
 
-// Map from TaskType (snake_case) to TaskSettings (camelCase)
-// This mapping MUST match the backend snake_to_camel_case function in settings_commands.rs
 const taskTypeToSettingsKey: Record<string, string> = {
   implementation_plan: "implementationPlan",
   path_finder: "pathFinder",
   text_improvement: "textImprovement",
   voice_transcription: "transcription",
-  voice_correction: "voiceCorrection",
+  text_correction: "textCorrection",
   path_correction: "pathCorrection",
   guidance_generation: "guidanceGeneration",
   task_enhancement: "taskEnhancement",
   generic_llm_stream: "genericLlmStream",
+  regex_pattern_generation: "regexGeneration",
   regex_summary_generation: "regexSummaryGeneration",
-  text_correction_post_transcription: "textCorrectionPostTranscription",
   streaming: "streaming",
   unknown: "unknown",
 };
 
-// Task model settings component
 export default function TaskModelSettings({
   taskSettings,
   availableModels,
   onSettingsChange,
 }: TaskModelSettingsProps) {
-  // Helper to ensure all task types have settings and map snake_case to camelCase
   const getTaskSettings = (taskType: TaskType) => {
-    // Convert TaskType to TaskSettings key
     const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
-
-    // Get the settings for this task type from the taskSettings prop
-    // This should already be complete from the backend
     const settings = taskSettings[settingsKey];
 
     if (!settings) {
       console.error(
-        `No settings found for task type: ${taskType} (mapped to ${settingsKey})`
+        `HARD ERROR: No settings found for task type: ${taskType} (mapped to ${settingsKey})`,
+        { 
+          taskType, 
+          settingsKey, 
+          availableKeys: Object.keys(taskSettings),
+          fullTaskSettings: taskSettings 
+        }
       );
-      // This should not happen if taskSettings is properly loaded from server
-      throw new Error(`No settings found for task type: ${taskType} (mapped to ${settingsKey}). Ensure server data is loaded properly.`);
+      
+      throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${taskType} (mapped to ${settingsKey}). Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
     }
 
     return settings;
   };
 
-  // Handle model change for a specific task
   const handleModelChange = (taskType: TaskType, model: string) => {
     const settings = getTaskSettings(taskType);
     const newSettings = { ...taskSettings };
-
-    // Convert TaskType to TaskSettings key
     const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
-
-    // Determine API type from the model
-    // Model value already determined from selection
-    if (model.includes("gemini") || model.includes("claude") || model.includes("whisper")) {
-      // Model type handled automatically based on name
-    }
 
     newSettings[settingsKey] = {
       ...settings,
@@ -159,12 +164,9 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  // Handle max tokens change for a specific task
   const handleMaxTokensChange = (taskType: TaskType, value: number[]) => {
     const settings = getTaskSettings(taskType);
     const newSettings = { ...taskSettings };
-
-    // Convert TaskType to TaskSettings key
     const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
 
     newSettings[settingsKey] = {
@@ -175,12 +177,9 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  // Handle temperature change for a specific task
   const handleTemperatureChange = (taskType: TaskType, value: number[]) => {
     const settings = getTaskSettings(taskType);
     const newSettings = { ...taskSettings };
-
-    // Convert TaskType to TaskSettings key
     const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
 
     newSettings[settingsKey] = {
@@ -191,7 +190,6 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  // Get available models based on the task type's default API
   const getModelsForTask = (taskType: TaskType) => {
     if (!availableModels || availableModels.length === 0) {
       return [];
@@ -212,11 +210,11 @@ export default function TaskModelSettings({
         </CardDescription>
       </CardHeader>
       <CardContent className="p-6">
-        <Tabs defaultValue="implementation_plan">
+        <Tabs defaultValue="path_finder">
           <TabsList className="mb-4 flex flex-wrap gap-1 h-auto p-1">
             {Object.entries(taskTypeDefinitions).map(
               ([type, config]) =>
-                type !== "unknown" && (
+                !config.hidden && (
                   <TabsTrigger
                     key={type}
                     value={type}
@@ -230,7 +228,7 @@ export default function TaskModelSettings({
 
           {Object.entries(taskTypeDefinitions).map(([type, config]) => {
             const taskType = type as TaskType;
-            if (taskType === "unknown") return null;
+            if (config.hidden) return null;
 
             const settings = getTaskSettings(taskType);
             const models = getModelsForTask(taskType);
@@ -238,6 +236,15 @@ export default function TaskModelSettings({
             return (
               <TabsContent key={type} value={type} className="w-full">
                 <div className="w-full">
+                  {/* Task description */}
+                  {config.description && (
+                    <div className="mb-6 p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        {config.description}
+                      </p>
+                    </div>
+                  )}
+                  
                   {/* Model, Max Tokens, and Temperature in the same row */}
                   <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1fr] gap-6">
                     {/* Model Selection */}
@@ -336,7 +343,7 @@ export default function TaskModelSettings({
                     </div>
 
                     {/* Temperature Slider - not used by whisper transcription */}
-                    {taskType !== "voice_transcription" ? (
+                    {(taskType as string) !== "voice_transcription" ? (
                       <div className="space-y-2">
                         <Label
                           htmlFor={`temperature-${type}`}
@@ -378,9 +385,13 @@ export default function TaskModelSettings({
                           />
                         </div>
                         <p className="text-xs text-muted-foreground text-balance">
-                          {taskType === "path_correction"
-                            ? "Lower values produce more accurate results"
-                            : "Lower (0.0-0.3): factual. Higher (0.7-1.0): creative."}
+                          {taskType === "path_correction" || taskType === "path_finder"
+                            ? "Lower values produce more accurate path suggestions"
+                            : taskType === "voice_transcription"
+                            ? "Not applicable for transcription models"
+                            : taskType === "text_correction"
+                            ? "Lower values for accuracy, higher for more creative corrections"
+                            : "Lower (0.0-0.3): factual and precise. Higher (0.7-1.0): creative and varied."}
                         </p>
                       </div>
                     ) : (

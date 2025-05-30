@@ -11,24 +11,17 @@ use crate::constants::{
     PATH_FINDER_MAX_DIR_TREE_LINES,
     PATH_FINDER_TOKEN_LIMIT_BUFFER,
     PATH_FINDER_FILE_CONTENT_TRUNCATION_MESSAGE,
-    DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS,
-    DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT,
-    PATH_FINDER_MAX_CONTENT_SIZE_PER_FILE,
     PATH_FINDER_FILE_CONTENT_TRUNCATION_CHARS,
     EXCLUDED_DIRS_FOR_SCAN
 };
 use crate::config;
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, PathFinderPayload};
 use crate::jobs::processors::path_finder_types::{PathFinderResult, PathFinderOptions};
-use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent};
-use crate::prompts::path_finder::{
-    generate_path_finder_prompt, 
-    generate_path_finder_system_prompt,
-    generate_path_finder_prompt_with_contents
-};
+use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
+use crate::utils::{PromptComposer, CompositionContextBuilder};
 use crate::utils::directory_tree::{generate_directory_tree, DirectoryTreeOptions};
 use crate::utils::path_utils;
 use crate::utils::fs_utils;
@@ -123,6 +116,7 @@ impl JobProcessor for PathFinderProcessor {
         // Get dependencies from app state
         let repo_state = app_handle.state::<Arc<BackgroundJobRepository>>();
         let repo = repo_state.inner().clone();
+        let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
         
         // Get the API client from factory
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
@@ -191,16 +185,16 @@ impl JobProcessor for PathFinderProcessor {
         
         // Get include_file_contents from config, use constant if not found
         let include_file_contents = config::get_path_finder_include_file_contents_async(&app_handle).await
-            .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
+            .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder include_file_contents setting: {}. Please ensure server database is properly configured.", e)))?;
         
         // Use the value from options if specified, otherwise use the config/constant value
         if options.include_file_contents.unwrap_or(include_file_contents) {
             // Process explicitly included files
             if let Some(included_files) = &options.included_files {
                 info!("Processing explicitly included files for content extraction");
-                // Get max_content_size from config, use constant if not found
+                // Get max_content_size from config
                 let max_content_size = config::get_path_finder_max_content_size_per_file_async(&app_handle).await
-                    .unwrap_or(crate::constants::PATH_FINDER_MAX_CONTENT_SIZE_PER_FILE);
+                    .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder max_content_size_per_file setting: {}. Please ensure server database is properly configured.", e)))?;
                 
                 for file_path in included_files {
                     let abs_path = if Path::new(file_path).is_absolute() {
@@ -230,15 +224,19 @@ impl JobProcessor for PathFinderProcessor {
             }
             
             // Process priority file types if still under max files limit
-            // Get max_files_with_content from config, use constant if not found
+            // Get max_files_with_content from config
             let config_max_files = config::get_path_finder_max_files_with_content_async(&app_handle).await
-                .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT);
+                .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder max_files_with_content setting: {}. Please ensure server database is properly configured.", e)))?;
             // Use the value from options if specified, otherwise use the config/constant value
             let max_files_with_content = options.max_files_with_content.unwrap_or(config_max_files);
             if relevant_file_contents.len() < max_files_with_content {
                 if let Some(priority_file_types) = &options.priority_file_types {
                     info!("Processing priority file types for content extraction");
                     let remaining_slots = max_files_with_content - relevant_file_contents.len();
+                    
+                    // Get max_content_size from config
+                    let max_content_size_per_file = config::get_path_finder_max_content_size_per_file_async(&app_handle).await
+                        .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder max_content_size_per_file setting: {}. Please ensure server database is properly configured.", e)))?;
                     
                     // Find files matching the priority types using safe project-scoped discovery
                     let matching_files = path_utils::find_project_files_by_extension(
@@ -259,9 +257,9 @@ impl JobProcessor for PathFinderProcessor {
                         // Read file content
                         match fs_utils::read_file_to_string(&file_path).await {
                             Ok(content) => {
-                                let truncated_content = if content.len() > PATH_FINDER_MAX_CONTENT_SIZE_PER_FILE {
+                                let truncated_content = if content.len() > max_content_size_per_file {
                                     format!("{} {}", 
-                                        &content[0..PATH_FINDER_MAX_CONTENT_SIZE_PER_FILE], 
+                                        &content[0..max_content_size_per_file], 
                                         PATH_FINDER_FILE_CONTENT_TRUNCATION_MESSAGE
                                     )
                                 } else {
@@ -283,15 +281,18 @@ impl JobProcessor for PathFinderProcessor {
             }
         }
         
-        // Generate system prompt
-        let system_prompt = generate_path_finder_system_prompt();
+        // We'll do token management and content reduction first, then call PromptComposer at the end
+        // Store variables for final prompt composition
+        let mut final_task_description = payload.task_description.clone();
+        let mut final_directory_tree = directory_tree.clone();
+        let mut final_file_contents = relevant_file_contents.clone();
         
-        // Estimate tokens for the request
+        // Estimate tokens for the request (using placeholder for system prompt)
         let estimated_input_tokens = crate::utils::token_estimator::estimate_path_finder_tokens(
-            &payload.task_description,
-            &system_prompt,
-            &directory_tree,
-            &relevant_file_contents
+            &final_task_description,
+            "", // We'll get the real system prompt later
+            &final_directory_tree,
+            &final_file_contents
         );
         
         info!("Estimated input tokens: {}", estimated_input_tokens);
@@ -349,11 +350,11 @@ impl JobProcessor for PathFinderProcessor {
         let mut directory_tree_content = directory_tree.clone();
         let mut file_contents_xml_str = String::new();
         
-        // Get values from config, use constants if not found
+        // Get values from config
         let config_max_files = config::get_path_finder_max_files_with_content_async(&app_handle).await
-            .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT);
+            .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder max_files_with_content setting: {}. Please ensure server database is properly configured.", e)))?;
         let config_truncation_chars = config::get_path_finder_file_content_truncation_chars_async(&app_handle).await
-            .unwrap_or(crate::constants::PATH_FINDER_FILE_CONTENT_TRUNCATION_CHARS);
+            .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder file_content_truncation_chars setting: {}. Please ensure server database is properly configured.", e)))?;
         
         // Initialize with values from options or config/constants
         let mut max_files_with_content = options.max_files_with_content.unwrap_or(config_max_files);
@@ -394,9 +395,9 @@ impl JobProcessor for PathFinderProcessor {
             xml_str
         };
         
-        // Get include_file_contents setting from config, use constant if not found
+        // Get include_file_contents setting from config
         let include_file_contents = config::get_path_finder_include_file_contents()
-            .unwrap_or(crate::constants::DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
+            .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder include_file_contents setting: {}. Please ensure server database is properly configured.", e)))?;
         
         // Create initial file contents XML if needed
         if options.include_file_contents.unwrap_or(include_file_contents) && !relevant_file_contents.is_empty() {
@@ -408,229 +409,155 @@ impl JobProcessor for PathFinderProcessor {
             );
         }
         
-        // Generate initial user prompt
-        let mut user_prompt = if options.include_file_contents.unwrap_or(include_file_contents) && 
-                              !relevant_file_contents.is_empty() && 
-                              file_contents_xml_str != "<file_contents>\n</file_contents>" {
-            generate_path_finder_prompt_with_contents(
-                &task_description,
-                Some(&directory_tree_content),
-                Some(&file_contents_xml_str)
-            )
-        } else {
-            generate_path_finder_prompt(&task_description, Some(&directory_tree_content))
-        };
-        
-        // Calculate token estimates
-        let system_prompt_tokens = estimate_tokens(&system_prompt);
-        let mut user_prompt_tokens = estimate_tokens(&user_prompt);
-        let total_estimated_tokens = system_prompt_tokens + user_prompt_tokens;
+        // We'll generate the final prompt after token reduction
+        // For now, estimate tokens without the actual prompts
+        let initial_estimated_tokens = estimated_input_tokens;
         
         // Use the max_input_tokens_for_model calculated earlier as our limit
         let max_allowable_tokens = max_input_tokens_for_model;
         
-        info!("Initial token estimate: {} (system: {}, user: {}) with max allowable tokens {} for model {}", 
-            total_estimated_tokens, system_prompt_tokens, user_prompt_tokens, max_allowable_tokens, effective_model);
+        info!("Initial token estimate: {} with max allowable tokens {} for model {}", 
+            initial_estimated_tokens, max_allowable_tokens, effective_model);
         
         // Implement token reduction strategies if needed
-        if total_estimated_tokens > max_allowable_tokens {
+        if initial_estimated_tokens > max_allowable_tokens {
             warn!("Estimated token count ({}) exceeds maximum allowable tokens ({}) for model {}, applying reduction strategies", 
-                total_estimated_tokens, max_allowable_tokens, effective_model);
+                initial_estimated_tokens, max_allowable_tokens, effective_model);
             
             // Strategy 1: Reduce number of files with content
-            // Get include_file_contents setting from config or constant
+            // Get include_file_contents setting from config
             let include_file_contents = config::get_path_finder_include_file_contents()
-                .unwrap_or(DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
+                .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder include_file_contents setting: {}. Please ensure server database is properly configured.", e)))?;
                 
             if options.include_file_contents.unwrap_or(include_file_contents) && 
-               !relevant_file_contents.is_empty() && max_files_with_content > 1 {
+               !final_file_contents.is_empty() && max_files_with_content > 1 {
                 let original_max_files = max_files_with_content;
                 max_files_with_content = max_files_with_content.max(2) / 2; // Reduce by half, but minimum 1
                 
                 warn!("Job {}: Reducing max files with content from {} to {} to fit token limit", 
                     payload.background_job_id, original_max_files, max_files_with_content);
                 
-                file_contents_xml_str = generate_file_contents_xml(
-                    &relevant_file_contents, 
-                    max_files_with_content, 
-                    content_truncation_chars
-                );
+                // Reduce final_file_contents to the reduced number of files
+                let reduced_file_contents: std::collections::HashMap<String, String> = final_file_contents
+                    .into_iter()
+                    .take(max_files_with_content)
+                    .collect();
+                final_file_contents = reduced_file_contents;
                 
-                // Get include_file_contents setting from config or constant
-                let include_file_contents = config::get_path_finder_include_file_contents()
-                    .unwrap_or(DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
-                    
-                user_prompt = if options.include_file_contents.unwrap_or(include_file_contents) && 
-                                  file_contents_xml_str != "<file_contents>\n</file_contents>" {
-                    generate_path_finder_prompt_with_contents(
-                        &task_description,
-                        Some(&directory_tree_content),
-                        Some(&file_contents_xml_str)
-                    )
-                } else {
-                    generate_path_finder_prompt(&task_description, Some(&directory_tree_content))
-                };
+                info!("Reduced file contents to {} files", final_file_contents.len());
                 
-                user_prompt_tokens = estimate_tokens(&user_prompt);
-                let new_total_tokens = system_prompt_tokens + user_prompt_tokens;
+                // Strategy 2: Reduce individual file content length
+                let original_char_limit = content_truncation_chars;
+                content_truncation_chars = content_truncation_chars / 2;
                 
-                info!("After reducing max files: {} tokens", new_total_tokens);
+                warn!("Job {}: Reducing file content truncation from {} to {} chars to fit token limit", 
+                    payload.background_job_id, original_char_limit, content_truncation_chars);
                 
-                // If still too large, proceed to next strategy
-                if new_total_tokens <= max_allowable_tokens {
-                    // Successfully reduced within limits
-                    info!("Successfully reduced tokens by limiting files with content");
-                } else {
-                    // Strategy 2: Reduce individual file content length
-                    let original_char_limit = content_truncation_chars;
-                    content_truncation_chars = content_truncation_chars / 2;
-                    
-                    warn!("Job {}: Reducing file content truncation from {} to {} chars to fit token limit", 
-                        payload.background_job_id, original_char_limit, content_truncation_chars);
-                    
-                    file_contents_xml_str = generate_file_contents_xml(
-                        &relevant_file_contents, 
-                        max_files_with_content, 
-                        content_truncation_chars
-                    );
-                    
-                    // Get include_file_contents setting from config or constant
-                    let include_file_contents = config::get_path_finder_include_file_contents()
-                        .unwrap_or(DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
-                        
-                    user_prompt = if options.include_file_contents.unwrap_or(include_file_contents) && 
-                                      file_contents_xml_str != "<file_contents>\n</file_contents>" {
-                        generate_path_finder_prompt_with_contents(
-                            &task_description,
-                            Some(&directory_tree_content),
-                            Some(&file_contents_xml_str)
-                        )
-                    } else {
-                        generate_path_finder_prompt(&task_description, Some(&directory_tree_content))
-                    };
-                    
-                    user_prompt_tokens = estimate_tokens(&user_prompt);
-                    let new_total_tokens = system_prompt_tokens + user_prompt_tokens;
-                    
-                    info!("After reducing file content length: {} tokens", new_total_tokens);
-                    
-                    // If still too large, proceed to next strategy
-                    if new_total_tokens <= max_allowable_tokens {
-                        // Successfully reduced within limits
-                        info!("Successfully reduced tokens by truncating file contents");
-                    } else {
-                        // Strategy 3: Truncate directory tree
-                        warn!("Job {}: Truncating directory tree to max {} lines to fit token limit", 
-                            payload.background_job_id, PATH_FINDER_MAX_DIR_TREE_LINES);
-                        
-                        let dir_tree_lines: Vec<&str> = directory_tree_content.lines().collect();
-                        let truncated_line_count = dir_tree_lines.len().min(PATH_FINDER_MAX_DIR_TREE_LINES);
-                        directory_tree_content = dir_tree_lines.into_iter()
-                            .take(truncated_line_count)
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        
-                        user_prompt = if file_contents_xml_str != "<file_contents>\n</file_contents>" {
-                            generate_path_finder_prompt_with_contents(
-                                &task_description,
-                                Some(&directory_tree_content),
-                                Some(&file_contents_xml_str)
+                // Truncate content in final_file_contents
+                let truncated_file_contents: std::collections::HashMap<String, String> = final_file_contents
+                    .into_iter()
+                    .map(|(path, content)| {
+                        let truncated_content = if content.len() > content_truncation_chars {
+                            format!("{} {}", 
+                                &content[0..content_truncation_chars], 
+                                crate::constants::PATH_FINDER_FILE_CONTENT_TRUNCATION_MESSAGE
                             )
                         } else {
-                            generate_path_finder_prompt(&task_description, Some(&directory_tree_content))
+                            content
                         };
-                        
-                        user_prompt_tokens = estimate_tokens(&user_prompt);
-                        let new_total_tokens = system_prompt_tokens + user_prompt_tokens;
-                        
-                        info!("After truncating directory tree: {} tokens", new_total_tokens);
-                        
-                        // Last resort: Truncate task description
-                        if new_total_tokens > max_allowable_tokens {
-                            warn!("Job {}: Last resort - Truncating task description to fit token limit", 
-                                payload.background_job_id);
-                            
-                            // Calculate how many tokens we need to remove
-                            let excess_tokens = new_total_tokens - max_allowable_tokens;
-                            // Rough estimate of chars to remove based on CHARS_PER_TOKEN
-                            let chars_to_remove = (excess_tokens as f32 * 4.0).ceil() as usize;
-                            
-                            if chars_to_remove < task_description.len() {
-                                task_description = task_description[..task_description.len() - chars_to_remove].to_string();
-                                task_description.push_str("\n... [Task description truncated due to token limits]");
-                                
-                                // Get include_file_contents setting from config or constant
-                                let include_file_contents = config::get_path_finder_include_file_contents()
-                                    .unwrap_or(DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS);
-                                    
-                                user_prompt = if options.include_file_contents.unwrap_or(include_file_contents) && 
-                                                  file_contents_xml_str != "<file_contents>\n</file_contents>" {
-                                    generate_path_finder_prompt_with_contents(
-                                        &task_description,
-                                        Some(&directory_tree_content),
-                                        Some(&file_contents_xml_str)
-                                    )
-                                } else {
-                                    generate_path_finder_prompt(&task_description, Some(&directory_tree_content))
-                                };
-                                
-                                user_prompt_tokens = estimate_tokens(&user_prompt);
-                                let final_total_tokens = system_prompt_tokens + user_prompt_tokens;
-                                
-                                info!("After truncating task description: {} tokens", final_total_tokens);
-                                if final_total_tokens > max_allowable_tokens {
-                                    warn!("Job {}: Even after all reduction strategies, token count ({}) exceeds maximum ({})",
-                                        payload.background_job_id, final_total_tokens, max_allowable_tokens);
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Skip to directory tree truncation if no file contents to reduce
-                warn!("Job {}: Truncating directory tree to max {} lines (no file contents to reduce)", 
+                        (path, truncated_content)
+                    })
+                    .collect();
+                final_file_contents = truncated_file_contents;
+                
+                info!("Truncated file contents to {} chars per file", content_truncation_chars);
+                
+                // Strategy 3: Truncate directory tree
+                warn!("Job {}: Truncating directory tree to max {} lines to fit token limit", 
                     payload.background_job_id, PATH_FINDER_MAX_DIR_TREE_LINES);
                 
-                let dir_tree_lines: Vec<&str> = directory_tree_content.lines().collect();
+                let dir_tree_lines: Vec<&str> = final_directory_tree.lines().collect();
                 let truncated_line_count = dir_tree_lines.len().min(PATH_FINDER_MAX_DIR_TREE_LINES);
-                directory_tree_content = dir_tree_lines.into_iter()
+                final_directory_tree = dir_tree_lines.into_iter()
                     .take(truncated_line_count)
                     .collect::<Vec<_>>()
                     .join("\n");
                 
-                user_prompt = generate_path_finder_prompt(&task_description, Some(&directory_tree_content));
-                user_prompt_tokens = estimate_tokens(&user_prompt);
+                info!("Truncated directory tree to {} lines", truncated_line_count);
                 
-                let new_total_tokens = system_prompt_tokens + user_prompt_tokens;
-                info!("After truncating directory tree: {} tokens", new_total_tokens);
+                // Strategy 4: Last resort - Truncate task description
+                let estimated_reduction_needed = 1000; // Rough estimate for tokens that need to be reduced
+                let chars_to_remove = (estimated_reduction_needed as f32 * 4.0).ceil() as usize;
                 
-                // Last resort: Truncate task description
-                if new_total_tokens > max_allowable_tokens {
-                    warn!("Job {}: Last resort - Truncating task description (no file contents to reduce)", 
+                if chars_to_remove < final_task_description.len() {
+                    warn!("Job {}: Last resort - Truncating task description to fit token limit", 
                         payload.background_job_id);
                     
-                    // Calculate how many tokens we need to remove
-                    let excess_tokens = new_total_tokens - max_allowable_tokens;
-                    // Rough estimate of chars to remove based on CHARS_PER_TOKEN
-                    let chars_to_remove = (excess_tokens as f32 * 4.0).ceil() as usize;
+                    final_task_description = final_task_description[..final_task_description.len() - chars_to_remove].to_string();
+                    final_task_description.push_str("\n... [Task description truncated due to token limits]");
                     
-                    if chars_to_remove < task_description.len() {
-                        task_description = task_description[..task_description.len() - chars_to_remove].to_string();
-                        task_description.push_str("\n... [Task description truncated due to token limits]");
-                        
-                        user_prompt = generate_path_finder_prompt(&task_description, Some(&directory_tree_content));
-                        user_prompt_tokens = estimate_tokens(&user_prompt);
-                        let final_total_tokens = system_prompt_tokens + user_prompt_tokens;
-                        
-                        info!("After truncating task description: {} tokens", final_total_tokens);
-                        if final_total_tokens > max_allowable_tokens {
-                            warn!("Job {}: Even after all reduction strategies, token count ({}) exceeds maximum ({})",
-                                payload.background_job_id, final_total_tokens, max_allowable_tokens);
-                        }
-                    }
+                    info!("Truncated task description by {} chars", chars_to_remove);
                 }
             }
+        } else {
+            // No file contents to reduce, apply directory tree and task description reduction
+            warn!("Job {}: Truncating directory tree to max {} lines (no file contents to reduce)", 
+                payload.background_job_id, PATH_FINDER_MAX_DIR_TREE_LINES);
+            
+            let dir_tree_lines: Vec<&str> = final_directory_tree.lines().collect();
+            let truncated_line_count = dir_tree_lines.len().min(PATH_FINDER_MAX_DIR_TREE_LINES);
+            final_directory_tree = dir_tree_lines.into_iter()
+                .take(truncated_line_count)
+                .collect::<Vec<_>>()
+                .join("\n");
+            
+            info!("Truncated directory tree to {} lines", truncated_line_count);
+            
+            // Also apply task description truncation as fallback
+            let chars_to_remove = 1000; // Rough estimate for token reduction
+            if chars_to_remove < final_task_description.len() {
+                warn!("Job {}: Truncating task description (no file contents to reduce)", 
+                    payload.background_job_id);
+                
+                final_task_description = final_task_description[..final_task_description.len() - chars_to_remove].to_string();
+                final_task_description.push_str("\n... [Task description truncated due to token limits]");
+                
+                info!("Truncated task description by {} chars", chars_to_remove);
+            }
         }
+        
+        // Now generate the final prompt using PromptComposer with all reductions applied
+        info!("Generating final prompt with reduced content");
+        
+        let final_composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::PathFinder,
+            final_task_description.clone(),
+        )
+        .project_directory(job.project_directory.clone())
+        .codebase_structure(Some(final_directory_tree.clone()))
+        .file_contents(if final_file_contents.is_empty() { None } else { Some(final_file_contents.clone()) })
+        .build();
+
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&final_composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Path Finder prompt composition for job {}", job.id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Final estimated tokens: {}", tokens);
+        }
+
+        // Extract system and user prompts from the composed result
+        let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
+        let system_prompt = parts.get(0).unwrap_or(&"").to_string();
+        let user_prompt = parts.get(1).unwrap_or(&"").to_string();
+        let system_prompt_id = composed_prompt.system_prompt_id;
+        
+        // All token reduction strategies have been applied to final_* variables
         
         // Create messages for the LLM
         let messages = vec![
@@ -822,6 +749,7 @@ impl JobProcessor for PathFinderProcessor {
         }).to_string();
         
         db_job.metadata = Some(metadata_json);
+        db_job.system_prompt_id = Some(system_prompt_id);
         
         // Update the job
         repo.update_job(&db_job).await?;

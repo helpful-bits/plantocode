@@ -247,14 +247,8 @@ impl BillingService {
                 },
             ]),
             mode: Some(stripe::CheckoutSessionMode::Subscription),
-            success_url: Some(format!(
-                "{}://auth-success?session_id={{CHECKOUT_SESSION_ID}}",
-                self.app_settings.deep_link.scheme
-            )),
-            cancel_url: Some(format!(
-                "{}://auth-cancelled",
-                self.app_settings.deep_link.scheme
-            )),
+            success_url: Some("https://success.stripe.com".to_string()), // Generic success page
+            cancel_url: Some("https://cancel.stripe.com".to_string()),   // Generic cancel page
             customer: Some(customer_id),
             metadata: Some(metadata),
             ..Default::default()
@@ -333,10 +327,7 @@ impl BillingService {
             stripe,
             stripe::billingportal::SessionCreateParams {
                 customer: customer_id,
-                return_url: Some(format!(
-                    "{}://billing-return",
-                    self.app_settings.deep_link.scheme
-                )),
+                return_url: Some("https://billing.stripe.com/p/login/test_completed".to_string()), // Generic completion page
                 ..Default::default()
             },
         ).await.map_err(|e| AppError::External(format!("Failed to create billing portal session: {}", e)))?;

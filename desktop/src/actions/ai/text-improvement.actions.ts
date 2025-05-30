@@ -6,8 +6,6 @@ import { handleActionError } from "@/utils/action-utils";
 export interface ImproveTextOptions {
   text: string;
   sessionId: string;
-  improvementType?: string;
-  language?: string;
   projectDirectory?: string;
   targetField?: string;
   modelOverride?: string;
@@ -16,7 +14,7 @@ export interface ImproveTextOptions {
 }
 
 /**
- * Create a job to improve text with AI
+ * Create a job to improve text for clarity and grammar
  */
 export async function improveSelectedTextAction(
   options: ImproveTextOptions | string,
@@ -29,8 +27,6 @@ export async function improveSelectedTextAction(
     let text: string;
     let actualSessionId: string;
     let actualProjectDirectory: string | undefined;
-    let improvementType: string = "improve";
-    let language: string | undefined;
     let targetFieldParam: string | undefined;
     let modelOverride: string | undefined;
     let temperatureOverride: number | undefined;
@@ -47,8 +43,6 @@ export async function improveSelectedTextAction(
       text = options.text;
       actualSessionId = options.sessionId;
       actualProjectDirectory = options.projectDirectory ?? projectDirectory;
-      improvementType = options.improvementType || "improve";
-      language = options.language;
       targetFieldParam = options.targetField ?? targetField;
       modelOverride = options.modelOverride;
       temperatureOverride = options.temperatureOverride;
@@ -76,8 +70,6 @@ export async function improveSelectedTextAction(
     const result = await invoke<{ jobId: string }>("improve_text_command", {
       sessionId: actualSessionId,
       text,
-      improvementType,
-      language,
       projectDirectory: actualProjectDirectory || undefined,
       modelOverride,
       temperatureOverride,

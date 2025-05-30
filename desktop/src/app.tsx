@@ -116,7 +116,7 @@ export default function App() {
       if (isTauriEnvironment()) {
         // Use a logger that can be configured instead of console.log
         // eslint-disable-next-line no-console
-        console.log("[App] Tauri environment detected, checking for pending deep links...");
+        console.log("[App] Tauri environment detected.");
       } else {
         console.warn("[App] Tauri not detected - some features may be limited");
       }

@@ -28,6 +28,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(handlers::billing_handlers::create_checkout_session)
             .service(handlers::billing_handlers::create_billing_portal)
             .service(handlers::billing_handlers::get_usage_summary)
+            .service(handlers::billing_handlers::get_invoice_history)
+            .service(handlers::billing_handlers::get_payment_methods)
     );
     
     // Spending routes (/api/spending/*)
@@ -56,6 +58,24 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/config")
             .route("/all-configurations", web::get().to(handlers::config_handlers::get_all_application_configurations_handler))
+    );
+    
+    // Provider routes (/api/providers/*)
+    cfg.service(
+        web::scope("/providers")
+            .route("", web::get().to(handlers::provider_handlers::get_all_providers))
+            .route("/with-counts", web::get().to(handlers::provider_handlers::get_providers_with_counts))
+            .route("/by-code/{code}", web::get().to(handlers::provider_handlers::get_provider_by_code))
+            .route("/by-capability/{capability}", web::get().to(handlers::provider_handlers::get_providers_by_capability))
+    );
+    
+    // Model routes (/api/models/*)
+    cfg.service(
+        web::scope("/models")
+            .route("", web::get().to(handlers::model_handlers::get_all_models))
+            .route("/{id}", web::get().to(handlers::model_handlers::get_model_by_id))
+            .route("/by-provider/{provider_code}", web::get().to(handlers::model_handlers::get_models_by_provider))
+            .route("/by-type/{model_type}", web::get().to(handlers::model_handlers::get_models_by_type))
     );
 }
 

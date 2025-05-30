@@ -136,39 +136,6 @@ export function JobDetailsResponseSection({
               </div>
             )}
 
-            {/* Display with improved formatting for file references */}
-            {responseContent &&
-            responseContent.includes("file:") &&
-            job.outputFilePath ? (
-              <div className="space-y-3">
-                {/* When we have both content and file reference, display content first */}
-                <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full text-foreground">
-                  {/* Display content part before the file reference */}
-                  {displayContent.split(/file:.*$/m)[0].trim()}
-                </pre>
-
-                {/* Show file reference separately with better styling */}
-                <div className="mt-3 p-3 border rounded-md bg-muted/20 text-xs flex flex-col gap-2">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <FileCode className="h-4 w-4" />
-                    <span>Complete content available in file:</span>
-                  </div>
-                  <code className="text-xs bg-muted/30 p-1 rounded font-mono text-foreground">
-                    {job.outputFilePath}
-                  </code>
-                </div>
-                {isLongContent && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 text-xs"
-                    onClick={() => setShowFullResponse(!showFullResponse)}
-                  >
-                    {showFullResponse ? "Show Less" : "Show More"}
-                  </Button>
-                )}
-              </div>
-            ) : (
               <div>
                 <ScrollArea className={`${showFullResponse ? "max-h-[70vh]" : "max-h-[40vh]"}`}>
                   <pre
@@ -197,7 +164,6 @@ export function JobDetailsResponseSection({
                   </Button>
                 )}
               </div>
-            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

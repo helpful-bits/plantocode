@@ -6,11 +6,9 @@ import {
   type FilesMap,
   type FileInfo,
 } from "../_hooks/file-management/use-project-file-list";
-import type { FileFinderWorkflowStage } from "../_hooks/file-management/workflow/workflowTypes";
 import { logError } from "@/utils/error-handling";
 
 export interface FileManagementContextValue {
-  // State
   managedFilesMap: FilesMap;
   searchTerm: string;
   filterMode: "all" | "selected";
@@ -21,8 +19,8 @@ export interface FileManagementContextValue {
   isLoadingFiles: boolean;
   isInitialized: boolean;
   isFindingFiles: boolean;
-  findingFilesJobId?: string;
-  currentWorkflowStage?: FileFinderWorkflowStage;
+  currentWorkflowStage?: string;
+  currentStageMessage?: string;
   workflowError?: string | null;
   fileContentsMap: Record<string, string>;
   fileLoadError?: string;
@@ -30,15 +28,12 @@ export interface FileManagementContextValue {
   canUndo: boolean;
   canRedo: boolean;
 
-  // Actions
   setSearchTerm: (searchTerm: string) => void;
   setFilterMode: (mode: "all" | "selected") => void;
   toggleFileSelection: (filePath: string) => void;
   toggleFileExclusion: (filePath: string) => void;
   toggleSearchSelectedFilesOnly: (value?: boolean) => void;
   handleBulkToggle: (files: FileInfo[], include: boolean) => void;
-  addPathsToSelection: (paths: string[]) => void; // Add paths to existing selection
-  replaceSelectionWithPaths: (paths: string[]) => void; // Replace selection with new paths
   findRelevantFiles: () => Promise<void>;
   refreshFiles: () => Promise<void>;
   flushPendingOperations?: () => void;
@@ -47,7 +42,6 @@ export interface FileManagementContextValue {
   undoSelection: () => void;
   redoSelection: () => void;
 
-  // Session state extraction for saving
   getFileStateForSession: () => {
     searchTerm: string;
     includedFiles: string[];

@@ -9,9 +9,9 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult, TaskEnhancementPaylo
 use crate::jobs::processor_trait::JobProcessor;
 use crate::api_clients::client_trait::{ApiClient, ApiClientOptions};
 use crate::api_clients::server_proxy_client::ServerProxyClient;
-use crate::prompts::task_enhancement::{generate_task_enhancement_system_prompt, generate_task_enhancement_user_prompt};
-use crate::db_utils::BackgroundJobRepository;
-use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
+use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
+use crate::utils::{PromptComposer, CompositionContextBuilder};
 use crate::api_clients::client_factory;
 use crate::utils::xml_utils::extract_xml_from_markdown;
 
@@ -71,18 +71,39 @@ impl JobProcessor for TaskEnhancementProcessor {
             }
         };
         
-        // Get the repository from app state
+        // Get repositories from app state
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
         
         // Update job status to running
         repo.update_job_status(&job_id, &JobStatus::Running.to_string(), Some("Processing task enhancement")).await?;
         
-        // Generate the system and user prompts for task enhancement
-        let system_prompt_text = generate_task_enhancement_system_prompt();
-        let user_prompt_text = generate_task_enhancement_user_prompt(
-            &payload.task_description,
-            payload.project_context.as_deref(),
-        );
+        // Create enhanced composition context for sophisticated prompt generation
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::TaskEnhancement,
+            payload.task_description.clone(),
+        )
+        .project_structure(payload.project_context.clone())
+        .build();
+
+        // Use the enhanced prompt composer to generate sophisticated prompts
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Task Enhancement prompt composition for job {}", job_id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        // Extract system and user parts from the composed prompt
+        let system_prompt_text = composed_prompt.final_prompt.split("\n\n").next().unwrap_or("").to_string();
+        let user_prompt_text = composed_prompt.final_prompt.split("\n\n").skip(1).collect::<Vec<&str>>().join("\n\n");
+        let system_prompt_id = composed_prompt.system_prompt_id;
         
         // Get the LLM client using the standardized factory function
         let client = client_factory::get_api_client(&app_handle)?;
@@ -121,32 +142,22 @@ impl JobProcessor for TaskEnhancementProcessor {
         let mut model_to_use = match db_job.model_used {
             Some(model) if !model.is_empty() => model,
             _ => {
-                // Try to get task-specific model from project settings first, then server defaults
-                match crate::config::get_model_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await {
-                    Ok(model) => model,
-                    Err(_) => {
-                        // If task-specific model fails, fall back to default LLM model
-                        crate::config::get_default_llm_model_id()?
-                    }
-                }
+                // Get task-specific model from project settings or server defaults
+                crate::config::get_model_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await?
             }
         };
         
-        // Final safety check - if model is still empty, try default fallback
+        // Final safety check - if model is still empty, this is an error
         if model_to_use.is_empty() {
-            model_to_use = crate::config::get_default_llm_model_id()?;
+            return Err(AppError::ConfigError("No model configured for TaskEnhancement task. Please ensure server database is properly configured.".to_string()));
         }
         
         // Get max tokens and temperature from project/server config
-        let max_tokens = Some(match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(_) => 4000, // Fallback
-        });
+        let max_tokens = Some(crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await
+            .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for TaskEnhancement task: {}. Please ensure server database is properly configured.", e)))?);
         
-        let temperature = Some(match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await {
-            Ok(temp) => temp,
-            Err(_) => 0.4, // Fallback
-        });
+        let temperature = Some(crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TaskEnhancement, project_dir, &app_handle).await
+            .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for TaskEnhancement task: {}. Please ensure server database is properly configured.", e)))?);
         
         // Create the options with values from config
         let options = ApiClientOptions {
@@ -213,6 +224,11 @@ impl JobProcessor for TaskEnhancementProcessor {
         });
         
         // Update the job with the response and metadata
+        let mut updated_job = repo.get_job_by_id(&job_id).await?
+            .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
+        updated_job.system_prompt_id = Some(system_prompt_id);
+        repo.update_job(&updated_job).await?;
+        
         repo.update_job_response(
             &job_id, 
             &parsed_response.enhanced_task,

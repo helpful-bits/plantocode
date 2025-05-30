@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { 
-  getSpendingStatus, 
-  checkServiceAccess, 
-  acknowledgeAlert,
-  type SpendingStatus, 
-  type ServiceAccessResponse 
-} from '@/actions/spending.actions';
+  type SpendingStatusInfo,
+} from '@/types/tauri-commands';
 import { useNotification } from '@/contexts/notification-context';
+import { getErrorMessage } from '@/utils/error-handling';
+
+export interface ServiceAccessResponse {
+  hasAccess: boolean;
+  message: string;
+}
 
 export interface UseSpendingDataReturn {
-  spendingStatus: SpendingStatus | null;
+  spendingStatus: SpendingStatusInfo | null;
   serviceAccess: ServiceAccessResponse | null;
   isLoading: boolean;
   error: string | null;
@@ -18,7 +21,7 @@ export interface UseSpendingDataReturn {
 }
 
 export function useSpendingData(): UseSpendingDataReturn {
-  const [spendingStatus, setSpendingStatus] = useState<SpendingStatus | null>(null);
+  const [spendingStatus, setSpendingStatus] = useState<SpendingStatusInfo | null>(null);
   const [serviceAccess, setServiceAccess] = useState<ServiceAccessResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,16 +32,16 @@ export function useSpendingData(): UseSpendingDataReturn {
       setIsLoading(true);
       setError(null);
 
-      // Fetch both spending status and service access in parallel
+      // Fetch both spending status and service access in parallel using Tauri commands
       const [statusData, accessData] = await Promise.all([
-        getSpendingStatus(),
-        checkServiceAccess(),
+        invoke<SpendingStatusInfo>('get_spending_status_command'),
+        invoke<ServiceAccessResponse>('check_service_access_command'),
       ]);
 
       setSpendingStatus(statusData);
       setServiceAccess(accessData);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       console.error('Failed to fetch spending data:', err);
       
@@ -61,7 +64,7 @@ export function useSpendingData(): UseSpendingDataReturn {
 
   const acknowledgeSpendingAlert = useCallback(async (alertId: string) => {
     try {
-      await acknowledgeAlert(alertId);
+      await invoke<boolean>('acknowledge_spending_alert_command', { alertId });
       
       // Refresh spending data to get updated alert status
       await refreshSpendingData();
@@ -72,7 +75,7 @@ export function useSpendingData(): UseSpendingDataReturn {
         type: 'success',
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to acknowledge alert';
+      const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       
       showNotification({

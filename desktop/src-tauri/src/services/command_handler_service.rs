@@ -135,8 +135,6 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
             match crate::commands::text_commands::improve_text_command(
                 improve_text_args.session_id,
                 improve_text_args.text,
-                improve_text_args.improvement_type,
-                improve_text_args.language,
                 improve_text_args.project_directory,
                 improve_text_args.model_override,
                 improve_text_args.temperature_override,
@@ -202,18 +200,18 @@ pub async fn handle_command(command: String, args: FetchRequestArgs, app_handle:
                 }
             }
         },
-        "create_voice_correction" => {
-            // Deserialize args.body into CorrectTranscriptionArgs
-            let correct_args = serde_json::from_value::<crate::commands::voice_commands::CorrectTranscriptionArgs>(
+        "create_text_correction" => {
+            // Deserialize args.body into CorrectTextArgs
+            let correct_args = serde_json::from_value::<crate::commands::text_commands::CorrectTextArgs>(
                 args.body.clone().ok_or(AppError::ValidationError("Request body is required".to_string()))?
-            ).map_err(|e| AppError::ValidationError(format!("Failed to parse voice correction args: {}", e)))?;
+            ).map_err(|e| AppError::ValidationError(format!("Failed to parse text correction args: {}", e)))?;
             
-            // Call the Tauri command directly
-            match crate::commands::voice_commands::correct_transcription_command(
+            // Call the consolidated text correction command
+            match crate::commands::text_commands::correct_text_command(
                 correct_args.session_id,
                 correct_args.text_to_correct,
                 correct_args.language,
-                correct_args.original_job_id,
+                correct_args.original_transcription_job_id,
                 correct_args.project_directory,
                 app_handle.clone()
             ).await {

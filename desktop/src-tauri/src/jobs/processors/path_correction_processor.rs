@@ -8,7 +8,8 @@ use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, PathCorrectionPayload};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{OpenRouterRequestMessage, OpenRouterContent, JobStatus};
-use crate::prompts::path_correction::generate_path_correction_prompt;
+use crate::utils::{PromptComposer, CompositionContextBuilder};
+use crate::db_utils::SettingsRepository;
 use crate::error::{AppError, AppResult};
 use crate::api_clients::client_trait::ApiClientOptions;
 
@@ -121,13 +122,42 @@ impl JobProcessor for PathCorrectionProcessor {
             
         let project_directory = job.project_directory.as_ref()
             .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
-            
-        // Generate path correction prompt
-        let prompt = generate_path_correction_prompt(&paths, project_directory, payload.directory_tree.as_deref());
         
-        // Set system prompt
-        let system_prompt = payload.system_prompt_override.clone()
-            .unwrap_or_else(|| String::from("You are a file path expert in a software development environment. Your task is to correct, validate, or complete the provided file paths within the context of the project."));
+        // Get settings repository for PromptComposer
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
+        
+        // Create composition context with paths as task description
+        let task_description = paths.join("\n");
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            crate::models::TaskType::PathCorrection,
+            task_description.clone(),
+        )
+        .project_directory(Some(project_directory.clone()))
+        .codebase_structure(payload.directory_tree.clone())
+        .build();
+
+        // Use PromptComposer to generate the complete prompt
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = if let Some(override_prompt) = &payload.system_prompt_override {
+            // Handle override case - create a simple composed prompt
+            crate::utils::prompt_composition::ComposedPrompt {
+                final_prompt: format!("{}\n\n{}", override_prompt, task_description),
+                system_prompt_id: "override".to_string(),
+                context_sections: vec![],
+                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(override_prompt) as usize),
+            }
+        } else {
+            prompt_composer
+                .compose_prompt(&composition_context, &settings_repo)
+                .await?
+        };
+
+        // Extract system and user prompts from the composed result
+        let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
+        let system_prompt = parts.get(0).unwrap_or(&"").to_string();
+        let user_prompt = parts.get(1).unwrap_or(&"").to_string();
+        let system_prompt_id = composed_prompt.system_prompt_id;
         
         // Build messages array
         let messages = vec![
@@ -142,7 +172,7 @@ impl JobProcessor for PathCorrectionProcessor {
                 role: "user".to_string(),
                 content: vec![OpenRouterContent::Text {
                     content_type: "text".to_string(),
-                    text: prompt,
+                    text: user_prompt,
                 }],
             },
         ];
@@ -159,19 +189,15 @@ impl JobProcessor for PathCorrectionProcessor {
         let max_tokens = if let Some(tokens) = payload.max_output_tokens {
             tokens
         } else {
-            match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await {
-                Ok(tokens) => tokens,
-                Err(_) => 2000, // Fallback only if config error occurs
-            }
+            crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for PathCorrection task: {}. Please ensure server database is properly configured.", e)))?
         };
         
         let temperature = if let Some(temp) = payload.temperature {
             temp
         } else {
-            match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await {
-                Ok(temp) => temp,
-                Err(_) => 0.7, // Fallback only if config error occurs
-            }
+            crate::config::get_temperature_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for PathCorrection task: {}. Please ensure server database is properly configured.", e)))?
         };
         
         let api_options = ApiClientOptions {
@@ -229,6 +255,7 @@ impl JobProcessor for PathCorrectionProcessor {
                     } else {
                         updated_job.model_used = Some(llm_response.model.clone());
                     }
+                    updated_job.system_prompt_id = Some(system_prompt_id.clone());
                     
                     // Save updated job
                     repo.update_job(&updated_job).await?;

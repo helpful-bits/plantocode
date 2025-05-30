@@ -77,14 +77,15 @@ export type TaskType =
   | "path_finder"
   | "text_improvement"
   | "voice_transcription"
-  | "voice_correction"
+  | "text_correction"
   | "path_correction"
   | "guidance_generation"
   | "task_enhancement"
-  | "generate_directory_tree"
-  | "text_correction_post_transcription"
   | "generic_llm_stream"
   | "regex_summary_generation"
+  | "regex_pattern_generation"
+  | "server_proxy_transcription"
+  | "streaming"
   | "unknown";
 
 /**
@@ -138,6 +139,7 @@ export interface BackgroundJob {
   temperature?: number;
   includeSyntax?: boolean;
   metadata?: JobMetadata;
+  systemPromptId?: string; // ID of the system prompt used for this job
 }
 
 // Session structure including background jobs and task settings

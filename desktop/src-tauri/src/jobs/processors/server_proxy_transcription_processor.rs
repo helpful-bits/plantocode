@@ -36,7 +36,7 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
     /// Check if this processor can handle the given job
     fn can_handle(&self, job: &Job) -> bool {
         match &job.payload {
-            JobPayload::OpenRouterTranscription(_) => true,
+            JobPayload::VoiceTranscription(_) => true,
             _ => false,
         }
     }
@@ -52,7 +52,7 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
         
         // Extract the payload
         let payload = match &job.payload {
-            JobPayload::OpenRouterTranscription(data) => data,
+            JobPayload::VoiceTranscription(data) => data,
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         

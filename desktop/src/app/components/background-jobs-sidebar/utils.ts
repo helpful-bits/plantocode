@@ -131,8 +131,8 @@ export function formatTaskType(taskType: TaskType): string {
       return "Path Correction";
     case "text_improvement":
       return "Text Improvement";
-    case "voice_correction":
-      return "Voice Correction";
+    case "text_correction":
+      return "Text Correction";
     case "task_enhancement":
       return "Task Enhancement";
     case "guidance_generation":

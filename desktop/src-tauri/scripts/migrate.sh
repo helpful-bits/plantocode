@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./scripts/migrate.sh <sql_file>
-#   ./scripts/migrate.sh migrations/002_add_regex_description_columns.sql
+#   ./scripts/migrate.sh migrations/consolidated_schema.sql
 #
 # Prerequisites:
 #   - sqlite3 command available
@@ -57,17 +57,17 @@ OPTIONS:
     --db-path       Specify custom database path
 
 EXAMPLES:
-    # Run the regex description columns migration
-    $0 migrations/002_add_regex_description_columns.sql
+    # Run the consolidated schema migration
+    $0 migrations/consolidated_schema.sql
 
     # Dry run to see what would be executed
-    $0 migrations/002_add_regex_description_columns.sql --dry-run
+    $0 migrations/consolidated_schema.sql --dry-run
 
     # Verbose output
-    $0 migrations/002_add_regex_description_columns.sql --verbose
+    $0 migrations/consolidated_schema.sql --verbose
 
     # Custom database path
-    $0 migrations/002_add_regex_description_columns.sql --db-path ~/custom/path/app.db
+    $0 migrations/consolidated_schema.sql --db-path ~/custom/path/app.db
 
 PREREQUISITES:
     - sqlite3 command must be available
@@ -177,9 +177,11 @@ FILENAME=$(basename "$SQL_FILE")
 log_info "🚀 Starting SQLite database migration"
 log_info "📁 SQL file: $SQL_FILE"
 log_info "🗃️  Database: $DB_PATH"
+log_info "📍 Full resolved path: $DB_PATH"
 
 if [[ "$VERBOSE" == true ]]; then
-    log_info "Database path: $DB_PATH"
+    log_info "OS detected: $(uname -s)"
+    log_info "App identifier: com.vibe-manager.app"
 fi
 
 # Test database connection

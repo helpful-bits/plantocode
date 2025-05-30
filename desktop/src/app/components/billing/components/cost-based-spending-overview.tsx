@@ -19,10 +19,10 @@ import { Badge } from "@/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { useSpendingData } from "@/hooks/use-spending-data";
-import { type SpendingStatus } from "@/actions/spending.actions";
+import { type SpendingStatusInfo } from "@/types/tauri-commands";
 
 interface CostBasedSpendingOverviewProps {
-  spendingData?: SpendingStatus | null;
+  spendingData?: SpendingStatusInfo | null;
   onUpgrade?: () => void;
   onManageSpending?: () => void;
 }

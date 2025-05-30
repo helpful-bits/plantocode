@@ -8,12 +8,12 @@ use crate::SESSION_REPO;
 use crate::utils::job_creation_utils;
 use crate::commands::text_commands::ImproveTextArgs;
 
-/// Creates a background job to improve text based on specified improvement type.
+/// Creates a background job to improve text for clarity and grammar.
 pub async fn create_text_improvement_job_service(
     app_handle: &AppHandle, 
     args: ImproveTextArgs,
 ) -> AppResult<JobCommandResponse> {
-    info!("Improving text with improvement type: {}", args.improvement_type);
+    info!("Improving text for clarity and grammar");
 
     // Validate required fields
     if args.session_id.is_empty() {
@@ -22,10 +22,6 @@ pub async fn create_text_improvement_job_service(
 
     if args.text.is_empty() {
         return Err(AppError::ValidationError("Text to improve is required".to_string()));
-    }
-
-    if args.improvement_type.is_empty() {
-        return Err(AppError::ValidationError("Improvement type is required".to_string()));
     }
 
     // Determine project directory
@@ -95,8 +91,6 @@ pub async fn create_text_improvement_job_service(
         session_id: args.session_id.clone(),
         project_directory: Some(project_directory.clone()),
         text_to_improve: args.text.clone(),
-        language: args.language.clone(),
-        improvement_type: args.improvement_type.clone(),
         target_field: args.target_field.clone(),
     };
 
@@ -112,7 +106,7 @@ pub async fn create_text_improvement_job_service(
         "openrouter",
         TaskType::TextImprovement,
         "TEXT_IMPROVEMENT",
-        &format!("Improve text with type: {}", args.improvement_type),
+        "Improve text clarity and grammar",
         (model, temperature, max_tokens),
         serde_json::to_value(payload)
             .map_err(|e| AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,

@@ -8,38 +8,18 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::job_helpers;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent};
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::models::{OpenRouterRequestMessage, OpenRouterContent, TaskType};
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
+use crate::utils::{PromptComposer, CompositionContextBuilder};
 
-/// Processor for text correction after transcription
-pub struct TextCorrectionPostTranscriptionProcessor;
+/// Processor for text correction (consolidates voice correction and post-transcription correction)
+pub struct TextCorrectionProcessor;
 
-impl TextCorrectionPostTranscriptionProcessor {
+impl TextCorrectionProcessor {
     pub fn new() -> Self {
         Self {}
     }
     
-    /// Helper method to create system prompt for text correction
-    fn create_system_prompt(&self, language: &str) -> String {
-        format!(
-            r#"You are a helpful assistant that corrects and cleans up transcribed spoken text. 
-            Your goal is to make the text more readable without changing the meaning.
-            The text is in {language}.
-
-            When correcting text:
-            1. Fix grammatical errors and typos
-            2. Add proper punctuation and capitalization
-            3. Remove filler words (um, uh, like, etc.) and repeated words
-            4. Split run-on sentences into proper sentences
-            5. Structure text into paragraphs when appropriate
-            6. Preserve the original meaning and intent
-            7. Maintain technical terms, names, and specific terminology mentioned
-
-            Keep the language natural and conversational - don't make it overly formal.
-            Return ONLY the corrected text without comments or explanations."#, 
-            language = language
-        )
-    }
 
     /// Helper method to get model with fallback logic
     async fn get_model_with_fallback(
@@ -100,21 +80,21 @@ impl TextCorrectionPostTranscriptionProcessor {
 }
 
 #[async_trait]
-impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
+impl JobProcessor for TextCorrectionProcessor {
     fn name(&self) -> &'static str {
-        "TextCorrectionPostTranscriptionProcessor"
+        "TextCorrectionProcessor"
     }
     
     fn can_handle(&self, job: &Job) -> bool {
-        matches!(job.payload, JobPayload::TextCorrectionPostTranscription(_))
+        matches!(job.payload, JobPayload::TextCorrection(_))
     }
     
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing text correction post transcription job {}", job.id);
+        info!("Processing text correction job {}", job.id);
         
         // Extract the payload
         let payload = match &job.payload {
-            JobPayload::TextCorrectionPostTranscription(p) => p,
+            JobPayload::TextCorrection(p) => p,
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
@@ -126,8 +106,36 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
         
         job_helpers::update_job_status_running(&repo, &job.id).await?;
         
-        // Create messages for the LLM
-        let system_prompt = self.create_system_prompt(&payload.language);
+        // Get settings repository for PromptComposer
+        let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+        
+        // Create composition context for sophisticated prompt generation
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::TextCorrection,
+            payload.text_to_correct.clone(),
+        )
+        .project_directory(payload.project_directory.clone())
+        .build();
+
+        // Use PromptComposer to generate the complete prompt
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Text Correction prompt composition for job {}", job.id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        // Extract system and user prompts from the composed result
+        let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
+        let system_prompt = parts.get(0).unwrap_or(&"").to_string();
+        let user_prompt = parts.get(1).unwrap_or(&"").to_string();
+        let system_prompt_id = composed_prompt.system_prompt_id;
         
         let system_message = OpenRouterRequestMessage {
             role: "system".to_string(),
@@ -144,7 +152,7 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
             content: vec![
                 OpenRouterContent::Text {
                     content_type: "text".to_string(),
-                    text: payload.text_to_correct.clone(),
+                    text: user_prompt,
                 },
             ],
         };
@@ -155,21 +163,21 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
         let model = Self::get_model_with_fallback(
             &app_handle,
             project_dir,
-            crate::models::TaskType::TextCorrectionPostTranscription,
+            crate::models::TaskType::TextCorrection,
             crate::models::TaskType::TextImprovement,
         ).await?;
         
         let temperature = Self::get_temperature_with_fallback(
             &app_handle,
             project_dir,
-            crate::models::TaskType::TextCorrectionPostTranscription,
+            crate::models::TaskType::TextCorrection,
             crate::models::TaskType::TextImprovement,
         ).await?;
         
         let max_tokens = Self::get_max_tokens_with_fallback(
             &app_handle,
             project_dir,
-            crate::models::TaskType::TextCorrectionPostTranscription,
+            crate::models::TaskType::TextCorrection,
             crate::models::TaskType::TextImprovement,
         ).await?;
         
@@ -199,15 +207,17 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
                 let total_tokens = usage.map(|u| u.total_tokens as i32);
                 let chars_received = Some(corrected_text.len() as i32);
                 
-                // Update job with the corrected text
-                job_helpers::update_job_status_completed(
-                    &repo, 
-                    &job.id, 
-                    &corrected_text, 
-                    prompt_tokens, 
-                    completion_tokens, 
-                    total_tokens, 
-                    chars_received
+                // Update job with the corrected text and system prompt ID
+                repo.update_job_response_with_system_prompt(
+                    &job.id,
+                    &corrected_text,
+                    Some(crate::models::JobStatus::Completed),
+                    None, // metadata
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    chars_received,
+                    Some(&system_prompt_id),
                 ).await?;
                 
                 // Create and return the result
@@ -226,7 +236,7 @@ impl JobProcessor for TextCorrectionPostTranscriptionProcessor {
             }
         };
         
-        info!("Completed text correction post transcription job {}", job.id);
+        info!("Completed text correction job {}", job.id);
         Ok(result)
     }
 }

@@ -93,7 +93,7 @@ pub async fn get_retry_info(job: &BackgroundJob) -> (bool, u32) {
                     // Configuration or validation errors are not retryable
                     "ConfigValidation" | "DirectoryValidation" => is_retryable = false,
                     // Network operations are typically retryable
-                    "OpenRouterTranscription" | "LlmCompletion" => is_retryable = true,
+                    "VoiceTranscription" | "LlmCompletion" => is_retryable = true,
                     // Default to allowing retry
                     _ => is_retryable = true,
                 }

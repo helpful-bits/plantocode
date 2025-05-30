@@ -245,6 +245,85 @@ pub async fn get_usage_summary(
     Ok(HttpResponse::Ok().json(usage))
 }
 
+/// Get invoice history for user
+#[get("/invoices")]
+pub async fn get_invoice_history(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting invoice history for user: {}", user_id.0);
+    
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct InvoiceHistoryEntry {
+        pub id: String,
+        pub amount: f64,
+        pub currency: String,
+        pub status: String,
+        pub created_date: String,
+        pub due_date: Option<String>,
+        pub paid_date: Option<String>,
+        pub invoice_pdf: Option<String>,
+        pub description: String,
+    }
+    
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct InvoiceHistoryResponse {
+        pub invoices: Vec<InvoiceHistoryEntry>,
+        pub total_count: usize,
+        pub has_more: bool,
+    }
+    
+    // For now, return a placeholder response
+    // In a full implementation, this would fetch from Stripe or a local invoice cache
+    let response = InvoiceHistoryResponse {
+        invoices: vec![],
+        total_count: 0,
+        has_more: false,
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get payment methods for user
+#[get("/payment-methods")]
+pub async fn get_payment_methods(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting payment methods for user: {}", user_id.0);
+    
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PaymentMethodInfo {
+        pub id: String,
+        pub type_name: String,
+        pub last_four: Option<String>,
+        pub brand: Option<String>,
+        pub exp_month: Option<u8>,
+        pub exp_year: Option<u16>,
+        pub is_default: bool,
+        pub created_date: String,
+    }
+    
+    #[derive(Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PaymentMethodsResponse {
+        pub payment_methods: Vec<PaymentMethodInfo>,
+        pub has_default: bool,
+    }
+    
+    // For now, return a placeholder response
+    // In a full implementation, this would fetch from Stripe
+    let response = PaymentMethodsResponse {
+        payment_methods: vec![],
+        has_default: false,
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
 /// Handle Stripe webhook events
 #[post("/webhook")]
 pub async fn stripe_webhook(

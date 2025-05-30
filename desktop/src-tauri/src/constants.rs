@@ -3,7 +3,6 @@ use once_cell::sync::Lazy;
 
 // API URLs
 pub const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
-pub const OPENROUTER_AUDIO_URL: &str = "https://openrouter.ai/api/v1/audio/transcriptions";
 // Default fallback URL for the server API. Prefer environment variables.
 pub const SERVER_API_URL: &str = "http://localhost:8080";
 

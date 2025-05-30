@@ -4,9 +4,9 @@ import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
 
 /**
- * Creates a job to correct and improve transcribed text
+ * Creates a job to correct and improve text (consolidates voice correction and post-transcription correction)
  */
-export async function createVoiceCorrectionJobAction(
+export async function createTextCorrectionJobAction(
   text: string,
   sessionId: string,
   originalJobId: string | null,
@@ -30,14 +30,14 @@ export async function createVoiceCorrectionJobAction(
       };
     }
 
-    // Call the Tauri command to create a voice correction job
+    // Call the Tauri command to create a text correction job
     // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
     const result = await invoke<{ jobId: string }>(
-      "correct_transcription_command",
+      "correct_text_command",
       {
         sessionId,
         textToCorrect: text,
-        originalJobId: originalJobId || undefined,
+        originalTranscriptionJobId: originalJobId || undefined,
         projectDirectory: projectDirectory || undefined,
         language,
       }
