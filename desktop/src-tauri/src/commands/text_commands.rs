@@ -101,37 +101,16 @@ pub async fn correct_text_command(
         original_transcription_job_id: args.original_transcription_job_id.clone(),
     };
     
-    // Get the model and settings for this task - check project settings first, then server defaults
+    // Get the model and settings for this task using centralized resolver
     let project_dir = args.project_directory.clone().unwrap_or_default();
-    let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrection, &project_dir, &app_handle).await {
-        Ok(model) => model,
-        Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => return Err(AppError::ConfigError(
-                format!("Failed to get model for text correction: {}", e)
-            )),
-        },
-    };
-    
-    let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrection, &project_dir, &app_handle).await {
-        Ok(temp) => temp,
-        Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => return Err(AppError::ConfigError(
-                format!("Failed to get temperature for text correction: {}", e)
-            )),
-        },
-    };
-    
-    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrection, &project_dir, &app_handle).await {
-        Ok(tokens) => tokens,
-        Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => return Err(AppError::ConfigError(
-                format!("Failed to get max tokens for text correction: {}", e)
-            )),
-        },
-    };
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        crate::models::TaskType::TextCorrection,
+        &project_dir,
+        None, // no model override for this command
+        None, // no temperature override for this command
+        None, // no max_tokens override for this command
+    ).await?;
     
     // Use the job creation utility to create and queue the job
     let job_id = crate::utils::job_creation_utils::create_and_queue_background_job(

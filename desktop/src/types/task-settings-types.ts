@@ -5,17 +5,18 @@ export interface TaskModelSettings {
 }
 
 export interface TaskSettings {
-  pathFinder: TaskModelSettings;
-  transcription: TaskModelSettings;
-  regexGeneration: TaskModelSettings;
-  regexSummaryGeneration: TaskModelSettings;
-  pathCorrection: TaskModelSettings;
-  textImprovement: TaskModelSettings;
-  textCorrection: TaskModelSettings;
-  taskEnhancement: TaskModelSettings;
-  guidanceGeneration: TaskModelSettings;
-  implementationPlan: TaskModelSettings;
-  genericLlmStream: TaskModelSettings;
+  path_finder: TaskModelSettings;
+  voice_transcription: TaskModelSettings;
+  regex_pattern_generation: TaskModelSettings;
+  regex_summary_generation: TaskModelSettings;
+  path_correction: TaskModelSettings;
+  text_improvement: TaskModelSettings;
+  text_correction: TaskModelSettings;
+  task_enhancement: TaskModelSettings;
+  guidance_generation: TaskModelSettings;
+  implementation_plan: TaskModelSettings;
+  generic_llm_stream: TaskModelSettings;
+  file_finder_workflow: TaskModelSettings;
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
 }

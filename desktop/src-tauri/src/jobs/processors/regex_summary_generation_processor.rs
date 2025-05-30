@@ -60,7 +60,7 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         
         let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
 
-        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
         // Update job status to running
         let timestamp = get_timestamp();

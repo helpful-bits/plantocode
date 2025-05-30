@@ -295,7 +295,7 @@ pub async fn execute_file_finder_workflow_command(
     })
 }
 
-async fn generate_directory_tree_internal(project_directory: &str) -> AppResult<String> {
+pub async fn generate_directory_tree_internal(project_directory: &str) -> AppResult<String> {
     let options = DirectoryTreeOptions {
         max_depth: None,
         include_ignored: false,
@@ -309,7 +309,7 @@ async fn generate_directory_tree_internal(project_directory: &str) -> AppResult<
     generate_directory_tree(path, options).await
 }
 
-async fn generate_regex_patterns_internal(
+pub async fn generate_regex_patterns_internal(
     session_id: &str,
     project_directory: &str,
     task_description: &str,
@@ -391,7 +391,7 @@ async fn generate_regex_patterns_internal(
     }
 }
 
-async fn perform_local_filtering_internal(
+pub async fn perform_local_filtering_internal(
     regex_patterns: &serde_json::Value,
     project_directory: &str
 ) -> AppResult<Vec<String>> {
@@ -571,7 +571,7 @@ async fn run_path_finder_internal(
     Ok((validated_paths, unverified_paths))
 }
 
-async fn run_initial_path_finder_internal(
+pub async fn run_initial_path_finder_internal(
     session_id: &str,
     project_directory: &str,
     task_description: &str,
@@ -592,7 +592,7 @@ async fn run_initial_path_finder_internal(
     ).await
 }
 
-async fn run_extended_path_finder_internal(
+pub async fn run_extended_path_finder_internal(
     session_id: &str,
     project_directory: &str,
     task_description: &str,
@@ -613,7 +613,7 @@ async fn run_extended_path_finder_internal(
     ).await
 }
 
-async fn run_path_correction_internal(
+pub async fn run_path_correction_internal(
     session_id: &str,
     project_directory: &str,
     paths_to_correct: &[String],

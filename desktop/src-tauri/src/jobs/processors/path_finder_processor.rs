@@ -118,8 +118,8 @@ impl JobProcessor for PathFinderProcessor {
         let repo = repo_state.inner().clone();
         let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
         
-        // Get the API client from factory
-        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+        // Get the API client from job processor utils
+        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
         
         // Get the background job from the repository
