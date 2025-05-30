@@ -18,6 +18,9 @@ export type * from "./error-types";
 // Export task settings types
 export type * from "./task-settings-types";
 
+// Export system prompt types
+export type * from "./system-prompts";
+
 // Authentication types
 export interface FrontendUser {
   id: string;

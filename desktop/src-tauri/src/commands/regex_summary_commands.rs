@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobCommandResponse};
 use crate::db_utils::session_repository::SessionRepository;
 use crate::jobs::processors::RegexSummaryGenerationPayload;
@@ -43,7 +43,10 @@ pub async fn generate_regex_summary_command(
         negative_title_regex: session.negative_title_regex.unwrap_or_default(),
         negative_content_regex: session.negative_content_regex.unwrap_or_default(),
         model_override: args.model_override.clone(),
-        temperature: args.temperature_override.unwrap_or(0.3),
+        temperature: match args.temperature_override {
+            Some(temp) => temp,
+            None => crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::RegexSummaryGeneration))?,
+        },
         max_output_tokens: args.max_tokens_override,
     };
 
@@ -56,9 +59,19 @@ pub async fn generate_regex_summary_command(
         "REGEX_SUMMARY_GENERATION",
         "Generating regex filter summary explanation",
         (
-            args.model_override.unwrap_or_else(|| "gpt-4o-mini".to_string()),
-            args.temperature_override.unwrap_or(0.3),
-            args.max_tokens_override.unwrap_or(1000),
+            match args.model_override {
+                Some(model) => model,
+                None => crate::config::get_model_for_task(crate::models::TaskType::RegexSummaryGeneration)?,
+            },
+            match args.temperature_override {
+                Some(temp) => temp,
+                None => crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::RegexSummaryGeneration))
+                    .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for RegexSummaryGeneration: {}", e)))?,
+            },
+            match args.max_tokens_override {
+                Some(tokens) => tokens,
+                None => crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::RegexSummaryGeneration))?,
+            },
         ),
         json!(payload),
         1, // priority

@@ -6,10 +6,9 @@ use log::{debug, info};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
-use crate::prompts::generate_regex_summary_prompt;
-use crate::db_utils::{session_repository::SessionRepository, background_job_repository::BackgroundJobRepository};
-use crate::models::JobStatus;
-use crate::utils::get_timestamp;
+use crate::db_utils::{SessionRepository, BackgroundJobRepository, SettingsRepository};
+use crate::models::{JobStatus, TaskType};
+use crate::utils::{get_timestamp, PromptComposer, CompositionContextBuilder};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +57,8 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         
         let session_repo_state = app_handle.state::<std::sync::Arc<SessionRepository>>();
         let session_repo = session_repo_state.inner().clone();
+        
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
 
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
         
@@ -70,18 +71,45 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         db_job.start_time = Some(timestamp);
         repo.update_job(&db_job).await?;
 
-        // Generate the prompt
-        let prompt = generate_regex_summary_prompt(
-            &payload.title_regex,
-            &payload.content_regex,
-            &payload.negative_title_regex,
-            &payload.negative_content_regex,
+        // Create enhanced composition context for sophisticated prompt generation
+        let task_description = format!(
+            "Title regex: {}\nContent regex: {}\nNegative title regex: {}\nNegative content regex: {}",
+            payload.title_regex, payload.content_regex, payload.negative_title_regex, payload.negative_content_regex
         );
+        
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::RegexSummaryGeneration,
+            task_description.clone(),
+        )
+        .build();
+
+        // Use the enhanced prompt composer to generate sophisticated prompts
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Regex Summary Generation prompt composition for job {}", job.id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        let prompt = composed_prompt.final_prompt;
+        let system_prompt_id = composed_prompt.system_prompt_id;
 
         debug!("Generated regex summary prompt for job {}: {}", job.id, prompt);
 
-        // Get the model to use
-        let model = payload.model_override.clone().unwrap_or_else(|| "gpt-4o-mini".to_string());
+        // Get the model to use from config - check project settings first, then server defaults
+        let project_dir = job.project_directory.as_deref().unwrap_or("");
+        let model = if let Some(model_override) = payload.model_override.clone() {
+            model_override
+        } else {
+            crate::config::get_model_for_task_with_project(TaskType::RegexSummaryGeneration, project_dir, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get model for RegexSummaryGeneration task: {}. Please ensure server database is properly configured.", e)))?
+        };
 
         // Make the API request
         let request_options = crate::api_clients::client_trait::ApiClientOptions {
@@ -107,6 +135,7 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         db_job.status = "completed".to_string();
         db_job.end_time = Some(end_timestamp);
         db_job.updated_at = Some(end_timestamp);
+        db_job.system_prompt_id = Some(system_prompt_id);
         repo.update_job(&db_job).await?;
 
         // Update the session's regex_summary_explanation field

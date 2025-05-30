@@ -8,13 +8,12 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 
 use crate::api_clients::{ApiClient, client_trait::ApiClientOptions};
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ImplementationPlanPayload, StructuredImplementationPlan, StructuredImplementationPlanStep, StructuredImplementationPlanStepOperation};
-use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent};
-use crate::prompts::implementation_plan::generate_enhanced_implementation_plan_prompt;
-use crate::utils::get_timestamp;
+use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
+use crate::utils::{get_timestamp, PromptComposer, CompositionContextBuilder};
 use crate::utils::{fs_utils, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
 
@@ -150,6 +149,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Get dependencies from app state
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
         
         // Get LLM client using the standardized factory function
         let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
@@ -187,13 +187,36 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         }
         
-        // Generate the enhanced implementation plan prompt with file contents
-        info!("Generating enhanced implementation plan for task: {}", &payload.task_description);
-        let prompt = generate_enhanced_implementation_plan_prompt(
-            &payload.task_description,
-            payload.project_structure.as_deref(),
-            &file_contents_map
-        );
+        // Create enhanced composition context for sophisticated prompt generation
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::ImplementationPlan,
+            payload.task_description.clone(),
+        )
+        .project_directory(Some(project_directory.clone()))
+        .project_structure(payload.project_structure.clone())
+        .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
+        .relevant_files(Some(payload.relevant_files.clone()))
+        .codebase_structure(payload.project_structure.clone())
+        .build();
+
+        // Use the enhanced prompt composer to generate sophisticated prompts
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Implementation Plan prompt composition for job {}", payload.background_job_id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        let prompt = composed_prompt.final_prompt;
+        let system_prompt_id = composed_prompt.system_prompt_id;
+        
+        info!("Generated implementation plan prompt for task: {}", &payload.task_description);
         
         // Estimate the number of tokens in the prompt
         let estimated_prompt_tokens = crate::utils::token_estimator::estimate_tokens(&prompt);
@@ -508,6 +531,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         };
         
         job.metadata = Some(updated_metadata.to_string());
+        job.system_prompt_id = Some(system_prompt_id);
         
         // Update the job with the additional fields
         repo.update_job(&job).await?;

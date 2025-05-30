@@ -12,8 +12,6 @@ use crate::error::AppError;
 pub struct ImproveTextArgs {
     pub session_id: String,
     pub text: String,
-    pub improvement_type: String,
-    pub language: Option<String>,
     pub project_directory: Option<String>,
     pub model_override: Option<String>,
     pub temperature_override: Option<f32>,
@@ -21,13 +19,11 @@ pub struct ImproveTextArgs {
     pub target_field: Option<String>,
 }
 
-/// Improves text based on the specified improvement type
+/// Improves text for clarity and grammar
 #[command]
 pub async fn improve_text_command(
     session_id: String,
     text: String,
-    improvement_type: String,
-    language: Option<String>,
     project_directory: Option<String>,
     model_override: Option<String>,
     temperature_override: Option<f32>,
@@ -38,8 +34,6 @@ pub async fn improve_text_command(
     let args = ImproveTextArgs {
         session_id,
         text,
-        improvement_type,
-        language,
         project_directory,
         model_override,
         temperature_override,
@@ -51,10 +45,10 @@ pub async fn improve_text_command(
 }
 
 
-// Request arguments for text correction post transcription command
+// Request arguments for text correction command
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CorrectTextPostTranscriptionArgs {
+pub struct CorrectTextArgs {
     pub session_id: String,
     pub text_to_correct: String,
     pub language: String, 
@@ -62,9 +56,9 @@ pub struct CorrectTextPostTranscriptionArgs {
     pub project_directory: Option<String>,
 }
 
-// Command to correct text after transcription
+// Command to correct text (consolidates voice correction and post-transcription correction)
 #[command]
-pub async fn correct_text_post_transcription_command(
+pub async fn correct_text_command(
     session_id: String,
     text_to_correct: String,
     language: String,
@@ -72,14 +66,14 @@ pub async fn correct_text_post_transcription_command(
     project_directory: Option<String>,
     app_handle: AppHandle,
 ) -> AppResult<JobCommandResponse> {
-    let args = CorrectTextPostTranscriptionArgs {
+    let args = CorrectTextArgs {
         session_id,
         text_to_correct,
         language,
         original_transcription_job_id,
         project_directory,
     };
-    info!("Creating text correction post transcription job");
+    info!("Creating text correction job");
     
     // Validate required fields
     if args.session_id.is_empty() {
@@ -98,7 +92,7 @@ pub async fn correct_text_post_transcription_command(
     let job_id = format!("job_{}", uuid::Uuid::new_v4());
     
     // Create the job payload
-    let payload = crate::jobs::types::TextCorrectionPostTranscriptionPayload {
+    let payload = crate::jobs::types::TextCorrectionPayload {
         background_job_id: job_id.clone(),
         session_id: args.session_id.clone(),
         project_directory: args.project_directory.clone(),
@@ -109,7 +103,7 @@ pub async fn correct_text_post_transcription_command(
     
     // Get the model and settings for this task - check project settings first, then server defaults
     let project_dir = args.project_directory.clone().unwrap_or_default();
-    let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir, &app_handle).await {
+    let model = match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextCorrection, &project_dir, &app_handle).await {
         Ok(model) => model,
         Err(_) => match crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
             Ok(model) => model,
@@ -119,7 +113,7 @@ pub async fn correct_text_post_transcription_command(
         },
     };
     
-    let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir, &app_handle).await {
+    let temperature = match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextCorrection, &project_dir, &app_handle).await {
         Ok(temp) => temp,
         Err(_) => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
             Ok(temp) => temp,
@@ -129,7 +123,7 @@ pub async fn correct_text_post_transcription_command(
         },
     };
     
-    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrectionPostTranscription, &project_dir, &app_handle).await {
+    let max_tokens = match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextCorrection, &project_dir, &app_handle).await {
         Ok(tokens) => tokens,
         Err(_) => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, &project_dir, &app_handle).await {
             Ok(tokens) => tokens,
@@ -144,9 +138,9 @@ pub async fn correct_text_post_transcription_command(
         &args.session_id,
         &args.project_directory.clone().unwrap_or_default(),
         "openrouter",
-        crate::models::TaskType::TextCorrectionPostTranscription,
-        "TEXT_CORRECTION_POST_TRANSCRIPTION",
-        &format!("Correct transcribed text: {}", args.text_to_correct),
+        crate::models::TaskType::TextCorrection,
+        "TEXT_CORRECTION",
+        &format!("Correct text: {}", args.text_to_correct),
         (model, temperature, max_tokens),
         serde_json::to_value(payload).map_err(|e| 
             AppError::SerdeError(e.to_string()))?,
@@ -155,7 +149,7 @@ pub async fn correct_text_post_transcription_command(
         &app_handle,
     ).await?;
     
-    info!("Created text correction post transcription job: {}", job_id);
+    info!("Created text correction job: {}", job_id);
     
     // Return the job ID
     Ok(JobCommandResponse { job_id })

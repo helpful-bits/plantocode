@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { useAuth } from "@/contexts/auth-context";
 import { createLogger } from "@/utils/logger";
+import { getErrorMessage } from "@/utils/error-handling";
+import { type SpendingStatusInfo } from "@/types/tauri-commands";
 
 const logger = createLogger({ namespace: "CostUsage" });
 
@@ -23,15 +26,11 @@ export interface CostUsageData {
 }
 
 interface UseCostUsageOptions {
-  serverUrl?: string;
-  getAuthToken?: () => Promise<string | null>;
   autoRefreshInterval?: number | null; // Milliseconds, null for no auto-refresh
 }
 
-type CostUsageResponse = CostUsageData;
-
 /**
- * Hook to fetch cost-based usage data from the server
+ * Hook to fetch cost-based usage data using Tauri commands
  *
  * @param options Configuration options for the hook
  * @returns Cost usage data, loading state, error state, and a refresh function
@@ -40,26 +39,34 @@ export function useCostUsage(options: UseCostUsageOptions = {}) {
   const [usage, setUsage] = useState<CostUsageData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+  const lastRefreshTime = useRef(0);
+  const { user } = useAuth();
 
-  // Use auth context for token retrieval
-  const auth = useAuth();
-
-  // Configuration options with defaults
-  const serverUrlDefault = import.meta.env.VITE_MAIN_SERVER_BASE_URL as string || "http://localhost:8080";
-  const getAuthTokenDefault = auth.getToken;
-  
   const {
-    serverUrl = serverUrlDefault,
-    getAuthToken = options.getAuthToken || getAuthTokenDefault,
     autoRefreshInterval = null,
   } = options;
 
-  // Function to fetch usage data from the server
-  const fetchUsage = useCallback(async () => {
+  // Convert SpendingStatusInfo to CostUsageData format
+  const convertToCostUsageData = (spendingStatus: SpendingStatusInfo): CostUsageData => {
+    return {
+      currentSpending: spendingStatus.currentSpending,
+      monthlyAllowance: spendingStatus.includedAllowance,
+      hardLimit: spendingStatus.hardLimit,
+      usagePercentage: spendingStatus.usagePercentage,
+      servicesBlocked: spendingStatus.servicesBlocked,
+      currency: spendingStatus.currency,
+      // Additional fields that may not be in SpendingStatusInfo
+      cycleStartDate: undefined,
+      cycleEndDate: spendingStatus.nextBillingDate,
+      trialDaysRemaining: null,
+      planName: undefined,
+    };
+  };
+
+  const refreshUsage = useCallback(async () => {
     // Skip if we've refreshed in the last 5 seconds to prevent rapid calls
     const now = Date.now();
-    if (now - lastRefreshTime < 5000) {
+    if (now - lastRefreshTime.current < 5000) {
       return;
     }
 
@@ -67,60 +74,49 @@ export function useCostUsage(options: UseCostUsageOptions = {}) {
     setError(null);
 
     try {
-      // Get auth token
-      const token = await getAuthToken();
-      if (!token) {
-        throw new Error("Authentication token not found");
-      }
-
-      // Make the API request
-      const response = await fetch(`${serverUrl}/api/usage/summary`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch cost usage: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const data = (await response.json()) as CostUsageResponse;
-      setUsage(data);
-      setLastRefreshTime(now);
+      // Use Tauri command to get spending status
+      const spendingStatus = await invoke<SpendingStatusInfo>("get_spending_status_command");
+      
+      // Convert to expected format
+      const costUsageData = convertToCostUsageData(spendingStatus);
+      setUsage(costUsageData);
+      lastRefreshTime.current = now;
     } catch (e) {
       logger.error("Error:", e);
-      setError(e instanceof Error ? e.message : "Unknown error");
+      const errorMessage = getErrorMessage(e);
+      setError(errorMessage);
       // NO MOCK DATA - Real data from server only
     } finally {
       setIsLoading(false);
     }
-  }, [serverUrl, getAuthToken, lastRefreshTime]);
+  }, []);
 
-  // Use ref for fetchUsage to prevent dependency instability in auto-refresh
-  const fetchUsageRef = useRef(fetchUsage);
+  // Initial load
   useEffect(() => {
-    fetchUsageRef.current = fetchUsage;
-  }, [fetchUsage]);
+    if (user) {
+      refreshUsage();
+    }
+  }, [user, refreshUsage]);
 
-  // Initial fetch on mount
+  // Auto-refresh setup
   useEffect(() => {
-    void fetchUsage();
-  }, [fetchUsage]);
+    if (!autoRefreshInterval || autoRefreshInterval <= 0) {
+      return;
+    }
 
-  // Set up auto-refresh if enabled
-  useEffect(() => {
-    if (!autoRefreshInterval) return;
+    const interval = setInterval(() => {
+      if (user) {
+        refreshUsage();
+      }
+    }, autoRefreshInterval);
 
-    const intervalId = setInterval(() => void fetchUsageRef.current(), autoRefreshInterval);
-    return () => clearInterval(intervalId);
-  }, [autoRefreshInterval]);
+    return () => clearInterval(interval);
+  }, [user, autoRefreshInterval, refreshUsage]);
 
   return {
     usage,
     isLoading,
     error,
-    refreshUsage: fetchUsage,
+    refreshUsage,
   };
 }

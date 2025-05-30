@@ -11,7 +11,6 @@ use crate::models::{BackgroundJob, JobStatus};
 #[serde(rename_all = "camelCase")]
 pub enum JobType {
     OpenRouterLlm,
-    OpenRouterTranscription,
     VoiceTranscription,
     PathFinder,
     ImplementationPlan,
@@ -19,8 +18,7 @@ pub enum JobType {
     PathCorrection,
     TextImprovement,
     TaskEnhancement,
-    VoiceCorrection,
-    TextCorrectionPostTranscription,
+    TextCorrection,
     GenericLlmStream,
     RegexSummaryGeneration,
     RegexPatternGeneration
@@ -32,7 +30,6 @@ impl TryFrom<&str> for JobType {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "OPENROUTER_LLM" => Ok(JobType::OpenRouterLlm),
-            "OPENROUTER_TRANSCRIPTION" => Ok(JobType::OpenRouterTranscription),
             "VOICE_TRANSCRIPTION" => Ok(JobType::VoiceTranscription),
             "PATH_FINDER" => Ok(JobType::PathFinder),
             "IMPLEMENTATION_PLAN" => Ok(JobType::ImplementationPlan),
@@ -40,8 +37,7 @@ impl TryFrom<&str> for JobType {
             "PATH_CORRECTION" => Ok(JobType::PathCorrection),
             "TEXT_IMPROVEMENT" => Ok(JobType::TextImprovement),
             "TASK_ENHANCEMENT" => Ok(JobType::TaskEnhancement),
-            "VOICE_CORRECTION" => Ok(JobType::VoiceCorrection),
-            "TEXT_CORRECTION_POST_TRANSCRIPTION" => Ok(JobType::TextCorrectionPostTranscription),
+            "TEXT_CORRECTION" => Ok(JobType::TextCorrection),
             "GENERIC_LLM_STREAM" => Ok(JobType::GenericLlmStream),
             "REGEX_SUMMARY_GENERATION" => Ok(JobType::RegexSummaryGeneration),
             "REGEX_PATTERN_GENERATION" => Ok(JobType::RegexPatternGeneration),
@@ -54,7 +50,6 @@ impl std::fmt::Display for JobType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             JobType::OpenRouterLlm => write!(f, "OPENROUTER_LLM"),
-            JobType::OpenRouterTranscription => write!(f, "OPENROUTER_TRANSCRIPTION"),
             JobType::VoiceTranscription => write!(f, "VOICE_TRANSCRIPTION"),
             JobType::PathFinder => write!(f, "PATH_FINDER"),
             JobType::ImplementationPlan => write!(f, "IMPLEMENTATION_PLAN"),
@@ -62,8 +57,7 @@ impl std::fmt::Display for JobType {
             JobType::PathCorrection => write!(f, "PATH_CORRECTION"),
             JobType::TextImprovement => write!(f, "TEXT_IMPROVEMENT"),
             JobType::TaskEnhancement => write!(f, "TASK_ENHANCEMENT"),
-            JobType::VoiceCorrection => write!(f, "VOICE_CORRECTION"),
-            JobType::TextCorrectionPostTranscription => write!(f, "TEXT_CORRECTION_POST_TRANSCRIPTION"),
+            JobType::TextCorrection => write!(f, "TEXT_CORRECTION"),
             JobType::GenericLlmStream => write!(f, "GENERIC_LLM_STREAM"),
             JobType::RegexSummaryGeneration => write!(f, "REGEX_SUMMARY_GENERATION"),
             JobType::RegexPatternGeneration => write!(f, "REGEX_PATTERN_GENERATION"),
@@ -99,9 +93,9 @@ pub struct OpenRouterLlmPayload {
     pub stream: bool,
 }
 
-// Payload for OpenRouter audio transcription job
+// Payload for voice audio transcription job
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenRouterTranscriptionPayload {
+pub struct VoiceTranscriptionPayload {
     pub audio_data: Vec<u8>,
     pub filename: String,
     pub model: String, // Model identifier to use (e.g., "openai/whisper-large-v3")
@@ -198,8 +192,6 @@ pub struct TextImprovementPayload {
     pub background_job_id: String, // Comes from Job.db_job.id
     pub session_id: String,        // Comes from Job.db_job.session_id
     pub text_to_improve: String,
-    pub language: Option<String>, // e.g., "en", "es"
-    pub improvement_type: String, // e.g., "clarity", "conciseness", "technical", "grammar", "persuasiveness", "general"
     pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
     pub project_directory: Option<String>,
 }
@@ -216,24 +208,10 @@ pub struct TaskEnhancementPayload {
     pub project_directory: Option<String>,
 }
 
-// Payload for Voice Correction job
+// Payload for Text Correction job (consolidates voice correction and post-transcription correction)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VoiceCorrectionPayload {
-    pub background_job_id: String,
-    pub session_id: String,
-    pub text_to_correct: String,
-    pub language: String,
-    pub original_job_id: Option<String>, // Optional, for context from original transcription
-    pub project_directory: Option<String>,
-}
-
-
-
-// Payload for Text Correction Post Transcription job
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TextCorrectionPostTranscriptionPayload {
+pub struct TextCorrectionPayload {
     pub background_job_id: String,
     pub session_id: String,
     pub text_to_correct: String,
@@ -275,15 +253,14 @@ pub struct RegexPatternGenerationPayload {
 #[serde(tag = "type", content = "data")]
 pub enum JobPayload {
     OpenRouterLlm(OpenRouterLlmPayload),
-    OpenRouterTranscription(OpenRouterTranscriptionPayload),
+    VoiceTranscription(VoiceTranscriptionPayload),
     PathFinder(PathFinderPayload),
     ImplementationPlan(ImplementationPlanPayload),
     GuidanceGeneration(GuidanceGenerationPayload),
     PathCorrection(PathCorrectionPayload),
     TextImprovement(TextImprovementPayload),
     TaskEnhancement(TaskEnhancementPayload),
-    VoiceCorrection(VoiceCorrectionPayload),
-    TextCorrectionPostTranscription(TextCorrectionPostTranscriptionPayload),
+    TextCorrection(TextCorrectionPayload),
     GenericLlmStream(GenericLlmStreamPayload),
     RegexSummaryGeneration(crate::jobs::processors::RegexSummaryGenerationPayload),
     RegexPatternGeneration(RegexPatternGenerationPayload),

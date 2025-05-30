@@ -2,6 +2,7 @@ use crate::error::AppError;
 use crate::services::billing_service::BillingService;
 use crate::db::repositories::api_usage_repository::{ApiUsageRepository, ApiUsageEntryDto};
 use crate::db::repositories::model_repository::ModelRepository;
+use crate::db::repositories::{SettingsRepository, DatabaseAIModelSettings};
 use crate::clients::{OpenRouterClient, GroqClient, open_router_client::OpenRouterUsage};
 use actix_web::web::{self, Bytes};
 use futures_util::{Stream, StreamExt};
@@ -79,6 +80,7 @@ pub struct ProxyService {
     billing_service: Arc<BillingService>,
     api_usage_repository: Arc<ApiUsageRepository>,
     model_repository: Arc<ModelRepository>,
+    settings_repository: Arc<SettingsRepository>,
     app_settings: crate::config::settings::AppSettings,
 }
 
@@ -87,6 +89,7 @@ impl ProxyService {
         billing_service: Arc<BillingService>,
         api_usage_repository: Arc<ApiUsageRepository>,
         model_repository: Arc<ModelRepository>,
+        settings_repository: Arc<SettingsRepository>,
         app_settings: &crate::config::settings::AppSettings,
     ) -> Result<Self, AppError> {
         // Initialize OpenRouter client with app settings
@@ -101,8 +104,21 @@ impl ProxyService {
             billing_service,
             api_usage_repository,
             model_repository,
+            settings_repository,
             app_settings: app_settings.clone(),
         })
+    }
+
+    /// Get default model ID from database-driven configuration
+    async fn get_default_llm_model_id(&self) -> Result<String, AppError> {
+        let ai_settings = self.settings_repository.get_ai_model_settings().await?;
+        Ok(ai_settings.default_llm_model_id)
+    }
+
+    /// Get default transcription model ID from database-driven configuration
+    async fn get_default_transcription_model_id(&self) -> Result<String, AppError> {
+        let ai_settings = self.settings_repository.get_ai_model_settings().await?;
+        Ok(ai_settings.default_transcription_model_id)
     }
     
     /// Forward a request to OpenRouter for chat completions
@@ -112,10 +128,13 @@ impl ProxyService {
         payload: Value,
         model_id_override: Option<String>,
     ) -> Result<Value, AppError> {
-        // Determine model ID: override > payload > app_settings default
-        let model_id = model_id_override
+        // Determine model ID: override > payload > database default
+        let model_id = match model_id_override
             .or_else(|| payload.get("model").and_then(|v| v.as_str()).map(String::from))
-            .unwrap_or_else(|| self.app_settings.ai_models.default_llm_model_id.clone());
+        {
+            Some(id) => id,
+            None => self.get_default_llm_model_id().await?,
+        };
         
         // Check if user has access to this model
         self.billing_service.check_service_access(user_id, &model_id).await?;
@@ -143,27 +162,18 @@ impl ProxyService {
         let input_tokens = response.usage.prompt_tokens;
         let output_tokens = response.usage.completion_tokens;
         
-        // Calculate the final cost
+        // Calculate the final cost - NO FALLBACKS!
         let final_cost_bd = if let Some(cost_f64) = response.usage.cost {
             // If OpenRouter provides a cost, use it
             bigdecimal::BigDecimal::try_from(cost_f64)
                 .map_err(|_| AppError::Internal("Invalid cost from OpenRouter".to_string()))?
         } else {
-            // Fallback: find model in AppSettings and calculate
-            let model_info = self.app_settings.ai_models.available_models.iter()
-                .find(|m| m.id == model_id);
-                
-            if let Some(info) = model_info {
-                if let (Some(in_price), Some(out_price)) = (&info.price_input_per_1k_tokens, &info.price_output_per_1k_tokens) {
-                    ApiUsageRepository::calculate_cost(input_tokens, output_tokens, in_price, out_price)?
-                } else {
-                    log::warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model_id);
-                    bigdecimal::BigDecimal::from(0)
-                }
-            } else {
-                log::warn!("Model {} not found in AppSettings for pricing. Cost will be zero.", model_id);
-                bigdecimal::BigDecimal::from(0)
-            }
+            // Get model from repository and calculate - HARD ERROR if not found
+            let model = self.model_repository.find_by_id(&model_id).await
+                .map_err(|e| AppError::Internal(format!("Failed to lookup model {} in repository: {}", model_id, e)))?
+                .ok_or_else(|| AppError::Configuration(format!("Model {} not found in repository", model_id)))?;
+            
+            ApiUsageRepository::calculate_cost(input_tokens, output_tokens, &model.price_input, &model.price_output)?
         };
         
         // Record API usage in the database
@@ -191,13 +201,22 @@ impl ProxyService {
         payload: Value,
         model_id_override: Option<String>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes, actix_web::Error>> + Send + 'static>>, AppError> {
-        // Determine model ID: override > payload > app_settings default
-        let model_id = model_id_override
+        // Determine model ID: override > payload > database default
+        let model_id = match model_id_override
             .or_else(|| payload.get("model").and_then(|v| v.as_str()).map(String::from))
-            .unwrap_or_else(|| self.app_settings.ai_models.default_llm_model_id.clone());
+        {
+            Some(id) => id,
+            None => self.get_default_llm_model_id().await?,
+        };
         
         // Check if user has access to this model
         self.billing_service.check_service_access(&user_id, &model_id).await?;
+        
+        // Pre-load model pricing information for use in streaming closure - NO FALLBACKS!
+        let model = self.model_repository.find_by_id(&model_id).await
+            .map_err(|e| AppError::Internal(format!("Failed to lookup model {} in repository: {}", model_id, e)))?
+            .ok_or_else(|| AppError::Configuration(format!("Model {} not found in repository", model_id)))?;
+        let model_pricing = (model.price_input, model.price_output);
         
         // Ensure payload has the determined model ID
         let mut request_payload = payload.clone();
@@ -209,9 +228,9 @@ impl ProxyService {
         // Create independently owned copies of all required components
         let openrouter_client_owned = self.openrouter_client.clone();
         let api_usage_repository_clone = self.api_usage_repository.clone();
-        let app_settings_clone = self.app_settings.clone();
         let model_id_string = model_id.to_string();
         let user_id_string = user_id.to_string();
+        let model_pricing_for_task = model_pricing;
         
         // Create a new owned boxed stream with static lifetime
         // We'll create the response in a more direct way that ensures 'static lifetime
@@ -237,7 +256,7 @@ impl ProxyService {
                 let usage_tracking_for_task = usage_tracking.clone();
                 let user_id_for_task = user_id;
                 let model_id_for_task = model_id_string.clone();
-                let app_settings_for_task = app_settings_clone.clone();
+                let model_pricing_for_usage = model_pricing_for_task;
                 
                 tokio::spawn(async move {
                     // After stream completes, record the usage
@@ -261,27 +280,13 @@ impl ProxyService {
                                 }
                             }
                         } else {
-                            // Fallback: find model in AppSettings and calculate using recorded token usage
-                            let model_info = app_settings_for_task.ai_models.available_models.iter()
-                                .find(|m| m.id == model_id_for_task);
-                                
-                            if let Some(info) = model_info {
-                                if let (Some(in_price), Some(out_price)) = (&info.price_input_per_1k_tokens, &info.price_output_per_1k_tokens) {
-                                    match ApiUsageRepository::calculate_cost(tracker.prompt_tokens, tracker.completion_tokens, in_price, out_price) {
-                                        Ok(cost) => cost,
-                                        Err(e) => {
-                                            error!("Failed to calculate cost for streaming model {}: {}", model_id_for_task, e);
-                                            bigdecimal::BigDecimal::from(0)
-                                        }
-                                    }
-                                } else {
-                                    warn!("Pricing not configured for model {} in AppSettings. Cost will be zero.", model_id_for_task);
+                            // Use pre-loaded model pricing and calculate using recorded token usage - NO FALLBACKS!
+                            ApiUsageRepository::calculate_cost(tracker.prompt_tokens, tracker.completion_tokens, &model_pricing_for_usage.0, &model_pricing_for_usage.1)
+                                .unwrap_or_else(|e| {
+                                    error!("Failed to calculate cost for streaming model {}: {}", model_id_for_task, e);
+                                    // This should never happen with valid model data from database
                                     bigdecimal::BigDecimal::from(0)
-                                }
-                            } else {
-                                warn!("Model {} not found in AppSettings for pricing. Cost will be zero.", model_id_for_task);
-                                bigdecimal::BigDecimal::from(0)
-                            }
+                                })
                         };
                         
                         let entry = ApiUsageEntryDto {
@@ -303,23 +308,11 @@ impl ProxyService {
                         // to ensure we have a record of the API call
                         warn!("No usage data found in stream, recording minimal usage values");
                         
-                        let model_info_for_min_cost = app_settings_for_task.ai_models.available_models.iter()
-                            .find(|m| m.id == model_id_for_task);
-                        let minimal_cost = if let Some(info) = model_info_for_min_cost {
-                            if let (Some(in_price), Some(out_price)) = (&info.price_input_per_1k_tokens, &info.price_output_per_1k_tokens) {
-                                ApiUsageRepository::calculate_cost(1, 1, in_price, out_price)
-                                    .unwrap_or_else(|e| {
-                                        error!("Failed to calculate minimal cost for {}: {}", model_id_for_task, e);
-                                        bigdecimal::BigDecimal::from(0)
-                                    })
-                            } else {
-                                warn!("Pricing not configured for model {} in AppSettings. Minimal cost will be zero.", model_id_for_task);
+                        let minimal_cost = ApiUsageRepository::calculate_cost(1, 1, &model_pricing_for_usage.0, &model_pricing_for_usage.1)
+                            .unwrap_or_else(|e| {
+                                error!("Failed to calculate minimal cost for {}: {}", model_id_for_task, e);
                                 bigdecimal::BigDecimal::from(0)
-                            }
-                        } else {
-                            warn!("Model {} not found in AppSettings for minimal pricing. Minimal cost will be zero.", model_id_for_task);
-                            bigdecimal::BigDecimal::from(0)
-                        };
+                            });
                         
                         let entry = ApiUsageEntryDto {
                             user_id: user_id_for_task,
@@ -419,9 +412,11 @@ impl ProxyService {
         model_override: Option<String>,
         duration_ms: i64,
     ) -> Result<Value, AppError> {
-        // Determine model ID: override or app_settings default
-        let model_id = model_override
-            .unwrap_or_else(|| self.app_settings.ai_models.default_transcription_model_id.clone());
+        // Determine model ID: override or database default (NO FALLBACKS!)
+        let model_id = match model_override {
+            Some(id) => id,
+            None => self.get_default_transcription_model_id().await?,
+        };
         
         // Check if user has access to this model
         self.billing_service.check_service_access(user_id, &model_id).await?;
@@ -452,9 +447,11 @@ impl ProxyService {
             // Use duration-based pricing with automatic minimum billing enforcement
             model.calculate_duration_cost(duration_ms)?
         } else {
-            // Fallback for token-based models (shouldn't happen for transcription)
-            warn!("Transcription model {} is not configured for duration-based pricing, using fallback", model_id);
-            bigdecimal::BigDecimal::from(0)
+            // NO FALLBACKS! Transcription models MUST be duration-based
+            return Err(AppError::Configuration(format!(
+                "Transcription model {} is not configured for duration-based pricing. All transcription models must use duration-based pricing.", 
+                model_id
+            )));
         };
         
         // Record API usage
@@ -486,6 +483,7 @@ impl Clone for ProxyService {
             billing_service: self.billing_service.clone(),
             api_usage_repository: self.api_usage_repository.clone(),
             model_repository: self.model_repository.clone(),
+            settings_repository: self.settings_repository.clone(),
             app_settings: self.app_settings.clone(),
         }
     }

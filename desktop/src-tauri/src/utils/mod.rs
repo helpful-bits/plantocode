@@ -9,9 +9,12 @@ pub mod file_lock_types;
 pub mod file_lock_manager;
 pub mod job_creation_utils;
 pub mod date_utils;
-pub mod deep_link_handler;
 pub mod env_utils;
 pub mod xml_utils;
+pub mod prompt_template_utils;
+pub mod enhanced_prompt_template;
+pub mod prompt_composition;
+
 
 pub use directory_tree::{generate_directory_tree, DirectoryTreeOptions};
 pub use path_utils::{
@@ -31,6 +34,8 @@ pub use file_lock_manager::FileLockManager;
 pub use job_creation_utils::create_and_queue_background_job;
 pub use date_utils::get_timestamp;
 pub use error_utils::*;
-pub use deep_link_handler::register_deep_links;
 pub use env_utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
 pub use xml_utils::extract_xml_from_markdown;
+pub use prompt_template_utils::{PromptPlaceholders, substitute_placeholders, generate_system_prompt_id, get_template_for_display, convert_to_template};
+pub use enhanced_prompt_template::{EnhancedPromptContext, EnhancedTemplateProcessor, ProjectContext, EnhancedPromptContextBuilder};
+pub use prompt_composition::{PromptComposer, CompositionContext, ComposedPrompt, CompositionContextBuilder};

@@ -1,11 +1,36 @@
-use sqlx::{PgPool, query_as};
+use sqlx::PgPool;
 use serde_json::Value as JsonValue;
 use crate::error::AppError;
-use crate::config::settings::{AIModelSettings, TaskSpecificModelConfigEntry, ModelInfoEntry, PathFinderSettingsEntry}; // Ensure these are pub
 use std::collections::HashMap;
-use serde::Serialize;
-use std::sync::Arc;
-use tracing::{info, error, instrument};
+use serde::{Serialize, Deserialize};
+use tracing::{info, instrument};
+
+/// Database-driven AI model settings (no JSON storage dependencies)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseAIModelSettings {
+    pub default_llm_model_id: String,
+    pub default_voice_model_id: String,
+    pub default_transcription_model_id: String,
+    pub task_specific_configs: HashMap<String, DatabaseTaskConfig>,
+    pub path_finder_settings: DatabasePathFinderSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseTaskConfig {
+    pub model: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabasePathFinderSettings {
+    pub max_files_with_content: Option<u32>,
+    pub include_file_contents: Option<bool>,
+    pub max_content_size_per_file: Option<u32>,
+    pub max_file_count: Option<u32>,
+    pub file_content_truncation_chars: Option<u32>,
+    pub token_limit_buffer: Option<u32>,
+}
 
 pub struct SettingsRepository {
     db_pool: PgPool,
@@ -53,7 +78,7 @@ impl SettingsRepository {
         Ok(())
     }
 
-    pub async fn get_ai_model_settings(&self) -> Result<AIModelSettings, AppError> {
+    pub async fn get_ai_model_settings(&self) -> Result<DatabaseAIModelSettings, AppError> {
         let default_llm_model_id_val = self.get_config_value("ai_settings_default_llm_model_id").await?
             .ok_or_else(|| AppError::Configuration("Missing ai_settings_default_llm_model_id".to_string()))?;
         let default_llm_model_id = default_llm_model_id_val.as_str().ok_or_else(|| AppError::Configuration("Invalid format for default_llm_model_id".to_string()))?.to_string();
@@ -68,42 +93,26 @@ impl SettingsRepository {
 
         let task_specific_configs_val = self.get_config_value("ai_settings_task_specific_configs").await?
             .ok_or_else(|| AppError::Configuration("Missing ai_settings_task_specific_configs".to_string()))?;
-        let task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry> = serde_json::from_value(task_specific_configs_val)
+        let task_specific_configs: HashMap<String, DatabaseTaskConfig> = serde_json::from_value(task_specific_configs_val)
             .map_err(|e| AppError::Configuration(format!("Failed to parse task_specific_configs: {}", e)))?;
 
-        let available_models_val = self.get_config_value("ai_settings_available_models").await?;
-        let available_models: Vec<ModelInfoEntry> = match available_models_val {
-            Some(val) => {
-                serde_json::from_value(val)
-                    .map_err(|e| {
-                        log::warn!("Failed to parse available_models from database, using empty list: {}", e);
-                        Vec::new()
-                    })
-                    .unwrap_or_else(|v| v)
-            }
-            None => {
-                log::warn!("ai_settings_available_models key missing from database, using empty list. Will be populated from models table.");
-                Vec::new()
-            }
-        };
 
         let path_finder_settings_val = self.get_config_value("ai_settings_path_finder_settings").await?
             .ok_or_else(|| AppError::Configuration("Missing ai_settings_path_finder_settings".to_string()))?;
-        let path_finder_settings: PathFinderSettingsEntry = serde_json::from_value(path_finder_settings_val)
+        let path_finder_settings: DatabasePathFinderSettings = serde_json::from_value(path_finder_settings_val)
             .map_err(|e| AppError::Configuration(format!("Failed to parse path_finder_settings: {}", e)))?;
 
 
-        Ok(AIModelSettings {
+        Ok(DatabaseAIModelSettings {
             default_llm_model_id,
             default_voice_model_id,
             default_transcription_model_id,
             task_specific_configs,
-            available_models,
             path_finder_settings,
         })
     }
 
-    pub async fn update_ai_model_settings(&self, settings: &AIModelSettings) -> Result<(), AppError> {
+    pub async fn update_ai_model_settings(&self, settings: &DatabaseAIModelSettings) -> Result<(), AppError> {
         // Update each component of the AI model settings
         self.set_config_value("ai_settings_default_llm_model_id", &settings.default_llm_model_id, 
             Some("Default LLM model ID for general AI tasks")).await?;
@@ -116,9 +125,6 @@ impl SettingsRepository {
         
         self.set_config_value("ai_settings_task_specific_configs", &settings.task_specific_configs, 
             Some("Task-specific model configurations including model, tokens, and temperature")).await?;
-        
-        self.set_config_value("ai_settings_available_models", &settings.available_models, 
-            Some("List of available AI models with their properties")).await?;
         
         self.set_config_value("ai_settings_path_finder_settings", &settings.path_finder_settings, 
             Some("Settings for the PathFinder agent functionality")).await?;

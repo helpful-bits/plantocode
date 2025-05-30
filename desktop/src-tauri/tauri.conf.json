@@ -46,9 +46,6 @@
   "plugins": {
     "http": null,
     "dialog": null,
-    "shell": null,
-    "deep-link": {
-      "schemes": ["vibe-manager"]
-    }
+    "shell": null
   }
 }

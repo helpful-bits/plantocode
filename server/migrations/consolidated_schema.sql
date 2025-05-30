@@ -169,7 +169,34 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 CREATE INDEX IF NOT EXISTS idx_user_preferences_currency ON user_preferences(preferred_currency);
 CREATE INDEX IF NOT EXISTS idx_user_preferences_alerts ON user_preferences(cost_alerts_enabled);
 
--- Create models table for storing AI model metadata
+-- Create providers table for AI providers
+CREATE TABLE IF NOT EXISTS providers (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(50) UNIQUE NOT NULL,  -- anthropic, openai, google, groq
+    name VARCHAR(255) NOT NULL,        -- Anthropic, OpenAI, Google, Groq
+    description TEXT,
+    website_url VARCHAR(500),
+    api_base_url VARCHAR(500),
+    capabilities JSONB DEFAULT '{}',   -- Provider-level capabilities
+    status VARCHAR(20) DEFAULT 'active', -- active, deprecated, beta
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add indexes for providers
+CREATE INDEX IF NOT EXISTS idx_providers_code ON providers(code);
+CREATE INDEX IF NOT EXISTS idx_providers_status ON providers(status);
+
+-- Insert known providers
+INSERT INTO providers (code, name, description, website_url, api_base_url, capabilities, status) VALUES
+('anthropic', 'Anthropic', 'AI safety focused company providing Claude models', 'https://anthropic.com', 'https://api.anthropic.com', '{"text": true, "chat": true, "reasoning": true}', 'active'),
+('openai', 'OpenAI', 'Leading AI research company providing GPT models', 'https://openai.com', 'https://api.openai.com', '{"text": true, "chat": true, "image": true, "code": true}', 'active'),
+('google', 'Google', 'Google AI providing Gemini models', 'https://ai.google.dev', 'https://generativelanguage.googleapis.com', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active'),
+('groq', 'Groq', 'High-performance AI inference platform', 'https://groq.com', 'https://api.groq.com', '{"transcription": true, "fast_inference": true}', 'active'),
+('deepseek', 'DeepSeek', 'DeepSeek AI providing reasoning models', 'https://deepseek.com', 'https://api.deepseek.com', '{"reasoning": true, "code": true}', 'active')
+ON CONFLICT (code) DO NOTHING;
+
+-- Create models table with proper provider relationships
 CREATE TABLE IF NOT EXISTS models (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -180,28 +207,45 @@ CREATE TABLE IF NOT EXISTS models (
     price_per_hour DECIMAL(12,6) DEFAULT 0.000000,
     minimum_billable_seconds INTEGER DEFAULT 0,
     billing_unit VARCHAR(10) DEFAULT 'tokens',
+    provider_id INTEGER REFERENCES providers(id),
+    model_type VARCHAR(50) DEFAULT 'text',
+    capabilities JSONB DEFAULT '{}',
+    status VARCHAR(20) DEFAULT 'active',
+    description TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Add index for faster lookup by name
+-- Add indexes for models
 CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
 CREATE INDEX IF NOT EXISTS idx_models_pricing_type ON models(pricing_type);
+CREATE INDEX IF NOT EXISTS idx_models_provider_id ON models(provider_id);
+CREATE INDEX IF NOT EXISTS idx_models_type ON models(model_type);
+CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
+
+-- Add constraint to ensure data integrity
+ALTER TABLE models 
+ADD CONSTRAINT models_provider_id_not_null 
+CHECK (provider_id IS NOT NULL);
 
 
--- AI model pricing data - Updated 2025-05-28 with correct Groq transcription pricing
-INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit)
+-- AI model pricing data - Updated with provider relationships
+INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description)
 VALUES
--- OpenRouter text generation models (token-based pricing)
-('anthropic/claude-opus-4',        'Claude 4 Opus',       200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens'),
-('anthropic/claude-sonnet-4',      'Claude 4 Sonnet',     200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens'),
-('openai/gpt-4.1',                 'GPT-4.1',            1000000, 0.002000, 0.008000, 'token_based', 0.000000, 0, 'tokens'),
-('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.000400, 0.001600, 'token_based', 0.000000, 0, 'tokens'),
-('google/gemini-2.5-pro-preview',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens'),
+-- Anthropic models
+('anthropic/claude-opus-4',        'Claude 4 Opus',       200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities'),
+('anthropic/claude-sonnet-4',      'Claude 4 Sonnet',     200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Balanced language model with strong reasoning capabilities'),
 
--- Groq transcription models (duration-based pricing) - 2025 rates
-('groq/whisper-large-v3',          'Whisper Large V3 (Groq)',          0, 0.000000, 0.000000, 'duration_based', 0.111000, 10, 'hours'),
-('groq/whisper-large-v3-turbo',    'Whisper Large V3 Turbo (Groq)',    0, 0.000000, 0.000000, 'duration_based', 0.040000, 10, 'hours'),
-('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 English (Groq)', 0, 0.000000, 0.000000, 'duration_based', 0.020000, 10, 'hours')
+-- OpenAI models  
+('openai/gpt-4.1',                 'GPT-4.1',            1000000, 0.002000, 0.008000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Advanced GPT model with broad capabilities'),
+('openai/gpt-4.1-mini',            'GPT-4.1 Mini',       1000000, 0.000400, 0.001600, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Efficient GPT model for cost-sensitive applications'),
+
+-- Google models
+('google/gemini-2.5-pro-preview',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning'),
+
+-- Groq transcription models
+('groq/whisper-large-v3',          'Whisper Large V3 (Groq)',          0, 0.000000, 0.000000, 'duration_based', 0.111000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'High-accuracy audio transcription model'),
+('groq/whisper-large-v3-turbo',    'Whisper Large V3 Turbo (Groq)',    0, 0.000000, 0.000000, 'duration_based', 0.040000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'Fast audio transcription model'),
+('groq/distil-whisper-large-v3-en', 'Distil-Whisper Large V3 English (Groq)', 0, 0.000000, 0.000000, 'duration_based', 0.020000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'Efficient English transcription model')
 
 ON CONFLICT (id) DO UPDATE SET
 name                       = EXCLUDED.name,
@@ -211,7 +255,12 @@ price_output              = EXCLUDED.price_output,
 pricing_type              = EXCLUDED.pricing_type,
 price_per_hour            = EXCLUDED.price_per_hour,
 minimum_billable_seconds  = EXCLUDED.minimum_billable_seconds,
-billing_unit              = EXCLUDED.billing_unit;
+billing_unit              = EXCLUDED.billing_unit,
+provider_id               = EXCLUDED.provider_id,
+model_type                = EXCLUDED.model_type,
+capabilities              = EXCLUDED.capabilities,
+status                    = EXCLUDED.status,
+description               = EXCLUDED.description;
 
 
 
@@ -246,15 +295,12 @@ INSERT INTO subscription_plans (
 ON CONFLICT (id) DO NOTHING;
 
 
--- Store the updated AI model configurations in application_configurations table
+-- Store essential AI configurations (models loaded dynamically from providers/models tables)
 INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
-('ai_settings_default_llm_model_id', '"google/gemini-2.5-pro-preview"'::jsonb, 'Default LLM model for new installations'),
-('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default voice processing model'),
-('ai_settings_default_transcription_model_id', '"groq/whisper-large-v3-turbo"'::jsonb, 'Default transcription model'),
-('ai_settings_latest_claude_models', '["anthropic/claude-opus-4", "anthropic/claude-sonnet-4"]'::jsonb, 'Latest Claude models available'),
-('ai_settings_latest_openai_models', '["openai/gpt-4.1", "openai/gpt-4.1-mini"]'::jsonb, 'Latest OpenAI models available'),
-('ai_settings_latest_google_models', '["google/gemini-2.5-pro-preview"]'::jsonb, 'Latest Google models available')
+('ai_settings_default_llm_model_id', '"google/gemini-2.5-pro-preview"'::jsonb, 'Default LLM model ID - references models.id in models table'),
+('ai_settings_default_voice_model_id', '"anthropic/claude-sonnet-4"'::jsonb, 'Default voice model ID - references models.id in models table'),
+('ai_settings_default_transcription_model_id', '"groq/whisper-large-v3-turbo"'::jsonb, 'Default transcription model ID - references models.id in models table')
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,
@@ -272,13 +318,12 @@ VALUES
   "path_finder": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.3},
   "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
   "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
-  "voice_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
+  "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
   "path_correction": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.3},
   "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
+  "regex_summary_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.3},
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
   "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
-  "generate_directory_tree": {"model": "openai/gpt-4.1-mini", "max_tokens": 4096, "temperature": 0.3},
-  "text_correction_post_transcription": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
   "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
@@ -290,10 +335,8 @@ VALUES
   "max_content_size_per_file": 5000,
   "max_file_count": 50,
   "file_content_truncation_chars": 2000,
-  "content_limit_buffer": 1000
-}'::jsonb, 'Settings for the PathFinder agent functionality'),
-
-('ai_settings_available_models', '[]'::jsonb, 'List of available AI models with their properties - will be populated from models table at startup')
+  "token_limit_buffer": 1000
+}'::jsonb, 'Settings for the PathFinder agent functionality')
 
 ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,

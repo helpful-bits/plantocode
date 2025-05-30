@@ -104,6 +104,7 @@ pub async fn create_and_queue_background_job(
         temperature: Some(temperature),
         include_syntax: None,
         metadata: Some(metadata_str),
+        system_prompt_id: None, // Will be set by the processor when it gets the system prompt
     };
     
     // Get the background job repository from app state
@@ -158,17 +159,11 @@ pub async fn create_and_queue_background_job(
                 .map_err(|e| AppError::SerializationError(format!("Failed to deserialize TaskEnhancementPayload: {}", e)))?;
             crate::jobs::types::JobPayload::TaskEnhancement(task_enhancement_payload)
         },
-        TaskType::VoiceCorrection => {
-            let voice_correction_payload: crate::jobs::types::VoiceCorrectionPayload = 
+        TaskType::TextCorrection => {
+            let text_correction_payload: crate::jobs::types::TextCorrectionPayload = 
                 serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize VoiceCorrectionPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::VoiceCorrection(voice_correction_payload)
-        },
-        TaskType::TextCorrectionPostTranscription => {
-            let text_correction_payload: crate::jobs::types::TextCorrectionPostTranscriptionPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize TextCorrectionPostTranscriptionPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::TextCorrectionPostTranscription(text_correction_payload)
+                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize TextCorrectionPayload: {}", e)))?;
+            crate::jobs::types::JobPayload::TextCorrection(text_correction_payload)
         },
         TaskType::GenericLlmStream => {
             let generic_llm_payload: crate::jobs::types::GenericLlmStreamPayload = 
@@ -177,10 +172,10 @@ pub async fn create_and_queue_background_job(
             crate::jobs::types::JobPayload::GenericLlmStream(generic_llm_payload)
         },
         TaskType::VoiceTranscription => {
-            let transcription_payload: crate::jobs::types::OpenRouterTranscriptionPayload = 
+            let transcription_payload: crate::jobs::types::VoiceTranscriptionPayload = 
                 serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize OpenRouterTranscriptionPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::OpenRouterTranscription(transcription_payload)
+                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize VoiceTranscriptionPayload: {}", e)))?;
+            crate::jobs::types::JobPayload::VoiceTranscription(transcription_payload)
         },
         TaskType::RegexSummaryGeneration => {
             let regex_summary_payload: crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload = 
@@ -193,6 +188,12 @@ pub async fn create_and_queue_background_job(
                 serde_json::from_value(payload_with_job_id)
                 .map_err(|e| AppError::SerializationError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
             crate::jobs::types::JobPayload::RegexPatternGeneration(regex_pattern_payload)
+        },
+        TaskType::VoiceTranscription => {
+            let transcription_payload: crate::jobs::types::VoiceTranscriptionPayload = 
+                serde_json::from_value(payload_with_job_id)
+                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize VoiceTranscriptionPayload for VoiceTranscription: {}", e)))?;
+            crate::jobs::types::JobPayload::VoiceTranscription(transcription_payload)
         },
         _ => {
             return Err(AppError::JobError(format!("Unsupported task type for job creation: {:?}", task_type_enum)));

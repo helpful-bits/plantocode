@@ -322,7 +322,7 @@ export function useVoiceTranscriptionProcessing({
           }
 
           // Handle based on task type
-          if (taskType === "voice_correction") {
+          if (taskType === "text_correction") {
             // This is a correction job
             // eslint-disable-next-line no-console
             console.log(
@@ -477,7 +477,7 @@ export function useVoiceTranscriptionProcessing({
           );
 
           // If we have already received raw text but correction failed, still consider success
-          if (rawText && taskType === "voice_correction") {
+          if (rawText && taskType === "text_correction") {
             // eslint-disable-next-line no-console
             console.log(
               `[VoiceRecording] Correction failed but using raw transcription`
