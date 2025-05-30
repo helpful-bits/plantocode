@@ -20,7 +20,11 @@ import TaskModelSettings from "./task-model-settings";
 
 
 
-export default function SettingsForm() {
+interface SettingsFormProps {
+  sessionId?: string;
+}
+
+export default function SettingsForm({ sessionId }: SettingsFormProps) {
   const { projectDirectory } = useProject();
   const { showNotification } = useNotification();
   const [taskSettings, setTaskSettings] = useState<TaskSettings | null>(null);
@@ -164,6 +168,7 @@ export default function SettingsForm() {
           taskSettings={taskSettings}
           availableModels={availableModels}
           onSettingsChange={handleSettingsChange}
+          sessionId={sessionId}
         />
       )}
 

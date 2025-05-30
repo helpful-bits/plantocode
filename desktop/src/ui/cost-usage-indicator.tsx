@@ -47,15 +47,11 @@ export function CostUsageIndicator({
   className = "",
 
   // Fetch options
-  serverUrl,
-  getAuthToken,
   autoRefreshInterval,
 }: CostUsageIndicatorProps) {
   // Fetch usage data if no override props provided
   const shouldFetch = currentSpending === undefined || monthlyAllowance === undefined;
   const { usage, isLoading, error, refreshUsage } = useCostUsage({ 
-    serverUrl, 
-    getAuthToken, 
     autoRefreshInterval
   });
 

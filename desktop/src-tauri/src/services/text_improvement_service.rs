@@ -49,41 +49,15 @@ pub async fn create_text_improvement_job_service(
         session.project_directory
     };
 
-    // Get the model for this task - check project settings first, then server defaults
-    let model = if let Some(override_model) = args.model_override.clone() {
-        override_model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::TextImprovement, &project_directory, app_handle).await {
-            Ok(model) => model,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get model for text improvement: {}", e)));
-            }
-        }
-    };
-
-    // Get temperature for this task - check project settings first, then server defaults
-    let temperature = if let Some(override_temp) = args.temperature_override {
-        override_temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::TextImprovement, &project_directory, app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get temperature for text improvement: {}", e)));
-            }
-        }
-    };
-
-    // Get max tokens for this task - check project settings first, then server defaults
-    let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
-        override_tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::TextImprovement, &project_directory, app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get max tokens for text improvement: {}", e)));
-            }
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        app_handle,
+        TaskType::TextImprovement,
+        &project_directory,
+        args.model_override.clone(),
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
 
     // Create text improvement payload
     let payload = crate::jobs::types::TextImprovementPayload {

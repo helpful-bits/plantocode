@@ -29,8 +29,6 @@ pub struct UsageInfo {
     pub total_cost: f64,
     pub usage_percentage: f64,
     pub services_blocked: bool,
-    pub current_spending: f64,
-    pub monthly_allowance: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

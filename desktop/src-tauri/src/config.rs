@@ -299,6 +299,7 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
+        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         _ => return None,
     };
     
@@ -324,6 +325,7 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
+        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         _ => return None,
     };
     
@@ -349,6 +351,7 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
+        TaskType::FileFinderWorkflow => "fileFinderWorkflow",
         _ => return None,
     };
     

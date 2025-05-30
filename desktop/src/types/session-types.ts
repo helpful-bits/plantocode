@@ -84,6 +84,7 @@ export type TaskType =
   | "generic_llm_stream"
   | "regex_summary_generation"
   | "regex_pattern_generation"
+  | "file_finder_workflow"
   | "server_proxy_transcription"
   | "streaming"
   | "unknown";

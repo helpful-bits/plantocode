@@ -179,6 +179,7 @@ fn main() {
             commands::file_system_commands::sanitize_filename_command,
             commands::file_system_commands::normalize_path_command,
             commands::file_system_commands::get_temp_dir_command,
+            commands::file_system_commands::path_is_absolute_command,
             
             // Text commands
             commands::text_commands::improve_text_command,

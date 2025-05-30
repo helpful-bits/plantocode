@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, ClipboardCopy, FileCode, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ClipboardCopy, ChevronDown, ChevronUp } from "lucide-react";
 
 import { type BackgroundJob } from "@/types/session-types";
 import { Button } from "@/ui/button";

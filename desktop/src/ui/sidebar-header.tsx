@@ -67,7 +67,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                     onClick={onRefresh}
                     disabled={isRefreshing || refreshDisabled}
                   >
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4 text-foreground" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -87,7 +87,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                         className="h-8 w-8"
                         disabled={isClearing}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 text-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
@@ -101,28 +101,28 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                   onClick={() => onClearHistory()}
                   disabled={isClearing}
                 >
-                  <Calendar className="mr-2 h-4 w-4" />
+                  <Calendar className="mr-2 h-4 w-4 text-foreground" />
                   <span>Delete jobs older than 90 days</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onClearHistory(7)}
                   disabled={isClearing}
                 >
-                  <CalendarDays className="mr-2 h-4 w-4" />
+                  <CalendarDays className="mr-2 h-4 w-4 text-foreground" />
                   <span>Delete jobs older than 7 days</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onClearHistory(3)}
                   disabled={isClearing}
                 >
-                  <CalendarDays className="mr-2 h-4 w-4" />
+                  <CalendarDays className="mr-2 h-4 w-4 text-foreground" />
                   <span>Delete jobs older than 3 days</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onClearHistory(1)}
                   disabled={isClearing}
                 >
-                  <Clock className="mr-2 h-4 w-4" />
+                  <Clock className="mr-2 h-4 w-4 text-foreground" />
                   <span>Delete jobs older than 1 day</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -130,7 +130,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                   disabled={isClearing}
                   className="text-destructive"
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="mr-2 h-4 w-4 text-foreground" />
                   <span>Delete all completed jobs</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -145,9 +145,9 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
             className="h-8 w-8 flex-shrink-0"
           >
             {isCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4 text-foreground" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4 text-foreground" />
             )}
           </Button>
         </CollapsibleTrigger>

@@ -46,6 +46,7 @@
   
   /* UI elements on white */
   --color-border: oklch(0.92 0 0);
+  --color-border-modal: oklch(0.88 0 0);
   --color-input: oklch(0.985 0 0);
   --color-ring: oklch(0.52 0.09 195);
   --color-chart-1: 12 76% 61%;
@@ -131,6 +132,9 @@
   }
 
   /* Subtle border variations */
+  .border-modal {
+    border-color: hsl(var(--border-modal));
+  }
   .border-soft {
     border-color: hsl(var(--border));
   }
@@ -297,6 +301,7 @@
     --success-background: var(--color-success-background);
     --success-border: var(--color-success-border);
     --border: var(--color-border);
+    --border-modal: var(--color-border-modal);
     --input: var(--color-input);
     --ring: var(--color-ring);
     --chart-1: var(--color-chart-1);
@@ -350,8 +355,15 @@
     
     /* UI elements with navy tones */
     --color-border: oklch(0.28 0.02 206);
+    --color-border-modal: oklch(0.25 0.05 195);
     --color-input: oklch(0.2 0.02 206);
     --color-ring: oklch(0.65 0.08 195);
+    
+    /* Variable mappings for dark mode */
+    --border: var(--color-border);
+    --border-modal: var(--color-border-modal);
+    --input: var(--color-input);
+    --ring: var(--color-ring);
     
     /* Charts with teal family */
     --color-chart-1: oklch(0.7 0.15 25);

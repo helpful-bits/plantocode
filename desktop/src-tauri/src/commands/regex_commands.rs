@@ -72,35 +72,15 @@ pub async fn generate_regex_patterns_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
-    // Get model configuration for this task - check project settings first, then server defaults
-    let model = if let Some(model) = args.model_override.clone() {
-        model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::RegexPatternGeneration, &args.project_directory, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => return Err(AppError::ConfigError(format!("Failed to get model for regex pattern generation: {}", e))),
-        }
-    };
-    
-    // Get temperature configuration - check project settings first, then server defaults
-    let temperature = if let Some(temp) = args.temperature_override {
-        temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::RegexPatternGeneration, &args.project_directory, &app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => return Err(AppError::ConfigError(format!("Failed to get temperature for regex pattern generation: {}", e))),
-        }
-    };
-    
-    // Get max tokens configuration - check project settings first, then server defaults
-    let max_output_tokens = if let Some(tokens) = args.max_tokens_override {
-        tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::RegexPatternGeneration, &args.project_directory, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => return Err(AppError::ConfigError(format!("Failed to get max tokens for regex pattern generation: {}", e))),
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_output_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::RegexPatternGeneration,
+        &args.project_directory,
+        args.model_override.clone(),
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
     
     // Create the payload for the RegexPatternGenerationProcessor
     let processor_payload = RegexPatternGenerationPayload {

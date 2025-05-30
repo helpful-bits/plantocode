@@ -279,7 +279,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   return (
     <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col text-foreground !bg-card border-border rounded-xl shadow-lg !backdrop-blur-none">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
             className={`${job.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}

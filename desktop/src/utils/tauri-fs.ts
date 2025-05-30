@@ -6,6 +6,7 @@
  */
 
 import { invoke as tauriInvoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { type DirectoryTreeOptions } from "@/types/tauri-commands";
 
 /**
  * Generic invoke wrapper for Tauri commands
@@ -15,7 +16,7 @@ export async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> 
   return tauriInvoke<T>(command, args as InvokeArgs);
 }
 
-// Types based on NativeFileInfoRs and ListFilesResponse in models.rs
+// Types based on NativeFileInfoRs in models.rs
 export interface NativeFileInfo {
   path: string;        // Relative path to the queried directory
   name: string;        // Base name of the file/directory
@@ -31,12 +32,6 @@ export interface NativeFileInfo {
   isWritable?: boolean; // Whether the file is writable
 }
 
-export interface ListFilesResponse {
-  files: NativeFileInfo[];
-  warning?: string;
-  totalFoundBeforeFiltering?: number;
-}
-
 
 export async function getHomeDirectory(): Promise<string> {
   return tauriInvoke("get_home_directory_command");
@@ -49,13 +44,27 @@ export async function listFiles(
   includeStats?: boolean,
   exclude?: string[]
 ): Promise<NativeFileInfo[]> {
-  const response = await tauriInvoke<ListFilesResponse>("list_files_command", {
+  const response = await tauriInvoke<NativeFileInfo[]>("list_files_command", {
     directory,
     pattern: pattern ?? null,
     includeStats: includeStats ?? null,
     exclude: exclude ?? null,
   });
-  return response.files;
+  return response;
+}
+
+export async function listFilesWithMetadata(
+  directory: string,
+  pattern?: string,
+  includeStats?: boolean,
+  exclude?: string[]
+): Promise<NativeFileInfo[]> {
+  return tauriInvoke<NativeFileInfo[]>("list_files_command", {
+    directory,
+    pattern: pattern ?? null,
+    includeStats: includeStats ?? null,
+    exclude: exclude ?? null,
+  });
 }
 
 export async function createDirectory(
@@ -177,4 +186,14 @@ export async function getTempDir(): Promise<string> {
 
 export async function isAbsolute(path: string): Promise<boolean> {
   return tauriInvoke("path_is_absolute_command", { path });
+}
+
+export async function generateDirectoryTree(
+  projectDirectory: string,
+  options?: DirectoryTreeOptions
+): Promise<string> {
+  return tauriInvoke("generate_directory_tree_command", {
+    projectDirectory,
+    options: options ?? null,
+  });
 }

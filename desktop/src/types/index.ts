@@ -18,8 +18,22 @@ export type * from "./error-types";
 // Export task settings types
 export type * from "./task-settings-types";
 
-// Export system prompt types
-export type * from "./system-prompts";
+// Export system prompt types (excluding TaskType to avoid conflict)
+export type {
+  SystemPrompt,
+  DefaultSystemPrompt,
+  SystemPromptResponse,
+  GetSystemPromptRequest,
+  SetSystemPromptRequest,
+  ResetSystemPromptRequest,
+  GetSystemPromptResponse,
+  SetSystemPromptResponse,
+  GetDefaultSystemPromptsResponse,
+  GetDefaultSystemPromptResponse,
+  HasCustomSystemPromptResponse,
+  SystemPromptDisplayData,
+  SystemPromptFormData
+} from "./system-prompts";
 
 // Authentication types
 export interface FrontendUser {

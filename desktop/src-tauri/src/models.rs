@@ -199,6 +199,7 @@ pub enum TaskType {
     GenericLlmStream,
     RegexSummaryGeneration,
     RegexPatternGeneration,
+    FileFinderWorkflow,
     Streaming,
     Unknown,
 }
@@ -217,6 +218,7 @@ impl ToString for TaskType {
             TaskType::GenericLlmStream => "generic_llm_stream".to_string(),
             TaskType::RegexSummaryGeneration => "regex_summary_generation".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
+            TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -239,6 +241,7 @@ impl std::str::FromStr for TaskType {
             "generic_llm_stream" => Ok(TaskType::GenericLlmStream),
             "regex_summary_generation" => Ok(TaskType::RegexSummaryGeneration),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
+            "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
             "streaming" => Ok(TaskType::Streaming),
             _ => Ok(TaskType::Unknown),
         }

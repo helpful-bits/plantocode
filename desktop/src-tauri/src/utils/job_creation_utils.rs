@@ -117,9 +117,7 @@ pub async fn create_and_queue_background_job(
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to create background job: {}", e)))?;
     
-    // Convert the job type string to JobType enum
-    let job_type = crate::jobs::types::JobType::try_from(job_type_for_worker)
-        .map_err(|e| AppError::JobError(format!("Failed to convert job type: {}", e)))?;
+    // Note: We now use TaskType directly instead of converting from job_type_for_worker
     
     // Create the appropriate JobPayload based on task type
     let job_payload = match task_type_enum {
@@ -203,7 +201,7 @@ pub async fn create_and_queue_background_job(
     // Create a Job struct for the queue
     let job_for_queue = crate::jobs::types::Job {
         id: job_id.clone(),
-        job_type,
+        job_type: task_type_enum,
         payload: job_payload,
         created_at: timestamp.to_string(),
         session_id: session_id.to_string(),

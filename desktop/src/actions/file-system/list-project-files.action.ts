@@ -1,6 +1,5 @@
 import { type ActionState } from "@/types";
-import { invoke } from "@tauri-apps/api/core";
-import { type ListFilesResponse } from "@/utils/tauri-fs";
+import { type NativeFileInfo, listFiles } from "@/utils/tauri-fs";
 import { handleActionError } from "@/utils/action-utils";
 
 // Request arguments for list_files_command - matches Rust struct
@@ -16,7 +15,7 @@ export interface ListFilesRequestArgs {
  */
 export async function listProjectFilesAction(
   args: ListFilesRequestArgs
-): Promise<ActionState<ListFilesResponse>> {
+): Promise<ActionState<NativeFileInfo[]>> {
   try {
     // Validate required directory parameter
     if (!args.directory?.trim()) {
@@ -26,13 +25,13 @@ export async function listProjectFilesAction(
       };
     }
 
-    // Call the Tauri command directly
-    const response = await invoke<ListFilesResponse>("list_files_command", {
-      directory: args.directory,
-      pattern: args.pattern,
-      includeStats: args.includeStats,
-      exclude: args.exclude,
-    });
+    // Call the Tauri command using the wrapper
+    const response = await listFiles(
+      args.directory,
+      args.pattern,
+      args.includeStats,
+      args.exclude
+    );
 
     return {
       isSuccess: true,
@@ -41,6 +40,6 @@ export async function listProjectFilesAction(
     };
   } catch (error) {
     console.error("Error listing project files:", error);
-    return handleActionError(error) as ActionState<ListFilesResponse>;
+    return handleActionError(error) as ActionState<NativeFileInfo[]>;
   }
 }

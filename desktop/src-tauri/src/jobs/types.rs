@@ -4,66 +4,8 @@ use std::convert::TryFrom;
 use std::collections::HashMap;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus};
+use crate::models::{BackgroundJob, JobStatus, TaskType};
 
-/// Job types that can be processed by the system
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum JobType {
-    OpenRouterLlm,
-    VoiceTranscription,
-    PathFinder,
-    ImplementationPlan,
-    GuidanceGeneration,
-    PathCorrection,
-    TextImprovement,
-    TaskEnhancement,
-    TextCorrection,
-    GenericLlmStream,
-    RegexSummaryGeneration,
-    RegexPatternGeneration
-}
-
-impl TryFrom<&str> for JobType {
-    type Error = AppError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "OPENROUTER_LLM" => Ok(JobType::OpenRouterLlm),
-            "VOICE_TRANSCRIPTION" => Ok(JobType::VoiceTranscription),
-            "PATH_FINDER" => Ok(JobType::PathFinder),
-            "IMPLEMENTATION_PLAN" => Ok(JobType::ImplementationPlan),
-            "GUIDANCE_GENERATION" => Ok(JobType::GuidanceGeneration),
-            "PATH_CORRECTION" => Ok(JobType::PathCorrection),
-            "TEXT_IMPROVEMENT" => Ok(JobType::TextImprovement),
-            "TASK_ENHANCEMENT" => Ok(JobType::TaskEnhancement),
-            "TEXT_CORRECTION" => Ok(JobType::TextCorrection),
-            "GENERIC_LLM_STREAM" => Ok(JobType::GenericLlmStream),
-            "REGEX_SUMMARY_GENERATION" => Ok(JobType::RegexSummaryGeneration),
-            "REGEX_PATTERN_GENERATION" => Ok(JobType::RegexPatternGeneration),
-            _ => Err(AppError::JobError(format!("Unknown job type: {}", value))),
-        }
-    }
-}
-
-impl std::fmt::Display for JobType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            JobType::OpenRouterLlm => write!(f, "OPENROUTER_LLM"),
-            JobType::VoiceTranscription => write!(f, "VOICE_TRANSCRIPTION"),
-            JobType::PathFinder => write!(f, "PATH_FINDER"),
-            JobType::ImplementationPlan => write!(f, "IMPLEMENTATION_PLAN"),
-            JobType::GuidanceGeneration => write!(f, "GUIDANCE_GENERATION"),
-            JobType::PathCorrection => write!(f, "PATH_CORRECTION"),
-            JobType::TextImprovement => write!(f, "TEXT_IMPROVEMENT"),
-            JobType::TaskEnhancement => write!(f, "TASK_ENHANCEMENT"),
-            JobType::TextCorrection => write!(f, "TEXT_CORRECTION"),
-            JobType::GenericLlmStream => write!(f, "GENERIC_LLM_STREAM"),
-            JobType::RegexSummaryGeneration => write!(f, "REGEX_SUMMARY_GENERATION"),
-            JobType::RegexPatternGeneration => write!(f, "REGEX_PATTERN_GENERATION"),
-        }
-    }
-}
 
 // Event emitted when a job status changes
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,6 +191,18 @@ pub struct RegexPatternGenerationPayload {
     pub max_tokens_override: Option<u32>,
 }
 
+// Payload for File Finder Workflow job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileFinderWorkflowPayload {
+    pub background_job_id: String,
+    pub session_id: String,
+    pub task_description: String,
+    pub project_directory: String,
+    pub excluded_paths: Option<Vec<String>>,
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum JobPayload {
@@ -264,6 +218,7 @@ pub enum JobPayload {
     GenericLlmStream(GenericLlmStreamPayload),
     RegexSummaryGeneration(crate::jobs::processors::RegexSummaryGenerationPayload),
     RegexPatternGeneration(RegexPatternGenerationPayload),
+    FileFinderWorkflow(FileFinderWorkflowPayload),
 }
 
 // Structured types for Implementation Plan parsing
@@ -354,7 +309,7 @@ impl JobProcessResult {
 #[derive(Debug, Clone)]
 pub struct Job {
     pub id: String,
-    pub job_type: JobType,
+    pub job_type: TaskType,
     pub payload: JobPayload,
     pub created_at: String, // Timestamp string
     pub session_id: String,

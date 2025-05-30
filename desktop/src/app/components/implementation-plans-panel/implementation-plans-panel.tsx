@@ -18,7 +18,6 @@ import {
 import { Button } from "@/ui/button";
 import {
   Card,
-  CardContent,
 } from "@/ui/card";
 import { ScrollArea } from "@/ui/scroll-area";
 
@@ -261,22 +260,6 @@ export function ImplementationPlansPanel({
         </div>
       )}
 
-      {/* Empty state */}
-      {!isLoading && implementationPlans.length === 0 && (
-        <Card className="bg-background/90 backdrop-blur-sm shadow-soft border-border/20 rounded-xl">
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <div className="text-center space-y-3">
-              <h3 className="text-lg font-medium text-foreground">No Implementation Plans</h3>
-              <p className="text-sm text-muted-foreground max-w-[400px] text-balance">
-                {onCreatePlan 
-                  ? "Create your first implementation plan using the button above."
-                  : "You haven't created any implementation plans yet for this project. Use the \"Create Implementation Plan\" option in the file manager to get started."
-                }
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Implementation Plans List */}
       {implementationPlans.length > 0 && (

@@ -10,7 +10,7 @@ use crate::models::{OpenRouterRequestMessage, OpenRouterContent, JobStatus, Task
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_helpers;
 use crate::api_clients::client_trait::ApiClientOptions;
-use crate::utils::{PromptComposer, CompositionContextBuilder};
+use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder};
 
 /// Processor for guidance generation jobs
 pub struct GuidanceGenerationProcessor;
@@ -43,44 +43,41 @@ impl JobProcessor for GuidanceGenerationProcessor {
             }
         };
         
-        // Get repositories from app state
-        let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
-        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
+        // Get repositories from app state - USING HELPER
+        let (repo, settings_repo) = crate::jobs::job_processor_utils::setup_repositories(&app_handle)?;
         
-        // Get LLM client using the standardized factory function
-        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+        // Get LLM client using the standardized factory function - USING HELPER
+        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
-        
-        // Update job status to running
-        job_helpers::update_job_status_running(&repo, &job.id).await?;
+        // Update job status to running - USING HELPER
+        crate::jobs::job_processor_utils::update_status_running(&repo, &job.id, "Processing guidance generation").await?;
         
         info!("Processing guidance generation job: {}", job.id);
         debug!("Task description: {}", payload.task_description);
         
-        // Create enhanced composition context for sophisticated prompt generation
-        let composition_context = CompositionContextBuilder::new(
+        // Create unified prompt context for sophisticated prompt generation
+        let context = UnifiedPromptContextBuilder::new(
             job.session_id.clone(),
             TaskType::GuidanceGeneration,
             payload.task_description.clone(),
         )
         .project_directory(Some(payload.project_directory.clone()))
-        .relevant_files(payload.paths.clone())
         .custom_instructions(payload.file_contents_summary.clone())
         .build();
 
-        // Use the enhanced prompt composer to generate sophisticated prompts
-        let prompt_composer = PromptComposer::new();
+        // Use the unified prompt processor to generate sophisticated prompts
+        let prompt_processor = UnifiedPromptProcessor::new();
         let composed_prompt = if let Some(override_prompt) = &payload.system_prompt_override {
             // Handle override case - create a simple composed prompt
-            crate::utils::prompt_composition::ComposedPrompt {
+            crate::utils::unified_prompt_system::ComposedPrompt {
                 final_prompt: format!("{}\n\n{}", override_prompt, payload.task_description),
                 system_prompt_id: "override".to_string(),
                 context_sections: vec![],
                 estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(override_prompt) as usize),
             }
         } else {
-            prompt_composer
-                .compose_prompt(&composition_context, &settings_repo)
+            prompt_processor
+                .compose_prompt(&context, &settings_repo)
                 .await?
         };
 
@@ -91,28 +88,12 @@ impl JobProcessor for GuidanceGenerationProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        // Extract system and user parts from the composed prompt
-        let system_prompt = composed_prompt.final_prompt.split("\n\n").next().unwrap_or("").to_string();
-        let user_prompt = composed_prompt.final_prompt.split("\n\n").skip(1).collect::<Vec<&str>>().join("\n\n");
-        let system_prompt_id = composed_prompt.system_prompt_id;
+        // Extract system and user parts from the composed prompt - USING HELPER
+        let (system_prompt, user_prompt, system_prompt_id) = 
+            crate::jobs::job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
-        // Build messages array
-        let messages = vec![
-            OpenRouterRequestMessage {
-                role: "system".to_string(),
-                content: vec![OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: system_prompt,
-                }],
-            },
-            OpenRouterRequestMessage {
-                role: "user".to_string(),
-                content: vec![OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: user_prompt,
-                }],
-            },
-        ];
+        // Build messages array - USING HELPER
+        let messages = crate::jobs::job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
         // Set API options with model from payload or project/server config
         let model_to_use = if let Some(model_override) = payload.model_override.clone() {

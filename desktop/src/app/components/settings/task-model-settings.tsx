@@ -1,7 +1,8 @@
 "use client";
 
 
-import { type TaskSettings, type TaskType } from "@/types";
+import { type TaskSettings, type TaskType as SessionTaskType } from "@/types";
+import { type TaskType as SystemPromptTaskType } from "@/types/system-prompts";
 import { type ModelInfo } from "@/actions/config.actions";
 import {
   Select,
@@ -23,7 +24,14 @@ import {
   TabsList,
   TabsTrigger,
   Input,
+  Button,
+  Textarea,
+  Badge,
+  Alert,
 } from "@/ui";
+import { useSystemPrompt, useDefaultSystemPrompts } from "@/hooks/use-system-prompts";
+import { extractPlaceholders } from "@/actions/system-prompts.actions";
+import { useState, useCallback } from "react";
 
 import type React from "react";
 
@@ -32,131 +40,322 @@ interface TaskModelSettingsProps {
   taskSettings: TaskSettings;
   availableModels: ModelInfo[] | null;
   onSettingsChange: (settings: TaskSettings) => void;
+  sessionId?: string;
+}
+
+// System Prompt Editor Component
+interface SystemPromptEditorProps {
+  sessionId?: string;
+  taskType: SessionTaskType;
+  onSave?: () => void;
+}
+
+function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorProps) {
+  // Check if this task type supports system prompts
+  const supportedTaskTypes: SystemPromptTaskType[] = [
+    'path_finder',
+    'text_improvement', 
+    'guidance_generation',
+    'text_correction',
+    'implementation_plan',
+    'path_correction',
+    'task_enhancement',
+    'regex_pattern_generation',
+    'regex_summary_generation',
+    'generic_llm_stream'
+  ];
+  
+  const isSupported = supportedTaskTypes.includes(taskType as SystemPromptTaskType);
+  
+  const { prompt, loading, error, isCustom, update, reset, validate } = useSystemPrompt({
+    sessionId: sessionId || '',
+    taskType: taskType as SystemPromptTaskType,
+    autoLoad: !!sessionId && isSupported
+  });
+  const { getDefault } = useDefaultSystemPrompts();
+  
+  const [editedPrompt, setEditedPrompt] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const defaultPrompt = getDefault(taskType as SystemPromptTaskType);
+  const currentPrompt = prompt?.systemPrompt || '';
+  
+  // Don't show system prompt editor for unsupported task types
+  if (!isSupported) {
+    return (
+      <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center">
+        <p className="text-sm text-muted-foreground">
+          System prompts are not available for this task type.
+        </p>
+      </div>
+    );
+  }
+
+  const handlePromptChange = useCallback((value: string) => {
+    setEditedPrompt(value);
+    setValidationError(null);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    const promptToSave = editedPrompt || currentPrompt;
+    const validation = validate(promptToSave);
+    if (!validation.isValid) {
+      setValidationError(validation.errors.join(', '));
+      return;
+    }
+
+    setIsSaving(true);
+    setValidationError(null);
+
+    try {
+      await update(promptToSave);
+      onSave?.();
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Failed to save prompt');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editedPrompt, currentPrompt, validate, update, onSave]);
+
+  const handleReset = useCallback(async () => {
+    if (!confirm('Are you sure you want to reset this prompt to the default? This will remove your custom prompt.')) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await reset();
+      setEditedPrompt('');
+      onSave?.();
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Failed to reset prompt');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [reset, onSave]);
+
+  const displayedPrompt = editedPrompt || currentPrompt;
+  const placeholders = extractPlaceholders(displayedPrompt);
+
+  if (!sessionId) {
+    return (
+      <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center">
+        <p className="text-sm text-muted-foreground">
+          No active session. Please create or select a session to manage system prompts.
+        </p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="mt-6 p-4 rounded-lg border">
+        <div className="animate-pulse">
+          <div className="h-4 bg-muted rounded w-1/4 mb-2"></div>
+          <div className="h-20 bg-muted rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="border-t pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h4 className="text-sm font-medium">System Prompt</h4>
+            <p className="text-xs text-muted-foreground">{defaultPrompt?.description}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isCustom && <Badge variant="secondary" className="text-xs">Custom</Badge>}
+            {!isCustom && <Badge variant="outline" className="text-xs">Default</Badge>}
+          </div>
+        </div>
+
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            {error}
+          </Alert>
+        )}
+
+        {validationError && (
+          <Alert variant="destructive" className="mb-4">
+            {validationError}
+          </Alert>
+        )}
+
+        <div className="space-y-3">
+          <Textarea
+            value={displayedPrompt}
+            onChange={(e) => handlePromptChange(e.target.value)}
+            placeholder="Enter your custom system prompt..."
+            rows={20}
+            className="font-mono text-sm min-h-96"
+          />
+
+          {placeholders.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Available Placeholders</label>
+              <div className="flex flex-wrap gap-1">
+                {placeholders.slice(0, 3).map((placeholder) => (
+                  <Badge key={placeholder} variant="outline" className="text-xs px-2 py-0.5">
+                    {`{{${placeholder}}}`}
+                  </Badge>
+                ))}
+                {placeholders.length > 3 && (
+                  <Badge variant="outline" className="text-xs px-2 py-0.5">+{placeholders.length - 3} more</Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            {isCustom && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleReset}
+                disabled={isSaving}
+              >
+                Reset to Default
+              </Button>
+            )}
+            <Button 
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 
 // Task type definitions with user-friendly names and default settings
 const taskTypeDefinitions: Record<
-  TaskType,
+  SessionTaskType,
   {
     label: string;
-    defaultApiType: "google" | "anthropic" | "openai" | "deepseek";
+    defaultProvider: "google" | "anthropic" | "openai" | "deepseek";
     description?: string;
     hidden?: boolean; // Hide from UI while keeping backend functionality
   }
 > = {
   path_finder: {
     label: "File Finder",
-    defaultApiType: "google",
+    defaultProvider: "google",
     description: "AI model used to find relevant files in your project",
   },
   voice_transcription: {
     label: "Voice Transcription",
-    defaultApiType: "openai",
+    defaultProvider: "openai",
     description: "Convert speech to text using AI transcription",
   },
   path_correction: {
     label: "Path Correction",
-    defaultApiType: "google",
+    defaultProvider: "google",
     description: "Automatically correct and improve file paths",
   },
   text_improvement: {
     label: "Text Improvement",
-    defaultApiType: "anthropic",
+    defaultProvider: "anthropic",
     description: "Enhance and refine text using AI",
   },
   text_correction: {
     label: "Text Correction",
-    defaultApiType: "anthropic",
+    defaultProvider: "anthropic",
     description: "Correct and improve text for accuracy and clarity",
   },
   guidance_generation: {
     label: "AI Guidance",
-    defaultApiType: "google",
+    defaultProvider: "google",
     description: "Generate contextual guidance for your tasks",
   },
   implementation_plan: {
     label: "Implementation Plans",
-    defaultApiType: "google",
+    defaultProvider: "google",
     description: "Create detailed implementation plans for features",
+  },
+  file_finder_workflow: {
+    label: "File Finder Workflow",
+    defaultProvider: "google",
+    description: "Advanced file finding workflow with multiple steps",
   },
   // Hidden task types - backend functionality exists but not exposed in UI
   task_enhancement: {
     label: "Task Enhancement",
-    defaultApiType: "google",
+    defaultProvider: "google",
     hidden: true,
   },
   generic_llm_stream: {
     label: "Generic LLM Stream",
-    defaultApiType: "google",
+    defaultProvider: "google",
     hidden: true,
   },
   regex_pattern_generation: {
     label: "Regex Pattern Generation",
-    defaultApiType: "anthropic",
+    defaultProvider: "anthropic",
     hidden: true,
   },
   regex_summary_generation: {
     label: "Regex Summary Generation",
-    defaultApiType: "anthropic",
+    defaultProvider: "anthropic",
+    hidden: true,
+  },
+  server_proxy_transcription: {
+    label: "Server Proxy Transcription",
+    defaultProvider: "openai",
+    hidden: true,
+  },
+  streaming: {
+    label: "Streaming",
+    defaultProvider: "google",
     hidden: true,
   },
   unknown: {
     label: "Default/Fallback",
-    defaultApiType: "google",
+    defaultProvider: "google",
     description: "Default settings for unspecified tasks",
     hidden: true,
   },
 };
 
-const taskTypeToSettingsKey: Record<string, string> = {
-  implementation_plan: "implementationPlan",
-  path_finder: "pathFinder",
-  text_improvement: "textImprovement",
-  voice_transcription: "transcription",
-  text_correction: "textCorrection",
-  path_correction: "pathCorrection",
-  guidance_generation: "guidanceGeneration",
-  task_enhancement: "taskEnhancement",
-  generic_llm_stream: "genericLlmStream",
-  regex_pattern_generation: "regexGeneration",
-  regex_summary_generation: "regexSummaryGeneration",
-  streaming: "streaming",
-  unknown: "unknown",
-};
 
 export default function TaskModelSettings({
   taskSettings,
   availableModels,
   onSettingsChange,
+  sessionId,
 }: TaskModelSettingsProps) {
-  const getTaskSettings = (taskType: TaskType) => {
-    const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
-    const settings = taskSettings[settingsKey];
+  const getTaskSettings = (taskType: SessionTaskType) => {
+    const settings = taskSettings[taskType as keyof TaskSettings];
 
     if (!settings) {
       console.error(
-        `HARD ERROR: No settings found for task type: ${taskType} (mapped to ${settingsKey})`,
+        `HARD ERROR: No settings found for task type: ${taskType}`,
         { 
           taskType, 
-          settingsKey, 
           availableKeys: Object.keys(taskSettings),
           fullTaskSettings: taskSettings 
         }
       );
       
-      throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${taskType} (mapped to ${settingsKey}). Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
+      throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${taskType}. Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
     }
 
     return settings;
   };
 
-  const handleModelChange = (taskType: TaskType, model: string) => {
+  const handleModelChange = (taskType: SessionTaskType, model: string) => {
     const settings = getTaskSettings(taskType);
     const newSettings = { ...taskSettings };
-    const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
 
-    newSettings[settingsKey] = {
+    newSettings[taskType as keyof TaskSettings] = {
       ...settings,
       model,
     };
@@ -164,12 +363,11 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  const handleMaxTokensChange = (taskType: TaskType, value: number[]) => {
+  const handleMaxTokensChange = (taskType: SessionTaskType, value: number[]) => {
     const settings = getTaskSettings(taskType);
     const newSettings = { ...taskSettings };
-    const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
 
-    newSettings[settingsKey] = {
+    newSettings[taskType as keyof TaskSettings] = {
       ...settings,
       maxTokens: value[0],
     };
@@ -177,12 +375,11 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  const handleTemperatureChange = (taskType: TaskType, value: number[]) => {
+  const handleTemperatureChange = (taskType: SessionTaskType, value: number[]) => {
     const settings = getTaskSettings(taskType);
     const newSettings = { ...taskSettings };
-    const settingsKey = taskTypeToSettingsKey[taskType] as keyof TaskSettings;
 
-    newSettings[settingsKey] = {
+    newSettings[taskType as keyof TaskSettings] = {
       ...settings,
       temperature: value[0],
     };
@@ -190,12 +387,12 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  const getModelsForTask = (taskType: TaskType) => {
+  const getModelsForTask = (taskType: SessionTaskType) => {
     if (!availableModels || availableModels.length === 0) {
       return [];
     }
     
-    const apiType = taskTypeDefinitions[taskType].defaultApiType;
+    const apiType = taskTypeDefinitions[taskType].defaultProvider;
     return availableModels.filter(model => model.provider === apiType);
   };
 
@@ -227,7 +424,7 @@ export default function TaskModelSettings({
           </TabsList>
 
           {Object.entries(taskTypeDefinitions).map(([type, config]) => {
-            const taskType = type as TaskType;
+            const taskType = type as SessionTaskType;
             if (config.hidden) return null;
 
             const settings = getTaskSettings(taskType);
@@ -270,8 +467,8 @@ export default function TaskModelSettings({
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>
-                              {config.defaultApiType.charAt(0).toUpperCase() +
-                                config.defaultApiType.slice(1)}{" "}
+                              {config.defaultProvider.charAt(0).toUpperCase() +
+                                config.defaultProvider.slice(1)}{" "}
                               Models
                             </SelectLabel>
                             {models.map((model) => (
@@ -368,7 +565,7 @@ export default function TaskModelSettings({
                           </div>
                           <Input
                             type="number"
-                            value={settings.temperature}
+                            value={Number(settings.temperature).toFixed(2)}
                             onChange={(
                               e: React.ChangeEvent<HTMLInputElement>
                             ) => {
@@ -381,7 +578,7 @@ export default function TaskModelSettings({
                             className="w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2"
                             min={0}
                             max={1}
-                            step={0.05}
+                            step={0.01}
                           />
                         </div>
                         <p className="text-xs text-muted-foreground text-balance">
@@ -407,6 +604,12 @@ export default function TaskModelSettings({
                       </div>
                     )}
                   </div>
+
+                  {/* System Prompt Section */}
+                  <SystemPromptEditor
+                    sessionId={sessionId}
+                    taskType={taskType}
+                  />
                 </div>
               </TabsContent>
             );

@@ -104,39 +104,15 @@ pub async fn find_relevant_files_command(
         session.project_directory
     };
     
-    // Determine effective model settings - check project settings first, then server defaults
-    let model = if let Some(override_model) = args.model_override.clone() {
-        override_model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::PathFinder, &project_directory, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get model for path finder: {}", e)));
-            }
-        }
-    };
-    
-    let temperature = if let Some(override_temp) = args.temperature_override {
-        override_temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::PathFinder, &project_directory, &app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get temperature for path finder: {}", e)));
-            }
-        }
-    };
-    
-    let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
-        override_tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathFinder, &project_directory, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get max tokens for path finder: {}", e)));
-            }
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::PathFinder,
+        &project_directory,
+        args.model_override.clone(),
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
     
     // Construct PathFinderOptions from args.options
     let options = args.options.unwrap_or_default();
@@ -254,39 +230,15 @@ pub async fn create_path_correction_job_command(
         return Err(AppError::ValidationError("Paths to correct are required".to_string()));
     }
     
-    // Determine effective model settings - check project settings first, then server defaults
-    let model = if let Some(override_model) = args.model_override.clone() {
-        override_model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::PathCorrection, &args.project_directory, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get model for path correction: {}", e)));
-            }
-        }
-    };
-    
-    let temperature = if let Some(override_temp) = args.temperature_override {
-        override_temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::PathCorrection, &args.project_directory, &app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get temperature for path correction: {}", e)));
-            }
-        }
-    };
-    
-    let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
-        override_tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::PathCorrection, &args.project_directory, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get max tokens for path correction: {}", e)));
-            }
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::PathCorrection,
+        &args.project_directory,
+        args.model_override.clone(),
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
     
     // Create payload for PathCorrectionProcessor
     let payload = crate::jobs::types::PathCorrectionPayload {

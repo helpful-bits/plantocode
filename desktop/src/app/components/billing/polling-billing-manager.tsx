@@ -5,7 +5,6 @@ import { open } from "@tauri-apps/plugin-shell";
 import { 
   CreditCard, 
   ExternalLink, 
-  CheckCircle, 
   RefreshCw,
   Clock,
   Loader2
@@ -311,15 +310,6 @@ export function PollingBillingManager({
             <h4 className="font-medium text-sm">Plan Management</h4>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-start gap-3 p-3 border border-green-200 rounded-lg bg-green-50">
-              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-green-800">Smart Change Detection</p>
-                <p className="text-xs text-green-700 mt-1">
-                  Complete your purchase in the browser. This app automatically detects subscription changes - no redirects needed!
-                </p>
-              </div>
-            </div>
             
             <Button 
               onClick={() => handleUpgrade("pro")}

@@ -95,7 +95,9 @@ function FileListItem({
               onToggleSelection(file.path);
             }
           }}
-          role="button"
+          role="checkbox"
+          aria-checked={!!file.included}
+          aria-label={`Include file ${file.path.split('/').pop() || file.path}`}
           tabIndex={0}
           onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -151,7 +153,9 @@ function FileListItem({
               onToggleExclusion(file.path);
             }
           }}
-          role="button"
+          role="checkbox"
+          aria-checked={!!file.forceExcluded}
+          aria-label={`Force exclude file ${file.path.split('/').pop() || file.path}`}
           tabIndex={0}
           onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
             if (e.key === 'Enter' || e.key === ' ') {

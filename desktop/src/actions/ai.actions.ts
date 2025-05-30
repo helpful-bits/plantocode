@@ -14,8 +14,7 @@ import { handleActionError } from "@/utils/action-utils";
 import { getModelSettingsForProject } from "./project-settings.actions";
 
 /**
- * Send a prompt to AI model and receive streaming response
- * Specifically designed for implementation plan generation with appropriate model settings
+ * Sends a generic prompt to an AI model and receives a streaming response. Uses 'genericLlmStream' task settings by default.
  */
 export async function sendPromptToAiAction(
   promptText: string,
@@ -43,10 +42,9 @@ export async function sendPromptToAiAction(
 
     const projectDirectory = sessionDetails.projectDirectory;
 
-    // Get the project-specific model settings - use generic LLM stream settings or fallback to unknown
+    // Get the project-specific model settings for generic_llm_stream
     const allSettings = await getModelSettingsForProject(projectDirectory);
-    const modelSettings = allSettings.data?.genericLlmStream || 
-                         allSettings.data?.unknown || {
+    const modelSettings = allSettings.data?.generic_llm_stream || {
       model: undefined,
       temperature: undefined,
       maxTokens: undefined,
@@ -195,8 +193,8 @@ export async function initiateGenericAiStreamAction(params: {
     if (projectDirectory) {
       try {
         const allSettings = await getModelSettingsForProject(projectDirectory);
-        modelSettings = allSettings.data?.genericLlmStream
-          ? { ...allSettings.data.genericLlmStream }
+        modelSettings = allSettings.data?.generic_llm_stream
+          ? { ...allSettings.data.generic_llm_stream }
           : {
               model: undefined,
               temperature: undefined,
@@ -267,23 +265,14 @@ export async function generateSimpleTextAction(params: {
   }
 
   try {
-    // Map frontend TaskType values to backend-expected snake_case strings
-    // TODO: Consider a more comprehensive mapping if more frontend TaskType strings diverge from backend TaskType enum string values.
-    const mapFrontendTaskTypeToBackend = (frontendType: string): string => {
-      if (frontendType === "transcription") return "voice_transcription";
-      return frontendType; // Most frontend TaskType strings are already snake_case
-    };
-    
-    const backendTaskTypeString = mapFrontendTaskTypeToBackend(taskTypeForSettings);
-
-    // Instead of using OpenRouterClientAdapter, call Tauri command directly
+    // TaskType is now snake_case, matching backend TaskType::to_string() output
     const response = await invoke<string>("generate_simple_text_command", {
       prompt,
       systemPrompt: systemPrompt,
       modelOverride: explicitModel,
       temperatureOverride: explicitTemperature,
       maxTokensOverride: explicitMaxTokens,
-      taskType: backendTaskTypeString,
+      taskType: taskTypeForSettings,
     });
 
     return createSuccessState(response, "Text generated successfully");

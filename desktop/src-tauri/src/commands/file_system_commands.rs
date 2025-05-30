@@ -27,7 +27,7 @@ pub struct ListFilesRequestArgs {
 }
 
 #[command]
-pub async fn list_files_command(directory: String, pattern: Option<String>, include_stats: Option<bool>, exclude: Option<Vec<String>>, app_handle: AppHandle) -> Result<crate::models::ListFilesResponse, String> {
+pub async fn list_files_command(directory: String, pattern: Option<String>, include_stats: Option<bool>, exclude: Option<Vec<String>>, app_handle: AppHandle) -> Result<Vec<crate::models::NativeFileInfoRs>, String> {
     info!("Listing files in directory: {}", directory);
     
     // Validate directory parameter
@@ -44,9 +44,10 @@ pub async fn list_files_command(directory: String, pattern: Option<String>, incl
         exclude,
     };
 
-    // Call the service function
+    // Call the service function and extract just the files
     crate::services::file_service::list_files_with_options(service_args)
         .await
+        .map(|response| response.files)
         .map_err(|e| e.to_string())
 }
 
@@ -351,6 +352,11 @@ pub fn normalize_path_command(path: String, add_trailing_slash: Option<bool>) ->
 pub async fn get_temp_dir_command() -> AppResult<String> {
     let temp_dir = fs_utils::get_app_temp_dir().await?;
     Ok(temp_dir.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn path_is_absolute_command(path: String) -> AppResult<bool> {
+    Ok(std::path::Path::new(&path).is_absolute())
 }
 
 

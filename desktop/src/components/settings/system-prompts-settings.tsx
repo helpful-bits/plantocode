@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { 
-  TaskType, 
-  SystemPromptDisplayData 
+  TaskType
 } from '../../types/system-prompts';
 import { useSystemPrompt, useDefaultSystemPrompts } from '../../hooks/use-system-prompts';
 import { Button } from '../../ui/button';

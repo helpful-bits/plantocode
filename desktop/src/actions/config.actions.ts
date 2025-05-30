@@ -6,6 +6,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { type TaskType } from "@/types/system-prompts";
 // Using Record<string, any> instead of HashMap from Tauri
 
 /**
@@ -15,7 +16,7 @@ export interface RuntimeAIConfig {
   defaultLlmModelId: string;
   defaultVoiceModelId: string;
   defaultTranscriptionModelId: string;
-  tasks: Record<string, TaskModelSettings>;
+  tasks: Record<TaskType, TaskModelSettings>;
   availableModels: ModelInfo[];
   pathFinderSettings: PathFinderSettings;
 }
@@ -72,7 +73,7 @@ export async function getAvailableAIModels(): Promise<ModelInfo[]> {
  * Get default task configurations from the cached configuration
  */
 export async function getDefaultTaskConfigurations(): Promise<
-  Record<string, TaskModelSettings>
+  Record<TaskType, TaskModelSettings>
 > {
   return invoke("get_default_task_configurations");
 }

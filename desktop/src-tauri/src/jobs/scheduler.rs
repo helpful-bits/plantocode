@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::str::FromStr;
 use log::{info, error, debug, warn};
 use tauri::{AppHandle, Manager};
 use tokio::sync::{mpsc, Mutex, OnceCell};
@@ -9,7 +10,8 @@ use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::dispatcher::process_next_job;
 use crate::jobs::queue::{get_job_queue, QueueMessage, JobPriority};
-use crate::jobs::types::{Job, JobPayload, JobType, JobProcessResult};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::models::TaskType;
 use crate::models::BackgroundJob;
 
 /// Message to control the job scheduler
@@ -263,15 +265,8 @@ impl JobScheduler {
         let metadata_json = serde_json::from_str::<serde_json::Value>(metadata)
             .map_err(|e| AppError::JobError(format!("Failed to parse job metadata: {}", e)))?;
         
-        // Get the job type
-        let job_type_str = metadata_json.get("jobTypeForWorker")
-            .ok_or_else(|| AppError::JobError("jobTypeForWorker not found in job metadata".to_string()))?
-            .as_str()
-            .ok_or_else(|| AppError::JobError("jobTypeForWorker is not a string".to_string()))?;
-        
-        // Parse the job type
-        let job_type = JobType::try_from(job_type_str)
-            .map_err(|_| AppError::JobError(format!("Unknown job type: {}", job_type_str)))?;
+        // Parse the task type from database
+        let task_type = TaskType::from_str(&db_job.task_type).unwrap(); // Safe to unwrap since TaskType::from_str always returns Ok
         
         // Extract the jobPayloadForWorker value from metadata
         let _payload_json_value = metadata_json.get("jobPayloadForWorker")
@@ -294,7 +289,7 @@ impl JobScheduler {
         // Create the Job struct
         let job = Job {
             id: db_job.id.clone(),
-            job_type,
+            job_type: task_type,
             payload,
             created_at: db_job.created_at.to_string(),
             session_id: db_job.session_id.clone(),

@@ -55,8 +55,8 @@ const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
   );
 
   const renderPromptContent = (content: string | undefined, placeholder: string) => (
-    <ScrollArea className="h-[60vh] w-full border rounded-md bg-card p-4">
-      <pre className="whitespace-pre-wrap text-sm font-mono">
+    <ScrollArea className="h-[60vh] w-full border border-border/20 rounded-md bg-card p-4">
+      <pre className="whitespace-pre-wrap text-sm font-mono text-foreground">
         {content || placeholder}
       </pre>
     </ScrollArea>
@@ -64,15 +64,15 @@ const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
-          <DialogTitle className="text-lg">
+          <DialogTitle className="text-lg text-foreground">
             View Implementation Plan Prompt: {sessionName}
           </DialogTitle>
         </DialogHeader>
 
         {isLoading && (
-          <div className="flex items-center justify-center py-8">
+          <div className="flex items-center justify-center py-8 text-foreground">
             <Loader2 className="h-6 w-6 animate-spin mr-2" />
             <span>Loading prompt...</span>
           </div>
@@ -103,14 +103,14 @@ const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
 
             <TabsContent value="combined" className="flex-1">
               <div className="space-y-2">
-                <h3 className="font-medium text-sm">Combined Prompt (System + User)</h3>
+                <h3 className="font-medium text-sm text-foreground">Combined Prompt (System + User)</h3>
                 {renderPromptContent(combinedPrompt, "Combined prompt not available")}
               </div>
             </TabsContent>
 
             <TabsContent value="system" className="flex-1">
               <div className="space-y-2">
-                <h3 className="font-medium text-sm">System Prompt</h3>
+                <h3 className="font-medium text-sm text-foreground">System Prompt</h3>
                 <p className="text-xs text-muted-foreground">
                   Instructions that guide the AI's behavior and approach
                 </p>
@@ -120,7 +120,7 @@ const PromptCopyModal: React.FC<PromptCopyModalProps> = ({
 
             <TabsContent value="user" className="flex-1">
               <div className="space-y-2">
-                <h3 className="font-medium text-sm">User Prompt</h3>
+                <h3 className="font-medium text-sm text-foreground">User Prompt</h3>
                 <p className="text-xs text-muted-foreground">
                   Task-specific context including description, files, and project structure
                 </p>

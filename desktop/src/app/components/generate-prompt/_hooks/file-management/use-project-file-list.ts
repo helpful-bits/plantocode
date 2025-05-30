@@ -61,7 +61,7 @@ export function useProjectFileList(
         exclude: [], // No exclude patterns by default
       });
 
-      if (!result.isSuccess || !result.data || !Array.isArray(result.data.files)) {
+      if (!result.isSuccess || !result.data || !Array.isArray(result.data)) {
         setError(result.message || "Failed to list project files or invalid data returned");
         setIsLoading(false);
         isFetchingRef.current = false;
@@ -71,7 +71,7 @@ export function useProjectFileList(
       // Process file paths from the direct response
       const filesMap: FilesMap = {};
 
-      for (const fileInfo of result.data.files) {
+      for (const fileInfo of result.data) {
         try {
           if (!fileInfo || !fileInfo.path) continue;
 

@@ -155,6 +155,10 @@ export interface GetAppDataDirectoryCommandArgs {
 export interface GetTempDirCommandArgs {
 }
 
+export interface PathIsAbsoluteCommandArgs {
+  path: string;
+}
+
 
 // Commands from generic_task_commands
 export interface GenericLLMStreamCommandArgs {
@@ -478,6 +482,7 @@ export type TauriInvoke = {
   "move_file_command": (args: MoveFileCommandArgs) => Promise<void>;
   "get_app_data_directory_command": () => Promise<string>;
   "get_temp_dir_command": () => Promise<string>;
+  "path_is_absolute_command": (args: PathIsAbsoluteCommandArgs) => Promise<boolean>;
   "generic_llm_stream_command": (args: GenericLLMStreamCommandArgs) => Promise<JobResult>;
   "enhance_task_description_command": (args: EnhanceTaskDescriptionCommandArgs) => Promise<JobResult>;
   "generate_guidance_command": (args: GenerateGuidanceCommandArgs) => Promise<JobResult>;
