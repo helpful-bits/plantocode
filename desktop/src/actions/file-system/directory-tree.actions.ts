@@ -1,8 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
-
 import { type ActionState } from "@/types";
 import { type DirectoryTreeOptions } from "@/types/tauri-commands";
 import { handleActionError } from "@/utils/action-utils";
+import { generateDirectoryTree } from "@/utils/tauri-fs";
 
 /**
  * Generates a directory tree directly as a utility function
@@ -22,14 +21,8 @@ export async function generateDirectoryTreeAction(
       };
     }
 
-    // Generate directory tree directly
-    const directoryTree = await invoke<string>(
-      "generate_directory_tree_command",
-      {
-        projectDirectory: directoryPath,
-        options: options || null,
-      }
-    );
+    // Generate directory tree using the wrapper
+    const directoryTree = await generateDirectoryTree(directoryPath, options);
 
     // Return success with the directory tree
     return {

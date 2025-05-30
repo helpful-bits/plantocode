@@ -38,6 +38,15 @@ pub use file_system_commands::{
     create_unique_filepath_command,
     delete_file_command,
     move_file_command,
+    path_join_command,
+    path_dirname_command,
+    path_basename_command,
+    path_extname_command,
+    get_app_data_directory_command,
+    sanitize_filename_command,
+    normalize_path_command,
+    get_temp_dir_command,
+    path_is_absolute_command,
 };
 pub use app_commands::{
     get_app_info,

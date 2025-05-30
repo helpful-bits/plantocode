@@ -40,8 +40,8 @@ impl JobProcessor for GenericLlmStreamProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
-        // Get the API client from the factory
-        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+        // Get the API client from job processor utils
+        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
         // Update job status to running
         let repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();

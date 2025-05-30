@@ -70,7 +70,7 @@ export interface HasCustomSystemPromptResponse {
   error?: string;
 }
 
-// Task types that support system prompts
+// Task types that support system prompts - using snake_case to match backend TaskType::to_string()
 export type TaskType = 
   | 'path_finder'
   | 'text_improvement' 

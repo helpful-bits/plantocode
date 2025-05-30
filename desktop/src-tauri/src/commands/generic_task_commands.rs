@@ -61,50 +61,15 @@ pub async fn generic_llm_stream_command(
     // Determine project directory for settings lookup
     let project_dir = args.project_directory.clone().unwrap_or_default();
     
-    // Get the model for this task - check project settings first, then server defaults
-    let model = if let Some(model) = args.model.clone() {
-        model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::GenericLlmStream, &project_dir, &app_handle).await {
-            Ok(model) => model,
-            Err(_) => match crate::config::get_model_for_task_with_project(TaskType::TextImprovement, &project_dir, &app_handle).await {
-                Ok(model) => model,
-                Err(e) => return Err(AppError::ConfigError(
-                    format!("Failed to get model for generic LLM stream: {}", e)
-                )),
-            },
-        }
-    };
-    
-    // Get temperature for this task - check project settings first, then server defaults
-    let temperature = if let Some(temp) = args.temperature {
-        temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::GenericLlmStream, &project_dir, &app_handle).await {
-            Ok(temp) => temp,
-            Err(_) => match crate::config::get_temperature_for_task_with_project(TaskType::TextImprovement, &project_dir, &app_handle).await {
-                Ok(temp) => temp,
-                Err(e) => return Err(AppError::ConfigError(
-                    format!("Failed to get temperature for generic LLM stream: {}", e)
-                )),
-            },
-        }
-    };
-    
-    // Get max tokens for this task - check project settings first, then server defaults
-    let max_tokens = if let Some(tokens) = args.max_output_tokens {
-        tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::GenericLlmStream, &project_dir, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(_) => match crate::config::get_max_tokens_for_task_with_project(TaskType::TextImprovement, &project_dir, &app_handle).await {
-                Ok(tokens) => tokens,
-                Err(e) => return Err(AppError::ConfigError(
-                    format!("Failed to get max tokens for generic LLM stream: {}", e)
-                )),
-            },
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::GenericLlmStream,
+        &project_dir,
+        args.model.clone(),
+        args.temperature,
+        args.max_output_tokens,
+    ).await?;
     
     // Use the job creation utility to create and queue the job
     let payload = crate::jobs::types::GenericLlmStreamPayload {
@@ -226,55 +191,15 @@ pub async fn enhance_task_description_command(
         session.project_directory
     };
     
-    // Determine LLM settings
-    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-    
-    // Try to get task-specific settings
-    let task_settings = settings_repo.get_task_settings(&args.session_id, &TaskType::TaskEnhancement.to_string())
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to get task settings: {}", e)))?;
-    
-    // Determine model - use override, task settings, or project/server defaults
-    let model = if let Some(override_model) = args.model_override {
-        override_model
-    } else if let Some(task_model) = task_settings.as_ref().map(|s| s.model.clone()) {
-        task_model
-    } else {
-        // Get from project settings first, then server config
-        match crate::config::get_model_for_task_with_project(TaskType::TaskEnhancement, &project_directory, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => {
-                info!("Failed to get model from config, will use fallback in job creation: {}", e);
-                String::new() // Empty string to be handled by job creation utility
-            }
-        }
-    };
-    
-    // Determine temperature - use override, task settings, or project/server defaults
-    let temperature = if let Some(override_temp) = args.temperature_override {
-        override_temp
-    } else if let Some(task_temp) = task_settings.as_ref().and_then(|s| s.temperature) {
-        task_temp
-    } else {
-        // Get from project settings first, then server config
-        match crate::config::get_temperature_for_task_with_project(TaskType::TaskEnhancement, &project_directory, &app_handle).await {
-            Ok(temp) => temp,
-            Err(_) => 0.4, // Fallback for task enhancement
-        }
-    };
-    
-    // Determine max tokens - use override, task settings, or project/server defaults
-    let max_tokens = if let Some(override_tokens) = args.max_tokens_override {
-        override_tokens
-    } else if let Some(task_tokens) = task_settings.as_ref().map(|s| s.max_tokens as u32) {
-        task_tokens
-    } else {
-        // Get from project settings first, then server config
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::TaskEnhancement, &project_directory, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(_) => 4000, // Fallback for task enhancement
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::TaskEnhancement,
+        &project_directory,
+        args.model_override,
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
     
     // Create TaskEnhancementPayload
     let task_enhancement_payload = crate::jobs::types::TaskEnhancementPayload {

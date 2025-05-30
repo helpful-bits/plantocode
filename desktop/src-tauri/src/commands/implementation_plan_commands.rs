@@ -66,41 +66,15 @@ pub async fn create_implementation_plan_command(
         return Err(AppError::ValidationError("Project directory is required".to_string()));
     }
     
-    // Get the model for this task - check project settings first, then server defaults
-    let model = if let Some(model) = args.model {
-        model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get model for implementation plan: {}", e)));
-            }
-        }
-    };
-    
-    // Get temperature for this task - check project settings first, then server defaults
-    let temperature = if let Some(temp) = args.temperature {
-        temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory, &app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get temperature for implementation plan: {}", e)));
-            }
-        }
-    };
-    
-    // Get max tokens for this task - check project settings first, then server defaults
-    let max_tokens = if let Some(tokens) = args.max_tokens {
-        tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::ImplementationPlan, &args.project_directory, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get max tokens for implementation plan: {}", e)));
-            }
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::ImplementationPlan,
+        &args.project_directory,
+        args.model,
+        args.temperature,
+        args.max_tokens,
+    ).await?;
     
     // Use the job creation utility to create and queue the job
     let payload = crate::jobs::types::ImplementationPlanPayload {

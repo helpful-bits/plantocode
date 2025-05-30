@@ -197,33 +197,6 @@ export function useExternalPathHandler({
           }
         }
 
-        // 2. Path ends with the input path (common for relative paths)
-        if (!found) {
-          for (const [
-            comparablePath,
-            actualPath,
-          ] of fileIndices.byComparablePath.entries()) {
-            if (
-              !matchedPaths.has(actualPath) &&
-              normalizedPath &&
-              comparablePath.endsWith("/" + normalizedPath)
-            ) {
-              matchedFileUpdates.set(actualPath, { included: true, forceExcluded: false });
-              found = true;
-              matchedPaths.add(actualPath);
-
-              // Ensure we add the *comparablePath* of the matched file to matchedNormalizedPaths
-              const fileInfo = managedFilesMap[actualPath];
-              if (fileInfo?.comparablePath && !pathMatchingSet.has(fileInfo.comparablePath)) {
-                matchedNormalizedPaths.push(fileInfo.comparablePath);
-                pathMatchingSet.add(fileInfo.comparablePath);
-              }
-              break;
-            }
-          }
-        }
-
-
         if (!found) {
           warnings.push(`Path not found: ${normalizedPath}`);
         }

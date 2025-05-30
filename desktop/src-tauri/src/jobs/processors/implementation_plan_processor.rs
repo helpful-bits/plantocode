@@ -148,11 +148,10 @@ impl JobProcessor for ImplementationPlanProcessor {
         };
         
         // Get dependencies from app state
-        let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
-        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
+        let (repo, settings_repo) = crate::jobs::job_processor_utils::setup_repositories(&app_handle)?;
         
         // Get LLM client using the standardized factory function
-        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
         
         // Update job status to running

@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, ApiType, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use std::sync::Arc;
-use crate::jobs::types::{Job, JobPayload, JobType, GuidanceGenerationPayload};
+use crate::jobs::types::{Job, JobPayload, GuidanceGenerationPayload};
 
 /// Arguments for guidance generation command
 #[derive(Debug, Deserialize)]
@@ -70,35 +70,15 @@ pub async fn generate_guidance_command(
         .inner()
         .clone();
     
-    // Get model configuration for this task - check project settings first, then server defaults
-    let model = if let Some(model) = args.model_override.clone() {
-        model
-    } else {
-        match crate::config::get_model_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory, &app_handle).await {
-            Ok(model) => model,
-            Err(e) => return Err(AppError::ConfigError(format!("Failed to get model for guidance generation: {}", e))),
-        }
-    };
-    
-    // Get temperature configuration - check project settings first, then server defaults
-    let temperature = if let Some(temp) = args.temperature_override {
-        temp
-    } else {
-        match crate::config::get_temperature_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory, &app_handle).await {
-            Ok(temp) => temp,
-            Err(e) => return Err(AppError::ConfigError(format!("Failed to get temperature for guidance generation: {}", e))),
-        }
-    };
-    
-    // Get max tokens configuration - check project settings first, then server defaults
-    let max_output_tokens = if let Some(tokens) = args.max_tokens_override {
-        tokens
-    } else {
-        match crate::config::get_max_tokens_for_task_with_project(TaskType::GuidanceGeneration, &args.project_directory, &app_handle).await {
-            Ok(tokens) => tokens,
-            Err(e) => return Err(AppError::ConfigError(format!("Failed to get max tokens for guidance generation: {}", e))),
-        }
-    };
+    // Get model configuration for this task using centralized resolver
+    let (model, temperature, max_output_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::GuidanceGeneration,
+        &args.project_directory,
+        args.model_override.clone(),
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
     
     // Create the payload for the GuidanceGenerationProcessor
     let processor_payload = GuidanceGenerationPayload {

@@ -7,6 +7,7 @@ pub mod registry;
 pub mod scheduler;
 pub mod job_payload_utils;
 pub mod job_helpers;
+pub mod job_processor_utils;
 
 use std::sync::Arc;
 use log::{info, debug};
@@ -14,6 +15,7 @@ use tauri::AppHandle;
 
 use crate::error::AppResult;
 use self::processors::{
+    FileFinderWorkflowProcessor,
     PathFinderProcessor,
     ImplementationPlanProcessor,
     GuidanceGenerationProcessor,
@@ -49,6 +51,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let registry = get_job_registry().await?;
     
     // Create processor instances
+    let file_finder_workflow_processor = Arc::new(FileFinderWorkflowProcessor::new());
     let path_finder_processor = Arc::new(PathFinderProcessor::new());
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
     let guidance_generation_processor = Arc::new(GuidanceGenerationProcessor::new());
@@ -62,6 +65,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     
     // Register processors
+    registry.register(file_finder_workflow_processor).await;
     registry.register(path_finder_processor).await;
     registry.register(implementation_plan_processor).await;
     registry.register(guidance_generation_processor).await;

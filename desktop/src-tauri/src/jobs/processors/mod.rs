@@ -1,3 +1,4 @@
+pub mod file_finder_workflow_processor;
 pub mod path_finder_processor;
 pub mod path_finder_types;
 pub mod implementation_plan_processor;
@@ -11,6 +12,7 @@ pub mod generic_llm_stream_processor;
 pub mod server_proxy_transcription_processor;
 pub mod regex_pattern_generation_processor;
 
+pub use file_finder_workflow_processor::FileFinderWorkflowProcessor;
 pub use path_finder_processor::PathFinderProcessor;
 pub use path_finder_types::{PathFinderResult, PathFinderOptions};
 pub use implementation_plan_processor::ImplementationPlanProcessor;

@@ -21,62 +21,6 @@ impl TextCorrectionProcessor {
     }
     
 
-    /// Helper method to get model with fallback logic
-    async fn get_model_with_fallback(
-        app_handle: &AppHandle,
-        project_dir: &str,
-        primary_task: crate::models::TaskType,
-        fallback_task: crate::models::TaskType,
-    ) -> AppResult<String> {
-        match crate::config::get_model_for_task_with_project(primary_task, project_dir, app_handle).await {
-            Ok(model) => Ok(model),
-            Err(e_primary) => {
-                warn!("Failed to get model for primary task {}: {}. Trying fallback.", primary_task.to_string(), e_primary);
-                crate::config::get_model_for_task_with_project(fallback_task, project_dir, app_handle).await.map_err(|e_fallback| {
-                    error!("Failed to get model for fallback task {}: {}. No model determined.", fallback_task.to_string(), e_fallback);
-                    AppError::ConfigError(format!("Failed to determine model for {} (primary error: {}) or {} (fallback error: {})", primary_task.to_string(), e_primary, fallback_task.to_string(), e_fallback))
-                })
-            }
-        }
-    }
-
-    /// Helper method to get temperature with fallback logic
-    async fn get_temperature_with_fallback(
-        app_handle: &AppHandle,
-        project_dir: &str,
-        primary_task: crate::models::TaskType,
-        fallback_task: crate::models::TaskType,
-    ) -> AppResult<f32> {
-        match crate::config::get_temperature_for_task_with_project(primary_task, project_dir, app_handle).await {
-            Ok(val) => Ok(val),
-            Err(e_primary) => {
-                warn!("Failed to get temperature for primary task {}: {}. Trying fallback.", primary_task.to_string(), e_primary);
-                crate::config::get_temperature_for_task_with_project(fallback_task, project_dir, app_handle).await.map_err(|e_fallback| {
-                    error!("Failed to get temperature for fallback task {}: {}. No config determined.", fallback_task.to_string(), e_fallback);
-                    AppError::ConfigError(format!("Failed to determine temperature for {} (primary error: {}) or {} (fallback error: {})", primary_task.to_string(), e_primary, fallback_task.to_string(), e_fallback))
-                })
-            }
-        }
-    }
-
-    /// Helper method to get max_tokens with fallback logic
-    async fn get_max_tokens_with_fallback(
-        app_handle: &AppHandle,
-        project_dir: &str,
-        primary_task: crate::models::TaskType,
-        fallback_task: crate::models::TaskType,
-    ) -> AppResult<u32> {
-        match crate::config::get_max_tokens_for_task_with_project(primary_task, project_dir, app_handle).await {
-            Ok(val) => Ok(val),
-            Err(e_primary) => {
-                warn!("Failed to get max_tokens for primary task {}: {}. Trying fallback.", primary_task.to_string(), e_primary);
-                crate::config::get_max_tokens_for_task_with_project(fallback_task, project_dir, app_handle).await.map_err(|e_fallback| {
-                    error!("Failed to get max_tokens for fallback task {}: {}. No config determined.", fallback_task.to_string(), e_fallback);
-                    AppError::ConfigError(format!("Failed to determine max_tokens for {} (primary error: {}) or {} (fallback error: {})", primary_task.to_string(), e_primary, fallback_task.to_string(), e_fallback))
-                })
-            }
-        }
-    }
 }
 
 #[async_trait]
@@ -99,7 +43,7 @@ impl JobProcessor for TextCorrectionProcessor {
         };
         
         // Get the API client
-        let llm_client = crate::api_clients::client_factory::get_api_client(&app_handle)?;
+        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
         // Update job status to running
         let repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
@@ -158,28 +102,19 @@ impl JobProcessor for TextCorrectionProcessor {
         };
         
         // Get the model and settings from project/server config
-        // Default to text improvement models if the specific ones aren't available
         let project_dir = payload.project_directory.as_deref().unwrap_or("");
-        let model = Self::get_model_with_fallback(
-            &app_handle,
-            project_dir,
-            crate::models::TaskType::TextCorrection,
-            crate::models::TaskType::TextImprovement,
-        ).await?;
         
-        let temperature = Self::get_temperature_with_fallback(
-            &app_handle,
-            project_dir,
-            crate::models::TaskType::TextCorrection,
-            crate::models::TaskType::TextImprovement,
-        ).await?;
+        let model = crate::config::get_model_for_task_with_project(TaskType::TextCorrection, project_dir, &app_handle)
+            .await
+            .map_err(|e| AppError::ConfigError(format!("Failed to get model for TextCorrection: {}", e)))?;
         
-        let max_tokens = Self::get_max_tokens_with_fallback(
-            &app_handle,
-            project_dir,
-            crate::models::TaskType::TextCorrection,
-            crate::models::TaskType::TextImprovement,
-        ).await?;
+        let temperature = crate::config::get_temperature_for_task_with_project(TaskType::TextCorrection, project_dir, &app_handle)
+            .await
+            .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for TextCorrection: {}", e)))?;
+        
+        let max_tokens = crate::config::get_max_tokens_for_task_with_project(TaskType::TextCorrection, project_dir, &app_handle)
+            .await
+            .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for TextCorrection: {}", e)))?;
         
         // Create options for the API client
         let api_options = ApiClientOptions {

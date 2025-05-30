@@ -10,7 +10,6 @@ import {
   setSystemPrompt,
   resetSystemPrompt,
   getDefaultSystemPrompts,
-  getDefaultSystemPrompt,
   hasCustomSystemPrompt,
   getBatchSystemPrompts,
   validateSystemPrompt

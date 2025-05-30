@@ -180,13 +180,6 @@ export function areJobsEqual(
     return false;
   }
 
-  // For all jobs, always check output file path - this is crucial for implementation plans
-  if (!safeStringCompare(jobA.outputFilePath, jobB.outputFilePath)) {
-    logger.debug(
-      `Output file path changed for job ${jobA.id}: ${jobA.outputFilePath} → ${jobB.outputFilePath}`
-    );
-    return false;
-  }
 
   // For failed/canceled jobs, check error message
   if (jobA.status === "failed" || jobA.status === "canceled") {

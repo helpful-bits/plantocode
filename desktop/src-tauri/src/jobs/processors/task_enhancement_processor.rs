@@ -11,7 +11,7 @@ use crate::api_clients::client_trait::{ApiClient, ApiClientOptions};
 use crate::api_clients::server_proxy_client::ServerProxyClient;
 use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
-use crate::utils::{PromptComposer, CompositionContextBuilder};
+use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder};
 use crate::api_clients::client_factory;
 use crate::utils::xml_utils::extract_xml_from_markdown;
 
@@ -71,15 +71,14 @@ impl JobProcessor for TaskEnhancementProcessor {
             }
         };
         
-        // Get repositories from app state
-        let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
-        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
+        // Get repositories from app state - USING HELPER
+        let (repo, settings_repo) = crate::jobs::job_processor_utils::setup_repositories(&app_handle)?;
         
-        // Update job status to running
-        repo.update_job_status(&job_id, &JobStatus::Running.to_string(), Some("Processing task enhancement")).await?;
+        // Update job status to running - USING HELPER
+        crate::jobs::job_processor_utils::update_status_running(&repo, &job_id, "Processing task enhancement").await?;
         
-        // Create enhanced composition context for sophisticated prompt generation
-        let composition_context = CompositionContextBuilder::new(
+        // Create unified prompt context for sophisticated prompt generation
+        let context = UnifiedPromptContextBuilder::new(
             job.session_id.clone(),
             TaskType::TaskEnhancement,
             payload.task_description.clone(),
@@ -87,10 +86,10 @@ impl JobProcessor for TaskEnhancementProcessor {
         .project_structure(payload.project_context.clone())
         .build();
 
-        // Use the enhanced prompt composer to generate sophisticated prompts
-        let prompt_composer = PromptComposer::new();
-        let composed_prompt = prompt_composer
-            .compose_prompt(&composition_context, &settings_repo)
+        // Use the unified prompt processor to generate sophisticated prompts
+        let prompt_processor = UnifiedPromptProcessor::new();
+        let composed_prompt = prompt_processor
+            .compose_prompt(&context, &settings_repo)
             .await?;
 
         info!("Enhanced Task Enhancement prompt composition for job {}", job_id);
@@ -100,32 +99,15 @@ impl JobProcessor for TaskEnhancementProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        // Extract system and user parts from the composed prompt
-        let system_prompt_text = composed_prompt.final_prompt.split("\n\n").next().unwrap_or("").to_string();
-        let user_prompt_text = composed_prompt.final_prompt.split("\n\n").skip(1).collect::<Vec<&str>>().join("\n\n");
-        let system_prompt_id = composed_prompt.system_prompt_id;
+        // Extract system and user parts from the composed prompt - USING HELPER
+        let (system_prompt_text, user_prompt_text, system_prompt_id) = 
+            crate::jobs::job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
-        // Get the LLM client using the standardized factory function
-        let client = client_factory::get_api_client(&app_handle)?;
+        // Get the LLM client using the standardized factory function - USING HELPER
+        let client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
         
-        // Create the message objects for the OpenRouter request
-        let system_message = OpenRouterRequestMessage {
-            role: "system".to_string(),
-            content: vec![OpenRouterContent::Text {
-                content_type: "text".to_string(),
-                text: system_prompt_text.clone(),
-            }],
-        };
-        
-        let user_message = OpenRouterRequestMessage {
-            role: "user".to_string(),
-            content: vec![OpenRouterContent::Text {
-                content_type: "text".to_string(),
-                text: user_prompt_text.clone(),
-            }],
-        };
-        
-        let messages = vec![system_message, user_message];
+        // Create the message objects for the OpenRouter request - USING HELPER
+        let messages = crate::jobs::job_processor_utils::create_openrouter_messages(&system_prompt_text, &user_prompt_text);
         
         // Combine messages for token estimation
         let combined_prompt = format!("{}\n{}", system_prompt_text, user_prompt_text);
