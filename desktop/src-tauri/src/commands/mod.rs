@@ -5,6 +5,7 @@ pub mod guidance_commands;
 pub mod file_system_commands;
 pub mod app_commands;
 pub mod auth0_commands;
+pub mod billing_commands;
 pub mod config_commands;
 pub mod fetch_handler_command;
 pub mod job_commands;
@@ -16,11 +17,13 @@ pub mod session_commands;
 pub mod text_commands;
 pub mod implementation_plan_commands;
 pub mod path_finding_commands;
+pub mod file_finder_workflow_commands;
 pub mod voice_commands;
 pub mod generic_task_commands;
 pub mod setup_commands;
 pub mod database_maintenance_commands;
 pub mod server_config_commands;
+pub mod system_prompt_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
@@ -45,7 +48,7 @@ pub use app_commands::{
 // Re-exports from text commands module
 pub use text_commands::{
     improve_text_command,
-    correct_text_post_transcription_command,
+    correct_text_command,
     generate_simple_text_command,
 };
 
@@ -64,11 +67,13 @@ pub use path_finding_commands::{
     create_path_correction_job_command,
 };
 
+// Re-exports from file finder workflow commands module  
+pub use file_finder_workflow_commands::execute_file_finder_workflow_command;
+
 // Re-exports from voice commands module
 pub use voice_commands::{
     create_transcription_job_command,
     transcribe_audio_direct_command,
-    correct_transcription_command,
 };
 
 // Re-exports from generic task commands module
@@ -125,6 +130,7 @@ pub use settings_commands::{
     get_project_task_model_settings_command,
     set_project_task_model_settings_command,
     get_all_task_model_settings_for_project_command,
+    validate_configuration_health,
 };
 
 // Re-exports from session commands module
@@ -156,6 +162,29 @@ pub use server_config_commands::{
     get_cached_config_value_command,
     get_all_cached_config_values_command,
     refresh_server_config_cache_command,
+};
+
+// Re-exports from system prompt commands module
+pub use system_prompt_commands::{
+    get_system_prompt_command,
+    set_system_prompt_command,
+    reset_system_prompt_command,
+    get_default_system_prompts_command,
+    get_default_system_prompt_command,
+    has_custom_system_prompt_command,
+};
+
+// Re-exports from billing commands module
+pub use billing_commands::{
+    get_subscription_details_command,
+    create_checkout_session_command,
+    create_billing_portal_command,
+    get_spending_status_command,
+    acknowledge_spending_alert_command,
+    update_spending_limits_command,
+    get_invoice_history_command,
+    get_spending_history_command,
+    check_service_access_command,
 };
 
 // All command functions will return AppResult<T> directly

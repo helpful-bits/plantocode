@@ -1,42 +1,15 @@
 use async_trait::async_trait;
-use std::sync::Arc;
 use log::{info, error, debug};
 use tauri::{AppHandle, Manager};
-use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, TextImprovementPayload};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::api_clients::client_trait::ApiClientOptions;
-use crate::prompts::text_improvement::{generate_text_improvement_system_prompt, generate_text_improvement_user_prompt};
-use crate::db_utils::BackgroundJobRepository;
-use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent};
-use crate::utils::xml_utils::extract_xml_from_markdown;
+use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
+use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
+use crate::utils::{PromptComposer, CompositionContextBuilder};
 
-// Define structs for parsing the XML response
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct TextImprovementResponseXml {
-    #[serde(default)]
-    analysis: Option<String>,
-    #[serde(default)]
-    improved_text: Option<String>,
-    #[serde(default)]
-    changes: Option<ChangesXml>,
-    #[serde(default)]
-    recommendations: Option<RecommendationsXml>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct ChangesXml {
-    #[serde(rename = "change", default)]
-    change: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct RecommendationsXml {
-    #[serde(rename = "recommendation", default)]
-    recommendation: Vec<String>,
-}
 
 pub struct TextImprovementProcessor;
 
@@ -72,20 +45,38 @@ impl JobProcessor for TextImprovementProcessor {
             }
         };
         
-        // Get the repository from app state
+        // Get the repositories from app state
         let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
+        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
         
         // Update job status to running
         repo.update_job_status(&job_id, &JobStatus::Running.to_string(), Some("Processing text improvement")).await?;
         
-        // Generate the system and user prompts for text improvement
-        let system_prompt_text = generate_text_improvement_system_prompt(
-            payload.language.as_deref(),
-            Some(&payload.improvement_type),
-            None, // No custom prompt
-        );
-        
-        let user_prompt_text = generate_text_improvement_user_prompt(&payload.text_to_improve);
+        // Create enhanced composition context for prompt generation
+        let composition_context = CompositionContextBuilder::new(
+            job.session_id.clone(),
+            TaskType::TextImprovement,
+            payload.text_to_improve.clone(),
+        )
+        .build();
+
+        // Use the enhanced prompt composer to generate sophisticated prompts
+        let prompt_composer = PromptComposer::new();
+        let composed_prompt = prompt_composer
+            .compose_prompt(&composition_context, &settings_repo)
+            .await?;
+
+        info!("Enhanced Text Improvement prompt composition for job {}", job_id);
+        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
+        info!("Context sections: {:?}", composed_prompt.context_sections);
+        if let Some(tokens) = composed_prompt.estimated_tokens {
+            info!("Estimated tokens: {}", tokens);
+        }
+
+        // Extract system and user parts from the composed prompt
+        let system_prompt_text = composed_prompt.final_prompt.split("\n\n").next().unwrap_or("").to_string();
+        let user_prompt_text = composed_prompt.final_prompt.split("\n\n").skip(1).collect::<Vec<&str>>().join("\n\n");
+        let system_prompt_id = composed_prompt.system_prompt_id;
         
         info!("Text Improvement prompts for job {}", job_id);
         info!("System prompt: {}", system_prompt_text);
@@ -117,7 +108,7 @@ impl JobProcessor for TextImprovementProcessor {
         let combined_prompt = format!("{}\n{}", system_prompt_text, user_prompt_text);
         
         // Estimate the tokens in the prompt
-        let prompt_tokens = crate::utils::token_estimator::estimate_tokens(&combined_prompt);
+        let _prompt_tokens = crate::utils::token_estimator::estimate_tokens(&combined_prompt);
         
         // Fetch the database job to get model_used
         let db_job = repo.get_job_by_id(&job_id).await?
@@ -135,7 +126,7 @@ impl JobProcessor for TextImprovementProcessor {
             Some(tokens) if tokens > 0 => Some(tokens as u32),
             _ => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await {
                 Ok(tokens) => Some(tokens),
-                Err(_) => Some(4000), // Fallback only if config error occurs
+                Err(e) => return Err(AppError::ConfigError(format!("Failed to get max_tokens for TextImprovement task: {}. Please ensure server database is properly configured.", e))),
             }
         };
         
@@ -143,7 +134,7 @@ impl JobProcessor for TextImprovementProcessor {
             Some(temp) => Some(temp),
             _ => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await {
                 Ok(temp) => Some(temp),
-                Err(_) => Some(0.5), // Fallback only if config error occurs
+                Err(e) => return Err(AppError::ConfigError(format!("Failed to get temperature for TextImprovement task: {}. Please ensure server database is properly configured.", e))),
             }
         };
         
@@ -174,41 +165,9 @@ impl JobProcessor for TextImprovementProcessor {
             return Err(AppError::JobError("No response content received from API".to_string()));
         };
         
-        // Extract XML from markdown code blocks if present
-        let clean_xml_content = extract_xml_from_markdown(&response_content);
-        info!("XML Processing - Original response length: {}, Cleaned XML length: {}", response_content.len(), clean_xml_content.len());
-        info!("Cleaned XML content: {}", clean_xml_content);
-        
-        // Parse the XML from the cleaned content
-        let xml_response: Result<TextImprovementResponseXml, _> = quick_xml::de::from_str(&clean_xml_content);
-        
-        let parsed_response = match xml_response {
-            Ok(result) => {
-                info!("Successfully parsed XML response: {:#?}", result);
-                result
-            },
-            Err(e) => {
-                error!("Failed to parse XML response: {}", e);
-                error!("Raw content that failed to parse: {}", clean_xml_content);
-                
-                // Use cleaned XML content as fallback, or original response if cleaning resulted in empty string
-                let improved_text = if !clean_xml_content.is_empty() {
-                    clean_xml_content
-                } else {
-                    response_content
-                };
-                
-                info!("Using fallback text improvement: {}", improved_text);
-                
-                // Create a basic response with just the text
-                TextImprovementResponseXml {
-                    improved_text: Some(improved_text),
-                    analysis: None,
-                    changes: None,
-                    recommendations: None,
-                }
-            }
-        };
+        // The simplified prompt returns plain text directly
+        let improved_text = response_content.trim().to_string();
+        info!("Processing plain text response (length: {})", improved_text.len());
         
         // Get usage statistics
         let tokens_sent = response.usage.as_ref().map(|u| u.prompt_tokens as i32);
@@ -217,42 +176,40 @@ impl JobProcessor for TextImprovementProcessor {
         
         info!("Token usage - Sent: {:?}, Received: {:?}, Total: {:?}", tokens_sent, tokens_received, total_tokens);
         
-        // Get the improved text, falling back to original if missing
-        let improved_text = parsed_response.improved_text
-            .clone()
-            .unwrap_or_else(|| payload.text_to_improve.clone());
+        // Use improved text or fallback to original if empty
+        let final_improved_text = if improved_text.is_empty() {
+            payload.text_to_improve.clone()
+        } else {
+            improved_text
+        };
             
-        info!("Final improved text (length: {}): {}", improved_text.len(), improved_text);
+        info!("Final improved text (length: {}): {}", final_improved_text.len(), final_improved_text);
         
-        // Serialize the detailed analysis data for storing in metadata
+        // Serialize simple metadata
         let metadata = serde_json::json!({
-            "analysis": parsed_response.analysis,
-            "changes": parsed_response.changes.map(|c| c.change),
-            "recommendations": parsed_response.recommendations.map(|r| r.recommendation),
-            "improvementType": payload.improvement_type,
-            "language": payload.language,
             "modelUsed": model_to_use,
             "tokensUsed": total_tokens,
         });
         
         // Update the job with the response and metadata
-        repo.update_job_response(
+        repo.update_job_response_with_system_prompt(
             &job_id, 
-            &improved_text,
+            &final_improved_text,
             Some(JobStatus::Completed),
             Some(&metadata.to_string()),
             tokens_sent,
             tokens_received,
             total_tokens,
-            Some(improved_text.len() as i32),
+            Some(final_improved_text.len() as i32),
+            Some(&system_prompt_id),
         ).await?;
         
         info!("Completed Text Improvement job {}", job_id);
         info!("Tokens sent: {:?}, Tokens received: {:?}", tokens_sent, tokens_received);
         
-        let text_len = improved_text.len() as i32;
+        let text_len = final_improved_text.len() as i32;
         
-        Ok(JobProcessResult::success(job_id, improved_text)
+        Ok(JobProcessResult::success(job_id, final_improved_text)
             .with_tokens(
                 tokens_sent,
                 tokens_received,

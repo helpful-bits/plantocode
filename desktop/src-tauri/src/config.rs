@@ -292,14 +292,13 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::PathFinder => "pathFinder",
         TaskType::TextImprovement => "textImprovement",
         TaskType::VoiceTranscription => "transcription",
-        TaskType::VoiceCorrection => "voiceCorrection",
+        TaskType::TextCorrection => "textCorrection",
         TaskType::PathCorrection => "pathCorrection",
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
         _ => return None,
     };
     
@@ -318,14 +317,13 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::PathFinder => "pathFinder",
         TaskType::TextImprovement => "textImprovement",
         TaskType::VoiceTranscription => "transcription",
-        TaskType::VoiceCorrection => "voiceCorrection",
+        TaskType::TextCorrection => "textCorrection",
         TaskType::PathCorrection => "pathCorrection",
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
         _ => return None,
     };
     
@@ -344,14 +342,13 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::PathFinder => "pathFinder",
         TaskType::TextImprovement => "textImprovement",
         TaskType::VoiceTranscription => "transcription",
-        TaskType::VoiceCorrection => "voiceCorrection",
+        TaskType::TextCorrection => "textCorrection",
         TaskType::PathCorrection => "pathCorrection",
         TaskType::GuidanceGeneration => "guidanceGeneration",
         TaskType::TaskEnhancement => "taskEnhancement",
         TaskType::GenericLlmStream => "genericLlmStream",
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
-        TaskType::TextCorrectionPostTranscription => "textCorrectionPostTranscription",
         _ => return None,
     };
     

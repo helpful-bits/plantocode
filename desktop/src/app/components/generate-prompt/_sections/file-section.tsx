@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
 import FileBrowser from "../file-browser";
@@ -14,22 +14,9 @@ const FileSection = React.memo(function FileSection({
 }: FileSectionProps) {
   const { currentSession } = useSessionStateContext();
 
-
-
-  // Create a minimal regex state for compatibility
-  const regexState = useMemo(() => ({
-    titleRegex: "",
-    contentRegex: "",
-    negativeTitleRegex: "",
-    negativeContentRegex: "",
-    isRegexActive: false,
-    regexPatternGenerationError: null,
-  }), []);
-
   return (
     <>
       <FileBrowser
-        regexState={regexState}
         taskDescription={currentSession?.taskDescription || ""}
         disabled={disabled}
       />

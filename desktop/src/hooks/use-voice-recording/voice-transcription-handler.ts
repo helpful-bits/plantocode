@@ -145,12 +145,12 @@ export async function processDirectTranscriptionResult(
         try {
           // eslint-disable-next-line no-console
           console.log(
-            `[VoiceCorrection] Calling onCorrectionComplete with corrected text (length: ${text.length})`
+            `[TextCorrection] Calling onCorrectionComplete with corrected text (length: ${text.length})`
           );
           onCorrectionComplete(currentRawText, text);
         } catch (callbackError) {
           console.error(
-            "[VoiceCorrection] Error in onCorrectionComplete callback:",
+            "[TextCorrection] Error in onCorrectionComplete callback:",
             callbackError
           );
           // Continue even if callback fails - don't block the process
@@ -162,12 +162,12 @@ export async function processDirectTranscriptionResult(
         try {
           // eslint-disable-next-line no-console
           console.log(
-            `[VoiceCorrection] Calling onTranscribed with corrected text`
+            `[TextCorrection] Calling onTranscribed with corrected text`
           );
           onTranscribed(text);
         } catch (callbackError) {
           console.error(
-            "[VoiceCorrection] Error in onTranscribed callback:",
+            "[TextCorrection] Error in onTranscribed callback:",
             callbackError
           );
           // Continue even if callback fails
@@ -396,7 +396,7 @@ export async function handleTranscription(
 }
 
 /**
- * Handles text correction by creating a job via createVoiceCorrectionJobAction.
+ * Handles text correction by creating a job via createTextCorrectionJobAction.
  * Sends the transcribed text to the API for correction and improvement.
  * Uses the original transcription job ID to link with the new correction job.
  */
@@ -433,12 +433,12 @@ export async function handleCorrection(
 
     try {
       // Import the renamed action
-      const { createVoiceCorrectionJobAction } = await import(
+      const { createTextCorrectionJobAction } = await import(
         "@/actions/voice-transcription/index"
       );
 
       // Call the action
-      const result = await createVoiceCorrectionJobAction(
+      const result = await createTextCorrectionJobAction(
         text,
         sessionId, // TypeScript needs this cast
         transcriptionJobId,
@@ -466,7 +466,7 @@ export async function handleCorrection(
     } catch (importError) {
       // If the module doesn't exist yet, return a fallback
       console.warn(
-        "[TextCorrection] Could not import createVoiceCorrectionJobAction, returning original text:",
+        "[TextCorrection] Could not import createTextCorrectionJobAction, returning original text:",
         importError
       );
       return {
@@ -533,7 +533,7 @@ export function processBackgroundJob(
         .replace(/\\"/g, '"'); // Replace escaped quotes with actual quotes
 
       // Handle specific job types
-      if (job.taskType === "voice_correction") {
+      if (job.taskType === "text_correction") {
         // For correction jobs, apply extra clean-up if needed
         text = text
           .replace(/^Corrected text:\s+/i, "") // Remove "Corrected text:" prefix

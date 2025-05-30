@@ -4,29 +4,26 @@
  * Displays subscription information and provides options to manage subscriptions.
  */
 
-import { open } from "@tauri-apps/plugin-shell";
 import { useState, useEffect } from "react";
+import { open } from "@tauri-apps/plugin-shell";
 
 import { useAuth } from "@/contexts/auth-context";
-import { securedFetchJson } from "@/utils/secured-fetch";
 import { getErrorMessage } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
+import { invoke } from "@tauri-apps/api/core";
 
 import {
   LoadingSkeleton,
   ErrorState,
   NoSubscriptionState,
 } from "./components/loading-and-error-states";
-import { SubscriptionManagementTabs } from "./components/subscription-management-tabs";
-import { type SubscriptionInfo } from "./types";
-
-// Server URL from environment variables
-const SERVER_URL = (import.meta.env.VITE_MAIN_SERVER_BASE_URL as string) || "http://localhost:8080";
+import { PollingBillingManager } from "./polling-billing-manager";
+import type { SubscriptionDetails, CheckoutSessionResponse, BillingPortalResponse } from "@/types/tauri-commands";
 
 export default function SubscriptionManager() {
   const { user } = useAuth();
   const { showNotification } = useNotification();
-  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(
+  const [subscription, setSubscription] = useState<SubscriptionDetails | null>(
     null
   );
   const [loading, setLoading] = useState(true);
@@ -44,10 +41,7 @@ export default function SubscriptionManager() {
         setLoading(true);
         setError(null);
 
-        const result = await securedFetchJson<SubscriptionInfo>(
-          `${SERVER_URL}/api/billing/subscription`,
-          { method: "GET" }
-        );
+        const result = await invoke<SubscriptionDetails>("get_subscription_details_command");
         setSubscription(result);
       } catch (err) {
         const errorMessage = getErrorMessage(err);
@@ -93,13 +87,7 @@ export default function SubscriptionManager() {
    */
   const handleUpgrade = async () => {
     try {
-      const result = await securedFetchJson<{ url: string }>(
-        `${SERVER_URL}/api/billing/checkout`,
-        {
-          method: "POST",
-          body: JSON.stringify({ plan: "pro" }),
-        }
-      );
+      const result = await invoke<CheckoutSessionResponse>("create_checkout_session_command", { plan: "pro" });
 
       // Open the URL in the default browser
       if (result && result.url) {
@@ -147,10 +135,7 @@ export default function SubscriptionManager() {
    */
   const handleManageSubscription = async () => {
     try {
-      const result = await securedFetchJson<{ url: string }>(
-        `${SERVER_URL}/api/billing/portal`,
-        { method: "GET" }
-      );
+      const result = await invoke<BillingPortalResponse>("create_billing_portal_command");
 
       // Open the URL in the default browser
       if (result && result.url) {
@@ -215,7 +200,7 @@ export default function SubscriptionManager() {
     }
 
     return (
-      <SubscriptionManagementTabs
+      <PollingBillingManager
         subscription={subscription}
         onRefresh={handleRetry}
       />

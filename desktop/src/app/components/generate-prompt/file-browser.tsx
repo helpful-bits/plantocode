@@ -25,28 +25,12 @@ import FindModeToggle from "./_components/find-mode-toggle";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
 import { useFileManagement } from "./_contexts/file-management-context";
 
-// Minimal regex state interface for compatibility
-interface RegexState {
-  titleRegex: string;
-  contentRegex: string;
-  negativeTitleRegex: string;
-  negativeContentRegex: string;
-  isRegexActive: boolean;
-  regexPatternGenerationError: string | null;
-}
-
-
 interface FileBrowserProps {
-  // Regex state
-  regexState: RegexState;
   taskDescription?: string;
-
-  // Session state
-  disabled?: boolean; // Added prop to disable the entire component during session switching
+  disabled?: boolean;
 }
 
 function FileBrowser({
-  regexState,
   taskDescription = "",
   disabled = false,
 }: FileBrowserProps) {
@@ -76,39 +60,13 @@ function FileBrowser({
     canRedo,
     undoSelection,
     redoSelection,
-    currentWorkflowStage,
     workflowError,
+    currentWorkflowStage,
+    currentStageMessage,
   } = fileManagement;
   
-  // Function to get user-friendly workflow stage message
-  const getWorkflowStageMessage = useCallback((stage: string | null) => {
-    if (!stage) return "Finding files...";
-    
-    switch (stage) {
-      case 'GENERATING_DIR_TREE':
-        return "Generating directory tree...";
-      case 'GENERATING_REGEX':
-        return "Finding initial files...";
-      case 'LOCAL_FILTERING':
-        return "Filtering files locally...";
-      case 'INITIAL_PATH_FINDER':
-        return "Finding relevant files...";
-      case 'INITIAL_PATH_CORRECTION':
-        return "Correcting paths...";
-      case 'EXTENDED_PATH_FINDER':
-        return "Finding additional files...";
-      case 'EXTENDED_PATH_CORRECTION':
-        return "Correcting additional paths...";
-      case 'COMPLETED':
-        return "Workflow completed";
-      case 'FAILED':
-        return "Workflow failed";
-      default:
-        return "Finding files...";
-    }
-  }, []);
-
-  const loadingMessage = getWorkflowStageMessage(currentWorkflowStage ?? null);
+  // Dynamic loading message based on current workflow stage
+  const loadingMessage = currentStageMessage || "Finding relevant files...";
 
   // State for copied path feedback
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
@@ -220,7 +178,7 @@ function FileBrowser({
             !taskDescription.trim()
           }
           isLoading={isFindingFiles}
-          loadingText="Finding files..."
+          loadingText={loadingMessage}
           className="flex-1"
         >
           <>
@@ -304,10 +262,17 @@ function FileBrowser({
         </div>
       </div>
 
-      {/* Show error message if regex generation fails */}
-      {regexState.regexPatternGenerationError && (
-        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/20 bg-destructive/10 backdrop-blur-sm p-3 rounded-lg">
-          {regexState.regexPatternGenerationError}
+      {/* Show workflow progress when running */}
+      {isFindingFiles && currentStageMessage && (
+        <div className="text-xs text-info mt-1 mb-2 border border-info/20 bg-info/10 backdrop-blur-sm p-3 rounded-lg flex items-start gap-2">
+          <Loader2 className="h-4 w-4 mt-0.5 flex-shrink-0 animate-spin" />
+          <div>
+            <p className="font-medium">File Finder Workflow</p>
+            <p className="mt-1">{currentStageMessage}</p>
+            {currentWorkflowStage && (
+              <p className="text-xs text-muted-foreground mt-1">Stage: {currentWorkflowStage}</p>
+            )}
+          </div>
         </div>
       )}
 

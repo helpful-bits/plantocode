@@ -82,35 +82,20 @@ impl JobProcessor for GenericLlmStreamProcessor {
         
         let model = match &payload.model {
             Some(m) => m.clone(),
-            None => match crate::config::get_model_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await {
-                Ok(m) => m,
-                Err(_) => {
-                    // Try TextImprovement as fallback
-                    crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?
-                },
-            },
+            None => crate::config::get_model_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get model for GenericLlmStream task: {}. Please ensure server database is properly configured.", e)))?,
         };
         
         let temperature = match payload.temperature {
             Some(t) => t,
-            None => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await {
-                Ok(t) => t,
-                Err(_) => {
-                    // Try TextImprovement as fallback
-                    crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?
-                },
-            },
+            None => crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for GenericLlmStream task: {}. Please ensure server database is properly configured.", e)))?,
         };
         
         let max_tokens = match payload.max_output_tokens {
             Some(t) => t,
-            None => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await {
-                Ok(t) => t,
-                Err(_) => {
-                    // Try TextImprovement as fallback
-                    crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?
-                },
-            },
+            None => crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await
+                .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for GenericLlmStream task: {}. Please ensure server database is properly configured.", e)))?,
         };
         
         // Create options for the API client - ensure streaming is enabled

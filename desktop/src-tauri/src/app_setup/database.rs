@@ -69,6 +69,9 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
             .map_err(|e| AppError::DatabaseError(format!("Failed to apply migrations: {}", e)))?;
         
         info!("Database migrations applied successfully");
+    } else {
+        // For existing databases, enhanced system prompts are now part of consolidated schema
+        info!("Database ready - enhanced system prompts included in consolidated schema");
     }
 
     // Manage the pool as state

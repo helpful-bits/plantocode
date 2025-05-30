@@ -1,8 +1,6 @@
 use std::env;
-use std::collections::HashMap;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
-use bigdecimal::BigDecimal;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -15,8 +13,6 @@ pub struct AppSettings {
     pub rate_limit: RateLimitConfig,
     pub subscription: SubscriptionConfig,
     pub stripe: StripeConfig,
-    pub deep_link: DeepLinkConfig,
-    pub ai_models: AIModelSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -74,51 +70,6 @@ pub struct StripeConfig {
     pub price_id_free: Option<String>,
     pub price_id_pro: Option<String>,
     pub price_id_enterprise: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DeepLinkConfig {
-    pub scheme: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TaskSpecificModelConfigEntry {
-    pub model: String,
-    pub max_tokens: u32,
-    pub temperature: f32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ModelInfoEntry {
-    pub id: String,
-    pub name: String,
-    pub provider: String,
-    pub description: Option<String>,
-    pub context_window: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub price_input_per_1k_tokens: Option<BigDecimal>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub price_output_per_1k_tokens: Option<BigDecimal>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PathFinderSettingsEntry {
-    pub max_files_with_content: Option<u32>,
-    pub include_file_contents: Option<bool>,
-    pub max_content_size_per_file: Option<u32>,
-    pub max_file_count: Option<u32>,
-    pub file_content_truncation_chars: Option<u32>,
-    pub token_limit_buffer: Option<u32>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AIModelSettings {
-    pub default_llm_model_id: String,
-    pub default_voice_model_id: String,
-    pub default_transcription_model_id: String,
-    pub task_specific_configs: HashMap<String, TaskSpecificModelConfigEntry>,
-    pub available_models: Vec<ModelInfoEntry>,
-    pub path_finder_settings: PathFinderSettingsEntry,
 }
 
 impl AppSettings {
@@ -205,28 +156,6 @@ impl AppSettings {
         let stripe_price_id_free = env::var("STRIPE_PRICE_ID_FREE").ok();
         let stripe_price_id_pro = env::var("STRIPE_PRICE_ID_PRO").ok();
         let stripe_price_id_enterprise = env::var("STRIPE_PRICE_ID_ENTERPRISE").ok();
-
-        // Deep link configuration
-        let app_deep_link_scheme = env::var("APP_DEEP_LINK_SCHEME")
-            .unwrap_or_else(|_| "vibe-manager".to_string());
-            
-        // AI model settings - placeholder values that will be replaced during app initialization
-        // The actual values will be loaded from the database
-        let ai_models = AIModelSettings {
-            default_llm_model_id: String::new(),
-            default_voice_model_id: String::new(),
-            default_transcription_model_id: String::new(),
-            task_specific_configs: HashMap::new(),
-            available_models: Vec::new(),
-            path_finder_settings: PathFinderSettingsEntry {
-                max_files_with_content: None,
-                include_file_contents: None,
-                max_content_size_per_file: None,
-                max_file_count: None,
-                file_content_truncation_chars: None,
-                token_limit_buffer: None,
-            },
-        };
         
         Ok(Self {
             app: AppConfig {
@@ -270,10 +199,6 @@ impl AppSettings {
                 price_id_pro: stripe_price_id_pro,
                 price_id_enterprise: stripe_price_id_enterprise,
             },
-            deep_link: DeepLinkConfig {
-                scheme: app_deep_link_scheme,
-            },
-            ai_models,
         })
     }
 }

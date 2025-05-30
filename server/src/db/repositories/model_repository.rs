@@ -1,9 +1,8 @@
-use sqlx::{Pool, Postgres, query, query_as};
+use sqlx::{Pool, Postgres, query_as};
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
-use tracing::{info, error, instrument};
-use uuid::Uuid;
+use tracing::{info, instrument};
 use bigdecimal::BigDecimal;
 
 use crate::error::{AppResult, AppError};
@@ -15,29 +14,61 @@ pub struct Model {
     pub context_window: i32,
     pub price_input: BigDecimal,
     pub price_output: BigDecimal,
-    pub pricing_type: Option<String>,
+    pub pricing_type: String,
     pub price_per_hour: Option<BigDecimal>,
     pub minimum_billable_seconds: Option<i32>,
-    pub billing_unit: Option<String>,
+    pub billing_unit: String,
+    pub provider_id: Option<i32>,
+    pub model_type: String,
+    pub capabilities: serde_json::Value,
+    pub status: String,
+    pub description: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelWithProvider {
+    pub id: String,
+    pub name: String,
+    pub context_window: i32,
+    pub price_input: BigDecimal,
+    pub price_output: BigDecimal,
+    pub pricing_type: String,
+    pub price_per_hour: Option<BigDecimal>,
+    pub minimum_billable_seconds: Option<i32>,
+    pub billing_unit: String,
+    pub model_type: String,
+    pub capabilities: serde_json::Value,
+    pub status: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    // Provider information
+    pub provider_id: i32,
+    pub provider_code: String,
+    pub provider_name: String,
+    pub provider_description: Option<String>,
+    pub provider_website: Option<String>,
+    pub provider_api_base: Option<String>,
+    pub provider_capabilities: serde_json::Value,
+    pub provider_status: String,
 }
 
 impl Model {
     /// Check if this model uses duration-based pricing
     pub fn is_duration_based(&self) -> bool {
-        self.pricing_type.as_deref() == Some("duration_based")
+        self.pricing_type == "duration_based"
     }
 
     /// Calculate cost for duration-based models (e.g., voice transcription)
-    pub fn calculate_duration_cost(&self, duration_ms: i64) -> crate::error::AppResult<BigDecimal> {
+    pub fn calculate_duration_cost(&self, duration_ms: i64) -> AppResult<BigDecimal> {
         if !self.is_duration_based() {
-            return Err(crate::error::AppError::Internal(
+            return Err(AppError::Internal(
                 format!("Model {} is not duration-based", self.id)
             ));
         }
 
         let price_per_hour = self.price_per_hour.as_ref()
-            .ok_or_else(|| crate::error::AppError::Internal(
+            .ok_or_else(|| AppError::Internal(
                 format!("Model {} missing price_per_hour", self.id)
             ))?;
 
@@ -63,21 +94,7 @@ impl Model {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ModelCreateDto {
-    pub id: String,
-    pub name: String,
-    pub context_window: i32,
-    pub price_input: BigDecimal,
-    pub price_output: BigDecimal,
-    pub pricing_type: Option<String>,
-    pub price_per_hour: Option<BigDecimal>,
-    pub minimum_billable_seconds: Option<i32>,
-    pub billing_unit: Option<String>,
-}
-
-
-/// Repository for managing AI models and tracking API usage
+/// Repository for managing AI models with provider relationships
 #[derive(Debug, Clone)]
 pub struct ModelRepository {
     pool: Arc<Pool<Postgres>>,
@@ -89,23 +106,135 @@ impl ModelRepository {
         Self { pool }
     }
 
-    /// Get all models
-    #[instrument(skip(self))]
-    pub async fn get_all(&self) -> AppResult<Vec<Model>> {
-        let models = query_as::<_, Model>(
-            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, created_at FROM models ORDER BY name"
-        )
-            .fetch_all(&*self.pool)
-            .await?;
-
-        Ok(models)
+    /// Get a reference to the database pool
+    pub fn get_pool(&self) -> Arc<Pool<Postgres>> {
+        self.pool.clone()
     }
 
-    /// Find a model by its ID
+    /// Get all active models with provider information (replaces JSON-based approach)
+    #[instrument(skip(self))]
+    pub async fn get_all_with_providers(&self) -> AppResult<Vec<ModelWithProvider>> {
+        info!("Fetching all active models with provider information");
+        
+        let models = sqlx::query!(
+            r#"
+            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+                   m.pricing_type, m.price_per_hour, m.minimum_billable_seconds,
+                   m.billing_unit, m.model_type, m.capabilities, m.status,
+                   m.description, m.created_at,
+                   p.id as provider_id, p.code as provider_code, p.name as provider_name,
+                   p.description as provider_description, p.website_url as provider_website,
+                   p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
+                   p.status as provider_status
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id
+            WHERE m.status = 'active' AND p.status = 'active'
+            ORDER BY p.name, m.name
+            "#
+        )
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch models with providers: {}", e)))?;
+
+        let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
+            id: row.id,
+            name: row.name,
+            context_window: row.context_window,
+            price_input: row.price_input,
+            price_output: row.price_output,
+            pricing_type: row.pricing_type,
+            price_per_hour: row.price_per_hour,
+            minimum_billable_seconds: row.minimum_billable_seconds,
+            billing_unit: row.billing_unit,
+            model_type: row.model_type,
+            capabilities: row.capabilities,
+            status: row.status,
+            description: row.description,
+            created_at: row.created_at,
+            provider_id: row.provider_id,
+            provider_code: row.provider_code,
+            provider_name: row.provider_name,
+            provider_description: row.provider_description,
+            provider_website: row.provider_website,
+            provider_api_base: row.provider_api_base,
+            provider_capabilities: row.provider_capabilities,
+            provider_status: row.provider_status,
+        }).collect();
+
+        info!("Retrieved {} active models with provider information", result.len());
+        Ok(result)
+    }
+
+
+    /// Find a model by ID with provider information
+    #[instrument(skip(self))]
+    pub async fn find_by_id_with_provider(&self, id: &str) -> AppResult<Option<ModelWithProvider>> {
+        info!("Fetching model by ID with provider: {}", id);
+        
+        let model = sqlx::query!(
+            r#"
+            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+                   m.pricing_type,
+                   m.price_per_hour, m.minimum_billable_seconds,
+                   m.billing_unit,
+                   m.model_type,
+                   m.capabilities,
+                   m.status,
+                   m.description, m.created_at,
+                   p.id as provider_id, p.code as provider_code, p.name as provider_name,
+                   p.description as provider_description, p.website_url as provider_website,
+                   p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
+                   p.status as provider_status
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id
+            WHERE m.id = $1
+            AND m.status = 'active' 
+            AND p.status = 'active'
+            "#,
+            id
+        )
+        .fetch_optional(&*self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch model by ID {}: {}", id, e)))?;
+
+        let result = model.map(|row| ModelWithProvider {
+            id: row.id,
+            name: row.name,
+            context_window: row.context_window,
+            price_input: row.price_input,
+            price_output: row.price_output,
+            pricing_type: row.pricing_type,
+            price_per_hour: row.price_per_hour,
+            minimum_billable_seconds: row.minimum_billable_seconds,
+            billing_unit: row.billing_unit,
+            model_type: row.model_type,
+            capabilities: row.capabilities,
+            status: row.status,
+            description: row.description,
+            created_at: row.created_at,
+            provider_id: row.provider_id,
+            provider_code: row.provider_code,
+            provider_name: row.provider_name,
+            provider_description: row.provider_description,
+            provider_website: row.provider_website,
+            provider_api_base: row.provider_api_base,
+            provider_capabilities: row.provider_capabilities,
+            provider_status: row.provider_status,
+        });
+
+        match &result {
+            Some(m) => info!("Found model: {} from provider {}", m.name, m.provider_name),
+            None => info!("No model found with ID: {}", id),
+        }
+
+        Ok(result)
+    }
+
+    /// Find a model by ID (for cost calculations and basic lookups)
     #[instrument(skip(self))]
     pub async fn find_by_id(&self, id: &str) -> AppResult<Option<Model>> {
         let model = query_as::<_, Model>(
-            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, created_at FROM models WHERE id = $1"
+            "SELECT id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, provider_id, model_type, capabilities, status, description, created_at FROM models WHERE id = $1 AND status = 'active'"
         )
             .bind(id)
             .fetch_optional(&*self.pool)
@@ -114,49 +243,125 @@ impl ModelRepository {
         Ok(model)
     }
 
-    /// Insert or update a model
+    /// Get models by provider code
     #[instrument(skip(self))]
-    pub async fn insert_or_update(&self, model: ModelCreateDto) -> AppResult<Model> {
-        let model = query_as::<_, Model>(
+    pub async fn get_by_provider_code(&self, provider_code: &str) -> AppResult<Vec<ModelWithProvider>> {
+        info!("Fetching models for provider: {}", provider_code);
+        
+        let models = sqlx::query!(
             r#"
-            INSERT INTO models (id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (id) DO UPDATE SET
-                name = EXCLUDED.name,
-                context_window = EXCLUDED.context_window,
-                price_input = EXCLUDED.price_input,
-                price_output = EXCLUDED.price_output,
-                pricing_type = EXCLUDED.pricing_type,
-                price_per_hour = EXCLUDED.price_per_hour,
-                minimum_billable_seconds = EXCLUDED.minimum_billable_seconds,
-                billing_unit = EXCLUDED.billing_unit
-            RETURNING id, name, context_window, price_input, price_output, pricing_type, price_per_hour, minimum_billable_seconds, billing_unit, created_at
+            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+                   m.pricing_type,
+                   m.price_per_hour, m.minimum_billable_seconds,
+                   m.billing_unit,
+                   m.model_type,
+                   m.capabilities,
+                   m.status,
+                   m.description, m.created_at,
+                   p.id as provider_id, p.code as provider_code, p.name as provider_name,
+                   p.description as provider_description, p.website_url as provider_website,
+                   p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
+                   p.status as provider_status
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id
+            WHERE p.code = $1 
+            AND m.status = 'active' 
+            AND p.status = 'active'
+            ORDER BY m.name
             "#,
+            provider_code
         )
-        .bind(model.id)
-        .bind(model.name)
-        .bind(model.context_window)
-        .bind(model.price_input)
-        .bind(model.price_output)
-        .bind(model.pricing_type)
-        .bind(model.price_per_hour)
-        .bind(model.minimum_billable_seconds)
-        .bind(model.billing_unit)
-        .fetch_one(&*self.pool)
-        .await?;
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch models for provider {}: {}", provider_code, e)))?;
 
-        Ok(model)
+        let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
+            id: row.id,
+            name: row.name,
+            context_window: row.context_window,
+            price_input: row.price_input,
+            price_output: row.price_output,
+            pricing_type: row.pricing_type,
+            price_per_hour: row.price_per_hour,
+            minimum_billable_seconds: row.minimum_billable_seconds,
+            billing_unit: row.billing_unit,
+            model_type: row.model_type,
+            capabilities: row.capabilities,
+            status: row.status,
+            description: row.description,
+            created_at: row.created_at,
+            provider_id: row.provider_id,
+            provider_code: row.provider_code,
+            provider_name: row.provider_name,
+            provider_description: row.provider_description,
+            provider_website: row.provider_website,
+            provider_api_base: row.provider_api_base,
+            provider_capabilities: row.provider_capabilities,
+            provider_status: row.provider_status,
+        }).collect();
+
+        info!("Retrieved {} models for provider {}", result.len(), provider_code);
+        Ok(result)
     }
 
-    /// Delete a model by its ID
+    /// Get models by type (text, transcription, etc.)
     #[instrument(skip(self))]
-    pub async fn delete(&self, id: &str) -> AppResult<bool> {
-        let result = query("DELETE FROM models WHERE id = $1")
-            .bind(id)
-            .execute(&*self.pool)
-            .await?;
+    pub async fn get_by_type(&self, model_type: &str) -> AppResult<Vec<ModelWithProvider>> {
+        info!("Fetching models of type: {}", model_type);
+        
+        let models = sqlx::query!(
+            r#"
+            SELECT m.id, m.name, m.context_window, m.price_input, m.price_output,
+                   m.pricing_type,
+                   m.price_per_hour, m.minimum_billable_seconds,
+                   m.billing_unit,
+                   m.model_type,
+                   m.capabilities,
+                   m.status,
+                   m.description, m.created_at,
+                   p.id as provider_id, p.code as provider_code, p.name as provider_name,
+                   p.description as provider_description, p.website_url as provider_website,
+                   p.api_base_url as provider_api_base, p.capabilities as provider_capabilities,
+                   p.status as provider_status
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id
+            WHERE m.model_type = $1
+            AND m.status = 'active' 
+            AND p.status = 'active'
+            ORDER BY p.name, m.name
+            "#,
+            model_type
+        )
+        .fetch_all(&*self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to fetch models of type {}: {}", model_type, e)))?;
 
-        Ok(result.rows_affected() > 0)
+        let result: Vec<ModelWithProvider> = models.into_iter().map(|row| ModelWithProvider {
+            id: row.id,
+            name: row.name,
+            context_window: row.context_window,
+            price_input: row.price_input,
+            price_output: row.price_output,
+            pricing_type: row.pricing_type,
+            price_per_hour: row.price_per_hour,
+            minimum_billable_seconds: row.minimum_billable_seconds,
+            billing_unit: row.billing_unit,
+            model_type: row.model_type,
+            capabilities: row.capabilities,
+            status: row.status,
+            description: row.description,
+            created_at: row.created_at,
+            provider_id: row.provider_id,
+            provider_code: row.provider_code,
+            provider_name: row.provider_name,
+            provider_description: row.provider_description,
+            provider_website: row.provider_website,
+            provider_api_base: row.provider_api_base,
+            provider_capabilities: row.provider_capabilities,
+            provider_status: row.provider_status,
+        }).collect();
+
+        info!("Retrieved {} models of type {}", result.len(), model_type);
+        Ok(result)
     }
-
 }

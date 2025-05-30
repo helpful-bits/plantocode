@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Enable easier debugging
 #[cfg(debug_assertions)]
 use std::env;
 
@@ -16,7 +15,6 @@ pub mod utils;
 pub mod jobs;
 pub mod services;
 pub mod api_clients;
-pub mod prompts;
 pub mod app_setup;
 pub mod auth;
 
@@ -35,7 +33,6 @@ use crate::auth::TokenManager;
 use crate::auth::auth0_state::Auth0StateStore;
 use crate::services::server_config_service::ServerConfigCache;
 
-// App state struct for Tauri
 pub struct AppState {
     pub config_load_error: Mutex<Option<String>>,
     pub client: reqwest::Client,
@@ -55,14 +52,12 @@ impl Default for AppState {
 }
 
 
-// Static repositories to be used across the application
 static SESSION_REPO: OnceCell<Arc<SessionRepository>> = OnceCell::const_new();
 static BACKGROUND_JOB_REPO: OnceCell<Arc<BackgroundJobRepository>> = OnceCell::const_new();
 static SETTINGS_REPO: OnceCell<Arc<SettingsRepository>> = OnceCell::const_new();
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 
 fn main() {
-    // Load .env file if it exists
     dotenv().ok();
     
     // Initialize logger with environment variables
@@ -77,7 +72,6 @@ fn main() {
     let tauri_context = tauri::generate_context!();
     let app_identifier = &tauri_context.config().identifier;
 
-    // App identifier is available for use
     info!("App identifier: {}", app_identifier);
 
     tauri::Builder::default()
@@ -95,14 +89,11 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
             
-            // Set up cross-platform deep link handling for auth callbacks
-            utils::register_deep_links(&app.handle());
 
             // Keyring is used for secure storage (OS native credential vault)
             info!("Using OS keyring for secure credential storage.");
@@ -143,6 +134,17 @@ fn main() {
             commands::auth0_commands::set_app_jwt,
             commands::auth0_commands::clear_stored_app_jwt,
             
+            // Billing commands
+            commands::billing_commands::get_subscription_details_command,
+            commands::billing_commands::create_checkout_session_command,
+            commands::billing_commands::create_billing_portal_command,
+            commands::billing_commands::get_spending_status_command,
+            commands::billing_commands::acknowledge_spending_alert_command,
+            commands::billing_commands::update_spending_limits_command,
+            commands::billing_commands::get_invoice_history_command,
+            commands::billing_commands::get_spending_history_command,
+            commands::billing_commands::check_service_access_command,
+            
             // Config commands
             commands::config_commands::get_available_ai_models,
             commands::config_commands::get_default_task_configurations,
@@ -180,7 +182,7 @@ fn main() {
             
             // Text commands
             commands::text_commands::improve_text_command,
-            commands::text_commands::correct_text_post_transcription_command,
+            commands::text_commands::correct_text_command,
             commands::text_commands::generate_simple_text_command,
             
             // Implementation plan commands
@@ -194,10 +196,12 @@ fn main() {
             commands::path_finding_commands::generate_directory_tree_command,
             commands::path_finding_commands::create_path_correction_job_command,
             
+            // File finder workflow commands
+            commands::file_finder_workflow_commands::execute_file_finder_workflow_command,
+            
             // Voice commands
             commands::voice_commands::create_transcription_job_command,
             commands::voice_commands::transcribe_audio_direct_command,
-            commands::voice_commands::correct_transcription_command,
             
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
@@ -220,6 +224,15 @@ fn main() {
             commands::settings_commands::get_project_task_model_settings_command,
             commands::settings_commands::set_project_task_model_settings_command,
             commands::settings_commands::get_all_task_model_settings_for_project_command,
+            commands::settings_commands::validate_configuration_health,
+            
+            // System prompt commands
+            commands::system_prompt_commands::get_system_prompt_command,
+            commands::system_prompt_commands::set_system_prompt_command,
+            commands::system_prompt_commands::reset_system_prompt_command,
+            commands::system_prompt_commands::get_default_system_prompts_command,
+            commands::system_prompt_commands::get_default_system_prompt_command,
+            commands::system_prompt_commands::has_custom_system_prompt_command,
             
             // Session commands
             commands::session_commands::create_session_command,

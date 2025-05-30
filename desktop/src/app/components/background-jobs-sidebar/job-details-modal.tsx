@@ -18,6 +18,7 @@ import { JobDetailsErrorSection } from "./_components/job-details/JobDetailsErro
 import { JobDetailsMetadataSection } from "./_components/job-details/JobDetailsMetadataSection";
 import { JobDetailsModelConfigSection } from "./_components/job-details/JobDetailsModelConfigSection";
 import { JobDetailsPromptSection } from "./_components/job-details/JobDetailsPromptSection";
+import { JobDetailsSystemPromptSection } from "./_components/job-details/JobDetailsSystemPromptSection";
 import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsResponseSection";
 import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
 import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
@@ -345,6 +346,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
           {/* Content sections */}
           <div className="space-y-4">
+            <JobDetailsSystemPromptSection job={job} />
             <JobDetailsPromptSection promptContent={promptContent} />
             <JobDetailsResponseSection
               job={job}

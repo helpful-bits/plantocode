@@ -38,7 +38,7 @@ impl ApiUsageRepository {
     }
     
     // Removed get_model_pricing and get_models_pricing methods
-    // They are no longer needed as pricing is obtained directly from app_settings.ai_models
+    // They are no longer needed as pricing is obtained directly from model repository
 
     /// Records API usage for billing purposes
     pub async fn record_usage(&self, entry: ApiUsageEntryDto) -> Result<(), AppError> {

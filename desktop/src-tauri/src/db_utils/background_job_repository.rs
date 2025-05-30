@@ -355,8 +355,8 @@ impl BackgroundJobRepository {
                 prompt, response, project_directory, tokens_sent, tokens_received,
                 total_tokens, chars_received, status_message, error_message,
                 model_used, max_output_tokens, temperature, include_syntax,
-                metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+                metadata, system_prompt_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
@@ -382,6 +382,7 @@ impl BackgroundJobRepository {
             .bind(job.temperature.map(|v| v as f64))
             .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
+            .bind(&job.system_prompt_id)
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to insert job: {}", e)))?;
@@ -415,8 +416,9 @@ impl BackgroundJobRepository {
                 max_output_tokens = $19,
                 temperature = $20,
                 include_syntax = $21,
-                metadata = $22
-            WHERE id = $23
+                metadata = $22,
+                system_prompt_id = $23
+            WHERE id = $24
             "#)
             .bind(&job.session_id)
             .bind(&job.api_type)
@@ -440,6 +442,7 @@ impl BackgroundJobRepository {
             .bind(job.temperature.map(|v| v as f64))
             .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
+            .bind(&job.system_prompt_id)
             .bind(&job.id)
             .execute(&*self.pool)
             .await
@@ -561,6 +564,32 @@ impl BackgroundJobRepository {
         total_tokens: Option<i32>,
         chars_received: Option<i32>,
     ) -> AppResult<()> {
+        self.update_job_response_with_system_prompt(
+            job_id,
+            response,
+            status,
+            metadata,
+            tokens_sent,
+            tokens_received,
+            total_tokens,
+            chars_received,
+            None, // No system_prompt_id for backward compatibility
+        ).await
+    }
+
+    /// Update job response and status with token information and system prompt tracking
+    pub async fn update_job_response_with_system_prompt(
+        &self,
+        job_id: &str,
+        response: &str,
+        status: Option<JobStatus>,
+        metadata: Option<&str>,
+        tokens_sent: Option<i32>,
+        tokens_received: Option<i32>,
+        total_tokens: Option<i32>,
+        chars_received: Option<i32>,
+        system_prompt_id: Option<&str>,
+    ) -> AppResult<()> {
         let now = get_timestamp();
         
         // Build the SQL dynamically based on which parameters are provided
@@ -604,6 +633,11 @@ impl BackgroundJobRepository {
             param_index += 1;
         }
         
+        if system_prompt_id.is_some() {
+            final_query.push_str(&format!(", system_prompt_id = ${}", param_index));
+            param_index += 1;
+        }
+        
         // Add the WHERE clause
         final_query.push_str(&format!(" WHERE id = ${}", param_index));
         
@@ -640,6 +674,10 @@ impl BackgroundJobRepository {
         
         if let Some(cr) = chars_received {
             query_obj = query_obj.bind(cr as i64);
+        }
+        
+        if let Some(sp_id) = system_prompt_id {
+            query_obj = query_obj.bind(sp_id);
         }
         
         // Bind job_id last
@@ -843,6 +881,7 @@ impl BackgroundJobRepository {
         let temperature: Option<f32> = row.try_get::<'_, Option<f64>, _>("temperature").map(|v| v.map(|val| val as f32)).unwrap_or(None);
         let include_syntax: Option<bool> = row.try_get::<'_, Option<i64>, _>("include_syntax").map(|v| v.map(|val| val == 1)).unwrap_or(None);
         let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
+        let system_prompt_id: Option<String> = row.try_get::<'_, Option<String>, _>("system_prompt_id").unwrap_or(None);
         
         Ok(BackgroundJob {
             id,
@@ -869,6 +908,7 @@ impl BackgroundJobRepository {
             temperature,
             include_syntax,
             metadata,
+            system_prompt_id,
         })
     }
     

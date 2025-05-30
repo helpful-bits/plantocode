@@ -20,8 +20,7 @@ use self::processors::{
     PathCorrectionProcessor,
     TextImprovementProcessor,
     TaskEnhancementProcessor,
-    VoiceCorrectionProcessor,
-    TextCorrectionPostTranscriptionProcessor,
+    TextCorrectionProcessor,
     GenericLlmStreamProcessor,
     ServerProxyTranscriptionProcessor,
     RegexSummaryGenerationProcessor,
@@ -56,8 +55,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let path_correction_processor = Arc::new(PathCorrectionProcessor::new());
     let text_improvement_processor = Arc::new(TextImprovementProcessor::new());
     let task_enhancement_processor = Arc::new(TaskEnhancementProcessor::new());
-    let voice_correction_processor = Arc::new(VoiceCorrectionProcessor::new());
-    let text_correction_post_transcription_processor = Arc::new(TextCorrectionPostTranscriptionProcessor::new());
+    let text_correction_processor = Arc::new(TextCorrectionProcessor::new());
     let generic_llm_stream_processor = Arc::new(GenericLlmStreamProcessor::new());
     let server_proxy_transcription_processor = Arc::new(ServerProxyTranscriptionProcessor::new(app_handle.clone()));
     let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
@@ -70,8 +68,7 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(path_correction_processor).await;
     registry.register(text_improvement_processor).await;
     registry.register(task_enhancement_processor).await;
-    registry.register(voice_correction_processor).await;
-    registry.register(text_correction_post_transcription_processor).await;
+    registry.register(text_correction_processor).await;
     registry.register(generic_llm_stream_processor).await;
     registry.register(server_proxy_transcription_processor).await;
     registry.register(regex_summary_generation_processor).await;
