@@ -1,17 +1,14 @@
 use async_trait::async_trait;
 use log::{debug, error, info};
-use std::sync::Arc;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::api_clients::client_factory;
 use crate::api_clients::client_trait::TranscriptionClient;
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
-use crate::jobs::job_helpers;
+use crate::jobs::job_processor_utils;
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
-use crate::models::JobStatus;
 
 /// Processor for transcribing audio through the server proxy
 pub struct ServerProxyTranscriptionProcessor {
@@ -48,19 +45,31 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
     
     /// Process the job
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing transcription job: {}", job.id());
+        let job_id = job.id.clone();
+        
+        // Log job processing start using standardized utility
+        job_processor_utils::log_job_start(&job_id, "Voice Transcription");
         
         // Extract the payload
         let payload = match &job.payload {
             JobPayload::VoiceTranscription(data) => data,
-            _ => return Err(AppError::JobError("Invalid payload type".to_string())),
+            _ => {
+                return Err(AppError::JobError(format!(
+                    "Invalid payload for Voice Transcription job {}",
+                    job_id
+                )));
+            }
         };
         
-        // Get the job repository
-        let job_repo = self.app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+        // Setup repositories using standardized utility
+        let (repo, _settings_repo) = job_processor_utils::setup_repositories(&app_handle)?;
         
-        // Update job status to running
-        job_helpers::update_job_status_running(&job_repo, job.id()).await?;
+        // Update job status to running using standardized utility
+        job_processor_utils::update_status_running(
+            &repo,
+            &job_id,
+            "Processing voice transcription"
+        ).await?;
         
         // Get the transcription client from app state
         let transcription_client = client_factory::get_transcription_client(&self.app_handle)?;
@@ -72,23 +81,30 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
             
         match result {
             Ok(text) => {
-                info!("Transcription job {} completed successfully", job.id());
+                info!("Voice Transcription job {} completed successfully", job_id);
                 debug!("Transcription result: {}", text);
                 
-                // Update job status to completed
-                let result = JobProcessResult::success(job.id.clone(), text);
-                job_helpers::update_job_status_completed(&job_repo, job.id(), &result.response.clone().unwrap_or_default(), None, None, None, None).await?;
+                // Finalize job success using standardized utility
+                job_processor_utils::finalize_job_success(
+                    &job_id,
+                    &repo,
+                    &text,
+                    None, // No LLM usage for transcription
+                    &payload.model, // Transcription model used
+                    "ServerProxyTranscription", // System prompt ID (processor name for non-LLM)
+                    None, // No additional metadata
+                ).await?;
                 
-                Ok(result)
+                Ok(JobProcessResult::success(job_id, text))
             },
             Err(e) => {
-                error!("Transcription job {} failed: {}", job.id(), e);
+                error!("Voice Transcription job {} failed: {}", job_id, e);
                 
-                // Update job status to failed
+                // Update job status to failed using standardized utility
                 let error_message = format!("Transcription failed: {}", e);
-                job_helpers::update_job_status_failed(&job_repo, job.id(), &error_message).await?;
+                job_processor_utils::finalize_job_failure(&job_id, &repo, &error_message).await?;
                 
-                Ok(JobProcessResult::failure(job.id.clone(), error_message))
+                Ok(JobProcessResult::failure(job_id, error_message))
             }
         }
     }

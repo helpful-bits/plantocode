@@ -4,6 +4,7 @@ use crate::db::repositories::subscription_repository::SubscriptionRepository;
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
 use crate::db::repositories::spending_repository::SpendingRepository;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
+use crate::utils::error_handling::{retry_with_backoff, RetryConfig, validate_amount, validate_currency};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -11,7 +12,7 @@ use std::env;
 use chrono::{DateTime, Utc, Duration, Datelike};
 use std::sync::Arc;
 use sqlx::PgPool;
-use bigdecimal::ToPrimitive;
+use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 
 // Import Stripe crate if available
 #[cfg(feature = "stripe")]
@@ -232,6 +233,12 @@ impl BillingService {
             format!("Price ID not configured for plan: {}", plan_id)
         ))?;
         
+        // Get URLs from configuration
+        let config_repo = crate::db::repositories::BillingConfigurationRepository::new(
+            self.subscription_repository.get_pool().clone()
+        );
+        let stripe_urls = config_repo.get_stripe_urls().await?;
+
         // Add metadata to track which plan the user is subscribing to
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("plan_id".to_string(), plan_id.to_string());
@@ -247,8 +254,8 @@ impl BillingService {
                 },
             ]),
             mode: Some(stripe::CheckoutSessionMode::Subscription),
-            success_url: Some("https://success.stripe.com".to_string()), // Generic success page
-            cancel_url: Some("https://cancel.stripe.com".to_string()),   // Generic cancel page
+            success_url: Some(stripe_urls.success_url),
+            cancel_url: Some(stripe_urls.cancel_url),
             customer: Some(customer_id),
             metadata: Some(metadata),
             ..Default::default()
@@ -322,12 +329,18 @@ impl BillingService {
             None => return Err(AppError::Configuration("Stripe not configured".to_string())),
         };
         
+        // Get URLs from configuration
+        let config_repo = crate::db::repositories::BillingConfigurationRepository::new(
+            self.subscription_repository.get_pool().clone()
+        );
+        let stripe_urls = config_repo.get_stripe_urls().await?;
+
         // Create portal session
         let session = stripe::billingportal::Session::create(
             stripe,
             stripe::billingportal::SessionCreateParams {
                 customer: customer_id,
-                return_url: Some("https://billing.stripe.com/p/login/test_completed".to_string()), // Generic completion page
+                return_url: Some(stripe_urls.portal_return_url),
                 ..Default::default()
             },
         ).await.map_err(|e| AppError::External(format!("Failed to create billing portal session: {}", e)))?;
@@ -358,9 +371,9 @@ impl BillingService {
         // Get usage for current month
         let now = Utc::now();
         let start_of_month = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct start of month date".to_string()))?
             .and_hms_opt(0, 0, 0)
-            .unwrap()
+            .ok_or_else(|| AppError::Internal("Failed to construct start of month time".to_string()))?
             .and_utc();
         
         let usage = self.api_usage_repository
@@ -384,7 +397,7 @@ impl BillingService {
             "hardSpendingLimit": spending_status.hard_limit.to_f64().unwrap_or(0.0),
             "isTrialing": subscription.status == "trialing",
             "hasCancelled": subscription.status == "canceled",
-            "nextInvoiceAmount": null, // TODO: Calculate next invoice amount based on overage
+            "nextInvoiceAmount": self.calculate_next_invoice_amount(user_id, &spending_status).await?,
             "currency": spending_status.currency,
             "usage": {
                 "totalCost": spending_status.current_spending.to_f64().unwrap_or(0.0),
@@ -394,6 +407,45 @@ impl BillingService {
         });
         
         Ok(response)
+    }
+
+    /// Calculate the next invoice amount based on overage and subscription
+    async fn calculate_next_invoice_amount(
+        &self,
+        user_id: &Uuid,
+        spending_status: &crate::services::cost_based_billing_service::SpendingStatus,
+    ) -> Result<Option<f64>, AppError> {
+        // Get user's subscription
+        let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
+        let subscription = match subscription {
+            Some(sub) => sub,
+            None => return Ok(None), // No subscription, no invoice
+        };
+
+        // Get plan details
+        let plan = self.get_plan_by_id(&subscription.plan_id).await?;
+
+        // Calculate base subscription amount (monthly price)
+        let base_amount = plan.base_price_monthly;
+
+        // Calculate overage charges
+        let overage_amount = if spending_status.overage_amount > BigDecimal::from(0) {
+            let overage_cost = &spending_status.overage_amount * FromPrimitive::from_f64(plan.overage_rate)
+                .unwrap_or_else(|| BigDecimal::from(1));
+            overage_cost.to_f64().unwrap_or(0.0)
+        } else {
+            0.0
+        };
+
+        // Total next invoice amount
+        let total_amount = base_amount + overage_amount;
+
+        // Return None if amount is 0 (free plans)
+        if total_amount <= 0.0 {
+            Ok(None)
+        } else {
+            Ok(Some(total_amount))
+        }
     }
 
     /// Get access to the cost-based billing service

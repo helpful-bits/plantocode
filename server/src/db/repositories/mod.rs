@@ -1,4 +1,9 @@
 pub mod api_usage_repository;
+pub mod billing_configuration_repository;
+pub mod email_notification_repository;
+pub mod invoice_repository;
+pub mod payment_method_repository;
+pub mod spending_period_repository;
 pub mod subscription_repository;
 pub mod subscription_plan_repository;
 pub mod user_repository;
@@ -8,6 +13,11 @@ pub mod provider_repository;
 pub mod spending_repository;
 
 pub use api_usage_repository::ApiUsageRepository;
+pub use billing_configuration_repository::{BillingConfigurationRepository, StripeUrls, EmailTemplates, EmailTemplate};
+pub use email_notification_repository::{EmailNotificationRepository, EmailNotification, EmailNotificationStats};
+pub use invoice_repository::{InvoiceRepository, Invoice};
+pub use payment_method_repository::{PaymentMethodRepository, PaymentMethod};
+pub use spending_period_repository::{SpendingPeriodRepository, SpendingPeriod, UserSpendingSummary, SpendingTrend, TopSpender};
 pub use subscription_repository::SubscriptionRepository;
 pub use subscription_plan_repository::SubscriptionPlanRepository;
 pub use user_repository::UserRepository;

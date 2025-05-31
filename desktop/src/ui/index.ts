@@ -26,14 +26,17 @@ export * from "./data-card";
 export * from "./scroll-area";
 export * from "./tabs";
 export * from "./collapsible";
+export * from "./virtualized-code-viewer";
 
 // Feedback and status indicators
 export { Spinner } from "./loading-indicators";
-// GlobalLoadingIndicator is exported below from ./global-loading-indicator
+export * from "./loading-indicators";
 export * from "./progress";
 export * from "./notification-banner";
 export * from "./empty-state";
 export * from "./cost-usage-indicator";
+export * from "./status-messages";
+export * from "./animated-number";
 
 // Dialogs and overlays
 export * from "./dialog";
@@ -48,7 +51,6 @@ export * from "./debug-logger";
 
 // Application-specific shared components
 export { default as DatabaseErrorHandler } from "./database-error";
-export { default as GlobalLoadingIndicator } from "./global-loading-indicator";
 export { LoadingScreen } from "./loading-screen";
 export { ThemeToggle } from "./theme-toggle";
 

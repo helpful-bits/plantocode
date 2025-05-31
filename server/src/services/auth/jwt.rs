@@ -32,14 +32,14 @@ pub fn init_jwt_keys(jwt_secret_str: &str) -> Result<(), AppError> {
     // Set the encoding key
     let encoding_key = EncodingKey::from_secret(jwt_secret);
     if let Some(key_holder) = JWT_ENCODING_KEY.get() {
-        let mut key = key_holder.lock().unwrap();
+        let mut key = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT encoding key lock poisoned during init: {}", e)))?;
         *key = Some(encoding_key);
     }
     
     // Set the decoding key
     let decoding_key = DecodingKey::from_secret(jwt_secret);
     if let Some(key_holder) = JWT_DECODING_KEY.get() {
-        let mut key = key_holder.lock().unwrap();
+        let mut key = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT decoding key lock poisoned during init: {}", e)))?;
         *key = Some(decoding_key);
     }
     
@@ -53,7 +53,7 @@ fn get_encoding_key() -> Result<EncodingKey, AppError> {
     let key_holder = JWT_ENCODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
     
     // Get the key from the holder
-    let key_guard = key_holder.lock().unwrap();
+    let key_guard = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT encoding key lock poisoned: {}", e)))?;
     
     // Clone the key if it exists
     if let Some(key) = &*key_guard {
@@ -70,7 +70,7 @@ fn get_decoding_key() -> Result<DecodingKey, AppError> {
     let key_holder = JWT_DECODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
     
     // Get the key from the holder
-    let key_guard = key_holder.lock().unwrap();
+    let key_guard = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT decoding key lock poisoned: {}", e)))?;
     
     // Clone the key if it exists
     if let Some(key) = &*key_guard {

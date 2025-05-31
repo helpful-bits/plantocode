@@ -5,15 +5,15 @@
 export function isBinaryFile(buffer: Uint8Array): boolean {
   if (buffer.length === 0) return false; // Empty file is not binary
 
-  // Check for null byte, a strong indicator of binary content
-  const hasNullByte = buffer.includes(0);
-  if (hasNullByte) return true;
-
-  // Check ratio of non-printable characters (excluding tab, LF, CR)
-  // Count non-printable characters by iterating over the buffer
+  // Combine null byte check and non-printable character count in a single loop
   let nonPrintableCount = 0;
   for (let i = 0; i < buffer.length; i++) {
     const byte = buffer[i];
+    
+    // If a null byte is found, return true immediately
+    if (byte === 0) return true;
+    
+    // Count non-printable characters (excluding tab, LF, CR)
     if (
       (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) ||
       byte >= 127

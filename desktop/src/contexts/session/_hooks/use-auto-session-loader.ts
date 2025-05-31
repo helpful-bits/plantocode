@@ -24,20 +24,23 @@ export function useAutoSessionLoader({
   hasCompletedInitRef,
 }: UseAutoSessionLoaderProps) {
   useEffect(() => {
+    let isMounted = true;
     if (!projectDirectory) {
-      if (!hasCompletedInitRef.current) {
+      if (!hasCompletedInitRef.current && isMounted) {
         hasCompletedInitRef.current = true;
         setAppInitializing(false);
       }
       return;
     }
 
-    if (!activeSessionId && !hasCompletedInitRef.current) {
+    if (!activeSessionId && !hasCompletedInitRef.current && isMounted) {
       setAppInitializing(true);
       
       const loadMostRecentSession = async () => {
         try {
           const sessionsResult = await getSessionsAction(projectDirectory);
+          
+          if (!isMounted) return;
           
           if (sessionsResult.isSuccess && sessionsResult.data && sessionsResult.data.length > 0) {
             const sortedSessions = sessionsResult.data.sort((a, b) => {
@@ -46,13 +49,16 @@ export function useAutoSessionLoader({
               return bTime - aTime;
             });
             
+            if (!isMounted) return;
             await loadSessionById(sortedSessions[0].id);
           }
         } catch (error) {
           console.error("Error loading sessions:", error);
         } finally {
-          hasCompletedInitRef.current = true;
-          setAppInitializing(false);
+          if (isMounted) {
+            hasCompletedInitRef.current = true;
+            setAppInitializing(false);
+          }
         }
       };
 
@@ -61,7 +67,7 @@ export function useAutoSessionLoader({
     }
 
     if (!activeSessionId) {
-      if (!hasCompletedInitRef.current) {
+      if (!hasCompletedInitRef.current && isMounted) {
         hasCompletedInitRef.current = true;
         setAppInitializing(false);
       }
@@ -69,7 +75,7 @@ export function useAutoSessionLoader({
     }
 
     if (isSessionLoading || currentSession?.id === activeSessionId) {
-      if (!hasCompletedInitRef.current) {
+      if (!hasCompletedInitRef.current && isMounted) {
         hasCompletedInitRef.current = true;
         setAppInitializing(false);
       }
@@ -81,8 +87,14 @@ export function useAutoSessionLoader({
         console.error("Error loading session:", error);
       })
       .finally(() => {
-        hasCompletedInitRef.current = true;
-        setAppInitializing(false);
+        if (isMounted) {
+          hasCompletedInitRef.current = true;
+          setAppInitializing(false);
+        }
       });
+
+    return () => {
+      isMounted = false;
+    };
   }, [projectDirectory, activeSessionId, currentSession?.id, isSessionLoading]);
 }

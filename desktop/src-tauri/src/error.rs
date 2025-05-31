@@ -90,6 +90,9 @@ pub enum AppError {
     
     #[error("Storage error: {0}")]
     StorageError(String),
+    
+    #[error("Token limit exceeded: {0}")]
+    TokenLimitExceededError(String),
 }
 
 impl From<std::io::Error> for AppError {
@@ -184,6 +187,7 @@ impl From<AppError> for SerializableError {
             AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
             AppError::InvalidResponse(_) => "INVALID_RESPONSE_ERROR",
             AppError::StorageError(_) => "STORAGE_ERROR",
+            AppError::TokenLimitExceededError(_) => "TOKEN_LIMIT_EXCEEDED_ERROR",
         }.to_string();
         
         SerializableError {

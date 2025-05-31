@@ -88,17 +88,15 @@ pub async fn correct_text_command(
         return Err(AppError::ValidationError("Language is required".to_string()));
     }
     
-    // Create job ID
-    let job_id = format!("job_{}", uuid::Uuid::new_v4());
-    
     // Create the job payload
     let payload = crate::jobs::types::TextCorrectionPayload {
-        background_job_id: job_id.clone(),
+        background_job_id: String::new(), // Will be set by create_and_queue_background_job
         session_id: args.session_id.clone(),
         project_directory: args.project_directory.clone(),
         text_to_correct: args.text_to_correct.clone(),
         language: args.language.clone(),
         original_transcription_job_id: args.original_transcription_job_id.clone(),
+        model_override: None,
     };
     
     // Get the model and settings for this task using centralized resolver
@@ -120,7 +118,7 @@ pub async fn correct_text_command(
         crate::models::TaskType::TextCorrection,
         "TEXT_CORRECTION",
         &format!("Correct text: {}", args.text_to_correct),
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(payload).map_err(|e| 
             AppError::SerdeError(e.to_string()))?,
         1, // Priority
@@ -234,8 +232,8 @@ pub async fn generate_simple_text_command(
     // Prepare request options
     let options = crate::api_clients::client_trait::ApiClientOptions {
         model: resolved_model,
-        max_tokens: Some(resolved_max_tokens),
-        temperature: Some(resolved_temperature),
+        max_tokens: resolved_max_tokens,
+        temperature: resolved_temperature,
         stream: false, // Non-streaming
     };
     

@@ -50,7 +50,7 @@ export async function transcribeBase64Audio(
     const response = await invoke<DirectTranscribeAudioResponse>(
       "transcribe_audio_direct_command",
       {
-        audioData: Array.from(bytes),
+        audio_data: Array.from(bytes),
         filename,
         model: "", // Empty string will use the default model
       }
@@ -119,10 +119,10 @@ export async function transcribeAudioAction(
     const result = await invoke<{ jobId: string }>(
       "create_transcription_job_command",
       {
-        sessionId,
-        audioData: cleanBase64,
+        session_id: sessionId,
+        audio_data: cleanBase64,
         filename,
-        projectDirectory: projectDirectory || undefined,
+        project_directory: projectDirectory ?? null,
       }
     );
 

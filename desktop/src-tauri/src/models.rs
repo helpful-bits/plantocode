@@ -200,6 +200,11 @@ pub enum TaskType {
     RegexSummaryGeneration,
     RegexPatternGeneration,
     FileFinderWorkflow,
+    // New individual workflow stage types
+    DirectoryTreeGeneration,
+    LocalFileFiltering,
+    ExtendedPathFinder,
+    ExtendedPathCorrection,
     Streaming,
     Unknown,
 }
@@ -219,6 +224,10 @@ impl ToString for TaskType {
             TaskType::RegexSummaryGeneration => "regex_summary_generation".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
+            TaskType::DirectoryTreeGeneration => "directory_tree_generation".to_string(),
+            TaskType::LocalFileFiltering => "local_file_filtering".to_string(),
+            TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
+            TaskType::ExtendedPathCorrection => "extended_path_correction".to_string(),
             TaskType::Streaming => "streaming".to_string(),
             TaskType::Unknown => "unknown".to_string(),
         }
@@ -242,8 +251,56 @@ impl std::str::FromStr for TaskType {
             "regex_summary_generation" => Ok(TaskType::RegexSummaryGeneration),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
+            "directory_tree_generation" => Ok(TaskType::DirectoryTreeGeneration),
+            "local_file_filtering" => Ok(TaskType::LocalFileFiltering),
+            "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
+            "extended_path_correction" => Ok(TaskType::ExtendedPathCorrection),
             "streaming" => Ok(TaskType::Streaming),
             _ => Ok(TaskType::Unknown),
+        }
+    }
+}
+
+impl TaskType {
+    /// Returns true if this task type requires LLM configuration (model, tokens, temperature)
+    pub fn requires_llm(&self) -> bool {
+        match self {
+            // Local/filesystem tasks that don't use LLMs
+            TaskType::DirectoryTreeGeneration 
+            | TaskType::LocalFileFiltering 
+            | TaskType::FileFinderWorkflow => false,
+            // LLM tasks that require configuration
+            TaskType::ExtendedPathFinder
+            | TaskType::ExtendedPathCorrection
+            | TaskType::ImplementationPlan
+            | TaskType::PathFinder
+            | TaskType::TextImprovement
+            | TaskType::VoiceTranscription
+            | TaskType::TextCorrection
+            | TaskType::PathCorrection
+            | TaskType::GuidanceGeneration
+            | TaskType::TaskEnhancement
+            | TaskType::GenericLlmStream
+            | TaskType::RegexSummaryGeneration
+            | TaskType::RegexPatternGeneration => true,
+            // Streaming and Unknown default to true for safety
+            TaskType::Streaming
+            | TaskType::Unknown => true,
+        }
+    }
+
+    /// Returns the appropriate API type for this task
+    pub fn api_type(&self) -> ApiType {
+        match self {
+            // Local/filesystem tasks use filesystem API
+            TaskType::DirectoryTreeGeneration 
+            | TaskType::LocalFileFiltering 
+            | TaskType::FileFinderWorkflow => ApiType::FileSystem,
+            // Extended workflow stages use OpenRouter API
+            TaskType::ExtendedPathFinder
+            | TaskType::ExtendedPathCorrection => ApiType::OpenRouter,
+            // All other LLM tasks use OpenRouter API
+            _ => ApiType::OpenRouter,
         }
     }
 }
@@ -341,33 +398,6 @@ pub struct VoiceTranscriptionMetadata {
     pub duration_seconds: Option<f32>,
 }
 
-// Models for the fetch polyfill
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchRequestArgs {
-    pub method: String,
-    pub headers: Option<HashMap<String, String>>,
-    pub body: Option<serde_json::Value>,
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchResponse {
-    pub status: u16,
-    pub headers: HashMap<String, String>,
-    pub body: serde_json::Value,
-}
-
-// Models for streaming request handlers
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamRequestArgs {
-    pub url: String,
-    pub method: String,
-    pub headers: Option<serde_json::Value>,
-    pub body: Option<String>,
-}
 
 // DTO for file operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -554,9 +584,9 @@ pub struct ReadImplementationPlanResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSpecificModelConfig {
-    pub model: String,
-    pub max_tokens: u32,
-    pub temperature: f32,
+    pub model: Option<String>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -588,6 +618,13 @@ pub struct RuntimeAIConfig {
     // Limits for token usage
     #[serde(default)]
     pub limits: TokenLimits,
+    
+    // Job concurrency configuration
+    pub max_concurrent_jobs: Option<u32>,
+    
+    // Job system configuration
+    #[serde(default)]
+    pub job_settings: Option<JobSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -606,14 +643,21 @@ pub struct PathFinderSettings {
     pub max_files_with_content: Option<usize>,
     // Whether to include file contents by default
     pub include_file_contents: Option<bool>,
-    // Maximum characters per file, not tokens
-    pub max_content_size_per_file: Option<usize>,
     // Maximum number of paths to return in results
     pub max_file_count: Option<usize>,
-    // Initial truncation length for file contents
-    pub file_content_truncation_chars: Option<usize>,
     // Buffer to leave room in context window
     pub token_limit_buffer: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JobSettings {
+    // Timeout for stale acknowledged jobs in seconds
+    pub stale_job_timeout_seconds: Option<u64>,
+    // Maximum number of retry attempts for failed jobs
+    pub max_retry_attempts: Option<u32>,
+    // Base delay for exponential backoff in seconds
+    pub retry_base_delay_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

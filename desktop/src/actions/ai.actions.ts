@@ -10,8 +10,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { type ActionState, type TaskType } from "@/types";
 import { createErrorState, createSuccessState } from "@/utils/error-handling";
 import { handleActionError } from "@/utils/action-utils";
+import { getModelSettingsForProject } from "@/actions/project-settings";
 
-import { getModelSettingsForProject } from "./project-settings.actions";
 
 /**
  * Sends a generic prompt to an AI model and receives a streaming response. Uses 'genericLlmStream' task settings by default.
@@ -33,7 +33,7 @@ export async function sendPromptToAiAction(
   try {
     // Get session details including project directory
     const sessionDetails = await invoke<{ projectDirectory: string }>("get_session_command", {
-      sessionId,
+      session_id: sessionId,
     });
 
     if (!sessionDetails) {
@@ -41,14 +41,6 @@ export async function sendPromptToAiAction(
     }
 
     const projectDirectory = sessionDetails.projectDirectory;
-
-    // Get the project-specific model settings for generic_llm_stream
-    const allSettings = await getModelSettingsForProject(projectDirectory);
-    const modelSettings = allSettings.data?.generic_llm_stream || {
-      model: undefined,
-      temperature: undefined,
-      maxTokens: undefined,
-    };
 
     // Set up streaming callbacks
     const { streamingUpdates, ...restOptions } = options || {};
@@ -59,17 +51,17 @@ export async function sendPromptToAiAction(
     }
 
     // Create a background job for generic LLM streaming
+    // Backend will resolve model settings using resolve_model_settings if null values are passed
     const result = await invoke<{ jobId: string }>(
       "generic_llm_stream_command",
       {
-        sessionId,
-        promptText: promptText,
-        systemPrompt: null,
-        projectDirectory: projectDirectory,
-        model: modelSettings.model,
-        temperature:
-          restOptions?.temperature || modelSettings.temperature || 0.7,
-        maxOutputTokens: modelSettings.maxTokens || 1000,
+        session_id: sessionId,
+        prompt_text: promptText,
+        system_prompt: null,
+        project_directory: projectDirectory,
+        model: null,
+        temperature: restOptions?.temperature ?? null,
+        max_output_tokens: null,
         metadata: null,
       }
     );
@@ -98,7 +90,7 @@ export async function cancelAiRequestAction(
 
   try {
     // Cancel the background job
-    await invoke("cancel_background_job_command", { jobId: requestId });
+    await invoke("cancel_background_job_command", { job_id: requestId });
 
     return createSuccessState(null, "Request cancelled successfully");
   } catch (error) {
@@ -128,7 +120,7 @@ export async function cancelSessionRequestsAction(sessionId: string): Promise<
   try {
     // Call the Tauri command to cancel all session background jobs
     const cancelledCount = await invoke<number>("cancel_session_jobs_command", {
-      sessionId,
+      session_id: sessionId,
     });
 
     return createSuccessState(
@@ -193,8 +185,8 @@ export async function initiateGenericAiStreamAction(params: {
     if (projectDirectory) {
       try {
         const allSettings = await getModelSettingsForProject(projectDirectory);
-        modelSettings = allSettings.data?.generic_llm_stream
-          ? { ...allSettings.data.generic_llm_stream }
+        modelSettings = allSettings.data?.genericLlmStream
+          ? { ...allSettings.data.genericLlmStream }
           : {
               model: undefined,
               temperature: undefined,
@@ -212,17 +204,17 @@ export async function initiateGenericAiStreamAction(params: {
     const result = await invoke<{ jobId: string }>(
       "generic_llm_stream_command",
       {
-        sessionId,
-        promptText,
-        systemPrompt,
-        projectDirectory,
-        model: explicitModel || modelSettings.model,
+        session_id: sessionId,
+        prompt_text: promptText,
+        system_prompt: systemPrompt ?? null,
+        project_directory: projectDirectory ?? null,
+        model: explicitModel ?? modelSettings.model ?? null,
         temperature:
           explicitTemperature !== undefined
             ? explicitTemperature
-            : modelSettings.temperature,
-        maxOutputTokens: explicitMaxTokens || modelSettings.maxTokens,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+            : modelSettings.temperature ?? null,
+        max_output_tokens: explicitMaxTokens ?? modelSettings.maxTokens ?? null,
+        metadata: metadata ?? null,
       }
     );
 
@@ -268,11 +260,11 @@ export async function generateSimpleTextAction(params: {
     // TaskType is now snake_case, matching backend TaskType::to_string() output
     const response = await invoke<string>("generate_simple_text_command", {
       prompt,
-      systemPrompt: systemPrompt,
-      modelOverride: explicitModel,
-      temperatureOverride: explicitTemperature,
-      maxTokensOverride: explicitMaxTokens,
-      taskType: taskTypeForSettings,
+      system_prompt: systemPrompt ?? null,
+      model_override: explicitModel ?? null,
+      temperature_override: explicitTemperature ?? null,
+      max_tokens_override: explicitMaxTokens ?? null,
+      task_type: taskTypeForSettings,
     });
 
     return createSuccessState(response, "Text generated successfully");

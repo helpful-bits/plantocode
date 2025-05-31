@@ -33,6 +33,8 @@ pub struct SystemPromptResponse {
     pub system_prompt: String,
     pub is_default: bool,
     pub is_custom: bool,
+    pub version: Option<String>,
+    pub based_on_version: Option<String>,
 }
 
 /// Get effective system prompt for a task type (custom or default)
@@ -48,12 +50,21 @@ pub async fn get_system_prompt_command(
     
     // First try to get custom system prompt
     if let Some(custom_prompt) = settings_repo.get_system_prompt(&session_id, &task_type).await? {
+        // For custom prompts, try to get the default version they might be based on
+        let based_on_version = if let Some(default_prompt) = settings_repo.get_default_system_prompt(&task_type).await? {
+            Some(default_prompt.version)
+        } else {
+            None
+        };
+        
         return Ok(Some(SystemPromptResponse {
             session_id: custom_prompt.session_id,
             task_type: custom_prompt.task_type,
             system_prompt: custom_prompt.system_prompt,
             is_default: false,
             is_custom: true,
+            version: None, // Custom prompts don't have versions
+            based_on_version,
         }));
     }
     
@@ -65,6 +76,8 @@ pub async fn get_system_prompt_command(
             system_prompt: default_prompt.system_prompt,
             is_default: true,
             is_custom: false,
+            version: Some(default_prompt.version),
+            based_on_version: None,
         }));
     }
     
@@ -156,4 +169,26 @@ pub async fn has_custom_system_prompt_command(
     let custom_prompt = settings_repo.get_system_prompt(&session_id, &task_type).await?;
     
     Ok(custom_prompt.is_some())
+}
+
+/// Update a default system prompt content and description
+/// This is primarily for admin/dev use but sets up future possibilities
+#[command]
+pub async fn update_default_system_prompt_command(
+    task_type: String,
+    new_prompt_content: String,
+    new_description: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    info!("Updating default system prompt for task type: {}", task_type);
+    
+    if new_prompt_content.trim().is_empty() {
+        return Err(AppError::ValidationError("System prompt content cannot be empty".to_string()));
+    }
+    
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    settings_repo.update_default_system_prompt(&task_type, &new_prompt_content, new_description.as_deref()).await?;
+    
+    Ok(())
 }

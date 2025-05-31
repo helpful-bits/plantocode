@@ -115,7 +115,9 @@
       "WebFetch(domain:groq.com)",
       "Bash(rg \"TaskType::VoiceTranscription\" -A 10 -B 3)",
       "Bash(curl:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(npm ls:*)",
+      "Bash(/opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg -n \"timestamp_millis\" src/commands/file_finder_workflow_commands.rs)"
     ],
     "deny": []
   },

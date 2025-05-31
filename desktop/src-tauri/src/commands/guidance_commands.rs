@@ -1,12 +1,10 @@
 use tauri::{command, AppHandle, Manager};
 use log::info;
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
+use serde::Deserialize;
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus, ApiType, TaskType, JobCommandResponse};
-use crate::utils::get_timestamp;
+use crate::models::{TaskType, JobCommandResponse};
 use std::sync::Arc;
-use crate::jobs::types::{Job, JobPayload, GuidanceGenerationPayload};
+use crate::jobs::types::GuidanceGenerationPayload;
 
 /// Arguments for guidance generation command
 #[derive(Debug, Deserialize)]
@@ -118,7 +116,7 @@ pub async fn generate_guidance_command(
         TaskType::GuidanceGeneration,
         "GUIDANCE_GENERATION",
         &args.task_description,
-        (model, temperature, max_output_tokens),
+        Some((model, temperature, max_output_tokens)),
         serde_json::to_value(processor_payload).map_err(|e| 
             AppError::SerdeError(e.to_string()))?,
         2, // Priority

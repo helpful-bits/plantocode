@@ -1,4 +1,3 @@
-import { normalizePath } from "@/utils/path-utils";
 import * as tauriFs from "@/utils/tauri-fs";
 
 import { isBinaryFile, BINARY_EXTENSIONS } from "./file-binary-utils";
@@ -25,8 +24,14 @@ export async function validateFilePath(
       return false;
     }
 
-    // Normalize path using the canonical path normalization function
-    const normalizedPath = await normalizePath(filePath);
+    // Normalize path using the Tauri filesystem wrapper
+    const normalizedPath = await tauriFs.normalizePath(filePath);
+
+    // Security check: reject paths with suspicious patterns
+    if (normalizedPath.includes("..") || normalizedPath.includes("//") || 
+        normalizedPath.includes("\\\\") || normalizedPath.length > 500) {
+      return false;
+    }
 
     // First check if we already have the content in our map
     if (fileContents[normalizedPath]) {
@@ -53,7 +58,22 @@ export async function validateFilePath(
     } else {
       // Check if the path exists in our known files list
       if (allFiles && allFiles.length > 0) {
-        const fileExists = allFiles.includes(normalizedPath);
+        // Ensure we're comparing against similarly normalized paths from allFiles
+        // The backend should have already normalized these paths, but we need to ensure consistency
+        const fileExists = allFiles.some(filePath => {
+          // Simple comparison first
+          if (filePath === normalizedPath) return true;
+          
+          // Try normalizing the file path from allFiles as well for comparison
+          // This handles cases where allFiles contains non-normalized paths
+          try {
+            return filePath.replace(/\\/g, '/').replace(/\/+/g, '/') === 
+                   normalizedPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+          } catch {
+            return false;
+          }
+        });
+        
         if (!fileExists) {
           // Console debug removed per lint requirements
           return false;

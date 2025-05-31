@@ -127,26 +127,26 @@ export function useOrchestratedBackgroundJobsState({
     try {
       const jobsData = await fetchJobs();
 
-      // Update state if we got data back
+      // Update state if we got data back - batch updates for better performance
       if (jobsData) {
-        // Update jobs
+        // Calculate active jobs once
+        const activeJobsList = jobsData.filter((job: BackgroundJob) =>
+          JOB_STATUSES.ACTIVE.includes(job.status)
+        );
+        
+        // Update jobs state first, then active jobs in callback to ensure consistency
         setJobs((prevJobs) => {
           if (!areJobArraysEqual(prevJobs, jobsData)) {
+            // Update active jobs in the same cycle for consistency
+            setActiveJobs((prevActiveJobs) => {
+              if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
+                return activeJobsList;
+              }
+              return prevActiveJobs;
+            });
             return jobsData;
           }
           return prevJobs;
-        });
-
-        // Update active jobs
-        setActiveJobs((prevActiveJobs) => {
-          const activeJobsList = jobsData.filter((job: BackgroundJob) =>
-            JOB_STATUSES.ACTIVE.includes(job.status)
-          );
-
-          if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
-            return activeJobsList;
-          }
-          return prevActiveJobs;
         });
       }
     } finally {
@@ -236,6 +236,50 @@ export function useOrchestratedBackgroundJobsState({
     [refreshJobs]
   );
 
+  // Optimized job update function to reduce state setter calls
+  const updateJobInState = useCallback((updatedJob: BackgroundJob) => {
+    // Batch both state updates in a single effect
+    setJobs(prevJobs => {
+      const existingJobIndex = prevJobs.findIndex(j => j.id === updatedJob.id);
+      let newJobs = prevJobs;
+      
+      if (existingJobIndex !== -1) {
+        if (!areJobsEqual(prevJobs[existingJobIndex], updatedJob)) {
+          newJobs = [...prevJobs];
+          newJobs[existingJobIndex] = updatedJob;
+        }
+      } else {
+        newJobs = [...prevJobs, updatedJob];
+      }
+      
+      // Update active jobs in the same cycle
+      setActiveJobs(prevActiveJobs => {
+        const isJobActive = JOB_STATUSES.ACTIVE.includes(updatedJob.status);
+        const existingActiveIndex = prevActiveJobs.findIndex((job) => job.id === updatedJob.id);
+        const jobExistsInActive = existingActiveIndex !== -1;
+
+        if (isJobActive && !jobExistsInActive) {
+          return [...prevActiveJobs, updatedJob];
+        }
+
+        if (!isJobActive && jobExistsInActive) {
+          return prevActiveJobs.filter((job) => job.id !== updatedJob.id);
+        }
+
+        if (isJobActive && jobExistsInActive) {
+          if (areJobsEqual(prevActiveJobs[existingActiveIndex], updatedJob)) return prevActiveJobs;
+          const newActiveJobs = [...prevActiveJobs];
+          newActiveJobs[existingActiveIndex] = updatedJob;
+          return newActiveJobs;
+        }
+
+        return prevActiveJobs;
+      });
+      
+      return newJobs;
+    });
+  }, []);
+  
   // Listen for job status change events from the Rust backend
   useEffect(() => {
     let unlistenPromise: Promise<() => void> | null = null;
@@ -271,42 +315,8 @@ export function useOrchestratedBackgroundJobsState({
                 return;
               }
 
-              // Update the jobs state efficiently
-              setJobs(prev => {
-                const existingJobIndex = prev.findIndex(j => j.id === updatedJob.id);
-                if (existingJobIndex !== -1) {
-                  if (areJobsEqual(prev[existingJobIndex], updatedJob)) return prev;
-                  const newJobs = [...prev];
-                  newJobs[existingJobIndex] = updatedJob;
-                  return newJobs;
-                } else {
-                  return [...prev, updatedJob];
-                }
-              });
-
-              // Update active jobs state efficiently
-              setActiveJobs((prev) => {
-                const isJobActive = JOB_STATUSES.ACTIVE.includes(updatedJob.status);
-                const existingActiveIndex = prev.findIndex((job) => job.id === updatedJob.id);
-                const jobExistsInActive = existingActiveIndex !== -1;
-
-                if (isJobActive && !jobExistsInActive) {
-                  return [...prev, updatedJob];
-                }
-
-                if (!isJobActive && jobExistsInActive) {
-                  return prev.filter((job) => job.id !== updatedJob.id);
-                }
-
-                if (isJobActive && jobExistsInActive) {
-                  if (areJobsEqual(prev[existingActiveIndex], updatedJob)) return prev;
-                  const newActiveJobs = [...prev];
-                  newActiveJobs[existingActiveIndex] = updatedJob;
-                  return newActiveJobs;
-                }
-
-                return prev;
-              });
+              // Use optimized update function
+              updateJobInState(updatedJob);
             } catch (err) {
               console.error(
                 `[BackgroundJobs] Error fetching updated job ${jobId}:`,
@@ -333,7 +343,7 @@ export function useOrchestratedBackgroundJobsState({
         void unlistenPromise.then((cleanupFn) => cleanupFn());
       }
     };
-  }, []);
+  }, [updateJobInState]);
 
   // Initial job fetch on mount
   useEffect(() => {

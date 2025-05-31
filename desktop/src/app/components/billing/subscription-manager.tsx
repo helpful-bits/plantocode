@@ -8,7 +8,7 @@ import { useState, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-shell";
 
 import { useAuth } from "@/contexts/auth-context";
-import { getErrorMessage } from "@/utils/error-handling";
+import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -18,6 +18,7 @@ import {
   NoSubscriptionState,
 } from "./components/loading-and-error-states";
 import { PollingBillingManager } from "./polling-billing-manager";
+import { ComprehensiveBillingDashboard } from "./comprehensive-billing-dashboard";
 import type { SubscriptionDetails, CheckoutSessionResponse, BillingPortalResponse } from "@/types/tauri-commands";
 
 export default function SubscriptionManager() {
@@ -44,21 +45,13 @@ export default function SubscriptionManager() {
         const result = await invoke<SubscriptionDetails>("get_subscription_details_command");
         setSubscription(result);
       } catch (err) {
-        const errorMessage = getErrorMessage(err);
-        console.error("Subscription fetch error:", err);
+        const errorInfo = extractErrorInfo(err);
+        const userMessage = createUserFriendlyErrorMessage(errorInfo, "subscription");
         
-        // Provide specific error messages based on error type
-        let userMessage = "Failed to load subscription information";
-        
-        if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
-          userMessage = "Authentication required. Please log in again.";
-        } else if (errorMessage.includes("403") || errorMessage.includes("forbidden")) {
-          userMessage = "Access denied. Please check your subscription permissions.";
-        } else if (errorMessage.includes("network") || errorMessage.includes("offline")) {
-          userMessage = "Network error. Please check your internet connection.";
-        } else if (errorMessage.includes("timeout")) {
-          userMessage = "Request timed out. Please try again.";
-        }
+        await logError(err, "SubscriptionManager.fetchSubscription", {
+          userId: user?.sub,
+          refreshCounter
+        });
         
         setError(userMessage);
         showNotification({
@@ -79,8 +72,7 @@ export default function SubscriptionManager() {
     if (user) {
       void fetchSubscription();
     }
-  // SERVER_URL is a constant and doesn't need to be in the dependency array
-  }, [user, refreshCounter]);
+  }, [user, refreshCounter, showNotification]);
 
   /**
    * Handle subscription upgrade
@@ -89,32 +81,28 @@ export default function SubscriptionManager() {
     try {
       const result = await invoke<CheckoutSessionResponse>("create_checkout_session_command", { plan: "pro" });
 
-      // Open the URL in the default browser
-      if (result && result.url) {
-        await open(result.url);
-      } else {
-        throw new Error("Invalid response format");
+      // Validate response format
+      if (!result || !result.url) {
+        throw new Error("Invalid checkout session response - missing URL");
       }
 
-      // Show notification
+      // Open the URL in the default browser
+      await open(result.url);
+
+      // Show notification with more context
       showNotification({
         title: "Checkout Session Created",
-        message: "Opening the upgrade page in your browser...",
+        message: "Opening the upgrade page in your browser. Complete your purchase to activate your subscription.",
         type: "success",
       });
     } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      console.error("Checkout error:", err);
+      const errorInfo = extractErrorInfo(err);
+      const userMessage = createUserFriendlyErrorMessage(errorInfo, "checkout");
       
-      let userMessage = "Failed to start checkout process";
-      
-      if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
-        userMessage = "Authentication required. Please log in again.";
-      } else if (errorMessage.includes("payment") || errorMessage.includes("billing")) {
-        userMessage = "Payment service unavailable. Please try again later.";
-      } else if (errorMessage.includes("network")) {
-        userMessage = "Network error. Please check your connection and try again.";
-      }
+      await logError(err, "SubscriptionManager.handleUpgrade", {
+        userId: user?.sub,
+        plan: "pro"
+      });
       
       setError(userMessage);
       showNotification({
@@ -137,32 +125,28 @@ export default function SubscriptionManager() {
     try {
       const result = await invoke<BillingPortalResponse>("create_billing_portal_command");
 
-      // Open the URL in the default browser
-      if (result && result.url) {
-        await open(result.url);
-      } else {
-        throw new Error("Invalid response format");
+      // Validate response format
+      if (!result || !result.url) {
+        throw new Error("Invalid billing portal response - missing URL");
       }
 
-      // Show notification
+      // Open the URL in the default browser
+      await open(result.url);
+
+      // Show notification with more context
       showNotification({
         title: "Customer Portal",
-        message: "Opening the subscription management page in your browser...",
+        message: "Opening the subscription management page in your browser. You can update payment methods, change plans, and view billing history.",
         type: "success",
       });
     } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      console.error("Customer portal error:", err);
+      const errorInfo = extractErrorInfo(err);
+      const userMessage = createUserFriendlyErrorMessage(errorInfo, "billing portal");
       
-      let userMessage = "Failed to open customer portal";
-      
-      if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
-        userMessage = "Authentication required. Please log in again.";
-      } else if (errorMessage.includes("subscription") || errorMessage.includes("no active")) {
-        userMessage = "No active subscription found. Please upgrade first.";
-      } else if (errorMessage.includes("network")) {
-        userMessage = "Network error. Please check your connection and try again.";
-      }
+      await logError(err, "SubscriptionManager.handleManageSubscription", {
+        userId: user?.sub,
+        hasSubscription: !!subscription
+      });
       
       setError(userMessage);
       showNotification({
@@ -200,10 +184,13 @@ export default function SubscriptionManager() {
     }
 
     return (
-      <PollingBillingManager
-        subscription={subscription}
-        onRefresh={handleRetry}
-      />
+      <div className="space-y-8">
+        <PollingBillingManager
+          subscription={subscription}
+          onRefresh={handleRetry}
+        />
+        <ComprehensiveBillingDashboard />
+      </div>
     );
   };
 

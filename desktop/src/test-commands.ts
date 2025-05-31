@@ -15,10 +15,8 @@ async function testBackgroundJobCommands() {
     // Get all active jobs
     const jobsResult = await getActiveJobsAction();
     const jobs = jobsResult.data as BackgroundJob[] | undefined;
-    // Use _ prefix for unused variables to satisfy linter
-    const _jobCount = jobs?.length || 0;
     // eslint-disable-next-line no-console
-    console.log(`Found ${_jobCount} active jobs`);
+    console.log(`Found ${jobs?.length || 0} active jobs`);
 
     if (jobs && jobs.length > 0) {
       const firstJob = jobs[0];

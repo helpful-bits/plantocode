@@ -113,7 +113,7 @@ pub async fn generate_regex_patterns_command(
         TaskType::RegexPatternGeneration,
         "REGEX_PATTERN_GENERATION",
         &args.task_description,
-        (model, temperature, max_output_tokens),
+        Some((model, temperature, max_output_tokens)),
         serde_json::to_value(processor_payload).map_err(|e| 
             AppError::SerdeError(e.to_string()))?,
         2, // Priority

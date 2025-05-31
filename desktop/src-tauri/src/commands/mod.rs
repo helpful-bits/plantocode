@@ -7,7 +7,6 @@ pub mod app_commands;
 pub mod auth0_commands;
 pub mod billing_commands;
 pub mod config_commands;
-pub mod fetch_handler_command;
 pub mod job_commands;
 pub mod db_commands;
 pub mod settings_commands;
@@ -47,6 +46,7 @@ pub use file_system_commands::{
     normalize_path_command,
     get_temp_dir_command,
     path_is_absolute_command,
+    cancel_workflow_stage_command,
 };
 pub use app_commands::{
     get_app_info,
@@ -77,7 +77,17 @@ pub use path_finding_commands::{
 };
 
 // Re-exports from file finder workflow commands module  
-pub use file_finder_workflow_commands::execute_file_finder_workflow_command;
+pub use file_finder_workflow_commands::{
+    start_file_finder_workflow,
+    get_file_finder_workflow_status,
+    get_file_finder_workflow_results,
+    cancel_file_finder_workflow,
+    pause_file_finder_workflow,
+    resume_file_finder_workflow,
+    retry_workflow_stage_command,
+    get_all_workflows_command,
+    get_workflow_details_command,
+};
 
 // Re-exports from voice commands module
 pub use voice_commands::{
@@ -111,8 +121,6 @@ pub use config_commands::{
     get_server_url,
 };
 
-// Re-exports from fetch handler module
-pub use fetch_handler_command::handle_fetch_request;
 
 // Re-exports from job commands module
 pub use job_commands::{
@@ -140,6 +148,8 @@ pub use settings_commands::{
     set_project_task_model_settings_command,
     get_all_task_model_settings_for_project_command,
     validate_configuration_health,
+    set_onboarding_completed_command,
+    is_onboarding_completed_command,
 };
 
 // Re-exports from session commands module

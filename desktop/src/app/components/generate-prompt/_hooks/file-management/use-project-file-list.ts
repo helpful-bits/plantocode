@@ -85,6 +85,7 @@ export function useProjectFileList(
 
           // comparablePath is used for consistent lookups and comparisons.
           // It should be a consistently formatted version of fileInfo.path.
+          // Apply ensureProjectRelativePath to normalize the path format consistently
           const comparablePath = ensureProjectRelativePath(projectRelativePath);
 
           // Add to file map

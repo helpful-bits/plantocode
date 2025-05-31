@@ -11,14 +11,20 @@ import {
   Sparkles,
   Undo2,
   Redo2,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 
 import { useProject } from "@/contexts/project-context";
-import { FilterModeToggle } from "@/ui";
+import { useSessionStateContext } from "@/contexts/session";
+import { useRuntimeConfig } from "@/contexts/runtime-config-context";
+import { FilterModeToggle, AnimatedNumber } from "@/ui";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
+import { Alert, AlertDescription } from "@/ui/alert";
 import { cn } from "@/utils/utils";
+import { estimatePathFinderTokensAction } from "@/actions/ai/path-finder.actions";
 
 import FileListItem from "./_components/file-list-item";
 import FindModeToggle from "./_components/find-mode-toggle";
@@ -35,9 +41,11 @@ function FileBrowser({
   disabled = false,
 }: FileBrowserProps) {
   const { projectDirectory } = useProject();
+  const { currentSession } = useSessionStateContext();
+  const { config: runtimeConfig } = useRuntimeConfig();
   const fileManagement = useFileManagement();
   
-  // Destructure needed values from file management context
+  // Destructure needed values from file management context - correctly sourced from useFileManagement
   const {
     managedFilesMap,
     fileContentsMap,
@@ -65,11 +73,20 @@ function FileBrowser({
     currentStageMessage,
   } = fileManagement;
   
-  // Dynamic loading message based on current workflow stage
+  // Dynamic loading message accurately reflects the state of the orchestrated file finder workflow
   const loadingMessage = currentStageMessage || "Finding relevant files...";
 
-  // State for copied path feedback
+  // State for copied path feedback - stable reference to avoid FileListItem re-renders
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const copiedPathRef = useRef<string | null>(null);
+  
+  // Token estimation state
+  const [estimatedTokens, setEstimatedTokens] = useState<number | null>(null);
+  const [previousEstimatedTokens, setPreviousEstimatedTokens] = useState<number | null>(null);
+  const [isEstimatingTokens, setIsEstimatingTokens] = useState(false);
+  
+  // Use stable reference for copiedPath to prevent unnecessary FileListItem re-renders
+  const stableCopiedPath = useMemo(() => copiedPath, [copiedPath]);
 
   // Use the useFileFiltering hook
   const {
@@ -96,20 +113,34 @@ function FileBrowser({
     }
   }, [refreshFiles]);
 
-  // Sort files for display - group by directories first then alphabetically
+  // Sort files for display - optimized sorting with caching
   const displayedFiles = useMemo(() => {
-    // Always return a sorted array, even if empty
-    return [...filteredFiles].sort((a, b) => {
-      // Get directory parts
-      const aDirParts = a.path.split("/"); // Split path into parts
-      const bDirParts = b.path.split("/");
-
+    // Early return for empty arrays
+    if (filteredFiles.length === 0) return filteredFiles;
+    
+    // For very large lists (>1000 files), use simple sort for performance
+    if (filteredFiles.length > 1000) {
+      return [...filteredFiles].sort((a, b) => a.path.localeCompare(b.path));
+    }
+    
+    // Cache directory parts to avoid repeated string splitting
+    const getFileWithCachedParts = (file: any) => {
+      if (!file._cachedParts) {
+        file._cachedParts = file.path.split("/");
+      }
+      return file;
+    };
+    
+    return [...filteredFiles].map(getFileWithCachedParts).sort((a, b) => {
+      const aParts = a._cachedParts;
+      const bParts = b._cachedParts;
+      
       // Compare directory by directory
-      const minParts = Math.min(aDirParts.length, bDirParts.length);
+      const minParts = Math.min(aParts.length, bParts.length);
 
       for (let i = 0; i < minParts - 1; i++) {
-        if (aDirParts[i] !== bDirParts[i]) {
-          return aDirParts[i].localeCompare(bDirParts[i]);
+        if (aParts[i] !== bParts[i]) {
+          return aParts[i].localeCompare(bParts[i]);
         }
       }
 
@@ -132,19 +163,71 @@ function FileBrowser({
     () => (!managedFilesMap ? 0 : Object.keys(managedFilesMap).length),
     [managedFilesMap]
   );
+  
+  // Get included files for token estimation
+  const includedFiles = useMemo(() => {
+    if (!managedFilesMap) return [];
+    return Object.values(managedFilesMap)
+      .filter(f => f.included && !f.forceExcluded)
+      .map(f => f.path);
+  }, [managedFilesMap]);
+  
+  // Token estimation effect
+  useEffect(() => {
+    if (!taskDescription.trim() || !currentSession?.id || !projectDirectory || includedFiles.length === 0) {
+      setEstimatedTokens(null);
+      return;
+    }
+
+    const estimateTokens = async () => {
+      setIsEstimatingTokens(true);
+      try {
+        const result = await estimatePathFinderTokensAction({
+          sessionId: currentSession.id,
+          taskDescription,
+          projectDirectory,
+          options: {
+            includedFiles,
+          },
+        });
+
+        if (result.isSuccess && result.data) {
+          setPreviousEstimatedTokens(estimatedTokens);
+          setEstimatedTokens(result.data.totalTokens);
+        } else {
+          setPreviousEstimatedTokens(estimatedTokens);
+          setEstimatedTokens(null);
+        }
+      } catch (error) {
+        console.error("Failed to estimate tokens:", error);
+        setEstimatedTokens(null);
+      } finally {
+        setIsEstimatingTokens(false);
+      }
+    };
+
+    // Debounce token estimation
+    const timeoutId = setTimeout(estimateTokens, 500);
+    return () => clearTimeout(timeoutId);
+  }, [taskDescription, currentSession?.id, projectDirectory, includedFiles]);
 
   const handleAddPath = useCallback(
     async (path: string, e: React.MouseEvent<HTMLButtonElement>) => {
       e.stopPropagation(); // Prevent triggering parent click handlers
 
-      // Set visual feedback to indicate path was copied
+      // Update both state and ref for consistency
       setCopiedPath(path);
+      copiedPathRef.current = path;
+      
       // Reset the copied state after 2 seconds
       setTimeout(() => {
         // Only reset if the current copied path is still the one we set
         setCopiedPath((currentPath) =>
           currentPath === path ? null : currentPath
         );
+        if (copiedPathRef.current === path) {
+          copiedPathRef.current = null;
+        }
       }, 2000);
 
       // Copy path to clipboard instead
@@ -155,7 +238,7 @@ function FileBrowser({
         // Failed to copy path (no console error)
       }
     },
-    [setCopiedPath]
+    [] // Remove setCopiedPath dependency to make this more stable
   );
 
   return (
@@ -175,7 +258,15 @@ function FileBrowser({
           disabled={
             disabled ||
             isFindingFiles ||
-            !taskDescription.trim()
+            !taskDescription.trim() ||
+            (() => {
+              // Disable if tokens would exceed context window
+              if (!estimatedTokens || !runtimeConfig) return false;
+              const pathFinderModel = runtimeConfig.tasks?.pathFinder?.model || runtimeConfig.defaultLlmModelId;
+              const modelInfo = runtimeConfig.availableModels?.find(m => m.id === pathFinderModel);
+              const contextWindow = modelInfo?.contextWindow;
+              return contextWindow ? estimatedTokens > contextWindow : false;
+            })()
           }
           isLoading={isFindingFiles}
           loadingText={loadingMessage}
@@ -209,6 +300,78 @@ function FileBrowser({
           </Button>
         </div>
       </div>
+
+      {/* Token estimation display with warnings */}
+      {(estimatedTokens !== null || isEstimatingTokens) && includedFiles.length > 0 && (
+        <div className="mb-3">
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground">
+              Estimated tokens: <AnimatedNumber 
+                value={estimatedTokens} 
+                previousValue={previousEstimatedTokens}
+                className="text-foreground font-medium"
+              />
+            </div>
+              {estimatedTokens && runtimeConfig && (() => {
+                // Get the model config for path finder task
+                const pathFinderModel = runtimeConfig.tasks?.pathFinder?.model || runtimeConfig.defaultLlmModelId;
+                const modelInfo = runtimeConfig.availableModels?.find(m => m.id === pathFinderModel);
+                const contextWindow = modelInfo?.contextWindow;
+                
+                if (!contextWindow) return null;
+                
+                const tokenPercentage = (estimatedTokens / contextWindow) * 100;
+                
+                if (tokenPercentage > 100) {
+                  return (
+                    <Alert className="border-red-200 bg-red-50 text-red-800">
+                      <XCircle className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
+                        <strong>Prompt too large:</strong> {estimatedTokens.toLocaleString()} tokens exceeds the {contextWindow.toLocaleString()}-token limit for {modelInfo.name}. Please reduce the number of selected files.
+                      </AlertDescription>
+                    </Alert>
+                  );
+                } else if (tokenPercentage > 90) {
+                  return (
+                    <Alert className="border-amber-200 bg-amber-50 text-amber-800">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
+                        <strong>Large prompt:</strong> Using {Math.round(tokenPercentage)}% of {modelInfo.name}'s context window. File finding might be slow or fail. Consider reducing selected files.
+                      </AlertDescription>
+                    </Alert>
+                  );
+                }
+                
+                return null;
+              })()}
+          </div>
+        </div>
+      )}
+
+      {/* Show workflow progress when running - accurately reflects orchestrated workflow state */}
+      {isFindingFiles && currentStageMessage && (
+        <div className="text-xs text-info mt-1 mb-2 border border-info/20 bg-info/10 backdrop-blur-sm p-3 rounded-lg flex items-start gap-2">
+          <Loader2 className="h-4 w-4 mt-0.5 flex-shrink-0 animate-spin" />
+          <div>
+            <p className="font-medium">File Finder Workflow</p>
+            <p className="mt-1">{currentStageMessage}</p>
+            {currentWorkflowStage && (
+              <p className="text-xs text-muted-foreground mt-1">Stage: {currentWorkflowStage}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Show workflow error message if file finder workflow fails */}
+      {workflowError && (
+        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/20 bg-destructive/10 backdrop-blur-sm p-3 rounded-lg flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">File Finder Error</p>
+            <p className="mt-1">{workflowError}</p>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center gap-4">
@@ -262,37 +425,11 @@ function FileBrowser({
         </div>
       </div>
 
-      {/* Show workflow progress when running */}
-      {isFindingFiles && currentStageMessage && (
-        <div className="text-xs text-info mt-1 mb-2 border border-info/20 bg-info/10 backdrop-blur-sm p-3 rounded-lg flex items-start gap-2">
-          <Loader2 className="h-4 w-4 mt-0.5 flex-shrink-0 animate-spin" />
-          <div>
-            <p className="font-medium">File Finder Workflow</p>
-            <p className="mt-1">{currentStageMessage}</p>
-            {currentWorkflowStage && (
-              <p className="text-xs text-muted-foreground mt-1">Stage: {currentWorkflowStage}</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Show workflow error message if file finder workflow fails */}
-      {workflowError && (
-        <div className="text-xs text-destructive mt-1 mb-2 border border-destructive/20 bg-destructive/10 backdrop-blur-sm p-3 rounded-lg flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-medium">File Finder Error</p>
-            <p className="mt-1">{workflowError}</p>
-          </div>
-        </div>
-      )}
-
-
       {/* Status bar with file counts */}
       {!isLoading && totalFilesCount > 0 && (
         <div className="space-y-1">
           <div
-            className={`flex items-center justify-between text-sm ${includedCount === 0 ? "text-destructive" : "text-muted-foreground"} border-b pb-3`}
+            className={`flex items-center justify-between text-sm ${includedCount === 0 ? "text-destructive" : "text-muted-foreground"} border-b border-border/60 pb-3`}
           >
             <div className="flex items-center gap-2">
               {includedCount === 0 && (
@@ -557,7 +694,7 @@ function FileBrowser({
                   onToggleSelection={onToggleSelection}
                   onToggleExclusion={onToggleExclusion}
                   onAddPath={handleAddPath}
-                  copiedPath={copiedPath}
+                  copiedPath={stableCopiedPath}
                   disabled={disabled}
                 />
               ))}

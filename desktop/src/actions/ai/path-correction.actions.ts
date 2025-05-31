@@ -56,11 +56,11 @@ export async function createPathCorrectionJobAction(params: {
         sessionId,
         projectDirectory,
         pathsToCorrect: pathsToCorrect,
-        contextDescription,
-        directoryTree,
-        modelOverride,
-        temperatureOverride,
-        maxTokensOverride,
+        contextDescription: contextDescription ?? null,
+        directoryTree: directoryTree ?? null,
+        modelOverride: modelOverride ?? null,
+        temperatureOverride: temperatureOverride ?? null,
+        maxTokensOverride: maxTokensOverride ?? null,
       }
     );
 

@@ -61,10 +61,12 @@ fn main() {
     dotenv().ok();
     
     // Initialize logger with environment variables
-    // RUST_LOG=debug,vibe_manager=trace
+    // Set RUST_LOG=info,vibe_manager=debug for enhanced logging during development
+    // Set RUST_LOG=warn for production to reduce noise
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp(Some(env_logger::fmt::TimestampPrecision::Millis))
         .format_module_path(true)
+        .format_target(false) // Hide target module path to reduce log verbosity
         .init();
     
     info!("Starting Vibe Manager Desktop application");
@@ -144,6 +146,9 @@ fn main() {
             commands::billing_commands::get_invoice_history_command,
             commands::billing_commands::get_spending_history_command,
             commands::billing_commands::check_service_access_command,
+            commands::billing_commands::get_spending_analytics_command,
+            commands::billing_commands::get_spending_forecast_command,
+            commands::billing_commands::get_payment_methods_command,
             
             // Config commands
             commands::config_commands::get_available_ai_models,
@@ -151,8 +156,6 @@ fn main() {
             commands::config_commands::fetch_runtime_ai_config,
             commands::config_commands::get_server_url,
             
-            // Fetch handler
-            commands::fetch_handler_command::handle_fetch_request,
             
             // Job commands
             commands::job_commands::clear_job_history_command,
@@ -180,6 +183,7 @@ fn main() {
             commands::file_system_commands::normalize_path_command,
             commands::file_system_commands::get_temp_dir_command,
             commands::file_system_commands::path_is_absolute_command,
+            commands::file_system_commands::cancel_workflow_stage_command,
             
             // Text commands
             commands::text_commands::improve_text_command,
@@ -196,9 +200,18 @@ fn main() {
             commands::path_finding_commands::find_relevant_files_command,
             commands::path_finding_commands::generate_directory_tree_command,
             commands::path_finding_commands::create_path_correction_job_command,
+            commands::path_finding_commands::estimate_path_finder_tokens_command,
             
-            // File finder workflow commands
-            commands::file_finder_workflow_commands::execute_file_finder_workflow_command,
+            // File finder workflow commands (new stage-based approach)
+            commands::file_finder_workflow_commands::start_file_finder_workflow,
+            commands::file_finder_workflow_commands::get_file_finder_workflow_status,
+            commands::file_finder_workflow_commands::cancel_file_finder_workflow,
+            commands::file_finder_workflow_commands::pause_file_finder_workflow,
+            commands::file_finder_workflow_commands::resume_file_finder_workflow,
+            commands::file_finder_workflow_commands::get_file_finder_workflow_results,
+            commands::file_finder_workflow_commands::get_all_workflows_command,
+            commands::file_finder_workflow_commands::get_workflow_details_command,
+            commands::file_finder_workflow_commands::retry_workflow_stage_command,
             
             // Voice commands
             commands::voice_commands::create_transcription_job_command,
@@ -226,6 +239,12 @@ fn main() {
             commands::settings_commands::set_project_task_model_settings_command,
             commands::settings_commands::get_all_task_model_settings_for_project_command,
             commands::settings_commands::validate_configuration_health,
+            commands::settings_commands::set_onboarding_completed_command,
+            commands::settings_commands::is_onboarding_completed_command,
+            commands::settings_commands::get_workflow_setting_command,
+            commands::settings_commands::set_workflow_setting_command,
+            commands::settings_commands::delete_workflow_setting_command,
+            commands::settings_commands::get_all_workflow_settings_command,
             
             // System prompt commands
             commands::system_prompt_commands::get_system_prompt_command,

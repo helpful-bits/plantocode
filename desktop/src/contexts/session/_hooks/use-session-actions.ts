@@ -219,8 +219,19 @@ export function useSessionActions({
           await saveCurrentSession();
         }
 
+        // Check if current session is a draft and use its state as base
+        let baseStateForNewSession = initialState;
+        if (currentSessionRef.current?.id === DRAFT_SESSION_ID) {
+          baseStateForNewSession = { 
+            ...currentSessionRef.current, 
+            projectDirectory 
+          };
+          // Remove the draft ID to let createSessionAction generate a new one
+          delete (baseStateForNewSession as any).id;
+        }
+
         const sessionData: Partial<Session> = {
-          ...initialState,
+          ...baseStateForNewSession,
           name,
           projectDirectory,
         };

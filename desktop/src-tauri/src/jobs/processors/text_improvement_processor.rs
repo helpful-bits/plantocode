@@ -1,14 +1,12 @@
 use async_trait::async_trait;
-use log::{info, error, debug};
-use tauri::{AppHandle, Manager};
+use log::{info, error};
+use tauri::AppHandle;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::api_clients::client_trait::ApiClientOptions;
-use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
-use crate::models::{JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
-use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder};
+use crate::models::TaskType;
+use crate::jobs::job_processor_utils;
 
 
 pub struct TextImprovementProcessor;
@@ -45,25 +43,20 @@ impl JobProcessor for TextImprovementProcessor {
             }
         };
         
-        // Get the repositories from app state - USING HELPER
-        let (repo, settings_repo) = crate::jobs::job_processor_utils::setup_repositories(&app_handle)?;
+        // Setup repositories and update job status to running
+        let (repo, settings_repo) = job_processor_utils::setup_repositories(&app_handle)?;
+        job_processor_utils::update_status_running(&repo, &job_id, "Processing text improvement").await?;
         
-        // Update job status to running - USING HELPER
-        crate::jobs::job_processor_utils::update_status_running(&repo, &job_id, "Processing text improvement").await?;
-        
-        // Create unified prompt context for prompt generation
-        let context = UnifiedPromptContextBuilder::new(
-            job.session_id.clone(),
-            TaskType::TextImprovement,
+        // Build unified prompt using standardized utility
+        let composed_prompt = job_processor_utils::build_unified_prompt(
+            &job,
+            &app_handle,
             payload.text_to_improve.clone(),
-        )
-        .build();
-
-        // Use the unified prompt processor to generate sophisticated prompts
-        let prompt_processor = UnifiedPromptProcessor::new();
-        let composed_prompt = prompt_processor
-            .compose_prompt(&context, &settings_repo)
-            .await?;
+            None, // codebase_structure
+            None, // file_contents
+            None, // directory_tree
+            &settings_repo,
+        ).await?;
 
         info!("Enhanced Text Improvement prompt composition for job {}", job_id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
@@ -72,66 +65,28 @@ impl JobProcessor for TextImprovementProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        // Extract system and user parts from the composed prompt - USING HELPER
+        // Extract system and user parts from the composed prompt
         let (system_prompt_text, user_prompt_text, system_prompt_id) = 
-            crate::jobs::job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+            job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
         info!("Text Improvement prompts for job {}", job_id);
         info!("System prompt: {}", system_prompt_text);
         info!("User prompt: {}", user_prompt_text);
         
-        // Get the LLM client using the standardized factory function - USING HELPER
-        let client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
+        // Create the message objects for the OpenRouter request
+        let messages = job_processor_utils::create_openrouter_messages(&system_prompt_text, &user_prompt_text);
         
-        // Create the message objects for the OpenRouter request - USING HELPER
-        let messages = crate::jobs::job_processor_utils::create_openrouter_messages(&system_prompt_text, &user_prompt_text);
-        
-        // Combine messages for token estimation
-        let combined_prompt = format!("{}\n{}", system_prompt_text, user_prompt_text);
-        
-        // Estimate the tokens in the prompt
-        let _prompt_tokens = crate::utils::token_estimator::estimate_tokens(&combined_prompt);
-        
-        // Fetch the database job to get model_used
-        let db_job = repo.get_job_by_id(&job_id).await?
-            .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job_id)))?;
-        
-        // Determine the model to use - prefer job's stored model, then project settings, then server defaults
+        // Create API options and execute LLM request
         let project_directory = payload.project_directory.as_deref().unwrap_or("");
-        let model_to_use = match db_job.model_used {
-            Some(model) if !model.is_empty() => model,
-            _ => crate::config::get_model_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await?,
-        };
+        let options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::TextImprovement,
+            project_directory,
+            false,
+            &app_handle,
+        ).await?;
         
-        // Get max tokens and temperature - prefer job's stored values, then project settings, then server defaults
-        let max_tokens = match db_job.max_output_tokens {
-            Some(tokens) if tokens > 0 => Some(tokens as u32),
-            _ => match crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await {
-                Ok(tokens) => Some(tokens),
-                Err(e) => return Err(AppError::ConfigError(format!("Failed to get max_tokens for TextImprovement task: {}. Please ensure server database is properly configured.", e))),
-            }
-        };
-        
-        let temperature = match db_job.temperature {
-            Some(temp) => Some(temp),
-            _ => match crate::config::get_temperature_for_task_with_project(crate::models::TaskType::TextImprovement, project_directory, &app_handle).await {
-                Ok(temp) => Some(temp),
-                Err(e) => return Err(AppError::ConfigError(format!("Failed to get temperature for TextImprovement task: {}. Please ensure server database is properly configured.", e))),
-            }
-        };
-        
-        // Create the options with values from config
-        let options = ApiClientOptions {
-            model: model_to_use.clone(),
-            max_tokens,
-            temperature,
-            stream: false,
-        };
-        
-        debug!("Using model: {} for Text Improvement", model_to_use);
-        
-        // Send the request with the messages
-        let response = client.chat_completion(messages, options).await?;
+        let response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &options).await?;
         
         // LOG: Full OpenRouter response for debugging
         info!("OpenRouter Text Improvement Response - Job ID: {}", job_id);
@@ -151,10 +106,11 @@ impl JobProcessor for TextImprovementProcessor {
         let improved_text = response_content.trim().to_string();
         info!("Processing plain text response (length: {})", improved_text.len());
         
-        // Get usage statistics
+        // Get usage statistics before moving the response
         let tokens_sent = response.usage.as_ref().map(|u| u.prompt_tokens as i32);
         let tokens_received = response.usage.as_ref().map(|u| u.completion_tokens as i32);
         let total_tokens = response.usage.as_ref().map(|u| u.total_tokens as i32);
+        let usage_clone = response.usage.clone();
         
         info!("Token usage - Sent: {:?}, Received: {:?}, Total: {:?}", tokens_sent, tokens_received, total_tokens);
         
@@ -167,23 +123,22 @@ impl JobProcessor for TextImprovementProcessor {
             
         info!("Final improved text (length: {}): {}", final_improved_text.len(), final_improved_text);
         
-        // Serialize simple metadata
+        // Create standardized metadata
         let metadata = serde_json::json!({
-            "modelUsed": model_to_use,
-            "tokensUsed": total_tokens,
+            "job_type": "TEXT_IMPROVEMENT",
+            "workflow_stage": "TextImprovement",
+            "target_field": payload.target_field
         });
         
-        // Update the job with the response and metadata
-        repo.update_job_response_with_system_prompt(
-            &job_id, 
+        // Finalize job success
+        job_processor_utils::finalize_job_success(
+            &job_id,
+            &repo,
             &final_improved_text,
-            Some(JobStatus::Completed),
-            Some(&metadata.to_string()),
-            tokens_sent,
-            tokens_received,
-            total_tokens,
-            Some(final_improved_text.len() as i32),
-            Some(&system_prompt_id),
+            usage_clone,
+            &options.model,
+            &system_prompt_id,
+            Some(metadata),
         ).await?;
         
         info!("Completed Text Improvement job {}", job_id);

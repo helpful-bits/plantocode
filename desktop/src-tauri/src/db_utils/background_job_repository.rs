@@ -1091,4 +1091,35 @@ impl BackgroundJobRepository {
             
         Ok(result.rows_affected() as usize)
     }
+    
+    /// Get jobs by a specific metadata field value (for workflow management)
+    pub async fn get_jobs_by_metadata_field(&self, field_name: &str, field_value: &str) -> AppResult<Vec<BackgroundJob>> {
+        let query = format!(
+            r#"
+            SELECT id, session_id, task_type, task_type_string, status, request_payload, 
+                   response, tokens_sent, tokens_received, total_tokens, chars_received,
+                   created_at, updated_at, start_time, end_time, priority,
+                   error_message, metadata, system_prompt_id
+            FROM background_jobs
+            WHERE json_extract(metadata, '$.{}') = $1
+            ORDER BY created_at ASC
+            "#,
+            field_name
+        );
+        
+        let rows = sqlx::query(&query)
+            .bind(field_value)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs by metadata field: {}", e)))?;
+            
+        let mut jobs = Vec::new();
+        
+        for row in rows {
+            let job = self.row_to_job(&row)?;
+            jobs.push(job);
+        }
+        
+        Ok(jobs)
+    }
 }

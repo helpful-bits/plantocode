@@ -4,11 +4,12 @@ import { handleActionError } from "@/utils/action-utils";
 import * as tauriFs from "../../utils/tauri-fs";
 
 /**
- * Validates a directory path to ensure it exists, is accessible, and optionally check if it's a git repository
+ * Validates a directory path to ensure it exists, is accessible, and optionally check if it's a git repository.
+ * This is the single source of truth for directory validation across the application.
  */
 export async function validateDirectoryAction(
   directoryPath: string,
-  validateGitRepo: boolean = true
+  validateGitRepo: boolean = false
 ): Promise<ActionState<string | null>> {
   if (!directoryPath?.trim()) {
     return {

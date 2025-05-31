@@ -28,9 +28,20 @@ export interface FileFinderWorkflowResult {
   intermediateData: WorkflowIntermediateData;
   errorMessage?: string;
 }
-export async function executeFileFinderWorkflowAction(
+
+export interface WorkflowCommandResponse {
+  workflowId: string;
+  firstStageJobId: string;
+  status: string;
+}
+
+/**
+ * Start a new file finder workflow using the WorkflowOrchestrator
+ * Returns the workflow ID for tracking the overall workflow progress
+ */
+export async function startFileFinderWorkflowAction(
   args: FileFinderWorkflowArgs
-): Promise<ActionState<FileFinderWorkflowResult>> {
+): Promise<ActionState<{ workflowId: string }>> {
   try {
     // Validate required inputs
     if (!args.sessionId || typeof args.sessionId !== "string" || !args.sessionId.trim()) {
@@ -54,28 +65,26 @@ export async function executeFileFinderWorkflowAction(
       };
     }
 
-    // Invoke the Rust command to execute the entire workflow
-    const result = await invoke<FileFinderWorkflowResult>(
-      "execute_file_finder_workflow_command",
+    // Invoke the new workflow orchestrator command
+    const result = await invoke<WorkflowCommandResponse>(
+      "start_file_finder_workflow",
       {
-        args: {
-          sessionId: args.sessionId,
-          taskDescription: args.taskDescription,
-          projectDirectory: args.projectDirectory,
-          excludedPaths: args.excludedPaths || [],
-          timeoutMs: args.timeoutMs,
-        }
+        session_id: args.sessionId,
+        task_description: args.taskDescription,
+        project_directory: args.projectDirectory,
+        excluded_paths: args.excludedPaths || [],
+        timeout_ms: args.timeoutMs,
       }
     );
 
     return {
       isSuccess: true,
-      message: result.success 
-        ? `File finder workflow completed successfully with ${result.selectedFiles.length} files`
-        : result.errorMessage || "Workflow completed with errors",
-      data: result,
+      message: `File finder workflow started successfully: ${result.workflowId}`,
+      data: { workflowId: result.workflowId },
     };
   } catch (error) {
-    return handleActionError(error) as ActionState<FileFinderWorkflowResult>;
+    return handleActionError(error) as ActionState<{ workflowId: string }>;
   }
 }
+
+

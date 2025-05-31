@@ -2,8 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
 import { WHISPER_MAX_FILE_SIZE_MB } from "@/utils/constants";
-import { getErrorMessage, createTranscriptionErrorMessage, logError } from "@/utils/error-handling";
-import { handleActionError } from "@/utils/action-utils";
+import { extractErrorInfo, createUserFriendlyErrorMessage, getErrorMessage, logError } from "@/utils/error-handling";
 
 // For debug logging
 const DEBUG_LOGS = import.meta.env.DEV || import.meta.env.VITE_DEBUG === "true";
@@ -46,7 +45,7 @@ export async function transcribeAudioBlob(
     const response = await invoke<{ text: string }>(
       "transcribe_audio_direct_command",
       {
-        audioData: Array.from(uint8Array),
+        audio_data: Array.from(uint8Array),
         filename: filename,
         model: "", // Empty string will use the default model
       }
@@ -54,24 +53,8 @@ export async function transcribeAudioBlob(
 
     return response;
   } catch (error) {
-    let errorMessage = "Tauri audio transcription (blob) failed";
-    if (error instanceof Error) {
-      errorMessage = error.message;
-    } else if (typeof error === 'string') {
-      // Attempt to parse if it's a JSON string from Tauri panic or AppError
-      try {
-        const parsedError = JSON.parse(error);
-        if (parsedError && parsedError.message) {
-          errorMessage = `Transcription error: ${parsedError.message}`;
-        } else {
-          errorMessage = `Transcription error: ${error}`;
-        }
-      } catch (e) {
-        errorMessage = `Transcription error: ${error}`;
-      }
-    }
-    await logError(error, "Voice Transcription - Direct Blob Transcription", { audioSize: audioBlob?.size });
-    throw new Error(createTranscriptionErrorMessage(errorMessage));
+    await logError(error, "transcribeAudioBlob", { audioSize: audioBlob?.size });
+    throw new Error(getErrorMessage(error, 'transcription'));
   }
 }
 
@@ -133,10 +116,10 @@ export async function createTranscriptionJobFromBlobAction(
     const result = await invoke<{ jobId: string }>(
       "create_transcription_job_command",
       {
-        sessionId,
-        audioData: base64Audio,
+        session_id: sessionId,
+        audio_data: base64Audio,
         filename,
-        projectDirectory: projectDirectory || undefined,
+        project_directory: projectDirectory ?? null,
       }
     );
 
@@ -150,16 +133,19 @@ export async function createTranscriptionJobFromBlobAction(
       },
     };
   } catch (error) {
-    await logError(error, "Voice Transcription Job - Creation Failed", { 
+    await logError(error, "createTranscriptionJobFromBlobAction", { 
       sessionId, 
       audioSize: audioBlob?.size,
       projectDirectory 
     });
     
-    const errorState = handleActionError(error);
+    const errorInfo = extractErrorInfo(error);
+    const userMessage = createUserFriendlyErrorMessage(errorInfo, "voice transcription");
+    
     return {
-      ...errorState,
-      error: error instanceof Error ? error : new Error(getErrorMessage(error))
+      isSuccess: false,
+      message: userMessage,
+      error: error instanceof Error ? error : new Error(getErrorMessage(error, 'transcription'))
     } as ActionState<{ jobId: string }>;
   }
 }

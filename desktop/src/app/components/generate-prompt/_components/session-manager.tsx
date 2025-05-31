@@ -4,7 +4,6 @@ import { RefreshCw } from "lucide-react";
 import { memo } from "react";
 
 import { useSessionStateContext } from "@/contexts/session";
-import { type Session } from "@/types/session-types";
 import {
   AlertDialogCancel,
   AlertDialogContent,
@@ -23,15 +22,11 @@ import SessionList from "./session-manager/SessionList";
 
 export interface SessionManagerProps {
   projectDirectory: string;
-  getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
-  onSessionNameChange: (name: string) => void;
   disabled?: boolean;
 }
 
 const SessionManager = ({
   projectDirectory,
-  getCurrentSessionState,
-  onSessionNameChange,
   disabled = false,
 }: SessionManagerProps) => {
   // Get contexts
@@ -59,8 +54,6 @@ const SessionManager = ({
     setEditSessionNameInput,
   } = useSessionManagerOrchestrator({
     projectDirectory,
-    getCurrentSessionState,
-    onSessionNameChangeUISync: onSessionNameChange,
   });
 
   // Function to render the delete confirmation dialog
@@ -110,8 +103,8 @@ const SessionManager = ({
       />
 
       {/* Sessions List */}
-      <div className="border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
-        <div className="p-3 bg-muted/80 backdrop-blur-sm border-b flex justify-between items-center rounded-t-xl">
+      <div className="border border-border rounded-xl shadow-soft bg-card/95 backdrop-blur-sm">
+        <div className="p-3 bg-muted/80 backdrop-blur-sm border-b border-border flex justify-between items-center rounded-t-xl">
           <h3 className="text-lg font-semibold text-foreground">Sessions</h3>
         </div>
 

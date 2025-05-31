@@ -44,12 +44,12 @@ export async function enhanceTaskDescriptionAction({
       {
         sessionId,
         taskDescription,
-        projectContext,
-        projectDirectory,
-        targetField,
-        modelOverride,
-        temperatureOverride,
-        maxTokensOverride,
+        projectContext: projectContext ?? null,
+        projectDirectory: projectDirectory ?? null,
+        targetField: targetField ?? null,
+        modelOverride: modelOverride ?? null,
+        temperatureOverride: temperatureOverride ?? null,
+        maxTokensOverride: maxTokensOverride ?? null,
       }
     );
 

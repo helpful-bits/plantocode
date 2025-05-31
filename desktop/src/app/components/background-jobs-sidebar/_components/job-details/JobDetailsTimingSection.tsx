@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/
 import { Progress } from "@/ui/progress";
 import { formatTimestamp } from "@/utils/date-utils";
 
-import { getStreamingProgressValue } from "../../utils";
+import { getStreamingProgressValue, getParsedMetadata } from "../../utils";
 
 interface JobDetailsTimingSectionProps {
   job: BackgroundJob;
@@ -14,6 +14,7 @@ export function JobDetailsTimingSection({
   job,
   jobDuration,
 }: JobDetailsTimingSectionProps) {
+  const parsedMetadata = getParsedMetadata(job.metadata);
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -49,24 +50,25 @@ export function JobDetailsTimingSection({
                   value={
                     // Calculate progress with unified handling for implementation plans
                     job.taskType === "implementation_plan" &&
-                    job.metadata?.isStreaming === true
+                    parsedMetadata?.isStreaming === true
                       ? getStreamingProgressValue(
                           job.metadata,
                           job.startTime,
                           job.maxOutputTokens
                         )
                       : // For other streaming jobs
-                        job.metadata?.isStreaming
-                        ? job.metadata.responseLength &&
-                          job.metadata.estimatedTotalLength
+                        parsedMetadata?.isStreaming
+                        ? typeof parsedMetadata.responseLength === "number" &&
+                          typeof parsedMetadata.estimatedTotalLength === "number"
                           ? Math.min(
-                              (job.metadata.responseLength /
-                                job.metadata.estimatedTotalLength) *
+                              (parsedMetadata.responseLength /
+                                parsedMetadata.estimatedTotalLength) *
                                 100,
                               98
                             )
-                          : job.metadata.streamProgress ||
-                            Math.min(
+                          : typeof parsedMetadata.streamProgress === "number"
+                          ? parsedMetadata.streamProgress
+                          : Math.min(
                               Math.floor((Date.now() - job.startTime) / 200),
                               95
                             )
@@ -78,9 +80,9 @@ export function JobDetailsTimingSection({
                   className="h-1 w-full animate-pulse"
                 />
                 <div className="text-xs text-muted-foreground mt-1">Running...</div>
-                {typeof job.metadata?.streamProgress === "number" && (
+                {typeof parsedMetadata?.streamProgress === "number" && (
                   <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
-                    {Math.floor(job.metadata.streamProgress)}%
+                    {Math.floor(parsedMetadata.streamProgress)}%
                   </div>
                 )}
               </div>

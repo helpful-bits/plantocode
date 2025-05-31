@@ -1,17 +1,14 @@
 use async_trait::async_trait;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use log::{debug, info, warn, error};
 use serde_json;
 use regex::Regex;
 
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, PathCorrectionPayload};
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent, JobStatus};
-use crate::utils::{PromptComposer, CompositionContextBuilder};
-use crate::db_utils::SettingsRepository;
+use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::models::TaskType;
 use crate::error::{AppError, AppResult};
-use crate::api_clients::client_trait::ApiClientOptions;
+use crate::jobs::job_processor_utils;
 
 /// Processor for path correction jobs
 pub struct PathCorrectionProcessor;
@@ -98,19 +95,10 @@ impl JobProcessor for PathCorrectionProcessor {
             }
         };
         
-        // Get repository and LLM client
-        let repo = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>().inner().clone();
-        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
+        // Setup job processing
+        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        
-        // Get the full job details
-        let db_job = repo.get_job_by_id(&job.id).await?
-            .ok_or_else(|| AppError::NotFoundError(format!("Job not found: {}", job.id)))?;
-            
-        // Update job status to running
-        repo.update_job_status(&job.id, &JobStatus::Running.to_string(), None).await?;
-        
-        info!("Processing path correction job: {}", job.id);
+        job_processor_utils::log_job_start(&job.id, "path correction");
         debug!("Paths to correct: {}", payload.paths_to_correct);
         
         // Parse paths from string to array
@@ -123,94 +111,47 @@ impl JobProcessor for PathCorrectionProcessor {
         let project_directory = job.project_directory.as_ref()
             .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
         
-        // Get settings repository for PromptComposer
-        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
-        
-        // Create composition context with paths as task description
+        // Handle system prompt override or use unified prompt
         let task_description = paths.join("\n");
-        let composition_context = CompositionContextBuilder::new(
-            job.session_id.clone(),
-            crate::models::TaskType::PathCorrection,
-            task_description.clone(),
-        )
-        .project_directory(Some(project_directory.clone()))
-        .codebase_structure(payload.directory_tree.clone())
-        .build();
-
-        // Use PromptComposer to generate the complete prompt
-        let prompt_composer = PromptComposer::new();
         let composed_prompt = if let Some(override_prompt) = &payload.system_prompt_override {
-            // Handle override case - create a simple composed prompt
-            crate::utils::prompt_composition::ComposedPrompt {
+            crate::utils::unified_prompt_system::ComposedPrompt {
                 final_prompt: format!("{}\n\n{}", override_prompt, task_description),
                 system_prompt_id: "override".to_string(),
                 context_sections: vec![],
                 estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(override_prompt) as usize),
             }
         } else {
-            prompt_composer
-                .compose_prompt(&composition_context, &settings_repo)
-                .await?
+            // Use build_unified_prompt helper
+            job_processor_utils::build_unified_prompt(
+                &job,
+                &app_handle,
+                task_description,
+                payload.directory_tree.clone(),
+                None,
+                payload.directory_tree.clone(),
+                &settings_repo,
+            ).await?
         };
 
         // Extract system and user prompts from the composed result
-        let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
-        let system_prompt = parts.get(0).unwrap_or(&"").to_string();
-        let user_prompt = parts.get(1).unwrap_or(&"").to_string();
-        let system_prompt_id = composed_prompt.system_prompt_id;
+        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
         // Build messages array
-        let messages = vec![
-            OpenRouterRequestMessage {
-                role: "system".to_string(),
-                content: vec![OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: system_prompt,
-                }],
-            },
-            OpenRouterRequestMessage {
-                role: "user".to_string(),
-                content: vec![OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: user_prompt,
-                }],
-            },
-        ];
+        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
-        // Set API options with model from payload or project/server config
-        let project_dir = job.project_directory.as_deref().unwrap_or("");
-        let model_to_use = if let Some(model_override) = payload.model_override.clone() {
-            model_override
-        } else {
-            crate::config::get_model_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await?
-        };
-        
-        // Get max tokens and temperature from payload or project/server config
-        let max_tokens = if let Some(tokens) = payload.max_output_tokens {
-            tokens
-        } else {
-            crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await
-                .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for PathCorrection task: {}. Please ensure server database is properly configured.", e)))?
-        };
-        
-        let temperature = if let Some(temp) = payload.temperature {
-            temp
-        } else {
-            crate::config::get_temperature_for_task_with_project(crate::models::TaskType::PathCorrection, project_dir, &app_handle).await
-                .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for PathCorrection task: {}. Please ensure server database is properly configured.", e)))?
-        };
-        
-        let api_options = ApiClientOptions {
-            model: model_to_use,
-            max_tokens: Some(max_tokens),
-            temperature: Some(temperature),
-            stream: false,
-        };
+        // Create API options
+        let api_options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::PathCorrection,
+            project_directory,
+            false,
+            &app_handle,
+        ).await?;
         
         debug!("Sending path correction request with options: {:?}", api_options);
         
         // Call the LLM API
-        match llm_client.chat_completion(messages, api_options).await {
+        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
             Ok(llm_response) => {
                 debug!("Received path correction response");
                 
@@ -218,47 +159,47 @@ impl JobProcessor for PathCorrectionProcessor {
                 if let Some(choice) = llm_response.choices.first() {
                     let content = &choice.message.content;
                     
-                    // Parse XML response to extract corrected paths
-                    let (corrected_paths, metadata) = match Self::parse_corrected_paths(content) {
-                        Ok(result) => result,
+                    // Parse response to extract corrected paths using standardized utility
+                    let corrected_paths = match job_processor_utils::parse_paths_from_text_response(content, project_directory) {
+                        Ok(paths) => paths,
                         Err(e) => {
-                            warn!("Failed to parse XML response, using raw content: {}", e);
-                            // Fallback: use the raw content as a single "path"
-                            let fallback_metadata = serde_json::json!({
-                                "correctedPathDetails": [],
-                                "fullResponse": content,
-                                "parseError": format!("{}", e)
-                            });
-                            (vec![content.clone()], fallback_metadata)
+                            warn!("Failed to parse paths from response, trying XML parsing: {}", e);
+                            // Fallback to custom XML parsing
+                            match Self::parse_corrected_paths(content) {
+                                Ok((paths, _)) => paths,
+                                Err(_) => {
+                                    warn!("XML parsing also failed, using raw content");
+                                    vec![content.clone()]
+                                }
+                            }
                         }
                     };
+                    
+                    // Create metadata
+                    let metadata = serde_json::json!({
+                        "correctedPaths": corrected_paths,
+                        "fullResponse": content
+                    });
                     
                     // Create simple newline-separated response
                     let simple_response = corrected_paths.join("\n");
                     
-                    // Update job status to completed
-                    repo.update_job_status(&job.id, &JobStatus::Completed.to_string(), None).await?;
+                    // Get model used
+                    let model_used = &api_options.model;
                     
-                    // Get updated job
-                    let mut updated_job = db_job.clone();
-                    updated_job.status = JobStatus::Completed.to_string();
-                    updated_job.response = Some(simple_response.clone());
-                    updated_job.metadata = Some(metadata.to_string());
-                    updated_job.tokens_sent = llm_response.usage.as_ref().map(|u| u.prompt_tokens as i32);
-                    updated_job.tokens_received = llm_response.usage.as_ref().map(|u| u.completion_tokens as i32);
-                    updated_job.total_tokens = llm_response.usage.as_ref().map(|u| u.total_tokens as i32);
-                    updated_job.chars_received = Some(simple_response.len() as i32);
+                    // Clone usage before moving it
+                    let usage_clone = llm_response.usage.clone();
                     
-                    // Update model used
-                    if let Some(model) = payload.model_override.clone() {
-                        updated_job.model_used = Some(model);
-                    } else {
-                        updated_job.model_used = Some(llm_response.model.clone());
-                    }
-                    updated_job.system_prompt_id = Some(system_prompt_id.clone());
-                    
-                    // Save updated job
-                    repo.update_job(&updated_job).await?;
+                    // Finalize job success
+                    job_processor_utils::finalize_job_success(
+                        &job.id,
+                        &repo,
+                        &simple_response,
+                        llm_response.usage,
+                        model_used,
+                        &system_prompt_id,
+                        Some(metadata),
+                    ).await?;
                     
                     info!("Path correction completed: {} paths corrected", corrected_paths.len());
                     debug!("Corrected paths: {:?}", corrected_paths);
@@ -266,9 +207,9 @@ impl JobProcessor for PathCorrectionProcessor {
                     // Return success result
                     Ok(JobProcessResult::success(job.id.clone(), simple_response.clone())
                         .with_tokens(
-                            llm_response.usage.as_ref().map(|u| u.prompt_tokens as i32),
-                            llm_response.usage.as_ref().map(|u| u.completion_tokens as i32),
-                            llm_response.usage.as_ref().map(|u| u.total_tokens as i32),
+                            usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
+                            usage_clone.as_ref().map(|u| u.completion_tokens as i32),
+                            usage_clone.as_ref().map(|u| u.total_tokens as i32),
                             Some(simple_response.len() as i32)
                         ))
                 } else {
@@ -276,11 +217,8 @@ impl JobProcessor for PathCorrectionProcessor {
                     let error_msg = "No content in LLM response".to_string();
                     error!("{}", error_msg);
                     
-                    // Update job as failed
-                    let mut updated_job = db_job.clone();
-                    updated_job.status = JobStatus::Failed.to_string();
-                    updated_job.error_message = Some(error_msg.clone());
-                    repo.update_job(&updated_job).await?;
+                    // Finalize job failure
+                    job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
                     
                     Ok(JobProcessResult::failure(job.id.clone(), error_msg))
                 }
@@ -290,11 +228,8 @@ impl JobProcessor for PathCorrectionProcessor {
                 let error_msg = format!("LLM API error: {}", e);
                 error!("{}", error_msg);
                 
-                // Update job as failed
-                let mut updated_job = db_job.clone();
-                updated_job.status = JobStatus::Failed.to_string();
-                updated_job.error_message = Some(error_msg.clone());
-                repo.update_job(&updated_job).await?;
+                // Finalize job failure
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
                 
                 Ok(JobProcessResult::failure(job.id.clone(), error_msg))
             }

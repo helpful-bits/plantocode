@@ -247,14 +247,9 @@ pub async fn get_spending_history(
 ) -> Result<HttpResponse, AppError> {
     debug!("Getting spending history for user: {}", user_id.0);
     
-    // Get historical spending data from API usage repository
-    let api_usage_repo = crate::db::repositories::api_usage_repository::ApiUsageRepository::new(
-        billing_service.get_db_pool()
-    );
-    
-    // Get spending data for the last 6 months
-    let six_months_ago = chrono::Utc::now() - chrono::Duration::days(180);
-    let usage_data = api_usage_repo.get_usage_for_period(&user_id.0, Some(six_months_ago), None).await?;
+    // Get comprehensive spending analytics
+    let analytics = billing_service.get_cost_based_billing_service()
+        .get_spending_analytics(&user_id.0, 12).await?;
     
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -263,8 +258,9 @@ pub async fn get_spending_history(
         total_cost: f64,
         total_tokens_input: i64,
         total_tokens_output: i64,
-        request_count: i64,
+        request_count: i32,
         services_used: Vec<String>,
+        plan_id: String,
     }
     
     #[derive(Serialize)]
@@ -274,35 +270,67 @@ pub async fn get_spending_history(
         total_spending: f64,
         monthly_breakdown: Vec<SpendingHistoryEntry>,
         currency: String,
+        monthly_average: f64,
+        projected_month_end: f64,
+        spending_trend: String,
+        cost_per_request: f64,
+        cost_per_token: f64,
+        days_until_limit: Option<i32>,
     }
     
-    // Group usage by month and create history entries
-    let mut monthly_breakdown = Vec::new();
-    let mut total_spending = 0.0;
-    
-    // For now, create a single entry for the current period
-    let current_period = chrono::Utc::now().format("%Y-%m").to_string();
-    let total_cost = usage_data.total_cost.to_f64().unwrap_or(0.0);
-    total_spending += total_cost;
-    
-    // Extract unique services from usage data
-    let services_used = vec!["AI Completion".to_string()]; // Simplified for now
-    
-    monthly_breakdown.push(SpendingHistoryEntry {
-        period: current_period,
-        total_cost,
-        total_tokens_input: usage_data.tokens_input,
-        total_tokens_output: usage_data.tokens_output,
-        request_count: 1, // ApiUsageReport doesn't track request count, using default
-        services_used,
-    });
+    // Convert spending trends to monthly breakdown
+    let monthly_breakdown: Vec<SpendingHistoryEntry> = analytics.trends.into_iter().map(|trend| {
+        SpendingHistoryEntry {
+            period: trend.period_start.format("%Y-%m").to_string(),
+            total_cost: trend.total_spending.to_f64().unwrap_or(0.0),
+            total_tokens_input: 0, // Would need to be calculated from api_usage
+            total_tokens_output: 0, // Would need to be calculated from api_usage
+            request_count: trend.total_requests,
+            services_used: vec!["AI Services".to_string()], // Simplified
+            plan_id: trend.plan_id,
+        }
+    }).collect();
     
     let response = SpendingHistoryResponse {
         total_periods: monthly_breakdown.len(),
-        total_spending,
+        total_spending: analytics.summary.total_spending.to_f64().unwrap_or(0.0),
         monthly_breakdown,
-        currency: "USD".to_string(),
+        currency: analytics.current_status.currency,
+        monthly_average: analytics.monthly_average.to_f64().unwrap_or(0.0),
+        projected_month_end: analytics.projected_month_end_spending.to_f64().unwrap_or(0.0),
+        spending_trend: analytics.spending_trend,
+        cost_per_request: analytics.cost_per_request,
+        cost_per_token: analytics.cost_per_token,
+        days_until_limit: analytics.days_until_limit,
     };
     
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get spending analytics for user
+#[get("/analytics")]
+pub async fn get_spending_analytics(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting spending analytics for user: {}", user_id.0);
+    
+    let analytics = billing_service.get_cost_based_billing_service()
+        .get_spending_analytics(&user_id.0, 6).await?;
+    
+    Ok(HttpResponse::Ok().json(analytics))
+}
+
+/// Get spending forecast for user
+#[get("/forecast")]
+pub async fn get_spending_forecast(
+    user_id: UserId,
+    billing_service: web::Data<BillingService>,
+) -> Result<HttpResponse, AppError> {
+    debug!("Getting spending forecast for user: {}", user_id.0);
+    
+    let forecast = billing_service.get_cost_based_billing_service()
+        .get_spending_forecast(&user_id.0, 3).await?;
+    
+    Ok(HttpResponse::Ok().json(forecast))
 }

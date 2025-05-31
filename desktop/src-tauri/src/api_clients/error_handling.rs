@@ -3,6 +3,20 @@ use serde_json::Value;
 
 use crate::error::AppError;
 
+/// Check if an error message indicates token limit exceeded
+fn is_token_limit_error(message: &str) -> bool {
+    let lower_message = message.to_lowercase();
+    lower_message.contains("is too long") ||
+    lower_message.contains("maximum context length") ||
+    lower_message.contains("prompt is too large") ||
+    lower_message.contains("context window exceeded") ||
+    lower_message.contains("token limit exceeded") ||
+    lower_message.contains("too many tokens") ||
+    lower_message.contains("context length exceeded") ||
+    lower_message.contains("maximum tokens exceeded") ||
+    lower_message.contains("input too long")
+}
+
 /// Map direct OpenRouter API HTTP status code and response to an AppError
 pub fn map_direct_openrouter_error(status_code: u16, response_text: &str) -> AppError {
     // Try to parse the response as JSON
@@ -11,6 +25,13 @@ pub fn map_direct_openrouter_error(status_code: u16, response_text: &str) -> App
             .as_str()
             .or_else(|| json["error"].as_str())
             .unwrap_or("Unknown error");
+            
+        // Check for token limit exceeded errors first
+        if is_token_limit_error(error_message) {
+            return AppError::TokenLimitExceededError(
+                "Prompt is too long for the selected model. Please reduce the number of selected files or shorten the task description.".to_string()
+            );
+        }
             
         match status_code {
             400 => AppError::OpenRouterError(format!("Bad request: {}", error_message)),
@@ -22,6 +43,13 @@ pub fn map_direct_openrouter_error(status_code: u16, response_text: &str) -> App
             _ => AppError::OpenRouterError(format!("Unknown error ({}): {}", status_code, error_message)),
         }
     } else {
+        // Check for token limit errors in raw text response
+        if is_token_limit_error(response_text) {
+            return AppError::TokenLimitExceededError(
+                "Prompt is too long for the selected model. Please reduce the number of selected files or shorten the task description.".to_string()
+            );
+        }
+        
         // If it's not JSON, just use the raw text
         match status_code {
             400 => AppError::OpenRouterError(format!("Bad request: {}", response_text)),
@@ -52,6 +80,13 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
     if let Ok(error_response) = serde_json::from_str::<ServerErrorResponse>(response_text) {
         let error_type = error_response.error_type.unwrap_or_else(|| "unknown_error".to_string());
         let message = error_response.message;
+        
+        // Check for token limit exceeded errors first
+        if is_token_limit_error(&message) {
+            return AppError::TokenLimitExceededError(
+                "Prompt is too long for the selected model. Please reduce the number of selected files or shorten the task description.".to_string()
+            );
+        }
         
         match error_type.as_str() {
             "authentication_error" => AppError::AuthError(format!("Authentication failed: {}", message)),
@@ -84,6 +119,13 @@ pub fn map_server_proxy_error(status_code: u16, response_text: &str) -> AppError
             },
         }
     } else {
+        // Check for token limit errors in raw response text
+        if is_token_limit_error(response_text) {
+            return AppError::TokenLimitExceededError(
+                "Prompt is too long for the selected model. Please reduce the number of selected files or shorten the task description.".to_string()
+            );
+        }
+        
         // Fallback based on HTTP status code if we can't parse the server's error format
         match status_code {
             400 => AppError::ValidationError(format!("Bad request: {}", response_text)),

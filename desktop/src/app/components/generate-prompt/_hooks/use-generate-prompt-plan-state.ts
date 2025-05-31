@@ -3,8 +3,14 @@
 import { useMemo } from "react";
 import { useImplementationPlanActions } from "./use-implementation-plan-actions";
 
+/**
+ * Hook for managing implementation plan state for the generate prompt feature.
+ * This hook wraps useImplementationPlanActions and provides a consistent interface
+ * for the plan context. It accesses session data directly through the implementation
+ * plan actions hook.
+ */
 export function useGeneratePromptPlanState() {
-  // Initialize implementation plan actions
+  // Initialize implementation plan actions (which internally uses session context)
   const implementationPlanActions = useImplementationPlanActions();
 
   return useMemo(
