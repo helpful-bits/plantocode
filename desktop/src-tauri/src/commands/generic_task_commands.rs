@@ -106,7 +106,7 @@ pub async fn generic_llm_stream_command(
         TaskType::GenericLlmStream,
         "GENERIC_LLM_STREAM",
         &args.prompt_text.clone(),
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(payload).map_err(|e| 
             AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
         1, // Priority
@@ -205,10 +205,11 @@ pub async fn enhance_task_description_command(
     let task_enhancement_payload = crate::jobs::types::TaskEnhancementPayload {
         background_job_id: String::new(), // Will be set by job creation utility
         session_id: args.session_id.clone(),
-        project_directory: Some(project_directory.clone()),
+        project_directory: project_directory.clone(),
         task_description: args.task_description.clone(),
         project_context: args.project_context.clone(),
         target_field: args.target_field.clone(),
+        model_override: None,
     };
     
     // Additional metadata for job
@@ -224,7 +225,7 @@ pub async fn enhance_task_description_command(
         TaskType::TaskEnhancement,
         "TASK_ENHANCEMENT",
         &args.task_description,
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(task_enhancement_payload).map_err(|e| 
             AppError::SerializationError(format!("Failed to serialize task enhancement payload: {}", e)))?,
         2, // Higher priority for task enhancement

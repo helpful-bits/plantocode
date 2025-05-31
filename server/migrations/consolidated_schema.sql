@@ -64,6 +64,24 @@ CREATE TABLE IF NOT EXISTS api_usage (
 CREATE INDEX IF NOT EXISTS idx_api_usage_user_id_timestamp ON api_usage(user_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_api_usage_service_name ON api_usage(service_name);
 
+-- Subscription plans (must come before user_spending_limits due to foreign key)
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    base_price_monthly DECIMAL(10, 2) NOT NULL,
+    base_price_yearly DECIMAL(10, 2) NOT NULL,
+    included_spending_monthly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    overage_rate DECIMAL(5, 4) NOT NULL DEFAULT 1.0000,
+    hard_limit_multiplier DECIMAL(3, 2) NOT NULL DEFAULT 2.00,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    stripe_price_id_monthly VARCHAR(100),
+    stripe_price_id_yearly VARCHAR(100),
+    features JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
 -- User spending limits and real-time tracking
 CREATE TABLE IF NOT EXISTS user_spending_limits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -85,24 +103,6 @@ CREATE TABLE IF NOT EXISTS user_spending_limits (
 
 CREATE INDEX IF NOT EXISTS idx_user_spending_limits_user_period ON user_spending_limits(user_id, billing_period_start, billing_period_end);
 CREATE INDEX IF NOT EXISTS idx_user_spending_limits_blocked ON user_spending_limits(services_blocked);
-
-
-CREATE TABLE IF NOT EXISTS subscription_plans (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    base_price_monthly DECIMAL(10, 2) NOT NULL,
-    base_price_yearly DECIMAL(10, 2) NOT NULL,
-    included_spending_monthly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
-    overage_rate DECIMAL(5, 4) NOT NULL DEFAULT 1.0000,
-    hard_limit_multiplier DECIMAL(3, 2) NOT NULL DEFAULT 2.00,
-    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
-    stripe_price_id_monthly VARCHAR(100),
-    stripe_price_id_yearly VARCHAR(100),
-    features JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-);
 
 -- Projects that users can manage
 CREATE TABLE IF NOT EXISTS projects (
@@ -305,6 +305,167 @@ ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,
   updated_at = CURRENT_TIMESTAMP;
+
+-- Enhanced billing tables for 100% implementation
+
+-- Invoice cache table for Stripe invoice data
+CREATE TABLE IF NOT EXISTS invoices (
+    id VARCHAR(255) PRIMARY KEY, -- Stripe invoice ID
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_customer_id VARCHAR(255) NOT NULL,
+    stripe_subscription_id VARCHAR(255),
+    amount_due DECIMAL(12, 4) NOT NULL,
+    amount_paid DECIMAL(12, 4) NOT NULL DEFAULT 0,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    status VARCHAR(50) NOT NULL, -- draft, open, paid, void, uncollectible
+    invoice_pdf_url TEXT,
+    hosted_invoice_url TEXT,
+    billing_reason VARCHAR(100), -- subscription_create, subscription_cycle, manual, etc.
+    description TEXT,
+    period_start TIMESTAMPTZ,
+    period_end TIMESTAMPTZ,
+    due_date TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    finalized_at TIMESTAMPTZ,
+    paid_at TIMESTAMPTZ,
+    voided_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_invoice_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_stripe_customer ON invoices(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC);
+
+-- Payment methods cache table for Stripe payment method data
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id VARCHAR(255) PRIMARY KEY, -- Stripe payment method ID
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    stripe_customer_id VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL, -- card, bank_account, etc.
+    card_brand VARCHAR(50), -- visa, mastercard, amex, etc.
+    card_last_four VARCHAR(4),
+    card_exp_month INTEGER,
+    card_exp_year INTEGER,
+    card_country VARCHAR(2),
+    card_funding VARCHAR(20), -- credit, debit, prepaid
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_payment_method_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_methods_user_id ON payment_methods(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_methods_stripe_customer ON payment_methods(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_payment_methods_default ON payment_methods(is_default);
+
+-- Email notification queue for reliable delivery
+CREATE TABLE IF NOT EXISTS email_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email_address VARCHAR(255) NOT NULL,
+    notification_type VARCHAR(50) NOT NULL, -- spending_alert, invoice_reminder, payment_failed, etc.
+    subject VARCHAR(255) NOT NULL,
+    template_name VARCHAR(100) NOT NULL,
+    template_data JSONB NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, sent, failed, retrying
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    last_attempt_at TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ,
+    error_message TEXT,
+    priority INTEGER NOT NULL DEFAULT 1, -- 1=high, 2=medium, 3=low
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_email_notification_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_notifications_user_id ON email_notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_notifications_status ON email_notifications(status);
+CREATE INDEX IF NOT EXISTS idx_email_notifications_created ON email_notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_notifications_queue ON email_notifications(status, priority, created_at) WHERE status = 'pending';
+
+-- Enhanced spending history for analytics
+CREATE TABLE IF NOT EXISTS spending_periods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id VARCHAR(50) NOT NULL,
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end TIMESTAMPTZ NOT NULL,
+    included_allowance DECIMAL(10, 4) NOT NULL,
+    total_spending DECIMAL(10, 4) NOT NULL DEFAULT 0,
+    overage_amount DECIMAL(10, 4) NOT NULL DEFAULT 0,
+    total_requests INTEGER NOT NULL DEFAULT 0,
+    total_tokens_input BIGINT NOT NULL DEFAULT 0,
+    total_tokens_output BIGINT NOT NULL DEFAULT 0,
+    services_used JSONB NOT NULL DEFAULT '[]',
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    invoice_id VARCHAR(255), -- Link to Stripe invoice if applicable
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_spending_period_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT unique_user_spending_period UNIQUE (user_id, period_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spending_periods_user_period ON spending_periods(user_id, period_start DESC);
+CREATE INDEX IF NOT EXISTS idx_spending_periods_archived ON spending_periods(archived);
+
+-- Billing configuration table for dynamic settings
+CREATE TABLE IF NOT EXISTS billing_configurations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    config_type VARCHAR(50) NOT NULL, -- stripe_urls, email_templates, etc.
+    environment VARCHAR(20) NOT NULL DEFAULT 'production', -- production, staging, development
+    config_data JSONB NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT unique_billing_config UNIQUE (config_type, environment)
+);
+
+CREATE INDEX IF NOT EXISTS idx_billing_configurations_type ON billing_configurations(config_type);
+CREATE INDEX IF NOT EXISTS idx_billing_configurations_active ON billing_configurations(is_active);
+
+-- Insert default billing configurations
+INSERT INTO billing_configurations (config_type, environment, config_data) VALUES 
+('stripe_urls', 'production', '{
+    "success_url": "https://app.vibemanager.com/account?checkout=success",
+    "cancel_url": "https://app.vibemanager.com/account?checkout=canceled",
+    "portal_return_url": "https://app.vibemanager.com/account"
+}'::jsonb),
+('stripe_urls', 'development', '{
+    "success_url": "http://localhost:1420/account?checkout=success",
+    "cancel_url": "http://localhost:1420/account?checkout=canceled", 
+    "portal_return_url": "http://localhost:1420/account"
+}'::jsonb),
+('email_templates', 'production', '{
+    "spending_alert_75": {
+        "subject": "AI Usage Alert: 75% of Monthly Allowance Used",
+        "template": "spending_alert_75"
+    },
+    "spending_alert_90": {
+        "subject": "AI Usage Warning: 90% of Monthly Allowance Used",
+        "template": "spending_alert_90"
+    },
+    "spending_limit_reached": {
+        "subject": "AI Usage Limit Reached - Overage Charges Apply",
+        "template": "spending_limit_reached"
+    },
+    "services_blocked": {
+        "subject": "AI Services Temporarily Blocked - Action Required",
+        "template": "services_blocked"
+    },
+    "invoice_created": {
+        "subject": "Your Vibe Manager Invoice is Ready",
+        "template": "invoice_created"
+    },
+    "payment_failed": {
+        "subject": "Payment Failed - Please Update Payment Method",
+        "template": "payment_failed"
+    }
+}'::jsonb)
+ON CONFLICT (config_type, environment) DO NOTHING;
 
 -- Insert comprehensive AI task configurations into application_configurations
 -- Migration: 003_insert_ai_task_configurations.sql

@@ -66,6 +66,7 @@ pub async fn create_text_improvement_job_service(
         project_directory: Some(project_directory.clone()),
         text_to_improve: args.text.clone(),
         target_field: args.target_field.clone(),
+        model_override: None,
     };
 
     // Extra metadata specific to text improvement
@@ -81,7 +82,7 @@ pub async fn create_text_improvement_job_service(
         TaskType::TextImprovement,
         "TEXT_IMPROVEMENT",
         "Improve text clarity and grammar",
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(payload)
             .map_err(|e| AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
         2, // Priority

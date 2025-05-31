@@ -12,11 +12,8 @@ import {
 import { type TaskDescriptionHandle } from "../_components/task-description";
 import { useGenerateFormState } from "../_hooks/use-generate-form-state";
 import { useGeneratePromptDisplayState } from "../_hooks/use-generate-prompt-display-state";
-// Removed backward compatibility hook
-import { useGuidanceGeneration } from "../_hooks/use-guidance-generation";
-import { useImplementationPlanActions } from "../_hooks/use-implementation-plan-actions";
-import { useSessionMetadata } from "../_hooks/use-session-metadata";
-import { useTaskDescriptionState } from "../_hooks/use-task-description-state";
+import { useGeneratePromptTaskState } from "../_hooks/use-generate-prompt-task-state";
+import { useGeneratePromptPlanState } from "../_hooks/use-generate-prompt-plan-state";
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 
 // Import the granular context providers
@@ -59,46 +56,39 @@ export function GeneratePromptFeatureProvider({
   // Handle user interactions that modify session
   const handleInteraction = useCallback(() => {
     sessionActions.setSessionModified(true);
-  }, [sessionActions]);
-
-  // Handle guidance generation callback
-  const handleGuidanceGenerated = useCallback((newText: string) => {
-    sessionActions.updateCurrentSessionFields({ taskDescription: newText });
-  }, [sessionActions]);
-
-  // Note: Removed simple pass-through actions (setSessionName, saveSessionState, setHasUnsavedChanges)
-  // Components should use useSessionActionsContext directly for these
-
-  const sessionMetadata = useSessionMetadata({
-    onInteraction: handleInteraction,
-    initialSessionName: sessionState.currentSession?.name || "Untitled Session",
-  });
-
-  const taskState = useTaskDescriptionState({
-    activeSessionId: sessionState.activeSessionId,
-    taskDescriptionRef,
-    onInteraction: handleInteraction,
-  });
+  }, [sessionActions.setSessionModified]);
 
 
-  const guidanceGeneration = useGuidanceGeneration({
-    projectDirectory: projectDirectory || "",
-    onGuidanceGenerated: handleGuidanceGenerated,
-    onInteraction: handleInteraction,
-  });
-
-  // Use the simplified display state hook
+  // Use self-contained hooks that access session context directly
+  const taskState = useGeneratePromptTaskState({ taskDescriptionRef });
   const displayState = useGeneratePromptDisplayState();
-
-  const implementationPlanActions = useImplementationPlanActions();
+  const planState = useGeneratePromptPlanState();
 
   // Complete state reset function
   const resetAllState = useCallback(() => {
-    sessionMetadata.reset();
     formState.resetFormState();
     sessionActions.setSessionModified(false);
-    taskState.reset();
-  }, [sessionMetadata.reset, formState.resetFormState, sessionActions.setSessionModified, taskState.reset]);
+    taskState.resetTaskState();
+    // Reset session fields
+    sessionActions.updateCurrentSessionFields({
+      taskDescription: "",
+      titleRegex: "",
+      contentRegex: "",
+      negativeTitleRegex: "",
+      negativeContentRegex: "",
+      isRegexActive: true,
+      searchTerm: "",
+      includedFiles: [],
+      forceExcludedFiles: [],
+      searchSelectedFilesOnly: false,
+      codebaseStructure: "",
+    });
+  }, [
+    formState.resetFormState, 
+    sessionActions.setSessionModified, 
+    sessionActions.updateCurrentSessionFields,
+    taskState.resetTaskState
+  ]);
 
   // Handler for generating codebase directory tree
   const handleGenerateCodebase = useCallback(async () => {
@@ -139,7 +129,28 @@ export function GeneratePromptFeatureProvider({
         type: "error"
       });
     }
-  }, [projectDirectory, showNotification, sessionState.activeSessionId, sessionActions]);
+  }, [
+    projectDirectory, 
+    showNotification, 
+    sessionState.activeSessionId, 
+    sessionActions.updateCurrentSessionFields
+  ]);
+
+  // Memoize inline functions to prevent re-creation
+  const setSessionName = useCallback(
+    (name: string) => sessionActions.updateCurrentSessionFields({ name }),
+    [sessionActions.updateCurrentSessionFields]
+  );
+
+  const saveSessionState = useCallback(
+    async () => { await sessionActions.saveCurrentSession(); },
+    [sessionActions.saveCurrentSession]
+  );
+
+  const flushPendingSaves = useCallback(
+    async () => { await sessionActions.flushSaves(); return true; },
+    [sessionActions.flushSaves]
+  );
 
   // Create memoized context values
   const coreContextValue = useMemo<CorePromptContextValue>(
@@ -151,8 +162,7 @@ export function GeneratePromptFeatureProvider({
         isSwitchingSession: sessionState.isSessionLoading,
         isRestoringSession: formState.isRestoringSession,
         sessionInitialized: formState.sessionInitialized,
-        sessionName:
-          sessionState.currentSession?.name || sessionMetadata.sessionName,
+        sessionName: sessionState.currentSession?.name || "Untitled Session",
         hasUnsavedChanges: sessionState.isSessionModified,
         isFormSaving: sessionState.isSessionLoading || formState.isFormSaving,
         isSessionFormLoading: sessionState.isSessionLoading,
@@ -165,53 +175,23 @@ export function GeneratePromptFeatureProvider({
       actions: {
         // Core actions (complex orchestrations only)
         resetAllState,
-        setSessionName: (name: string) => sessionActions.renameActiveSession(name),
-        saveSessionState: async () => { await sessionActions.saveCurrentSession(); },
-        flushPendingSaves: async () => { await sessionActions.flushSaves(); return true; },
+        setSessionName,
+        saveSessionState,
+        flushPendingSaves,
         setHasUnsavedChanges: sessionActions.setSessionModified,
-        getCurrentSessionState: () => ({
-          projectDirectory: projectDirectory || "",
-          taskDescription: sessionState.currentSession?.taskDescription || "",
-          titleRegex: sessionState.currentSession?.titleRegex || "",
-          contentRegex: sessionState.currentSession?.contentRegex || "",
-          negativeTitleRegex: sessionState.currentSession?.negativeTitleRegex || "",
-          negativeContentRegex: sessionState.currentSession?.negativeContentRegex || "",
-          isRegexActive: sessionState.currentSession?.isRegexActive || false,
-          // Include file management state from current session if available
-          searchTerm: sessionState.currentSession?.searchTerm || "",
-          includedFiles: sessionState.currentSession?.includedFiles || [],
-          forceExcludedFiles: sessionState.currentSession?.forceExcludedFiles || [],
-          searchSelectedFilesOnly: sessionState.currentSession?.searchSelectedFilesOnly || false,
-          // Include codebase structure from current session if available
-          codebaseStructure: sessionState.currentSession?.codebaseStructure || "",
-          // Include model used from current session if available, or use a default
-          modelUsed: sessionState.currentSession?.modelUsed || undefined,
-          createdAt: sessionState.currentSession?.createdAt || Date.now(),
-        }),
         setSessionInitialized: formState.setSessionInitialized,
         handleInteraction,
         handleGenerateCodebase,
       },
     }),
     [
+      // Session state primitives
       sessionState.currentSession?.id,
       sessionState.currentSession?.name,
-      sessionState.currentSession?.taskDescription,
-      sessionState.currentSession?.titleRegex,
-      sessionState.currentSession?.contentRegex,
-      sessionState.currentSession?.negativeTitleRegex,
-      sessionState.currentSession?.negativeContentRegex,
-      sessionState.currentSession?.isRegexActive,
-      sessionState.currentSession?.searchTerm,
-      sessionState.currentSession?.includedFiles,
-      sessionState.currentSession?.forceExcludedFiles,
-      sessionState.currentSession?.searchSelectedFilesOnly,
-      sessionState.currentSession?.codebaseStructure,
-      sessionState.currentSession?.modelUsed,
-      sessionState.currentSession?.createdAt,
       sessionState.isSessionLoading,
       sessionState.isSessionModified,
-      sessionActions,
+      
+      // Form state primitives and stable functions
       formState.isStateLoaded,
       formState.isRestoringSession,
       formState.sessionInitialized,
@@ -219,10 +199,17 @@ export function GeneratePromptFeatureProvider({
       formState.error,
       formState.projectDataLoading,
       formState.setSessionInitialized,
+      
+      // Project directory primitive
       projectDirectory,
-      sessionMetadata.sessionName,
-      handleInteraction,
+      
+      // Stable memoized callbacks
       resetAllState,
+      setSessionName,
+      saveSessionState,
+      flushPendingSaves,
+      sessionActions.setSessionModified,
+      handleInteraction,
       handleGenerateCodebase,
     ]
   );
@@ -231,26 +218,21 @@ export function GeneratePromptFeatureProvider({
     () => ({
       state: {
         // Task UI state only
-        taskDescriptionRef,
-        isGeneratingGuidance: guidanceGeneration.isGeneratingGuidance,
+        taskDescriptionRef: taskState.taskDescriptionRef,
+        isGeneratingGuidance: taskState.isGeneratingGuidance,
         isImprovingText: taskState.isImprovingText,
         textImprovementJobId: taskState.textImprovementJobId,
       },
       actions: {
         // Task description actions
-        handleGenerateGuidance: guidanceGeneration.handleGenerateGuidance,
+        handleGenerateGuidance: taskState.handleGenerateGuidance,
         handleImproveSelection: taskState.handleImproveSelection,
-        reset: taskState.reset,
+        reset: taskState.resetTaskState,
       },
     }),
     [
-      taskState.isImprovingText,
-      taskState.textImprovementJobId,
-      taskState.handleImproveSelection,
-      taskState.reset,
-      guidanceGeneration.isGeneratingGuidance,
-      guidanceGeneration.handleGenerateGuidance,
-      taskDescriptionRef
+      // The taskState object is already memoized from the hook
+      taskState,
     ]
   );
 
@@ -271,12 +253,8 @@ export function GeneratePromptFeatureProvider({
       },
     }),
     [
-      displayState.prompt,
-      displayState.tokenCount,
-      displayState.copySuccess,
-      displayState.showPrompt,
-      displayState.setShowPrompt,
-      displayState.copyPrompt
+      // The displayState object is already memoized from the hook
+      displayState,
     ]
   );
 
@@ -284,33 +262,23 @@ export function GeneratePromptFeatureProvider({
     () => ({
       state: {
         // Implementation plan state
-        isCreatingPlan: implementationPlanActions.isCreatingPlan,
-        planCreationState: implementationPlanActions.planCreationState,
-        isCopyingPlanPrompt: false, // Removed as we don't need to display the prompt anymore
-        isEstimatingTokens: false, // Removed as token estimation is now done in the backend
-        estimatedTokens: 0, // Removed as token estimation is now done in the backend
+        isCreatingPlan: planState.isCreatingPlan,
+        planCreationState: planState.planCreationState,
+        isCopyingPlanPrompt: planState.isCopyingPlanPrompt,
+        isEstimatingTokens: planState.isEstimatingTokens,
+        estimatedTokens: planState.estimatedTokens,
       },
       actions: {
         // Implementation plan actions
-        handleCreateImplementationPlan:
-          implementationPlanActions.handleCreateImplementationPlan,
-        handleCopyImplementationPlanPrompt: () => {
-          // Backend now handles this functionality
-        },
-        handleGetImplementationPlanPrompt: () => {
-          // Backend now handles this functionality
-          return "";
-        },
-        handleEstimatePlanTokens: async () => {
-          // Backend now handles token estimation
-          return Promise.resolve(0);
-        },
+        handleCreateImplementationPlan: planState.handleCreateImplementationPlan,
+        handleCopyImplementationPlanPrompt: planState.handleCopyImplementationPlanPrompt,
+        handleGetImplementationPlanPrompt: planState.handleGetImplementationPlanPrompt,
+        handleEstimatePlanTokens: planState.handleEstimatePlanTokens,
       },
     }),
     [
-      implementationPlanActions.isCreatingPlan,
-      implementationPlanActions.planCreationState,
-      implementationPlanActions.handleCreateImplementationPlan
+      // The planState object is already memoized from the hook
+      planState,
     ]
   );
 

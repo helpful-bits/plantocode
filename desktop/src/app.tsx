@@ -26,7 +26,7 @@ import { EmptyState, LoadingScreen } from "@/ui";
 
 import { RuntimeConfigProvider } from "./contexts/runtime-config-context";
 // Custom provider for desktop-specific functionality
-import { DesktopEnvironmentProvider } from "./providers/desktop-bridge-provider";
+import { TauriEnvironmentChecker } from "./providers/tauri-environment-checker";
 
 // Simple router component to handle path changes
 function Router() {
@@ -80,7 +80,7 @@ function SafeAppContent() {
     <ThemeProvider defaultTheme="system" enableSystem>
       <RuntimeConfigProvider>
         <AuthProvider>
-          <DesktopEnvironmentProvider>
+          <TauriEnvironmentChecker>
             <UILayoutProvider>
               <AuthFlowManager>
                 <ProvidersWrapper environmentConfig={{ isDesktop: true }}>
@@ -92,7 +92,7 @@ function SafeAppContent() {
                 </ProvidersWrapper>
               </AuthFlowManager>
             </UILayoutProvider>
-          </DesktopEnvironmentProvider>
+          </TauriEnvironmentChecker>
         </AuthProvider>
       </RuntimeConfigProvider>
     </ThemeProvider>
@@ -103,9 +103,10 @@ function SafeAppContent() {
 export default function App() {
   const [appReady, setAppReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
+  const [isTauri] = useState(() => isTauriEnvironment());
 
   // Memoize the initialization function to ensure it only runs once
-  const initializeApp = useCallback(() => {
+  const initializeApp = useCallback(async () => {
     try {
       // Validate environment
       if (typeof window === "undefined") {
@@ -113,10 +114,24 @@ export default function App() {
       }
 
       // Check if Tauri is available for desktop functionality
-      if (isTauriEnvironment()) {
+      if (isTauri) {
         // Use a logger that can be configured instead of console.log
         // eslint-disable-next-line no-console
-        console.log("[App] Tauri environment detected.");
+        console.log("[App] Tauri environment detected - initializing desktop features");
+        
+        // Basic Tauri environment validation
+        try {
+          // Test basic Tauri functionality with a timeout
+          await Promise.race([
+            import('@tauri-apps/api/app').then(({ getName }) => getName()),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Tauri API timeout')), 5000)
+            )
+          ]);
+        } catch (tauriError) {
+          console.warn("[App] Tauri API validation failed:", tauriError);
+          // Continue anyway - the app can still function with limited features
+        }
       } else {
         console.warn("[App] Tauri not detected - some features may be limited");
       }
@@ -130,16 +145,16 @@ export default function App() {
           : "Failed to initialize application"
       );
     }
-  }, []);
+  }, [isTauri]);
 
   // Set app as ready after ensuring environment is initialized
   useEffect(() => {
-    initializeApp();
+    void initializeApp();
   }, [initializeApp]);
 
   // Listen for app close event to handle unsaved changes
   useEffect(() => {
-    if (typeof window === "undefined" || !isTauriEnvironment()) {
+    if (typeof window === "undefined" || !isTauri) {
       return;
     }
 

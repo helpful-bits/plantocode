@@ -15,7 +15,7 @@ const logger = createLogger({ namespace: "AuthTokenRefresher" });
  * refreshing 5 minutes before expiry. Falls back to 50-minute intervals if expiry is unknown.
  */
 export function useAuthTokenRefresher(user: User | undefined) {
-  const { token, tokenExpiresAt } = useAuth();
+  const { token, tokenExpiresAt, signOut } = useAuth();
   const refreshIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -37,6 +37,7 @@ export function useAuthTokenRefresher(user: User | undefined) {
 
       // Calculate refresh interval based on token expiry
       let refreshIntervalMs: number;
+      let initialRefreshDelayMs: number;
       
       if (tokenExpiresAt && tokenExpiresAt > Date.now()) {
         // Token has a known expiry time and it's in the future
@@ -46,21 +47,24 @@ export function useAuthTokenRefresher(user: User | undefined) {
         
         // Refresh at least 5 minutes before expiry, but at least 1 minute from now
         refreshIntervalMs = Math.max(60 * 1000, expiresInMs - refreshBufferMs);
+        initialRefreshDelayMs = refreshIntervalMs;
         
-        logger.info(`[AuthTokenRefresher] Token expires in ${Math.round(expiresInMs / 1000 / 60)} minutes, scheduling refresh in ${Math.round(refreshIntervalMs / 1000 / 60)} minutes`);
+        logger.debug(`[AuthTokenRefresher] Token expires in ${Math.round(expiresInMs / 1000 / 60)} minutes, scheduling refresh in ${Math.round(refreshIntervalMs / 1000 / 60)} minutes`);
       } else {
         // No expiry info or token is already expired, use fallback
         refreshIntervalMs = 50 * 60 * 1000; // 50 minutes fallback
         
         if (tokenExpiresAt && tokenExpiresAt <= Date.now()) {
-          logger.warn('[AuthTokenRefresher] Token appears to be expired, using fallback refresh interval');
+          logger.warn('[AuthTokenRefresher] Token is already expired. Attempting immediate refresh.');
+          initialRefreshDelayMs = 0; // Attempt refresh immediately
         } else {
-          logger.info('[AuthTokenRefresher] No token expiry info available, using fallback 50-minute refresh interval');
+          logger.debug('[AuthTokenRefresher] No token expiry info available, using fallback 50-minute refresh interval');
+          initialRefreshDelayMs = refreshIntervalMs;
         }
       }
 
-      // Set up new interval with calculated timing
-      refreshIntervalRef.current = window.setInterval(async () => {
+      // Create the refresh function to avoid code duplication
+      const performRefresh = async () => {
         try {
           const currentToken = await invoke<string | null>('get_app_jwt');
 
@@ -69,12 +73,12 @@ export function useAuthTokenRefresher(user: User | undefined) {
               window.clearInterval(refreshIntervalRef.current);
               refreshIntervalRef.current = null;
             }
-            logger.info('[AuthTokenRefresher] User is not available during scheduled refresh, stopping refresh interval.');
+            logger.debug('[AuthTokenRefresher] User is not available during scheduled refresh, stopping refresh interval.');
             return;
           }
 
           if (!currentToken) {
-            logger.info('[AuthTokenRefresher] No token found during scheduled refresh, stopping refresh interval.');
+            logger.debug('[AuthTokenRefresher] No token found during scheduled refresh, stopping refresh interval.');
             if (refreshIntervalRef.current) {
               window.clearInterval(refreshIntervalRef.current);
               refreshIntervalRef.current = null;
@@ -82,26 +86,31 @@ export function useAuthTokenRefresher(user: User | undefined) {
             return;
           }
 
-          logger.info('[AuthTokenRefresher] Attempting to refresh app JWT.');
+          logger.debug('[AuthTokenRefresher] Attempting to refresh app JWT.');
           try {
             await invoke('refresh_app_jwt_auth0');
-            logger.info('[AuthTokenRefresher] Successfully refreshed app JWT.');
+            logger.debug('[AuthTokenRefresher] Successfully refreshed app JWT.');
           } catch (refreshError) {
             await logError(refreshError as Error, '[AuthTokenRefresher] App JWT refresh failed');
             
             try {
               await invoke('get_user_info_with_app_jwt', { appToken: currentToken });
-              logger.info('[AuthTokenRefresher] Existing JWT token still valid after refresh attempt failed.');
+              logger.debug('[AuthTokenRefresher] Existing JWT token still valid after refresh attempt failed.');
             } catch (validationError) {
               await logError(validationError as Error, '[AuthTokenRefresher] Existing JWT token validation failed after refresh error');
               
               try {
                 await invoke('set_app_jwt', { token: null });
-                logger.info('[AuthTokenRefresher] Cleared invalid JWT token.');
+                logger.warn('[AuthTokenRefresher] Cleared invalid JWT token, initiating sign out.');
+                
+                // Clear the refresh interval since token is invalid
                 if (refreshIntervalRef.current) {
                   window.clearInterval(refreshIntervalRef.current);
                   refreshIntervalRef.current = null;
                 }
+                
+                // Sign out to update AuthContext state and guide user to re-authentication
+                signOut();
               } catch (clearTokenError) {
                 await logError(clearTokenError as Error, '[AuthTokenRefresher] Failed to clear invalid JWT token');
               }
@@ -110,7 +119,16 @@ export function useAuthTokenRefresher(user: User | undefined) {
         } catch (intervalError) {
           await logError(intervalError as Error, '[AuthTokenRefresher] Error in refresh interval');
         }
-      }, refreshIntervalMs);
+      };
+
+      // Handle immediate refresh for expired tokens
+      if (initialRefreshDelayMs === 0) {
+        // Perform immediate refresh, then set up the regular interval
+        void performRefresh();
+      }
+
+      // Set up new interval with calculated timing
+      refreshIntervalRef.current = window.setInterval(performRefresh, refreshIntervalMs);
     };
 
     // Start the refresh cycle

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 import { improveSelectedTextAction } from "@/actions/ai/text-improvement.actions";
-import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
+import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { useSessionActionsContext, useSessionStateContext } from "@/contexts/session";
@@ -42,7 +42,7 @@ export function useTaskDescriptionState({
   // External hooks
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
-  const textImprovementJob = useTypedBackgroundJob(textImprovementJobId ?? null);
+  const textImprovementJob = useBackgroundJob(textImprovementJobId ?? null);
   
   // Type guard to check if a job object has a specific property
   const hasProperty = <T extends object, K extends string>(obj: T, prop: K): obj is T & Record<K, unknown> => {

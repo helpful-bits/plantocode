@@ -65,12 +65,12 @@ export async function findRelevantFilesAction({
       {
         sessionId: sessionId,
         taskDescription: taskDescription,
-        projectDirectory: currentOptions.projectDirectory,
-        modelOverride: currentOptions.modelOverride || null,
-        temperatureOverride: currentOptions.temperatureOverride || null,
-        maxTokensOverride: currentOptions.maxTokensOverride || null,
+        projectDirectory: currentOptions.projectDirectory ?? null,
+        modelOverride: currentOptions.modelOverride ?? null,
+        temperatureOverride: currentOptions.temperatureOverride ?? null,
+        maxTokensOverride: currentOptions.maxTokensOverride ?? null,
         options: allOptionsNull ? null : pathFinderOptionsArg,
-        directoryTree: currentOptions.directoryTree,
+        directoryTree: currentOptions.directoryTree ?? null,
       }
     );
 
@@ -78,6 +78,10 @@ export async function findRelevantFilesAction({
       isSuccess: true,
       message: "Path finder job started",
       data: { jobId: result.jobId },
+      metadata: {
+        jobId: result.jobId,
+        isBackgroundJob: true,
+      },
     };
   } catch (error) {
     return handleActionError(error) as ActionState<{ jobId: string }>;

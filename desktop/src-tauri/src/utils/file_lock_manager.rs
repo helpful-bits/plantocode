@@ -206,12 +206,6 @@ impl FileLockManager {
     }
 }
 
-impl Clone for FileLockManager {
-    fn clone(&self) -> Self {
-        // Only clone the configuration, not the state
-        Self::new(self.lock_timeout)
-    }
-}
 
 /// Get the global FileLockManager instance
 pub async fn get_global_file_lock_manager() -> AppResult<Arc<FileLockManager>> {

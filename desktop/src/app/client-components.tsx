@@ -1,11 +1,3 @@
-import { lazy } from "react";
-
-export const BackgroundJobsSidebar = lazy(() =>
-  import("./components/background-jobs-sidebar/background-jobs-sidebar").then(
-    (mod) => ({ default: mod.BackgroundJobsSidebar })
-  )
-);
-
-export const Navigation = lazy(() =>
-  import("./components/navigation").then((mod) => ({ default: mod.Navigation }))
-);
+// Direct imports instead of lazy loading to avoid hook call issues
+export { BackgroundJobsSidebar } from "./components/background-jobs-sidebar/background-jobs-sidebar";
+export { Navigation } from "./components/navigation";

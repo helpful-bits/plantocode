@@ -67,7 +67,7 @@ const SessionList = ({
         <div
           key={session.id}
           className={`
-            flex items-center justify-between p-2 border-b last:border-0
+            flex items-center justify-between p-2 border-b border-border/60 last:border-b-0
             ${activeSessionId === session.id ? "bg-accent" : "hover:bg-muted/80"}
             ${globalIsSwitching ? "opacity-80 cursor-not-allowed" : "cursor-pointer"}
             ${isLoading && activeSessionId === session.id ? "border-l-4 border-l-primary" : ""}

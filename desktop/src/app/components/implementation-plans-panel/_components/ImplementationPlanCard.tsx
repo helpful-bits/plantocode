@@ -42,15 +42,15 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status) &&
                      ["running", "processing_stream", "generating_stream"].includes(plan.status);
   const progress = getStreamingProgressValue(
-    parsedMeta,
+    plan.metadata,
     plan.startTime,
     plan.maxOutputTokens
   );
 
   // Parse the model information from plan metadata if available
-  const modelInfo = plan.modelUsed || (typeof parsedMeta?.modelUsed === 'string' ? parsedMeta.modelUsed : 'Unknown Model');
+  const modelInfo = plan.modelUsed || parsedMeta?.modelUsed || 'Unknown Model';
 
-  // Calculate estimated token count if available in metadata
+  // Calculate estimated token count if available - prefer plan fields over metadata
   let tokenCountDisplay = "N/A";
   const totalTokens = plan.totalTokens ?? parsedMeta?.totalTokens ?? parsedMeta?.tokensUsed;
   if (typeof totalTokens === 'number' && totalTokens > 0) {
@@ -65,8 +65,40 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     ? formatDistanceToNow(new Date(plan.updatedAt), { addSuffix: true })
     : "Unknown time";
 
-  // Extract session name
-  const sessionName = (typeof parsedMeta?.sessionName === 'string') ? parsedMeta.sessionName : "Untitled Plan";
+  // Extract session name with improved reliability and better fallbacks
+  const sessionName = (() => {
+    // Priority 1: Use sessionName from metadata if available
+    if (parsedMeta?.sessionName && typeof parsedMeta.sessionName === 'string' && parsedMeta.sessionName.trim()) {
+      return parsedMeta.sessionName.trim();
+    }
+    
+    // Priority 2: Use planTitle from metadata if available (specific to implementation plans)
+    if (parsedMeta?.planTitle && typeof parsedMeta.planTitle === 'string' && parsedMeta.planTitle.trim()) {
+      return parsedMeta.planTitle.trim();
+    }
+    
+    // Priority 3: Use taskDescription from metadata if available
+    if (parsedMeta?.taskDescription && typeof parsedMeta.taskDescription === 'string' && parsedMeta.taskDescription.trim()) {
+      const taskDesc = parsedMeta.taskDescription.trim();
+      return taskDesc.length > 60 ? taskDesc.substring(0, 60) + '...' : taskDesc;
+    }
+    
+    // Priority 4: Extract meaningful content from the first line of the prompt
+    if (plan.prompt && typeof plan.prompt === 'string' && plan.prompt.trim()) {
+      const firstLine = plan.prompt.trim().split('\n')[0].trim();
+      if (firstLine.length > 0) {
+        return firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
+      }
+    }
+    
+    // Priority 5: Use job ID with a descriptive prefix as last resort
+    if (plan.id) {
+      return `Implementation Plan ${plan.id.substring(0, 8)}`;
+    }
+    
+    // Final fallback
+    return "Untitled Implementation Plan";
+  })();
 
   // Determine if the job has content to display
   const hasContent = !!plan.response || isStreaming;

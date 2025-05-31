@@ -8,9 +8,10 @@ import { ScrollArea } from "@/ui/scroll-area";
 import { Badge } from "@/ui/badge";
 import { Alert } from "@/ui/alert";
 import { BackgroundJob } from "@/types/session-types";
-import { TaskType } from "@/types/system-prompts";
+import { TaskType } from "@/types/session-types";
 import { useSystemPrompt } from "@/hooks/use-system-prompts";
 import { extractPlaceholders } from "@/actions/system-prompts.actions";
+import { supportsSystemPrompts } from "@/types/task-type-validation";
 
 interface JobDetailsSystemPromptSectionProps {
   job: BackgroundJob;
@@ -19,6 +20,25 @@ interface JobDetailsSystemPromptSectionProps {
 export function JobDetailsSystemPromptSection({
   job,
 }: JobDetailsSystemPromptSectionProps) {
+  // Don't render for task types that don't support system prompts
+  if (!supportsSystemPrompts(job.taskType)) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">System Prompt Template</CardTitle>
+          <CardDescription className="text-xs">
+            System prompt sent to the AI model
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="text-sm text-muted-foreground">
+            Not Applicable - This task type does not use system prompts
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   
@@ -52,7 +72,16 @@ export function JobDetailsSystemPromptSection({
       'task_enhancement': 'Task Enhancement',
       'regex_pattern_generation': 'Regex Pattern Generation',
       'regex_summary_generation': 'Regex Summary Generation',
-      'generic_llm_stream': 'Generic LLM Stream'
+      'generic_llm_stream': 'Generic LLM Stream',
+      'voice_transcription': 'Voice Transcription',
+      'file_finder_workflow': 'File Finder Workflow',
+      // Workflow stage task types
+      'directory_tree_generation': 'Directory Tree Generation',
+      'local_file_filtering': 'Local File Filtering',
+      'extended_path_finder': 'Extended Path Finder',
+      'extended_path_correction': 'Extended Path Correction',
+      'streaming': 'Streaming',
+      'unknown': 'Unknown'
     };
     
     return displayNames[taskType] || taskType;
@@ -126,7 +155,7 @@ export function JobDetailsSystemPromptSection({
                     {isTemplate ? "Template Content" : "Prompt Content"}
                   </div>
                   <ScrollArea className={`${showFullPrompt ? "max-h-[400px]" : "max-h-[200px]"}`}>
-                    <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full text-foreground bg-muted/50 p-3 rounded border">
+                    <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full text-foreground bg-muted/50 p-3 rounded border border-border/60">
                       {displayContent}
                     </pre>
                   </ScrollArea>
@@ -143,7 +172,7 @@ export function JobDetailsSystemPromptSection({
                 </div>
                 
                 {isTemplate && (
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-border/60">
                     <div className="text-sm font-medium text-blue-900 mb-1">About This Template</div>
                     <div className="text-xs text-blue-800">
                       This is a template with placeholders that were replaced with actual values when the job ran. 

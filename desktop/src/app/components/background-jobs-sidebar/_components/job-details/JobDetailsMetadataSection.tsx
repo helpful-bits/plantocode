@@ -6,6 +6,7 @@ import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { ScrollArea } from "@/ui/scroll-area";
+import { getParsedMetadata } from "../../utils";
 
 interface JobDetailsMetadataSectionProps {
   job: BackgroundJob;
@@ -22,18 +23,20 @@ export function JobDetailsMetadataSection({
   const [showFullMetadata, setShowFullMetadata] = useState(false);
   const [showFullRegex, setShowFullRegex] = useState(false);
   
-  if (!job.metadata || Object.keys(job.metadata).length === 0) {
+  const parsedMeta = getParsedMetadata(job.metadata);
+  
+  if (!parsedMeta || Object.keys(parsedMeta).length === 0) {
     return null;
   }
 
   const PREVIEW_CHARS = 300;
-  const formattedMetadata = formatMetadata(job.metadata);
+  const formattedMetadata = formatMetadata(parsedMeta);
   const isLongMetadata = formattedMetadata.length > PREVIEW_CHARS;
   const displayMetadata = showFullMetadata || !isLongMetadata 
     ? formattedMetadata 
     : formattedMetadata.substring(0, PREVIEW_CHARS) + "...";
 
-  const formattedRegex = job.metadata.regexData ? formatRegexPatterns(job.metadata.regexData) : null;
+  const formattedRegex = parsedMeta.regexData ? formatRegexPatterns(parsedMeta.regexData) : null;
   const isLongRegex = formattedRegex ? formattedRegex.length > PREVIEW_CHARS : false;
   const displayRegex = showFullRegex || !isLongRegex || !formattedRegex
     ? formattedRegex 
@@ -57,19 +60,19 @@ export function JobDetailsMetadataSection({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-3">
-            {job.metadata.targetField && (
+            {parsedMeta.targetField && (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Target Field</div>
-                <div className="text-sm font-medium text-foreground">{job.metadata.targetField}</div>
+                <div className="text-sm font-medium text-foreground">{parsedMeta.targetField}</div>
               </div>
             )}
 
             {/* Display regex patterns separately if they exist */}
-            {job.metadata.regexData && (
+            {parsedMeta.regexData && (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Regex Patterns</div>
                 <ScrollArea className={`${showFullRegex ? "max-h-[300px]" : "max-h-[150px]"}`}>
-                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md text-foreground">
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md border border-border/60 text-foreground">
                     {displayRegex || 'No regex patterns found'}
                   </pre>
                 </ScrollArea>

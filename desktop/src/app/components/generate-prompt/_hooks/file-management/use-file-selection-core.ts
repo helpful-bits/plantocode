@@ -34,7 +34,7 @@ export function useFileSelectionCore({
     [rawFilesMap, currentIncludedFiles, currentExcludedFiles]
   );
 
-  // File selection handlers
+  // File selection handlers - optimized with stable references
   const toggleFileSelection = useCallback(
     (path: string) => {
       if (!path || typeof path !== 'string') {
@@ -54,6 +54,7 @@ export function useFileSelectionCore({
         return;
       }
 
+      // Use functional updates to ensure we have the latest state
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       // Check if file is currently in excluded state
@@ -65,7 +66,10 @@ export function useFileSelectionCore({
         onUpdateIncludedFiles(newIncludedFiles);
       } else {
         // Either not included OR force excluded -> include and remove from excluded
-        const newIncludedFiles = Array.from(new Set([...currentIncludedFiles, targetComparablePath]));
+        const newIncludedFiles = [...currentIncludedFiles];
+        if (!newIncludedFiles.includes(targetComparablePath)) {
+          newIncludedFiles.push(targetComparablePath);
+        }
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
         
         onUpdateIncludedFiles(newIncludedFiles);

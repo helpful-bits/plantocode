@@ -120,7 +120,7 @@ pub async fn create_path_finder_job_service(
         TaskType::PathFinder,
         "PATH_FINDER",
         &format!("Find relevant files for task: {}", args.task_description),
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(payload)
             .map_err(|e| AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
         1, // Priority

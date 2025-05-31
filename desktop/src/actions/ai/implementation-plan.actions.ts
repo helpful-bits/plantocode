@@ -58,10 +58,10 @@ export async function createImplementationPlanAction(params: {
         taskDescription,
         projectDirectory,
         relevantFiles,
-        projectStructure,
-        model: model,
-        temperature: temperature,
-        maxTokens: maxTokens,
+        projectStructure: projectStructure ?? null,
+        model: model ?? null,
+        temperature: temperature ?? null,
+        maxTokens: maxTokens ?? null,
       }
     );
 
@@ -71,6 +71,7 @@ export async function createImplementationPlanAction(params: {
       data: { jobId: result.jobId },
       metadata: {
         jobId: result.jobId,
+        isBackgroundJob: true,
       },
     };
   } catch (error) {
@@ -125,7 +126,7 @@ export async function estimateImplementationPlanTokensAction(params: {
       taskDescription,
       projectDirectory,
       relevantFiles,
-      projectStructure,
+      projectStructure: projectStructure ?? null,
     });
 
     return {
@@ -193,7 +194,7 @@ export async function getImplementationPlanPromptAction(params: {
       taskDescription,
       projectDirectory,
       relevantFiles,
-      projectStructure,
+      projectStructure: projectStructure ?? null,
     });
 
     return {

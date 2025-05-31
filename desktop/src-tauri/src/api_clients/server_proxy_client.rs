@@ -291,8 +291,8 @@ impl ApiClient for ServerProxyClient {
             model: options.model.clone(),
             messages,
             stream: options.stream,
-            max_tokens: options.max_tokens,
-            temperature: options.temperature,
+            max_tokens: Some(options.max_tokens),
+            temperature: Some(options.temperature),
         };
         
         // Create the server proxy endpoint URL for OpenRouter

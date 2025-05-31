@@ -9,9 +9,9 @@ import {
   useSessionStateContext, 
   useSessionActionsContext 
 } from "@/contexts/session";
+import { useProject } from "@/contexts/project-context";
 
 export interface UseGeneratePromptTaskStateProps {
-  handleInteraction?: () => void;
   taskDescriptionRef: React.RefObject<TaskDescriptionHandle | null>;
 }
 
@@ -21,20 +21,22 @@ export interface UseGeneratePromptTaskStateProps {
  * getting its taskDescription state from SessionContext.
  */
 export function useGeneratePromptTaskState({
-  handleInteraction,
   taskDescriptionRef
 }: UseGeneratePromptTaskStateProps) {
-  // Get task description from SessionContext
+  // Get session and project context directly
   const sessionState = useSessionStateContext();
   const sessionActions = useSessionActionsContext();
+  const { projectDirectory } = useProject();
   
+  // Handle user interaction that modifies session
+  const handleInteraction = useCallback(() => {
+    sessionActions.setSessionModified(true);
+  }, [sessionActions.setSessionModified]);
   
   const setTaskDescription = useCallback((description: string) => {
     sessionActions.updateCurrentSessionFields({ taskDescription: description });
-    if (handleInteraction) {
-      handleInteraction();
-    }
-  }, [sessionActions, handleInteraction]);
+    handleInteraction();
+  }, [sessionActions.updateCurrentSessionFields, handleInteraction]);
   
   // Initialize task description state for UI-specific concerns
   const {
@@ -52,17 +54,15 @@ export function useGeneratePromptTaskState({
     isGeneratingGuidance,
     handleGenerateGuidance: baseHandleGenerateGuidance,
   } = useGuidanceGeneration({
-    projectDirectory: sessionState.currentSession?.projectDirectory || null,
+    projectDirectory: projectDirectory || "",
     onGuidanceGenerated: setTaskDescription,
-    onInteraction: handleInteraction || (() => {}),
+    onInteraction: handleInteraction,
   });
 
   // Wrap the guidance generation handler to call handleInteraction
   const handleGenerateGuidance = useCallback(
-    async (selectedPaths: string[]) => {
-      if (handleInteraction) {
-        handleInteraction();
-      }
+    async (selectedPaths?: string[]) => {
+      handleInteraction();
       return baseHandleGenerateGuidance(selectedPaths);
     },
     [baseHandleGenerateGuidance, handleInteraction]
@@ -73,7 +73,7 @@ export function useGeneratePromptTaskState({
     // Reset task description in the session
     sessionActions.updateCurrentSessionFields({ taskDescription: "" });
     // No explicit reset for guidance generation as its state is ephemeral
-  }, [sessionActions]);
+  }, [sessionActions.updateCurrentSessionFields]);
 
   // Create a memoized value to prevent unnecessary renders
   return useMemo(
@@ -92,13 +92,13 @@ export function useGeneratePromptTaskState({
       resetTaskState,
     }),
     [
-      taskDescriptionRef,
-      resetTaskState,
+      // taskDescriptionRef is a ref - stable
       isImprovingText,
       textImprovementJobId,
-      handleImproveSelection,
+      handleImproveSelection, // memoized with useCallback
       isGeneratingGuidance,
-      handleGenerateGuidance,
+      handleGenerateGuidance, // memoized with useCallback
+      resetTaskState, // memoized with useCallback above
     ]
   );
 }

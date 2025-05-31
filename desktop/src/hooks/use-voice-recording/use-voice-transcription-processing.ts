@@ -2,10 +2,10 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
-import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
+import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { type ActionState } from "@/types";
 import { JOB_STATUSES, type JobStatus } from "@/types/session-types";
-import { getErrorMessage, createTranscriptionErrorMessage } from "@/utils/error-handling";
+import { getErrorMessage } from "@/utils/error-handling";
 
 import {
   handleTranscription,
@@ -51,6 +51,21 @@ export function useVoiceTranscriptionProcessing({
   // Track component mount state to prevent state updates after unmount
   const isMountedRef = useRef(true);
   
+  // Store latest callback refs to avoid effect re-runs when callbacks change
+  // This provides additional protection against unstable callback references
+  const callbacksRef = useRef({
+    onTranscribed,
+    onCorrectionComplete,
+  });
+  
+  // Update callback refs when callbacks change
+  useEffect(() => {
+    callbacksRef.current = {
+      onTranscribed,
+      onCorrectionComplete,
+    };
+  }, [onTranscribed, onCorrectionComplete]);
+  
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -59,7 +74,7 @@ export function useVoiceTranscriptionProcessing({
   }, []);
 
   // Get the background job from context using typed hook
-  const { job: transcriptionJobData } = useTypedBackgroundJob(transcriptionJobId);
+  const { job: transcriptionJobData } = useBackgroundJob(transcriptionJobId);
 
   // Unified function to update state (only if component is still mounted)
   const updateState = useCallback(
@@ -139,8 +154,8 @@ export function useVoiceTranscriptionProcessing({
               setCorrectedText,
               setTextStatus,
               updateState,
-              onTranscribed,
-              onCorrectionComplete
+              callbacksRef.current.onTranscribed,
+              callbacksRef.current.onCorrectionComplete
             );
           }
 
@@ -160,8 +175,8 @@ export function useVoiceTranscriptionProcessing({
             setCorrectedText,
             setTextStatus,
             updateState,
-            onTranscribed,
-            onCorrectionComplete
+            callbacksRef.current.onTranscribed,
+            callbacksRef.current.onCorrectionComplete
           );
         }
       } catch (error) {
@@ -169,7 +184,7 @@ export function useVoiceTranscriptionProcessing({
           "[VoiceRecording] Error processing transcription result:",
           error
         );
-        updateState({ error: createTranscriptionErrorMessage(error), isProcessing: false });
+        updateState({ error: getErrorMessage(error, 'transcription'), isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -179,8 +194,7 @@ export function useVoiceTranscriptionProcessing({
       sessionId,
       transcriptionJobId,
       projectDirectory,
-      onTranscribed,
-      onCorrectionComplete,
+      // Note: onTranscribed and onCorrectionComplete are handled via callbacksRef
     ]
   );
 
@@ -220,7 +234,7 @@ export function useVoiceTranscriptionProcessing({
         await processTranscriptionResult(result, false);
       } catch (err) {
         console.error("[VoiceRecording] Error in processTranscription:", err);
-        updateState({ error: createTranscriptionErrorMessage(err), isProcessing: false });
+        updateState({ error: getErrorMessage(err, 'transcription'), isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -254,7 +268,7 @@ export function useVoiceTranscriptionProcessing({
         await processTranscriptionResult(result, false);
       } catch (err) {
         console.error("[VoiceRecording] Error in retryTranscription:", err);
-        updateState({ error: createTranscriptionErrorMessage(err), isProcessing: false });
+        updateState({ error: getErrorMessage(err, 'transcription'), isProcessing: false });
         setTextStatus("error");
       }
     },
@@ -271,6 +285,11 @@ export function useVoiceTranscriptionProcessing({
   }, []);
 
   // Monitor transcription job - handles both transcription and correction phases
+  // This effect has a large dependency array to ensure it responds to all relevant changes
+  // Key considerations:
+  // 1. Callback dependencies (onTranscribed, onCorrectionComplete) must be stable from parent
+  // 2. State dependencies (rawText, correctedText) are needed for correction logic
+  // 3. Job data changes (status, response, error) trigger processing
   useEffect(() => {
     let isCurrentJobEffect = true; // Flag for this effect instance
     // Keep local reference to the job ID to avoid closure issues
@@ -340,14 +359,14 @@ export function useVoiceTranscriptionProcessing({
               setRawText(responseText);
             }
 
-            // Notify correction complete callback
-            if (onCorrectionComplete && rawText) {
-              onCorrectionComplete(rawText, responseText);
+            // Notify correction complete callback using stable ref
+            if (callbacksRef.current.onCorrectionComplete && rawText) {
+              callbacksRef.current.onCorrectionComplete(rawText, responseText);
             }
 
-            // Notify transcribed callback with corrected text
-            if (onTranscribed) {
-              onTranscribed(responseText);
+            // Notify transcribed callback with corrected text using stable ref
+            if (callbacksRef.current.onTranscribed) {
+              callbacksRef.current.onTranscribed(responseText);
             }
 
             // Mark as done and cleanup
@@ -385,14 +404,14 @@ export function useVoiceTranscriptionProcessing({
                     if (typeof correctionResult.data === "string") {
                       // Direct text response from correction
                       setCorrectedText(correctionResult.data);
-                      if (onCorrectionComplete) {
-                        onCorrectionComplete(
+                      if (callbacksRef.current.onCorrectionComplete) {
+                        callbacksRef.current.onCorrectionComplete(
                           responseText,
                           correctionResult.data
                         );
                       }
-                      if (onTranscribed) {
-                        onTranscribed(correctionResult.data);
+                      if (callbacksRef.current.onTranscribed) {
+                        callbacksRef.current.onTranscribed(correctionResult.data);
                       }
                       setTextStatus("done");
                       setTranscriptionJobId(null);
@@ -414,11 +433,11 @@ export function useVoiceTranscriptionProcessing({
                     console.warn(
                       `[VoiceRecording] Correction failed: ${correctionResult.message}`
                     );
-                    if (onTranscribed) {
-                      onTranscribed(responseText);
+                    if (callbacksRef.current.onTranscribed) {
+                      callbacksRef.current.onTranscribed(responseText);
                     }
                     // Update error state to reflect the correction failure
-                    const errorMessage = createTranscriptionErrorMessage(`Correction failed: ${correctionResult.message || "Unknown error"}`);
+                    const errorMessage = getErrorMessage(`Correction failed: ${correctionResult.message || "Unknown error"}`, 'transcription');
                     updateState({ 
                       error: errorMessage,
                       isProcessing: false 
@@ -432,11 +451,11 @@ export function useVoiceTranscriptionProcessing({
                     "[VoiceRecording] Error during correction:",
                     error
                   );
-                  if (onTranscribed) {
-                    onTranscribed(responseText);
+                  if (callbacksRef.current.onTranscribed) {
+                    callbacksRef.current.onTranscribed(responseText);
                   }
                   // Update error state to reflect the correction failure
-                  const errorMessage = createTranscriptionErrorMessage(`Correction failed: ${getErrorMessage(error)}`);
+                  const errorMessage = getErrorMessage(`Correction failed: ${getErrorMessage(error)}`, 'transcription');
                   updateState({ 
                     error: errorMessage,
                     isProcessing: false 
@@ -446,8 +465,8 @@ export function useVoiceTranscriptionProcessing({
                 });
             } else {
               // No correction needed
-              if (onTranscribed) {
-                onTranscribed(responseText);
+              if (callbacksRef.current.onTranscribed) {
+                callbacksRef.current.onTranscribed(responseText);
               }
               if (isMountedRef.current) {
                 setTextStatus("done");
@@ -462,8 +481,8 @@ export function useVoiceTranscriptionProcessing({
               `[VoiceRecording] Job completed with unknown task type: ${taskType}`
             );
             setRawText(responseText);
-            if (onTranscribed) {
-              onTranscribed(responseText);
+            if (callbacksRef.current.onTranscribed) {
+              callbacksRef.current.onTranscribed(responseText);
             }
             setTextStatus("done");
             setTranscriptionJobId(null);
@@ -482,8 +501,8 @@ export function useVoiceTranscriptionProcessing({
             console.log(
               `[VoiceRecording] Correction failed but using raw transcription`
             );
-            if (onTranscribed && !correctedText) {
-              onTranscribed(rawText);
+            if (callbacksRef.current.onTranscribed && !correctedText) {
+              callbacksRef.current.onTranscribed(rawText);
             }
             setTextStatus("done");
           } else {
@@ -500,7 +519,7 @@ export function useVoiceTranscriptionProcessing({
         }
       } catch (error) {
         console.error("[VoiceRecording] Error processing job result:", error);
-        updateState({ error: createTranscriptionErrorMessage(error), isProcessing: false });
+        updateState({ error: getErrorMessage(error, 'transcription'), isProcessing: false });
         setTextStatus("error");
         setTranscriptionJobId(null);
       }
@@ -533,22 +552,28 @@ export function useVoiceTranscriptionProcessing({
       isCurrentJobEffect = false; // Cleanup function for when effect re-runs or component unmounts
     };
   }, [
+    // Primary job tracking dependencies
     transcriptionJobId, // Trigger when the ID of job to watch changes
     transcriptionJobData?.status, // Trigger when the status of the watched job changes
     transcriptionJobData?.response, // Trigger when the response of the watched job changes
     transcriptionJobData?.errorMessage, // Trigger on error message change
     transcriptionJobData?.taskType, // Trigger when task type changes
-    // State dependencies used within the effect:
+    
+    // State dependencies used within the effect
     rawText, // Used in correction completion and fallback logic
     correctedText, // Used in onTranscribed callback condition
-    // Stable dependencies (or assumed stable from context/props):
-    autoCorrect,
-    sessionId,
-    projectDirectory,
-    onTranscribed,
-    onCorrectionComplete,
-    updateState,
-    setIsProcessing,
+    
+    // Configuration dependencies
+    autoCorrect, // Affects whether correction is performed
+    sessionId, // Used in correction handler calls
+    projectDirectory, // Used in correction handler calls
+    
+    // Function dependencies (should be stable via useCallback)
+    updateState, // Memoized above with [onError, setIsProcessing]
+    setIsProcessing, // Passed from parent, should be stable
+    
+    // Note: onTranscribed and onCorrectionComplete are handled via callbacksRef
+    // to prevent unnecessary effect re-runs when callbacks change
   ]);
 
   return {

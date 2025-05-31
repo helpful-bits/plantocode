@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState, useCallback, useEffect } from "react";
 
-import { useTypedBackgroundJob } from "@/contexts/_hooks/use-typed-background-job";
+import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { AppError, ErrorType } from "@/utils/error-handling";
@@ -39,7 +39,7 @@ export function useGuidanceGeneration({
   const [guidanceJobId, setGuidanceJobId] = useState<string | null>(null);
 
   // Track the background job with type safety
-  const guidanceJobResult = useTypedBackgroundJob(guidanceJobId);
+  const guidanceJobResult = useBackgroundJob(guidanceJobId);
 
   // Process job completion
   useEffect(() => {

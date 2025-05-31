@@ -45,11 +45,11 @@ export async function generateGuidanceForPathsAction(
       projectDirectory,
       taskDescription,
       paths,
-      fileContentsSummary: options?.fileContentsSummary,
-      systemPromptOverride: options?.systemPromptOverride,
-      modelOverride: options?.modelOverride,
-      temperatureOverride: options?.temperatureOverride,
-      maxTokensOverride: options?.maxTokensOverride,
+      fileContentsSummary: options?.fileContentsSummary ?? null,
+      systemPromptOverride: options?.systemPromptOverride ?? null,
+      modelOverride: options?.modelOverride ?? null,
+      temperatureOverride: options?.temperatureOverride ?? null,
+      maxTokensOverride: options?.maxTokensOverride ?? null,
     });
 
     // Return success with job ID

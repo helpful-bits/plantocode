@@ -1,8 +1,10 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CreditCard, Settings, Key, Wifi, Clock, Database, RotateCcw } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { type BackgroundJob } from "@/types/session-types";
+import { extractErrorInfo, createUserFriendlyErrorMessage, ErrorType } from "@/utils/error-handling";
+import { getParsedMetadata } from "../../utils";
 
 interface JobDetailsErrorSectionProps {
   job: BackgroundJob;
@@ -13,43 +15,353 @@ export function JobDetailsErrorSection({ job }: JobDetailsErrorSectionProps) {
     return null;
   }
 
+  // Extract structured error information
+  const errorInfo = extractErrorInfo(job.errorMessage);
+  
+  // Check for structured error information in metadata
+  const parsedMetadata = getParsedMetadata(job.metadata);
+  const isMetadataBillingError = parsedMetadata?.errorCode === 'BILLING_ERROR' || 
+    parsedMetadata?.errorType === 'BILLING_ERROR' ||
+    parsedMetadata?.errorCategory === 'billing';
+
+  // Check if the extracted error info indicates a billing error
+  const isStructuredBillingError = errorInfo.type === 'BILLING_ERROR';
+
+  // Fallback to string matching for backward compatibility
   const errorMessageLower = job.errorMessage?.toLowerCase() || "";
-  const isBillingError = job.errorMessage && 
+  const isStringMatchBillingError = job.errorMessage && 
     (errorMessageLower.includes("not available on your current plan") || 
      errorMessageLower.includes("payment required") || 
      errorMessageLower.includes("billing error") || 
      errorMessageLower.includes("upgrade required") ||
-     errorMessageLower.includes("subscription plan"));
+     errorMessageLower.includes("subscription plan") ||
+     errorMessageLower.includes("insufficient credits") ||
+     errorMessageLower.includes("quota exceeded"));
+
+  // Prefer structured error information, then metadata, then fall back to string matching
+  const isBillingError = isStructuredBillingError || isMetadataBillingError || isStringMatchBillingError;
+  
+  // Check for workflow errors
+  const isWorkflowError = errorInfo.type === ErrorType.WORKFLOW_ERROR;
+  const workflowContext = errorInfo.workflowContext;
+  
+  // Check for other specific error types
+  const isPermissionError = errorInfo.type === ErrorType.PERMISSION_ERROR;
+  const isNetworkError = errorInfo.type === ErrorType.NETWORK_ERROR;
+  const isTimeoutError = errorInfo.type === ErrorType.TIMEOUT_ERROR;
+  const isConfigError = errorInfo.type === ErrorType.CONFIGURATION_ERROR;
+  const isDatabaseError = errorInfo.type === ErrorType.DATABASE_ERROR;
+  const isApiError = errorInfo.type === ErrorType.API_ERROR;
+  const isValidationError = errorInfo.type === ErrorType.VALIDATION_ERROR;
+  
+  // Get user-friendly error message using the enhanced utility
+  const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, "background job");
+  const displayMessage = job.errorMessage || "An unknown error occurred";
+  
+  // Helper function to get error icon based on type
+  const getErrorIcon = () => {
+    if (isBillingError) return CreditCard;
+    if (isPermissionError) return Key;
+    if (isNetworkError) return Wifi;
+    if (isTimeoutError) return Clock;
+    if (isConfigError) return Settings;
+    if (isDatabaseError) return Database;
+    if (isWorkflowError) return RotateCcw;
+    return AlertCircle;
+  };
+  
+  const ErrorIcon = getErrorIcon();
+  
+  // Helper function to get error title based on type
+  const getErrorTitle = () => {
+    if (isBillingError) return "Billing Error";
+    if (isPermissionError) return "Permission Error";
+    if (isNetworkError) return "Network Error";
+    if (isTimeoutError) return "Timeout Error";
+    if (isConfigError) return "Configuration Error";
+    if (isDatabaseError) return "Database Error";
+    if (isWorkflowError) return "Workflow Error";
+    if (isApiError) return "API Error";
+    if (isValidationError) return "Validation Error";
+    return "Error Information";
+  };
+  
+  // Helper function to get error description based on type
+  const getErrorDescription = () => {
+    if (isBillingError) return "This error is related to your subscription or billing";
+    if (isPermissionError) return "Access to this resource or feature was denied";
+    if (isNetworkError) return "Network connectivity issue occurred";
+    if (isTimeoutError) return "The operation took too long to complete";
+    if (isConfigError) return "A configuration or settings issue was detected";
+    if (isDatabaseError) return "A database operation failed";
+    if (isApiError) return "An API service error occurred";
+    if (isValidationError) return "Invalid input or data was provided";
+    if (isWorkflowError && workflowContext?.stageName) {
+      const stageDisplayName = getWorkflowStageDisplayName(workflowContext.stageName);
+      return `Job failed during the "${stageDisplayName || workflowContext.stageName}" stage`;
+    }
+    return "Job execution failed with the following error";
+  };
+  
+  // Helper function to get workflow stage display names
+  const getWorkflowStageDisplayName = (stageName: string): string | null => {
+    const stageMap: Record<string, string> = {
+      "GeneratingDirTree": "Directory Tree Generation",
+      "GeneratingRegex": "Pattern Generation", 
+      "LocalFiltering": "Local File Filtering",
+      "InitialPathFinder": "Initial Path Finding",
+      "InitialPathCorrection": "Initial Path Correction",
+      "ExtendedPathFinder": "Extended Path Finding",
+      "ExtendedPathCorrection": "Extended Path Correction",
+      "GENERATING_DIR_TREE": "Directory Tree Generation",
+      "GENERATING_REGEX": "Pattern Generation",
+      "LOCAL_FILTERING": "Local File Filtering",
+      "INITIAL_PATH_FINDER": "Initial Path Finding",
+      "INITIAL_PATH_CORRECTION": "Initial Path Correction",
+      "EXTENDED_PATH_FINDER": "Extended Path Finding",
+      "EXTENDED_PATH_CORRECTION": "Extended Path Correction",
+    };
+    return stageMap[stageName] || null;
+  };
 
   return (
     <div className="mb-6">
       <Card className="border-destructive bg-destructive/5">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm text-destructive flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            Error Information
+            <ErrorIcon className="h-4 w-4" />
+            {getErrorTitle()}
           </CardTitle>
           <CardDescription className="text-xs text-destructive/80">
-            Job execution failed with the following error
+            {getErrorDescription()}
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
-          <pre className="whitespace-pre-wrap text-balance text-sm text-destructive w-full">
-            {job.errorMessage}
-          </pre>
+          {/* Show workflow context if available */}
+          {isWorkflowError && workflowContext && (
+            <div className="mb-3 p-2 bg-muted/50 rounded text-xs">
+              <div className="font-medium text-muted-foreground mb-1">Workflow Context:</div>
+              {workflowContext.workflowId && (
+                <div>Workflow ID: <span className="font-mono">{workflowContext.workflowId}</span></div>
+              )}
+              {workflowContext.stageName && (
+                <div>Failed Stage: <span className="font-medium">
+                  {getWorkflowStageDisplayName(workflowContext.stageName) || workflowContext.stageName}
+                </span></div>
+              )}
+              {workflowContext.retryAttempt && (
+                <div>Retry Attempt: {workflowContext.retryAttempt}</div>
+              )}
+              {workflowContext.stageJobId && (
+                <div>Stage Job ID: <span className="font-mono">{workflowContext.stageJobId}</span></div>
+              )}
+              {workflowContext.originalJobId && (
+                <div>Original Job ID: <span className="font-mono">{workflowContext.originalJobId}</span></div>
+              )}
+            </div>
+          )}
+          
+          {/* User-friendly error message */}
+          <div className="mb-3 p-3 bg-muted/30 rounded text-sm text-muted-foreground">
+            <div className="font-medium mb-1">Summary:</div>
+            <div>{userFriendlyMessage}</div>
+          </div>
+          
+          {/* Technical error details */}
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground mb-2">
+              Technical Details
+              <span className="ml-1 transition-transform group-open:rotate-90">▶</span>
+            </summary>
+            <pre className="whitespace-pre-wrap text-balance text-xs text-destructive w-full p-2 bg-destructive/5 rounded border border-border/60">
+              {displayMessage}
+            </pre>
+          </details>
+          
           {isBillingError && (
-            <div className="mt-4">
-              <p className="text-sm text-destructive/90 mb-2">
-                This error appears to be related to your subscription plan. Please consider upgrading to access this feature or model.
-              </p>
-              <Button 
-                variant="default"
-                size="sm" 
-                onClick={() => window.location.pathname = '/settings'}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                View Subscription
-              </Button>
+            <div className="mt-4 p-3 bg-warning/10 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <CreditCard className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-warning-foreground mb-1">
+                    Subscription Required
+                  </p>
+                  <p className="text-sm text-warning-foreground/90 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="default"
+                      size="sm" 
+                      onClick={() => window.location.pathname = '/settings'}
+                      className="bg-warning text-warning-foreground hover:bg-warning/90"
+                    >
+                      View Billing
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      size="sm" 
+                      onClick={() => window.location.pathname = '/account'}
+                    >
+                      Account Settings
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Error-type specific action cards */}
+          {isPermissionError && !isBillingError && (
+            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <Key className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-800 mb-1">
+                    Access Denied
+                  </p>
+                  <p className="text-sm text-amber-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                  <Button 
+                    variant="outline"
+                    size="sm" 
+                    onClick={() => window.location.pathname = '/settings'}
+                    className="border-amber-300 text-amber-700 hover:bg-amber-100"
+                  >
+                    <Settings className="h-3 w-3 mr-1" />
+                    Check Settings
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isNetworkError && !isBillingError && (
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <Wifi className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-800 mb-1">
+                    Network Connection Failed
+                  </p>
+                  <p className="text-sm text-red-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isTimeoutError && !isBillingError && (
+            <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <Clock className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-orange-800 mb-1">
+                    Operation Timed Out
+                  </p>
+                  <p className="text-sm text-orange-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isConfigError && !isBillingError && (
+            <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <Settings className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-purple-800 mb-1">
+                    Configuration Error
+                  </p>
+                  <p className="text-sm text-purple-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline"
+                      size="sm" 
+                      onClick={() => window.location.pathname = '/settings'}
+                      className="border-purple-300 text-purple-700 hover:bg-purple-100"
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
+                      Settings
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isDatabaseError && !isBillingError && (
+            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <Database className="h-4 w-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-800 mb-1">
+                    Database Error
+                  </p>
+                  <p className="text-sm text-gray-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isApiError && !isBillingError && (
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-blue-800 mb-1">
+                    API Service Error
+                  </p>
+                  <p className="text-sm text-blue-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isValidationError && !isBillingError && (
+            <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-800 mb-1">
+                    Invalid Input
+                  </p>
+                  <p className="text-sm text-yellow-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {isWorkflowError && !isBillingError && (
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 border border-border/60 rounded">
+              <div className="flex items-start gap-2">
+                <RotateCcw className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-blue-800 mb-1">
+                    Workflow Stage Failed
+                  </p>
+                  <p className="text-sm text-blue-700 mb-3">
+                    {userFriendlyMessage}
+                  </p>
+                  {workflowContext?.retryAttempt && workflowContext.retryAttempt > 1 && (
+                    <p className="text-xs text-blue-600 mb-2">
+                      This stage has already been retried {workflowContext.retryAttempt - 1} time(s).
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

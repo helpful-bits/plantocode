@@ -10,8 +10,8 @@ use crate::models::{OpenRouterResponse, OpenRouterStreamChunk};
 #[derive(Debug, Clone)]
 pub struct ApiClientOptions {
     pub model: String,
-    pub max_tokens: Option<u32>,
-    pub temperature: Option<f32>,
+    pub max_tokens: u32,
+    pub temperature: f32,
     pub stream: bool,
 }
 

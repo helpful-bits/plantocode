@@ -7,14 +7,26 @@ import { cn } from "@/utils/utils";
 
 const ScrollArea = forwardRef<
   ElementRef<typeof ScrollAreaPrimitive.Root>,
-  ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
->(({ className, children, ...props }, ref) => (
+  ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
+    /** Optimize for large content by enabling hardware acceleration and improving scroll performance */
+    optimizeForLargeContent?: boolean;
+  }
+>(({ className, children, optimizeForLargeContent = false, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
-    className={cn("relative overflow-hidden", className)}
+    className={cn(
+      "relative overflow-hidden",
+      optimizeForLargeContent && "will-change-scroll transform-gpu",
+      className
+    )}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    <ScrollAreaPrimitive.Viewport 
+      className={cn(
+        "h-full w-full rounded-[inherit]",
+        optimizeForLargeContent && "contain-layout contain-style"
+      )}
+    >
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

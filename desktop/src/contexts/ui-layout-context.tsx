@@ -44,6 +44,14 @@ export function UILayoutProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Enhanced setter for app initializing state with logging
+  const setAppInitializing = useCallback((initializing: boolean) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[UILayout] App initializing state changed: ${initializing}`);
+    }
+    setIsAppInitializing(initializing);
+  }, []);
+
   // Create the value object that will be passed to consumers
   const value: UILayoutContextType = useMemo(
     () => ({
@@ -57,7 +65,7 @@ export function UILayoutProvider({ children }: { children: ReactNode }) {
 
       // App initialization state
       isAppInitializing,
-      setAppInitializing: setIsAppInitializing,
+      setAppInitializing,
 
       // Busy message
       busyMessage,
@@ -69,7 +77,7 @@ export function UILayoutProvider({ children }: { children: ReactNode }) {
       isAppBusy,
       setAppBusy,
       isAppInitializing,
-      setIsAppInitializing,
+      setAppInitializing,
       busyMessage,
       setBusyMessage,
     ]

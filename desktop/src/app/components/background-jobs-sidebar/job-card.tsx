@@ -37,6 +37,71 @@ export interface JobCardProps {
   onSelect: (job: BackgroundJob) => void;
 }
 
+// Helper function to identify local/filesystem tasks
+const isLocalTask = (taskType: string): boolean => {
+  const localTaskTypes = [
+    "local_file_filtering",
+    "directory_tree_generation",
+    "regex_generation"
+  ];
+  return localTaskTypes.includes(taskType);
+};
+
+// Helper functions for previews
+const getResponsePreview = (job: BackgroundJob) => {
+  if (
+    job.taskType === "implementation_plan" &&
+    JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)
+  ) {
+    return "Implementation plan generated.";
+  }
+
+  if (job.response) {
+    // Check if this is a path finder job with structured JSON response
+    if (job.taskType === "path_finder" || 
+        job.taskType === "initial_path_finding" || 
+        job.taskType === "extended_path_finding" ||
+        job.taskType === "file_finder_workflow") {
+      try {
+        const parsed = JSON.parse(job.response);
+        // If it's structured data with paths, show a summary instead of raw JSON
+        if (parsed && (parsed.paths || parsed.count !== undefined)) {
+          const count = parsed.count || parsed.paths?.length || 0;
+          return count > 0 ? `Found ${count} relevant file${count !== 1 ? "s" : ""}` : "Path finder completed";
+        }
+      } catch {
+        // Fall through to regular preview if not valid JSON
+      }
+    }
+
+    // Check for regex pattern generation - show meaningful summary instead of raw JSON
+    if (job.taskType === "regex_pattern_generation" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+      try {
+        const parsed = JSON.parse(job.response);
+        if (parsed && parsed.primaryPattern) {
+          return `Generated regex pattern: /${parsed.primaryPattern.pattern || 'pattern'}/`;
+        }
+      } catch {
+        // Fall through to regular preview if not valid JSON
+      }
+    }
+
+    const maxLength = 150; // Max characters for preview
+    return job.response.length > maxLength
+      ? `${job.response.substring(0, maxLength)}...`
+      : job.response;
+  }
+  return "";
+};
+
+const getErrorPreview = (errorMessage?: string) => {
+  if (!errorMessage) return "";
+  const maxLength = 150; // Max characters for preview
+  return errorMessage.length > maxLength
+    ? `${errorMessage.substring(0, maxLength)}...`
+    : errorMessage;
+};
+
 export const JobCard = React.memo(
   ({ job, handleCancel, handleDelete, isCancelling, isDeleting, onSelect }: JobCardProps) => {
 
@@ -50,30 +115,16 @@ export const JobCard = React.memo(
         ? formatTimeAgo(displayTime)
         : "Unknown time";
 
-    // Determine if job can be canceled (only active/non-terminal jobs)
-    const canCancel = JOB_STATUSES.ACTIVE.includes(job.status as JobStatus);
+    // Determine if job can be canceled (only active/non-terminal jobs) - memoized for stability
+    const canCancel = React.useMemo(() => JOB_STATUSES.ACTIVE.includes(job.status as JobStatus), [job.status]);
+    
+    // Memoize status-specific booleans for better performance
+    const isCurrentJobCancelling = React.useMemo(() => Boolean(isCancelling?.[job.id]), [isCancelling, job.id]);
+    const isCurrentJobDeleting = React.useMemo(() => Boolean(isDeleting?.[job.id]), [isDeleting, job.id]);
 
-    const getResponsePreview = () => {
-      if (
-        job.taskType === "implementation_plan" &&
-        JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)
-      ) {
-        return "Implementation plan generated.";
-      }
-
-      if (job.response) {
-        // No need to truncate since we're using scroll area
-        return job.response;
-      }
-      return "";
-    };
-
-    // Format error text for preview
-    const getErrorPreview = () => {
-      if (!job.errorMessage) return "";
-      // No need to truncate since we're using scroll area
-      return job.errorMessage;
-    };
+    // Use memoized helper functions with current job data
+    const responsePreview = React.useMemo(() => getResponsePreview(job), [job.response, job.taskType, job.status]);
+    const errorPreview = React.useMemo(() => getErrorPreview(job.errorMessage), [job.errorMessage]);
 
     // Render the appropriate status icon
     const renderStatusIcon = (status: JobStatus) => {
@@ -155,7 +206,7 @@ export const JobCard = React.memo(
                   e.stopPropagation(); // Prevent triggering the card's onClick
                   void handleCancel(job.id);
                 }}
-                isLoading={isCancelling?.[job.id]}
+                isLoading={isCurrentJobCancelling}
                 loadingIcon={<Loader2 className="h-3 w-3 animate-spin" />}
                 aria-label="Cancel job"
               >
@@ -169,7 +220,7 @@ export const JobCard = React.memo(
                   e.stopPropagation(); // Prevent triggering the card's onClick
                   void handleDelete(job.id);
                 }}
-                isLoading={isDeleting?.[job.id]}
+                isLoading={isCurrentJobDeleting}
                 loadingIcon={<Loader2 className="h-3 w-3 animate-spin" />}
                 aria-label="Delete job"
               >
@@ -184,136 +235,107 @@ export const JobCard = React.memo(
         {/* Progress bar for running jobs */}
         {(job.status === "running" || job.status === "processing_stream") && (
           <div className="mt-2 mb-1">
-            <Progress
-              value={
-                // Get parsed metadata and calculate streaming progress
-                (() => {
-                  const parsedMeta = getParsedMetadata(job.metadata);
-
-                  // Use the standardized helper function for calculating progress
-                  if (
-                    job.taskType === "implementation_plan" &&
-                    parsedMeta?.isStreaming === true
-                  ) {
-                    return getStreamingProgressValue(
-                      parsedMeta,
-                      job.startTime,
-                      job.maxOutputTokens
-                    );
-                  }
-                  // For other streaming jobs
-                  else if (parsedMeta?.isStreaming) {
-                    if (
-                      parsedMeta.responseLength &&
-                      parsedMeta.estimatedTotalLength
-                    ) {
-                      // If we have a good estimate based on content length
-                      return Math.min(
-                        (parsedMeta.responseLength /
-                          parsedMeta.estimatedTotalLength) *
-                          100,
-                        98
-                      );
-                    } else if (parsedMeta.streamProgress) {
-                      // If we have a stream progress value directly
-                      return Math.min(parsedMeta.streamProgress, 95);
-                    } else {
-                      // Fallback based on elapsed time
-                      return Math.min(
-                        Math.floor(
-                          (Date.now() - (job.startTime || Date.now())) / 150
-                        ),
-                        95
-                      );
-                    }
-                  } else {
-                    // Non-streaming job - base on elapsed time with a slower progression
-                    return Math.min(
-                      Math.floor(
-                        (Date.now() - (job.startTime || Date.now())) / 250
-                      ),
-                      90
-                    );
-                  }
-                })()
-              }
-              className="h-0.5"
-            />
-            <div className="flex justify-between items-center min-w-0 overflow-hidden">
-              {job.statusMessage && (
-                <p
-                  className="text-[11px] text-primary mt-0.5 truncate flex-1 min-w-0"
-                  title={job.statusMessage}
-                >
-                  {job.statusMessage}
-                </p>
-              )}
-              {(() => {
-                const parsedMeta = getParsedMetadata(job.metadata);
-                return parsedMeta?.streamProgress ? (
-                  <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
-                    {Math.floor(parsedMeta.streamProgress)}%
-                  </p>
-                ) : null;
-              })()}
-            </div>
+            {(() => {
+              // Use the centralized progress calculation for consistency
+              const progressValue = getStreamingProgressValue(
+                job.metadata,
+                job.startTime,
+                job.maxOutputTokens
+              );
+              
+              return (
+                <>
+                  <Progress
+                    value={progressValue}
+                    className="h-0.5"
+                  />
+                  <div className="flex justify-between items-center min-w-0 overflow-hidden">
+                    {job.statusMessage && (
+                      <p
+                        className="text-[11px] text-primary mt-0.5 truncate flex-1 min-w-0"
+                        title={job.statusMessage}
+                      >
+                        {job.statusMessage}
+                      </p>
+                    )}
+                    {progressValue !== undefined && (
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">
+                        {Math.floor(progressValue)}%
+                      </p>
+                    )}
+                  </div>
+                </>
+              );
+            })()
+            }
           </div>
         )}
 
-        {/* Token count and model display */}
-        <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
-          <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
-            {/* Display token counts with better formatting */}
-            {(job.tokensSent ?? 0) > 0 ||
-            (job.tokensReceived ?? 0) > 0 ||
-            (job.totalTokens ?? 0) > 0 ? (
-              <span className="flex items-center gap-1 overflow-hidden min-w-0">
-                <span className="text-[9px] text-muted-foreground flex-shrink-0">
-                  Tokens:
-                </span>
-                <span className="font-mono text-foreground text-[9px] flex-shrink-0">
-                  {formatTokenCount(job.tokensSent ?? 0)}
-                </span>
-                <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
-                <span className="font-mono text-foreground text-[9px] flex-shrink-0">
-                  {formatTokenCount(job.tokensReceived ?? 0)}
-                </span>
-                {(job.totalTokens ?? 0) > 0 &&
-                  (job.totalTokens ?? 0) !==
-                    (job.tokensSent ?? 0) + (job.tokensReceived ?? 0) && (
-                    <span className="font-mono text-[9px] ml-1 text-muted-foreground">
-                      ({formatTokenCount(job.totalTokens ?? 0)} total)
+        {/* Token count and model display - only for LLM jobs */}
+        {job.apiType !== "filesystem" && !isLocalTask(job.taskType) && (
+          <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
+            <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
+              {/* Display token counts with better formatting and fallback to metadata */}
+              {(() => {
+                const parsedMeta = getParsedMetadata(job.metadata);
+                const tokensSent = (typeof job.tokensSent === 'number' ? job.tokensSent : 0) || (typeof parsedMeta?.tokensSent === 'number' ? parsedMeta.tokensSent : 0);
+                const tokensReceived = (typeof job.tokensReceived === 'number' ? job.tokensReceived : 0) || (typeof parsedMeta?.tokensReceived === 'number' ? parsedMeta.tokensReceived : 0);
+                const totalTokens = (typeof job.totalTokens === 'number' ? job.totalTokens : 0) || (typeof parsedMeta?.totalTokens === 'number' ? parsedMeta.totalTokens : 0) || (typeof parsedMeta?.tokensUsed === 'number' ? parsedMeta.tokensUsed : 0);
+                
+                return (tokensSent > 0 || tokensReceived > 0 || totalTokens > 0) ? (
+                  <span className="flex items-center gap-1 overflow-hidden min-w-0">
+                    <span className="text-[9px] text-muted-foreground flex-shrink-0">
+                      Tokens:
                     </span>
-                  )}
+                    <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                      {formatTokenCount(tokensSent)}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground flex-shrink-0">→</span>
+                    <span className="font-mono text-foreground text-[9px] flex-shrink-0">
+                      {formatTokenCount(tokensReceived)}
+                    </span>
+                    {totalTokens > 0 && totalTokens !== (tokensSent + tokensReceived) && (
+                      <span className="font-mono text-[9px] ml-1 text-muted-foreground">
+                        ({formatTokenCount(totalTokens)} total)
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="h-3"></span> /* Empty placeholder to maintain height */
+                );
+              })()}
+              
+              {(() => {
+                const parsedMeta = getParsedMetadata(job.metadata);
+                const modelUsed = job.modelUsed ?? parsedMeta?.modelUsed;
+                
+                return modelUsed ? (
+                  <span
+                    className="text-[9px] text-muted-foreground truncate max-w-full"
+                    title={modelUsed}
+                  >
+                    {modelUsed.includes("gemini")
+                      ? modelUsed.replace("gemini-", "Gemini ")
+                      : modelUsed.includes("claude")
+                        ? modelUsed.replace(/-\d{8}$/, "")
+                        : modelUsed}
+                  </span>
+                ) : (
+                  <span className="h-3"></span> /* Empty placeholder to maintain height */
+                );
+              })()}
+            </div>
+
+            {/* Show duration for completed jobs or empty placeholder */}
+            {job.endTime && job.startTime ? (
+              <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1">
+                {Math.round((job.endTime - job.startTime) / 1000)}s
               </span>
             ) : (
-              <span className="h-3"></span> /* Empty placeholder to maintain height */
-            )}
-            {job.modelUsed ? (
-              <span
-                className="text-[9px] text-muted-foreground truncate max-w-full"
-                title={job.modelUsed}
-              >
-                {job.modelUsed.includes("gemini")
-                  ? job.modelUsed.replace("gemini-", "Gemini ")
-                  : job.modelUsed.includes("claude")
-                    ? job.modelUsed.replace(/-\d{8}$/, "")
-                    : job.modelUsed}
-              </span>
-            ) : (
-              <span className="h-3"></span> /* Empty placeholder to maintain height */
+              <span className="h-3 flex-shrink-0"></span> /* Empty placeholder to maintain height */
             )}
           </div>
-
-          {/* Show duration for completed jobs or empty placeholder */}
-          {job.endTime && job.startTime ? (
-            <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1">
-              {Math.round((job.endTime - job.startTime) / 1000)}s
-            </span>
-          ) : (
-            <span className="h-3 flex-shrink-0"></span> /* Empty placeholder to maintain height */
-          )}
-        </div>
+        )}
 
         {/* Info section container with flexible height */}
         <div className="flex-1 flex flex-col justify-end">
@@ -334,33 +356,77 @@ export const JobCard = React.memo(
 
           {/* Legacy file output is no longer supported */}
 
-          {/* For path finder jobs, show path count from metadata if available */}
-          {job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
+          {/* Workflow context display - prominently show workflow information */}
+          {(() => {
+            const parsedMeta = getParsedMetadata(job.metadata);
+            
+            // Display workflow context if job is part of a workflow
+            if (parsedMeta?.workflowId) {
+              return (
+                <div className="text-[10px] mt-2 border-t border-primary/20 pt-2 flex items-center gap-1.5 text-muted-foreground bg-primary/5 rounded-md p-2">
+                  <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
+                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                    <span className="font-medium text-primary text-[11px]">
+                      Workflow: {parsedMeta.workflowId}
+                    </span>
+                    <span className="text-foreground text-[10px]">
+                      Stage: {parsedMeta.workflowStage || formatTaskType(job.taskType)}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+            
+            return null;
+          })()}
+
+          {/* Enhanced display for workflow stage jobs and path finder jobs */}
+          {(job.taskType === "path_finder" || 
+            job.taskType === "initial_path_finding" || 
+            job.taskType === "extended_path_finding" ||
+            job.taskType === "file_finder_workflow") && 
+           JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
             <div className="text-[10px] mt-2 border-t border-border/60 pt-2 flex items-center gap-1.5 text-muted-foreground">
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
-                const pathFinderData = parsedMeta?.pathData;
                 
-                // Parse pathData if it's a string, otherwise use it as-is
-                let parsedPathData: { count?: number; paths?: string[] } | null = null;
-                if (typeof pathFinderData === 'string') {
-                  try {
-                    parsedPathData = JSON.parse(pathFinderData);
-                  } catch {
-                    parsedPathData = null;
-                  }
-                } else if (typeof pathFinderData === 'object' && pathFinderData !== null) {
-                  parsedPathData = pathFinderData as { count?: number; paths?: string[] };
+                // Skip workflow display here since it's handled above
+                if (parsedMeta?.workflowId) {
+                  return null;
                 }
                 
-                const count = parsedPathData?.count || parsedPathData?.paths?.length || 0;
+                // Handle path finder data - use multiple sources with preference order
+                const pathFinderData = parsedMeta?.pathFinderData || parsedMeta?.pathData;
+                let count = 0;
+                
+                // First try parsedMeta.pathCount if available (reliable count source)
+                if (parsedMeta?.pathCount !== undefined) {
+                  count = parsedMeta.pathCount;
+                } else if (parsedMeta?.pathFinderData) {
+                  // Use new structured pathFinderData
+                  count = parsedMeta.pathFinderData.count || parsedMeta.pathFinderData.paths?.length || 0;
+                } else if (typeof pathFinderData === 'string') {
+                  // Legacy pathData handling
+                  try {
+                    const parsedPathData = JSON.parse(pathFinderData);
+                    count = parsedPathData?.count || parsedPathData?.paths?.length || 0;
+                  } catch {
+                    count = 0;
+                  }
+                } else if (typeof pathFinderData === 'object' && pathFinderData !== null) {
+                  // Legacy pathData as object
+                  const pathData = pathFinderData as { count?: number; paths?: string[] };
+                  count = pathData?.count || pathData?.paths?.length || 0;
+                }
                 return count > 0 ? (
                   <span className="font-medium text-foreground">
                     Found {count} relevant file
                     {count !== 1 ? "s" : ""}
                   </span>
                 ) : (
-                  <span className="font-medium text-foreground">Path finder completed</span>
+                  <span className="font-medium text-foreground">
+                    {job.taskType === "file_finder_workflow" ? "File finder completed" : "Path finder completed"}
+                  </span>
                 );
               })()}
             </div>
@@ -372,7 +438,7 @@ export const JobCard = React.memo(
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-muted-foreground break-words text-balance overflow-hidden">
                 <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
                   <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
-                    {getResponsePreview()}
+                    {responsePreview}
                   </div>
                 </div>
               </div>
@@ -384,7 +450,7 @@ export const JobCard = React.memo(
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-destructive break-words text-balance overflow-hidden">
                 <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
                   <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">
-                    {getErrorPreview()}
+                    {errorPreview}
                   </div>
                 </div>
               </div>

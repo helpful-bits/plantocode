@@ -42,7 +42,13 @@ pub async fn validate_configuration_health(_app_handle: AppHandle, project_direc
             let mut server_frontend_map = Map::new();
             
             for (snake_case_key, _) in &runtime_config.tasks {
-                let camel_case_key = snake_to_camel_case(snake_case_key);
+                let camel_case_key = match snake_to_camel_case(snake_case_key) {
+                    Ok(key) => key,
+                    Err(e) => {
+                        log::warn!("Skipping task type {} due to mapping error: {}", snake_case_key, e);
+                        continue;
+                    }
+                };
                 server_frontend_map.insert(camel_case_key, json!({}));
             }
             
@@ -130,6 +136,55 @@ pub async fn set_project_task_model_settings_command(_app_handle: AppHandle, pro
     settings_repo.set_value(&key, &settings_json).await
 }
 
+#[tauri::command]
+pub async fn set_onboarding_completed_command(_app_handle: AppHandle) -> AppResult<()> {
+    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    })?;
+    settings_repo.set_value("onboarding_completed", "true").await
+}
+
+#[tauri::command]
+pub async fn is_onboarding_completed_command(_app_handle: AppHandle) -> AppResult<bool> {
+    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    })?;
+    let value = settings_repo.get_value("onboarding_completed").await?;
+    Ok(value.as_deref() == Some("true"))
+}
+
+#[tauri::command]
+pub async fn get_workflow_setting_command(_app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<Option<String>> {
+    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    })?;
+    settings_repo.get_workflow_setting(&workflow_name, &setting_key).await
+}
+
+#[tauri::command]
+pub async fn set_workflow_setting_command(_app_handle: AppHandle, workflow_name: String, setting_key: String, value: String) -> AppResult<()> {
+    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    })?;
+    settings_repo.set_workflow_setting(&workflow_name, &setting_key, &value).await
+}
+
+#[tauri::command]
+pub async fn delete_workflow_setting_command(_app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<()> {
+    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    })?;
+    settings_repo.delete_workflow_setting(&workflow_name, &setting_key).await
+}
+
+#[tauri::command]
+pub async fn get_all_workflow_settings_command(_app_handle: AppHandle, workflow_name: String) -> AppResult<std::collections::HashMap<String, String>> {
+    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
+        AppError::InitializationError("SettingsRepository not initialized".to_string())
+    })?;
+    settings_repo.get_all_workflow_settings(&workflow_name).await
+}
+
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,24 +194,24 @@ struct FrontendReadyTaskModelConfig {
     temperature: f32,
 }
 
-fn snake_to_camel_case(snake_str: &str) -> String {
+fn snake_to_camel_case(snake_str: &str) -> AppResult<String> {
     match snake_str {
-        "implementation_plan" => "implementationPlan".to_string(),
-        "path_finder" => "pathFinder".to_string(),
-        "text_improvement" => "textImprovement".to_string(),
-        "voice_transcription" => "transcription".to_string(),
-        "text_correction" => "textCorrection".to_string(),
-        "path_correction" => "pathCorrection".to_string(),
-        "guidance_generation" => "guidanceGeneration".to_string(),
-        "task_enhancement" => "taskEnhancement".to_string(),
-        "generic_llm_stream" => "genericLlmStream".to_string(),
-        "regex_summary_generation" => "regexSummaryGeneration".to_string(),
-        "regex_pattern_generation" => "regexGeneration".to_string(),
-        "streaming" => "streaming".to_string(),
-        "unknown" => "unknown".to_string(),
+        "implementation_plan" => Ok("implementationPlan".to_string()),
+        "path_finder" => Ok("pathFinder".to_string()),
+        "text_improvement" => Ok("textImprovement".to_string()),
+        "voice_transcription" => Ok("voiceTranscription".to_string()),
+        "text_correction" => Ok("textCorrection".to_string()),
+        "path_correction" => Ok("pathCorrection".to_string()),
+        "guidance_generation" => Ok("guidanceGeneration".to_string()),
+        "task_enhancement" => Ok("taskEnhancement".to_string()),
+        "generic_llm_stream" => Ok("genericLlmStream".to_string()),
+        "regex_summary_generation" => Ok("regexSummaryGeneration".to_string()),
+        "regex_pattern_generation" => Ok("regexGeneration".to_string()),
+        "streaming" => Ok("streaming".to_string()),
+        "unknown" => Ok("unknown".to_string()),
         _ => {
-            log::error!("CONFIGURATION ERROR: Unknown task type '{}' - no mapping defined", snake_str);
-            panic!("Unknown task type '{}' - this indicates a configuration error. All task types must be explicitly defined.", snake_str);
+            log::error!("Unknown task type '{}' - no camelCase mapping defined", snake_str);
+            Err(AppError::ConfigError(format!("Unknown task type '{}' - no camelCase mapping defined", snake_str)))
         }
     }
 }
@@ -164,7 +219,7 @@ fn snake_to_camel_case(snake_str: &str) -> String {
 fn get_required_frontend_task_types() -> Vec<&'static str> {
     vec![
         "pathFinder",
-        "transcription",
+        "voiceTranscription",
         "regexGeneration",
         "regexSummaryGeneration", 
         "pathCorrection",
@@ -234,11 +289,41 @@ pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHand
     
     let mut server_frontend_map = Map::new();
     for (snake_case_key, task_config) in &runtime_ai_config.tasks {
-        let camel_case_key = snake_to_camel_case(snake_case_key);
+        let camel_case_key = match snake_to_camel_case(snake_case_key) {
+            Ok(key) => key,
+            Err(e) => {
+                log::warn!("Skipping task type {} due to mapping error: {}", snake_case_key, e);
+                continue;
+            }
+        };
+        // Parse task type to check if it's an LLM task
+        let task_type = match snake_case_key.parse::<crate::models::TaskType>() {
+            Ok(task_type) => task_type,
+            Err(_) => {
+                log::warn!("Skipping unknown task type: {}", snake_case_key);
+                continue;
+            }
+        };
+        
+        // Skip non-LLM tasks from frontend config
+        if !task_type.requires_llm() {
+            log::debug!("Skipping local task {} from frontend config", snake_case_key);
+            continue;
+        }
+        
         let frontend_config = FrontendReadyTaskModelConfig {
-            model: task_config.model.clone(),
-            max_tokens: task_config.max_tokens,
-            temperature: task_config.temperature,
+            model: task_config.model.clone().unwrap_or_else(|| {
+                log::warn!("Task {} missing model, using empty string", snake_case_key);
+                String::new()
+            }),
+            max_tokens: task_config.max_tokens.unwrap_or_else(|| {
+                log::warn!("Task {} missing max_tokens, using 0", snake_case_key);
+                0
+            }),
+            temperature: task_config.temperature.unwrap_or_else(|| {
+                log::warn!("Task {} missing temperature, using 0.0", snake_case_key);
+                0.0
+            }),
         };
         
         server_frontend_map.insert(
@@ -290,7 +375,7 @@ mod tests {
         let complete_settings = r#"
         {
             "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "transcription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "voiceTranscription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "regexGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "regexSummaryGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "pathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
@@ -313,7 +398,7 @@ mod tests {
         let incomplete_settings = r#"
         {
             "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "transcription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "voiceTranscription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "regexGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "regexSummaryGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "pathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},

@@ -39,33 +39,11 @@ export function BackgroundJobsProvider({
   children: ReactNode;
 }) {
   // Use the orchestrated background jobs state hook to manage all job-related state and functions
-  const {
-    jobs,
-    activeJobs,
-    isLoading,
-    error,
-    cancelJob,
-    deleteJob,
-    clearHistory,
-    refreshJobs,
-    getJobById,
-  } = useOrchestratedBackgroundJobsState();
+  const orchestratedState = useOrchestratedBackgroundJobsState();
 
   // Provide context values to children
   return (
-    <BackgroundJobsContext.Provider
-      value={{
-        jobs,
-        activeJobs,
-        isLoading,
-        error,
-        cancelJob,
-        deleteJob,
-        clearHistory,
-        refreshJobs,
-        getJobById,
-      }}
-    >
+    <BackgroundJobsContext.Provider value={orchestratedState}>
       {children}
     </BackgroundJobsContext.Provider>
   );

@@ -8,12 +8,11 @@ pub mod error_utils;
 pub mod file_lock_types;
 pub mod file_lock_manager;
 pub mod job_creation_utils;
+pub mod job_metadata_builder;
 pub mod date_utils;
 pub mod env_utils;
 pub mod xml_utils;
 pub mod prompt_template_utils;
-pub mod enhanced_prompt_template;
-pub mod prompt_composition;
 pub mod config_resolver;
 
 
@@ -33,20 +32,13 @@ pub use token_estimator::{
 pub use file_lock_types::{FileLockId, LockMode, FileLockGuard};
 pub use file_lock_manager::FileLockManager;
 pub use job_creation_utils::create_and_queue_background_job;
+pub use job_metadata_builder::{JobMetadataBuilder, PathFinderMetadata, RegexMetadata, FileFinderWorkflowMetadata};
 pub use date_utils::get_timestamp;
 pub use error_utils::*;
 pub use env_utils::{read_env, read_env_bool, read_env_i64, read_env_f64};
 pub use xml_utils::extract_xml_from_markdown;
 pub use prompt_template_utils::{PromptPlaceholders, substitute_placeholders, generate_system_prompt_id, get_template_for_display, convert_to_template};
 pub use config_resolver::resolve_model_settings;
-// LEGACY SYSTEMS - REPLACED BY UNIFIED SYSTEM
-// pub use enhanced_prompt_template::{EnhancedPromptContext, EnhancedTemplateProcessor, ProjectContext, EnhancedPromptContextBuilder};
-// pub use prompt_composition::{PromptComposer, CompositionContext, ComposedPrompt, CompositionContextBuilder};
-
-// NEW UNIFIED PROMPT SYSTEM - CONSOLIDATES THREE OVERLAPPING SYSTEMS
+// UNIFIED PROMPT SYSTEM - CONSOLIDATES LEGACY PROMPT SYSTEMS
 pub mod unified_prompt_system;
 pub use unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContext, UnifiedPromptContextBuilder, ComposedPrompt};
-
-// Keep legacy exports for compatibility during transition
-pub use prompt_composition::{PromptComposer, CompositionContext, CompositionContextBuilder};
-pub use enhanced_prompt_template::{EnhancedPromptContext, EnhancedTemplateProcessor, ProjectContext, EnhancedPromptContextBuilder};

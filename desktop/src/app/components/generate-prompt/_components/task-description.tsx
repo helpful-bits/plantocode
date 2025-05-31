@@ -281,7 +281,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             <Textarea
               ref={internalTextareaRef}
               id="taskDescArea"
-              className={`border rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
+              className={`border border-border/60 rounded-xl bg-background backdrop-blur-sm text-foreground p-4 w-full resize-y font-normal shadow-soft ${effectiveIsEmpty ? "border-destructive/20 bg-destructive/5" : ""}`}
               value={value}
               onChange={handleChange}
               onSelect={handleSelect}
@@ -298,7 +298,7 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
               aria-invalid={effectiveIsEmpty}
               disabled={disabled}
               loadingIndicator={
-                <div className="flex items-center bg-background backdrop-blur-sm px-3 py-2 rounded-lg border shadow-soft">
+                <div className="flex items-center bg-background backdrop-blur-sm px-3 py-2 rounded-lg border border-border shadow-soft">
                   <svg
                     className="animate-spin h-3 w-3 mr-1.5 text-primary"
                     viewBox="0 0 24 24"

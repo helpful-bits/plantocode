@@ -81,7 +81,7 @@ impl TokenManager {
             }
         }
         
-        // Persist to storage with timeout protection
+        // Persist to storage with timeout protection (10 seconds should be sufficient for keyring operations)
         match timeout(Duration::from_secs(10), token_persistence::save_token(new_token.clone())).await {
             Ok(result) => result?,
             Err(_) => {

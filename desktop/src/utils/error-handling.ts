@@ -18,6 +18,8 @@ export enum ErrorType {
   INTERNAL_ERROR = "INTERNAL_ERROR",
   BILLING_ERROR = "BILLING_ERROR",
   CONFIGURATION_ERROR = "CONFIGURATION_ERROR",
+  WORKFLOW_ERROR = "WORKFLOW_ERROR",
+  TOKEN_LIMIT_ERROR = "TOKEN_LIMIT_ERROR",
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
@@ -61,12 +63,25 @@ export function mapStatusToErrorType(status: number): ErrorType {
 }
 
 /**
+ * Workflow-specific context for error tracking
+ */
+export interface WorkflowErrorContext {
+  workflowId?: string;
+  stageName?: string;
+  stageId?: string;
+  stageJobId?: string;
+  retryAttempt?: number;
+  originalJobId?: string;
+}
+
+/**
  * Extended Error class with additional properties for better error handling
  */
 export class AppError extends Error {
   type: ErrorType;
   statusCode?: number;
   metadata?: Record<string, unknown>;
+  workflowContext?: WorkflowErrorContext;
 
   constructor(
     message: string,
@@ -75,6 +90,7 @@ export class AppError extends Error {
       statusCode?: number;
       metadata?: Record<string, unknown>;
       cause?: Error;
+      workflowContext?: WorkflowErrorContext;
     } = {}
   ) {
     super(message);
@@ -82,6 +98,7 @@ export class AppError extends Error {
     this.type = type;
     this.statusCode = options.statusCode;
     this.metadata = options.metadata;
+    this.workflowContext = options.workflowContext;
 
     // Capture original stack trace if available
     if (options.cause && options.cause.stack) {
@@ -100,9 +117,28 @@ export function createError(
     statusCode?: number;
     metadata?: Record<string, unknown>;
     cause?: Error;
+    workflowContext?: WorkflowErrorContext;
   } = {}
 ): AppError {
   return new AppError(message, type, options);
+}
+
+/**
+ * Helper to create a workflow-specific error
+ */
+export function createWorkflowError(
+  message: string,
+  workflowContext: WorkflowErrorContext,
+  options: {
+    statusCode?: number;
+    metadata?: Record<string, unknown>;
+    cause?: Error;
+  } = {}
+): AppError {
+  return new AppError(message, ErrorType.WORKFLOW_ERROR, {
+    ...options,
+    workflowContext,
+  });
 }
 
 /**
@@ -139,123 +175,116 @@ export function createSuccessState<T>(
   };
 }
 
+
 /**
- * Determines if an error should be retried based on its nature and status code
- * @param error The error to check
- * @returns Boolean indicating if the error is retryable
+ * Interface for structured Tauri errors that may be returned as JSON strings
  */
-export function isRetryableError(error: unknown): boolean {
-  // AppError handling
-  if (error instanceof AppError) {
-    if (
-      error.type === ErrorType.NETWORK_ERROR ||
-      error.type === ErrorType.TIMEOUT_ERROR
-    ) {
-      return true;
-    }
-
-    if (error.statusCode) {
-      return [429, 502, 503, 504].includes(error.statusCode);
-    }
-  }
-
-  // Network errors are generally retryable
-  if (
-    typeof error === 'object' && 
-    error !== null && 
-    (
-      (error as { name?: string })?.name === "NetworkError" ||
-      (error as { message?: string })?.message?.includes("network") ||
-      (error as { message?: string })?.message?.includes("ECONNRESET") ||
-      (error as { message?: string })?.message?.includes("ETIMEDOUT")
-    )
-  ) {
-    return true;
-  }
-
-  // Check for rate limiting or service unavailable errors
-  const statusCode = typeof error === 'object' && error !== null ? 
-    (error as { status?: number })?.status || (error as { statusCode?: number })?.statusCode : 
-    undefined;
-  if (statusCode) {
-    // 429: Too Many Requests, 503: Service Unavailable, 502: Bad Gateway
-    return [429, 502, 503, 504].includes(statusCode);
-  }
-
-  return false;
+interface TauriErrorPayload {
+  message?: string;
+  errorType?: ErrorType;
+  errorCode?: string;
+  errorCategory?: string;
+  statusCode?: number;
+  metadata?: Record<string, unknown>;
+  workflowContext?: WorkflowErrorContext;
 }
 
 /**
- * Calculates a delay for retry attempts with exponential backoff
- * @param attempt The current attempt number (1-based)
- * @param options Configuration options
- * @returns Delay in milliseconds
+ * Attempts to parse a Tauri error from a string that may contain JSON
  */
-export function calculateRetryDelay(
-  attempt: number,
-  options: {
-    baseDelay?: number;
-    maxDelay?: number;
-    jitter?: boolean;
-  } = {}
-): number {
-  const { baseDelay = 1000, maxDelay = 30000, jitter = true } = options;
-
-  // Exponential backoff: 2^attempt * baseDelay
-  let delay = Math.min(Math.pow(2, attempt) * baseDelay, maxDelay);
-
-  // Add jitter to prevent thundering herd problem
-  if (jitter) {
-    const jitterFactor = 0.25; // 25% jitter
-    const randomJitter = Math.random() * jitterFactor * delay;
-    delay = delay + randomJitter;
+function parseTauriError(errorString: string): TauriErrorPayload | null {
+  try {
+    const parsed = JSON.parse(errorString);
+    if (parsed && typeof parsed === "object") {
+      return parsed as TauriErrorPayload;
+    }
+  } catch {
+    // Not JSON, return null
   }
-
-  return delay;
+  return null;
 }
 
 /**
  * Safely extracts an error message from any error type
+ * Enhanced to handle AppError instances and their structured information
  */
-export function getErrorMessage(error: unknown): string {
-  if (error instanceof AppError || error instanceof Error) {
+export function getErrorMessage(error: unknown, contextHint?: 'transcription' | 'generic'): string {
+  if (!error) {
+    return contextHint === 'transcription' 
+      ? "Unknown error occurred during transcription"
+      : "An unknown error occurred";
+  }
+
+  // Get the basic error message first
+  let errorMessage = "";
+  let parsedTauriError: TauriErrorPayload | null = null;
+  let appErrorInfo: { type: ErrorType; workflowContext?: WorkflowErrorContext } | null = null;
+
+  if (error instanceof AppError) {
+    // Handle AppError instances specially to preserve structured information
+    errorMessage = error.message || "An error occurred.";
+    appErrorInfo = {
+      type: error.type,
+      workflowContext: error.workflowContext
+    };
+    
+    // Also try to parse the message as a Tauri error for additional context
+    if (error.message) {
+      parsedTauriError = parseTauriError(error.message);
+    }
+  } else if (error instanceof Error) {
     // Handle case where error.message might be empty
     if (!error.message || error.message.trim() === "") {
-      return error.name || "An error occurred.";
+      errorMessage = error.name || "An error occurred.";
+    } else {
+      errorMessage = error.message;
+      // Try to parse the message as a Tauri error
+      parsedTauriError = parseTauriError(error.message);
     }
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    // Attempt to parse string as JSON to extract structured error
-    try {
-      const parsed = JSON.parse(error);
-      if (parsed && typeof parsed === "object") {
-        // Check for message property and return if it's a non-empty string
-        if (parsed.message && typeof parsed.message === "string" && parsed.message.trim()) {
-          return parsed.message;
-        }
-        
-        // If parsed.message was not useful, and the original string 'error'
-        // is not just a generic placeholder, return the original string.
-        if (error.trim() && error !== "[object Object]") {
-          return error;
-        }
-        // Final fallback for parsed JSON without useful content or generic original string
-        return "A structured error occurred";
-      }
-      // If JSON but not an object, fall back to original string
-      return error;
-    } catch {
-      // Not JSON, check for common error patterns
-      if (error.includes("FOREIGN KEY constraint failed")) {
-        return "Database constraint error occurred";
-      }
-      return error;
+  } else if (typeof error === "string") {
+    // Handle empty or whitespace-only error messages for transcription
+    if (contextHint === 'transcription' && !error.trim()) {
+      return "Voice processing failed. Please try again.";
     }
-  }
 
-  if (
+    // Try to parse as Tauri error first
+    parsedTauriError = parseTauriError(error);
+    
+    if (parsedTauriError) {
+      // Use the structured error message if available
+      errorMessage = parsedTauriError.message || error;
+    } else {
+      // Attempt to parse string as JSON to extract structured error
+      try {
+        const parsed = JSON.parse(error);
+        if (parsed && typeof parsed === "object") {
+          // Check for message property and return if it's a non-empty string
+          if (parsed.message && typeof parsed.message === "string" && parsed.message.trim()) {
+            errorMessage = parsed.message;
+          } else if (error.trim() && error !== "[object Object]") {
+            // If parsed.message was not useful, and the original string 'error'
+            // is not just a generic placeholder, return the original string.
+            errorMessage = error;
+          } else {
+            // Final fallback for parsed JSON without useful content or generic original string
+            errorMessage = "A structured error occurred";
+          }
+        } else {
+          // If JSON but not an object, fall back to original string
+          errorMessage = error;
+        }
+      } catch {
+        // Not JSON, check for common error patterns
+        if (error.includes("FOREIGN KEY constraint failed")) {
+          errorMessage = contextHint === 'transcription' 
+            ? "Session validation error. Please try again or create a new session."
+            : "Database constraint error occurred";
+        } else {
+          errorMessage = error;
+        }
+      }
+    }
+  } else if (
     error &&
     typeof error === "object" &&
     "message" in error &&
@@ -267,98 +296,336 @@ export function getErrorMessage(error: unknown): string {
       try {
         const stringified = JSON.stringify(error);
         if (stringified === "{}" || stringified === "") {
-          return "An object error occurred";
+          errorMessage = "An object error occurred";
+        } else {
+          errorMessage = stringified;
         }
-        return stringified;
       } catch {
-        return "An object error occurred";
+        errorMessage = "An object error occurred";
+      }
+    } else {
+      errorMessage = error.message;
+      // Try to parse the message as a Tauri error
+      parsedTauriError = parseTauriError(error.message);
+    }
+
+    // For transcription context, check additional object properties
+    if (contextHint === 'transcription' && (!errorMessage || !errorMessage.trim())) {
+      if ('error' in error && typeof (error as {error: unknown}).error === "string") {
+        errorMessage = (error as {error: string}).error;
+      } else if ('reason' in error && typeof (error as {reason: unknown}).reason === "string") {
+        errorMessage = (error as {reason: string}).reason;
+      } else {
+        // Final fallback - stringify the object
+        try {
+          const stringifiedError = JSON.stringify(error);
+          if (stringifiedError === "{}") {
+            errorMessage = "An unspecified object error occurred during transcription.";
+          } else {
+            errorMessage = stringifiedError;
+          }
+        } catch (_e) {
+          errorMessage = "Unknown error format";
+        }
       }
     }
-    return error.message;
+  } else {
+    errorMessage = contextHint === 'transcription' 
+      ? "Error during voice transcription. Please try again."
+      : "An unknown error occurred";
   }
 
-  return "An unknown error occurred";
+  // Apply context-specific error message transformations
+  errorMessage = applyContextSpecificTransformations(errorMessage, contextHint, parsedTauriError, appErrorInfo);
+
+  return errorMessage || (contextHint === 'transcription' 
+    ? "Error during voice transcription. Please try again."
+    : "An unknown error occurred");
 }
 
 /**
- * Creates a UI-friendly display message for transcription errors
- * Moved from text-processing-utils.ts for better organization
+ * Apply context-specific transformations to error messages
+ * Enhanced to handle AppError information for better user messages
  */
-export function createTranscriptionErrorMessage(error: unknown): string {
-  if (!error) {
-    return "Unknown error occurred during transcription";
+function applyContextSpecificTransformations(
+  errorMessage: string, 
+  contextHint?: 'transcription' | 'generic',
+  parsedTauriError?: TauriErrorPayload | null,
+  appErrorInfo?: { type: ErrorType; workflowContext?: WorkflowErrorContext } | null
+): string {
+  // Handle billing errors from AppError or structured Tauri errors
+  if (appErrorInfo?.type === ErrorType.BILLING_ERROR ||
+      parsedTauriError?.errorType === ErrorType.BILLING_ERROR || 
+      parsedTauriError?.errorCategory === 'billing') {
+    return "This feature is not available on your current plan. Please upgrade to access this functionality.";
+  }
+
+  // Handle workflow errors with more context from AppError or Tauri errors
+  const workflowContext = appErrorInfo?.workflowContext || parsedTauriError?.workflowContext;
+  if ((appErrorInfo?.type === ErrorType.WORKFLOW_ERROR || parsedTauriError?.errorType === ErrorType.WORKFLOW_ERROR) && workflowContext) {
+    const { stageName, retryAttempt } = workflowContext;
+    if (stageName && retryAttempt) {
+      return `Workflow failed at stage "${stageName}" (attempt ${retryAttempt}): ${errorMessage}`;
+    } else if (stageName) {
+      return `Workflow failed at stage "${stageName}": ${errorMessage}`;
+    }
   }
   
-  // Handle empty or whitespace-only error messages
-  const errorMessage = getErrorMessage(error);
-  if (!errorMessage.trim()) {
-    return "Voice processing failed. Please try again.";
+  // Handle other AppError types with user-friendly messages
+  if (appErrorInfo) {
+    switch (appErrorInfo.type) {
+      case ErrorType.TOKEN_LIMIT_ERROR:
+        return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
+      
+      case ErrorType.PERMISSION_ERROR:
+        if (contextHint === 'transcription') {
+          return "Microphone access was denied. Please allow microphone access and try again.";
+        }
+        return "You don't have permission to perform this action. Please check your account settings.";
+      
+      case ErrorType.NETWORK_ERROR:
+        if (contextHint === 'transcription') {
+          return "Network error during voice processing. Please check your internet connection and try again.";
+        }
+        return "Network connection failed. Please check your internet connection and try again.";
+      
+      case ErrorType.TIMEOUT_ERROR:
+        if (contextHint === 'transcription') {
+          return "Voice processing timed out. Please try a shorter recording or try again later.";
+        }
+        return "The operation timed out. Please try again or contact support if the issue persists.";
+      
+      case ErrorType.DATABASE_ERROR:
+        return "A database error occurred. Please try refreshing the page or contact support.";
+      
+      case ErrorType.CONFIGURATION_ERROR:
+        return "Configuration error. Please check your settings or contact support.";
+      
+      case ErrorType.NOT_FOUND_ERROR:
+        return "The requested resource was not found.";
+      
+      case ErrorType.VALIDATION_ERROR:
+        return `Invalid input: ${errorMessage}`;
+    }
   }
 
-  if (typeof error === "string") {
-    // If it's a foreign key error, provide more helpful message
-    if (error.includes("FOREIGN KEY constraint failed")) {
-      return "Session validation error. Please try again or create a new session.";
-    }
+  // Check for token limit patterns in the raw error message
+  const lowerMessage = errorMessage.toLowerCase();
+  if (
+    lowerMessage.includes("is too long") ||
+    lowerMessage.includes("maximum context length") ||
+    lowerMessage.includes("prompt is too large") ||
+    lowerMessage.includes("context window exceeded") ||
+    lowerMessage.includes("token limit exceeded") ||
+    lowerMessage.includes("too many tokens") ||
+    lowerMessage.includes("context length exceeded") ||
+    lowerMessage.includes("maximum tokens exceeded") ||
+    lowerMessage.includes("input too long")
+  ) {
+    return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
+  }
 
+  // Apply transcription-specific error message transformations
+  if (contextHint === 'transcription' && errorMessage) {
     // If it mentions permission, provide more helpful message
-    if (error.toLowerCase().includes("permission")) {
+    if (errorMessage.toLowerCase().includes("permission")) {
       return "Microphone access was denied. Please allow microphone access and try again.";
     }
 
     // For network-related errors
     if (
-      error.toLowerCase().includes("network") ||
-      error.toLowerCase().includes("connect") ||
-      error.toLowerCase().includes("offline")
+      errorMessage.toLowerCase().includes("network") ||
+      errorMessage.toLowerCase().includes("connect") ||
+      errorMessage.toLowerCase().includes("offline")
     ) {
       return "Network error during voice processing. Please check your internet connection and try again.";
     }
 
     // For timeout errors
     if (
-      error.toLowerCase().includes("timeout") ||
-      error.toLowerCase().includes("timed out")
+      errorMessage.toLowerCase().includes("timeout") ||
+      errorMessage.toLowerCase().includes("timed out")
     ) {
       return "Voice processing timed out. Please try a shorter recording or try again later.";
     }
-
-    // Return the string directly if it's already a string and not empty
-    return errorMessage;
   }
 
-  if (error instanceof Error) {
-    return getErrorMessage(error);
+  return errorMessage;
+}
+
+
+/**
+ * Extract structured error information from various error types
+ */
+export function extractErrorInfo(error: unknown): {
+  message: string;
+  type: ErrorType;
+  metadata?: Record<string, unknown>;
+  workflowContext?: WorkflowErrorContext;
+} {
+  if (error instanceof AppError) {
+    return {
+      message: error.message,
+      type: error.type,
+      metadata: error.metadata,
+      workflowContext: error.workflowContext,
+    };
   }
 
-  if (typeof error === "object" && error !== null) {
-    // Try to extract error message from common error object formats
-    if ('message' in error && typeof (error as {message: unknown}).message === "string") {
-      return (error as {message: string}).message;
+  // Try to extract structured information from string errors (e.g., from Tauri)
+  if (typeof error === "string") {
+    const parsedTauriError = parseTauriError(error);
+    if (parsedTauriError) {
+      // Map Rust error codes to TypeScript ErrorType if available
+      const mappedType = parsedTauriError.errorCode 
+        ? mapRustErrorCodeToErrorType(parsedTauriError.errorCode)
+        : parsedTauriError.errorType || ErrorType.UNKNOWN_ERROR;
+      
+      return {
+        message: parsedTauriError.message || error,
+        type: mappedType,
+        metadata: parsedTauriError.metadata,
+        workflowContext: parsedTauriError.workflowContext,
+      };
     }
+  }
 
-    if ('error' in error && typeof (error as {error: unknown}).error === "string") {
-      return (error as {error: string}).error;
-    }
+  return {
+    message: getErrorMessage(error),
+    type: ErrorType.UNKNOWN_ERROR,
+  };
+}
 
-    if ('reason' in error && typeof (error as {reason: unknown}).reason === "string") {
-      return (error as {reason: string}).reason;
-    }
+/**
+ * Maps Rust AppError codes to ErrorType
+ */
+export function mapRustErrorCodeToErrorType(code: string): ErrorType {
+  switch (code) {
+    case "BILLING_ERROR":
+      return ErrorType.BILLING_ERROR;
+    case "TOKEN_LIMIT_EXCEEDED_ERROR":
+      return ErrorType.TOKEN_LIMIT_ERROR;
+    case "JOB_ERROR":
+    case "WORKFLOW_ERROR":
+    case "STAGE_FAILED":
+      return ErrorType.WORKFLOW_ERROR;
+    case "ACCESS_DENIED_ERROR":
+    case "AUTH_ERROR":
+    case "SECURITY_ERROR":
+      return ErrorType.PERMISSION_ERROR;
+    case "NETWORK_ERROR":
+    case "HTTP_ERROR":
+      return ErrorType.NETWORK_ERROR;
+    case "DATABASE_ERROR":
+    case "SQLX_ERROR":
+      return ErrorType.DATABASE_ERROR;
+    case "CONFIG_ERROR":
+    case "INITIALIZATION_ERROR":
+      return ErrorType.CONFIGURATION_ERROR;
+    case "VALIDATION_ERROR":
+    case "INVALID_ARGUMENT_ERROR":
+      return ErrorType.VALIDATION_ERROR;
+    case "NOT_FOUND_ERROR":
+      return ErrorType.NOT_FOUND_ERROR;
+    case "EXTERNAL_SERVICE_ERROR":
+    case "OPENROUTER_ERROR":
+    case "SERVER_PROXY_ERROR":
+      return ErrorType.API_ERROR;
+    case "IO_ERROR":
+    case "FILE_SYSTEM_ERROR":
+    case "FILE_LOCK_ERROR":
+    case "STORAGE_ERROR":
+      return ErrorType.INTERNAL_ERROR;
+    default:
+      return ErrorType.UNKNOWN_ERROR;
+  }
+}
 
-    // Final fallback - stringify the object
-    try {
-      const stringifiedError = JSON.stringify(error);
-      if (stringifiedError === "{}") {
-        return "An unspecified object error occurred during transcription.";
+/**
+ * Create a user-friendly error message based on error type and context
+ * Enhanced to provide more specific messages and handle AppError instances
+ */
+export function createUserFriendlyErrorMessage(
+  errorInfo: ReturnType<typeof extractErrorInfo>,
+  userContext?: string
+): string {
+  const { type, message, workflowContext } = errorInfo;
+
+  switch (type) {
+    case ErrorType.BILLING_ERROR:
+      return "This feature requires a subscription upgrade. Please check your billing settings.";
+    
+    case ErrorType.TOKEN_LIMIT_ERROR:
+      return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
+    
+    case ErrorType.PERMISSION_ERROR:
+      return "You don't have permission to perform this action. Please check your account settings.";
+    
+    case ErrorType.NETWORK_ERROR:
+      return "Network connection failed. Please check your internet connection and try again.";
+    
+    case ErrorType.TIMEOUT_ERROR:
+      return "The operation timed out. Please try again or contact support if the issue persists.";
+    
+    case ErrorType.API_ERROR:
+      return "API service error occurred. Please try again or contact support if the issue persists.";
+    
+    case ErrorType.DATABASE_ERROR:
+      if (userContext === "database") {
+        return "Database connection or integrity issue detected. Run database health check for detailed diagnostics.";
       }
-      return stringifiedError;
-    } catch (_e) {
-      return "Unknown error format";
-    }
+      return "A database error occurred. Please try refreshing the page or contact support.";
+    
+    case ErrorType.WORKFLOW_ERROR:
+      if (workflowContext?.stageName) {
+        const retryText = workflowContext.retryAttempt && workflowContext.retryAttempt > 1 
+          ? ` (retry attempt ${workflowContext.retryAttempt})` 
+          : '';
+        const stageDisplayName = getWorkflowStageDisplayName(workflowContext.stageName);
+        return `The "${stageDisplayName || workflowContext.stageName}" stage failed${retryText}. This workflow step can typically be retried automatically or manually restarted.`;
+      }
+      return `Workflow execution failed: ${message}. The workflow may be retried or restarted.`;
+    
+    case ErrorType.VALIDATION_ERROR:
+      return `Invalid input: ${message}`;
+    
+    case ErrorType.NOT_FOUND_ERROR:
+      return userContext 
+        ? `The requested ${userContext} was not found.`
+        : "The requested resource was not found.";
+    
+    case ErrorType.CONFIGURATION_ERROR:
+      return "Configuration error. Please check your model settings, API keys, or system prompts.";
+    
+    case ErrorType.UNKNOWN_ERROR:
+      return message || "An unexpected error occurred. Please try again.";
+    
+    default:
+      return message || "An error occurred. Please try again.";
   }
+}
 
-  // Default fallback message
-  return "Error during voice transcription. Please try again.";
+/**
+ * Get user-friendly display name for workflow stages
+ */
+function getWorkflowStageDisplayName(stageName: string): string | null {
+  const stageMap: Record<string, string> = {
+    "GeneratingDirTree": "Directory Tree Generation",
+    "GeneratingRegex": "Pattern Generation", 
+    "LocalFiltering": "Local File Filtering",
+    "InitialPathFinder": "Initial Path Finding",
+    "InitialPathCorrection": "Initial Path Correction",
+    "ExtendedPathFinder": "Extended Path Finding",
+    "ExtendedPathCorrection": "Extended Path Correction",
+    "GENERATING_DIR_TREE": "Directory Tree Generation",
+    "GENERATING_REGEX": "Pattern Generation",
+    "LOCAL_FILTERING": "Local File Filtering",
+    "INITIAL_PATH_FINDER": "Initial Path Finding",
+    "INITIAL_PATH_CORRECTION": "Initial Path Correction",
+    "EXTENDED_PATH_FINDER": "Extended Path Finding",
+    "EXTENDED_PATH_CORRECTION": "Extended Path Correction",
+  };
+  return stageMap[stageName] || null;
 }
 
 /**
@@ -369,10 +636,33 @@ export async function logError(
   context: string = "",
   metadata: Record<string, unknown> = {}
 ): Promise<void> {
+  // Extract structured error information
+  const errorInfo = extractErrorInfo(error);
+  
+  // Create enriched metadata with error information
+  let enrichedMetadata: Record<string, unknown> = { 
+    ...metadata,
+    errorType: errorInfo.type,
+    ...errorInfo.metadata,
+  };
+  
+  if (errorInfo.workflowContext) {
+    enrichedMetadata = {
+      ...enrichedMetadata,
+      workflowId: errorInfo.workflowContext.workflowId,
+      stageName: errorInfo.workflowContext.stageName,
+      stageJobId: errorInfo.workflowContext.stageJobId,
+      retryAttempt: errorInfo.workflowContext.retryAttempt,
+      originalJobId: errorInfo.workflowContext.originalJobId,
+    };
+  }
+
   // Error logging is disabled by default. This is a placeholder for future implementation.
   // In a production setting, this would send errors to a monitoring service.
   if (import.meta.env.DEV) {
-    console.error(`[ERROR] ${context}:`, error, metadata);
+    // Use structured logging in development
+    const logger = await import('./logger').then(m => m.createLogger({ namespace: 'ErrorHandling' }));
+    logger.error(`${context}:`, errorInfo.message, enrichedMetadata);
     return;
   }
 
@@ -385,67 +675,15 @@ export async function logError(
     await fetch(`${serverUrl}/api/error`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: String(error), context, metadata }),
+      body: JSON.stringify({ 
+        error: errorInfo.message, 
+        errorType: errorInfo.type,
+        context, 
+        metadata: enrichedMetadata 
+      }),
     });
   } catch (_e) {
     // Swallow errors in production logging to avoid recursive failures
   }
 }
 
-/**
- * Wraps an async function with retry logic
- */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  options: {
-    maxAttempts?: number;
-    retryCondition?: (error: unknown) => boolean;
-    onRetry?: (error: unknown, attempt: number, delay: number) => void;
-    baseDelay?: number;
-    maxDelay?: number;
-    jitter?: boolean;
-  } = {}
-): Promise<T> {
-  const {
-    maxAttempts = 3,
-    retryCondition = isRetryableError,
-    onRetry = () => {},
-    baseDelay = 1000,
-    maxDelay = 30000,
-    jitter = true,
-  } = options;
-
-  let attempt = 0;
-
-  // Retry loop with explicit check for maxAttempts
-  while (attempt < maxAttempts) {
-    attempt++;
-
-    try {
-      return await fn();
-    } catch (error) {
-      // Don't retry if we've reached max attempts or if the error isn't retryable
-      if (attempt >= maxAttempts || !retryCondition(error)) {
-        throw error;
-      }
-
-      // Calculate delay for next attempt
-      const delay = calculateRetryDelay(attempt, {
-        baseDelay,
-        maxDelay,
-        jitter,
-      });
-
-      // Notify of retry
-      onRetry(error, attempt, delay);
-
-      // Wait before next attempt
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-
-  // This should never happen, but is required to make TypeScript happy
-  throw new Error(
-    "Max retry attempts reached without success or specific error."
-  );
-}

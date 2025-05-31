@@ -142,6 +142,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionError: sessionStateHook.sessionError,
     }),
     [
+      // Primitive values that should trigger re-memoization
       activeSessionManager.activeSessionId,
       sessionStateHook.currentSession,
       sessionStateHook.isSessionLoading,
@@ -156,7 +157,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       setCurrentSession: sessionStateHook.setCurrentSession,
       setSessionLoading: sessionStateHook.setSessionLoading,
       setSessionModified: sessionStateHook.setSessionModified,
-      setActiveSessionId: activeSessionManager.updateActiveSessionId,
+      setActiveSessionId: sessionActions.setActiveSessionId,
 
       // Session field updates
       updateCurrentSessionFields: sessionActions.updateCurrentSessionFields,
@@ -172,19 +173,21 @@ export function SessionProvider({ children }: SessionProviderProps) {
       renameSession: sessionActions.renameSession,
     }),
     [
-      activeSessionManager.updateActiveSessionId,
+      // Stable function references from hooks that use useCallback internally
       sessionStateHook.setCurrentSession,
       sessionStateHook.setSessionLoading,
       sessionStateHook.setSessionModified,
+      // Destructure sessionActions to individual stable callbacks
+      sessionActions.setActiveSessionId,
       sessionActions.updateCurrentSessionFields,
       sessionActions.saveCurrentSession,
       sessionActions.flushSaves,
-      sessionLoader.loadSessionById,
       sessionActions.createNewSession,
       sessionActions.deleteActiveSession,
       sessionActions.deleteNonActiveSession,
       sessionActions.renameActiveSession,
       sessionActions.renameSession,
+      sessionLoader.loadSessionById,
     ]
   );
 

@@ -42,8 +42,8 @@ pub struct PathFinderOptions {
 impl Default for PathFinderOptions {
     fn default() -> Self {
         Self {
-            include_file_contents: Some(crate::constants::DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS),
-            max_files_with_content: Some(crate::constants::DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT),
+            include_file_contents: None, // No defaults - configuration comes from server
+            max_files_with_content: None, // No defaults - configuration comes from server
             priority_file_types: None,
             included_files: None,
             excluded_files: None,

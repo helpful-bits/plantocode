@@ -1,5 +1,5 @@
 use tauri::{AppHandle, Manager};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::{AppError, AppResult};
@@ -33,21 +33,27 @@ pub async fn generate_regex_summary_command(
     let session = session_repo.get_session_by_id(&args.session_id).await?
         .ok_or_else(|| crate::error::AppError::NotFoundError(format!("Session {} not found", args.session_id)))?;
 
+    // Get model settings using centralized resolver
+    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+        &app_handle,
+        TaskType::RegexSummaryGeneration,
+        &session.project_directory,
+        args.model_override.clone(),
+        args.temperature_override,
+        args.max_tokens_override,
+    ).await?;
+    
     // Create the payload
-    let job_id = uuid::Uuid::new_v4().to_string();
     let payload = RegexSummaryGenerationPayload {
-        background_job_id: job_id.clone(),
+        background_job_id: String::new(), // Will be set by create_and_queue_background_job
         session_id: args.session_id.clone(),
         title_regex: session.title_regex.unwrap_or_default(),
         content_regex: session.content_regex.unwrap_or_default(),
         negative_title_regex: session.negative_title_regex.unwrap_or_default(),
         negative_content_regex: session.negative_content_regex.unwrap_or_default(),
-        model_override: args.model_override.clone(),
-        temperature: match args.temperature_override {
-            Some(temp) => temp,
-            None => crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::RegexSummaryGeneration))?,
-        },
-        max_output_tokens: args.max_tokens_override,
+        model_override: None, // Will be passed separately to create_and_queue_background_job
+        temperature,
+        max_output_tokens: Some(max_tokens),
     };
 
     // Create and queue the background job
@@ -58,22 +64,9 @@ pub async fn generate_regex_summary_command(
         TaskType::RegexSummaryGeneration,
         "REGEX_SUMMARY_GENERATION",
         "Generating regex filter summary explanation",
-        (
-            match args.model_override {
-                Some(model) => model,
-                None => crate::config::get_model_for_task(crate::models::TaskType::RegexSummaryGeneration)?,
-            },
-            match args.temperature_override {
-                Some(temp) => temp,
-                None => crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::RegexSummaryGeneration))
-                    .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for RegexSummaryGeneration: {}", e)))?,
-            },
-            match args.max_tokens_override {
-                Some(tokens) => tokens,
-                None => crate::config::get_default_max_tokens_for_task(Some(crate::models::TaskType::RegexSummaryGeneration))?,
-            },
-        ),
-        json!(payload),
+        Some((model, temperature, max_tokens)),
+        serde_json::to_value(payload).map_err(|e| 
+            AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
         1, // priority
         None, // extra_metadata
         &app_handle,

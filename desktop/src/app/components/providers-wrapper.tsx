@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState } from "react";
 
 import type React from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -19,31 +19,12 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
 }
 
 
-// Import all providers from the central contexts index using React.lazy
-const ProjectProvider = lazy(() =>
-  import("@/contexts").then((mod) => ({ default: mod.ProjectProvider }))
-);
-
-const DatabaseProvider = lazy(() =>
-  import("@/contexts").then((mod) => ({ default: mod.DatabaseProvider }))
-);
-
-const BackgroundJobsProvider = lazy(() =>
-  import("@/contexts/background-jobs").then((mod) => ({
-    default: mod.BackgroundJobsProvider,
-  }))
-);
-
-// Use SessionProvider for managing session state
-const SessionProvider = lazy(() =>
-  import("@/contexts/session").then((mod) => ({ default: mod.SessionProvider }))
-);
-
-
-// Simple notification provider with hydration safety
-const NotificationProvider = lazy(() =>
-  import("@/contexts").then((mod) => ({ default: mod.NotificationProvider }))
-);
+// Import providers directly instead of using lazy loading to avoid hook call issues
+import { ProjectProvider } from "@/contexts";
+import { DatabaseProvider } from "@/contexts";
+import { BackgroundJobsProvider } from "@/contexts/background-jobs";
+import { SessionProvider } from "@/contexts/session";
+import { NotificationProvider } from "@/contexts";
 
 export interface ProvidersWrapperProps {
   children: React.ReactNode;
@@ -90,17 +71,15 @@ export function ProvidersWrapper({
           </div>
         }
       >
-        <Suspense fallback={null}>
-          <NotificationProvider>
-            <DatabaseProvider>
-              <ProjectProvider>
-                <SessionProvider>
-                  <BackgroundJobsProvider>{children}</BackgroundJobsProvider>
-                </SessionProvider>
-              </ProjectProvider>
-            </DatabaseProvider>
-          </NotificationProvider>
-        </Suspense>
+        <NotificationProvider>
+          <DatabaseProvider>
+            <ProjectProvider>
+              <SessionProvider>
+                <BackgroundJobsProvider>{children}</BackgroundJobsProvider>
+              </SessionProvider>
+            </ProjectProvider>
+          </DatabaseProvider>
+        </NotificationProvider>
       </ErrorBoundary>
     </ClientOnly>
   );

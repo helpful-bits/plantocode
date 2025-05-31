@@ -1,27 +1,25 @@
 "use client";
 
+import { createLogger } from "@/utils/logger";
 import { type FilesMap } from "../_hooks/file-management/use-project-file-list";
+
+const logger = createLogger({ namespace: "file-selection-debug" });
 
 /**
  * Logs changes to file selections for debugging
  */
 export const trackSelectionChanges = (
-  _prevMapString: string,
-  _newMap: FilesMap,
-  _action: string
+  prevMapString: string,
+  newMap: FilesMap,
+  action: string
 ): void => {
   try {
-    // Using a no-op in production to avoid the linting error
-    // In a real app, you might want to use a logger that respects environment
-    const logChanges = () => {
-      /* Log file selection changes for debugging */
-    };
-    logChanges();
-  } catch (_error) {
-    // Using a no-op to avoid console errors
-    const logError = () => {
-      /* Log errors in trackSelectionChanges */
-    };
-    logError();
+    logger.debug(`File selection changed - Action: ${action}`, {
+      prevMapString,
+      newMapSize: Object.keys(newMap).length,
+      newMapKeys: Object.keys(newMap)
+    });
+  } catch (error) {
+    logger.error("Error in trackSelectionChanges:", error);
   }
 };

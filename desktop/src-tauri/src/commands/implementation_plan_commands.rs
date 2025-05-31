@@ -10,7 +10,7 @@ use crate::models::TaskType;
 use crate::db_utils::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::models::JobCommandResponse;
-use crate::utils::{PromptComposer, CompositionContextBuilder};
+use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt as UnifiedComposedPrompt};
 use crate::db_utils::SettingsRepository;
 
 /// Request payload for the implementation plan generation command
@@ -86,7 +86,7 @@ pub async fn create_implementation_plan_command(
         relevant_files: args.relevant_files,
         model: model.clone(),
         temperature,
-        max_tokens: Some(max_tokens),
+        max_tokens: max_tokens,
     };
     
     // Create and queue the job
@@ -97,7 +97,7 @@ pub async fn create_implementation_plan_command(
         TaskType::ImplementationPlan,
         "IMPLEMENTATION_PLAN",
         &args.task_description.clone(),
-        (model.clone(), temperature, max_tokens),
+        Some((model.clone(), temperature, max_tokens)),
         serde_json::to_value(payload).map_err(|e| 
             AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
         2, // Priority
@@ -193,11 +193,11 @@ pub async fn estimate_implementation_plan_tokens_command(
         }
     }
     
-    // Get settings repository for PromptComposer
+    // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Create composition context
-    let composition_context = CompositionContextBuilder::new(
+    // Create unified prompt context
+    let context = UnifiedPromptContextBuilder::new(
         session_id.clone(),
         TaskType::ImplementationPlan,
         task_description.clone(),
@@ -207,10 +207,10 @@ pub async fn estimate_implementation_plan_tokens_command(
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
     .build();
 
-    // Use PromptComposer to generate the complete prompt
-    let prompt_composer = PromptComposer::new();
-    let composed_prompt = prompt_composer
-        .compose_prompt(&composition_context, &settings_repo)
+    // Use UnifiedPromptProcessor to generate the complete prompt
+    let prompt_processor = UnifiedPromptProcessor::new();
+    let composed_prompt = prompt_processor
+        .compose_prompt(&context, &settings_repo)
         .await?;
     
     // Estimate the number of tokens in the final prompt
@@ -269,11 +269,11 @@ pub async fn get_implementation_plan_prompt_command(
         }
     }
     
-    // Get settings repository for PromptComposer
+    // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Create composition context
-    let composition_context = CompositionContextBuilder::new(
+    // Create unified prompt context
+    let context = UnifiedPromptContextBuilder::new(
         session_id.clone(),
         TaskType::ImplementationPlan,
         task_description.clone(),
@@ -283,10 +283,10 @@ pub async fn get_implementation_plan_prompt_command(
     .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
     .build();
 
-    // Use PromptComposer to generate the complete prompt
-    let prompt_composer = PromptComposer::new();
-    let composed_prompt = prompt_composer
-        .compose_prompt(&composition_context, &settings_repo)
+    // Use UnifiedPromptProcessor to generate the complete prompt
+    let prompt_processor = UnifiedPromptProcessor::new();
+    let composed_prompt = prompt_processor
+        .compose_prompt(&context, &settings_repo)
         .await?;
     
     // Extract system and user prompts from the composed result
@@ -354,10 +354,11 @@ pub async fn read_implementation_plan_command(
     // Use the job response directly as the implementation plan content
     let implementation_plan_content = job_response;
     
-    // Try to parse the title from metadata or response
+    // Try to parse the title from metadata
     let title = if let Some(metadata) = job.metadata.as_ref() {
         if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata) {
             metadata_json["planTitle"].as_str().map(|s| s.to_string())
+                .or_else(|| metadata_json["generated_title"].as_str().map(|s| s.to_string()))
         } else {
             None
         }

@@ -10,6 +10,11 @@ import {
   DialogFooter,
 } from "@/ui/dialog";
 import { formatJobDuration } from "@/utils/date-utils";
+import { useExistingWorkflowTracker } from "@/hooks/use-workflow-tracker";
+import { getParsedMetadata } from "./utils";
+import { WorkflowVisualizer } from "@/components/workflow-visualizer";
+import { retryWorkflowStageAction } from "@/actions/file-system/workflow-stage.actions";
+import { useState } from "react";
 
 
 // Import component sections
@@ -23,11 +28,173 @@ import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsR
 import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
 import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
 import { JobDetailsCostUsageSection } from "./_components/job-details/JobDetailsCostUsageSection";
-import { getParsedMetadata } from "./utils";
 
 interface JobDetailsModalProps {
   job: BackgroundJob | null;
   onClose: () => void;
+}
+
+interface WorkflowStagesProps {
+  job: BackgroundJob;
+}
+
+function WorkflowStages({ job }: WorkflowStagesProps) {
+  const [retryingStage, setRetryingStage] = useState<string | null>(null);
+  const parsedMeta = getParsedMetadata(job.metadata);
+  const workflowId = parsedMeta?.workflowId;
+  
+  // Get workflow state if this is a workflow job
+  const { workflowState, error } = useExistingWorkflowTracker(
+    workflowId || '',
+    job.sessionId || '',
+    {
+      pollInterval: 2000, // Poll every 2 seconds for live updates
+    }
+  );
+
+  const handleRetryStage = async (stageJobId: string) => {
+    if (!workflowId) {
+      console.warn('Cannot retry stage: no workflow ID available');
+      return;
+    }
+    
+    setRetryingStage(stageJobId);
+    try {
+      const result = await retryWorkflowStageAction(workflowId, stageJobId);
+      if (!result.isSuccess) {
+        console.error('Failed to retry stage:', result.error);
+        // Could show a toast notification here
+      } else {
+        console.log(`Successfully retried stage ${stageJobId} in workflow ${workflowId}`);
+      }
+    } catch (error) {
+      console.error('Error retrying stage:', error);
+    } finally {
+      setRetryingStage(null);
+    }
+  };
+
+  if (!workflowId) {
+    return null;
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <div className="text-sm text-red-800 dark:text-red-200">
+          Failed to load workflow details: {error.message}
+        </div>
+      </div>
+    );
+  }
+
+  if (!workflowState) {
+    return (
+      <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Loading workflow details...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="border border-border rounded-lg p-4">
+        <h3 className="text-lg font-semibold mb-3">Workflow Stages</h3>
+        
+        {/* Stage Jobs List */}
+        <div className="space-y-3">
+          {workflowState.stageJobs.map((stageJob) => {
+            const isRetrying = retryingStage === stageJob.jobId;
+            const canRetry = stageJob.status === 'failed' && !isRetrying && stageJob.jobId;
+            
+            return (
+              <div
+                key={stageJob.jobId || stageJob.stage}
+                className="border border-border rounded-lg p-3 bg-white dark:bg-gray-800"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${
+                      stageJob.status === 'completed' || stageJob.status === 'completed_by_tag'
+                        ? 'bg-green-500'
+                        : stageJob.status === 'failed'
+                        ? 'bg-red-500'
+                        : ['running', 'preparing', 'processing_stream', 'acknowledged_by_worker', 'preparing_input', 'generating_stream'].includes(stageJob.status)
+                        ? 'bg-blue-500 animate-pulse'
+                        : 'bg-gray-300'
+                    }`} />
+                    <div>
+                      <div className="font-medium text-sm">
+                        {stageJob.stage.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {stageJob.jobId ? `Job ID: ${stageJob.jobId}` : 'No job ID available'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {stageJob.executionTimeMs && (
+                      <span className="text-xs text-gray-500">
+                        {Math.round(stageJob.executionTimeMs / 1000)}s
+                      </span>
+                    )}
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      stageJob.status === 'completed' || stageJob.status === 'completed_by_tag'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200'
+                        : stageJob.status === 'failed'
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-200'
+                        : ['running', 'preparing', 'processing_stream', 'acknowledged_by_worker', 'preparing_input', 'generating_stream'].includes(stageJob.status)
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200'
+                        : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-200'
+                    }`}>
+                      {stageJob.status}
+                    </span>
+                    
+                    {canRetry && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRetryStage(stageJob.jobId!)}
+                        disabled={isRetrying || !stageJob.jobId}
+                        title={!stageJob.jobId ? 'Cannot retry: No job ID available' : 'Retry failed stage'}
+                      >
+                        {isRetrying ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Retrying...
+                          </>
+                        ) : (
+                          'Retry'
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                
+                {stageJob.errorMessage && (
+                  <div className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded p-2">
+                    {stageJob.errorMessage}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
+      {/* Workflow Visualizer */}
+      <WorkflowVisualizer
+        workflowState={workflowState}
+        showDetails={false}
+        showTiming={true}
+        className="border-0"
+      />
+    </div>
+  );
 }
 
 export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
@@ -159,7 +326,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     // For Content View - show EXACTLY what would be copied with the copy button
     if (
       job.taskType === "implementation_plan" &&
-      job.metadata?.showPureContent === true
+      getParsedMetadata(job.metadata)?.showPureContent === true
     ) {
       // Always return the raw response for implementation plans in content view
       // This is EXACTLY what gets copied by the copy button
@@ -170,7 +337,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     if (
       job.taskType === "implementation_plan" &&
       (job.status === "running" || job.status === "processing_stream") &&
-      job.metadata?.isStreaming === true
+      getParsedMetadata(job.metadata)?.isStreaming === true
     ) {
       if (job.response) {
         return job.response;
@@ -188,45 +355,114 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       return "Implementation plan job completed, but no content is available.";
     }
 
-    // Path finder job handling - improved structured data display
-    if (job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-      // Try to get structured data from metadata first (prioritize this for better formatting)
-      let paths: string[] = [];
-      let pathCountFromMeta: number | undefined;
-
-      if (job.metadata?.pathFinderData && typeof job.metadata.pathFinderData === 'string') {
+    // Handle structured JSON responses for specific task types
+    if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && job.response) {
+      const structuredJsonTaskTypes = [
+        "path_finder", 
+        "regex_pattern_generation",
+        "regex_summary_generation",
+        "guidance_generation"
+      ];
+      
+      if (structuredJsonTaskTypes.includes(job.taskType)) {
         try {
-          const pathDataParsed = JSON.parse(job.metadata.pathFinderData) as { paths?: string[]; allFiles?: string[] };
-          // Use camelCase allFiles or paths
-          const pathsArray = pathDataParsed?.allFiles || pathDataParsed?.paths;
-          if (Array.isArray(pathsArray) && pathsArray.every(p => typeof p === 'string')) {
-            paths = pathsArray;
+          const parsed = JSON.parse(job.response);
+          return JSON.stringify(parsed, null, 2);
+        } catch {
+          // Not valid JSON, continue with existing logic
+        }
+      }
+    }
+
+    // Enhanced handling for path finder and workflow stage jobs
+    if ((job.taskType === "path_finder" || 
+         job.taskType === "initial_path_finding" || 
+         job.taskType === "extended_path_finding" ||
+         job.taskType === "file_finder_workflow") && 
+        JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+      
+      const parsedMeta = getParsedMetadata(job.metadata);
+
+      // Handle workflow metadata first
+      if (parsedMeta?.workflowId) {
+        const workflowInfo = `Workflow ID: ${parsedMeta.workflowId}\nStage: ${parsedMeta.workflowStage || job.taskType}`;
+        
+        if (job.response) {
+          // Try to format JSON response nicely for path finder workflow stages
+          try {
+            const parsed = JSON.parse(job.response);
+            if (parsed && (parsed.paths || parsed.count !== undefined)) {
+              return `${workflowInfo}\n\nStage Output:\n${JSON.stringify(parsed, null, 2)}`;
+            }
+          } catch {
+            // Not JSON, return as-is
           }
-        } catch (e) {
-          console.warn("Failed to parse pathFinderData from metadata for path_finder job:", e);
+          return `${workflowInfo}\n\nStage Output:\n${job.response}`;
+        }
+        return `${workflowInfo}\n\nWorkflow stage completed successfully.`;
+      }
+
+      // Handle structured pathFinderData from metadata
+      if (parsedMeta?.pathFinderData) {
+        const pathData = parsedMeta.pathFinderData;
+        let displayContent = "";
+        
+        if (pathData.count !== undefined || pathData.paths?.length) {
+          const count = pathData.count || pathData.paths?.length || 0;
+          displayContent += `Found ${count} relevant file${count !== 1 ? "s" : ""}`;
+          
+          if (pathData.searchTerm) {
+            displayContent += ` for search term: "${pathData.searchTerm}"`;
+          }
+          displayContent += "\n\n";
+          
+          if (pathData.paths && pathData.paths.length > 0) {
+            displayContent += pathData.paths.join("\n");
+          }
+          
+          if (pathData.unverifiedPaths && pathData.unverifiedPaths.length > 0) {
+            displayContent += "\n\nUnverified paths:\n" + pathData.unverifiedPaths.join("\n");
+          }
+          
+          return displayContent;
         }
       }
 
-      if (typeof job.metadata?.pathCount === 'number') {
-        pathCountFromMeta = job.metadata.pathCount;
+      // Handle legacy pathData from metadata
+      if (parsedMeta?.pathData && typeof parsedMeta.pathData === 'string') {
+        try {
+          const pathDataParsed = JSON.parse(parsedMeta.pathData) as { paths?: string[]; allFiles?: string[]; count?: number };
+          const pathsArray = pathDataParsed?.allFiles || pathDataParsed?.paths;
+          const count = pathDataParsed?.count || pathsArray?.length || 0;
+          
+          if (Array.isArray(pathsArray) && pathsArray.every(p => typeof p === 'string')) {
+            return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${pathsArray.join("\n")}`;
+          }
+        } catch (e) {
+          console.warn("Failed to parse pathData from metadata for path_finder job:", e);
+        }
       }
 
-      // If paths were successfully parsed from metadata, use them
-      if (paths.length > 0) {
-        const pathCount = pathCountFromMeta ?? paths.length; // Prefer explicit count if available
-        return `Found ${pathCount} relevant file${pathCount !== 1 ? "s" : ""}:\n\n${paths.join("\n")}`;
-      }
-
-      // Fallback to job.response if pathData parsing failed or paths were empty
+      // Fallback to job.response, format JSON if possible
       if (job.response) {
-          const count = pathCountFromMeta ?? job.response.split('\n').filter(Boolean).length;
+        try {
+          const parsed = JSON.parse(job.response);
+          if (parsed && (parsed.paths || parsed.count !== undefined)) {
+            const count = parsed.count || parsed.paths?.length || 0;
+            return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${JSON.stringify(parsed, null, 2)}`;
+          }
+        } catch {
+          // Not JSON, handle as text
+          const count = parsedMeta?.pathCount ?? job.response.split('\n').filter(Boolean).length;
           return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${job.response}`;
+        }
       }
-      return "Path finder job completed, but no path data found.";
+      
+      return `${job.taskType === "file_finder_workflow" ? "File finder" : "Path finder"} job completed, but no path data found.`;
     }
 
     // Streaming jobs special handling - for jobs with isStreaming flag
-    if ((job.status === "running" || job.status === "processing_stream") && job.metadata?.isStreaming === true) {
+    if ((job.status === "running" || job.status === "processing_stream") && getParsedMetadata(job.metadata)?.isStreaming === true) {
       if (job.response) {
         // For streaming jobs, show the response with a note that it's streaming
         return `${job.response}\n\n[Streaming in progress...]`;
@@ -287,6 +523,21 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             {(() => {
               const parsedMeta = getParsedMetadata(job.metadata);
 
+              // Show workflow context prominently in title
+              if (parsedMeta?.workflowId) {
+                return (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-primary rounded-full"></div>
+                      <span>Workflow: {parsedMeta.workflowId}</span>
+                    </div>
+                    {(job.status === "running" || job.status === "processing_stream") && (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    )}
+                  </div>
+                );
+              }
+
               if (
                 job.taskType === "implementation_plan" &&
                 parsedMeta?.showPureContent === true
@@ -312,6 +563,18 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           <DialogDescription className="text-balance text-muted-foreground">
             {(() => {
               const parsedMeta = getParsedMetadata(job.metadata);
+
+              // Show workflow stage in description
+              if (parsedMeta?.workflowId && parsedMeta?.workflowStage) {
+                return (
+                  <div className="flex items-center gap-2">
+                    <span>Stage: {parsedMeta.workflowStage}</span>
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                      Job ID: {job.id}
+                    </span>
+                  </div>
+                );
+              }
 
               if (parsedMeta?.showPureContent === true) {
                 if ((job.status === "running" || job.status === "processing_stream") && parsedMeta?.isStreaming) {
@@ -343,6 +606,12 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           <JobDetailsAdditionalInfoSection job={job} />
           
           <JobDetailsErrorSection job={job} />
+          
+          {/* Workflow Stages Section - show for any job that's part of a workflow */}
+          {(() => {
+            const parsedMeta = getParsedMetadata(job.metadata);
+            return parsedMeta?.workflowId ? <WorkflowStages job={job} /> : null;
+          })()}
 
           {/* Content sections */}
           <div className="space-y-4">

@@ -5,13 +5,16 @@ use tokio::time::{timeout, Duration};
 
 use crate::constants::DEFAULT_JOB_TIMEOUT_SECONDS;
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{Job, JobProcessResult, JobStatusChangeEvent};
+use crate::jobs::types::{Job, JobProcessResult, JobStatusChangeEvent, JobPayload};
 use crate::jobs::queue::{get_job_queue, JobPriority};
 use crate::jobs::registry::get_job_registry;
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
-use crate::models::{JobStatus, BackgroundJob};
+use crate::models::{JobStatus, BackgroundJob, TaskType};
 use crate::jobs::job_helpers;
 use crate::jobs::processor_trait;
+use crate::jobs::job_payload_utils;
+use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
+use std::str::FromStr;
 
 // No need for a local MAX_RETRIES as we use job_helpers::MAX_RETRY_COUNT
 
@@ -211,6 +214,12 @@ async fn handle_job_success(
                 &JobStatus::Completed.to_string(),
                 None,
             )?;
+
+            // Check if this job is part of a workflow and handle orchestration
+            if let Err(e) = handle_workflow_job_completion(job_id, result, &app_handle).await {
+                error!("Failed to handle workflow job completion for job {}: {}", job_id, e);
+                // Don't fail the original job, just log the workflow error
+            }
         },
         JobStatus::Failed => {
             let error_message = result.error.clone().unwrap_or_else(|| "Unknown error".to_string());
@@ -357,19 +366,71 @@ async fn handle_job_failure_or_retry_internal(
             Some(&retry_message)
         )?;
         
-        // Sleep to implement the backoff delay
-        tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay as u64)).await;
+        // Re-queue the job with delay instead of sleeping
+        if let Err(e) = re_queue_job_with_delay(app_handle, job_copy, retry_delay as u64 * 1000).await {
+            error!("Failed to re-queue job {} for retry: {}", job_id, e);
+            // If re-queueing fails, treat as permanent failure
+            return Ok(JobFailureHandlingResult::PermanentFailure(
+                format!("Failed to schedule retry: {}", e)
+            ));
+        }
         
         Ok(JobFailureHandlingResult::Retrying)
     } else {
-        // Job is not retryable or max retries reached
+        // Job is not retryable or max retries reached - provide detailed failure logging
         let failure_reason = if !is_retryable {
-            format!("Non-retryable error: {}", error_message)
+            let detailed_reason = format!("Non-retryable error: {}", error_message);
+            error!("Job {} permanently failed due to non-retryable error. Job details: task_type={}, session_id={}, created_at={}, project_directory={}. Error: {}", 
+                job_id, 
+                job_copy.task_type,
+                job_copy.session_id, 
+                job_copy.created_at,
+                job_copy.project_directory.as_deref().unwrap_or("N/A"),
+                error_message
+            );
+            
+            // Log additional context if metadata is available
+            if let Some(metadata) = &job_copy.metadata {
+                if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
+                    if let Some(model) = meta_json.get("model").and_then(|m| m.as_str()) {
+                        error!("Failed job {} was using model: {}", job_id, model);
+                    }
+                    if let Some(priority) = meta_json.get("jobPriorityForWorker").and_then(|p| p.as_str()) {
+                        error!("Failed job {} had priority: {}", job_id, priority);
+                    }
+                }
+            }
+            
+            detailed_reason
         } else {
-            format!("Failed after {}/{} retries. Last error: {}", current_retry_count, job_helpers::MAX_RETRY_COUNT, error_message)
+            let detailed_reason = format!("Failed after {}/{} retries. Last error: {}", current_retry_count, job_helpers::MAX_RETRY_COUNT, error_message);
+            error!("Job {} permanently failed after exhausting all retries. Job details: task_type={}, session_id={}, created_at={}, project_directory={}. Retry history: {}/{} attempts. Final error: {}", 
+                job_id, 
+                job_copy.task_type,
+                job_copy.session_id, 
+                job_copy.created_at,
+                job_copy.project_directory.as_deref().unwrap_or("N/A"),
+                current_retry_count,
+                job_helpers::MAX_RETRY_COUNT,
+                error_message
+            );
+            
+            // Log retry metadata if available
+            if let Some(metadata) = &job_copy.metadata {
+                if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
+                    if let Some(retry_history) = meta_json.get("retryHistory") {
+                        error!("Failed job {} retry history: {}", job_id, retry_history);
+                    }
+                    if let Some(model) = meta_json.get("model").and_then(|m| m.as_str()) {
+                        error!("Failed job {} was using model: {}", job_id, model);
+                    }
+                }
+            }
+            
+            detailed_reason
         };
         
-        error!("Job {} permanently failed: {}", job_id, failure_reason);
+        error!("PERMANENT JOB FAILURE: Job {} has been marked as permanently failed. Reason: {}", job_id, failure_reason);
         
         // Update job status to failed
         if let Err(e) = background_job_repo.update_job_status(
@@ -377,16 +438,18 @@ async fn handle_job_failure_or_retry_internal(
             &JobStatus::Failed.to_string(),
             Some(&failure_reason)
         ).await {
-            error!("Failed to update job status to failed: {}", e);
+            error!("Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!", job_id, e);
         }
         
         // Emit job status change event
-        emit_job_status_change(
+        if let Err(e) = emit_job_status_change(
             app_handle,
             job_id,
             &JobStatus::Failed.to_string(),
             Some(&failure_reason)
-        )?;
+        ) {
+            error!("Failed to emit job status change event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
+        }
         
         Ok(JobFailureHandlingResult::PermanentFailure(failure_reason))
     }
@@ -413,5 +476,122 @@ fn emit_job_status_change(
     debug!("Emitted job status change event for job {}: status={}, message={:?}", 
         job_id, status, message);
         
+    Ok(())
+}
+
+/// Re-queue a job with a delay for retry processing
+async fn re_queue_job_with_delay(
+    app_handle: &AppHandle,
+    db_job: &BackgroundJob,
+    delay_ms: u64,
+) -> AppResult<()> {
+    // Get the job queue
+    let queue = get_job_queue().await?;
+    
+    // Convert the database job back to a Rust Job struct
+    let job = convert_db_job_to_job(db_job)?;
+    
+    // Re-queue with the delay
+    queue.enqueue_with_delay(job, JobPriority::Normal, delay_ms).await?;
+    
+    debug!("Re-queued job {} with {}ms delay for retry", db_job.id, delay_ms);
+    
+    Ok(())
+}
+
+/// Convert a BackgroundJob from the database to a Rust Job struct
+fn convert_db_job_to_job(db_job: &BackgroundJob) -> AppResult<Job> {
+    // Parse the task type safely
+    let task_type = TaskType::from_str(&db_job.task_type)
+        .map_err(|e| AppError::JobError(format!("Failed to parse task type '{}': {}", db_job.task_type, e)))?;
+    
+    // Deserialize the payload from metadata
+    let payload = job_payload_utils::deserialize_job_payload(
+        &db_job.task_type, 
+        db_job.metadata.as_deref()
+    )?;
+    
+    // Create the Job struct
+    let job = Job {
+        id: db_job.id.clone(),
+        job_type: task_type,
+        payload,
+        created_at: db_job.created_at.to_string(),
+        session_id: db_job.session_id.clone(),
+        task_type_str: db_job.task_type.clone(),
+        project_directory: db_job.project_directory.clone(),
+        process_after: None, // Will be set by the queue when delay is applied
+    };
+    
+    Ok(job)
+}
+
+/// Handle workflow job completion by checking if the job is part of a workflow
+/// and delegating to the WorkflowOrchestrator if needed
+async fn handle_workflow_job_completion(
+    job_id: &str,
+    result: &JobProcessResult,
+    app_handle: &AppHandle,
+) -> AppResult<()> {
+    // Get the completed job from the database to check if it's part of a workflow
+    let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>();
+    let job = match background_job_repo.get_job_by_id(job_id).await? {
+        Some(job) => job,
+        None => {
+            debug!("Job {} not found in database for workflow check", job_id);
+            return Ok(());
+        }
+    };
+
+    // Parse metadata to check for workflowId
+    let metadata = match &job.metadata {
+        Some(meta) => meta,
+        None => {
+            debug!("Job {} has no metadata, not part of a workflow", job_id);
+            return Ok(());
+        }
+    };
+
+    let metadata_value: serde_json::Value = match serde_json::from_str(metadata) {
+        Ok(val) => val,
+        Err(e) => {
+            debug!("Failed to parse metadata for job {}: {}", job_id, e);
+            return Ok(());
+        }
+    };
+
+    // Check if this job has a workflowId
+    let workflow_id = match metadata_value.get("workflowId") {
+        Some(serde_json::Value::String(id)) => id.clone(),
+        _ => {
+            debug!("Job {} has no workflowId, not part of a workflow", job_id);
+            return Ok(());
+        }
+    };
+
+    info!("Job {} is part of workflow {}, notifying WorkflowOrchestrator", job_id, workflow_id);
+
+    // Get the workflow orchestrator and update job status
+    match get_workflow_orchestrator().await {
+        Ok(orchestrator) => {
+            // Update job status
+            orchestrator.update_job_status(job_id, result.status.clone(), result.error.clone()).await?;
+            
+            // Store stage data if response is available
+            if let Some(response) = &result.response {
+                if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(response) {
+                    orchestrator.store_stage_data(job_id, response_json).await?;
+                }
+            }
+            
+            // The orchestrator will handle stage completion internally via update_job_status
+            info!("Successfully notified WorkflowOrchestrator about job {} completion", job_id);
+        }
+        Err(e) => {
+            error!("Failed to get workflow orchestrator for job {}: {}", job_id, e);
+            // Continue without workflow handling
+        }
+    }
+
     Ok(())
 }

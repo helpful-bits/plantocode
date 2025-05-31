@@ -51,7 +51,7 @@ pub async fn start_auth0_login_flow(
         polling_id.clone(),
         pkce_verifier.secret().to_string(),
         csrf_token_tauri.secret().to_string(),
-    );
+    ).map_err(|e| AppError::InternalError(format!("Failed to store auth attempt: {}", e)))?;
     
     // Get Auth0 config from environment
     let auth0_domain = std::env::var("AUTH0_DOMAIN")
@@ -98,11 +98,13 @@ pub async fn check_auth_status_and_exchange_token(
     token_manager: State<'_, Arc<TokenManager>>,
 ) -> AppResult<Option<FrontendUser>> {
     // Cleanup old attempts
-    app_state.auth0_state_store.cleanup_old_attempts();
+    app_state.auth0_state_store.cleanup_old_attempts()
+        .map_err(|e| AppError::InternalError(format!("Failed to cleanup auth attempts: {}", e)))?;
     
     // Get the stored attempt
     let (pkce_verifier_secret, csrf_token_tauri_original) = 
         app_state.auth0_state_store.get_attempt(&polling_id)
+            .map_err(|e| AppError::InternalError(format!("Failed to get auth attempt: {}", e)))?
             .ok_or_else(|| AppError::ValidationError("Polling ID not found or expired".to_string()))?;
     
     // Poll the server for status
@@ -238,7 +240,8 @@ pub async fn check_auth_status_and_exchange_token(
     token_manager.set(Some(auth_response.token.clone())).await?;
     
     // Remove the polling ID now that authentication is complete
-    app_state.auth0_state_store.remove_attempt(&polling_id);
+    let _ = app_state.auth0_state_store.remove_attempt(&polling_id)
+        .map_err(|e| warn!("Failed to remove auth attempt: {}", e));
     
     info!("Auth0 login completed successfully for user: {}", auth_response.user.email);
     

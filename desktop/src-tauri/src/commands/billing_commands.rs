@@ -322,3 +322,57 @@ pub async fn check_service_access_command(
     info!("Successfully checked service access");
     Ok(service_access)
 }
+
+/// Get spending analytics
+#[tauri::command]
+pub async fn get_spending_analytics_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<serde_json::Value, AppError> {
+    debug!("Getting spending analytics via Tauri command");
+    
+    let analytics = make_authenticated_request(
+        &token_manager,
+        "GET",
+        "/api/spending/analytics",
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved spending analytics");
+    Ok(analytics)
+}
+
+/// Get spending forecast
+#[tauri::command]
+pub async fn get_spending_forecast_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<serde_json::Value, AppError> {
+    debug!("Getting spending forecast via Tauri command");
+    
+    let forecast = make_authenticated_request(
+        &token_manager,
+        "GET",
+        "/api/spending/forecast",
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved spending forecast");
+    Ok(forecast)
+}
+
+/// Get payment methods
+#[tauri::command]
+pub async fn get_payment_methods_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<serde_json::Value, AppError> {
+    debug!("Getting payment methods via Tauri command");
+    
+    let payment_methods = make_authenticated_request(
+        &token_manager,
+        "GET",
+        "/api/billing/payment-methods",
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved payment methods");
+    Ok(payment_methods)
+}

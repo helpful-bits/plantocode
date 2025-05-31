@@ -1,11 +1,12 @@
 "use client";
 
-import { Sparkles, Loader2 } from "lucide-react";
-import React, { Suspense, useCallback } from "react";
+import { Sparkles } from "lucide-react";
+import React, { useCallback } from "react";
 
 import { Button } from "@/ui/button";
 
 import VoiceTranscription from "../_components/voice-transcription";
+import TaskDescriptionArea from "../_components/task-description";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 import { useFileManagement } from "../_contexts/file-management-context";
 import { useTaskContext } from "../_contexts/task-context";
@@ -13,10 +14,6 @@ import {
   useSessionStateContext, 
   useSessionActionsContext 
 } from "@/contexts/session";
-
-const TaskDescriptionArea = React.lazy(
-  () => import("../_components/task-description")
-);
 
 interface TaskSectionProps {
   disabled?: boolean;
@@ -60,26 +57,17 @@ const TaskSection = React.memo(function TaskSection({
   };
 
   return (
-    <div className="border rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
-      <Suspense
-        fallback={
-          <div className="flex justify-center items-center min-h-[240px] text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            Loading task description editor...
-          </div>
-        }
-      >
-        <TaskDescriptionArea
-          ref={taskDescriptionRef}
-          value={sessionState.currentSession?.taskDescription || ""}
-          onChange={handleTaskChange}
-          onInteraction={coreActions.handleInteraction}
-          onBlur={sessionActions.flushSaves}
-          isImproving={isImprovingText || false}
-          onImproveSelection={handleImproveSelection}
-          disabled={disabled}
-        />
-      </Suspense>
+    <div className="border border-border/60 rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
+      <TaskDescriptionArea
+        ref={taskDescriptionRef}
+        value={sessionState.currentSession?.taskDescription || ""}
+        onChange={handleTaskChange}
+        onInteraction={coreActions.handleInteraction}
+        onBlur={sessionActions.flushSaves}
+        isImproving={isImprovingText || false}
+        onImproveSelection={handleImproveSelection}
+        disabled={disabled}
+      />
 
       <div className="flex justify-between items-start mt-4">
         <div className="flex items-start gap-4">

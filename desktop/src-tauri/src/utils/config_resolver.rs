@@ -8,6 +8,8 @@ use crate::models::TaskType;
 /// 1. Using override values if provided
 /// 2. Otherwise falling back to project-specific settings
 /// 3. Finally falling back to server defaults
+/// 
+/// For non-LLM tasks (like LocalFileFiltering), returns a non-LLM marker tuple.
 pub async fn resolve_model_settings(
     app_handle: &AppHandle,
     task_type: TaskType,
@@ -16,6 +18,20 @@ pub async fn resolve_model_settings(
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
 ) -> AppResult<(String, f32, u32)> {
+    // Check if this task requires LLM configuration
+    if !task_type.requires_llm() {
+        // If any LLM-related overrides are provided for a local task, return an error
+        if model_override.is_some() || temperature_override.is_some() || max_tokens_override.is_some() {
+            return Err(AppError::ConfigError(format!(
+                "Task {:?} is a local filesystem task that does not require LLM configuration. Model, temperature, and max_tokens overrides are not applicable for this task type.",
+                task_type
+            )));
+        }
+        
+        // Return a non-LLM marker tuple for local tasks
+        return Ok(("local_task_no_model".to_string(), 0.0, 0));
+    }
+
     // Resolve model
     let model = if let Some(model) = model_override {
         model

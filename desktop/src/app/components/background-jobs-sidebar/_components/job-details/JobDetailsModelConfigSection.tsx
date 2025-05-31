@@ -1,6 +1,15 @@
 import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
+// Helper function to identify local/filesystem tasks
+const isLocalTask = (taskType: string): boolean => {
+  const localTaskTypes = [
+    "local_file_filtering",
+    "directory_tree_generation"
+  ];
+  return localTaskTypes.includes(taskType);
+};
+
 interface JobDetailsModelConfigSectionProps {
   job: BackgroundJob;
 }
@@ -8,6 +17,25 @@ interface JobDetailsModelConfigSectionProps {
 export function JobDetailsModelConfigSection({
   job,
 }: JobDetailsModelConfigSectionProps) {
+  // Don't render for filesystem/local jobs
+  if (job.apiType === "filesystem" || isLocalTask(job.taskType)) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Model Configuration</CardTitle>
+          <CardDescription className="text-xs">
+            AI model settings used for this job
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="text-sm text-muted-foreground">
+            Not Applicable - This is a local filesystem operation
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
