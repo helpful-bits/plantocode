@@ -2,6 +2,15 @@ import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 
+// Helper function to identify local/filesystem tasks
+const isLocalTask = (taskType: string): boolean => {
+  const localTaskTypes = [
+    "local_file_filtering",
+    "directory_tree_generation"
+  ];
+  return localTaskTypes.includes(taskType);
+};
+
 interface JobDetailsCostUsageSectionProps {
   job: BackgroundJob;
 }
@@ -9,6 +18,25 @@ interface JobDetailsCostUsageSectionProps {
 export function JobDetailsCostUsageSection({
   job,
 }: JobDetailsCostUsageSectionProps) {
+  // Don't render for filesystem/local jobs
+  if (job.apiType === "filesystem" || isLocalTask(job.taskType)) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">AI Usage</CardTitle>
+          <CardDescription className="text-xs">
+            Token usage and cost for this AI operation
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="text-sm text-muted-foreground">
+            Not Applicable - This is a local filesystem operation
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Use actual cost data from job if available, otherwise show token counts only
   const inputCost = job.inputCost || 0;
   const outputCost = job.outputCost || 0;

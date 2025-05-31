@@ -2,7 +2,7 @@
 
 import { type ActionState } from "@/types";
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
-import { createTranscriptionErrorMessage } from "@/utils/error-handling";
+import { getErrorMessage } from "@/utils/error-handling";
 
 // Validation function to check if transcription text is valid
 /**
@@ -272,7 +272,7 @@ export async function processDirectTranscriptionResult(
       error
     );
     updateState({
-      error: createTranscriptionErrorMessage(error),
+      error: getErrorMessage(error, 'transcription'),
       isProcessing: false,
     });
     setTextStatus("error");
@@ -371,7 +371,7 @@ export async function handleTranscription(
       console.error(`[Transcription] Error: ${result.message}`);
       return {
         isSuccess: false,
-        message: createTranscriptionErrorMessage(result.message),
+        message: getErrorMessage(result.message, 'transcription'),
         data: "",
       };
     }
@@ -389,7 +389,7 @@ export async function handleTranscription(
     console.error("Error in handleTranscription:", error);
     return {
       isSuccess: false,
-      message: createTranscriptionErrorMessage(error),
+      message: getErrorMessage(error, 'transcription'),
       data: "",
     };
   }

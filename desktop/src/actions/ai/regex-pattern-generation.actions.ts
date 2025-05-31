@@ -38,10 +38,10 @@ export async function generateRegexPatternsAction(
       sessionId,
       projectDirectory,
       taskDescription,
-      directoryTree,
-      modelOverride: options?.modelOverride,
-      temperatureOverride: options?.temperatureOverride,
-      maxTokensOverride: options?.maxTokensOverride,
+      directoryTree: directoryTree ?? null,
+      modelOverride: options?.modelOverride ?? null,
+      temperatureOverride: options?.temperatureOverride ?? null,
+      maxTokensOverride: options?.maxTokensOverride ?? null,
     });
 
     // Return success with job ID

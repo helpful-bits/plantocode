@@ -40,6 +40,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(handlers::spending_handlers::update_spending_limits)
             .service(handlers::spending_handlers::acknowledge_alert)
             .service(handlers::spending_handlers::get_spending_history)
+            .service(handlers::spending_handlers::get_spending_analytics)
+            .service(handlers::spending_handlers::get_spending_forecast)
     );
     
     // Usage routes (/api/usage/*)

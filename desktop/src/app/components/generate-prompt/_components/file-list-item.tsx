@@ -56,7 +56,7 @@ function FileListItem({
         onToggleSelection(file.path);
       }
     },
-    [file.path, file.forceExcluded, onToggleSelection, disabled]
+    [file.path, onToggleSelection, disabled]
   );
 
 
@@ -88,26 +88,10 @@ function FileListItem({
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {/* Include checkbox */}
         <div
-          className="flex items-center cursor-pointer relative"
-          onClick={(e: React.MouseEvent<HTMLDivElement>) => {
-            e.stopPropagation();
-            if (!disabled) {
-              onToggleSelection(file.path);
-            }
-          }}
+          className="flex items-center relative"
           role="checkbox"
           aria-checked={!!file.included}
           aria-label={`Include file ${file.path.split('/').pop() || file.path}`}
-          tabIndex={0}
-          onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!disabled) {
-                onToggleSelection(file.path);
-              }
-            }
-          }}
         >
           <input
             type="checkbox"
@@ -144,7 +128,7 @@ function FileListItem({
         {/* Force exclude checkbox */}
         <div
           className={cn(
-            "flex items-center cursor-pointer relative",
+            "flex items-center relative",
             disabled ? "cursor-not-allowed" : "cursor-pointer"
           )}
           onClick={(e: React.MouseEvent<HTMLDivElement>) => {
@@ -245,7 +229,23 @@ function FileListItem({
   );
 }
 
-// Use React.memo for performance optimization
+// Use React.memo with custom comparison for performance optimization
 FileListItem.displayName = "FileListItem";
 
-export default memo(FileListItem);
+// Custom comparison function to prevent unnecessary re-renders
+const arePropsEqual = (prevProps: FileListItemProps, nextProps: FileListItemProps) => {
+  // Only re-render if the file's selection state, path, or copied state changed
+  return (
+    prevProps.file.path === nextProps.file.path &&
+    prevProps.file.included === nextProps.file.included &&
+    prevProps.file.forceExcluded === nextProps.file.forceExcluded &&
+    prevProps.file.size === nextProps.file.size &&
+    prevProps.copiedPath === nextProps.copiedPath &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.onToggleSelection === nextProps.onToggleSelection &&
+    prevProps.onToggleExclusion === nextProps.onToggleExclusion &&
+    prevProps.onAddPath === nextProps.onAddPath
+  );
+};
+
+export default memo(FileListItem, arePropsEqual);

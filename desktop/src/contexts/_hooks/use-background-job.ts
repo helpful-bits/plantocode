@@ -1,35 +1,30 @@
 "use client";
 
-import { useContext } from "react";
-
-// Import directly from Provider to avoid circular dependency
-import { BackgroundJobsContext } from "../background-jobs/Provider";
+import { useMemo } from "react";
+import { useBackgroundJobs } from "../background-jobs/useBackgroundJobs";
+import type { BackgroundJob } from "@/types/session-types";
 import { getParsedMetadata } from "@/app/components/background-jobs-sidebar/utils";
 
 /**
- * Custom hook to get a specific background job by ID
+ * Type-safe hook to get a specific background job by ID
  *
  * @param jobId The ID of the job to retrieve, or null
- * @returns An object with job data and related states
+ * @returns An object with properly typed job data and related states
  */
 export function useBackgroundJob(jobId: string | null) {
-  const { jobs, isLoading, error } = useContext(BackgroundJobsContext);
+  const { jobs: allJobs, isLoading, error, getJobById } = useBackgroundJobs();
 
-  const job = jobId
-    ? jobs.find((j: { id: string }) => j.id === jobId) || null
-    : null;
+  const job = useMemo(() => {
+    return jobId ? getJobById(jobId) : null;
+  }, [jobId, getJobById, allJobs]);
 
-  // Create a derived object with properly mapped properties
-  const result = {
-    job,
-    isLoading,
-    error,
-    // Add derived properties for convenience
-    status: job?.status || null,
-    response: job?.response || null,
-    errorMessage: job?.errorMessage || null,
-    metadata: getParsedMetadata(job?.metadata), // Expose metadata directly for convenience
-  };
-
-  return result;
+  return useMemo(() => ({
+    job: job || null,
+    isLoading: isLoading || false,
+    error: error || null,
+    status: job?.status as BackgroundJob["status"] | null,
+    response: job?.response as string | null,
+    errorMessage: job?.errorMessage as string | null,
+    metadata: job ? getParsedMetadata(job.metadata) : undefined,
+  }), [job, isLoading, error]);
 }

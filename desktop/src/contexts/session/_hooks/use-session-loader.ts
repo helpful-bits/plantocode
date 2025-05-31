@@ -88,15 +88,14 @@ export function useSessionLoader({
       }
 
       loadingSessionRef.current = { id: sessionId, timestamp: now };
-      // No loading state to eliminate UI jumps
-      // setSessionLoading(true);
+      setSessionLoading(true);
 
       const previousSessionId = currentSessionRef.current?.id;
       let loadSuccess = false;
 
       // Create a safety timeout - increased to 10 seconds
       const safetyTimeout = setTimeout(() => {
-        // setSessionLoading(false); // Removed to eliminate loading states
+        setSessionLoading(false);
         loadingSessionRef.current = { id: null, timestamp: 0 };
 
         if (!loadSuccess) {
@@ -217,7 +216,7 @@ export function useSessionLoader({
         throw dbError;
       } finally {
         clearTimeout(safetyTimeout);
-        // setSessionLoading(false); // Removed to eliminate loading states
+        setSessionLoading(false);
 
         if (loadingSessionRef.current.id === sessionId) {
           loadingSessionRef.current = { id: null, timestamp: 0 };

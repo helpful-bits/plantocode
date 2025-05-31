@@ -18,7 +18,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 
     // Default spinner if no loading indicator is provided
     const defaultLoadingIndicator = (
-      <div className="bg-background/85 backdrop-blur-[1px] px-2 py-1 rounded-md border shadow-sm">
+      <div className="bg-background/85 backdrop-blur-[1px] px-2 py-1 rounded-md border border-border shadow-sm">
         <svg
           className="animate-spin h-3.5 w-3.5 text-primary/70"
           xmlns="http://www.w3.org/2000/svg"

@@ -13,8 +13,8 @@ import { useCorePromptContext } from "../_contexts/core-prompt-context";
 interface ActionsSectionProps {
   isFindingFiles: boolean;
   executeFindRelevantFiles: () => Promise<void>;
-  findFilesMode: "ai" | "manual";
-  setFindFilesMode: (mode: "ai" | "manual") => void;
+  findFilesMode: "replace" | "extend";
+  setFindFilesMode: (mode: "replace" | "extend") => void;
   searchSelectedFilesOnly: boolean;
   toggleSearchSelectedFilesOnly: () => void;
   canUndo: boolean;
@@ -46,17 +46,15 @@ const ActionsSection = React.memo(function ActionsSection({
 
   return (
     <div className="space-y-4">
-      <div className="bg-card p-6 rounded-lg border shadow-sm">
+      <div className="bg-card p-6 rounded-lg border border-border shadow-sm">
         <h3 className="text-lg font-semibold mb-3 text-foreground">File Search Options</h3>
 
         <div className="flex flex-col space-y-4">
           <div className="flex justify-between items-center">
             <div>
               <FindModeToggle
-                currentMode={findFilesMode === "ai" ? "replace" : "extend"}
-                onModeChange={(_mode: "replace" | "extend") =>
-                  setFindFilesMode("ai")
-                }
+                currentMode={findFilesMode}
+                onModeChange={setFindFilesMode}
                 disabled={disabled || !taskDescription}
               />
 

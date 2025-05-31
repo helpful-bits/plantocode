@@ -1,16 +1,13 @@
 use std::sync::Arc;
-use log::{info, error, debug, warn};
-use tauri::{AppHandle, Manager};
+use log::{info, error, debug};
+use tauri::AppHandle;
 use async_trait::async_trait;
 
-use crate::api_clients::client_trait::{ApiClient, ApiClientOptions};
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::job_helpers;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent, TaskType};
-use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
-use crate::utils::{PromptComposer, CompositionContextBuilder};
+use crate::jobs::job_processor_utils;
+use crate::models::TaskType;
 
 /// Processor for text correction (consolidates voice correction and post-transcription correction)
 pub struct TextCorrectionProcessor;
@@ -42,31 +39,19 @@ impl JobProcessor for TextCorrectionProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
-        // Get the API client
-        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
+        // Setup repositories and mark job as running
+        let (repo, settings_repo, _background_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Update job status to running
-        let repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
-        
-        job_helpers::update_job_status_running(&repo, &job.id).await?;
-        
-        // Get settings repository for PromptComposer
-        let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
-        
-        // Create composition context for sophisticated prompt generation
-        let composition_context = CompositionContextBuilder::new(
-            job.session_id.clone(),
-            TaskType::TextCorrection,
+        // Build unified prompt using the standardized utility
+        let composed_prompt = job_processor_utils::build_unified_prompt(
+            &job,
+            &app_handle,
             payload.text_to_correct.clone(),
-        )
-        .project_directory(payload.project_directory.clone())
-        .build();
-
-        // Use PromptComposer to generate the complete prompt
-        let prompt_composer = PromptComposer::new();
-        let composed_prompt = prompt_composer
-            .compose_prompt(&composition_context, &settings_repo)
-            .await?;
+            None, // codebase_structure
+            None, // file_contents
+            None, // directory_tree
+            &settings_repo,
+        ).await?;
 
         info!("Enhanced Text Correction prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
@@ -75,58 +60,25 @@ impl JobProcessor for TextCorrectionProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        // Extract system and user prompts from the composed result
-        let parts: Vec<&str> = composed_prompt.final_prompt.splitn(2, "\n\n").collect();
-        let system_prompt = parts.get(0).unwrap_or(&"").to_string();
-        let user_prompt = parts.get(1).unwrap_or(&"").to_string();
-        let system_prompt_id = composed_prompt.system_prompt_id;
+        // Extract system and user prompts from the composed result using helper
+        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
-        let system_message = OpenRouterRequestMessage {
-            role: "system".to_string(),
-            content: vec![
-                OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: system_prompt,
-                },
-            ],
-        };
+        // Create messages using helper
+        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
-        let user_message = OpenRouterRequestMessage {
-            role: "user".to_string(),
-            content: vec![
-                OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: user_prompt,
-                },
-            ],
-        };
+        // Create API options using helper
+        let api_options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::TextCorrection,
+            payload.project_directory.as_deref().unwrap_or(""),
+            false,
+            &app_handle,
+        ).await?;
         
-        // Get the model and settings from project/server config
-        let project_dir = payload.project_directory.as_deref().unwrap_or("");
-        
-        let model = crate::config::get_model_for_task_with_project(TaskType::TextCorrection, project_dir, &app_handle)
-            .await
-            .map_err(|e| AppError::ConfigError(format!("Failed to get model for TextCorrection: {}", e)))?;
-        
-        let temperature = crate::config::get_temperature_for_task_with_project(TaskType::TextCorrection, project_dir, &app_handle)
-            .await
-            .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for TextCorrection: {}", e)))?;
-        
-        let max_tokens = crate::config::get_max_tokens_for_task_with_project(TaskType::TextCorrection, project_dir, &app_handle)
-            .await
-            .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for TextCorrection: {}", e)))?;
-        
-        // Create options for the API client
-        let api_options = ApiClientOptions {
-            model,
-            max_tokens: Some(max_tokens),
-            temperature: Some(temperature),
-            stream: false,
-        };
-        
-        // Send the request to the LLM
+        // Send the request to the LLM using helper
         debug!("Sending text correction request to LLM");
-        let result = match llm_client.chat_completion(vec![system_message, user_message], api_options).await {
+        let model_name = api_options.model.clone(); // Clone before move
+        let result = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
             Ok(response) => {
                 if response.choices.is_empty() {
                     error!("Empty response from LLM");
@@ -134,37 +86,35 @@ impl JobProcessor for TextCorrectionProcessor {
                 }
                 
                 let corrected_text = response.choices[0].message.content.clone();
+                let text_len = corrected_text.len() as i32;
+                let usage_clone = response.usage.clone();
                 
-                // Extract usage stats
-                let usage = response.usage.as_ref();
-                let prompt_tokens = usage.map(|u| u.prompt_tokens as i32);
-                let completion_tokens = usage.map(|u| u.completion_tokens as i32);
-                let total_tokens = usage.map(|u| u.total_tokens as i32);
-                let chars_received = Some(corrected_text.len() as i32);
-                
-                // Update job with the corrected text and system prompt ID
-                repo.update_job_response_with_system_prompt(
+                // Finalize job success using helper
+                job_processor_utils::finalize_job_success(
                     &job.id,
+                    &repo,
                     &corrected_text,
-                    Some(crate::models::JobStatus::Completed),
-                    None, // metadata
-                    prompt_tokens,
-                    completion_tokens,
-                    total_tokens,
-                    chars_received,
-                    Some(&system_prompt_id),
+                    usage_clone.clone(),
+                    &model_name,
+                    &system_prompt_id,
+                    None,
                 ).await?;
                 
                 // Create and return the result
                 JobProcessResult::success(job.id.to_string(), corrected_text)
-                    .with_tokens(prompt_tokens, completion_tokens, total_tokens, chars_received)
+                    .with_tokens(
+                        usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
+                        usage_clone.as_ref().map(|u| u.completion_tokens as i32),
+                        usage_clone.as_ref().map(|u| u.total_tokens as i32),
+                        Some(text_len)
+                    )
             },
             Err(e) => {
                 let error_message = format!("Text correction failed: {}", e);
                 error!("{}", error_message);
                 
-                // Update job status to failed
-                job_helpers::update_job_status_failed(&repo, &job.id, &error_message).await?;
+                // Finalize job failure using helper
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message).await?;
                 
                 // Return failure result
                 JobProcessResult::failure(job.id.to_string(), error_message)

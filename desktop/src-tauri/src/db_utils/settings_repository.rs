@@ -407,4 +407,91 @@ impl SettingsRepository {
             Ok(None)
         }
     }
+
+    /// Get workflow setting value
+    pub async fn get_workflow_setting(&self, workflow_name: &str, setting_key: &str) -> AppResult<Option<String>> {
+        let key = format!("workflow_settings:{}:{}", workflow_name, setting_key);
+        self.get_value(&key).await
+    }
+
+    /// Set workflow setting value
+    pub async fn set_workflow_setting(&self, workflow_name: &str, setting_key: &str, value: &str) -> AppResult<()> {
+        let key = format!("workflow_settings:{}:{}", workflow_name, setting_key);
+        self.set_value(&key, value).await
+    }
+
+    /// Delete workflow setting
+    pub async fn delete_workflow_setting(&self, workflow_name: &str, setting_key: &str) -> AppResult<()> {
+        let key = format!("workflow_settings:{}:{}", workflow_name, setting_key);
+        self.delete_value(&key).await
+    }
+
+    /// Get all workflow settings for a specific workflow
+    pub async fn get_all_workflow_settings(&self, workflow_name: &str) -> AppResult<std::collections::HashMap<String, String>> {
+        let prefix = format!("workflow_settings:{}:", workflow_name);
+        let rows = sqlx::query("SELECT key, value FROM key_value_store WHERE key LIKE $1")
+            .bind(format!("{}%", prefix))
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch workflow settings: {}", e)))?;
+
+        let mut settings = std::collections::HashMap::new();
+        for row in rows {
+            let full_key: String = row.try_get("key")?;
+            let value: String = row.try_get("value")?;
+            
+            // Extract the setting key by removing the prefix
+            if let Some(setting_key) = full_key.strip_prefix(&prefix) {
+                settings.insert(setting_key.to_string(), value);
+            }
+        }
+
+        Ok(settings)
+    }
+    
+    /// Update a default system prompt, incrementing its version and setting updated_at
+    pub async fn update_default_system_prompt(
+        &self, 
+        task_type: &str, 
+        new_prompt_content: &str, 
+        new_description: Option<&str>
+    ) -> AppResult<()> {
+        let now = get_timestamp();
+        
+        // First, get the current prompt to increment the version
+        let current_prompt = self.get_default_system_prompt(task_type).await?;
+        
+        let new_version = if let Some(current) = current_prompt {
+            // Parse current version and increment
+            let current_version_num: u32 = current.version.parse()
+                .unwrap_or(1); // Default to 1 if parsing fails
+            (current_version_num + 1).to_string()
+        } else {
+            // If no current prompt exists, start with version 1
+            "1".to_string()
+        };
+        
+        sqlx::query(
+            r#"
+            INSERT INTO default_system_prompts (id, task_type, system_prompt, description, version, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (task_type) DO UPDATE SET
+                system_prompt = excluded.system_prompt,
+                description = excluded.description,
+                version = excluded.version,
+                updated_at = excluded.updated_at
+            "#)
+            .bind(format!("default_{}", task_type))
+            .bind(task_type)
+            .bind(new_prompt_content)
+            .bind(new_description)
+            .bind(&new_version)
+            .bind(now)
+            .bind(now)
+            .execute(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update default system prompt: {}", e)))?;
+            
+        Ok(())
+    }
 }

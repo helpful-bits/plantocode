@@ -25,12 +25,6 @@ pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
 pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathBuf>, bool)> {
     let path = path.as_ref();
     
-    // If this is not a git repository, return an empty vector and false
-    if !is_git_repository(path) {
-        debug!("Path is not a git repository: {}", path.display());
-        return Ok((Vec::new(), false));
-    }
-    
     let repo = match get_repository(path) {
         Ok(r) => r,
         Err(e) => {

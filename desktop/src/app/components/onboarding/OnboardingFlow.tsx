@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Store } from '@tauri-apps/plugin-store';
 import { invoke } from '@tauri-apps/api/core';
 import { WelcomeStep } from './WelcomeStep';
 import { KeychainExplanationStep } from './KeychainExplanationStep';
 import { KeychainActionStep } from './KeychainActionStep';
 import { OnboardingCompleteStep } from './OnboardingCompleteStep';
 import { OnboardingErrorStep } from './OnboardingErrorStep';
-import { APP_SETTINGS_STORE } from '@/utils/constants';
 
 type OnboardingState = 'welcome' | 'keychainExplanation' | 'keychainAction' | 'completed' | 'error';
 
@@ -65,9 +63,7 @@ export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
 
   const handleOnboardingFinish = async () => {
     try {
-      const settingsStore = await Store.load(APP_SETTINGS_STORE);
-      await settingsStore.set('hasCompletedOnboarding', true);
-      await settingsStore.save();
+      await invoke('set_onboarding_completed_command');
       onOnboardingComplete();
     } catch (e) {
       console.error('Error saving onboarding completion status:', e);

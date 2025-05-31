@@ -1,8 +1,7 @@
 "use client";
 
 
-import { type TaskSettings, type TaskType as SessionTaskType } from "@/types";
-import { type TaskType as SystemPromptTaskType } from "@/types/system-prompts";
+import { type TaskSettings, type TaskType, type TaskTypeSupportingSystemPrompts, supportsSystemPrompts } from "@/types";
 import { type ModelInfo } from "@/actions/config.actions";
 import {
   Select,
@@ -25,9 +24,9 @@ import {
   TabsTrigger,
   Input,
   Button,
-  Textarea,
   Badge,
   Alert,
+  VirtualizedCodeViewer,
 } from "@/ui";
 import { useSystemPrompt, useDefaultSystemPrompts } from "@/hooks/use-system-prompts";
 import { extractPlaceholders } from "@/actions/system-prompts.actions";
@@ -46,30 +45,17 @@ interface TaskModelSettingsProps {
 // System Prompt Editor Component
 interface SystemPromptEditorProps {
   sessionId?: string;
-  taskType: SessionTaskType;
+  taskType: TaskType;
   onSave?: () => void;
 }
 
 function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorProps) {
-  // Check if this task type supports system prompts
-  const supportedTaskTypes: SystemPromptTaskType[] = [
-    'path_finder',
-    'text_improvement', 
-    'guidance_generation',
-    'text_correction',
-    'implementation_plan',
-    'path_correction',
-    'task_enhancement',
-    'regex_pattern_generation',
-    'regex_summary_generation',
-    'generic_llm_stream'
-  ];
-  
-  const isSupported = supportedTaskTypes.includes(taskType as SystemPromptTaskType);
+  // Check if this task type supports system prompts using the validation utility
+  const isSupported = supportsSystemPrompts(taskType);
   
   const { prompt, loading, error, isCustom, update, reset, validate } = useSystemPrompt({
     sessionId: sessionId || '',
-    taskType: taskType as SystemPromptTaskType,
+    taskType: taskType as TaskTypeSupportingSystemPrompts,
     autoLoad: !!sessionId && isSupported
   });
   const { getDefault } = useDefaultSystemPrompts();
@@ -77,8 +63,9 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
   const [editedPrompt, setEditedPrompt] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
 
-  const defaultPrompt = getDefault(taskType as SystemPromptTaskType);
+  const defaultPrompt = getDefault(taskType as TaskTypeSupportingSystemPrompts);
   const currentPrompt = prompt?.systemPrompt || '';
   
   // Don't show system prompt editor for unsupported task types
@@ -150,7 +137,7 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
 
   if (loading) {
     return (
-      <div className="mt-6 p-4 rounded-lg border">
+      <div className="mt-6 p-4 rounded-lg border border-border">
         <div className="animate-pulse">
           <div className="h-4 bg-muted rounded w-1/4 mb-2"></div>
           <div className="h-20 bg-muted rounded"></div>
@@ -168,8 +155,25 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
             <p className="text-xs text-muted-foreground">{defaultPrompt?.description}</p>
           </div>
           <div className="flex items-center gap-2">
-            {isCustom && <Badge variant="secondary" className="text-xs">Custom</Badge>}
-            {!isCustom && <Badge variant="outline" className="text-xs">Default</Badge>}
+            {isCustom ? (
+              <Badge variant="default" className="text-xs bg-blue-500/10 text-blue-600 border-blue-200">
+                Project Custom
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs">
+                System Default
+              </Badge>
+            )}
+            {defaultPrompt && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDefaultPrompt(!showDefaultPrompt)}
+                className="text-xs h-6 px-2"
+              >
+                {showDefaultPrompt ? 'Hide' : 'View'} Default
+              </Button>
+            )}
           </div>
         </div>
 
@@ -186,13 +190,52 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
         )}
 
         <div className="space-y-3">
-          <Textarea
-            value={displayedPrompt}
-            onChange={(e) => handlePromptChange(e.target.value)}
-            placeholder="Enter your custom system prompt..."
-            rows={20}
-            className="font-mono text-sm min-h-96"
-          />
+          {showDefaultPrompt && defaultPrompt && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-muted-foreground">Default Template</Label>
+                <Badge variant="outline" className="text-xs">Read-only</Badge>
+              </div>
+              <VirtualizedCodeViewer
+                content={defaultPrompt.systemPrompt || ''}
+                height="250px"
+                showCopy={true}
+                copyText="Copy Default"
+                showContentSize={true}
+                readOnly={true}
+                placeholder="No default prompt available"
+                language="markdown"
+                className="bg-muted/30 border-muted"
+                virtualizationThreshold={5000}
+              />
+            </div>
+          )}
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium">
+                {isCustom ? 'Custom Prompt' : 'Active Prompt (Default)'}
+              </Label>
+              {isCustom && (
+                <Badge variant="secondary" className="text-xs">
+                  Modified from default
+                </Badge>
+              )}
+            </div>
+            <VirtualizedCodeViewer
+              content={displayedPrompt}
+              height="400px"
+              showCopy={true}
+              copyText="Copy Prompt"
+              showContentSize={true}
+              readOnly={false}
+              placeholder="Enter your custom system prompt..."
+              language="markdown"
+              onChange={(value) => handlePromptChange(value || '')}
+              virtualizationThreshold={10000}
+              className={isCustom ? "border-primary/40" : undefined}
+            />
+          </div>
 
           {placeholders.length > 0 && (
             <div className="space-y-2">
@@ -237,91 +280,149 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
 
 
 // Task type definitions with user-friendly names and default settings
+// Maps camelCase keys (TaskSettings) to task configuration
 const taskTypeDefinitions: Record<
-  SessionTaskType,
+  keyof TaskSettings,
   {
     label: string;
     defaultProvider: "google" | "anthropic" | "openai" | "deepseek";
     description?: string;
     hidden?: boolean; // Hide from UI while keeping backend functionality
+    taskType: TaskType; // The snake_case task type for backend communication
+    isLlmTask?: boolean; // Whether this task uses LLM model settings
   }
 > = {
-  path_finder: {
+  pathFinder: {
     label: "File Finder",
     defaultProvider: "google",
     description: "AI model used to find relevant files in your project",
+    taskType: "path_finder",
+    isLlmTask: true,
   },
-  voice_transcription: {
+  voiceTranscription: {
     label: "Voice Transcription",
     defaultProvider: "openai",
     description: "Convert speech to text using AI transcription",
+    taskType: "voice_transcription",
+    isLlmTask: true,
   },
-  path_correction: {
+  pathCorrection: {
     label: "Path Correction",
     defaultProvider: "google",
     description: "Automatically correct and improve file paths",
+    taskType: "path_correction",
+    isLlmTask: true,
   },
-  text_improvement: {
+  textImprovement: {
     label: "Text Improvement",
     defaultProvider: "anthropic",
     description: "Enhance and refine text using AI",
+    taskType: "text_improvement",
+    isLlmTask: true,
   },
-  text_correction: {
+  textCorrection: {
     label: "Text Correction",
     defaultProvider: "anthropic",
     description: "Correct and improve text for accuracy and clarity",
+    taskType: "text_correction",
+    isLlmTask: true,
   },
-  guidance_generation: {
+  guidanceGeneration: {
     label: "AI Guidance",
     defaultProvider: "google",
     description: "Generate contextual guidance for your tasks",
+    taskType: "guidance_generation",
+    isLlmTask: true,
   },
-  implementation_plan: {
+  implementationPlan: {
     label: "Implementation Plans",
     defaultProvider: "google",
     description: "Create detailed implementation plans for features",
+    taskType: "implementation_plan",
+    isLlmTask: true,
   },
-  file_finder_workflow: {
+  fileFinderWorkflow: {
     label: "File Finder Workflow",
     defaultProvider: "google",
     description: "Advanced file finding workflow with multiple steps",
+    taskType: "file_finder_workflow",
+    isLlmTask: false, // This is a workflow that may contain local processing steps
+  },
+  localFileFiltering: {
+    label: "Local File Filtering",
+    defaultProvider: "google",
+    description: "Local file filtering and search operations",
+    taskType: "local_file_filtering",
+    isLlmTask: false, // This is a local processing task that doesn't use LLMs
+    hidden: true, // Individual workflow stages are hidden from UI
+  },
+  directoryTreeGeneration: {
+    label: "Directory Tree Generation",
+    defaultProvider: "google",
+    description: "Generate directory tree structure for projects",
+    taskType: "directory_tree_generation",
+    isLlmTask: false, // This is a local processing task that doesn't use LLMs
+    hidden: true, // Individual workflow stages are hidden from UI
+  },
+  extendedPathFinder: {
+    label: "Extended Path Finder",
+    defaultProvider: "google",
+    description: "Extended path finding capabilities",
+    taskType: "extended_path_finder",
+    isLlmTask: true,
+    hidden: true, // Individual workflow stages are hidden from UI
+  },
+  extendedPathCorrection: {
+    label: "Extended Path Correction",
+    defaultProvider: "google",
+    description: "Extended path correction capabilities", 
+    taskType: "extended_path_correction",
+    isLlmTask: true,
+    hidden: true, // Individual workflow stages are hidden from UI
   },
   // Hidden task types - backend functionality exists but not exposed in UI
-  task_enhancement: {
+  taskEnhancement: {
     label: "Task Enhancement",
     defaultProvider: "google",
     hidden: true,
+    taskType: "task_enhancement",
+    isLlmTask: true,
   },
-  generic_llm_stream: {
+  genericLlmStream: {
     label: "Generic LLM Stream",
     defaultProvider: "google",
     hidden: true,
+    taskType: "generic_llm_stream",
+    isLlmTask: true,
   },
-  regex_pattern_generation: {
+  regexPatternGeneration: {
     label: "Regex Pattern Generation",
     defaultProvider: "anthropic",
     hidden: true,
+    taskType: "regex_pattern_generation",
+    isLlmTask: true,
   },
-  regex_summary_generation: {
+  regexSummaryGeneration: {
     label: "Regex Summary Generation",
     defaultProvider: "anthropic",
     hidden: true,
-  },
-  server_proxy_transcription: {
-    label: "Server Proxy Transcription",
-    defaultProvider: "openai",
-    hidden: true,
+    taskType: "regex_summary_generation",
+    isLlmTask: true,
   },
   streaming: {
     label: "Streaming",
     defaultProvider: "google",
     hidden: true,
+    taskType: "streaming",
+    isLlmTask: true,
   },
   unknown: {
     label: "Default/Fallback",
     defaultProvider: "google",
     description: "Default settings for unspecified tasks",
     hidden: true,
+    taskType: "unknown",
+    isLlmTask: true,
   },
 };
 
@@ -332,30 +433,39 @@ export default function TaskModelSettings({
   onSettingsChange,
   sessionId,
 }: TaskModelSettingsProps) {
-  const getTaskSettings = (taskType: SessionTaskType) => {
-    const settings = taskSettings[taskType as keyof TaskSettings];
+  const getTaskSettings = (camelCaseKey: keyof TaskSettings) => {
+    const settings = taskSettings[camelCaseKey];
+    const taskConfig = taskTypeDefinitions[camelCaseKey];
+
+    // For non-LLM tasks, settings might be incomplete or undefined
+    if (!settings && taskConfig.isLlmTask === false) {
+      return {}; // Return empty settings for non-LLM tasks
+    }
 
     if (!settings) {
       console.error(
-        `HARD ERROR: No settings found for task type: ${taskType}`,
+        `HARD ERROR: No settings found for task type: ${camelCaseKey}`,
         { 
-          taskType, 
+          camelCaseKey, 
           availableKeys: Object.keys(taskSettings),
           fullTaskSettings: taskSettings 
         }
       );
       
-      throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${taskType}. Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
+      throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${camelCaseKey}. Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
     }
 
     return settings;
   };
 
-  const handleModelChange = (taskType: SessionTaskType, model: string) => {
-    const settings = getTaskSettings(taskType);
+  const handleModelChange = (camelCaseKey: keyof TaskSettings, model: string) => {
+    const taskConfig = taskTypeDefinitions[camelCaseKey];
+    if (taskConfig.isLlmTask === false) return; // Don't handle changes for non-LLM tasks
+    
+    const settings = getTaskSettings(camelCaseKey);
     const newSettings = { ...taskSettings };
 
-    newSettings[taskType as keyof TaskSettings] = {
+    newSettings[camelCaseKey] = {
       ...settings,
       model,
     };
@@ -363,11 +473,28 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  const handleMaxTokensChange = (taskType: SessionTaskType, value: number[]) => {
-    const settings = getTaskSettings(taskType);
+  const isSettingCustomized = (camelCaseKey: keyof TaskSettings, settingName: 'model' | 'maxTokens' | 'temperature') => {
+    const settings = getTaskSettings(camelCaseKey);
+    
+    // For now, we'll consider a setting customized if it differs from a reasonable default
+    // This could be enhanced to compare against server-provided defaults
+    const defaultValues = {
+      model: '', // Empty means server default
+      maxTokens: 4000,
+      temperature: 0.3
+    };
+    
+    return settings[settingName] !== defaultValues[settingName];
+  };
+
+  const handleMaxTokensChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
+    const taskConfig = taskTypeDefinitions[camelCaseKey];
+    if (taskConfig.isLlmTask === false) return; // Don't handle changes for non-LLM tasks
+    
+    const settings = getTaskSettings(camelCaseKey);
     const newSettings = { ...taskSettings };
 
-    newSettings[taskType as keyof TaskSettings] = {
+    newSettings[camelCaseKey] = {
       ...settings,
       maxTokens: value[0],
     };
@@ -375,11 +502,14 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  const handleTemperatureChange = (taskType: SessionTaskType, value: number[]) => {
-    const settings = getTaskSettings(taskType);
+  const handleTemperatureChange = (camelCaseKey: keyof TaskSettings, value: number[]) => {
+    const taskConfig = taskTypeDefinitions[camelCaseKey];
+    if (taskConfig.isLlmTask === false) return; // Don't handle changes for non-LLM tasks
+    
+    const settings = getTaskSettings(camelCaseKey);
     const newSettings = { ...taskSettings };
 
-    newSettings[taskType as keyof TaskSettings] = {
+    newSettings[camelCaseKey] = {
       ...settings,
       temperature: value[0],
     };
@@ -387,12 +517,15 @@ export default function TaskModelSettings({
     onSettingsChange(newSettings);
   };
 
-  const getModelsForTask = (taskType: SessionTaskType) => {
+  const getModelsForTask = (camelCaseKey: keyof TaskSettings) => {
+    const taskConfig = taskTypeDefinitions[camelCaseKey];
+    if (taskConfig.isLlmTask === false) return []; // No models for non-LLM tasks
+    
     if (!availableModels || availableModels.length === 0) {
       return [];
     }
     
-    const apiType = taskTypeDefinitions[taskType].defaultProvider;
+    const apiType = taskConfig.defaultProvider;
     return availableModels.filter(model => model.provider === apiType);
   };
 
@@ -407,14 +540,14 @@ export default function TaskModelSettings({
         </CardDescription>
       </CardHeader>
       <CardContent className="p-6">
-        <Tabs defaultValue="path_finder">
+        <Tabs defaultValue="pathFinder">
           <TabsList className="mb-4 flex flex-wrap gap-1 h-auto p-1">
             {Object.entries(taskTypeDefinitions).map(
-              ([type, config]) =>
+              ([camelCaseKey, config]) =>
                 !config.hidden && (
                   <TabsTrigger
-                    key={type}
-                    value={type}
+                    key={camelCaseKey}
+                    value={camelCaseKey}
                     className="text-xs px-3 h-8"
                   >
                     {config.label}
@@ -423,15 +556,15 @@ export default function TaskModelSettings({
             )}
           </TabsList>
 
-          {Object.entries(taskTypeDefinitions).map(([type, config]) => {
-            const taskType = type as SessionTaskType;
+          {Object.entries(taskTypeDefinitions).map(([camelCaseKey, config]) => {
+            const taskSettingsKey = camelCaseKey as keyof TaskSettings;
             if (config.hidden) return null;
 
-            const settings = getTaskSettings(taskType);
-            const models = getModelsForTask(taskType);
+            const settings = getTaskSettings(taskSettingsKey);
+            const models = getModelsForTask(taskSettingsKey);
 
             return (
-              <TabsContent key={type} value={type} className="w-full">
+              <TabsContent key={camelCaseKey} value={camelCaseKey} className="w-full">
                 <div className="w-full">
                   {/* Task description */}
                   {config.description && (
@@ -443,23 +576,31 @@ export default function TaskModelSettings({
                   )}
                   
                   {/* Model, Max Tokens, and Temperature in the same row */}
+                  {config.isLlmTask !== false ? (
                   <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1fr] gap-6">
                     {/* Model Selection */}
                     <div className="space-y-2">
-                      <Label
-                        htmlFor={`model-select-${type}`}
-                        className="text-sm font-medium"
-                      >
-                        Model
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor={`model-select-${camelCaseKey}`}
+                          className="text-sm font-medium"
+                        >
+                          Model
+                        </Label>
+                        {isSettingCustomized(taskSettingsKey, 'model') && (
+                          <Badge variant="secondary" className="text-xs">
+                            Project Override
+                          </Badge>
+                        )}
+                      </div>
                       <Select
                         value={settings.model}
                         onValueChange={(value: string) =>
-                          handleModelChange(taskType, value)
+                          handleModelChange(taskSettingsKey, value)
                         }
                       >
                         <SelectTrigger
-                          id={`model-select-${type}`}
+                          id={`model-select-${camelCaseKey}`}
                           className="w-full"
                         >
                           <SelectValue placeholder="Select model" />
@@ -492,22 +633,29 @@ export default function TaskModelSettings({
 
                     {/* Max Tokens Slider */}
                     <div className="space-y-2">
-                      <Label
-                        htmlFor={`max-tokens-${type}`}
-                        className="text-sm font-medium"
-                      >
-                        Max Tokens
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor={`max-tokens-${camelCaseKey}`}
+                          className="text-sm font-medium"
+                        >
+                          Max Tokens
+                        </Label>
+                        {isSettingCustomized(taskSettingsKey, 'maxTokens') && (
+                          <Badge variant="secondary" className="text-xs">
+                            Project Override
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3 w-full">
                         <div className="flex-1 min-w-[120px]">
                           <Slider
-                            id={`max-tokens-${type}`}
-                            defaultValue={[settings.maxTokens]}
+                            id={`max-tokens-${camelCaseKey}`}
+                            defaultValue={[settings.maxTokens ?? 4000]}
                             max={100000}
                             min={1000}
                             step={1000}
                             onValueChange={(value: number[]) =>
-                              handleMaxTokensChange(taskType, value)
+                              handleMaxTokensChange(taskSettingsKey, value)
                             }
                             className="w-full"
                             aria-label="Max tokens"
@@ -526,7 +674,7 @@ export default function TaskModelSettings({
                               value >= 1000 &&
                               value <= 100000
                             ) {
-                              handleMaxTokensChange(taskType, [value]);
+                              handleMaxTokensChange(taskSettingsKey, [value]);
                             }
                           }}
                           className="w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2"
@@ -540,24 +688,31 @@ export default function TaskModelSettings({
                     </div>
 
                     {/* Temperature Slider - not used by whisper transcription */}
-                    {(taskType as string) !== "voice_transcription" ? (
+                    {camelCaseKey !== "voiceTranscription" ? (
                       <div className="space-y-2">
-                        <Label
-                          htmlFor={`temperature-${type}`}
-                          className="text-sm font-medium"
-                        >
-                          Temperature
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label
+                            htmlFor={`temperature-${camelCaseKey}`}
+                            className="text-sm font-medium"
+                          >
+                            Temperature
+                          </Label>
+                          {isSettingCustomized(taskSettingsKey, 'temperature') && (
+                            <Badge variant="secondary" className="text-xs">
+                              Project Override
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3 w-full">
                           <div className="flex-1 min-w-[120px]">
                             <Slider
-                              id={`temperature-${type}`}
-                              defaultValue={[settings.temperature]}
+                              id={`temperature-${camelCaseKey}`}
+                              defaultValue={[settings.temperature ?? 0.7]}
                               max={1}
                               min={0}
                               step={0.05}
                               onValueChange={(value: number[]) =>
-                                handleTemperatureChange(taskType, value)
+                                handleTemperatureChange(taskSettingsKey, value)
                               }
                               className="w-full"
                               aria-label="Temperature"
@@ -572,7 +727,7 @@ export default function TaskModelSettings({
                               const value = parseFloat(e.target.value);
                               // Validate the input range
                               if (!isNaN(value) && value >= 0 && value <= 1) {
-                                handleTemperatureChange(taskType, [value]);
+                                handleTemperatureChange(taskSettingsKey, [value]);
                               }
                             }}
                             className="w-24 font-mono text-sm text-right shrink-0 text-foreground pr-2"
@@ -582,11 +737,11 @@ export default function TaskModelSettings({
                           />
                         </div>
                         <p className="text-xs text-muted-foreground text-balance">
-                          {taskType === "path_correction" || taskType === "path_finder"
+                          {camelCaseKey === "pathCorrection" || camelCaseKey === "pathFinder"
                             ? "Lower values produce more accurate path suggestions"
-                            : taskType === "voice_transcription"
+                            : camelCaseKey === "voiceTranscription"
                             ? "Not applicable for transcription models"
-                            : taskType === "text_correction"
+                            : camelCaseKey === "textCorrection"
                             ? "Lower values for accuracy, higher for more creative corrections"
                             : "Lower (0.0-0.3): factual and precise. Higher (0.7-1.0): creative and varied."}
                         </p>
@@ -604,11 +759,26 @@ export default function TaskModelSettings({
                       </div>
                     )}
                   </div>
+                  ) : (
+                    <div className="p-6 bg-muted/30 rounded-lg text-center border border-dashed">
+                      <div className="flex flex-col items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Non-LLM Task
+                        </Badge>
+                        <p className="text-sm text-muted-foreground">
+                          This task type performs local processing or workflow coordination and does not require AI model configuration.
+                        </p>
+                        <p className="text-xs text-muted-foreground/70">
+                          {config.description}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* System Prompt Section */}
                   <SystemPromptEditor
                     sessionId={sessionId}
-                    taskType={taskType}
+                    taskType={config.taskType}
                   />
                 </div>
               </TabsContent>

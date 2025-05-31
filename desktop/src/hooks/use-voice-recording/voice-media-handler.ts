@@ -72,6 +72,12 @@ export async function setupMedia({
       return type === "" || MediaRecorder.isTypeSupported(type);
     });
 
+    // Handle case where no supported MIME type is found
+    if (mimeType === undefined) {
+      onError("No supported audio MIME type found for recording.");
+      return null;
+    }
+
     // eslint-disable-next-line no-console
     console.log(
       `[MediaHandler] Using MIME type: ${mimeType || "browser default"}`

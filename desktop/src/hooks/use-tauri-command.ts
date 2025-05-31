@@ -88,12 +88,17 @@ export function useTauriCommand<T = unknown>(options: UseTauriCommandOptions<T>)
       } catch (err) {
         const actionState = handleActionError(err);
 
+        // Create a proper Error object if we don't have one
+        const errorObj = actionState.error instanceof Error 
+          ? actionState.error 
+          : new Error(actionState.message || "Unknown error occurred");
+
         // Update state
-        setError(actionState.error ?? null);
+        setError(errorObj);
 
         // Call onError callback if provided
-        if (options.onError && actionState.error) {
-          options.onError(actionState.error);
+        if (options.onError) {
+          options.onError(errorObj);
         }
 
         return actionState as ActionState<T>;
@@ -121,8 +126,10 @@ export function useTauriCommand<T = unknown>(options: UseTauriCommandOptions<T>)
  */
 interface JobCommandResult {
   jobId?: string;
+  job_id?: string;
   metadata?: {
     jobId?: string;
+    job_id?: string;
   };
   status?: string;
 }
@@ -135,9 +142,11 @@ function hasJobInfo(result: unknown): result is JobCommandResult {
   const obj = result as Record<string, unknown>;
   return !!(
     obj.jobId || // Check for camelCase jobId
+    obj.job_id || // Check for snake_case job_id
     (obj.metadata &&
       typeof obj.metadata === "object" &&
-      (obj.metadata as Record<string, unknown>).jobId)
+      ((obj.metadata as Record<string, unknown>).jobId ||
+       (obj.metadata as Record<string, unknown>).job_id))
   );
 }
 
@@ -160,14 +169,16 @@ export function useTauriJobCommand<T = unknown>(
     ...options,
     onSuccess: (result: unknown) => {
       if (hasJobInfo(result)) {
-        // Extract job ID from various possible shapes
+        // Extract job ID from various possible shapes (both camelCase and snake_case)
         const extractedJobId =
           (result as JobCommandResult).jobId ||
+          (result as JobCommandResult).job_id ||
           (result as JobCommandResult).metadata?.jobId ||
+          (result as JobCommandResult).metadata?.job_id ||
           null;
 
         // Extract job status if available
-        const extractedStatus = result.status || null;
+        const extractedStatus = (result as JobCommandResult).status || null;
 
         if (extractedJobId) {
           setJobId(extractedJobId);

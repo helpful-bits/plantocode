@@ -1,14 +1,10 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import React, { Suspense } from "react";
+import React from "react";
 
 // Type imports only - no functional imports
 import type { TaskDescriptionHandle } from "../_components/task-description";
-
-const TaskDescriptionArea = React.lazy(
-  () => import("../_components/task-description")
-);
+import TaskDescriptionArea from "../_components/task-description";
 
 interface TaskSectionProps {
   state: {
@@ -55,27 +51,18 @@ const DiagnosticTaskSection = React.memo(function DiagnosticTaskSection({
   } = actions;
 
   return (
-    <div className="border rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
+    <div className="border border-border rounded-lg p-5 bg-card shadow-sm w-full min-h-[300px]">
       <h3 className="text-lg font-medium mb-4 text-foreground">Task Description</h3>
-      <Suspense
-        fallback={
-          <div className="flex justify-center items-center min-h-[240px] text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            Loading task description editor...
-          </div>
-        }
-      >
-        <TaskDescriptionArea
-          ref={taskDescriptionRef}
-          value={taskDescription}
-          onChange={handleTaskChange}
-          onInteraction={handleInteraction}
-          onBlur={triggerSave}
-          isImproving={false}
-          onImproveSelection={handleImproveSelection}
-          disabled={disabled}
-        />
-      </Suspense>
+      <TaskDescriptionArea
+        ref={taskDescriptionRef}
+        value={taskDescription}
+        onChange={handleTaskChange}
+        onInteraction={handleInteraction}
+        onBlur={triggerSave}
+        isImproving={false}
+        onImproveSelection={handleImproveSelection}
+        disabled={disabled}
+      />
 
       <div className="flex justify-between items-start mt-4">
         <div className="text-sm text-muted-foreground">

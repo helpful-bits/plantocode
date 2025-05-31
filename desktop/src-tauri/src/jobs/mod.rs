@@ -8,6 +8,14 @@ pub mod scheduler;
 pub mod job_payload_utils;
 pub mod job_helpers;
 pub mod job_processor_utils;
+pub mod workflow_types;
+pub mod workflow_orchestrator;
+pub mod workflow_cleanup;
+pub mod workflow_cancellation;
+pub mod workflow_error_handler;
+// Data flow utilities for workflow stage transitions
+pub mod stage_data_extractors;
+pub mod stage_data_injectors;
 
 use std::sync::Arc;
 use log::{info, debug};
@@ -15,7 +23,6 @@ use tauri::AppHandle;
 
 use crate::error::AppResult;
 use self::processors::{
-    FileFinderWorkflowProcessor,
     PathFinderProcessor,
     ImplementationPlanProcessor,
     GuidanceGenerationProcessor,
@@ -26,18 +33,25 @@ use self::processors::{
     GenericLlmStreamProcessor,
     ServerProxyTranscriptionProcessor,
     RegexSummaryGenerationProcessor,
-    RegexPatternGenerationProcessor
+    RegexPatternGenerationProcessor,
+    // Individual workflow stage processors
+    DirectoryTreeGenerationProcessor,
+    LocalFileFilteringProcessor,
+    ExtendedPathFinderProcessor,
+    ExtendedPathCorrectionProcessor
 };
 use self::registry::get_job_registry;
 use self::scheduler::{init_job_scheduler, get_job_scheduler};
+use self::workflow_orchestrator::{init_workflow_orchestrator, get_workflow_orchestrator};
 
 /// Initialize the job system
 pub async fn init_job_system() -> AppResult<()> {
     // Initialize the job registry
     let _registry = registry::init_job_registry().await?;
     
-    // Initialize the job queue
-    let _queue = queue::init_job_queue(4).await?; // 4 concurrent jobs
+    // Initialize the job queue with configurable concurrency limit
+    let max_concurrent_jobs = crate::config::get_max_concurrent_jobs();
+    let _queue = queue::init_job_queue(max_concurrent_jobs).await?;
     
     info!("Job system core components initialized");
     Ok(())
@@ -51,7 +65,6 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let registry = get_job_registry().await?;
     
     // Create processor instances
-    let file_finder_workflow_processor = Arc::new(FileFinderWorkflowProcessor::new());
     let path_finder_processor = Arc::new(PathFinderProcessor::new());
     let implementation_plan_processor = Arc::new(ImplementationPlanProcessor::new());
     let guidance_generation_processor = Arc::new(GuidanceGenerationProcessor::new());
@@ -63,9 +76,13 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let server_proxy_transcription_processor = Arc::new(ServerProxyTranscriptionProcessor::new(app_handle.clone()));
     let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
+    // Individual workflow stage processors
+    let directory_tree_generation_processor = Arc::new(DirectoryTreeGenerationProcessor::new());
+    let local_file_filtering_processor = Arc::new(LocalFileFilteringProcessor::new());
+    let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
+    let extended_path_correction_processor = Arc::new(ExtendedPathCorrectionProcessor::new());
     
     // Register processors
-    registry.register(file_finder_workflow_processor).await;
     registry.register(path_finder_processor).await;
     registry.register(implementation_plan_processor).await;
     registry.register(guidance_generation_processor).await;
@@ -77,6 +94,11 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(server_proxy_transcription_processor).await;
     registry.register(regex_summary_generation_processor).await;
     registry.register(regex_pattern_generation_processor).await;
+    // Individual workflow stage processors
+    registry.register(directory_tree_generation_processor).await;
+    registry.register(local_file_filtering_processor).await;
+    registry.register(extended_path_finder_processor).await;
+    registry.register(extended_path_correction_processor).await;
     
     debug!("Job processors registered");
     Ok(())
@@ -84,6 +106,11 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
 
 /// Start the job scheduler
 pub async fn start_job_scheduler(app_handle: AppHandle) -> AppResult<()> {
+    
+    // Initialize the workflow orchestrator
+    let _workflow_orchestrator = init_workflow_orchestrator(app_handle.clone()).await?;
+    debug!("Workflow orchestrator initialized");
+    
     // Initialize the job scheduler
     let scheduler = scheduler::init_job_scheduler(app_handle).await?;
     

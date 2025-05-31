@@ -18,6 +18,7 @@ import {
   type DatabaseErrorCategory,
   type DatabaseErrorSeverity,
 } from "@/types/error-types";
+import { extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-handling";
 
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 import { Button } from "./button";
@@ -56,12 +57,19 @@ export default function DatabaseErrorHandler() {
   const [backupPath, setBackupPath] = useState<string | null>(null);
   const [healthData, setHealthData] = useState<DatabaseHealthData | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [structuredErrorInfo, setStructuredErrorInfo] = useState<ReturnType<typeof extractErrorInfo> | null>(null);
 
   useEffect(() => {
     // Listen for database connection errors
     const handleError = (event: CustomEvent<{type?: string; message?: string}>) => {
       if (event.detail && event.detail.type === "database_error") {
-        setErrorMessage(event.detail.message || "Database connection failed");
+        const errorMsg = event.detail.message || "Database connection failed";
+        setErrorMessage(errorMsg);
+        
+        // Extract structured error information for better guidance
+        const errorInfo = extractErrorInfo(errorMsg);
+        setStructuredErrorInfo(errorInfo);
+        
         setIsOpen(true);
         setRepairSuccess(null);
         setRepairStatus("");
@@ -190,9 +198,38 @@ export default function DatabaseErrorHandler() {
     }
   };
 
-  // Generate specific guidance based on health data
+  // Generate specific guidance based on health data and error type
   const getRepairGuidance = () => {
-    if (!healthData) return null;
+    if (!healthData) {
+      // Provide guidance based on structured error info if health data is not available
+      if (structuredErrorInfo) {
+        const userFriendlyMessage = createUserFriendlyErrorMessage(structuredErrorInfo, "database");
+        return (
+          <Alert className="my-4 bg-info/10 border-info/30">
+            <AlertTitle className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-info" />
+              Error Analysis
+            </AlertTitle>
+            <AlertDescription>
+              <p className="mb-2">{userFriendlyMessage}</p>
+              <p className="text-sm text-muted-foreground">
+                Run the database health check for more detailed diagnostics.
+              </p>
+              {structuredErrorInfo.type && (
+                <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
+                  <div className="font-medium mb-1">Error Classification:</div>
+                  <div>Type: {structuredErrorInfo.type}</div>
+                  {structuredErrorInfo.metadata && Object.keys(structuredErrorInfo.metadata).length > 0 && (
+                    <div>Metadata: {JSON.stringify(structuredErrorInfo.metadata, null, 2)}</div>
+                  )}
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
+        );
+      }
+      return null;
+    }
 
     if (!healthData.fileExists) {
       return (
@@ -203,11 +240,15 @@ export default function DatabaseErrorHandler() {
           </AlertTitle>
           <AlertDescription>
             <p>
-              The database file is missing. A full reset will create a new
-              database file.
+              The database file is missing or cannot be found. This usually happens when:
             </p>
-            <p className="mt-2 text-sm text-foreground">
-              Recommended action: <strong>Full Reset</strong>
+            <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+              <li>The application is running for the first time</li>
+              <li>The database file was accidentally deleted</li>
+              <li>There are permission issues with the data directory</li>
+            </ul>
+            <p className="mt-3 text-sm font-medium">
+              Recommended action: <strong>Full Reset</strong> (will create a new database)
             </p>
           </AlertDescription>
         </Alert>
@@ -227,11 +268,16 @@ export default function DatabaseErrorHandler() {
           </AlertTitle>
           <AlertDescription>
             <p>
-              The database file has incorrect permissions. The repair function
-              will attempt to fix this.
+              The database file has insufficient permissions (current: {healthData.filePermissions}). 
+              The application needs read and write access to function properly.
             </p>
-            <p className="mt-2 text-sm">
-              Recommended action: <strong>Attempt Repair</strong>
+            <div className="mt-2 p-2 bg-muted/50 rounded text-xs">
+              <div className="font-medium mb-1">File Details:</div>
+              <div>Permissions: {healthData.filePermissions}</div>
+              {healthData.fileSize && <div>Size: {(healthData.fileSize / 1024).toFixed(2)} KB</div>}
+            </div>
+            <p className="mt-3 text-sm font-medium">
+              Recommended action: <strong>Attempt Repair</strong> (will fix permissions)
             </p>
           </AlertDescription>
         </Alert>
@@ -240,38 +286,84 @@ export default function DatabaseErrorHandler() {
 
     if (healthData.integrityStatus === "invalid") {
       return (
-        <Alert className="my-4 bg-warning/10 border-warning/30">
+        <Alert className="my-4 bg-destructive/10 border-destructive/30">
           <AlertTitle className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-warning" />
-            Database Integrity Issues
+            <Database className="h-4 w-4 text-destructive" />
+            Database Corruption Detected
           </AlertTitle>
           <AlertDescription>
             <p>
-              The database has integrity issues which may cause unexpected
-              behavior. The repair function will attempt to fix them.
+              The database integrity check failed, indicating potential corruption. This can happen due to:
             </p>
-            <p className="mt-2 text-sm">
-              If repair doesn&apos;t work, you may need to use{" "}
-              <strong>Full Reset</strong>.
+            <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+              <li>Unexpected application shutdown</li>
+              <li>Disk space issues during writes</li>
+              <li>Hardware problems</li>
+              <li>Concurrent access conflicts</li>
+            </ul>
+            <p className="mt-3 text-sm">
+              Try <strong>Attempt Repair</strong> first. If that fails, <strong>Full Reset</strong> may be necessary.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              ⚠️ Full reset will delete all stored sessions and data, but a backup will be created.
             </p>
           </AlertDescription>
         </Alert>
       );
     }
 
+    if (healthData.recoveryMode) {
+      return (
+        <Alert className="my-4 bg-blue-50 border-blue-200">
+          <AlertTitle className="flex items-center gap-2">
+            <Wrench className="h-4 w-4 text-blue-600" />
+            Recovery Mode Active
+          </AlertTitle>
+          <AlertDescription>
+            <p className="text-blue-800">
+              The database is currently in recovery mode. This is an automatic response to detected issues.
+            </p>
+            <p className="mt-2 text-sm text-blue-700">
+              Recommended action: <strong>Attempt Repair</strong> to complete the recovery process.
+            </p>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    // Default guidance for other error cases
+    const userFriendlyMessage = structuredErrorInfo 
+      ? createUserFriendlyErrorMessage(structuredErrorInfo, "database")
+      : "The database health check completed, but there may be connection or configuration issues.";
+    
     return (
-      <Alert className="my-4 bg-warning border-warning">
+      <Alert className="my-4 bg-warning/10 border-warning/30">
         <AlertTitle className="flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-warning" />
-          Database Error
+          Database Connection Issue
         </AlertTitle>
         <AlertDescription>
-          <p>
-            The database encountered an error. Try the repair function first. If
-            that fails, a full reset may be necessary.
+          <p>{userFriendlyMessage}</p>
+          {healthData.error && (
+            <div className="mt-2 p-2 bg-muted/50 rounded text-xs">
+              <div className="font-medium mb-1">Additional Details:</div>
+              <div>{healthData.error}</div>
+            </div>
+          )}
+          {structuredErrorInfo && structuredErrorInfo.type && (
+            <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
+              <div className="font-medium mb-1">Error Classification:</div>
+              <div>Type: {structuredErrorInfo.type}</div>
+              {structuredErrorInfo.metadata && Object.keys(structuredErrorInfo.metadata).length > 0 && (
+                <div>Metadata: {JSON.stringify(structuredErrorInfo.metadata, null, 2)}</div>
+              )}
+            </div>
+          )}
+          <p className="mt-3 text-sm">
+            Try <strong>Attempt Repair</strong> first. If issues persist, consider a <strong>Full Reset</strong>.
           </p>
-          <p className="mt-2 text-sm">
-            Full reset will delete all stored sessions and data.
+          <p className="mt-2 text-xs text-muted-foreground">
+            💡 A backup will be created before any destructive operations.
           </p>
         </AlertDescription>
       </Alert>
@@ -292,16 +384,40 @@ export default function DatabaseErrorHandler() {
         </DialogHeader>
 
         <Alert variant="destructive" className="my-4">
-          <AlertTitle>Error details</AlertTitle>
-          <AlertDescription className="whitespace-pre-wrap">
-            {errorMessage}
+          <AlertTitle>Error Details</AlertTitle>
+          <AlertDescription>
+            {/* User-friendly error message */}
+            {structuredErrorInfo && (
+              <div className="mb-3 p-3 bg-muted/30 rounded text-sm">
+                <div className="font-medium mb-1">Summary:</div>
+                <div>{createUserFriendlyErrorMessage(structuredErrorInfo, "database")}</div>
+              </div>
+            )}
+            
+            {/* Technical error details */}
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground mb-2">
+                Technical Details
+                <span className="ml-1 transition-transform group-open:rotate-90">▶</span>
+              </summary>
+              <div className="whitespace-pre-wrap text-xs mb-2 p-2 bg-destructive/5 rounded border border-border">{errorMessage}</div>
+              {structuredErrorInfo && (
+                <div className="mt-3 p-2 bg-muted/30 rounded text-xs">
+                  <div className="font-medium mb-1">Error Classification:</div>
+                  <div>Type: {structuredErrorInfo.type}</div>
+                  {structuredErrorInfo.metadata && Object.keys(structuredErrorInfo.metadata).length > 0 && (
+                    <div>Additional Info: {JSON.stringify(structuredErrorInfo.metadata, null, 2)}</div>
+                  )}
+                </div>
+              )}
+            </details>
           </AlertDescription>
         </Alert>
 
         {healthData && getRepairGuidance()}
 
         {healthData && (
-          <div className="my-4 text-sm border rounded-md p-3 bg-muted/50">
+          <div className="my-4 text-sm border border-border rounded-md p-3 bg-muted/50">
             <h4 className="font-medium mb-2">Database Diagnostics:</h4>
             <ul className="space-y-1 pl-2">
               <li>File exists: {healthData.fileExists ? "Yes" : "No"}</li>

@@ -6,19 +6,22 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { type TaskType } from "@/types/system-prompts";
+import { type TaskType } from "@/types/session-types";
 // Using Record<string, any> instead of HashMap from Tauri
 
 /**
  * Runtime AI configuration interface
+ * Must match the Rust backend RuntimeAIConfig struct
  */
 export interface RuntimeAIConfig {
   defaultLlmModelId: string;
   defaultVoiceModelId: string;
   defaultTranscriptionModelId: string;
-  tasks: Record<TaskType, TaskModelSettings>;
+  tasks: Record<string, TaskModelSettings>; // Backend uses string keys, not TaskType enum
   availableModels: ModelInfo[];
   pathFinderSettings: PathFinderSettings;
+  limits: TokenLimits; // Remove optional since backend uses #[serde(default)]
+  maxConcurrentJobs?: number;
 }
 
 /**
@@ -36,15 +39,17 @@ export interface ModelInfo {
 
 /**
  * Task-specific model configuration interface
+ * Must match the Rust backend TaskSpecificModelConfig struct
  */
 export interface TaskModelSettings {
-  model: string;
-  maxTokens: number;
-  temperature: number;
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
 }
 
 /**
  * Path finder settings interface
+ * Must match the Rust backend PathFinderSettings struct
  */
 export interface PathFinderSettings {
   maxFilesWithContent?: number;
@@ -52,7 +57,16 @@ export interface PathFinderSettings {
   maxContentSizePerFile?: number;
   maxFileCount?: number;
   fileContentTruncationChars?: number;
-  contentLimitBuffer?: number;
+  tokenLimitBuffer?: number; // Backend uses tokenLimitBuffer, not contentLimitBuffer
+}
+
+/**
+ * Token limits interface to match backend
+ * Must match the Rust backend TokenLimits struct
+ */
+export interface TokenLimits {
+  maxTokensPerRequest?: number;
+  maxTokensPerMonth?: number;
 }
 
 /**

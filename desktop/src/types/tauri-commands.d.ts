@@ -80,28 +80,6 @@ export interface DbTableExistsArgs {
 }
 
 
-// Commands from fetch_handler_command
-export interface HandleFetchRequestArgs {
-  method: string;
-  headers?: Record<string, string> | null;
-  body?: string | null;
-  url: string;
-}
-
-export interface InvokeFetchHandlerArgs {
-  url: string;
-  method: string;
-  headers?: Record<string, string> | null;
-  body?: string | null;
-}
-
-export interface InvokeStreamHandlerArgs {
-  url: string;
-  method: string;
-  headers?: Record<string, string> | null;
-  body?: string | null;
-  onChunk: (chunk: string) => void;
-}
 
 
 // Commands from file_system_commands
@@ -375,6 +353,26 @@ export interface SetKeyValueCommandArgs {
   value: string;
 }
 
+export interface GetWorkflowSettingCommandArgs {
+  workflowName: string;
+  settingKey: string;
+}
+
+export interface SetWorkflowSettingCommandArgs {
+  workflowName: string;
+  settingKey: string;
+  value: string;
+}
+
+export interface DeleteWorkflowSettingCommandArgs {
+  workflowName: string;
+  settingKey: string;
+}
+
+export interface GetAllWorkflowSettingsCommandArgs {
+  workflowName: string;
+}
+
 export interface GetAllTaskModelSettingsForProjectCommandArgs {
   projectDirectory: string;
 }
@@ -425,6 +423,54 @@ export interface HasCustomSystemPromptCommandArgs {
 }
 
 
+// Commands from file_finder_workflow_commands
+
+export interface StartFileFinderWorkflowCommandArgs {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+  excludedPaths?: string[];
+  timeoutMs?: number;
+}
+
+export interface GetFileFinderWorkflowStatusCommandArgs {
+  workflowId: string;
+}
+
+export interface CancelFileFinderWorkflowCommandArgs {
+  workflowId: string;
+}
+
+export interface PauseFileFinderWorkflowCommandArgs {
+  workflowId: string;
+}
+
+export interface ResumeFileFinderWorkflowCommandArgs {
+  workflowId: string;
+}
+
+export interface GetFileFinderWorkflowResultsCommandArgs {
+  workflowId: string;
+}
+
+export interface GetAllWorkflowsCommandArgs {
+}
+
+export interface GetWorkflowDetailsCommandArgs {
+  workflowId: string;
+}
+
+export interface RetryWorkflowStageCommandArgs {
+  workflowId: string;
+  failedStageJobId: string;
+}
+
+export interface CancelWorkflowStageCommandArgs {
+  workflowId: string;
+  stageJobId: string;
+}
+
+
 // Common result types
 export interface JobResult {
   jobId: string;
@@ -470,9 +516,6 @@ export type TauriInvoke = {
   "db_select_query": (args: DbSelectQueryArgs) => Promise<Record<string, unknown>[]>;
   "db_execute_transaction": (args: DbExecuteTransactionArgs) => Promise<void>;
   "db_table_exists": (args: DbTableExistsArgs) => Promise<boolean>;
-  "handle_fetch_request": (args: HandleFetchRequestArgs) => Promise<string>;
-  "invoke_fetch_handler": (args: InvokeFetchHandlerArgs) => Promise<string>;
-  "invoke_stream_handler": (args: InvokeStreamHandlerArgs) => Promise<void>;
   "list_files_command": (args: ListFilesCommandArgs) => Promise<import("@/types").FileInfo[]>;
   "create_directory_command": (args: CreateDirectoryCommandArgs) => Promise<void>;
   "read_file_content_command": (args: ReadFileContentCommandArgs) => Promise<string>;
@@ -511,6 +554,10 @@ export type TauriInvoke = {
   "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<string>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;
+  "get_workflow_setting_command": (args: GetWorkflowSettingCommandArgs) => Promise<string | null>;
+  "set_workflow_setting_command": (args: SetWorkflowSettingCommandArgs) => Promise<void>;
+  "delete_workflow_setting_command": (args: DeleteWorkflowSettingCommandArgs) => Promise<void>;
+  "get_all_workflow_settings_command": (args: GetAllWorkflowSettingsCommandArgs) => Promise<Record<string, string>>;
   "get_all_task_model_settings_for_project_command": (args: GetAllTaskModelSettingsForProjectCommandArgs) => Promise<import("@/types").TaskSettings>;
   "set_project_task_model_settings_command": (args: SetProjectTaskModelSettingsCommandArgs) => Promise<void>;
   "fetch_runtime_ai_config": (args: FetchRuntimeAiConfigArgs) => Promise<Record<string, unknown>>;
@@ -534,6 +581,18 @@ export type TauriInvoke = {
   "get_invoice_history_command": () => Promise<InvoiceHistoryResponse>;
   "get_spending_history_command": () => Promise<any>;
   "check_service_access_command": () => Promise<any>;
+  
+  // File Finder Workflow commands
+  "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
+  "get_file_finder_workflow_status": (args: GetFileFinderWorkflowStatusCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse>;
+  "cancel_file_finder_workflow": (args: CancelFileFinderWorkflowCommandArgs) => Promise<void>;
+  "pause_file_finder_workflow": (args: PauseFileFinderWorkflowCommandArgs) => Promise<void>;
+  "resume_file_finder_workflow": (args: ResumeFileFinderWorkflowCommandArgs) => Promise<void>;
+  "get_file_finder_workflow_results": (args: GetFileFinderWorkflowResultsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowResultsResponse>;
+  "get_all_workflows_command": (args: GetAllWorkflowsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse[]>;
+  "get_workflow_details_command": (args: GetWorkflowDetailsCommandArgs) => Promise<import("@/types/workflow-types").WorkflowStatusResponse | null>;
+  "retry_workflow_stage_command": (args: RetryWorkflowStageCommandArgs) => Promise<string>;
+  "cancel_workflow_stage_command": (args: CancelWorkflowStageCommandArgs) => Promise<void>;
 };
 
 // Billing-related types

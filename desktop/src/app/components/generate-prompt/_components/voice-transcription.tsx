@@ -18,7 +18,7 @@ import {
   Label,
 } from "@/ui";
 import { useNotification } from "@/contexts/notification-context";
-import { createTranscriptionErrorMessage } from "@/utils/error-handling"; // Import error handling utility
+import { getErrorMessage } from "@/utils/error-handling"; // Import error handling utility
 
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
 
@@ -458,7 +458,7 @@ const VoiceTranscription = function VoiceTranscription({
   ]);
 
   return (
-    <div className="inline-flex flex-col gap-3 border rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
+    <div className="inline-flex flex-col gap-3 border border-border/60 rounded-xl p-6 bg-card/95 backdrop-blur-sm shadow-soft max-w-fit">
       <div className="flex items-center justify-between">
         <div className="font-semibold text-foreground mr-2">
           Record Description:
@@ -591,7 +591,7 @@ const VoiceTranscription = function VoiceTranscription({
       {voiceError && (
         <div className="flex flex-col gap-2 mt-2">
           <div className="text-sm text-destructive">
-            {createTranscriptionErrorMessage(voiceError)}
+            {getErrorMessage(voiceError, 'transcription')}
           </div>
           <Button
             type="button"

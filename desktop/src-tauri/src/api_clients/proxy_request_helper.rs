@@ -16,7 +16,7 @@ pub fn create_open_router_request(prompt: &str, options: &ApiClientOptions) -> O
         model: options.model.clone(),
         messages: vec![message],
         stream: options.stream,
-        max_tokens: options.max_tokens,
-        temperature: options.temperature,
+        max_tokens: Some(options.max_tokens),
+        temperature: Some(options.temperature),
     }
 }

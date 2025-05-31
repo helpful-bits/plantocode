@@ -55,7 +55,7 @@ pub fn get_default_transcription_model_id() -> AppResult<String> {
         }
         Ok(runtime_config.default_transcription_model_id.clone())
     } else {
-        Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+        Err(AppError::ConfigError("Runtime AI configuration not yet loaded from server".to_string()))
     }
 }
 
@@ -70,7 +70,7 @@ pub fn get_path_finder_max_files_with_content() -> AppResult<usize> {
         }
     }
     
-    Err(AppError::ConfigError("PathFinder max_files_with_content not available from server config".to_string()))
+    Err(AppError::ConfigError("PathFinder max_files_with_content not yet loaded from server config".to_string()))
 }
 
 /// Get whether to include file contents by default for PathFinder
@@ -82,21 +82,10 @@ pub fn get_path_finder_include_file_contents() -> AppResult<bool> {
         }
     }
     
-    Err(AppError::ConfigError("PathFinder include_file_contents not available from server config".to_string()))
+    Err(AppError::ConfigError("PathFinder include_file_contents not yet loaded from server config".to_string()))
 }
 
-/// Get the maximum content size per file for PathFinder
-pub fn get_path_finder_max_content_size_per_file() -> AppResult<usize> {
-    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
-    
-    if let Some(runtime_config) = &*config_guard {
-        if let Some(max_content_size) = runtime_config.path_finder_settings.max_content_size_per_file {
-            return Ok(max_content_size);
-        }
-    }
-    
-    Err(AppError::ConfigError("PathFinder max_content_size_per_file not available from server config".to_string()))
-}
+// get_path_finder_max_content_size_per_file removed - no longer used for truncation
 
 /// Get the maximum number of paths to return in results for PathFinder
 pub fn get_path_finder_max_file_count() -> AppResult<usize> {
@@ -108,21 +97,10 @@ pub fn get_path_finder_max_file_count() -> AppResult<usize> {
         }
     }
     
-    Err(AppError::ConfigError("PathFinder max_file_count not available from server config".to_string()))
+    Err(AppError::ConfigError("PathFinder max_file_count not yet loaded from server config".to_string()))
 }
 
-/// Get the initial truncation length for file contents for PathFinder
-pub fn get_path_finder_file_content_truncation_chars() -> AppResult<usize> {
-    let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
-    
-    if let Some(runtime_config) = &*config_guard {
-        if let Some(truncation_chars) = runtime_config.path_finder_settings.file_content_truncation_chars {
-            return Ok(truncation_chars);
-        }
-    }
-    
-    Err(AppError::ConfigError("PathFinder file_content_truncation_chars not available from server config".to_string()))
-}
+// get_path_finder_file_content_truncation_chars removed - no longer used for truncation
 
 /// Get the token limit buffer for PathFinder
 pub fn get_path_finder_token_limit_buffer() -> AppResult<u32> {
@@ -134,7 +112,7 @@ pub fn get_path_finder_token_limit_buffer() -> AppResult<u32> {
         }
     }
     
-    Err(AppError::ConfigError("PathFinder token_limit_buffer not available from server config".to_string()))
+    Err(AppError::ConfigError("PathFinder token_limit_buffer not yet loaded from server config".to_string()))
 }
 
 // Get default LLM model ID
@@ -147,22 +125,29 @@ pub fn get_default_llm_model_id() -> AppResult<String> {
         }
         Ok(runtime_config.default_llm_model_id.clone())
     } else {
-        Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+        Err(AppError::ConfigError("Runtime AI configuration not yet loaded from server".to_string()))
     }
 }
 
 // Get model for a specific task type (sync version for backward compatibility)
 pub fn get_model_for_task(task_type: TaskType) -> AppResult<String> {
+    // Check if this task requires LLM configuration
+    if !task_type.requires_llm() {
+        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require LLM model configuration", task_type)));
+    }
+    
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
     if let Some(runtime_config) = &*config_guard {
         let task_key = task_type.to_string();
         
         if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-            if task_config.model.is_empty() {
-                return Err(AppError::ConfigError(format!("Model configuration for task {} is empty", task_key)));
+            if let Some(model) = &task_config.model {
+                if model.is_empty() {
+                    return Err(AppError::ConfigError(format!("Model configuration for task {} is empty", task_key)));
+                }
+                return Ok(model.clone());
             }
-            return Ok(task_config.model.clone());
         }
         
         // If task-specific config not found, use default LLM model
@@ -197,6 +182,15 @@ pub fn get_task_specific_config(task_type: TaskType) -> AppResult<Option<crate::
 
 // Get default max tokens for a task (sync version)
 pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult<u32> {
+    if let Some(task) = task_type {
+        // Check if this task requires LLM configuration
+        if !task.requires_llm() {
+            return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require max_tokens configuration", task)));
+        }
+    } else {
+        return Err(AppError::ConfigError("No task type provided for max tokens configuration".to_string()));
+    }
+    
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
     if let Some(runtime_config) = &*config_guard {
@@ -204,13 +198,13 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
             let task_key = task.to_string();
             
             if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-                return Ok(task_config.max_tokens);
+                if let Some(max_tokens) = task_config.max_tokens {
+                    return Ok(max_tokens);
+                }
             }
             
             return Err(AppError::ConfigError(format!("No max_tokens configuration found for task {:?}. Please check server configuration.", task)));
         }
-        
-        return Err(AppError::ConfigError("No task type provided for max tokens configuration".to_string()));
     }
     
     Err(AppError::ConfigError(format!("Server configuration not loaded for max_tokens. Please check server connection and configuration.")))
@@ -224,6 +218,15 @@ pub async fn get_max_tokens_for_task_async(task_type: TaskType, app_handle: &App
 
 // Get default temperature for a task (sync version)
 pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResult<f32> {
+    if let Some(task) = task_type {
+        // Check if this task requires LLM configuration
+        if !task.requires_llm() {
+            return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require temperature configuration", task)));
+        }
+    } else {
+        return Err(AppError::ConfigError("No task type provided for temperature configuration".to_string()));
+    }
+    
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
     if let Some(runtime_config) = &*config_guard {
@@ -231,16 +234,16 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
             let task_key = task.to_string();
             
             if let Some(task_config) = runtime_config.tasks.get(&task_key) {
-                if task_config.temperature < 0.0 || task_config.temperature > 2.0 {
-                    return Err(AppError::ConfigError(format!("Invalid temperature {} for task {:?}. Must be between 0.0 and 2.0.", task_config.temperature, task)));
+                if let Some(temperature) = task_config.temperature {
+                    if temperature < 0.0 || temperature > 2.0 {
+                        return Err(AppError::ConfigError(format!("Invalid temperature {} for task {:?}. Must be between 0.0 and 2.0.", temperature, task)));
+                    }
+                    return Ok(temperature);
                 }
-                return Ok(task_config.temperature);
             }
             
             return Err(AppError::ConfigError(format!("No temperature configuration found for task {:?}. Please check server configuration.", task)));
         }
-        
-        return Err(AppError::ConfigError("No task type provided for temperature configuration".to_string()));
     }
     
     Err(AppError::ConfigError(format!("Server configuration not loaded for temperature. Please check server connection and configuration.")))
@@ -253,6 +256,7 @@ pub async fn get_temperature_for_task_async(task_type: TaskType, app_handle: &Ap
 }
 
 // Get context window size for a model
+// This function validates that the model exists in the available_models list from server config
 pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
     let config_guard = CONFIG.read().map_err(|e| AppError::InternalError(format!("Failed to acquire read lock: {}", e)))?;
     
@@ -270,20 +274,25 @@ pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
             }
         }
         
-        // Model not found in available_models list - this should not happen in normal operation
-        // as all models should be loaded from the database
-        return Err(AppError::ConfigError(format!("Model {} not found in server configuration. Available models: {}", 
+        // Model not found in available_models list - this indicates the model selection is invalid
+        // and should be validated earlier in the workflow
+        return Err(AppError::ConfigError(format!("Model {} not found in server configuration. This model may not be available or properly configured. Available models: {}", 
             model_name, 
             runtime_config.available_models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>().join(", "))));
     }
     
-    Err(AppError::ConfigError("Runtime AI configuration not available from server".to_string()))
+    Err(AppError::ConfigError("Runtime AI configuration not yet loaded from server".to_string()))
 }
 
 // Project-aware configuration functions that check user settings first, then fall back to server defaults
 
 /// Helper function to parse project settings JSON and extract model for a specific task
 fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<String> {
+    // Local tasks don't have model settings
+    if !task_type.requires_llm() {
+        return None;
+    }
+    
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
     
     // Map TaskType to frontend camelCase key
@@ -300,6 +309,11 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
+        TaskType::ExtendedPathFinder => "extendedPathFinder",
+        TaskType::ExtendedPathCorrection => "extendedPathCorrection",
+        // Local tasks don't have model settings
+        TaskType::DirectoryTreeGeneration => return None,
+        TaskType::LocalFileFiltering => return None,
         _ => return None,
     };
     
@@ -311,6 +325,11 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
 
 /// Helper function to extract temperature from project settings
 fn extract_temperature_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<f32> {
+    // Local tasks don't have temperature settings
+    if !task_type.requires_llm() {
+        return None;
+    }
+    
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
     
     let task_key = match task_type {
@@ -326,6 +345,11 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
+        TaskType::ExtendedPathFinder => "extendedPathFinder",
+        TaskType::ExtendedPathCorrection => "extendedPathCorrection",
+        // Local tasks don't have temperature settings
+        TaskType::DirectoryTreeGeneration => return None,
+        TaskType::LocalFileFiltering => return None,
         _ => return None,
     };
     
@@ -337,6 +361,11 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
 
 /// Helper function to extract maxTokens from project settings
 fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: TaskType) -> Option<u32> {
+    // Local tasks don't have max_tokens settings
+    if !task_type.requires_llm() {
+        return None;
+    }
+    
     let settings: serde_json::Value = serde_json::from_str(settings_json).ok()?;
     
     let task_key = match task_type {
@@ -352,6 +381,11 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::RegexSummaryGeneration => "regexSummaryGeneration",
         TaskType::RegexPatternGeneration => "regexPatternGeneration",
         TaskType::FileFinderWorkflow => "fileFinderWorkflow",
+        TaskType::ExtendedPathFinder => "extendedPathFinder",
+        TaskType::ExtendedPathCorrection => "extendedPathCorrection",
+        // Local tasks don't have max_tokens settings
+        TaskType::DirectoryTreeGeneration => return None,
+        TaskType::LocalFileFiltering => return None,
         _ => return None,
     };
     
@@ -363,6 +397,11 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
 
 /// Async version: Get model for a task, checking project-specific settings first, then falling back to server config
 pub async fn get_model_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<String> {
+    // Check if this task requires LLM configuration
+    if !task_type.requires_llm() {
+        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require LLM model configuration", task_type)));
+    }
+    
     // First try to get project-specific settings
     if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
         AppError::InitializationError("SettingsRepository not initialized".to_string())
@@ -388,6 +427,11 @@ pub async fn get_model_for_task_with_project(task_type: TaskType, project_direct
 
 /// Async version: Get temperature for a task, checking project-specific settings first, then falling back to server config
 pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<f32> {
+    // Check if this task requires LLM configuration
+    if !task_type.requires_llm() {
+        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require temperature configuration", task_type)));
+    }
+    
     // First try to get project-specific settings
     if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
         AppError::InitializationError("SettingsRepository not initialized".to_string())
@@ -411,6 +455,11 @@ pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_
 
 /// Async version: Get max tokens for a task, checking project-specific settings first, then falling back to server config
 pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_directory: &str, app_handle: &AppHandle) -> AppResult<u32> {
+    // Check if this task requires LLM configuration
+    if !task_type.requires_llm() {
+        return Err(AppError::ConfigError(format!("Task {:?} is a local filesystem task that does not require max_tokens configuration", task_type)));
+    }
+    
     // First try to get project-specific settings
     if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
         AppError::InitializationError("SettingsRepository not initialized".to_string())
@@ -447,11 +496,7 @@ pub async fn get_path_finder_include_file_contents_async(app_handle: &AppHandle)
     get_path_finder_include_file_contents()
 }
 
-/// Async version: Get the maximum content size per file for PathFinder
-pub async fn get_path_finder_max_content_size_per_file_async(app_handle: &AppHandle) -> AppResult<usize> {
-    // Get from server configuration - no fallbacks
-    get_path_finder_max_content_size_per_file()
-}
+// get_path_finder_max_content_size_per_file_async removed - no longer used for truncation
 
 /// Async version: Get the maximum number of paths to return in results for PathFinder
 pub async fn get_path_finder_max_file_count_async(app_handle: &AppHandle) -> AppResult<usize> {
@@ -459,14 +504,30 @@ pub async fn get_path_finder_max_file_count_async(app_handle: &AppHandle) -> App
     get_path_finder_max_file_count()
 }
 
-/// Async version: Get the initial truncation length for file contents for PathFinder
-pub async fn get_path_finder_file_content_truncation_chars_async(app_handle: &AppHandle) -> AppResult<usize> {
-    // Get from server configuration - no fallbacks
-    get_path_finder_file_content_truncation_chars()
-}
+// get_path_finder_file_content_truncation_chars_async removed - no longer used for truncation
 
 /// Async version: Get the token limit buffer for PathFinder
 pub async fn get_path_finder_token_limit_buffer_async(app_handle: &AppHandle) -> AppResult<u32> {
     // Get from server configuration - no fallbacks
     get_path_finder_token_limit_buffer()
+}
+
+/// Get the maximum number of concurrent jobs
+pub fn get_max_concurrent_jobs() -> usize {
+    let config_guard = match CONFIG.read() {
+        Ok(guard) => guard,
+        Err(e) => {
+            warn!("Failed to acquire read lock for max_concurrent_jobs: {}", e);
+            return 4;
+        }
+    };
+    
+    if let Some(runtime_config) = &*config_guard {
+        if let Some(max_jobs) = runtime_config.max_concurrent_jobs {
+            return max_jobs as usize;
+        }
+    }
+    
+    // Default to 4 concurrent jobs if not configured
+    4
 }

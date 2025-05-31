@@ -92,12 +92,23 @@ export function useFileSelectionManager({
     setShowOnlySelectedInternal(false);
   }, [fileSelectionCore, fileSelectionHistory, externalPathHandler]);
 
-  // Handle session transitions with refined logic
+  // Handle session transitions with robust logic to prevent stale file selection state
   useEffect(() => {
     const sessionChanged = prevSessionIdRef.current !== activeSessionId;
     const transitionEnded = prevIsTransitioningRef.current && !isTransitioningSession;
+    const projectDirectoryChanged = !activeSessionId; // No session means project directory change
+    
+    // Reset file selection state robustly to handle all scenarios:
+    // 1. Session transition completed AND session actually changed AND we had a previous session (new session load)
+    // 2. Project directory changed (activeSessionId becomes null) - project change
+    // 3. Loading a different session (sessionChanged is true and we're not transitioning) - direct session switch
+    const shouldReset = (
+      (transitionEnded && sessionChanged && prevSessionIdRef.current !== null) ||
+      (projectDirectoryChanged && prevSessionIdRef.current !== null) ||
+      (sessionChanged && !isTransitioningSession && activeSessionId !== null)
+    );
 
-    if (transitionEnded && sessionChanged && prevSessionIdRef.current !== null) {
+    if (shouldReset) {
       reset();
     }
 
@@ -178,26 +189,19 @@ export function useFileSelectionManager({
       reset,
     }),
     [
-      fileSelectionCore.managedFilesMap,
+      // Core state objects (these come from sub-hooks that already manage their own memoization)
+      fileSelectionCore,
+      externalPathHandler,
+      fileSelectionHistory,
+      
+      // Primitive state values
       searchTerm,
       showOnlySelected,
-      externalPathHandler.externalPathWarnings,
       searchSelectedFilesOnly,
-      fileSelectionCore.includedPaths,
-      fileSelectionCore.excludedPaths,
+      
+      // Stable callbacks (already memoized)
       setSearchTerm,
-      setShowOnlySelectedInternal,
-      externalPathHandler.clearExternalPathWarnings,
-      fileSelectionCore.toggleFileSelection,
-      fileSelectionCore.toggleFileExclusion,
       toggleSearchSelectedFilesOnly,
-      fileSelectionCore.handleBulkToggle,
-      externalPathHandler.applySelectionsFromPaths,
-      externalPathHandler.replaceAllSelectionsWithPaths,
-      fileSelectionHistory.undoSelection,
-      fileSelectionHistory.redoSelection,
-      fileSelectionHistory.canUndo,
-      fileSelectionHistory.canRedo,
       flushPendingOperations,
       reset,
     ]

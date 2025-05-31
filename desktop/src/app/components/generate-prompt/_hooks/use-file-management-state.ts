@@ -14,6 +14,7 @@ import {
   type FileInfo,
 } from "./file-management/use-project-file-list";
 import { useRustManagedFileFinderWorkflow } from "./file-management/workflow/useRustManagedFileFinderWorkflow";
+import { clearManagedFilesMapCache } from "./file-management/_utils/managed-files-map-utils";
 
 export function useFileManagementState(): FileManagementContextValue {
   const { projectDirectory } = useProject();
@@ -43,6 +44,7 @@ export function useFileManagementState(): FileManagementContextValue {
   const originalRefreshFiles = projectFileListResult.refreshFiles;
 
   const refreshFiles = useCallback(async (): Promise<void> => {
+    // Ensure originalRefreshFiles is called to maintain proper state
     await originalRefreshFiles();
   }, [originalRefreshFiles]);
 
@@ -61,6 +63,11 @@ export function useFileManagementState(): FileManagementContextValue {
     isTransitioningSession,
     activeSessionId,
   });
+
+  // Clear cache when project directory changes for performance
+  useEffect(() => {
+    clearManagedFilesMapCache();
+  }, [projectDirectory]);
 
   // Auto-initialize file list when project and session are ready
   useEffect(() => {
@@ -101,11 +108,13 @@ export function useFileManagementState(): FileManagementContextValue {
   });
 
   const findRelevantFilesCallback = useCallback(async (): Promise<void> => {
+    // Ensure all required parameters are present before executing workflow
     if (!taskDescription.trim() || fileFinderWorkflow.isWorkflowRunning || !activeSessionId || !projectDirectory) {
       return;
     }
 
     try {
+      // Execute workflow with reliably sourced arguments from SessionContext and state
       await fileFinderWorkflow.executeWorkflow();
     } catch (error) {
       console.error("[FileManagementState] Error finding relevant files:", error);
@@ -126,6 +135,27 @@ export function useFileManagementState(): FileManagementContextValue {
     []
   );
 
+  // Additional workflow actions
+  const cancelWorkflow = useCallback(async () => {
+    if (fileFinderWorkflow.newWorkflowSystem?.cancelWorkflow) {
+      try {
+        await fileFinderWorkflow.newWorkflowSystem.cancelWorkflow();
+      } catch (error) {
+        console.error('[FileManagementState] Error canceling workflow:', error);
+      }
+    }
+  }, [fileFinderWorkflow.newWorkflowSystem]);
+
+  const retryWorkflow = useCallback(async () => {
+    if (fileFinderWorkflow.newWorkflowSystem?.retryWorkflow) {
+      try {
+        await fileFinderWorkflow.newWorkflowSystem.retryWorkflow();
+      } catch (error) {
+        console.error('[FileManagementState] Error retrying workflow:', error);
+      }
+    }
+  }, [fileFinderWorkflow.newWorkflowSystem]);
+
   const contextValue = useMemo(
     () => ({
       managedFilesMap: fileSelectionManager.managedFilesMap,
@@ -145,10 +175,20 @@ export function useFileManagementState(): FileManagementContextValue {
 
       fileContentsMap: {},
 
-      isFindingFiles: Boolean(fileFinderWorkflow.isWorkflowRunning),
+      // Workflow state - accurately reflects state from useWorkflowTracker
+      isFindingFiles: fileFinderWorkflow.isWorkflowRunning,
       currentWorkflowStage: fileFinderWorkflow.currentStage,
       currentStageMessage: fileFinderWorkflow.stageMessage,
       workflowError: fileFinderWorkflow.workflowError,
+      
+      // Enhanced workflow properties from newWorkflowSystem (orchestrated)
+      workflowProgressPercentage: fileFinderWorkflow.newWorkflowSystem?.progressPercentage,
+      workflowExecutionTime: fileFinderWorkflow.newWorkflowSystem?.executionTime,
+      workflowIsCompleted: fileFinderWorkflow.newWorkflowSystem?.isCompleted,
+      workflowCanCancel: Boolean(fileFinderWorkflow.newWorkflowSystem?.cancelWorkflow),
+      workflowCanRetry: Boolean(fileFinderWorkflow.newWorkflowSystem?.retryWorkflow) && Boolean(fileFinderWorkflow.newWorkflowSystem?.hasError),
+
+      // Actions
       setSearchTerm: updateSearchTerm,
       setFilterMode: handleFilterModeChange,
       toggleFileSelection: fileSelectionManager.toggleFileSelection,
@@ -160,6 +200,8 @@ export function useFileManagementState(): FileManagementContextValue {
 
       findRelevantFiles: findRelevantFilesCallback,
       setFindFilesMode,
+      cancelWorkflow,
+      retryWorkflow,
 
       getFileStateForSession,
       flushFileStateSaves,
@@ -184,6 +226,12 @@ export function useFileManagementState(): FileManagementContextValue {
       fileFinderWorkflow.currentStage,
       fileFinderWorkflow.stageMessage,
       fileFinderWorkflow.workflowError,
+      fileFinderWorkflow.newWorkflowSystem?.progressPercentage,
+      fileFinderWorkflow.newWorkflowSystem?.executionTime,
+      fileFinderWorkflow.newWorkflowSystem?.isCompleted,
+      fileFinderWorkflow.newWorkflowSystem?.cancelWorkflow,
+      fileFinderWorkflow.newWorkflowSystem?.retryWorkflow,
+      fileFinderWorkflow.newWorkflowSystem?.hasError,
       updateSearchTerm,
       handleFilterModeChange,
       fileSelectionManager.toggleFileSelection,
@@ -194,6 +242,8 @@ export function useFileManagementState(): FileManagementContextValue {
       fileSelectionManager.redoSelection,
       findRelevantFilesCallback,
       setFindFilesMode,
+      cancelWorkflow,
+      retryWorkflow,
       getFileStateForSession,
       flushFileStateSaves,
       fileSelectionManager.flushPendingOperations,

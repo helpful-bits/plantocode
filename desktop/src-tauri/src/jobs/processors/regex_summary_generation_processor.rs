@@ -6,9 +6,9 @@ use log::{debug, info};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
-use crate::db_utils::{SessionRepository, BackgroundJobRepository, SettingsRepository};
-use crate::models::{JobStatus, TaskType};
-use crate::utils::{get_timestamp, PromptComposer, CompositionContextBuilder};
+use crate::db_utils::SessionRepository;
+use crate::models::TaskType;
+use crate::jobs::job_processor_utils;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,44 +51,27 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
 
-        // Get dependencies from app state
-        let repo_state = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>();
-        let repo = repo_state.inner().clone();
+        // Setup job processing
+        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        let session_repo_state = app_handle.state::<std::sync::Arc<SessionRepository>>();
-        let session_repo = session_repo_state.inner().clone();
-        
-        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
+        job_processor_utils::log_job_start(&job.id, "regex summary generation");
 
-        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
-        
-        // Update job status to running
-        let timestamp = get_timestamp();
-        let mut db_job = repo.get_job_by_id(&job.id).await?
-            .ok_or_else(|| AppError::JobError(format!("Job {} not found", job.id)))?;
-        db_job.status = "running".to_string();
-        db_job.updated_at = Some(timestamp);
-        db_job.start_time = Some(timestamp);
-        repo.update_job(&db_job).await?;
-
-        // Create enhanced composition context for sophisticated prompt generation
+        // Create task description for prompt
         let task_description = format!(
             "Title regex: {}\nContent regex: {}\nNegative title regex: {}\nNegative content regex: {}",
             payload.title_regex, payload.content_regex, payload.negative_title_regex, payload.negative_content_regex
         );
         
-        let composition_context = CompositionContextBuilder::new(
-            job.session_id.clone(),
-            TaskType::RegexSummaryGeneration,
-            task_description.clone(),
-        )
-        .build();
-
-        // Use the enhanced prompt composer to generate sophisticated prompts
-        let prompt_composer = PromptComposer::new();
-        let composed_prompt = prompt_composer
-            .compose_prompt(&composition_context, &settings_repo)
-            .await?;
+        // Build unified prompt
+        let composed_prompt = job_processor_utils::build_unified_prompt(
+            &job,
+            &app_handle,
+            task_description,
+            None,
+            None,
+            None,
+            &settings_repo,
+        ).await?;
 
         info!("Enhanced Regex Summary Generation prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
@@ -97,30 +80,24 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        let prompt = composed_prompt.final_prompt;
-        let system_prompt_id = composed_prompt.system_prompt_id;
+        // Extract system and user prompts from the composed result
+        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
 
-        debug!("Generated regex summary prompt for job {}: {}", job.id, prompt);
+        debug!("Generated regex summary prompt for job {}: {}", job.id, user_prompt);
 
-        // Get the model to use from config - check project settings first, then server defaults
+        // Create API options
         let project_dir = job.project_directory.as_deref().unwrap_or("");
-        let model = if let Some(model_override) = payload.model_override.clone() {
-            model_override
-        } else {
-            crate::config::get_model_for_task_with_project(TaskType::RegexSummaryGeneration, project_dir, &app_handle).await
-                .map_err(|e| AppError::ConfigError(format!("Failed to get model for RegexSummaryGeneration task: {}. Please ensure server database is properly configured.", e)))?
-        };
+        let request_options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::RegexSummaryGeneration,
+            project_dir,
+            false,
+            &app_handle,
+        ).await?;
 
-        // Make the API request
-        let request_options = crate::api_clients::client_trait::ApiClientOptions {
-            model: model.clone(),
-            max_tokens: payload.max_output_tokens,
-            temperature: Some(payload.temperature),
-            stream: false,
-        };
-
-        let api_response = llm_client.complete(&prompt, request_options).await
-            .map_err(|e| AppError::OpenRouterError(format!("Failed to complete text: {}", e)))?;
+        // Create messages and call LLM
+        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
+        let api_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &request_options).await?;
         
         // Extract the response content
         let response = api_response.choices.first()
@@ -129,14 +106,19 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
 
         debug!("Received regex summary response for job {}: {}", job.id, response);
 
-        // Update the background job with the response
-        let end_timestamp = get_timestamp();
-        db_job.response = Some(response.clone());
-        db_job.status = "completed".to_string();
-        db_job.end_time = Some(end_timestamp);
-        db_job.updated_at = Some(end_timestamp);
-        db_job.system_prompt_id = Some(system_prompt_id);
-        repo.update_job(&db_job).await?;
+        // Finalize job success
+        job_processor_utils::finalize_job_success(
+            &job.id,
+            &repo,
+            &response,
+            api_response.usage,
+            &request_options.model,
+            &system_prompt_id,
+            None,
+        ).await?;
+
+        // Get session repository for session update
+        let session_repo = app_handle.state::<std::sync::Arc<SessionRepository>>().inner().clone();
 
         // Update the session's regex_summary_explanation field
         let session = session_repo.get_session_by_id(&payload.session_id).await?

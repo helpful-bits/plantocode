@@ -105,7 +105,7 @@ export default function SystemSettings({
   };
 
   return (
-    <Card className="bg-card/80 backdrop-blur-sm border shadow-soft rounded-xl">
+    <Card className="bg-card/80 backdrop-blur-sm border border-border shadow-soft rounded-xl">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg">System Settings</CardTitle>
         <CardDescription className="text-balance">

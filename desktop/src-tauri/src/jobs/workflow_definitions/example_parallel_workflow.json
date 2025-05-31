@@ -1,0 +1,40 @@
+{
+  "name": "ExampleParallelWorkflow",
+  "stages": [
+    {
+      "stage_name": "DataPreparation",
+      "task_type": "DirectoryTreeGeneration",
+      "processor_name": null,
+      "dependencies": [],
+      "allow_parallel_execution": true
+    },
+    {
+      "stage_name": "PatternAnalysis",
+      "task_type": "RegexPatternGeneration",
+      "processor_name": null,
+      "dependencies": [],
+      "allow_parallel_execution": true
+    },
+    {
+      "stage_name": "FilteringStage1",
+      "task_type": "LocalFileFiltering",
+      "processor_name": null,
+      "dependencies": ["DataPreparation", "PatternAnalysis"],
+      "allow_parallel_execution": true
+    },
+    {
+      "stage_name": "FilteringStage2",
+      "task_type": "PathFinder",
+      "processor_name": null,
+      "dependencies": ["DataPreparation", "PatternAnalysis"],
+      "allow_parallel_execution": true
+    },
+    {
+      "stage_name": "FinalCorrection",
+      "task_type": "PathCorrection",
+      "processor_name": null,
+      "dependencies": ["FilteringStage1", "FilteringStage2"],
+      "allow_parallel_execution": false
+    }
+  ]
+}

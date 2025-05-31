@@ -1,13 +1,11 @@
 import { useState, useCallback } from 'react';
-import { 
-  TaskType
-} from '../../types/system-prompts';
+import { TaskType } from '../../types/session-types';
 import { useSystemPrompt, useDefaultSystemPrompts } from '../../hooks/use-system-prompts';
 import { Button } from '../../ui/button';
-import { Textarea } from '../../ui/textarea';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Alert } from '../../ui/alert';
+import { VirtualizedCodeViewer } from '../../ui/virtualized-code-viewer';
 import { extractPlaceholders, getAvailablePlaceholders } from '../../actions/system-prompts.actions';
 
 interface SystemPromptsSettingsProps {
@@ -113,6 +111,16 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
         <div className="flex items-center gap-2">
           {isCustom && <Badge variant="secondary">Custom</Badge>}
           {!isCustom && <Badge variant="outline">Default</Badge>}
+          {prompt?.version && (
+            <Badge variant="outline" className="text-xs">
+              v{prompt.version}
+            </Badge>
+          )}
+          {isCustom && prompt?.basedOnVersion && (
+            <Badge variant="outline" className="text-xs text-gray-500">
+              Based on v{prompt.basedOnVersion}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -130,19 +138,19 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
 
       <div className="space-y-2">
         <label className="text-sm font-medium">System Prompt</label>
-        {isEditing ? (
-          <Textarea
-            value={editedPrompt}
-            onChange={(e) => setEditedPrompt(e.target.value)}
-            placeholder="Enter your custom system prompt..."
-            rows={8}
-            className="font-mono text-sm"
-          />
-        ) : (
-          <div className="border rounded-md p-3 bg-gray-50 font-mono text-sm whitespace-pre-wrap">
-            {currentPrompt || 'No prompt available'}
-          </div>
-        )}
+        <VirtualizedCodeViewer
+          content={isEditing ? editedPrompt : currentPrompt}
+          height="300px"
+          showCopy={true}
+          copyText="Copy Prompt"
+          showContentSize={true}
+          readOnly={!isEditing}
+          placeholder={isEditing ? "Enter your custom system prompt..." : "No prompt available"}
+          language="markdown"
+          onChange={isEditing ? (value) => setEditedPrompt(value || '') : undefined}
+          virtualizationThreshold={10000}
+          className={isEditing ? "border-primary/40" : undefined}
+        />
       </div>
 
       {placeholders.length > 0 && (
@@ -212,7 +220,20 @@ function getTaskTypeDisplayName(taskType: TaskType): string {
     'task_enhancement': 'Task Enhancement',
     'regex_pattern_generation': 'Regex Pattern Generation',
     'regex_summary_generation': 'Regex Summary Generation',
-    'generic_llm_stream': 'Generic LLM Stream'
+    'generic_llm_stream': 'Generic LLM Stream',
+    'voice_transcription': 'Voice Transcription',
+    'file_finder_workflow': 'File Finder Workflow',
+    'server_proxy_transcription': 'Server Proxy Transcription',
+    'streaming': 'Streaming',
+    'directory_tree_generation': 'Directory Tree Generation',
+    'local_file_filtering': 'Local File Filtering',
+    'extended_path_finder': 'Extended Path Finder',
+    'extended_path_correction': 'Extended Path Correction',
+    'initial_path_finding': 'Initial Path Finding',
+    'extended_path_finding': 'Extended Path Finding',
+    'initial_path_correction': 'Initial Path Correction',
+    'regex_generation': 'Regex Generation',
+    'unknown': 'Unknown'
   };
   
   return displayNames[taskType] || taskType;
@@ -246,7 +267,7 @@ export function SystemPromptsSettings({ sessionId, className }: SystemPromptsSet
 
         {Object.entries(TASK_CATEGORIES).map(([category, taskTypes]) => (
           <div key={category} className="space-y-4">
-            <h3 className="text-lg font-semibold border-b pb-2">{category}</h3>
+            <h3 className="text-lg font-semibold border-b border-border pb-2">{category}</h3>
             <div className="space-y-4">
               {taskTypes.map((taskType) => (
                 <SystemPromptEditor
@@ -260,13 +281,23 @@ export function SystemPromptsSettings({ sessionId, className }: SystemPromptsSet
           </div>
         ))}
 
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-          <h4 className="font-medium text-blue-900 mb-2">About Placeholders</h4>
-          <p className="text-sm text-blue-800">
-            System prompts support dynamic placeholders like <code className="bg-blue-100 px-1 rounded">{'{{PROJECT_CONTEXT}}'}</code> 
-            and <code className="bg-blue-100 px-1 rounded">{'{{CUSTOM_INSTRUCTIONS}}'}</code> that get replaced with actual values when the prompt is used. 
-            This allows you to create flexible, reusable prompts that adapt to different contexts.
-          </p>
+        <div className="space-y-4 mt-8">
+          <div className="p-4 bg-blue-50 rounded-lg">
+            <h4 className="font-medium text-blue-900 mb-2">About Placeholders</h4>
+            <p className="text-sm text-blue-800">
+              System prompts support dynamic placeholders like <code className="bg-blue-100 px-1 rounded">{'{{PROJECT_CONTEXT}}'}</code> 
+              and <code className="bg-blue-100 px-1 rounded">{'{{CUSTOM_INSTRUCTIONS}}'}</code> that get replaced with actual values when the prompt is used. 
+              This allows you to create flexible, reusable prompts that adapt to different contexts.
+            </p>
+          </div>
+          
+          <div className="p-4 bg-green-50 rounded-lg">
+            <h4 className="font-medium text-green-900 mb-2">Version Management</h4>
+            <p className="text-sm text-green-800">
+              Default prompts are versioned to track updates. When you customize a prompt, it shows which version of the default it was based on. 
+              This helps you understand if the default has been updated since you made your customization.
+            </p>
+          </div>
         </div>
       </div>
     </div>

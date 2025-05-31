@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   type SpendingStatusInfo,
@@ -26,9 +26,11 @@ export function useSpendingData(): UseSpendingDataReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { showNotification } = useNotification();
+  const isMountedRef = useRef(true);
 
   const fetchSpendingData = useCallback(async () => {
     try {
+      if (!isMountedRef.current) return;
       setIsLoading(true);
       setError(null);
 
@@ -38,9 +40,12 @@ export function useSpendingData(): UseSpendingDataReturn {
         invoke<ServiceAccessResponse>('check_service_access_command'),
       ]);
 
+      if (!isMountedRef.current) return;
       setSpendingStatus(statusData);
       setServiceAccess(accessData);
     } catch (err) {
+      if (!isMountedRef.current) return;
+      
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
       console.error('Failed to fetch spending data:', err);
@@ -54,7 +59,9 @@ export function useSpendingData(): UseSpendingDataReturn {
         });
       }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [showNotification]);
 
@@ -99,13 +106,22 @@ export function useSpendingData(): UseSpendingDataReturn {
       (spendingStatus?.usagePercentage && spendingStatus.usagePercentage > 80)
     ) {
       const interval = setInterval(() => {
-        fetchSpendingData();
+        if (isMountedRef.current) {
+          fetchSpendingData();
+        }
       }, 30000); // 30 seconds
 
       return () => clearInterval(interval);
     }
     return undefined;
   }, [spendingStatus?.servicesBlocked, spendingStatus?.usagePercentage, fetchSpendingData]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   return {
     spendingStatus,

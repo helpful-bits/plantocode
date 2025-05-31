@@ -11,8 +11,6 @@ import { useSessionQueries } from "./useSessionQueries";
 
 interface UseSessionManagerOrchestratorProps {
   projectDirectory: string;
-  getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
-  onSessionNameChangeUISync: (name: string) => void;
 }
 
 /**
@@ -21,8 +19,6 @@ interface UseSessionManagerOrchestratorProps {
  */
 export function useSessionManagerOrchestrator({
   projectDirectory,
-  getCurrentSessionState,
-  onSessionNameChangeUISync,
 }: UseSessionManagerOrchestratorProps) {
   // Initialize the smaller, focused hooks
   const {
@@ -67,8 +63,6 @@ export function useSessionManagerOrchestrator({
     loadSessionDetail,
   } = useSessionMutations({
     projectDirectory,
-    getCurrentSessionState,
-    onSessionNameChangeUISync,
     loadSessions,
     setSessions,
     sessions,

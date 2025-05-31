@@ -39,6 +39,7 @@ export function PollingBillingManager({
   const [isProcessing, setIsProcessing] = useState(false);
   const [pollingState, setPollingState] = useState<PollingState | null>(null);
   const [lastKnownStatus, setLastKnownStatus] = useState<string | null>(null);
+  const [pollingErrorCount, setPollingErrorCount] = useState(0);
   const { showNotification } = useNotification();
   
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -62,6 +63,7 @@ export function PollingBillingManager({
   }, []);
 
   const stopPolling = useCallback(() => {
+    // Clear all timers safely
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
@@ -70,13 +72,19 @@ export function PollingBillingManager({
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    
+    // Reset state
     setPollingState(null);
     setIsProcessing(false);
+    setPollingErrorCount(0); // Reset error count when stopping
   }, []);
 
   const checkSubscriptionStatus = useCallback(async (): Promise<boolean> => {
     try {
       const response = await invoke<SubscriptionDetails>("get_subscription_details_command");
+      
+      // Reset error count on successful fetch
+      setPollingErrorCount(0);
       
       // Check if status changed
       if (response?.status && response.status !== lastKnownStatus) {
@@ -90,11 +98,22 @@ export function PollingBillingManager({
           onRefresh();
         }
         
-        // Show success notification
+        // Show success notification with more context
+        const statusMessages: Record<string, string> = {
+          'active': 'Your subscription is now active and all features are available.',
+          'trialing': 'Your trial period has started.',
+          'past_due': 'Your subscription payment is past due. Please update your payment method.',
+          'canceled': 'Your subscription has been canceled.',
+          'incomplete': 'Your subscription setup is incomplete. Please complete the payment process.',
+          'incomplete_expired': 'Your subscription setup has expired. Please restart the process.',
+          'unpaid': 'Your subscription is unpaid. Please update your payment method.'
+        };
+        
         showNotification({
           title: "Subscription Updated",
-          message: `Your subscription status changed to: ${response.status}`,
-          type: "success",
+          message: statusMessages[response.status] || `Your subscription status changed to: ${response.status}`,
+          type: response.status === 'active' || response.status === 'trialing' ? "success" : 
+                response.status === 'past_due' || response.status === 'unpaid' ? "warning" : "info",
         });
         
         return true; // Status changed
@@ -102,13 +121,61 @@ export function PollingBillingManager({
       
       return false; // No change
     } catch (error) {
+      const errorMessage = getErrorMessage(error);
       console.error("Failed to check subscription status:", error);
+      
+      const newErrorCount = pollingErrorCount + 1;
+      setPollingErrorCount(newErrorCount);
+      
+      // Provide specific error handling based on error type
+      let shouldStopPolling = false;
+      let errorTitle = "Polling Error";
+      let errorMsg = "Failed to check subscription status.";
+      
+      if (errorMessage.includes("401") || errorMessage.includes("unauthorized")) {
+        errorTitle = "Authentication Error";
+        errorMsg = "Session expired. Please sign in again.";
+        shouldStopPolling = true; // Stop polling on auth errors
+      } else if (errorMessage.includes("403") || errorMessage.includes("forbidden")) {
+        errorTitle = "Access Denied";
+        errorMsg = "Access to subscription data denied.";
+        shouldStopPolling = true;
+      } else if (newErrorCount >= 5) {
+        errorTitle = "Polling Stopped";
+        errorMsg = "Automatic subscription status updates have been paused due to repeated connection errors. You can manually refresh or try again later.";
+        shouldStopPolling = true;
+      } else if (newErrorCount >= 3) {
+        errorTitle = "Connection Issues";
+        errorMsg = `Connection error (${newErrorCount}/5). Continuing to monitor...`;
+      }
+      
+      if (shouldStopPolling) {
+        stopPolling();
+        showNotification({
+          title: errorTitle,
+          message: errorMsg,
+          type: "error",
+        });
+      } else if (newErrorCount >= 3) {
+        showNotification({
+          title: errorTitle,
+          message: errorMsg,
+          type: "warning",
+        });
+      }
+      
       return false;
     }
-  }, [lastKnownStatus, onRefresh, showNotification]);
+  }, [lastKnownStatus, onRefresh, showNotification, pollingErrorCount, stopPolling]);
 
   const startPolling = useCallback((action: "upgrade" | "manage", timeoutMinutes: number = 10) => {
+    // Stop any existing polling first
+    stopPolling();
+    
     const timeoutDuration = timeoutMinutes * 60 * 1000;
+    
+    // Reset error count when starting polling
+    setPollingErrorCount(0);
     
     setPollingState({
       isActive: true,
@@ -117,18 +184,26 @@ export function PollingBillingManager({
       timeoutDuration,
     });
 
+    // Start polling with proper error handling
     pollingIntervalRef.current = setInterval(async () => {
-      const statusChanged = await checkSubscriptionStatus();
-      if (statusChanged) {
-        stopPolling();
+      try {
+        const statusChanged = await checkSubscriptionStatus();
+        if (statusChanged) {
+          stopPolling();
+        }
+      } catch (error) {
+        // Error is already handled in checkSubscriptionStatus
+        console.warn("Polling interval error:", error);
       }
     }, 3000);
 
+    // Set timeout with better messaging
     timeoutRef.current = setTimeout(() => {
       stopPolling();
+      const actionContext = action === "upgrade" ? "checkout completion" : "billing changes";
       showNotification({
-        title: "Polling Timeout",
-        message: "Stopped checking for subscription changes. You can manually refresh if needed.",
+        title: "Monitoring Timeout",
+        message: `Stopped automatically checking for ${actionContext}. You can manually refresh if needed or the status will update when you return to the app.`,
         type: "info",
       });
     }, timeoutDuration);

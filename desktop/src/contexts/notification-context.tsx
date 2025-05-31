@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { NotificationBanner } from "@/ui/notification-banner";
 import type { ButtonProps } from "@/ui/button";
 import { Button } from "@/ui/button";
+import { extractErrorInfo, createUserFriendlyErrorMessage, logError, ErrorType } from "@/utils/error-handling";
 
 export interface NotificationType {
   title: string;
@@ -26,10 +27,16 @@ interface ActiveNotification extends NotificationType {
 
 export interface NotificationContextValue {
   showNotification: (notification: NotificationType) => void;
+  showError: (error: unknown, context?: string, userContext?: string) => void;
+  showSuccess: (message: string, title?: string) => void;
+  showWarning: (message: string, title?: string) => void;
 }
 
 const NotificationContext = createContext<NotificationContextValue>({
   showNotification: () => {},
+  showError: () => {},
+  showSuccess: () => {},
+  showWarning: () => {},
 });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -66,8 +73,188 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
+  const showError = useCallback((error: unknown, context?: string, userContext?: string) => {
+    // Log error for debugging/monitoring
+    void logError(error, context || 'User Notification');
+    
+    // Extract structured error information
+    const errorInfo = extractErrorInfo(error);
+    
+    // Create user-friendly message
+    const userMessage = createUserFriendlyErrorMessage(errorInfo, userContext);
+    
+    // Determine specific error types for enhanced handling
+    const isBillingError = errorInfo.type === ErrorType.BILLING_ERROR;
+    const isPermissionError = errorInfo.type === ErrorType.PERMISSION_ERROR;
+    const isConfigError = errorInfo.type === ErrorType.CONFIGURATION_ERROR;
+    const isNetworkError = errorInfo.type === ErrorType.NETWORK_ERROR;
+    const isDatabaseError = errorInfo.type === ErrorType.DATABASE_ERROR;
+    const isWorkflowError = errorInfo.type === ErrorType.WORKFLOW_ERROR;
+    const isValidationError = errorInfo.type === ErrorType.VALIDATION_ERROR;
+    const isNotFoundError = errorInfo.type === ErrorType.NOT_FOUND_ERROR;
+    const isInternalError = errorInfo.type === ErrorType.INTERNAL_ERROR;
+    const isUnknownError = errorInfo.type === ErrorType.UNKNOWN_ERROR;
+    
+    // Create enhanced title based on error type
+    const getErrorTitle = () => {
+      if (isBillingError) return "Billing Error";
+      if (isPermissionError) return "Access Denied";
+      if (isConfigError) return "Configuration Error";
+      if (isNetworkError) return "Connection Error";
+      if (isDatabaseError) return "Database Error";
+      if (isWorkflowError) return "Workflow Error";
+      if (isValidationError) return "Invalid Input";
+      if (isNotFoundError) return "Not Found";
+      if (isInternalError) return "System Error";
+      if (isUnknownError) return "Unexpected Error";
+      return "Error";
+    };
+    
+    // Create action button based on error type
+    const getActionButton = () => {
+      if (isBillingError) {
+        return {
+          label: "View Billing",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "default" as const
+        };
+      }
+      
+      if (isPermissionError || isConfigError) {
+        return {
+          label: "Check Settings",
+          onClick: () => {
+            window.location.pathname = '/settings';
+          },
+          variant: "outline" as const
+        };
+      }
+      
+      if (isDatabaseError || isInternalError) {
+        return {
+          label: "Refresh Page",
+          onClick: () => {
+            window.location.reload();
+          },
+          variant: "outline" as const
+        };
+      }
+      
+      if (isNetworkError) {
+        return {
+          label: "Retry",
+          onClick: () => {
+            window.location.reload();
+          },
+          variant: "outline" as const
+        };
+      }
+      
+      if (isValidationError) {
+        return {
+          label: "Review Input",
+          onClick: () => {
+            // Focus on the active form or input area
+            const activeElement = document.activeElement;
+            if (activeElement && 'focus' in activeElement) {
+              (activeElement as HTMLElement).focus();
+            }
+          },
+          variant: "outline" as const
+        };
+      }
+      
+      if (isWorkflowError) {
+        // Enhanced workflow error handling with context-aware actions
+        if (errorInfo.workflowContext?.workflowId) {
+          return {
+            label: "View Workflow Details",
+            onClick: () => {
+              // Try to open the background jobs sidebar or workflow panel
+              // This could trigger a custom event or state update
+              const event = new CustomEvent('show-workflow-details', {
+                detail: { workflowId: errorInfo.workflowContext?.workflowId }
+              });
+              window.dispatchEvent(event);
+            },
+            variant: "outline" as const
+          };
+        } else if (errorInfo.workflowContext?.stageId) {
+          return {
+            label: "View Stage Details",
+            onClick: () => {
+              const event = new CustomEvent('show-stage-details', {
+                detail: { stageId: errorInfo.workflowContext?.stageId }
+              });
+              window.dispatchEvent(event);
+            },
+            variant: "outline" as const
+          };
+        } else {
+          return {
+            label: "View Background Jobs",
+            onClick: () => {
+              const event = new CustomEvent('show-background-jobs');
+              window.dispatchEvent(event);
+            },
+            variant: "outline" as const
+          };
+        }
+      }
+      
+      if (isNotFoundError) {
+        return {
+          label: "Go Back",
+          onClick: () => {
+            window.history.back();
+          },
+          variant: "outline" as const
+        };
+      }
+      
+      return undefined;
+    };
+    
+    // Determine duration based on error severity
+    const getDuration = () => {
+      if (isBillingError || isConfigError || isDatabaseError || isInternalError) return 0; // Don't auto-dismiss critical errors
+      if (isPermissionError || isWorkflowError || isNotFoundError) return 10000; // Longer for actionable errors
+      if (isValidationError) return 8000; // Medium duration for user input errors
+      if (isNetworkError) return 6000; // Shorter for network issues that might resolve
+      return 8000; // Default duration
+    };
+    
+    showNotification({
+      title: getErrorTitle(),
+      message: userMessage,
+      type: "error",
+      duration: getDuration(),
+      actionButton: getActionButton()
+    });
+  }, [showNotification]);
+  
+  const showSuccess = useCallback((message: string, title?: string) => {
+    showNotification({
+      title: title || "Success",
+      message,
+      type: "success",
+      duration: 4000
+    });
+  }, [showNotification]);
+  
+  const showWarning = useCallback((message: string, title?: string) => {
+    showNotification({
+      title: title || "Warning",
+      message,
+      type: "warning",
+      duration: 6000
+    });
+  }, [showNotification]);
+
   return (
-    <NotificationContext.Provider value={{ showNotification }}>
+    <NotificationContext.Provider value={{ showNotification, showError, showSuccess, showWarning }}>
       {children}
       
       {/* Render active notifications */}

@@ -3,14 +3,21 @@ use log::{debug, error, info, warn};
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use std::path::Path;
+use std::str::FromStr;
+use std::collections::HashMap;
 use regex::Regex;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
 use crate::error::{AppError, AppResult};
-use crate::models::{TaskType, OpenRouterRequestMessage, OpenRouterContent};
-use crate::db_utils::{SessionRepository, SettingsRepository};
-use crate::utils::{directory_tree::{generate_directory_tree, DirectoryTreeOptions}, PromptComposer, CompositionContextBuilder};
+use crate::models::{TaskType, OpenRouterRequestMessage, OpenRouterContent, JobCommandResponse};
+use crate::db_utils::{SessionRepository, SettingsRepository, BackgroundJobRepository};
+use crate::utils::{directory_tree::{generate_directory_tree, DirectoryTreeOptions}};
+use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt as UnifiedComposedPrompt};
 use crate::utils::{fs_utils, path_utils};
 use crate::constants::EXCLUDED_DIRS_FOR_SCAN;
 use crate::api_clients::client_trait::ApiClientOptions;
+use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
+use crate::jobs::workflow_types::{WorkflowStatus, WorkflowStage};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +27,59 @@ pub struct FileFinderWorkflowArgs {
     pub project_directory: String,
     pub excluded_paths: Option<Vec<String>>,
     pub timeout_ms: Option<u64>,
+}
+
+// New response types for workflow commands
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowCommandResponse {
+    pub workflow_id: String,
+    pub first_stage_job_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageStatus {
+    pub stage_name: String,
+    pub job_id: Option<String>, // Must be populated from WorkflowStageJob.job_id
+    pub status: String,
+    pub progress_percentage: f32,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub depends_on: Option<String>,
+    pub created_at: Option<String>,
+    pub error_message: Option<String>,
+    pub execution_time_ms: Option<i64>,
+    pub sub_status_message: Option<String>, // Detailed stage progress message
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowStatusResponse {
+    pub workflow_id: String,
+    pub status: String,
+    pub progress_percentage: f32,
+    pub current_stage: String,
+    pub stage_statuses: Vec<StageStatus>,
+    pub error_message: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub total_execution_time_ms: Option<i64>,
+    pub session_id: Option<String>,
+    pub task_description: Option<String>,
+    pub project_directory: Option<String>,
+    pub excluded_paths: Option<Vec<String>>,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowResultsResponse {
+    pub workflow_id: String,
+    pub final_paths: Vec<String>,
+    pub stage_results: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -32,19 +92,7 @@ pub struct WorkflowProgress {
     pub data: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum WorkflowStage {
-    GeneratingDirTree,
-    GeneratingRegex,
-    LocalFiltering,
-    InitialPathFinder,
-    InitialPathCorrection,
-    ExtendedPathFinder,
-    ExtendedPathCorrection,
-    Completed,
-    Failed,
-}
+// WorkflowStage enum is now imported from workflow_types module
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,231 +117,12 @@ pub struct WorkflowIntermediateData {
     pub extended_corrected_paths: Vec<String>,
 }
 
-fn emit_progress_event(app_handle: &AppHandle, workflow_id: &str, stage: WorkflowStage, message: &str, data: Option<serde_json::Value>) {
-    let stage_str = serde_json::to_value(&stage)
-        .ok()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(|| format!("{:?}", stage));
-    
-    let progress = WorkflowProgress {
-        workflow_id: workflow_id.to_string(),
-        stage: stage_str,
-        status: "running".to_string(),
-        message: message.to_string(),
-        data,
-    };
-    
-    if let Err(e) = app_handle.emit("file-finder-workflow-progress", &progress) {
-        warn!("Failed to emit workflow progress event: {}", e);
-    }
-}
+// emit_progress_event function removed - WorkflowOrchestrator handles event emission
 
-#[command]
-pub async fn execute_file_finder_workflow_command(
-    args: FileFinderWorkflowArgs,
-    app_handle: AppHandle,
-) -> AppResult<FileFinderWorkflowResult> {
-    info!("Starting file finder workflow for task: {}", args.task_description.chars().take(50).collect::<String>());
-    
-    // Validate required fields
-    if args.session_id.is_empty() {
-        return Err(AppError::ValidationError("Session ID is required".to_string()));
-    }
-    
-    if args.task_description.trim().len() < 10 {
-        return Err(AppError::ValidationError("Task description must be at least 10 characters".to_string()));
-    }
-    
-    if args.project_directory.is_empty() {
-        return Err(AppError::ValidationError("Project directory is required".to_string()));
-    }
-    
-    let mut intermediate_data = WorkflowIntermediateData::default();
-    let excluded_paths = args.excluded_paths.unwrap_or_default();
-    let workflow_id = format!("workflow_{}", args.session_id);
-    
-    // Stage 1: Generate directory tree
-    info!("Stage 1: Generating directory tree");
-    emit_progress_event(&app_handle, &workflow_id, WorkflowStage::GeneratingDirTree, "Generating directory tree...", None);
-    let directory_tree = match generate_directory_tree_internal(&args.project_directory).await {
-        Ok(tree) => {
-            intermediate_data.directory_tree_content = Some(tree.clone());
-            tree
-        },
-        Err(e) => {
-            error!("Failed to generate directory tree: {}", e);
-            return Ok(FileFinderWorkflowResult {
-                success: false,
-                selected_files: vec![],
-                intermediate_data,
-                error_message: Some(format!("Directory tree generation failed: {}", e)),
-            });
-        }
-    };
-    
-    // Stage 2: Generate regex patterns
-    info!("Stage 2: Generating regex patterns");
-    emit_progress_event(&app_handle, &workflow_id, WorkflowStage::GeneratingRegex, "Generating regex patterns...", None);
-    let regex_patterns = match generate_regex_patterns_internal(
-        &args.session_id,
-        &args.project_directory,
-        &args.task_description,
-        &directory_tree,
-        &app_handle
-    ).await {
-        Ok(patterns) => {
-            intermediate_data.raw_regex_patterns = Some(patterns.clone());
-            patterns
-        },
-        Err(e) => {
-            error!("Failed to generate regex patterns: {}", e);
-            return Ok(FileFinderWorkflowResult {
-                success: false,
-                selected_files: vec![],
-                intermediate_data,
-                error_message: Some(format!("Regex pattern generation failed: {}", e)),
-            });
-        }
-    };
-    
-    // Stage 3: Local filtering
-    info!("Stage 3: Performing local filtering");
-    emit_progress_event(&app_handle, &workflow_id, WorkflowStage::LocalFiltering, "Filtering files locally...", None);
-    let locally_filtered_files = match perform_local_filtering_internal(&regex_patterns, &args.project_directory).await {
-        Ok(files) => {
-            intermediate_data.locally_filtered_files = files.clone();
-            files
-        },
-        Err(e) => {
-            error!("Failed to perform local filtering: {}", e);
-            return Ok(FileFinderWorkflowResult {
-                success: false,
-                selected_files: vec![],
-                intermediate_data,
-                error_message: Some(format!("Local filtering failed: {}", e)),
-            });
-        }
-    };
-    
-    // Stage 4: Initial path finder
-    info!("Stage 4: Running initial path finder");
-    emit_progress_event(&app_handle, &workflow_id, WorkflowStage::InitialPathFinder, "Finding relevant files...", None);
-    let (initial_verified, initial_unverified) = match run_initial_path_finder_internal(
-        &args.session_id,
-        &args.project_directory,
-        &args.task_description,
-        &directory_tree,
-        &locally_filtered_files,
-        &excluded_paths,
-        &app_handle
-    ).await {
-        Ok((verified, unverified)) => {
-            intermediate_data.initial_verified_paths = verified.clone();
-            intermediate_data.initial_unverified_paths = unverified.clone();
-            (verified, unverified)
-        },
-        Err(e) => {
-            error!("Failed to run initial path finder: {}", e);
-            return Ok(FileFinderWorkflowResult {
-                success: false,
-                selected_files: vec![],
-                intermediate_data,
-                error_message: Some(format!("Initial path finder failed: {}", e)),
-            });
-        }
-    };
-    
-    let mut all_verified_paths = initial_verified.clone();
-    
-    // Stage 5: Initial path correction (if needed)
-    if !initial_unverified.is_empty() {
-        info!("Stage 5: Running initial path correction");
-        emit_progress_event(&app_handle, &workflow_id, WorkflowStage::InitialPathCorrection, "Correcting invalid paths...", None);
-        let corrected_paths = match run_path_correction_internal(
-            &args.session_id,
-            &args.project_directory,
-            &initial_unverified,
-            &args.task_description,
-            &directory_tree,
-            &app_handle
-        ).await {
-            Ok(paths) => {
-                intermediate_data.initial_corrected_paths = paths.clone();
-                paths
-            },
-            Err(e) => {
-                warn!("Initial path correction failed (continuing): {}", e);
-                vec![]
-            }
-        };
-        all_verified_paths.extend(corrected_paths);
-    }
-    
-    // Stage 6: Extended path finder
-    info!("Stage 6: Running extended path finder");
-    emit_progress_event(&app_handle, &workflow_id, WorkflowStage::ExtendedPathFinder, "Finding additional relevant files...", None);
-    let (extended_verified, extended_unverified) = match run_extended_path_finder_internal(
-        &args.session_id,
-        &args.project_directory,
-        &args.task_description,
-        &directory_tree,
-        &all_verified_paths,
-        &excluded_paths,
-        &app_handle
-    ).await {
-        Ok((verified, unverified)) => {
-            intermediate_data.extended_verified_paths = verified.clone();
-            intermediate_data.extended_unverified_paths = unverified.clone();
-            (verified, unverified)
-        },
-        Err(e) => {
-            warn!("Extended path finder failed (continuing): {}", e);
-            (vec![], vec![])
-        }
-    };
-    
-    all_verified_paths.extend(extended_verified);
-    
-    // Stage 7: Extended path correction (if needed)
-    if !extended_unverified.is_empty() {
-        info!("Stage 7: Running extended path correction");
-        emit_progress_event(&app_handle, &workflow_id, WorkflowStage::ExtendedPathCorrection, "Correcting additional paths...", None);
-        let corrected_paths = match run_path_correction_internal(
-            &args.session_id,
-            &args.project_directory,
-            &extended_unverified,
-            &args.task_description,
-            &directory_tree,
-            &app_handle
-        ).await {
-            Ok(paths) => {
-                intermediate_data.extended_corrected_paths = paths.clone();
-                paths
-            },
-            Err(e) => {
-                warn!("Extended path correction failed (continuing): {}", e);
-                vec![]
-            }
-        };
-        all_verified_paths.extend(corrected_paths);
-    }
-    
-    // Remove duplicates and return final result
-    all_verified_paths.sort();
-    all_verified_paths.dedup();
-    
-    info!("File finder workflow completed successfully with {} files", all_verified_paths.len());
-    
-    emit_progress_event(&app_handle, &workflow_id, WorkflowStage::Completed, 
-        &format!("Workflow completed successfully with {} files", all_verified_paths.len()), None);
-    
-    Ok(FileFinderWorkflowResult {
-        success: true,
-        selected_files: all_verified_paths,
-        intermediate_data,
-        error_message: None,
-    })
-}
+// NOTE: The internal workflow functions have been removed as they are now handled 
+// by individual stage processors managed by the WorkflowOrchestrator. 
+// The file finder workflow now uses a distributed approach where each stage 
+// runs as a separate background job, coordinated by the orchestrator.
 
 pub async fn generate_directory_tree_internal(project_directory: &str) -> AppResult<String> {
     let options = DirectoryTreeOptions {
@@ -323,11 +152,11 @@ pub async fn generate_regex_patterns_internal(
     let temperature = crate::config::get_temperature_for_task_with_project(TaskType::RegexPatternGeneration, project_directory, app_handle).await?;
     let max_tokens = crate::config::get_max_tokens_for_task_with_project(TaskType::RegexPatternGeneration, project_directory, app_handle).await?;
     
-    // Get settings repository for PromptComposer
+    // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Create composition context
-    let composition_context = CompositionContextBuilder::new(
+    // Create unified prompt context
+    let context = UnifiedPromptContextBuilder::new(
         session_id.to_string(),
         TaskType::RegexPatternGeneration,
         task_description.to_string(),
@@ -336,10 +165,10 @@ pub async fn generate_regex_patterns_internal(
     .codebase_structure(Some(directory_tree.to_string()))
     .build();
 
-    // Use PromptComposer to generate the complete prompt
-    let prompt_composer = PromptComposer::new();
-    let composed_prompt = prompt_composer
-        .compose_prompt(&composition_context, &settings_repo)
+    // Use UnifiedPromptProcessor to generate the complete prompt
+    let prompt_processor = UnifiedPromptProcessor::new();
+    let composed_prompt = prompt_processor
+        .compose_prompt(&context, &settings_repo)
         .await?;
 
     // Get LLM client
@@ -359,8 +188,8 @@ pub async fn generate_regex_patterns_internal(
     // Create API client options
     let api_options = ApiClientOptions {
         model: model.clone(),
-        max_tokens: Some(max_tokens),
-        temperature: Some(temperature),
+        max_tokens: max_tokens,
+        temperature: temperature,
         stream: false,
     };
     
@@ -483,11 +312,11 @@ async fn run_path_finder_internal(
     let temperature = crate::config::get_temperature_for_task_with_project(task_type, project_directory, app_handle).await?;
     let max_tokens = crate::config::get_max_tokens_for_task_with_project(task_type, project_directory, app_handle).await?;
     
-    // Get settings repository for PromptComposer
+    // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Create composition context
-    let composition_context = CompositionContextBuilder::new(
+    // Create unified prompt context
+    let context = UnifiedPromptContextBuilder::new(
         session_id.to_string(),
         task_type,
         task_description.to_string(),
@@ -496,10 +325,10 @@ async fn run_path_finder_internal(
     .codebase_structure(Some(directory_tree.to_string()))
     .build();
 
-    // Use PromptComposer to generate the complete prompt
-    let prompt_composer = PromptComposer::new();
-    let composed_prompt = prompt_composer
-        .compose_prompt(&composition_context, &settings_repo)
+    // Use UnifiedPromptProcessor to generate the complete prompt
+    let prompt_processor = UnifiedPromptProcessor::new();
+    let composed_prompt = prompt_processor
+        .compose_prompt(&context, &settings_repo)
         .await?;
 
     // Extract system and user prompts from the composed result
@@ -531,8 +360,8 @@ async fn run_path_finder_internal(
     // Create API client options
     let api_options = ApiClientOptions {
         model: model.clone(),
-        max_tokens: Some(max_tokens),
-        temperature: Some(temperature),
+        max_tokens: max_tokens,
+        temperature: temperature,
         stream: false,
     };
     
@@ -632,12 +461,12 @@ pub async fn run_path_correction_internal(
     let temperature = crate::config::get_temperature_for_task_with_project(TaskType::PathCorrection, project_directory, app_handle).await?;
     let max_tokens = crate::config::get_max_tokens_for_task_with_project(TaskType::PathCorrection, project_directory, app_handle).await?;
     
-    // Get settings repository for PromptComposer
+    // Get settings repository for UnifiedPromptProcessor
     let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     
-    // Create composition context with paths as task description
+    // Create unified prompt context with paths as task description
     let paths_description = paths_to_correct.join("\n");
-    let composition_context = CompositionContextBuilder::new(
+    let context = UnifiedPromptContextBuilder::new(
         session_id.to_string(),
         TaskType::PathCorrection,
         paths_description.clone(),
@@ -646,10 +475,10 @@ pub async fn run_path_correction_internal(
     .codebase_structure(Some(directory_tree.to_string()))
     .build();
 
-    // Use PromptComposer to generate the complete prompt
-    let prompt_composer = PromptComposer::new();
-    let composed_prompt = prompt_composer
-        .compose_prompt(&composition_context, &settings_repo)
+    // Use UnifiedPromptProcessor to generate the complete prompt
+    let prompt_processor = UnifiedPromptProcessor::new();
+    let composed_prompt = prompt_processor
+        .compose_prompt(&context, &settings_repo)
         .await?;
 
     // Extract system and user prompts from the composed result
@@ -681,8 +510,8 @@ pub async fn run_path_correction_internal(
     // Create API client options
     let api_options = ApiClientOptions {
         model: model.clone(),
-        max_tokens: Some(max_tokens),
-        temperature: Some(temperature),
+        max_tokens: max_tokens,
+        temperature: temperature,
         stream: false,
     };
     
@@ -791,3 +620,602 @@ fn parse_corrected_paths_from_xml(xml_response: &str) -> AppResult<Vec<String>> 
     
     Ok(corrected_paths)
 }
+
+/// Start a new file finder workflow using WorkflowOrchestrator
+#[command]
+pub async fn start_file_finder_workflow(
+    session_id: String,
+    task_description: String,
+    project_directory: String,
+    excluded_paths: Vec<String>,
+    timeout_ms: Option<u64>,
+    app_handle: AppHandle
+) -> Result<WorkflowCommandResponse, String> {
+    info!("Starting file finder workflow for task: {}", task_description);
+    
+    // Validate required fields
+    if session_id.is_empty() {
+        return Err("Session ID is required".to_string());
+    }
+    
+    if task_description.trim().len() < 10 {
+        return Err("Task description must be at least 10 characters".to_string());
+    }
+    
+    if project_directory.is_empty() {
+        return Err("Project directory is required".to_string());
+    }
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Start the workflow via the orchestrator using the FileFinderWorkflow definition
+    let workflow_id = orchestrator.start_workflow(
+        "FileFinderWorkflow".to_string(),
+        session_id,
+        task_description,
+        project_directory,
+        excluded_paths,
+        timeout_ms
+    ).await.map_err(|e| format!("Failed to start workflow: {}", e))?;
+    
+    info!("Started file finder workflow: {}", workflow_id);
+    
+    Ok(WorkflowCommandResponse {
+        workflow_id: workflow_id.clone(),
+        first_stage_job_id: "N/A".to_string(), // Orchestrator manages job IDs internally
+        status: "started".to_string(),
+    })
+}
+
+/// Get workflow status and progress using WorkflowOrchestrator
+#[command]
+pub async fn get_file_finder_workflow_status(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<WorkflowStatusResponse, String> {
+    info!("Getting workflow status for: {}", workflow_id);
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Get workflow state from orchestrator
+    let workflow_state = orchestrator.get_workflow_status(&workflow_id).await
+        .map_err(|e| format!("Failed to get workflow status: {}", e))?;
+    
+    // Convert workflow state to response format
+    let mut stage_statuses = Vec::new();
+    let all_stages = WorkflowStage::all_stages();
+    
+    for stage in &all_stages {
+        let stage_job = workflow_state.get_stage_job_by_stage(stage);
+        
+        let stage_status = if let Some(job) = stage_job {
+            let progress = match job.status {
+                crate::models::JobStatus::Completed => 100.0,
+                crate::models::JobStatus::Failed => 0.0,
+                crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
+                _ => 0.0,
+            };
+            
+            StageStatus {
+                stage_name: stage.display_name().to_string(),
+                job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
+                status: job.status.to_string(),
+                progress_percentage: progress,
+                started_at: job.started_at.map(|t| t.to_string()),
+                completed_at: job.completed_at.map(|t| t.to_string()),
+                depends_on: job.depends_on.clone(),
+                created_at: Some(job.created_at.to_string()),
+                error_message: job.error_message.clone(),
+                execution_time_ms: job.completed_at.and_then(|completed| 
+                    job.started_at.map(|started| (completed - started))
+                ),
+                sub_status_message: job.sub_status_message.clone(),
+            }
+        } else {
+            StageStatus {
+                stage_name: stage.display_name().to_string(),
+                job_id: None, // No job created yet for pending stages
+                status: "pending".to_string(),
+                progress_percentage: 0.0,
+                started_at: None,
+                completed_at: None,
+                depends_on: None,
+                created_at: None,
+                error_message: None,
+                execution_time_ms: None,
+                sub_status_message: None,
+            }
+        };
+        
+        stage_statuses.push(stage_status);
+    }
+    
+    // Calculate overall progress
+    let progress = workflow_state.calculate_progress();
+    
+    // Get current stage
+    let current_stage = workflow_state.current_stage()
+        .map(|stage_job| stage_job.stage.display_name().to_string())
+        .unwrap_or_else(|| {
+            match workflow_state.status {
+                WorkflowStatus::Completed => "Completed".to_string(),
+                WorkflowStatus::Failed => "Failed".to_string(),
+                WorkflowStatus::Canceled => "Canceled".to_string(),
+                WorkflowStatus::Paused => "Paused".to_string(),
+                _ => "Unknown".to_string(),
+            }
+        });
+    
+    let status = match workflow_state.status {
+        WorkflowStatus::Running => "running".to_string(),
+        WorkflowStatus::Paused => "paused".to_string(),
+        WorkflowStatus::Completed => "completed".to_string(),
+        WorkflowStatus::Failed => "failed".to_string(),
+        WorkflowStatus::Canceled => "canceled".to_string(),
+        WorkflowStatus::Created => "created".to_string(),
+    };
+    
+    Ok(WorkflowStatusResponse {
+        workflow_id,
+        status,
+        progress_percentage: progress,
+        current_stage,
+        stage_statuses,
+        error_message: workflow_state.error_message.clone(),
+        created_at: Some(workflow_state.created_at),
+        updated_at: Some(workflow_state.updated_at),
+        completed_at: workflow_state.completed_at,
+        total_execution_time_ms: workflow_state.completed_at
+            .map(|completed| completed - workflow_state.created_at),
+        session_id: Some(workflow_state.session_id.clone()),
+        task_description: Some(workflow_state.task_description.clone()),
+        project_directory: Some(workflow_state.project_directory.clone()),
+        excluded_paths: Some(workflow_state.excluded_paths.clone()),
+        timeout_ms: workflow_state.timeout_ms,
+    })
+}
+
+/// Cancel entire workflow using WorkflowOrchestrator
+#[command]
+pub async fn cancel_file_finder_workflow(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<(), String> {
+    info!("Cancelling workflow: {}", workflow_id);
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Cancel the workflow via the orchestrator
+    orchestrator.cancel_workflow(&workflow_id).await
+        .map_err(|e| format!("Failed to cancel workflow: {}", e))?;
+    
+    info!("Successfully cancelled workflow: {}", workflow_id);
+    Ok(())
+}
+
+/// Pause a workflow - prevents new stages from starting
+#[command]
+pub async fn pause_file_finder_workflow(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<(), String> {
+    info!("Pausing workflow: {}", workflow_id);
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Pause the workflow via the orchestrator
+    orchestrator.pause_workflow(&workflow_id).await
+        .map_err(|e| format!("Failed to pause workflow: {}", e))?;
+    
+    info!("Successfully paused workflow: {}", workflow_id);
+    Ok(())
+}
+
+/// Resume a paused workflow - allows new stages to start
+#[command]
+pub async fn resume_file_finder_workflow(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<(), String> {
+    info!("Resuming workflow: {}", workflow_id);
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Resume the workflow via the orchestrator
+    orchestrator.resume_workflow(&workflow_id).await
+        .map_err(|e| format!("Failed to resume workflow: {}", e))?;
+    
+    info!("Successfully resumed workflow: {}", workflow_id);
+    Ok(())
+}
+
+/// Get final workflow results using WorkflowOrchestrator
+#[command]
+pub async fn get_file_finder_workflow_results(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<WorkflowResultsResponse, String> {
+    info!("Getting workflow results for: {}", workflow_id);
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Get workflow results from orchestrator
+    let workflow_result = orchestrator.get_workflow_results(&workflow_id).await
+        .map_err(|e| format!("Failed to get workflow results: {}", e))?;
+    
+    // Convert to response format - extract stage results from intermediate data
+    let mut stage_results = HashMap::new();
+    
+    // Extract directory tree content
+    if let Some(directory_tree) = &workflow_result.intermediate_data.directory_tree_content {
+        stage_results.insert(
+            "GeneratingDirTree".to_string(),
+            serde_json::json!({
+                "content": directory_tree,
+                "type": "directory_tree"
+            })
+        );
+    }
+    
+    // Extract regex patterns
+    if let Some(regex_patterns) = &workflow_result.intermediate_data.raw_regex_patterns {
+        stage_results.insert(
+            "GeneratingRegex".to_string(),
+            serde_json::json!({
+                "patterns": regex_patterns,
+                "type": "regex_patterns"
+            })
+        );
+    }
+    
+    // Extract locally filtered files
+    if !workflow_result.intermediate_data.locally_filtered_files.is_empty() {
+        stage_results.insert(
+            "LocalFiltering".to_string(),
+            serde_json::json!({
+                "files": workflow_result.intermediate_data.locally_filtered_files,
+                "count": workflow_result.intermediate_data.locally_filtered_files.len(),
+                "type": "filtered_files"
+            })
+        );
+    }
+    
+    // Extract initial path finder results
+    if !workflow_result.intermediate_data.initial_verified_paths.is_empty() || 
+       !workflow_result.intermediate_data.initial_unverified_paths.is_empty() {
+        stage_results.insert(
+            "InitialPathFinder".to_string(),
+            serde_json::json!({
+                "verified_paths": workflow_result.intermediate_data.initial_verified_paths,
+                "unverified_paths": workflow_result.intermediate_data.initial_unverified_paths,
+                "verified_count": workflow_result.intermediate_data.initial_verified_paths.len(),
+                "unverified_count": workflow_result.intermediate_data.initial_unverified_paths.len(),
+                "type": "path_finder_results"
+            })
+        );
+    }
+    
+    // Extract initial path correction results
+    if !workflow_result.intermediate_data.initial_corrected_paths.is_empty() {
+        stage_results.insert(
+            "InitialPathCorrection".to_string(),
+            serde_json::json!({
+                "corrected_paths": workflow_result.intermediate_data.initial_corrected_paths,
+                "count": workflow_result.intermediate_data.initial_corrected_paths.len(),
+                "type": "path_correction_results"
+            })
+        );
+    }
+    
+    // Extract extended path finder results
+    if !workflow_result.intermediate_data.extended_verified_paths.is_empty() || 
+       !workflow_result.intermediate_data.extended_unverified_paths.is_empty() {
+        stage_results.insert(
+            "ExtendedPathFinder".to_string(),
+            serde_json::json!({
+                "verified_paths": workflow_result.intermediate_data.extended_verified_paths,
+                "unverified_paths": workflow_result.intermediate_data.extended_unverified_paths,
+                "verified_count": workflow_result.intermediate_data.extended_verified_paths.len(),
+                "unverified_count": workflow_result.intermediate_data.extended_unverified_paths.len(),
+                "type": "path_finder_results"
+            })
+        );
+    }
+    
+    // Extract extended path correction results
+    if !workflow_result.intermediate_data.extended_corrected_paths.is_empty() {
+        stage_results.insert(
+            "ExtendedPathCorrection".to_string(),
+            serde_json::json!({
+                "corrected_paths": workflow_result.intermediate_data.extended_corrected_paths,
+                "count": workflow_result.intermediate_data.extended_corrected_paths.len(),
+                "type": "path_correction_results"
+            })
+        );
+    }
+    
+    Ok(WorkflowResultsResponse {
+        workflow_id,
+        final_paths: workflow_result.selected_files,
+        stage_results,
+    })
+}
+
+/// Retry a specific failed stage within a workflow
+#[command]
+pub async fn retry_workflow_stage_command(
+    workflow_id: String,
+    failed_stage_job_id: String,
+    app_handle: AppHandle
+) -> Result<String, String> {
+    info!("Retrying workflow stage for workflow {}, job {}", workflow_id, failed_stage_job_id);
+    
+    // Validate required fields
+    if workflow_id.is_empty() {
+        return Err("Workflow ID is required".to_string());
+    }
+    
+    if failed_stage_job_id.is_empty() {
+        return Err("Failed stage job ID is required".to_string());
+    }
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Get the workflow error handler
+    let error_handler = crate::jobs::workflow_error_handler::WorkflowErrorHandler::new(
+        app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone(),
+        app_handle.clone()
+    );
+    
+    // Call the retry_failed_stage method
+    let new_job_id = error_handler.retry_failed_stage(&workflow_id, &failed_stage_job_id).await
+        .map_err(|e| format!("Failed to retry workflow stage: {}", e))?;
+    
+    info!("Successfully started retry for workflow {} with new job {}", workflow_id, new_job_id);
+    Ok(new_job_id)
+}
+
+/// Get all workflows (active and recent)
+#[command]
+pub async fn get_all_workflows_command(
+    app_handle: AppHandle
+) -> Result<Vec<WorkflowStatusResponse>, String> {
+    info!("Getting all workflows");
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Get all workflow states
+    let workflow_states = orchestrator.get_all_workflow_states().await
+        .map_err(|e| format!("Failed to get all workflow states: {}", e))?;
+    
+    // Convert each workflow state to response format
+    let mut workflow_responses = Vec::new();
+    
+    for workflow_state in workflow_states {
+        // Convert workflow state to response format (similar to get_file_finder_workflow_status)
+        let mut stage_statuses = Vec::new();
+        let all_stages = WorkflowStage::all_stages();
+        
+        for stage in &all_stages {
+            let stage_job = workflow_state.get_stage_job_by_stage(stage);
+            
+            let stage_status = if let Some(job) = stage_job {
+                let progress = match job.status {
+                    crate::models::JobStatus::Completed => 100.0,
+                    crate::models::JobStatus::Failed => 0.0,
+                    crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
+                    _ => 0.0,
+                };
+                
+                StageStatus {
+                    stage_name: stage.display_name().to_string(),
+                    job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
+                    status: job.status.to_string(),
+                    progress_percentage: progress,
+                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp(t, 0).unwrap_or_default().to_rfc3339()),
+                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp(t, 0).unwrap_or_default().to_rfc3339()),
+                    depends_on: job.depends_on.clone(),
+                    created_at: Some(DateTime::<Utc>::from_timestamp(job.created_at, 0).unwrap_or_default().to_rfc3339()),
+                    error_message: job.error_message.clone(),
+                    execution_time_ms: job.completed_at.and_then(|completed| 
+                        job.started_at.map(|started| (completed - started))
+                    ),
+                    sub_status_message: job.sub_status_message.clone(),
+                }
+            } else {
+                StageStatus {
+                    stage_name: stage.display_name().to_string(),
+                    job_id: None, // No job created yet for pending stages
+                    status: "pending".to_string(),
+                    progress_percentage: 0.0,
+                    started_at: None,
+                    completed_at: None,
+                    depends_on: None,
+                    created_at: None,
+                    error_message: None,
+                    execution_time_ms: None,
+                    sub_status_message: None,
+                }
+            };
+            
+            stage_statuses.push(stage_status);
+        }
+        
+        // Calculate overall progress
+        let progress = workflow_state.calculate_progress();
+        
+        // Get current stage
+        let current_stage = workflow_state.current_stage()
+            .map(|stage_job| stage_job.stage.display_name().to_string())
+            .unwrap_or_else(|| {
+                match workflow_state.status {
+                    WorkflowStatus::Completed => "Completed".to_string(),
+                    WorkflowStatus::Failed => "Failed".to_string(),
+                    WorkflowStatus::Canceled => "Canceled".to_string(),
+                    WorkflowStatus::Paused => "Paused".to_string(),
+                    _ => "Unknown".to_string(),
+                }
+            });
+        
+        let status = match workflow_state.status {
+            WorkflowStatus::Running => "running".to_string(),
+            WorkflowStatus::Paused => "paused".to_string(),
+            WorkflowStatus::Completed => "completed".to_string(),
+            WorkflowStatus::Failed => "failed".to_string(),
+            WorkflowStatus::Canceled => "canceled".to_string(),
+            WorkflowStatus::Created => "created".to_string(),
+        };
+        
+        workflow_responses.push(WorkflowStatusResponse {
+            workflow_id: workflow_state.workflow_id.clone(),
+            status,
+            progress_percentage: progress,
+            current_stage,
+            stage_statuses,
+            error_message: workflow_state.error_message.clone(),
+            created_at: Some(workflow_state.created_at),
+            updated_at: Some(workflow_state.updated_at),
+            completed_at: workflow_state.completed_at,
+            total_execution_time_ms: workflow_state.completed_at.map(|completed| completed - workflow_state.created_at),
+            session_id: Some(workflow_state.session_id.clone()),
+            task_description: Some(workflow_state.task_description.clone()),
+            project_directory: Some(workflow_state.project_directory.clone()),
+            excluded_paths: Some(workflow_state.excluded_paths.clone()),
+            timeout_ms: workflow_state.timeout_ms,
+        });
+    }
+    
+    info!("Retrieved {} workflows", workflow_responses.len());
+    Ok(workflow_responses)
+}
+
+/// Get workflow details by ID
+#[command]
+pub async fn get_workflow_details_command(
+    workflow_id: String,
+    app_handle: AppHandle
+) -> Result<Option<WorkflowStatusResponse>, String> {
+    info!("Getting workflow details for: {}", workflow_id);
+    
+    // Get the workflow orchestrator
+    let orchestrator = get_workflow_orchestrator().await
+        .map_err(|e| format!("Failed to get workflow orchestrator: {}", e))?;
+    
+    // Get workflow state by ID
+    let workflow_state_opt = orchestrator.get_workflow_state_by_id(&workflow_id).await
+        .map_err(|e| format!("Failed to get workflow state: {}", e))?;
+    
+    if let Some(workflow_state) = workflow_state_opt {
+        // Convert workflow state to response format (reuse logic from get_file_finder_workflow_status)
+        let mut stage_statuses = Vec::new();
+        let all_stages = WorkflowStage::all_stages();
+        
+        for stage in &all_stages {
+            let stage_job = workflow_state.get_stage_job_by_stage(stage);
+            
+            let stage_status = if let Some(job) = stage_job {
+                let progress = match job.status {
+                    crate::models::JobStatus::Completed => 100.0,
+                    crate::models::JobStatus::Failed => 0.0,
+                    crate::models::JobStatus::Running | crate::models::JobStatus::ProcessingStream => 50.0,
+                    _ => 0.0,
+                };
+                
+                StageStatus {
+                    stage_name: stage.display_name().to_string(),
+                    job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
+                    status: job.status.to_string(),
+                    progress_percentage: progress,
+                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp(t, 0).unwrap_or_default().to_rfc3339()),
+                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp(t, 0).unwrap_or_default().to_rfc3339()),
+                    depends_on: job.depends_on.clone(),
+                    created_at: Some(DateTime::<Utc>::from_timestamp(job.created_at, 0).unwrap_or_default().to_rfc3339()),
+                    error_message: job.error_message.clone(),
+                    execution_time_ms: job.completed_at.and_then(|completed| 
+                        job.started_at.map(|started| (completed - started))
+                    ),
+                    sub_status_message: job.sub_status_message.clone(),
+                }
+            } else {
+                StageStatus {
+                    stage_name: stage.display_name().to_string(),
+                    job_id: None, // No job created yet for pending stages
+                    status: "pending".to_string(),
+                    progress_percentage: 0.0,
+                    started_at: None,
+                    completed_at: None,
+                    depends_on: None,
+                    created_at: None,
+                    error_message: None,
+                    execution_time_ms: None,
+                    sub_status_message: None,
+                }
+            };
+            
+            stage_statuses.push(stage_status);
+        }
+        
+        // Calculate overall progress
+        let progress = workflow_state.calculate_progress();
+        
+        // Get current stage
+        let current_stage = workflow_state.current_stage()
+            .map(|stage_job| stage_job.stage.display_name().to_string())
+            .unwrap_or_else(|| {
+                match workflow_state.status {
+                    WorkflowStatus::Completed => "Completed".to_string(),
+                    WorkflowStatus::Failed => "Failed".to_string(),
+                    WorkflowStatus::Canceled => "Canceled".to_string(),
+                    WorkflowStatus::Paused => "Paused".to_string(),
+                    _ => "Unknown".to_string(),
+                }
+            });
+        
+        let status = match workflow_state.status {
+            WorkflowStatus::Running => "running".to_string(),
+            WorkflowStatus::Paused => "paused".to_string(),
+            WorkflowStatus::Completed => "completed".to_string(),
+            WorkflowStatus::Failed => "failed".to_string(),
+            WorkflowStatus::Canceled => "canceled".to_string(),
+            WorkflowStatus::Created => "created".to_string(),
+        };
+        
+        Ok(Some(WorkflowStatusResponse {
+            workflow_id: workflow_id.clone(),
+            status,
+            progress_percentage: progress,
+            current_stage,
+            stage_statuses,
+            error_message: workflow_state.error_message.clone(),
+            created_at: Some(workflow_state.created_at),
+            updated_at: Some(workflow_state.updated_at),
+            completed_at: workflow_state.completed_at,
+            total_execution_time_ms: workflow_state.completed_at.map(|completed| completed - workflow_state.created_at),
+            session_id: Some(workflow_state.session_id.clone()),
+            task_description: Some(workflow_state.task_description.clone()),
+            project_directory: Some(workflow_state.project_directory.clone()),
+            excluded_paths: Some(workflow_state.excluded_paths.clone()),
+            timeout_ms: workflow_state.timeout_ms,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+// Legacy command removed - use the new workflow commands instead

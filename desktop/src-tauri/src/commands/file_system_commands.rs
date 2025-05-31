@@ -1,10 +1,9 @@
-use tauri::{command, AppHandle};
-use log::{info, debug, error};
+use tauri::{command, AppHandle, Manager};
+use log::info;
 use serde::{Serialize, Deserialize};
 use crate::error::{AppError, AppResult};
 use crate::utils::fs_utils;
 use crate::utils::path_utils;
-use ::dirs;
 use std::path::{Path, PathBuf};
 
 #[command]
@@ -357,6 +356,37 @@ pub async fn get_temp_dir_command() -> AppResult<String> {
 #[command]
 pub fn path_is_absolute_command(path: String) -> AppResult<bool> {
     Ok(std::path::Path::new(&path).is_absolute())
+}
+
+/// Cancel a specific stage within a workflow
+#[command]
+pub async fn cancel_workflow_stage_command(
+    workflow_id: String,
+    stage_job_id: String,
+    app_handle: AppHandle
+) -> AppResult<()> {
+    info!("Cancelling workflow stage for workflow {}, job {}", workflow_id, stage_job_id);
+    
+    // Validate required fields
+    if workflow_id.is_empty() {
+        return Err(AppError::ValidationError("Workflow ID is required".to_string()));
+    }
+    
+    if stage_job_id.is_empty() {
+        return Err(AppError::ValidationError("Stage job ID is required".to_string()));
+    }
+    
+    // Get the workflow cancellation handler
+    let cancellation_handler = crate::jobs::workflow_cancellation::WorkflowCancellationHandler::new(
+        app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>().inner().clone()
+    );
+    
+    // Cancel the individual job with propagation to dependent jobs
+    cancellation_handler.propagate_cancellation(&stage_job_id, &app_handle).await
+        .map_err(|e| AppError::JobError(format!("Failed to cancel workflow stage: {}", e)))?;
+    
+    info!("Successfully cancelled workflow stage for workflow {} job {}", workflow_id, stage_job_id);
+    Ok(())
 }
 
 

@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { Loader2, ClipboardCopy, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
 import { type BackgroundJob } from "@/types/session-types";
-import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { Progress } from "@/ui/progress";
-import { ScrollArea } from "@/ui/scroll-area";
-import { useNotification } from "@/contexts/notification-context";
+import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
-import { getStreamingProgressValue } from "../../utils";
+import { getStreamingProgressValue, getParsedMetadata } from "../../utils";
 
 interface JobDetailsResponseSectionProps {
   job: BackgroundJob;
@@ -21,14 +19,8 @@ export function JobDetailsResponseSection({
   responseContent,
 }: JobDetailsResponseSectionProps) {
   const [isResponseOpen, setIsResponseOpen] = useState(true);
-  const [showFullResponse, setShowFullResponse] = useState(false);
-  const { showNotification } = useNotification();
   
-  const PREVIEW_CHARS = 1000;
-  const isLongContent = responseContent.length > PREVIEW_CHARS;
-  const displayContent = showFullResponse || !isLongContent 
-    ? responseContent 
-    : responseContent.substring(0, PREVIEW_CHARS) + "...";
+  const parsedMetadata = getParsedMetadata(job.metadata);
 
   return (
     <Card>
@@ -39,10 +31,10 @@ export function JobDetailsResponseSection({
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2 group-hover:text-foreground/80 transition-colors">
                   {job.taskType === "implementation_plan" &&
-                  job.metadata?.showPureContent === true ? (
+                  parsedMetadata?.showPureContent === true ? (
                     <>
                       <span>Content</span>
-                      {job.status === "running" && job.metadata?.isStreaming && (
+                      {job.status === "running" && parsedMetadata?.isStreaming && (
                         <div className="flex items-center gap-1">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           <span className="text-xs">Live Updates</span>
@@ -58,26 +50,6 @@ export function JobDetailsResponseSection({
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                {job.taskType === "implementation_plan" && job.response && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void navigator.clipboard.writeText(job.response || "");
-                      showNotification({
-                        title: "Copied to clipboard",
-                        message: "Implementation plan content copied to clipboard",
-                        type: "success",
-                        duration: 2000,
-                      });
-                    }}
-                  >
-                    <ClipboardCopy className="h-3 w-3 mr-1" />
-                    Copy content
-                  </Button>
-                )}
                 {isResponseOpen ? <ChevronUp className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" /> : <ChevronDown className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />}
               </div>
             </div>
@@ -87,7 +59,7 @@ export function JobDetailsResponseSection({
         <CollapsibleContent>
           <CardContent className="pt-0">
             {/* Show progress bar for streaming jobs */}
-            {job.status === "running" && job.metadata?.isStreaming && (
+            {job.status === "running" && parsedMetadata?.isStreaming && (
               <div className="mb-3">
                 <Progress
                   value={
@@ -98,11 +70,11 @@ export function JobDetailsResponseSection({
                           job.startTime,
                           job.maxOutputTokens
                         )
-                      : job.metadata.responseLength &&
-                          job.metadata.estimatedTotalLength
+                      : parsedMetadata?.responseLength &&
+                          parsedMetadata?.estimatedTotalLength
                         ? Math.min(
-                            (job.metadata.responseLength /
-                              job.metadata.estimatedTotalLength) *
+                            (parsedMetadata.responseLength /
+                              parsedMetadata.estimatedTotalLength) *
                               100,
                             97
                           )
@@ -123,47 +95,46 @@ export function JobDetailsResponseSection({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {job.metadata.responseLength && (
+                    {parsedMetadata?.responseLength && (
                       <span>
-                        {Math.floor(job.metadata.responseLength / 1024)} KB received
+                        {Math.floor(parsedMetadata.responseLength / 1024)} KB received
                       </span>
                     )}
-                    {typeof job.metadata.streamProgress === "number" && (
-                      <span>{Math.floor(job.metadata.streamProgress)}% complete</span>
+                    {typeof parsedMetadata?.streamProgress === "number" && (
+                      <span>{Math.floor(parsedMetadata.streamProgress)}% complete</span>
                     )}
                   </div>
                 </div>
               </div>
             )}
 
-              <div>
-                <ScrollArea className={`${showFullResponse ? "max-h-[70vh]" : "max-h-[40vh]"}`}>
-                  <pre
-                    className={`whitespace-pre-wrap font-mono text-balance w-full text-foreground ${
-                      job.taskType === "implementation_plan" &&
-                      job.metadata?.showPureContent === true
-                        ? job.status === "running" && job.metadata?.isStreaming
-                          ? "text-xs p-6 bg-info/10 border border-info/30 text-info rounded-md animate-pulse"
-                          : "text-xs p-6 bg-success/15 border border-success/30 text-success rounded-md"
-                        : job.taskType === "implementation_plan"
-                          ? "text-xs p-6 bg-muted/20 rounded-md"
-                          : "text-xs"
-                    }`}
-                  >
-                    {displayContent}
-                  </pre>
-                </ScrollArea>
-                {isLongContent && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 text-xs"
-                    onClick={() => setShowFullResponse(!showFullResponse)}
-                  >
-                    {showFullResponse ? "Show Less" : "Show More"}
-                  </Button>
-                )}
-              </div>
+            <VirtualizedCodeViewer
+              content={responseContent}
+              height="60vh"
+              showCopy={true}
+              copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
+              showContentSize={true}
+              isLoading={job.status === "running" && parsedMetadata?.isStreaming}
+              placeholder="No response content available"
+              className={
+                job.taskType === "implementation_plan" &&
+                parsedMetadata?.showPureContent === true
+                  ? job.status === "running" && parsedMetadata?.isStreaming
+                    ? "border-info/60 bg-info/5"
+                    : "border-success/60 bg-success/5"
+                  : job.taskType === "path_finder" || job.taskType === "regex_pattern_generation"
+                    ? "border-border/60 bg-slate-50/50 dark:bg-slate-900/50"
+                    : undefined
+              }
+              loadingIndicator={
+                <div className="flex items-center justify-center h-full">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-info" />
+                    <span className="text-sm text-info">Streaming response...</span>
+                  </div>
+                </div>
+              }
+            />
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

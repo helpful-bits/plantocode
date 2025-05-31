@@ -69,9 +69,8 @@ pub static BINARY_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     set
 });
 
-// Job settings
-pub const DEFAULT_JOB_TIMEOUT_MS: u64 = 300000; // 5 minutes
-pub const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 300; // 5 minutes
+// Job settings - these serve as fallbacks when not configured via RuntimeAIConfig
+pub const DEFAULT_JOB_TIMEOUT_SECONDS: u64 = 300; // 5 minutes (used by dispatcher)
 pub const DEFAULT_JOB_RETRY_COUNT: u32 = 3;
 pub const DEFAULT_JOB_RETRY_DELAY_MS: u64 = 1000; // 1 second
 
@@ -92,6 +91,7 @@ pub const USE_SESSION_STORAGE: bool = cfg!(debug_assertions);
 pub const IMPLEMENTATION_PLANS_DIR_NAME: &str = "implementation_plans";
 
 // Common directories to exclude from file listing (used as fallback if git method fails)
+// This list should be comprehensive and could potentially be made configurable by user/project
 pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
     "node_modules",
     ".git",
@@ -115,16 +115,10 @@ pub static EXCLUDED_DIRS_FOR_SCAN: [&str; 20] = [
     "System"           // macOS system directory
 ];
 
-// Common message constants
-pub const PATH_FINDER_FILE_CONTENT_TRUNCATION_MESSAGE: &str = "[Content truncated due to size limits]";
-pub const PATH_FINDER_MAX_DIR_TREE_LINES: usize = 1000;  // Limit for truncating directory tree if needed
+// PathFinder truncation constants removed - full content is now sent to LLM
 
-// PathFinder settings
-pub const DEFAULT_PATH_FINDER_INCLUDE_FILE_CONTENTS: bool = true;
-pub const DEFAULT_PATH_FINDER_MAX_FILES_WITH_CONTENT: usize = 10;
-pub const PATH_FINDER_MAX_CONTENT_SIZE_PER_FILE: usize = 10000; // Max chars per file
-pub const PATH_FINDER_FILE_CONTENT_TRUNCATION_CHARS: usize = 5000; // Default truncation
-pub const PATH_FINDER_TOKEN_LIMIT_BUFFER: u32 = 500;
+// PathFinder settings removed - all settings now come from RuntimeAIConfig.pathFinderSettings
+// No fallback constants - server configuration is required
 
 // Directory and file constants
 pub const APP_DATA_DIR_NAME: &str = "com.vibe-manager.app";

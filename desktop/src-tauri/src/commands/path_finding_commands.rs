@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobCommandResponse};
 use crate::utils::job_creation_utils;
-use crate::db_utils::SessionRepository;
+use crate::db_utils::{SessionRepository, SettingsRepository};
+use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder};
 
 
 
@@ -145,7 +146,7 @@ pub async fn find_relevant_files_command(
         TaskType::PathFinder,
         "PATH_FINDER",
         &format!("Finding relevant files for task: {}", args.task_description.chars().take(50).collect::<String>()),
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(input_payload).map_err(|e| AppError::SerdeError(e.to_string()))?,
         2, // Priority
         None, // No extra metadata
@@ -261,7 +262,7 @@ pub async fn create_path_correction_job_command(
         TaskType::PathCorrection,
         "PATH_CORRECTION",
         &format!("Correcting file paths: {}", args.paths_to_correct.chars().take(50).collect::<String>()),
-        (model, temperature, max_tokens),
+        Some((model, temperature, max_tokens)),
         serde_json::to_value(payload).map_err(|e| AppError::SerdeError(e.to_string()))?,
         2, // Priority
         None, // No extra metadata
@@ -272,5 +273,126 @@ pub async fn create_path_correction_job_command(
     
     // Return the job ID
     Ok(JobCommandResponse { job_id })
+}
+
+/// Response for the estimate path finder tokens command
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenEstimateResponse {
+    pub estimated_tokens: u32,
+    pub system_prompt_tokens: u32,
+    pub user_prompt_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// Estimates the number of tokens a path finder prompt would use
+#[command]
+pub async fn estimate_path_finder_tokens_command(
+    session_id: String,
+    task_description: String,
+    project_directory: Option<String>,
+    options: Option<PathFinderOptionsArgs>,
+    directory_tree: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<TokenEstimateResponse> {
+    info!("Estimating tokens for path finder prompt");
+    
+    // Validate required fields
+    if session_id.is_empty() {
+        return Err(AppError::ValidationError("Session ID is required".to_string()));
+    }
+    
+    if task_description.is_empty() {
+        return Err(AppError::ValidationError("Task description is required".to_string()));
+    }
+    
+    // Determine project directory
+    let project_directory = if let Some(dir) = project_directory {
+        if dir.is_empty() {
+            return Err(AppError::ValidationError("Project directory cannot be empty".to_string()));
+        }
+        dir
+    } else {
+        // Try to get project directory from session
+        let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
+        
+        let session = session_repo.get_session_by_id(&session_id)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
+            .ok_or_else(|| AppError::NotFoundError(format!("Session not found: {}", session_id)))?;
+        
+        if session.project_directory.is_empty() {
+            return Err(AppError::ValidationError("Project directory not found in session".to_string()));
+        }
+        
+        session.project_directory
+    };
+    
+    // Generate directory tree if not provided
+    let directory_tree = if let Some(tree) = directory_tree {
+        tree
+    } else {
+        let path = std::path::Path::new(&project_directory);
+        if !crate::utils::fs_utils::file_exists(path).await {
+            return Err(AppError::FileSystemError(format!("Directory does not exist: {}", project_directory)));
+        }
+        
+        let tree_options = crate::utils::directory_tree::DirectoryTreeOptions::default();
+        crate::utils::directory_tree::generate_directory_tree(path, tree_options).await?
+    };
+    
+    // Read file contents for included files (if specified in options)
+    let mut file_contents_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    
+    if let Some(opts) = &options {
+        if let Some(included_files) = &opts.included_files {
+            for relative_path_str in included_files {
+                // Construct full path
+                let full_path = std::path::Path::new(&project_directory).join(relative_path_str);
+                
+                // Read file content
+                match crate::utils::fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
+                    Ok(content) => {
+                        // Add to map with relative path as key
+                        file_contents_map.insert(relative_path_str.clone(), content);
+                    },
+                    Err(e) => {
+                        // Log warning but continue with other files
+                        log::warn!("Failed to read file {}: {}", full_path.display(), e);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Get settings repository for UnifiedPromptProcessor
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    
+    // Create unified prompt context for PathFinder
+    let context = UnifiedPromptContextBuilder::new(
+        session_id.clone(),
+        TaskType::PathFinder,
+        task_description.clone(),
+    )
+    .project_directory(Some(project_directory.clone()))
+    .directory_tree(Some(directory_tree))
+    .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map) })
+    .build();
+
+    // Use UnifiedPromptProcessor to generate the complete prompt
+    let prompt_processor = UnifiedPromptProcessor::new();
+    let composed_prompt = prompt_processor
+        .compose_prompt(&context, &settings_repo)
+        .await?;
+    
+    // Estimate the number of tokens in the final prompt
+    let estimated_prompt_tokens = composed_prompt.estimated_tokens.unwrap_or(0) as u32;
+    
+    Ok(TokenEstimateResponse {
+        estimated_tokens: estimated_prompt_tokens,
+        system_prompt_tokens: 0, // The processor sends this as a single user message
+        user_prompt_tokens: estimated_prompt_tokens,
+        total_tokens: estimated_prompt_tokens,
+    })
 }
 

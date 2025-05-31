@@ -53,19 +53,6 @@ export async function listFiles(
   return response;
 }
 
-export async function listFilesWithMetadata(
-  directory: string,
-  pattern?: string,
-  includeStats?: boolean,
-  exclude?: string[]
-): Promise<NativeFileInfo[]> {
-  return tauriInvoke<NativeFileInfo[]>("list_files_command", {
-    directory,
-    pattern: pattern ?? null,
-    includeStats: includeStats ?? null,
-    exclude: exclude ?? null,
-  });
-}
 
 export async function createDirectory(
   path: string,

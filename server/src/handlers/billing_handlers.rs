@@ -8,6 +8,7 @@ use sqlx::PgPool;
 use log::{debug, error, info};
 use crate::middleware::secure_auth::UserId;
 use chrono::{DateTime, Utc, Duration};
+use bigdecimal::{BigDecimal, ToPrimitive};
 use uuid::Uuid;
 use std::collections::HashMap;
 
@@ -275,12 +276,33 @@ pub async fn get_invoice_history(
         pub has_more: bool,
     }
     
-    // For now, return a placeholder response
-    // In a full implementation, this would fetch from Stripe or a local invoice cache
+    // Get invoices from local cache/database
+    let invoice_repo = crate::db::repositories::InvoiceRepository::new(billing_service.get_db_pool());
+    
+    let limit = 50; // Default limit
+    let offset = 0; // TODO: Support pagination with query parameters
+    
+    let invoices = invoice_repo.get_by_user_id(&user_id.0, limit, offset).await?;
+    let total_count = invoice_repo.count_by_user_id(&user_id.0).await?;
+    
+    let invoice_entries: Vec<InvoiceHistoryEntry> = invoices.into_iter().map(|invoice| {
+        InvoiceHistoryEntry {
+            id: invoice.id.clone(),
+            amount: invoice.amount_due.to_f64().unwrap_or(0.0),
+            currency: invoice.currency.clone(),
+            status: invoice.status.clone(),
+            created_date: invoice.created_at.to_rfc3339(),
+            due_date: invoice.due_date.map(|d| d.to_rfc3339()),
+            paid_date: invoice.paid_at.map(|d| d.to_rfc3339()),
+            invoice_pdf: invoice.invoice_pdf_url.clone(),
+            description: invoice.description.unwrap_or_else(|| "Monthly subscription".to_string()),
+        }
+    }).collect();
+    
     let response = InvoiceHistoryResponse {
-        invoices: vec![],
-        total_count: 0,
-        has_more: false,
+        invoices: invoice_entries,
+        total_count: total_count as usize,
+        has_more: total_count > (limit + offset) as i64,
     };
     
     Ok(HttpResponse::Ok().json(response))
@@ -314,11 +336,28 @@ pub async fn get_payment_methods(
         pub has_default: bool,
     }
     
-    // For now, return a placeholder response
-    // In a full implementation, this would fetch from Stripe
+    // Get payment methods from local cache/database
+    let payment_method_repo = crate::db::repositories::PaymentMethodRepository::new(billing_service.get_db_pool());
+    
+    let payment_methods_db = payment_method_repo.get_by_user_id(&user_id.0).await?;
+    let has_default = payment_methods_db.iter().any(|pm| pm.is_default);
+    
+    let payment_method_infos: Vec<PaymentMethodInfo> = payment_methods_db.into_iter().map(|pm| {
+        PaymentMethodInfo {
+            id: pm.id.clone(),
+            type_name: pm.r#type.clone(),
+            last_four: pm.card_last_four.clone(),
+            brand: pm.card_brand.clone(),
+            exp_month: pm.card_exp_month.map(|m| m as u8),
+            exp_year: pm.card_exp_year.map(|y| y as u16),
+            is_default: pm.is_default,
+            created_date: pm.created_at.to_rfc3339(),
+        }
+    }).collect();
+    
     let response = PaymentMethodsResponse {
-        payment_methods: vec![],
-        has_default: false,
+        payment_methods: payment_method_infos,
+        has_default,
     };
     
     Ok(HttpResponse::Ok().json(response))
@@ -391,6 +430,14 @@ pub async fn stripe_webhook(
             Err(e) => return Err(AppError::InvalidArgument(format!("Invalid Stripe event JSON: {}", e))),
         };
         
+        // Get repositories for webhook processing
+        let db_pool = billing_service.get_db_pool();
+        let invoice_repo = crate::db::repositories::InvoiceRepository::new(db_pool.clone());
+        let payment_method_repo = crate::db::repositories::PaymentMethodRepository::new(db_pool.clone());
+        let user_repo = crate::db::repositories::UserRepository::new(db_pool.clone());
+        let sub_repo = crate::db::repositories::SubscriptionRepository::new(db_pool.clone());
+        let email_service = crate::services::email_notification_service::EmailNotificationService::new(db_pool.clone())?;
+
         // Handle different event types
         match event.type_.as_str() {
             "checkout.session.completed" => {
@@ -572,6 +619,136 @@ pub async fn stripe_webhook(
                                 sub_repo.update(&db_subscription).await?;
                                 info!("Marked subscription as canceled for user: {}", user.id);
                             }
+                        }
+                    }
+                }
+            },
+            "invoice.created" => {
+                info!("Invoice created: {}", event.id);
+                if let stripe::EventObject::Invoice(invoice) = event.data.object {
+                    if let Some(customer) = &invoice.customer {
+                        let customer_id = customer.id().to_string();
+                        
+                        // Find user by Stripe customer ID
+                        let users = user_repo.find_by_stripe_customer_id(&customer_id).await?;
+                        if let Some(user) = users.first() {
+                            // Create invoice record in database
+                            let invoice_record = crate::db::repositories::Invoice {
+                                id: invoice.id.to_string(),
+                                user_id: user.id,
+                                stripe_customer_id: customer_id,
+                                stripe_subscription_id: invoice.subscription.as_ref().map(|s| s.id().to_string()),
+                                amount_due: bigdecimal::BigDecimal::from_f64(invoice.amount_due as f64 / 100.0).unwrap_or_default(),
+                                amount_paid: bigdecimal::BigDecimal::from_f64(invoice.amount_paid as f64 / 100.0).unwrap_or_default(),
+                                currency: invoice.currency.to_string().to_uppercase(),
+                                status: invoice.status.as_ref().map(|s| s.as_str()).unwrap_or("unknown").to_string(),
+                                invoice_pdf_url: invoice.invoice_pdf.clone(),
+                                hosted_invoice_url: invoice.hosted_invoice_url.clone(),
+                                billing_reason: invoice.billing_reason.as_ref().map(|r| r.as_str().to_string()),
+                                description: invoice.description.clone(),
+                                period_start: invoice.period_start.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                                period_end: invoice.period_end.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                                due_date: invoice.due_date.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                                created_at: chrono::DateTime::from_timestamp(invoice.created as i64, 0).unwrap_or_default(),
+                                finalized_at: invoice.status_transitions.finalized_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                                paid_at: invoice.status_transitions.paid_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                                voided_at: invoice.status_transitions.voided_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                                updated_at: chrono::Utc::now(),
+                            };
+                            
+                            invoice_repo.create_or_update(&invoice_record).await?;
+                            
+                            // Queue invoice notification email
+                            if let Some(due_date) = invoice_record.due_date {
+                                email_service.queue_invoice_notification(
+                                    &user.id,
+                                    &user.email,
+                                    &invoice.id,
+                                    &invoice_record.amount_due,
+                                    &due_date,
+                                    &invoice_record.currency,
+                                    invoice_record.hosted_invoice_url.as_deref(),
+                                ).await?;
+                            }
+                            
+                            info!("Created invoice record for user: {}", user.id);
+                        }
+                    }
+                }
+            },
+            "invoice.payment_succeeded" => {
+                info!("Invoice payment succeeded: {}", event.id);
+                if let stripe::EventObject::Invoice(invoice) = event.data.object {
+                    invoice_repo.update_status(
+                        &invoice.id,
+                        "paid",
+                        invoice.status_transitions.paid_at.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten(),
+                        None,
+                    ).await?;
+                }
+            },
+            "invoice.payment_failed" => {
+                info!("Invoice payment failed: {}", event.id);
+                if let stripe::EventObject::Invoice(invoice) = event.data.object {
+                    if let Some(customer) = &invoice.customer {
+                        // Find user and send payment failure notification
+                        let users = user_repo.find_by_stripe_customer_id(&customer.id().to_string()).await?;
+                        if let Some(user) = users.first() {
+                            let amount = bigdecimal::BigDecimal::from_f64(invoice.amount_due as f64 / 100.0).unwrap_or_default();
+                            let retry_date = invoice.next_payment_attempt.map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()).flatten();
+                            
+                            email_service.queue_payment_failed_notification(
+                                &user.id,
+                                &user.email,
+                                &invoice.id,
+                                &amount,
+                                &invoice.currency.to_string().to_uppercase(),
+                                retry_date.as_ref(),
+                            ).await?;
+                        }
+                    }
+                }
+            },
+            "payment_method.attached" => {
+                info!("Payment method attached: {}", event.id);
+                if let stripe::EventObject::PaymentMethod(payment_method) = event.data.object {
+                    if let Some(customer) = &payment_method.customer {
+                        let customer_id = customer.id().to_string();
+                        
+                        // Find user by customer ID
+                        let users = user_repo.find_by_stripe_customer_id(&customer_id).await?;
+                        if let Some(user) = users.first() {
+                            // Create payment method record
+                            let pm_record = crate::db::repositories::PaymentMethod {
+                                id: payment_method.id.to_string(),
+                                user_id: user.id,
+                                stripe_customer_id: customer_id,
+                                r#type: payment_method.type_.as_str().to_string(),
+                                card_brand: payment_method.card.as_ref().map(|c| c.brand.as_str().to_string()),
+                                card_last_four: payment_method.card.as_ref().map(|c| c.last4.clone()),
+                                card_exp_month: payment_method.card.as_ref().map(|c| c.exp_month as i32),
+                                card_exp_year: payment_method.card.as_ref().map(|c| c.exp_year as i32),
+                                card_country: payment_method.card.as_ref().and_then(|c| c.country.clone()),
+                                card_funding: payment_method.card.as_ref().map(|c| c.funding.as_str().to_string()),
+                                is_default: false, // Will be updated if it becomes default
+                                created_at: chrono::DateTime::from_timestamp(payment_method.created as i64, 0).unwrap_or_default(),
+                                updated_at: chrono::Utc::now(),
+                            };
+                            
+                            payment_method_repo.create_or_update(&pm_record).await?;
+                            info!("Created payment method record for user: {}", user.id);
+                        }
+                    }
+                }
+            },
+            "payment_method.detached" => {
+                info!("Payment method detached: {}", event.id);
+                if let stripe::EventObject::PaymentMethod(payment_method) = event.data.object {
+                    if let Some(customer) = &payment_method.customer {
+                        let users = user_repo.find_by_stripe_customer_id(&customer.id().to_string()).await?;
+                        if let Some(user) = users.first() {
+                            payment_method_repo.delete(&payment_method.id, &user.id).await?;
+                            info!("Deleted payment method record for user: {}", user.id);
                         }
                     }
                 }

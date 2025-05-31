@@ -11,12 +11,13 @@ import {
 import { getAvailableAIModels, type ModelInfo } from "@/actions/config.actions";
 import { useProject } from "@/contexts/project-context";
 import { type TaskSettings } from "@/types";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/ui";
-import { logError, getErrorMessage } from "@/utils/error-handling";
+import { Card, CardDescription, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui";
+import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 
 import SystemSettings from "./system-settings";
 import TaskModelSettings from "./task-model-settings";
+import WorkflowSettings from "./workflow-settings";
 
 
 
@@ -37,7 +38,10 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
   useEffect(() => {
     if (!projectDirectory) return;
 
+    let isMounted = true;
+
     async function fetchProjectSettings() {
+      if (!isMounted) return;
       setIsLoading(true);
       setError(null);
 
@@ -45,10 +49,14 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
         // First refresh runtime config to ensure we have latest task configurations
         await invoke("fetch_runtime_ai_config");
         
+        if (!isMounted) return;
+        
         const [settingsResult, modelsResult] = await Promise.all([
           getModelSettingsForProject(projectDirectory),
           getAvailableAIModels(),
         ]);
+        
+        if (!isMounted) return;
         
         if (settingsResult.isSuccess && settingsResult.data) {
           setTaskSettings(settingsResult.data);
@@ -59,15 +67,12 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
         
         setAvailableModels(modelsResult || []);
       } catch (err) {
-        const errorMessage = getErrorMessage(err);
-        await logError(err, "Settings Form - Load Project Settings Failed", { projectDirectory });
+        if (!isMounted) return;
         
-        let userMessage = "Failed to load project settings";
-        if (errorMessage.includes("network")) {
-          userMessage = "Network error loading settings. Please check your connection.";
-        } else if (errorMessage.includes("permission")) {
-          userMessage = "Permission denied accessing project settings.";
-        }
+        const errorInfo = extractErrorInfo(err);
+        const userMessage = createUserFriendlyErrorMessage(errorInfo, "project settings");
+        
+        await logError(err, "SettingsForm.fetchProjectSettings", { projectDirectory });
         
         setError(userMessage);
         setTaskSettings(null);
@@ -83,11 +88,17 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
           }
         });
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
 
     void fetchProjectSettings();
+
+    return () => {
+      isMounted = false;
+    };
   }, [projectDirectory]);
 
   // Handle settings changes
@@ -117,17 +128,13 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
         setError(result.message || "Failed to save settings");
       }
     } catch (err) {
-      const errorMessage = getErrorMessage(err);
-      await logError(err, "Settings Form - Save Settings Failed", { projectDirectory, newSettings });
+      const errorInfo = extractErrorInfo(err);
+      const userMessage = createUserFriendlyErrorMessage(errorInfo, "settings");
       
-      let userMessage = "Failed to save settings";
-      if (errorMessage.includes("network")) {
-        userMessage = "Network error saving settings. Please check your connection and try again.";
-      } else if (errorMessage.includes("permission")) {
-        userMessage = "Permission denied saving settings. Please check your access rights.";
-      } else if (errorMessage.includes("validation")) {
-        userMessage = "Invalid settings values. Please check your configuration.";
-      }
+      await logError(err, "SettingsForm.handleSettingsChange", { 
+        projectDirectory, 
+        settingsKeys: Object.keys(newSettings)
+      });
       
       setError(userMessage);
       
@@ -163,27 +170,43 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
         {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
 
-      {taskSettings && (
-        <TaskModelSettings
-          taskSettings={taskSettings}
-          availableModels={availableModels}
-          onSettingsChange={handleSettingsChange}
-          sessionId={sessionId}
-        />
-      )}
+      <Tabs defaultValue="models" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="models">Model Settings</TabsTrigger>
+          <TabsTrigger value="workflows">Workflow Settings</TabsTrigger>
+          <TabsTrigger value="system">System Settings</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="models" className="space-y-4 mt-6">
+          {taskSettings && (
+            <TaskModelSettings
+              taskSettings={taskSettings}
+              availableModels={availableModels}
+              onSettingsChange={handleSettingsChange}
+              sessionId={sessionId}
+            />
+          )}
 
-      {!taskSettings && !isLoading && (
-        <Card className="bg-card/80 backdrop-blur-sm border shadow-soft rounded-xl">
-          <CardHeader>
-            <CardTitle>Unable to Load Settings</CardTitle>
-            <CardDescription>
-              {error || "Failed to load AI model settings from server. Please ensure the server is running and try refreshing the page."}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
-      <SystemSettings projectDirectory={projectDirectory} />
+          {!taskSettings && !isLoading && (
+            <Card className="bg-card/80 backdrop-blur-sm border border-border shadow-soft rounded-xl">
+              <CardHeader>
+                <CardTitle>Unable to Load Settings</CardTitle>
+                <CardDescription>
+                  {error || "Failed to load AI model settings from server. Please ensure the server is running and try refreshing the page."}
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="workflows" className="space-y-4 mt-6">
+          <WorkflowSettings />
+        </TabsContent>
+        
+        <TabsContent value="system" className="space-y-4 mt-6">
+          <SystemSettings projectDirectory={projectDirectory} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

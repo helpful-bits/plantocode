@@ -28,6 +28,13 @@ export interface FileManagementContextValue {
   canUndo: boolean;
   canRedo: boolean;
 
+  // New orchestrated workflow properties
+  workflowProgressPercentage?: number;
+  workflowExecutionTime?: string;
+  workflowIsCompleted?: boolean;
+  workflowCanCancel?: boolean;
+  workflowCanRetry?: boolean;
+
   setSearchTerm: (searchTerm: string) => void;
   setFilterMode: (mode: "all" | "selected") => void;
   toggleFileSelection: (filePath: string) => void;
@@ -41,6 +48,10 @@ export interface FileManagementContextValue {
   setFindFilesMode: (mode: "replace" | "extend") => void;
   undoSelection: () => void;
   redoSelection: () => void;
+
+  // New orchestrated workflow actions
+  cancelWorkflow: () => Promise<void>;
+  retryWorkflow: () => Promise<void>;
 
   getFileStateForSession: () => {
     searchTerm: string;

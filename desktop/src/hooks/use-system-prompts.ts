@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   SystemPromptResponse, 
   DefaultSystemPrompt, 
-  TaskType,
   SystemPromptDisplayData
 } from '../types/system-prompts';
+import { TaskType } from '../types/session-types';
 import {
   getSystemPrompt,
   setSystemPrompt,
@@ -46,12 +46,16 @@ export function useSystemPrompt({
   const [isCustom, setIsCustom] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!sessionId || !taskType) return;
+    if (!sessionId || !taskType) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError(null);
     
     try {
+      // Fetch both the effective prompt and custom status in parallel
       const [promptResponse, hasCustom] = await Promise.all([
         getSystemPrompt(sessionId, taskType),
         hasCustomSystemPrompt(sessionId, taskType)
@@ -62,24 +66,37 @@ export function useSystemPrompt({
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load system prompt';
       setError(errorMessage);
-      console.error('Error loading system prompt:', err);
+      console.error('Error loading system prompt:', {
+        sessionId,
+        taskType,
+        error: err
+      });
     } finally {
       setLoading(false);
     }
   }, [sessionId, taskType]);
 
   const update = useCallback(async (newPrompt: string) => {
-    if (!sessionId || !taskType) return;
+    if (!sessionId || !taskType) {
+      throw new Error('Session ID and task type are required');
+    }
     
     setLoading(true);
     setError(null);
     
     try {
       await setSystemPrompt(sessionId, taskType, newPrompt);
+      // Immediately refresh to get the updated state
       await refresh();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update system prompt';
       setError(errorMessage);
+      console.error('Error updating system prompt:', {
+        sessionId,
+        taskType,
+        promptLength: newPrompt.length,
+        error: err
+      });
       throw err;
     } finally {
       setLoading(false);
@@ -87,17 +104,25 @@ export function useSystemPrompt({
   }, [sessionId, taskType, refresh]);
 
   const reset = useCallback(async () => {
-    if (!sessionId || !taskType) return;
+    if (!sessionId || !taskType) {
+      throw new Error('Session ID and task type are required');
+    }
     
     setLoading(true);
     setError(null);
     
     try {
       await resetSystemPrompt(sessionId, taskType);
+      // Immediately refresh to get the updated state
       await refresh();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to reset system prompt';
       setError(errorMessage);
+      console.error('Error resetting system prompt:', {
+        sessionId,
+        taskType,
+        error: err
+      });
       throw err;
     } finally {
       setLoading(false);
@@ -152,7 +177,10 @@ export function useDefaultSystemPrompts(): UseDefaultSystemPromptsReturn {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load default system prompts';
       setError(errorMessage);
-      console.error('Error loading default system prompts:', err);
+      console.error('Error loading default system prompts:', {
+        error: err,
+        timestamp: new Date().toISOString()
+      });
     } finally {
       setLoading(false);
     }
@@ -202,7 +230,10 @@ export function useBatchSystemPrompts({
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!sessionId || taskTypes.length === 0) return;
+    if (!sessionId || taskTypes.length === 0) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError(null);
@@ -213,7 +244,12 @@ export function useBatchSystemPrompts({
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load system prompts';
       setError(errorMessage);
-      console.error('Error loading batch system prompts:', err);
+      console.error('Error loading batch system prompts:', {
+        sessionId,
+        taskTypes,
+        taskCount: taskTypes.length,
+        error: err
+      });
     } finally {
       setLoading(false);
     }
@@ -265,9 +301,11 @@ export function useSystemPromptDisplayData(
 
 /**
  * Utility function to get display names for task types
+ * Comprehensive mapping of all task types to user-friendly names
  */
-function getTaskTypeDisplayName(taskType: TaskType): string {
+export function getTaskTypeDisplayName(taskType: TaskType): string {
   const displayNames: Record<TaskType, string> = {
+    // Core AI tasks
     'path_finder': 'Path Finder',
     'text_improvement': 'Text Improvement',
     'guidance_generation': 'Guidance Generation',
@@ -277,10 +315,29 @@ function getTaskTypeDisplayName(taskType: TaskType): string {
     'task_enhancement': 'Task Enhancement',
     'regex_pattern_generation': 'Regex Pattern Generation',
     'regex_summary_generation': 'Regex Summary Generation',
-    'generic_llm_stream': 'Generic LLM Stream'
+    'generic_llm_stream': 'Generic LLM Stream',
+    'voice_transcription': 'Voice Transcription',
+    
+    // Workflow tasks
+    'file_finder_workflow': 'File Finder Workflow',
+    'server_proxy_transcription': 'Server Proxy Transcription',
+    'streaming': 'Streaming',
+    
+    // Workflow stage tasks
+    'directory_tree_generation': 'Directory Tree Generation',
+    'local_file_filtering': 'Local File Filtering',
+    'extended_path_finder': 'Extended Path Finder',
+    'extended_path_correction': 'Extended Path Correction',
+    'initial_path_finding': 'Initial Path Finding',
+    'extended_path_finding': 'Extended Path Finding',
+    'initial_path_correction': 'Initial Path Correction',
+    'regex_generation': 'Regex Generation',
+    
+    // Fallback
+    'unknown': 'Unknown Task Type'
   };
   
-  return displayNames[taskType] || taskType;
+  return displayNames[taskType] || taskType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
 /**

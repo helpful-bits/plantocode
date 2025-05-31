@@ -1,5 +1,33 @@
 import * as tauriFs from "@/utils/tauri-fs";
 
+/**
+ * Validates if a string is a reasonable path candidate
+ * More sophisticated than just checking for spaces - allows quoted paths or paths with reasonable space usage
+ */
+function isValidPathCandidate(pathStr: string): boolean {
+  const trimmed = pathStr.trim();
+  
+  // Allow paths that are quoted (common in AI responses)
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || 
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return true;
+  }
+  
+  // Allow paths without spaces (original behavior)
+  if (!trimmed.includes(" ")) {
+    return true;
+  }
+  
+  // For paths with spaces, be more restrictive:
+  // - Must have a reasonable file extension
+  // - Should not have multiple consecutive spaces
+  // - Should not start or end with space (already trimmed, but double-check)
+  const hasReasonableExtension = /\.[a-zA-Z0-9]{1,10}$/.test(trimmed);
+  const hasMultipleSpaces = /\s{2,}/.test(trimmed);
+  const startsOrEndsWithSpace = trimmed !== trimmed.trim();
+  
+  return hasReasonableExtension && !hasMultipleSpaces && !startsOrEndsWithSpace;
+}
 
 /**
  * Canonical path normalizer - standard function for all file system operations
@@ -13,6 +41,12 @@ export async function normalizePath(inputPath: string): Promise<string> {
 /**
  * Make a path relative to a base directory
  * For display purposes, the base directory is usually the project root
+ * 
+ * This function handles various edge cases:
+ * - Ensures both paths are normalized before comparison
+ * - Handles trailing slash differences robustly
+ * - Returns "." for paths that are the same as the base
+ * - Gracefully handles paths that are not descendants of the base
  */
 export async function makePathRelative(
   absolutePath: string,
@@ -24,19 +58,23 @@ export async function makePathRelative(
   const normalizedBase = await normalizePath(baseDirectory);
   const normalizedPath = await normalizePath(absolutePath);
 
-  // Skip if base is not a prefix of the path (allowing trailing slash differences)
+  // Handle exact match case
+  if (normalizedPath === normalizedBase) {
+    return ".";
+  }
+
+  // Ensure base path has a trailing slash for consistent prefix checking
+  // This prevents false positives like "/home/user" matching "/home/username"
   const baseWithTrailingSlash = normalizedBase.endsWith("/")
     ? normalizedBase
     : `${normalizedBase}/`;
 
-  if (normalizedPath === normalizedBase) {
-    return ".";
-  } else if (normalizedPath.startsWith(baseWithTrailingSlash)) {
+  // Check if the path is a descendant of the base
+  if (normalizedPath.startsWith(baseWithTrailingSlash)) {
     return normalizedPath.slice(baseWithTrailingSlash.length);
-  } else if (normalizedPath.startsWith(normalizedBase + "/")) {
-    return normalizedPath.slice(normalizedBase.length + 1);
   }
 
+  // Path is not a descendant of the base, return the original path
   return absolutePath;
 }
 
@@ -44,20 +82,64 @@ export async function makePathRelative(
  * Creates a comparable relative path for consistent file identification
  * This ensures consistent path formatting across all file management components
  * Synchronous version for project-relative path normalization
+ * 
+ * This function:
+ * - Normalizes path separators to forward slashes
+ * - Removes leading "./", "../", or "/" prefixes
+ * - Handles multiple consecutive slashes
+ * - Removes trailing slashes (except for root)
+ * - Resolves basic "." and ".." components
+ * 
+ * NOTE: This function performs basic string manipulation for normalization.
+ * For more robust path handling, consider using the async normalizePath() 
+ * function which calls the Tauri backend, especially when dealing with
+ * complex paths, symlinks, or edge cases.
  */
 export function ensureProjectRelativePath(relativePath: string): string {
   if (!relativePath) return "";
+  
+  // Start with basic normalization
   let comparablePath = relativePath.trim().replace(/\\/g, "/");
-  // Remove leading "./" or "/"
-  if (comparablePath.startsWith("./")) {
-    comparablePath = comparablePath.substring(2);
-  } else if (comparablePath.startsWith("/")) {
-    comparablePath = comparablePath.substring(1);
+  
+  // Replace multiple consecutive slashes with single slash
+  comparablePath = comparablePath.replace(/\/+/g, "/");
+  
+  // Remove leading "./", "../", or "/" prefixes
+  while (comparablePath.startsWith("./") || comparablePath.startsWith("../") || comparablePath.startsWith("/")) {
+    if (comparablePath.startsWith("../")) {
+      comparablePath = comparablePath.substring(3);
+    } else if (comparablePath.startsWith("./")) {
+      comparablePath = comparablePath.substring(2);
+    } else if (comparablePath.startsWith("/")) {
+      comparablePath = comparablePath.substring(1);
+    }
   }
+  
+  // Simple resolution of . and .. components
+  const parts = comparablePath.split("/").filter(part => part !== "" && part !== ".");
+  const resolvedParts: string[] = [];
+  
+  for (const part of parts) {
+    if (part === "..") {
+      // Pop the last part if it exists and isn't another ".."
+      if (resolvedParts.length > 0 && resolvedParts[resolvedParts.length - 1] !== "..") {
+        resolvedParts.pop();
+      } else {
+        // Keep the ".." if we can't resolve it
+        resolvedParts.push(part);
+      }
+    } else {
+      resolvedParts.push(part);
+    }
+  }
+  
+  comparablePath = resolvedParts.join("/");
+  
   // Remove trailing slash if it's not the root itself
   if (comparablePath.endsWith("/") && comparablePath.length > 1) {
     comparablePath = comparablePath.slice(0, -1);
   }
+  
   return comparablePath;
 }
 
@@ -124,40 +206,41 @@ export async function parseFilePathsFromAIResponse(
         continue;
       }
 
-      let absolutePathToConsider: string;
-      // Check if foundPath is absolute (simple platform-agnostic check)
-      const isFoundPathAbsolute = foundPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(foundPath);
-
+      // 1. Determine if foundPath is absolute using backend logic
+      const isFoundPathAbsolute = await tauriFs.isAbsolute(foundPath);
+      
+      let processedPath: string;
+      
       if (isFoundPathAbsolute) {
-          absolutePathToConsider = await normalizePath(foundPath);
-      } else if (projectDirectory) {
-          // Join relative path with project directory
-          const joinedPath = await tauriFs.pathJoin(projectDirectory, foundPath);
-          absolutePathToConsider = await normalizePath(joinedPath);
-      } else {
-          // No project directory, normalize foundPath as is (might be relative to CWD or invalid)
-          absolutePathToConsider = await normalizePath(foundPath);
-      }
-
-      // Attempt to make it relative to the project directory
-      let projectRelativePath: string;
-      if (projectDirectory) {
+        // 2. If absolute:
+        if (projectDirectory) {
+          // If projectDirectory is provided, make it relative (this internally calls normalizePath)
           try {
-              const normalizedProjectDir = await normalizePath(projectDirectory); // Ensure base is also normalized
-              projectRelativePath = await makePathRelative(absolutePathToConsider, normalizedProjectDir);
+            processedPath = await makePathRelative(foundPath, projectDirectory);
           } catch (e) {
-              // Path is likely outside the project or cannot be made relative.
-              console.warn(`AI suggested path '${foundPath}' (resolved to '${absolutePathToConsider}') is outside project directory '${projectDirectory}' or invalid.`);
-              continue; // Skip this path
+            // Path is outside project, skip this path
+            console.warn(`AI suggested path '${foundPath}' is outside project directory '${projectDirectory}' or invalid.`);
+            continue;
           }
+        } else {
+          // If projectDirectory is not provided, normalize it (it will remain absolute)
+          processedPath = await normalizePath(foundPath);
+        }
       } else {
-          // No project directory to make it relative to; use the normalized (potentially absolute) path.
-          // This case should be rare if projectDirectory is usually available.
-          projectRelativePath = absolutePathToConsider;
+        // 3. If relative:
+        if (projectDirectory) {
+          // Join it with project directory, normalize, then make relative again
+          const absPath = await tauriFs.pathJoin(projectDirectory, foundPath);
+          const normalizedAbsPath = await normalizePath(absPath);
+          processedPath = await makePathRelative(normalizedAbsPath, projectDirectory);
+        } else {
+          // If projectDirectory is not provided, normalize it (it will remain relative to CWD)
+          processedPath = await normalizePath(foundPath);
+        }
       }
       
-      // Ensure consistent relative path format (e.g., no leading './') using the existing utility
-      const finalComparablePath = ensureProjectRelativePath(projectRelativePath);
+      // 4. Apply final consistent formatting
+      const finalComparablePath = ensureProjectRelativePath(processedPath);
 
       if (!paths.includes(finalComparablePath)) {
         paths.push(finalComparablePath);
@@ -178,38 +261,44 @@ export async function parseFilePathsFromAIResponse(
       if (
         numberedMatch &&
         numberedMatch[1].includes(".") &&
-        !numberedMatch[1].includes(" ") &&
-        numberedMatch[1].length > 3
+        numberedMatch[1].length > 3 &&
+        isValidPathCandidate(numberedMatch[1])
       ) {
-        const extractedPath = numberedMatch[1].trim();
+        let extractedPath = numberedMatch[1].trim();
+        // Remove quotes if present
+        if ((extractedPath.startsWith('"') && extractedPath.endsWith('"')) ||
+            (extractedPath.startsWith("'") && extractedPath.endsWith("'"))) {
+          extractedPath = extractedPath.slice(1, -1);
+        }
         // Skip if it looks like a version number or URL
         if (!/^\d+\.\d+/.test(extractedPath) && !extractedPath.includes("http")) {
-          let absolutePathToConsider: string;
-          const isExtractedPathAbsolute = extractedPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(extractedPath);
-
+          // Use the same simplified logic for numbered list paths
+          const isExtractedPathAbsolute = await tauriFs.isAbsolute(extractedPath);
+          
+          let processedPath: string;
+          
           if (isExtractedPathAbsolute) {
-              absolutePathToConsider = await normalizePath(extractedPath);
-          } else if (projectDirectory) {
-              const joinedPath = await tauriFs.pathJoin(projectDirectory, extractedPath);
-              absolutePathToConsider = await normalizePath(joinedPath);
-          } else {
-              absolutePathToConsider = await normalizePath(extractedPath);
-          }
-
-          let projectRelativePath: string;
-          if (projectDirectory) {
+            if (projectDirectory) {
               try {
-                  const normalizedProjectDir = await normalizePath(projectDirectory);
-                  projectRelativePath = await makePathRelative(absolutePathToConsider, normalizedProjectDir);
+                processedPath = await makePathRelative(extractedPath, projectDirectory);
               } catch (e) {
-                  console.warn(`AI suggested path '${extractedPath}' (resolved to '${absolutePathToConsider}') is outside project directory '${projectDirectory}' or invalid.`);
-                  continue;
+                console.warn(`AI suggested path '${extractedPath}' is outside project directory '${projectDirectory}' or invalid.`);
+                continue;
               }
+            } else {
+              processedPath = await normalizePath(extractedPath);
+            }
           } else {
-              projectRelativePath = absolutePathToConsider;
+            if (projectDirectory) {
+              const absPath = await tauriFs.pathJoin(projectDirectory, extractedPath);
+              const normalizedAbsPath = await normalizePath(absPath);
+              processedPath = await makePathRelative(normalizedAbsPath, projectDirectory);
+            } else {
+              processedPath = await normalizePath(extractedPath);
+            }
           }
           
-          const finalComparablePath = ensureProjectRelativePath(projectRelativePath);
+          const finalComparablePath = ensureProjectRelativePath(processedPath);
           if (!paths.includes(finalComparablePath)) {
             paths.push(finalComparablePath);
           }
@@ -222,35 +311,42 @@ export async function parseFilePathsFromAIResponse(
       if (
         bulletMatch &&
         bulletMatch[1].includes(".") &&
-        !bulletMatch[1].includes(" ")
+        isValidPathCandidate(bulletMatch[1])
       ) {
-        const extractedPath = bulletMatch[1].trim();
-        let absolutePathToConsider: string;
-        const isExtractedPathAbsolute = extractedPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(extractedPath);
-
-        if (isExtractedPathAbsolute) {
-            absolutePathToConsider = await normalizePath(extractedPath);
-        } else if (projectDirectory) {
-            const joinedPath = await tauriFs.pathJoin(projectDirectory, extractedPath);
-            absolutePathToConsider = await normalizePath(joinedPath);
-        } else {
-            absolutePathToConsider = await normalizePath(extractedPath);
-        }
-
-        let projectRelativePath: string;
-        if (projectDirectory) {
-            try {
-                const normalizedProjectDir = await normalizePath(projectDirectory);
-                projectRelativePath = await makePathRelative(absolutePathToConsider, normalizedProjectDir);
-            } catch (e) {
-                console.warn(`AI suggested path '${extractedPath}' (resolved to '${absolutePathToConsider}') is outside project directory '${projectDirectory}' or invalid.`);
-                continue;
-            }
-        } else {
-            projectRelativePath = absolutePathToConsider;
+        let extractedPath = bulletMatch[1].trim();
+        // Remove quotes if present
+        if ((extractedPath.startsWith('"') && extractedPath.endsWith('"')) ||
+            (extractedPath.startsWith("'") && extractedPath.endsWith("'"))) {
+          extractedPath = extractedPath.slice(1, -1);
         }
         
-        const finalComparablePath = ensureProjectRelativePath(projectRelativePath);
+        // Use the same simplified logic for bulleted list paths
+        const isExtractedPathAbsolute = await tauriFs.isAbsolute(extractedPath);
+        
+        let processedPath: string;
+        
+        if (isExtractedPathAbsolute) {
+          if (projectDirectory) {
+            try {
+              processedPath = await makePathRelative(extractedPath, projectDirectory);
+            } catch (e) {
+              console.warn(`AI suggested path '${extractedPath}' is outside project directory '${projectDirectory}' or invalid.`);
+              continue;
+            }
+          } else {
+            processedPath = await normalizePath(extractedPath);
+          }
+        } else {
+          if (projectDirectory) {
+            const absPath = await tauriFs.pathJoin(projectDirectory, extractedPath);
+            const normalizedAbsPath = await normalizePath(absPath);
+            processedPath = await makePathRelative(normalizedAbsPath, projectDirectory);
+          } else {
+            processedPath = await normalizePath(extractedPath);
+          }
+        }
+        
+        const finalComparablePath = ensureProjectRelativePath(processedPath);
         if (!paths.includes(finalComparablePath)) {
           paths.push(finalComparablePath);
         }

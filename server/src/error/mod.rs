@@ -18,6 +18,7 @@ pub enum AppError {
     InvalidArgument(String),
     Payment(String),
     Serialization(String),
+    LockPoisoned(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -42,6 +43,7 @@ impl fmt::Display for AppError {
             AppError::InvalidArgument(e) => write!(f, "Invalid argument: {}", e),
             AppError::Payment(e) => write!(f, "Payment error: {}", e),
             AppError::Serialization(e) => write!(f, "Serialization error: {}", e),
+            AppError::LockPoisoned(e) => write!(f, "Lock poisoned: {}", e),
         }
     }
 }
@@ -63,6 +65,7 @@ impl ResponseError for AppError {
             AppError::InvalidArgument(_) => (StatusCode::BAD_REQUEST, "invalid_argument"),
             AppError::Payment(_) => (StatusCode::PAYMENT_REQUIRED, "payment_required"),
             AppError::Serialization(_) => (StatusCode::INTERNAL_SERVER_ERROR, "serialization_error"),
+            AppError::LockPoisoned(_) => (StatusCode::INTERNAL_SERVER_ERROR, "lock_poisoned"),
         };
 
         let error_response = ErrorResponse {
@@ -88,6 +91,7 @@ impl ResponseError for AppError {
             AppError::InvalidArgument(_) => StatusCode::BAD_REQUEST,
             AppError::Payment(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::LockPoisoned(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

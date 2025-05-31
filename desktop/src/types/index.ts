@@ -18,6 +18,9 @@ export type * from "./error-types";
 // Export task settings types
 export type * from "./task-settings-types";
 
+// Export task type validation utilities
+export * from "./task-type-validation";
+
 // Export system prompt types (excluding TaskType to avoid conflict)
 export type {
   SystemPrompt,
@@ -32,7 +35,8 @@ export type {
   GetDefaultSystemPromptResponse,
   HasCustomSystemPromptResponse,
   SystemPromptDisplayData,
-  SystemPromptFormData
+  SystemPromptFormData,
+  TaskTypeSupportingSystemPrompts
 } from "./system-prompts";
 
 // Authentication types
@@ -41,6 +45,7 @@ export interface FrontendUser {
   email: string;
   name?: string | null;
   role: string;
+  sub: string;
 }
 
 export interface AuthDataResponse {

@@ -99,6 +99,25 @@
     transition: all 0.2s ease;
   }
 
+  /* Consistent spacing for content areas */
+  .content-spacing {
+    @apply space-y-6;
+  }
+
+  /* Consistent button group spacing */
+  .button-group {
+    @apply flex gap-2;
+  }
+
+  /* Standard modal and panel padding */
+  .modal-padding {
+    @apply p-6;
+  }
+
+  .panel-padding {
+    @apply p-4;
+  }
+
   /* Improved focus styles - accessible but modern */
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring/70;
@@ -267,6 +286,23 @@
   .nav-actions {
     @apply flex items-center gap-2;
   }
+
+  /* Consistent error and warning state styling */
+  .error-state {
+    @apply bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4;
+  }
+
+  .warning-state {
+    @apply bg-warning-background border border-warning-border text-warning-foreground rounded-lg p-4;
+  }
+
+  .info-state {
+    @apply bg-info-background border border-info-border text-info-foreground rounded-lg p-4;
+  }
+
+  .success-state {
+    @apply bg-success-background border border-success-border text-success-foreground rounded-lg p-4;
+  }
 }
 
 @layer base {
@@ -373,9 +409,6 @@
     --color-chart-5: oklch(0.72 0.18 345);
   }
 
-  * {
-    @apply border-border;
-  }
   
   html {
     @apply bg-background;

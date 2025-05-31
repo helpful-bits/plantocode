@@ -5,7 +5,6 @@ import { DatabaseErrorHandler } from "@/ui";
 
 import { BackgroundJobsSidebar, Navigation } from "../client-components";
 
-import { Suspense } from "react";
 import type { ReactNode } from "react";
 
 /**
@@ -19,30 +18,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       {/* Background jobs sidebar - positioned outside flex layout */}
-      <Suspense fallback={null}>
-        <BackgroundJobsSidebar />
-      </Suspense>
+      <BackgroundJobsSidebar />
 
       {/* Main content area with dynamic margin based on sidebar state */}
       <div
         className="min-h-screen transition-all duration-300 ease-in-out min-w-0 bg-background"
-        style={{ marginLeft: "var(--sidebar-width, 320px)" }}
+        style={{ 
+          marginLeft: "var(--sidebar-width, 320px)",
+          maxWidth: "calc(100vw - var(--sidebar-width, 320px))"
+        }}
       >
           {/* Navigation spans full width */}
           <div className="w-full bg-background">
-            <Suspense
-              fallback={
-                <div className="h-16 flex items-center justify-center text-muted-foreground animate-pulse">
-                  Loading navigation...
-                </div>
-              }
-            >
-              <Navigation />
-            </Suspense>
+            <Navigation />
 
             {/* Main content with container constraints */}
-            <main className="container mx-auto px-6 pt-4 pb-8 max-w-7xl bg-background">
-              {children}
+            <main className="container mx-auto px-6 pt-4 pb-8 max-w-7xl bg-background min-w-0">
+              <div className="w-full min-w-0">
+                {children}
+              </div>
             </main>
           </div>
         </div>

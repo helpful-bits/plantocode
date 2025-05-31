@@ -16,11 +16,11 @@ use tauri::{AppHandle, Manager};
 /// # Arguments
 /// * `session_id` - The session ID to associate with this job
 /// * `project_dir` - The project directory path
-/// * `api_type_str` - The API type to use (e.g., "openrouter")
+/// * `api_type_str` - The API type to use (e.g., "openrouter", "filesystem")
 /// * `task_type_enum` - The task type enum value
 /// * `job_type_for_worker` - The job type string to include in metadata
 /// * `prompt_text` - The prompt text to include in the job
-/// * `model_settings` - A tuple of (model, temperature, max_tokens)
+/// * `model_settings` - Optional tuple of (model, temperature, max_tokens), None for local tasks
 /// * `payload_for_worker` - The serialized payload JSON to include in metadata
 /// * `priority` - The job priority (higher is more important)
 /// * `extra_metadata` - Optional additional metadata to include
@@ -34,7 +34,7 @@ pub async fn create_and_queue_background_job(
     task_type_enum: TaskType,
     job_type_for_worker: &str,
     prompt_text: &str,
-    model_settings: (String, f32, u32),
+    model_settings: Option<(String, f32, u32)>,
     payload_for_worker: Value,
     priority: i64,
     extra_metadata: Option<Value>,
@@ -49,14 +49,10 @@ pub async fn create_and_queue_background_job(
         obj.insert("backgroundJobId".to_string(), Value::String(job_id.clone()));
     }
     
-    // Serialize the payload for inclusion in metadata
-    let payload_json = serde_json::to_string(&payload_with_job_id)
-        .map_err(|e| AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?;
-    
-    // Prepare the base metadata
+    // Prepare the base metadata with payload as direct JSON object
     let mut metadata = serde_json::json!({
         "jobTypeForWorker": job_type_for_worker,
-        "jobPayloadForWorker": payload_json,
+        "jobPayloadForWorker": payload_with_job_id,
         "jobPriorityForWorker": priority,
     });
     
@@ -74,8 +70,12 @@ pub async fn create_and_queue_background_job(
     // Convert metadata to string
     let metadata_str = metadata.to_string();
     
-    // Extract model settings
-    let (model, temperature, max_tokens) = model_settings;
+    // Extract model settings (if provided)
+    let (model_used, temperature, max_output_tokens) = if let Some((model, temp, max_tokens)) = model_settings {
+        (Some(model), Some(temp), if max_tokens > 0 { Some(max_tokens as i32) } else { None })
+    } else {
+        (None, None, None)
+    };
     
     // Create the background job object
     let timestamp = get_timestamp();
@@ -99,9 +99,9 @@ pub async fn create_and_queue_background_job(
         chars_received: None,
         status_message: None,
         error_message: None,
-        model_used: Some(model),
-        max_output_tokens: if max_tokens > 0 { Some(max_tokens as i32) } else { None },
-        temperature: Some(temperature),
+        model_used,
+        max_output_tokens,
+        temperature,
         include_syntax: None,
         metadata: Some(metadata_str),
         system_prompt_id: None, // Will be set by the processor when it gets the system prompt
@@ -117,86 +117,19 @@ pub async fn create_and_queue_background_job(
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to create background job: {}", e)))?;
     
-    // Note: We now use TaskType directly instead of converting from job_type_for_worker
+    // Note: We now use the unified payload deserialization logic to handle input/processor payload conversion
     
-    // Create the appropriate JobPayload based on task type
-    let job_payload = match task_type_enum {
-        TaskType::PathFinder => {
-            let path_finder_payload: crate::jobs::types::PathFinderPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize PathFinderPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::PathFinder(path_finder_payload)
-        },
-        TaskType::ImplementationPlan => {
-            let impl_plan_payload: crate::jobs::types::ImplementationPlanPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize ImplementationPlanPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::ImplementationPlan(impl_plan_payload)
-        },
-        TaskType::GuidanceGeneration => {
-            let guidance_payload: crate::jobs::types::GuidanceGenerationPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize GuidanceGenerationPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::GuidanceGeneration(guidance_payload)
-        },
-        TaskType::PathCorrection => {
-            let path_correction_payload: crate::jobs::types::PathCorrectionPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize PathCorrectionPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::PathCorrection(path_correction_payload)
-        },
-        TaskType::TextImprovement => {
-            let text_improvement_payload: crate::jobs::types::TextImprovementPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize TextImprovementPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::TextImprovement(text_improvement_payload)
-        },
-        TaskType::TaskEnhancement => {
-            let task_enhancement_payload: crate::jobs::types::TaskEnhancementPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize TaskEnhancementPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::TaskEnhancement(task_enhancement_payload)
-        },
-        TaskType::TextCorrection => {
-            let text_correction_payload: crate::jobs::types::TextCorrectionPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize TextCorrectionPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::TextCorrection(text_correction_payload)
-        },
-        TaskType::GenericLlmStream => {
-            let generic_llm_payload: crate::jobs::types::GenericLlmStreamPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize GenericLlmStreamPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::GenericLlmStream(generic_llm_payload)
-        },
-        TaskType::VoiceTranscription => {
-            let transcription_payload: crate::jobs::types::VoiceTranscriptionPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize VoiceTranscriptionPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::VoiceTranscription(transcription_payload)
-        },
-        TaskType::RegexSummaryGeneration => {
-            let regex_summary_payload: crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::RegexSummaryGeneration(regex_summary_payload)
-        },
-        TaskType::RegexPatternGeneration => {
-            let regex_pattern_payload: crate::jobs::types::RegexPatternGenerationPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
-            crate::jobs::types::JobPayload::RegexPatternGeneration(regex_pattern_payload)
-        },
-        TaskType::VoiceTranscription => {
-            let transcription_payload: crate::jobs::types::VoiceTranscriptionPayload = 
-                serde_json::from_value(payload_with_job_id)
-                .map_err(|e| AppError::SerializationError(format!("Failed to deserialize VoiceTranscriptionPayload for VoiceTranscription: {}", e)))?;
-            crate::jobs::types::JobPayload::VoiceTranscription(transcription_payload)
-        },
-        _ => {
-            return Err(AppError::JobError(format!("Unsupported task type for job creation: {:?}", task_type_enum)));
-        }
-    };
+    // Create a temporary metadata structure to use the centralized deserialization logic
+    let temp_metadata = serde_json::json!({
+        "jobPayloadForWorker": payload_with_job_id
+    });
+    let temp_metadata_str = temp_metadata.to_string();
+    
+    // Use the centralized deserialize_job_payload function to handle input/processor payload conversion
+    let job_payload = crate::jobs::job_payload_utils::deserialize_job_payload(
+        &task_type_enum.to_string(), 
+        Some(&temp_metadata_str)
+    ).map_err(|e| AppError::SerializationError(format!("Failed to deserialize job payload for immediate dispatch: {}", e)))?;
 
     // Create a Job struct for the queue
     let job_for_queue = crate::jobs::types::Job {
@@ -207,6 +140,7 @@ pub async fn create_and_queue_background_job(
         session_id: session_id.to_string(),
         task_type_str: task_type_enum.to_string(),
         project_directory: Some(project_dir.to_string()),
+        process_after: None, // New jobs are ready for immediate processing
     };
     
     // Dispatch the job to the queue

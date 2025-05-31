@@ -26,6 +26,8 @@ export interface SystemPromptResponse {
   systemPrompt: string;
   isDefault: boolean;
   isCustom: boolean;
+  version?: string;
+  basedOnVersion?: string;
 }
 
 export interface GetSystemPromptRequest {
@@ -70,8 +72,10 @@ export interface HasCustomSystemPromptResponse {
   error?: string;
 }
 
+import type { TaskType } from './session-types';
+
 // Task types that support system prompts - using snake_case to match backend TaskType::to_string()
-export type TaskType = 
+export type TaskTypeSupportingSystemPrompts = 
   | 'path_finder'
   | 'text_improvement' 
   | 'guidance_generation'
@@ -85,7 +89,7 @@ export type TaskType =
 
 // UI-specific types
 export interface SystemPromptFormData {
-  taskType: TaskType;
+  taskType: TaskTypeSupportingSystemPrompts;
   systemPrompt: string;
   isDefault: boolean;
 }

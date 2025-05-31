@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Store } from '@tauri-apps/plugin-store';
 import { invoke } from '@tauri-apps/api/core';
 
 import LoginPage from "@/app/components/auth/login-page";
@@ -9,8 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
 import { OnboardingFlow } from "@/app/components/onboarding";
-import { APP_SETTINGS_STORE } from "@/utils/constants";
-import { logError } from "@/utils/error-handling";
+import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/utils/error-handling";
 import { useNotification } from "@/contexts/notification-context";
 import { useAuthTokenRefresher } from "@/hooks/use-auth-token-refresher";
 
@@ -62,21 +60,23 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
           if (isKeyringRequired) {
             // If keyring is required, check if onboarding has been completed
             try {
-              const settingsStore = await Promise.race([
-                Store.load(APP_SETTINGS_STORE),
+              const hasSetup = await Promise.race([
+                invoke<boolean>('is_onboarding_completed_command'),
                 new Promise<never>((_, reject) => 
-                  setTimeout(() => reject(new Error('Store load timeout')), 5000)
+                  setTimeout(() => reject(new Error('Onboarding check timeout')), 5000)
                 )
               ]);
-              const hasSetup = await settingsStore.get<boolean>('hasCompletedOnboarding');
               setIsOnboardingNeeded(!hasSetup);
             } catch (storeError) {
-              await logError(storeError, "Auth Flow - Settings Store Access Failed");
+              const errorInfo = extractErrorInfo(storeError);
+              const userMessage = createUserFriendlyErrorMessage(errorInfo, "setup preferences");
+              
+              await logError(storeError, "AuthFlowManager.checkOnboardingStatus.storeAccess");
               // If we can't access settings store, assume onboarding is needed
               setIsOnboardingNeeded(true);
               showNotification({
                 title: "Settings Access Failed",
-                message: "Unable to check setup preferences. Starting fresh setup.",
+                message: userMessage,
                 type: "warning"
               });
             }
@@ -85,31 +85,46 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
             setIsOnboardingNeeded(false);
           }
         } catch (e) {
-          await logError(e, "Auth Flow - Onboarding Status Check Failed");
+          const errorInfo = extractErrorInfo(e);
+          const userMessage = createUserFriendlyErrorMessage(errorInfo, "setup status");
+          
+          await logError(e, "AuthFlowManager.checkOnboardingStatus");
           setIsOnboardingNeeded(true); // Default to needing onboarding if check fails
           showNotification({
             title: "Setup Check Failed",
-            message: "Unable to check setup status. Starting fresh setup for security.",
+            message: userMessage,
             type: "warning"
           });
         }
       };
-      checkOnboardingStatus();
-    }, []);
+      
+      void checkOnboardingStatus();
+    }, [showNotification]);
 
     const handleOnboardingComplete = async () => {
       try {
-        const settingsStore = await Store.load(APP_SETTINGS_STORE);
-        await settingsStore.set('hasCompletedOnboarding', true);
-        await settingsStore.save();
+        await Promise.race([
+          invoke('set_onboarding_completed_command'),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Onboarding save timeout')), 5000)
+          )
+        ]);
         setIsOnboardingNeeded(false);
+        showNotification({
+          title: "Setup Complete",
+          message: "Vibe Manager is ready to use!",
+          type: "success"
+        });
       } catch (e) {
-        await logError(e, "Auth Flow - Onboarding Status Save Failed");
+        const errorInfo = extractErrorInfo(e);
+        const userMessage = createUserFriendlyErrorMessage(errorInfo, "setup preferences");
+        
+        await logError(e, "AuthFlowManager.handleOnboardingComplete");
         // Still proceed even if store fails
         setIsOnboardingNeeded(false);
         showNotification({
           title: "Setup Save Warning",
-          message: "Setup completed but preferences may not persist. This won't affect functionality.",
+          message: `${userMessage} This won't affect functionality.`,
           type: "warning"
         });
       }
@@ -130,15 +145,15 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
               )
             ]);
           } catch (err) {
-            await logError(err, "Auth Flow - Configuration Load Failed", { userId: user?.id });
-            // Show user-friendly notification for configuration failures
-            if (err instanceof Error && err.message.includes('timeout')) {
-              showNotification({
-                title: "Configuration Timeout",
-                message: "Configuration loading is taking longer than expected. Please check your connection.",
-                type: "error"
-              });
-            }
+            const errorInfo = extractErrorInfo(err);
+            const userMessage = createUserFriendlyErrorMessage(errorInfo, "configuration");
+            
+            await logError(err, "AuthFlowManager.initializeConfig", { userId: user?.id });
+            showNotification({
+              title: "Configuration Error",
+              message: userMessage,
+              type: "error"
+            });
             // We don't handle the error here because the loadConfig function
             // already updates the error state in the runtime config loader hook
           }
@@ -153,10 +168,17 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       const onboardingDone = !isOnboardingNeeded;
       const authResolved = !loading;
       const configResolved = !configLoading;
+      const hasValidUser = !!user;
+      const noConfigError = !configError;
 
-      if (onboardingDone && authResolved && configResolved && user && !configError) {
+      // Only mark initialization as complete when ALL conditions are satisfied
+      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError) {
         // All critical async operations before rendering main app are done
         setAppInitializing(false);
+      } else {
+        // If any condition is not met, ensure we're still in initializing state
+        // This handles cases where dependencies change and we need to re-initialize
+        setAppInitializing(true);
       }
     }, [
       isOnboardingNeeded,
@@ -164,8 +186,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       configLoading,
       user,
       configError,
-      setAppInitializing,
-      loadConfig
+      setAppInitializing
     ]);
 
     // Show loading screen while checking onboarding status

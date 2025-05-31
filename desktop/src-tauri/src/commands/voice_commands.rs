@@ -90,16 +90,11 @@ pub async fn create_transcription_job_command(
     
     debug!("Estimated audio duration: {}ms for {} bytes", duration_ms, audio_data.len());
     
-    // Generate a job ID
-    let job_id = format!("job_{}", Uuid::new_v4());
-    
     // Generate filename if not provided
     let filename = args.filename.unwrap_or_else(|| "audio.mp3".to_string());
     
     // Create job metadata
     let metadata = serde_json::json!({
-        "jobTypeForWorker": "VOICE_TRANSCRIPTION",
-        "jobPriorityForWorker": 1, // Higher priority for voice tasks
         "filename": filename,
     });
     
@@ -111,10 +106,6 @@ pub async fn create_transcription_job_command(
         duration_ms,
     };
     
-    // Serialize the payload for the job creation utility
-    let payload = serde_json::to_value(transcription_payload)
-        .map_err(|e| AppError::SerdeError(format!("Failed to serialize transcription payload: {}", e)))?;
-    
     // Use the job creation utility to create and queue the job
     let job_id = job_creation_utils::create_and_queue_background_job(
         &args.session_id,
@@ -123,8 +114,9 @@ pub async fn create_transcription_job_command(
         TaskType::VoiceTranscription,
         "VOICE_TRANSCRIPTION",
         &format!("Transcribe audio file: {}", filename),
-        (transcription_model, 0.0, 0), // Temperature and max tokens not relevant for transcription
-        payload,
+        Some((transcription_model, 0.0, 0)), // Temperature and max tokens not relevant for transcription
+        serde_json::to_value(transcription_payload)
+            .map_err(|e| AppError::SerializationError(format!("Failed to serialize transcription payload: {}", e)))?,
         1, // Priority
         Some(metadata), // Extra metadata
         &app_handle,

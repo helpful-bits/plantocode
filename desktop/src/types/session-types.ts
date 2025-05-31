@@ -71,6 +71,7 @@ export type ApiType = "openrouter" | "filesystem";
 
 /**
  * Task types supported by the application
+ * Updated to include orchestrated workflow stage types
  */
 export type TaskType =
   | "implementation_plan"
@@ -87,25 +88,92 @@ export type TaskType =
   | "file_finder_workflow"
   | "server_proxy_transcription"
   | "streaming"
+  
+  // New orchestrated workflow stage types
+  | "directory_tree_generation"
+  | "local_file_filtering"
+  | "extended_path_finder"
+  | "extended_path_correction"
+  | "initial_path_finding"
+  | "extended_path_finding"
+  | "initial_path_correction"
+  | "regex_generation"
+  
   | "unknown";
 
 /**
  * Interface defining structured job metadata
+ * Standardizes the structure of BackgroundJob.metadata across frontend and backend
  */
 export interface JobMetadata {
+  // Common workflow fields
+  workflowId?: string;
+  workflowStage?: string; // e.g., "DirectoryTreeGeneration", "PathFinding", "ResultProcessing"
+  jobTypeForWorker?: string; // e.g., "PATH_FINDER", "TEXT_IMPROVEMENT"
+  jobPriorityForWorker?: number;
+
+  // Streaming fields
   isStreaming?: boolean;
-  streamProgress?: number;
-  responseLength?: number;
-  estimatedTotalLength?: number;
-  sessionName?: string;
+  streamProgress?: number; // Percentage 0-100
+  responseLength?: number; // Characters received so far
+  estimatedTotalLength?: number; // Estimated total characters for progress calculation
+  lastStreamUpdateTime?: number; // Timestamp of last stream update
+  streamStartTime?: number; // Timestamp when streaming started
+
+  // Task-specific output fields
+  outputPath?: string; // For implementation plans, file outputs, etc.
+  targetField?: string; // For text improvement (e.g., "taskDescription", "titleRegex")
+  sessionName?: string; // For implementation plans and session-related tasks
+
+  // Path finder specific data
+  pathFinderData?: {
+    paths?: string[];
+    count?: number;
+    unverifiedPaths?: string[];
+    searchTerm?: string;
+    totalFound?: number;
+  };
+
+  // Regex generation specific data
+  regexData?: {
+    titleRegex?: string;
+    contentRegex?: string;
+    negativeTitleRegex?: string;
+    negativeContentRegex?: string;
+    titleRegexDescription?: string;
+    contentRegexDescription?: string;
+    negativeTitleRegexDescription?: string;
+    negativeContentRegexDescription?: string;
+    regexSummaryExplanation?: string;
+  } | Record<string, any> | string; // Legacy support for string format
+
+  // File finder workflow data
+  fileFinderWorkflowData?: {
+    stage?: string; // e.g., "tree_generation", "path_finding", "validation"
+    treeGenerated?: boolean;
+    pathsFound?: number;
+    validatedPaths?: number;
+  };
+
+  // Retry and error handling
+  retryCount?: number;
+  errors?: Array<{
+    attempt: number;
+    time: string;
+    message: string;
+  }>;
+
+  // Model and token information
+  modelUsed?: string;
+  tokensUsed?: number;
+
+  // Legacy fields (for backward compatibility)
   pathCount?: number;
   pathData?: string;
-  modelUsed?: string;
-  targetField?: string;
-  regexData?: Record<string, any> | string;
   showPureContent?: boolean;
-  lastStreamUpdateTime?: number;
-  [key: string]: unknown; // Allow additional properties
+
+  // Allow additional dynamic fields for extensibility
+  [key: string]: unknown;
 }
 
 /**
@@ -139,7 +207,7 @@ export interface BackgroundJob {
   maxOutputTokens?: number;
   temperature?: number;
   includeSyntax?: boolean;
-  metadata?: JobMetadata;
+  metadata?: JobMetadata | string | null;
   systemPromptId?: string; // ID of the system prompt used for this job
 }
 

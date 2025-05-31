@@ -1,11 +1,12 @@
 "use client";
 
-import { RefreshCw, Loader2, FileCode, Eye } from "lucide-react";
+import { RefreshCw, Loader2, FileCode, Eye, AlertTriangle, XCircle } from "lucide-react";
 import { useCallback, useState, useEffect } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
+import { useRuntimeConfig } from "@/contexts/runtime-config-context";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -20,6 +21,8 @@ import {
   Card,
 } from "@/ui/card";
 import { ScrollArea } from "@/ui/scroll-area";
+import { Alert, AlertDescription } from "@/ui/alert";
+import { AnimatedNumber } from "@/ui";
 
 import { estimateImplementationPlanTokensAction } from "@/actions/ai/implementation-plan.actions";
 import ImplementationPlanCard from "./_components/ImplementationPlanCard";
@@ -77,7 +80,11 @@ export function ImplementationPlansPanel({
   
   // Token estimation state
   const [estimatedTokens, setEstimatedTokens] = useState<number | null>(null);
+  const [previousEstimatedTokens, setPreviousEstimatedTokens] = useState<number | null>(null);
   const [isEstimatingTokens, setIsEstimatingTokens] = useState(false);
+  
+  // Runtime config for model context windows
+  const { config: runtimeConfig } = useRuntimeConfig();
 
   // Validation for create functionality
   const canCreatePlan = Boolean(
@@ -110,8 +117,10 @@ export function ImplementationPlansPanel({
         });
 
         if (result.isSuccess && result.data) {
+          setPreviousEstimatedTokens(estimatedTokens);
           setEstimatedTokens(result.data.totalTokens);
         } else {
+          setPreviousEstimatedTokens(estimatedTokens);
           setEstimatedTokens(null);
         }
       } catch (error) {
@@ -202,21 +211,54 @@ export function ImplementationPlansPanel({
 
       {/* Create Implementation Plan Section */}
       {onCreatePlan && (
-        <Card className="bg-card p-6 rounded-lg border shadow-sm mb-6">
+        <Card className="bg-card p-6 rounded-lg border border-border shadow-sm mb-6">
           <div>
             <h3 className="text-sm font-medium mb-3 text-foreground">Create New Plan</h3>
             
-            {/* Token count display */}
+            {/* Token count display with warnings */}
             {(estimatedTokens !== null || isEstimatingTokens) && (
-              <div className="mb-3 text-xs text-muted-foreground">
-                {isEstimatingTokens ? (
-                  <span className="flex items-center">
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                    Estimating tokens...
-                  </span>
-                ) : (
-                  <span>Estimated tokens: {estimatedTokens?.toLocaleString()}</span>
-                )}
+              <div className="mb-3">
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">
+                    Estimated tokens: <AnimatedNumber 
+                      value={estimatedTokens} 
+                      previousValue={previousEstimatedTokens}
+                      className="text-foreground font-medium"
+                    />
+                  </div>
+                    {estimatedTokens && runtimeConfig && (() => {
+                      // Get the model config for implementation plan task
+                      const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model || runtimeConfig.defaultLlmModelId;
+                      const modelInfo = runtimeConfig.availableModels?.find(m => m.id === implementationPlanModel);
+                      const contextWindow = modelInfo?.contextWindow;
+                      
+                      if (!contextWindow) return null;
+                      
+                      const tokenPercentage = (estimatedTokens / contextWindow) * 100;
+                      
+                      if (tokenPercentage > 100) {
+                        return (
+                          <Alert className="border-red-200 bg-red-50 text-red-800">
+                            <XCircle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              <strong>Prompt too large:</strong> {estimatedTokens.toLocaleString()} tokens exceeds the {contextWindow.toLocaleString()}-token limit for {modelInfo.name}. Please reduce the number of files or select a model with a larger context window.
+                            </AlertDescription>
+                          </Alert>
+                        );
+                      } else if (tokenPercentage > 90) {
+                        return (
+                          <Alert className="border-amber-200 bg-amber-50 text-amber-800">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              <strong>Large prompt:</strong> Using {Math.round(tokenPercentage)}% of {modelInfo.name}'s context window. Generation might be slow or fail. Consider reducing files.
+                            </AlertDescription>
+                          </Alert>
+                        );
+                      }
+                      
+                      return null;
+                    })()}
+                </div>
               </div>
             )}
             
@@ -236,7 +278,14 @@ export function ImplementationPlansPanel({
                 variant="default"
                 size="sm"
                 onClick={handleCreatePlan}
-                disabled={!canCreatePlan}
+                disabled={!canCreatePlan || (() => {
+                  // Disable if tokens exceed context window
+                  if (!estimatedTokens || !runtimeConfig) return false;
+                  const implementationPlanModel = runtimeConfig.tasks?.implementationPlan?.model || runtimeConfig.defaultLlmModelId;
+                  const modelInfo = runtimeConfig.availableModels?.find(m => m.id === implementationPlanModel);
+                  const contextWindow = modelInfo?.contextWindow;
+                  return contextWindow ? estimatedTokens > contextWindow : false;
+                })()}
                 className="flex items-center justify-center w-full h-9"
               >
                 <FileCode className="h-4 w-4 mr-2" />
@@ -298,9 +347,6 @@ export function ImplementationPlansPanel({
             if (!open) handleClosePlanContentModal();
           }}
           pollingError={pollingError}
-          onCopyContent={(text) =>
-            handleCopyToClipboard(text, planContentModal.plan.id)
-          }
           onRefreshContent={refreshJobContent}
         />
       )}

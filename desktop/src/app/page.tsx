@@ -9,6 +9,7 @@ import { useFileManagement } from "./components/generate-prompt/_contexts/file-m
 import { usePlanContext } from "./components/generate-prompt/_contexts/plan-context";
 import GeneratePromptForm from "./components/generate-prompt/generate-prompt-form";
 import { ImplementationPlansPanel } from "./components/implementation-plans-panel/implementation-plans-panel";
+import { WorkflowsPanel } from "./components/workflows-panel/WorkflowsPanel";
 
 function HomeContent() {
   const { activeSessionId, currentSession } = useSessionStateContext();
@@ -33,6 +34,11 @@ function HomeContent() {
         planCreationState={planState.planCreationState}
         onCreatePlan={planActions.handleCreateImplementationPlan}
       />
+
+      {/* Workflows Panel */}
+      <div className="mt-6">
+        <WorkflowsPanel />
+      </div>
     </div>
   );
 }

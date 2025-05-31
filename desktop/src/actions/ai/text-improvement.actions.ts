@@ -70,11 +70,11 @@ export async function improveSelectedTextAction(
     const result = await invoke<{ jobId: string }>("improve_text_command", {
       sessionId: actualSessionId,
       text,
-      projectDirectory: actualProjectDirectory || undefined,
-      modelOverride,
-      temperatureOverride,
-      maxTokensOverride,
-      targetField: targetFieldParam,
+      projectDirectory: actualProjectDirectory ?? null,
+      modelOverride: modelOverride ?? null,
+      temperatureOverride: temperatureOverride ?? null,
+      maxTokensOverride: maxTokensOverride ?? null,
+      targetField: targetFieldParam ?? null,
     });
 
     return {

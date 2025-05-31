@@ -25,23 +25,6 @@ export interface CorePromptContextActions {
   setSessionInitialized: (value: boolean) => void;
   setHasUnsavedChanges: (value: boolean) => void;
   handleInteraction: () => void;
-  getCurrentSessionState: () => {
-    projectDirectory: string;
-    taskDescription: string;
-    titleRegex: string;
-    contentRegex: string;
-    negativeTitleRegex: string;
-    negativeContentRegex: string;
-    isRegexActive: boolean;
-    searchTerm: string;
-    includedFiles: string[];
-    forceExcludedFiles: string[];
-    searchSelectedFilesOnly: boolean;
-    codebaseStructure: string;
-    createdAt: number;
-    modelUsed?: string;
-  };
-
   handleGenerateCodebase: () => Promise<void>;
 }
 

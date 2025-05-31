@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use std::sync::Arc;
+use std::time::Duration;
 use log::{debug, error, info};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 
@@ -113,11 +114,30 @@ impl Auth0OAuthService {
         }
     }
 
+    /// Helper function to get JWKS cache with timeout
+    fn get_jwks_cache(&self) -> Result<std::sync::MutexGuard<Option<(Auth0Jwks, std::time::Instant)>>, AppError> {
+        // Try to acquire lock with timeout
+        match self.jwks_cache.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                // Lock is held by another thread, wait a bit and try again
+                std::thread::sleep(Duration::from_millis(10));
+                match self.jwks_cache.try_lock() {
+                    Ok(guard) => Ok(guard),
+                    Err(_) => Err(AppError::LockPoisoned("JWKS cache lock timeout: could not acquire lock".to_string())),
+                }
+            },
+            Err(std::sync::TryLockError::Poisoned(e)) => {
+                Err(AppError::LockPoisoned(format!("JWKS cache lock poisoned: {}", e)))
+            }
+        }
+    }
+
     async fn get_jwks(&self) -> Result<Auth0Jwks, AppError> {
         let cache_ttl = std::time::Duration::from_secs(300); // 5 minutes
 
         {
-            let cache = self.jwks_cache.lock().unwrap();
+            let cache = self.get_jwks_cache()?;
             if let Some((jwks, cached_at)) = &*cache {
                 if cached_at.elapsed() < cache_ttl {
                     return Ok(jwks.clone());
@@ -138,7 +158,7 @@ impl Auth0OAuthService {
             .map_err(|e| AppError::Auth(format!("Failed to parse JWKS: {}", e)))?;
 
         {
-            let mut cache = self.jwks_cache.lock().unwrap();
+            let mut cache = self.get_jwks_cache()?;
             *cache = Some((jwks.clone(), std::time::Instant::now()));
         }
 

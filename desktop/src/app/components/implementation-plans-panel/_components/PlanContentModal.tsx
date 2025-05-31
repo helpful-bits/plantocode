@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardCopy, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import React from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
@@ -8,16 +8,15 @@ import { Alert, AlertDescription } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
-import { ScrollArea } from "@/ui/scroll-area";
+import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
-import { getStreamingProgressValue } from "../../background-jobs-sidebar/utils";
+import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pollingError?: string;
-  onCopyContent: (text: string) => void;
   onRefreshContent: (jobId: string) => Promise<void>;
 }
 
@@ -26,7 +25,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   open,
   onOpenChange,
   pollingError,
-  onCopyContent,
   onRefreshContent,
 }) => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -41,7 +39,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     plan.maxOutputTokens
   );
   const planContent = plan.response || "No content available yet";
-  const sessionName = plan.metadata?.sessionName || "Untitled Session";
+  const parsedMetadata = getParsedMetadata(plan.metadata);
+  const sessionName = parsedMetadata?.sessionName || "Untitled Session";
 
   const handleRefresh = async () => {
     if (!plan) return;
@@ -87,16 +86,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
               <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
               Refresh
             </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onCopyContent(planContent)}
-              disabled={!planContent}
-            >
-              <ClipboardCopy className="h-3.5 w-3.5 mr-1.5" />
-              Copy
-            </Button>
           </div>
         </div>
 
@@ -119,9 +108,25 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
         )}
 
         {/* Content */}
-        <ScrollArea className="flex-grow border rounded-md bg-card p-4 mt-2 relative min-h-[60vh]">
-          <pre className="whitespace-pre-wrap text-sm">{planContent}</pre>
-        </ScrollArea>
+        <VirtualizedCodeViewer
+          content={planContent}
+          height="60vh"
+          showCopy={true}
+          copyText="Copy Plan"
+          showContentSize={true}
+          isLoading={isStreaming}
+          placeholder="No implementation plan content available yet"
+          language="markdown"
+          className="mt-2"
+          loadingIndicator={
+            <div className="flex items-center justify-center h-full">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Generating implementation plan...</span>
+              </div>
+            </div>
+          }
+        />
       </DialogContent>
     </Dialog>
   );

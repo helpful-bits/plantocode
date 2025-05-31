@@ -1,16 +1,13 @@
-use std::sync::Arc;
 use futures::StreamExt;
 use log::{info, error, debug, trace};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use async_trait::async_trait;
 
-use crate::api_clients::client_trait::{ApiClient, ApiClientOptions};
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::job_helpers;
-use crate::models::{OpenRouterRequestMessage, OpenRouterContent};
-use crate::db_utils::background_job_repository::BackgroundJobRepository;
+use crate::models::TaskType;
+use crate::jobs::job_processor_utils;
 
 /// Processor for generic LLM streaming tasks
 pub struct GenericLlmStreamProcessor;
@@ -40,71 +37,24 @@ impl JobProcessor for GenericLlmStreamProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
-        // Get the API client from job processor utils
-        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
+        // Setup job processing
+        let (repo, _settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Update job status to running
-        let repo = app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+        job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
-        job_helpers::update_job_status_running(&repo, &job.id).await?;
+        // Create messages (use empty system prompt if none provided)
+        let system_prompt = payload.system_prompt.as_deref().unwrap_or("");
+        let messages = job_processor_utils::create_openrouter_messages(system_prompt, &payload.prompt_text);
         
-        // Create messages for the LLM
-        let mut messages = Vec::new();
-        
-        // Add system message if provided
-        if let Some(system_prompt) = &payload.system_prompt {
-            let system_message = OpenRouterRequestMessage {
-                role: "system".to_string(),
-                content: vec![
-                    OpenRouterContent::Text {
-                        content_type: "text".to_string(),
-                        text: system_prompt.clone(),
-                    },
-                ],
-            };
-            messages.push(system_message);
-        }
-        
-        // Add user message with the prompt
-        let user_message = OpenRouterRequestMessage {
-            role: "user".to_string(),
-            content: vec![
-                OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: payload.prompt_text.clone(),
-                },
-            ],
-        };
-        messages.push(user_message);
-        
-        // Get the model and settings from payload or project/server defaults
+        // Create API options with streaming enabled
         let project_directory = payload.project_directory.as_deref().unwrap_or("");
-        
-        let model = match &payload.model {
-            Some(m) => m.clone(),
-            None => crate::config::get_model_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await
-                .map_err(|e| AppError::ConfigError(format!("Failed to get model for GenericLlmStream task: {}. Please ensure server database is properly configured.", e)))?,
-        };
-        
-        let temperature = match payload.temperature {
-            Some(t) => t,
-            None => crate::config::get_temperature_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await
-                .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for GenericLlmStream task: {}. Please ensure server database is properly configured.", e)))?,
-        };
-        
-        let max_tokens = match payload.max_output_tokens {
-            Some(t) => t,
-            None => crate::config::get_max_tokens_for_task_with_project(crate::models::TaskType::GenericLlmStream, project_directory, &app_handle).await
-                .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for GenericLlmStream task: {}. Please ensure server database is properly configured.", e)))?,
-        };
-        
-        // Create options for the API client - ensure streaming is enabled
-        let api_options = ApiClientOptions {
-            model: model.clone(),
-            max_tokens: Some(max_tokens),
-            temperature: Some(temperature),
-            stream: true,
-        };
+        let mut api_options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::GenericLlmStream,
+            project_directory,
+            true, // Enable streaming for this processor
+            &app_handle,
+        ).await?;
         
         // Calculate approx tokens in prompt for tracking
         let prompt_text_tokens = crate::utils::token_estimator::estimate_tokens(&payload.prompt_text);
@@ -115,7 +65,13 @@ impl JobProcessor for GenericLlmStreamProcessor {
         let estimated_prompt_tokens = prompt_text_tokens + system_prompt_tokens + overhead_tokens;
         
         // Stream the response from the LLM
-        debug!("Starting LLM stream with model: {}", model);
+        debug!("Starting LLM stream with model: {}", api_options.model);
+        
+        // Clone model name before moving api_options
+        let model_name = api_options.model.clone();
+        
+        // Get the API client for streaming
+        let llm_client = job_processor_utils::get_api_client(&app_handle)?;
         
         // Combine system and user prompts for stream_complete
         let combined_prompt = format!(
@@ -130,8 +86,8 @@ impl JobProcessor for GenericLlmStreamProcessor {
                 let error_message = e.to_string();
                 error!("{}", error_message);
                 
-                // Update job status to failed
-                job_helpers::update_job_status_failed(&repo, &job.id, &error_message).await?;
+                // Finalize job failure
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message).await?;
                 
                 // Return failure result
                 return Ok(JobProcessResult::failure(job.id.to_string(), error_message));
@@ -205,14 +161,23 @@ impl JobProcessor for GenericLlmStreamProcessor {
         // Update job status to completed
         let result = if !collected_response.is_empty() {
             debug!("Stream completed successfully, updating job status");
-            job_helpers::update_job_status_completed(
-                &repo, 
-                &job.id, 
-                &collected_response, 
-                Some(estimated_prompt_tokens as i32), 
-                Some(tokens_received as i32), 
-                Some(total_tokens as i32), 
-                Some(chars_received)
+            
+            // Create usage info for finalization
+            let usage = crate::models::OpenRouterUsage {
+                prompt_tokens: estimated_prompt_tokens as u32,
+                completion_tokens: tokens_received as u32,
+                total_tokens: total_tokens as u32,
+            };
+            
+            // Finalize job success
+            job_processor_utils::finalize_job_success(
+                &job.id,
+                &repo,
+                &collected_response,
+                Some(usage),
+                &model_name,
+                "generic_stream", // No specific system prompt ID for generic streams
+                None,
             ).await?;
             
             JobProcessResult::success(job.id.to_string(), collected_response)
@@ -226,8 +191,8 @@ impl JobProcessor for GenericLlmStreamProcessor {
             let error_message = "Stream completed but no content was received".to_string();
             error!("{}", error_message);
             
-            // Update job status to failed
-            job_helpers::update_job_status_failed(&repo, &job.id, &error_message).await?;
+            // Finalize job failure
+            job_processor_utils::finalize_job_failure(&job.id, &repo, &error_message).await?;
             
             // Return failure result
             JobProcessResult::failure(job.id.to_string(), error_message)

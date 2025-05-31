@@ -28,16 +28,16 @@ pub fn init_global_key_config() -> Result<&'static KeyConfig, AppError> {
         None => {
             let config = initialize_key_config()?;
             match KEY_CONFIG.set(config) {
-                Ok(()) => Ok(KEY_CONFIG.get().unwrap()),
+                Ok(()) => get_key_config(),
                 Err(_) => {
                     // Another thread initialized the config
-                    Ok(KEY_CONFIG.get().unwrap())
+                    get_key_config()
                 }
             }
         }
     }
 }
 
-pub fn get_key_config() -> &'static KeyConfig {
-    KEY_CONFIG.get().expect("KeyConfig not initialized. Call init_global_key_config at startup.")
+pub fn get_key_config() -> Result<&'static KeyConfig, AppError> {
+    KEY_CONFIG.get().ok_or_else(|| AppError::Configuration("KeyConfig not initialized. Call init_global_key_config at startup.".to_string()))
 }

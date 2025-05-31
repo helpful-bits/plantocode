@@ -38,13 +38,6 @@ export function useTextareaResize(
     // console.log(`[useTextareaResize] Adjusted textarea height to ${textarea.style.height}, content length: ${content.length}, scrollHeight: ${scrollHeight}`);
   }, [textareaRef, minHeight, maxHeight, extraHeight]);
 
-  // Adjust height on initial mount if content is present
-  useEffect(() => {
-    if (textareaRef.current && content) {
-      adjustHeight();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
 
   // Adjust height whenever content changes
   useEffect(() => {

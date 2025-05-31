@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React from "react";
 import ProjectDirectorySelector from "../_components/project-directory-selector";
 import SessionManager from "../_components/session-manager";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
@@ -14,14 +14,7 @@ const ProjectSection = React.memo(function ProjectSection({
 }: ProjectSectionProps) {
   const {
     state: { projectDirectory },
-    actions: { getCurrentSessionState, setSessionName },
   } = useCorePromptContext();
-
-  const handleSessionNameChange = useCallback((_name: string) => {
-    // Session name changes are handled through context
-    // Prefix with underscore to indicate deliberate non-use
-  }, [setSessionName]);
-
 
   return (
     <>
@@ -30,8 +23,6 @@ const ProjectSection = React.memo(function ProjectSection({
       <div className="mt-6">
         <SessionManager
           projectDirectory={projectDirectory || ""}
-          getCurrentSessionState={getCurrentSessionState}
-          onSessionNameChange={handleSessionNameChange}
           disabled={disabled}
         />
       </div>

@@ -9,7 +9,6 @@ import {
 } from "@/contexts/session";
 
 import { useGenerateFormState } from "./use-generate-form-state";
-import { useSessionMetadata } from "./use-session-metadata";
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
 
 
@@ -44,58 +43,10 @@ export function useGeneratePromptCoreState({
     projectDirectory,
   });
 
-  // Initialize session metadata hook
-  const sessionMetadata = useSessionMetadata({
-    onInteraction: () => sessionActions.setSessionModified(true),
-    initialSessionName: currentSessionName,
-  });
 
-  // Create a function to get the current session state
-  // All fields are sourced consistently from currentSession if available, applying defaults only if currentSession itself or its properties are null/undefined
-  const getCurrentSessionState = useCallback(() => {
-    const baseState = {
-      projectDirectory: projectDirectory || "",
-      taskDescription: "",
-      titleRegex: "",
-      contentRegex: "",
-      negativeTitleRegex: "",
-      negativeContentRegex: "",
-      isRegexActive: true,
-      searchTerm: "",
-      includedFiles: [],
-      forceExcludedFiles: [],
-      searchSelectedFilesOnly: false,
-      codebaseStructure: "",
-      createdAt: Date.now(),
-      modelUsed: undefined,
-    };
-
-    if (!currentSession) {
-      return baseState;
-    }
-
-    // When currentSession exists, merge with defaults
-    return {
-      ...baseState,
-      taskDescription: currentSession.taskDescription || "",
-      titleRegex: currentSession.titleRegex || "",
-      contentRegex: currentSession.contentRegex || "",
-      negativeTitleRegex: currentSession.negativeTitleRegex || "",
-      negativeContentRegex: currentSession.negativeContentRegex || "",
-      isRegexActive: currentSession.isRegexActive ?? true,
-      searchTerm: currentSession.searchTerm || "",
-      includedFiles: currentSession.includedFiles || [],
-      forceExcludedFiles: currentSession.forceExcludedFiles || [],
-      searchSelectedFilesOnly: currentSession.searchSelectedFilesOnly ?? false,
-      codebaseStructure: currentSession.codebaseStructure || "",
-      createdAt: currentSession.createdAt || Date.now(),
-      modelUsed: currentSession.modelUsed,
-    };
-  }, [currentSession, projectDirectory]);
 
   // Complete state reset function
   const resetAllState = useCallback(() => {
-    sessionMetadata.reset();
     formState.resetFormState();
 
     // Update session context with reset state
@@ -110,14 +61,13 @@ export function useGeneratePromptCoreState({
       });
     }
   }, [
-    sessionMetadata,
-    formState,
+    formState.resetFormState,
     activeSessionId,
-    sessionActions,
+    sessionActions.updateCurrentSessionFields,
   ]);
 
   // Handler for generating a directory tree for the current project
-  const handleGenerateCodebase = async () => {
+  const handleGenerateCodebase = useCallback(async () => {
     if (!projectDirectory) {
       showNotification({
         title: "Generate Codebase",
@@ -155,12 +105,33 @@ export function useGeneratePromptCoreState({
         type: "error",
       });
     }
-  };
+  }, [projectDirectory, showNotification, activeSessionId, sessionActions.updateCurrentSessionFields]);
 
   // Simplified handler for user interaction that modifies session
   const handleInteraction = useCallback(() => {
     sessionActions.setSessionModified(true);
-  }, [sessionActions]);
+  }, [sessionActions.setSessionModified]);
+
+  // Memoized inline functions to prevent re-creation
+  const setSessionName = useCallback(
+    (name: string) => sessionActions.updateCurrentSessionFields({ name }),
+    [sessionActions.updateCurrentSessionFields]
+  );
+
+  const saveSessionState = useCallback(
+    async () => { await sessionActions.saveCurrentSession(); },
+    [sessionActions.saveCurrentSession]
+  );
+
+  const flushPendingSaves = useCallback(
+    async () => { await sessionActions.flushSaves(); return true; },
+    [sessionActions.flushSaves]
+  );
+
+  const setHasUnsavedChanges = useCallback(
+    (value: boolean) => sessionActions.setSessionModified(value),
+    [sessionActions.setSessionModified]
+  );
 
   return useMemo(
     () => ({
@@ -182,13 +153,11 @@ export function useGeneratePromptCoreState({
 
       // Action methods
       resetAllState,
-      setSessionName: sessionMetadata.setSessionName,
-      saveSessionState: () => sessionActions.saveCurrentSession(),
-      flushPendingSaves: () => sessionActions.flushSaves(),
-      getCurrentSessionState,
+      setSessionName,
+      saveSessionState,
+      flushPendingSaves,
       setSessionInitialized: formState.setSessionInitialized,
-      setHasUnsavedChanges: (value: boolean) =>
-        sessionActions.setSessionModified(value),
+      setHasUnsavedChanges,
       handleInteraction,
       handleGenerateCodebase,
     }),
@@ -200,23 +169,25 @@ export function useGeneratePromptCoreState({
       isSessionModified,
       isSessionLoading,
       
-      // Form state
+      // Form state (primitive values and stable setters)
       formState.isStateLoaded,
       formState.isRestoringSession,
       formState.sessionInitialized,
       formState.isFormSaving,
       formState.error,
       formState.projectDataLoading,
-      formState.setSessionInitialized,
+      // formState.setSessionInitialized removed - stable setter from useState
       
       // Project
       projectDirectory,
       
-      // Actions and callbacks
+      // Actions and callbacks (memoized functions)
       resetAllState,
-      sessionMetadata.setSessionName,
-      sessionActions,
-      getCurrentSessionState,
+      setSessionName,
+      saveSessionState,
+      flushPendingSaves,
+      formState.setSessionInitialized,
+      setHasUnsavedChanges,
       handleInteraction,
       handleGenerateCodebase,
     ]

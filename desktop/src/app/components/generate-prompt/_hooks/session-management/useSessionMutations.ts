@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+
 import { useNotification } from "@/contexts/notification-context";
 import {
   useSessionStateContext,
@@ -8,11 +10,10 @@ import {
 import { type Session } from "@/types/session-types";
 import { normalizePath } from "@/utils/path-utils";
 import { generateUUID } from "@/utils/string-utils";
+import { DRAFT_SESSION_ID } from "@/contexts/session/_hooks/use-session-state";
 
 interface UseSessionMutationsProps {
   projectDirectory: string | null;
-  getCurrentSessionState: () => Omit<Session, "id" | "name" | "updatedAt">;
-  onSessionNameChangeUISync: (name: string) => void;
   loadSessions: (forceRefresh?: boolean) => Promise<void>;
   setSessions: (sessions: Session[], forceUpdate?: boolean) => void;
   sessions: Session[];
@@ -28,8 +29,6 @@ interface UseSessionMutationsProps {
  */
 export function useSessionMutations({
   projectDirectory,
-  getCurrentSessionState: _getCurrentSessionState, // Keep parameter but don't use it for createSession
-  onSessionNameChangeUISync,
   loadSessions,
   setSessions,
   sessions,
@@ -62,7 +61,7 @@ export function useSessionMutations({
   /**
    * Create a new session
    */
-  const createSession = async () => {
+  const createSession = useCallback(async () => {
     if (!sessionNameInput.trim()) {
       showNotification({
         title: "Error",
@@ -93,8 +92,8 @@ export function useSessionMutations({
 
       // Creating new session
 
-      // Create fresh session data (without copying existing form state)
-      const freshSessionState = {
+      // Determine initial state for new session
+      let initialStateForNewSession: Partial<Session> = { 
         projectDirectory: normalizedProjectDir,
         taskDescription: "",
         titleRegex: "",
@@ -110,30 +109,44 @@ export function useSessionMutations({
         createdAt: Date.now(),
       };
 
+      // If current session is a draft, use its state as the base
+      if (currentSession?.id === DRAFT_SESSION_ID) {
+        initialStateForNewSession = { 
+          ...currentSession, 
+          projectDirectory: normalizedProjectDir 
+        };
+      }
+
       // Create a temporary session object for optimistic UI update
       const tempSession: Session = {
-        ...freshSessionState,
+        ...initialStateForNewSession,
         id: tempId,
         name: sessionNameInput,
+        projectDirectory: normalizedProjectDir, // Ensure projectDirectory is always defined
         updatedAt: Date.now(),
+        createdAt: Date.now(), // Add the required createdAt field
+        isRegexActive: initialStateForNewSession.isRegexActive ?? false,
+        includedFiles: initialStateForNewSession.includedFiles ?? [],
+        forceExcludedFiles: initialStateForNewSession.forceExcludedFiles ?? [],
+        searchSelectedFilesOnly: initialStateForNewSession.searchSelectedFilesOnly ?? false,
       };
 
       // Optimistic UI update - add the new session to the list immediately
       setSessions([tempSession, ...sessions], false);
 
       // Create a new session using the SessionContext
-      const sessionId = await createNewSession(sessionNameInput, freshSessionState);
+      const sessionId = await createNewSession(sessionNameInput, initialStateForNewSession);
 
       if (sessionId) {
         // Session created successfully
         // Note: createNewSession already calls onSessionNeedsReload(sessionId) 
         // which triggers loadSessionById to activate the new session
 
+        // Remove the temporary session from the optimistic update
+        setSessions(sessions.filter(s => s.id !== tempId), false);
+
         // Force refresh the session list to ensure the new session appears with correct data
         await loadSessions(true);
-
-        // Update name in UI
-        onSessionNameChangeUISync(sessionNameInput);
 
         // Clear input
         setSessionNameInput("");
@@ -160,12 +173,21 @@ export function useSessionMutations({
     } finally {
       // Loading state managed by SessionContext
     }
-  };
+  }, [
+    sessionNameInput,
+    projectDirectory,
+    sessions,
+    setSessions,
+    createNewSession,
+    loadSessions,
+    setSessionNameInput,
+    showNotification,
+  ]);
 
   /**
    * Update a session name
    */
-  const updateSessionName = async (sessionId: string) => {
+  const updateSessionName = useCallback(async (sessionId: string) => {
     // Validate sessionId
     if (!sessionId || typeof sessionId !== "string") {
       // Invalid sessionId
@@ -187,11 +209,8 @@ export function useSessionMutations({
     }
 
     try {
-      // If this is the active session, update the name in UI
+      // If this is the active session, update the session name in context
       if (sessionId === activeSessionId) {
-        onSessionNameChangeUISync(editSessionNameInput);
-
-        // Update the session name in context
         await renameActiveSession(editSessionNameInput);
       } else {
         // For non-active sessions, use the dedicated renameSession action
@@ -223,12 +242,20 @@ export function useSessionMutations({
     } finally {
       // Loading state managed by SessionContext
     }
-  };
+  }, [
+    editSessionNameInput,
+    activeSessionId,
+    renameActiveSession,
+    renameSession,
+    setEditingSessionId,
+    loadSessions,
+    showNotification,
+  ]);
 
   /**
    * Delete a session
    */
-  const deleteSession = async (sessionId: string) => {
+  const deleteSession = useCallback(async (sessionId: string) => {
     // Validate sessionId
     if (!sessionId || typeof sessionId !== "string") {
       // Invalid sessionId
@@ -249,9 +276,6 @@ export function useSessionMutations({
       // If this is the active session, use SessionContext's deleteActiveSession
       if (sessionId === activeSessionId) {
         await deleteActiveSession();
-
-        // Update parent components
-        onSessionNameChangeUISync("");
       } else {
         // Use the deleteNonActiveSession function for non-active sessions
         await deleteNonActiveSession(sessionId);
@@ -304,12 +328,19 @@ export function useSessionMutations({
     } finally {
       // Loading state managed by SessionContext
     }
-  };
+  }, [
+    deletedSessionIdsRef,
+    activeSessionId,
+    deleteActiveSession,
+    deleteNonActiveSession,
+    loadSessions,
+    showNotification,
+  ]);
 
   /**
    * Clone a session
    */
-  const cloneSession = async (session: Session) => {
+  const cloneSession = useCallback(async (session: Session) => {
     // Validate session.id
     if (!session.id || typeof session.id !== "string") {
       // Invalid session ID
@@ -367,15 +398,19 @@ export function useSessionMutations({
     } finally {
       // Loading state managed by SessionContext
     }
-  };
+  }, [createNewSession, loadSessions, showNotification]);
 
   /**
    * Load a session's details
    */
-  const loadSessionDetail = async (session: Session) => {
-    // If we're already loading or the session is already active, skip
-    if (isSessionLoading || session.id === activeSessionId) {
-      // Skip loading session - already loading or session already active
+  const loadSessionDetail = useCallback(async (session: Session) => {
+    // If we're already loading, skip
+    if (isSessionLoading) {
+      return;
+    }
+    
+    // If the session is already loaded as the current session, skip
+    if (currentSession?.id === session.id) {
       return;
     }
 
@@ -401,9 +436,6 @@ export function useSessionMutations({
 
       // Load the session directly through session context
       await loadSessionById(session.id);
-
-      // Update UI with the session name
-      onSessionNameChangeUISync(session.name);
     } catch (error) {
       // Error loading session
 
@@ -415,7 +447,15 @@ export function useSessionMutations({
     } finally {
       // Loading state managed by SessionContext
     }
-  };
+  }, [
+    isSessionLoading,
+    activeSessionId,
+    isSessionModified,
+    currentSession,
+    flushSaves,
+    loadSessionById,
+    showNotification,
+  ]);
 
   return {
     createSession,

@@ -25,9 +25,9 @@ export function LoadingScreen({
 
   // Default message based on loading type
   const defaultMessage = {
-    login: "Logging in...",
+    login: "Authenticating...",
     configuration: "Loading Configuration...",
-    initializing: "Loading Application...",
+    initializing: "Initializing Vibe Manager...",
   }[mappedLoadingType];
 
   const displayMessage = message || defaultMessage;
@@ -36,14 +36,14 @@ export function LoadingScreen({
   const getSubtext = () => {
     switch (loadingType) {
       case "configuration":
-        return "Loading configuration...";
+        return "Fetching user preferences and runtime settings...";
       case "login":
-        return "Authenticating...";
+        return "Verifying credentials and setting up session...";
       case "data":
-        return "Loading data...";
+        return "Loading application data...";
       case "initializing":
       default:
-        return "Starting Vibe Manager...";
+        return "Preparing workspace and checking system requirements...";
     }
   };
 

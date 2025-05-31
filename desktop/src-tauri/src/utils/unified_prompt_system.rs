@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use regex::Regex;
 use crate::error::{AppError, AppResult};
 use crate::models::TaskType;
 use crate::db_utils::SettingsRepository;
@@ -102,8 +103,6 @@ impl UnifiedPromptProcessor {
     ) -> AppResult<String> {
         let mut result = template.to_string();
 
-        // Process conditional sections first (from enhanced_prompt_template.rs)
-        result = self.process_conditional_sections(&result, context)?;
         
         // Substitute basic placeholders (from prompt_template_utils.rs)
         result = self.substitute_basic_placeholders(&result, context)?;
@@ -127,54 +126,25 @@ impl UnifiedPromptProcessor {
             placeholders = placeholders.with_project_context(Some(project_dir));
         }
 
-        // Convert file contents to string if available
+        // Convert file contents to XML format if available
         if let Some(ref file_contents) = context.file_contents {
-            let file_contents_xml = self.generate_file_contents_xml(file_contents);
-            placeholders = placeholders.with_file_contents(Some(&file_contents_xml));
+            let file_contents_xml = self.generate_file_contents_xml(file_contents); // This function already returns an empty string if file_contents is empty
+            if !file_contents_xml.is_empty() { // Only add if there's actual XML content
+                placeholders = placeholders.with_file_contents(Some(&file_contents_xml));
+            }
         }
 
-        // Convert directory tree if available
+        // Convert directory tree to XML format if available
         if let Some(ref tree) = context.directory_tree {
-            placeholders = placeholders.with_directory_tree(Some(tree));
+            let tree_xml = self.generate_project_structure_xml(tree); // This function already returns an empty string if tree is empty
+            if !tree_xml.is_empty() { // Only add if there's actual XML content
+                placeholders = placeholders.with_directory_tree(Some(&tree_xml));
+            }
         }
 
         Ok(placeholders)
     }
 
-    /// Process conditional sections (from enhanced_prompt_template.rs)
-    fn process_conditional_sections(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
-        let mut result = template.to_string();
-        
-        // Handle {{#if_file_contents}} sections
-        if let Some(ref file_contents) = context.file_contents {
-            if !file_contents.is_empty() {
-                let file_contents_xml = self.generate_file_contents_xml(file_contents);
-                result = result.replace("{{FILE_CONTENTS}}", &file_contents_xml);
-                result = result.replace("{{#if_file_contents}}", "");
-                result = result.replace("{{/if_file_contents}}", "");
-            } else {
-                result = self.remove_conditional_block(&result, "if_file_contents")?;
-            }
-        } else {
-            result = self.remove_conditional_block(&result, "if_file_contents")?;
-        }
-        
-        // Handle {{#if_directory_tree}} sections
-        if let Some(ref tree) = context.directory_tree {
-            if !tree.is_empty() {
-                let tree_xml = self.generate_project_structure_xml(tree);
-                result = result.replace("{{DIRECTORY_TREE}}", &tree_xml);
-                result = result.replace("{{#if_directory_tree}}", "");
-                result = result.replace("{{/if_directory_tree}}", "");
-            } else {
-                result = self.remove_conditional_block(&result, "if_directory_tree")?;
-            }
-        } else {
-            result = self.remove_conditional_block(&result, "if_directory_tree")?;
-        }
-
-        Ok(result)
-    }
 
     /// Substitute basic placeholders (from prompt_template_utils.rs)
     fn substitute_basic_placeholders(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
@@ -198,6 +168,7 @@ impl UnifiedPromptProcessor {
         let task_type_str = context.task_type.to_string();
         substitutions.insert("{{TASK_TYPE}}", &task_type_str);
         substitutions.insert("{{TASK_DESCRIPTION}}", &context.task_description);
+        substitutions.insert("{{SESSION_ID}}", &context.session_id);
         
         if let Some(ref project_dir) = context.project_directory {
             substitutions.insert("{{PROJECT_DIRECTORY}}", project_dir.as_str());
@@ -211,10 +182,43 @@ impl UnifiedPromptProcessor {
         Ok(result)
     }
 
-    /// Process rich content (from enhanced_prompt_template.rs)
+    /// Process rich content placeholders with conditional sections
     fn process_rich_content(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
-        let result = template.to_string();
-        // Rich content processing would go here if needed
+        let mut result = template.to_string();
+        
+        // Process conditional sections - remove empty placeholders
+        let empty_placeholders = vec![
+            ("{{PROJECT_CONTEXT}}", context.project_directory.is_none()),
+            ("{{FILE_CONTENTS}}", context.file_contents.as_ref().map_or(true, |fc| fc.is_empty())),
+            ("{{DIRECTORY_TREE}}", context.directory_tree.is_none()),
+            ("{{CUSTOM_INSTRUCTIONS}}", context.custom_instructions.is_none()),
+            ("{{MODEL_NAME}}", context.model_name.is_none()),
+            ("{{SESSION_NAME}}", context.session_name.is_none()),
+        ];
+        
+        // Remove lines containing only empty placeholders
+        for (placeholder, is_empty) in empty_placeholders {
+            if is_empty {
+                // Remove entire lines that contain only this placeholder
+                let lines: Vec<&str> = result.lines().collect();
+                let filtered_lines: Vec<&str> = lines.into_iter()
+                    .filter(|line| {
+                        let trimmed = line.trim();
+                        !trimmed.is_empty() && trimmed != placeholder
+                    })
+                    .collect();
+                result = filtered_lines.join("\n");
+                
+                // Also remove any remaining placeholder text
+                result = result.replace(placeholder, "");
+            }
+        }
+        
+        // Clean up multiple consecutive newlines
+        if let Ok(re_multiple_newlines) = Regex::new(r"\n\s*\n\s*\n+") {
+            result = re_multiple_newlines.replace_all(&result, "\n\n").to_string();
+        }
+        
         Ok(result)
     }
 
@@ -236,24 +240,12 @@ impl UnifiedPromptProcessor {
         Ok(user_prompt)
     }
 
-    /// Remove conditional blocks (from enhanced_prompt_template.rs)
-    fn remove_conditional_block(&self, template: &str, block_name: &str) -> AppResult<String> {
-        let start_tag = format!("{{{{#{}}}}}", block_name);
-        let end_tag = format!("{{{{/{}}}}}", block_name);
-        
-        if let Some(start) = template.find(&start_tag) {
-            if let Some(end) = template.find(&end_tag) {
-                let before = &template[..start];
-                let after = &template[end + end_tag.len()..];
-                return Ok(format!("{}{}", before, after));
-            }
-        }
-        
-        Ok(template.to_string())
-    }
 
     /// Generate file contents XML (from enhanced_prompt_template.rs)
     fn generate_file_contents_xml(&self, file_contents: &HashMap<String, String>) -> String {
+        if file_contents.is_empty() {
+            return String::new();
+        }
         let mut xml = String::from("<file_contents>\n");
         for (path, content) in file_contents {
             xml.push_str(&format!("  <file path=\"{}\">\n{}\n  </file>\n", path, content));
@@ -264,6 +256,9 @@ impl UnifiedPromptProcessor {
 
     /// Generate project structure XML (from enhanced_prompt_template.rs)
     fn generate_project_structure_xml(&self, directory_tree: &str) -> String {
+        if directory_tree.trim().is_empty() {
+            return String::new();
+        }
         format!("<project_structure>\n{}\n</project_structure>", directory_tree)
     }
 

@@ -1,9 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
   SystemPromptResponse,
-  DefaultSystemPrompt,
-  TaskType
+  DefaultSystemPrompt
 } from '../types/system-prompts';
+import { TaskType } from '../types/session-types';
 
 /**
  * Get effective system prompt for a task type (custom or default)
@@ -118,7 +118,7 @@ export async function getSystemPromptTemplate(
 ): Promise<string | null> {
   try {
     const prompt = await getSystemPrompt(sessionId, taskType);
-    return prompt?.systemPrompt || null;
+    return prompt?.systemPrompt ?? null;
   } catch (error) {
     console.error('Failed to get system prompt template:', error);
     throw error;
@@ -187,6 +187,27 @@ export function extractPlaceholders(template: string): string[] {
   }
   
   return placeholders;
+}
+
+/**
+ * Update a default system prompt content and description
+ * This is primarily for admin/dev use but sets up future possibilities
+ */
+export async function updateDefaultSystemPrompt(
+  taskType: TaskType,
+  newPromptContent: string,
+  newDescription?: string
+): Promise<void> {
+  try {
+    await invoke<void>('update_default_system_prompt_command', {
+      taskType,
+      newPromptContent,
+      newDescription
+    });
+  } catch (error) {
+    console.error('Failed to update default system prompt:', error);
+    throw error;
+  }
 }
 
 /**

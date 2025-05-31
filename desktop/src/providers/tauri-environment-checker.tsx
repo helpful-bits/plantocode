@@ -4,7 +4,7 @@ import { isTauriEnvironment } from "@/utils/platform";
 
 const logger = createLogger({ namespace: "DesktopEnvironment" });
 
-export function DesktopEnvironmentProvider({
+export function TauriEnvironmentChecker({
   children,
 }: {
   children: ReactNode;

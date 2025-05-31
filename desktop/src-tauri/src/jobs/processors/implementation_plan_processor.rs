@@ -1,21 +1,16 @@
 use std::path::Path;
-use std::collections::HashMap;
 use std::str::FromStr;
 use log::{debug, info, warn, error};
 use serde_json::json;
-use tauri::{AppHandle, Manager};
-use quick_xml::Reader;
-use quick_xml::events::Event;
+use tauri::AppHandle;
 
-use crate::api_clients::{ApiClient, client_trait::ApiClientOptions};
-use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, ImplementationPlanPayload, StructuredImplementationPlan, StructuredImplementationPlanStep, StructuredImplementationPlanStepOperation};
-use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
-use crate::utils::{get_timestamp, PromptComposer, CompositionContextBuilder};
-use crate::utils::{fs_utils, path_utils};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep};
+use crate::models::{JobStatus, TaskType, OpenRouterRequestMessage, OpenRouterContent};
+use crate::utils::{get_timestamp, fs_utils, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
+use crate::jobs::job_processor_utils;
 
 pub struct ImplementationPlanProcessor;
 
@@ -147,69 +142,79 @@ impl JobProcessor for ImplementationPlanProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
-        // Get dependencies from app state
-        let (repo, settings_repo) = crate::jobs::job_processor_utils::setup_repositories(&app_handle)?;
+        // Setup job processing
+        let (repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&payload.background_job_id, &app_handle).await?;
+        let llm_client = job_processor_utils::get_api_client(&app_handle)?;
+        let job_id = payload.background_job_id.clone();
         
-        // Get LLM client using the standardized factory function
-        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
-        
-        
-        // Update job status to running
-        let timestamp = get_timestamp();
-        // Get the background job from the repository
-        let mut db_job = repo.get_job_by_id(&payload.background_job_id).await?
-            .ok_or_else(|| AppError::JobError(format!("Background job {} not found", payload.background_job_id)))?;
-        db_job.status = "running".to_string();
-        db_job.updated_at = Some(timestamp);
-        db_job.start_time = Some(timestamp);
-        
-        // Load contents of relevant files
-        let mut file_contents_map: HashMap<String, String> = HashMap::new();
+        job_processor_utils::log_job_start(&job_id, "implementation plan");
         
         let project_directory = job.project_directory.as_ref()
             .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
             
-        for relative_path_str in &payload.relevant_files {
-            // Construct full path
-            let full_path = std::path::Path::new(project_directory).join(relative_path_str);
-            
-            // Read file content
-            match fs_utils::read_file_to_string(&*full_path.to_string_lossy()).await {
-                Ok(content) => {
-                    // Add to map with relative path as key
-                    file_contents_map.insert(relative_path_str.clone(), content);
-                },
-                Err(e) => {
-                    // Log warning but continue with other files
-                    warn!("Failed to read file {}: {}", full_path.display(), e);
-                }
-            }
-        }
+        // Load file contents and generate directory tree - FULL CONTENT WITHOUT TRUNCATION
+        let file_contents = Some(job_processor_utils::load_file_contents(&payload.relevant_files, project_directory).await);
+        let directory_tree = job_processor_utils::generate_directory_tree_for_context(project_directory).await;
         
-        // Create enhanced composition context for sophisticated prompt generation
-        let composition_context = CompositionContextBuilder::new(
-            job.session_id.clone(),
-            TaskType::ImplementationPlan,
+        // Build unified prompt using full content without preemptive truncation
+        let composed_prompt = job_processor_utils::build_unified_prompt(
+            &job,
+            &app_handle,
             payload.task_description.clone(),
-        )
-        .project_directory(Some(project_directory.clone()))
-        .project_structure(payload.project_structure.clone())
-        .file_contents(if file_contents_map.is_empty() { None } else { Some(file_contents_map.clone()) })
-        .relevant_files(Some(payload.relevant_files.clone()))
-        .codebase_structure(payload.project_structure.clone())
-        .build();
-
-        // Use the enhanced prompt composer to generate sophisticated prompts
-        let prompt_composer = PromptComposer::new();
-        let composed_prompt = prompt_composer
-            .compose_prompt(&composition_context, &settings_repo)
-            .await?;
+            payload.project_structure.clone(),
+            file_contents,
+            directory_tree,
+            &settings_repo,
+        ).await?;
 
         info!("Enhanced Implementation Plan prompt composition for job {}", payload.background_job_id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
         info!("Context sections: {:?}", composed_prompt.context_sections);
         if let Some(tokens) = composed_prompt.estimated_tokens {
             info!("Estimated tokens: {}", tokens);
+            
+            // Log warning if estimated tokens exceed typical model limits
+            if tokens > 100000 {
+                warn!("Implementation plan job {} estimated tokens ({}) exceeds typical model limits but proceeding with full content", 
+                    payload.background_job_id, tokens);
+                
+                // Store warning in job metadata for visibility
+                if let Ok(mut job_for_metadata) = repo.get_job_by_id(&payload.background_job_id).await {
+                    if let Some(existing_job) = job_for_metadata {
+                        let metadata = match existing_job.metadata {
+                            Some(ref metadata_str) => {
+                                match serde_json::from_str::<serde_json::Value>(&metadata_str) {
+                                    Ok(mut json) => {
+                                        json["token_warning"] = serde_json::json!({
+                                            "estimated_tokens": tokens,
+                                            "warning": "Content exceeds typical model limits but proceeding with full content"
+                                        });
+                                        json
+                                    },
+                                    Err(_) => serde_json::json!({
+                                        "token_warning": {
+                                            "estimated_tokens": tokens,
+                                            "warning": "Content exceeds typical model limits but proceeding with full content"
+                                        }
+                                    })
+                                }
+                            },
+                            None => serde_json::json!({
+                                "token_warning": {
+                                    "estimated_tokens": tokens,
+                                    "warning": "Content exceeds typical model limits but proceeding with full content"
+                                }
+                            })
+                        };
+                        
+                        let mut updated_job = existing_job;
+                        updated_job.metadata = Some(metadata.to_string());
+                        if let Err(e) = repo.update_job(&updated_job).await {
+                            warn!("Failed to update job metadata with token warning: {}", e);
+                        }
+                    }
+                }
+            }
         }
 
         let prompt = composed_prompt.final_prompt;
@@ -217,12 +222,12 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         info!("Generated implementation plan prompt for task: {}", &payload.task_description);
         
-        // Estimate the number of tokens in the prompt
-        let estimated_prompt_tokens = crate::utils::token_estimator::estimate_tokens(&prompt);
+        // Use token estimation from the unified prompt system
+        let estimated_prompt_tokens = composed_prompt.estimated_tokens.unwrap_or(0) as i32;
         info!("Estimated prompt tokens: {}", estimated_prompt_tokens);
         
         // Store token estimate in the job
-        db_job.tokens_sent = Some(estimated_prompt_tokens as i32);
+        db_job.tokens_sent = Some(estimated_prompt_tokens);
         
         // Update the job with token estimate before LLM call
         repo.update_job(&db_job).await?;
@@ -239,23 +244,18 @@ impl JobProcessor for ImplementationPlanProcessor {
         ];
         
         // Create API client options
-        let api_options = ApiClientOptions {
-            model: payload.model.clone(),
-            max_tokens: payload.max_tokens,
-            temperature: Some(payload.temperature), // temperature is f32, not Option<f32> in the payload
-            stream: false,
-        };
+        let api_options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::ImplementationPlan,
+            project_directory,
+            false,
+            &app_handle,
+        ).await?;
         
         // Check if job has been canceled before calling the LLM
-        let job_id = &payload.background_job_id;
-        let job_status = match repo.get_job_by_id(job_id).await {
-            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
-            _ => crate::models::JobStatus::Created,
-        };
-        
-        if job_status == crate::models::JobStatus::Canceled {
-            info!("Job {} has been canceled before processing", job_id);
-            return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
+            info!("Job {} has been canceled before processing", payload.background_job_id);
+            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Call LLM using streaming
@@ -278,25 +278,8 @@ impl JobProcessor for ImplementationPlanProcessor {
                 error!("Failed to initiate LLM stream for job {}: {}", payload.background_job_id, e);
                 let error_msg = format!("Failed to initiate LLM stream: {}", e);
                 
-                // Update job to failed with comprehensive error information
-                let timestamp = get_timestamp();
-                
-                // Get the job
-                let mut job = repo.get_job_by_id(&payload.background_job_id).await?
-                    .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
-                
-                // Update job fields with detailed error information
-                job.status = JobStatus::Failed.to_string();
-                job.error_message = Some(error_msg.clone());
-                job.updated_at = Some(timestamp);
-                job.end_time = Some(timestamp);
-                
-                // Log the failure for debugging
-                warn!("Implementation plan job {} failed during LLM stream initialization. Model: {}, Max tokens: {:?}", 
-                    payload.background_job_id, payload.model, payload.max_tokens);
-                
-                // Save updated job
-                repo.update_job(&job).await?;
+                // Update job to failed using helper
+                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
                 
                 return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
             }
@@ -308,7 +291,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         while let Some(chunk_result) = stream_handle.next().await {
             // Check if job has been canceled during streaming
-            let job_status = match repo.get_job_by_id(job_id).await {
+            let job_status = match repo.get_job_by_id(&job_id).await {
                 Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
                 _ => crate::models::JobStatus::Created,
             };
@@ -385,15 +368,10 @@ impl JobProcessor for ImplementationPlanProcessor {
             return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg.to_string()));
         }
         
-        // Check if job has been canceled after LLM call but before further processing
-        let job_status = match repo.get_job_by_id(job_id).await {
-            Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
-            _ => crate::models::JobStatus::Created,
-        };
-        
-        if job_status == crate::models::JobStatus::Canceled {
-            info!("Job {} has been canceled after LLM call", job_id);
-            return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
+        // Check if job has been canceled after LLM call but before further processing using helper
+        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
+            info!("Job {} has been canceled after LLM call", payload.background_job_id);
+            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Extract clean XML content from the response
@@ -406,26 +384,9 @@ impl JobProcessor for ImplementationPlanProcessor {
                 error!("Failed to parse implementation plan for job {}: {}", payload.background_job_id, e);
                 let error_msg = format!("Failed to parse implementation plan: {}", e);
                 
-                // Update job to failed
-                let timestamp = get_timestamp();
-                let mut job = repo.get_job_by_id(&payload.background_job_id).await?
-                    .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
+                // Update job to failed using helper
+                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
                 
-                job.status = JobStatus::Failed.to_string();
-                job.error_message = Some(error_msg.clone());
-                job.updated_at = Some(timestamp);
-                job.end_time = Some(timestamp);
-                
-                // Store the raw response for debugging
-                job.response = Some(format!("Raw LLM Response (parsing failed): {}", 
-                    if response_content.len() > 1000 { 
-                        format!("{}...", &response_content[..1000]) 
-                    } else { 
-                        response_content.clone() 
-                    }
-                ));
-                
-                repo.update_job(&job).await?;
                 return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
             }
         };
@@ -477,7 +438,8 @@ impl JobProcessor for ImplementationPlanProcessor {
         let generated_title = match metadata {
             Some(json) => {
                 if let Some(title) = json.get("generated_title").and_then(|v| v.as_str()) {
-                    title.to_string()
+                    // Sanitize the title since it may come from LLM response
+                    crate::utils::path_utils::sanitize_filename(title)
                 } else {
                     "Implementation Plan".to_string()
                 }
@@ -509,7 +471,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         }
         
         // Set model parameters
-        job.max_output_tokens = payload.max_tokens.map(|t| t as i32);
+        job.max_output_tokens = Some(payload.max_tokens as i32);
         job.temperature = Some(payload.temperature);
         
         // Store structured data in metadata, preserving any existing metadata fields
@@ -519,13 +481,16 @@ impl JobProcessor for ImplementationPlanProcessor {
             Some(mut json) => {
                 json["planData"] = serde_json::to_value(structured_plan).unwrap_or_default();
                 json["outputPath"] = json!(file_path);
-                // Keep the generated_title if it exists
+                json["planTitle"] = json!(generated_title);
+                json["summary"] = json!(human_readable_summary);
+                // Keep any other existing metadata
                 json
             },
             None => json!({
                 "planData": serde_json::to_value(structured_plan).unwrap_or_default(),
                 "outputPath": file_path,
-                "generated_title": generated_title,
+                "planTitle": generated_title,
+                "summary": human_readable_summary,
             }),
         };
         

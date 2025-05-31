@@ -1,0 +1,41 @@
+{
+  "name": "FileFinderWorkflow",
+  "description": "Finds relevant files based on a task description.",
+  "stages": [
+    {
+      "stage_name": "DirectoryTreeGeneration",
+      "task_type": "directoryTreeGeneration",
+      "processor_name": null,
+      "dependencies": [],
+      "allow_parallel_execution": false
+    },
+    {
+      "stage_name": "RegexPatternGeneration", 
+      "task_type": "regexPatternGeneration",
+      "processor_name": null,
+      "dependencies": ["DirectoryTreeGeneration"],
+      "allow_parallel_execution": false
+    },
+    {
+      "stage_name": "LocalFileFiltering",
+      "task_type": "localFileFiltering",
+      "processor_name": null,
+      "dependencies": ["RegexPatternGeneration"],
+      "allow_parallel_execution": false
+    },
+    {
+      "stage_name": "ExtendedPathFinder",
+      "task_type": "extendedPathFinder",
+      "processor_name": null,
+      "dependencies": ["LocalFileFiltering"],
+      "allow_parallel_execution": false
+    },
+    {
+      "stage_name": "ExtendedPathCorrection",
+      "task_type": "extendedPathCorrection",
+      "processor_name": null,
+      "dependencies": ["ExtendedPathFinder"],
+      "allow_parallel_execution": false
+    }
+  ]
+}

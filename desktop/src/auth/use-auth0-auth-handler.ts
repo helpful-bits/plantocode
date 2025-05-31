@@ -91,10 +91,28 @@ export function useAuth0AuthHandler() {
             
             // Token is invalid, clear it
             logger.error("Stored token invalid:", error);
+            let finalError = getErrorMessage(error) || "Failed to validate stored token";
+            
             try {
               await invoke('set_app_jwt', { token: undefined });
+              logger.debug("Successfully cleared invalid token");
             } catch (clearError) {
               logger.error("Failed to clear invalid token:", clearError);
+              // Update error to reflect the secondary failure
+              finalError = "Failed to clear invalid token and initialize auth.";
+              
+              // Force sign-out state since we can't clear the invalid token
+              if (isMountedRef.current && !abortController.signal.aborted) {
+                setState((prev: Auth0AuthState) => ({ 
+                  ...prev, 
+                  user: undefined, 
+                  token: undefined, 
+                  tokenExpiresAt: undefined,
+                  loading: false, 
+                  error: finalError
+                }));
+              }
+              return; // Exit early to avoid duplicate state update
             }
             
             if (isMountedRef.current && !abortController.signal.aborted) {
@@ -104,7 +122,7 @@ export function useAuth0AuthHandler() {
                 token: undefined, 
                 tokenExpiresAt: undefined,
                 loading: false, 
-                error: undefined
+                error: finalError
               }));
             }
           }

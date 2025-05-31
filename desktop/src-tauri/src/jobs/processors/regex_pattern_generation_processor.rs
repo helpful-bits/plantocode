@@ -1,14 +1,12 @@
 use log::{debug, info, warn, error};
 use serde_json::json;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
-use crate::api_clients::{ApiClient, client_trait::ApiClientOptions};
-use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, RegexPatternGenerationPayload};
-use crate::models::{BackgroundJob, JobStatus, OpenRouterRequestMessage, OpenRouterContent, TaskType};
-use crate::utils::{get_timestamp, PromptComposer, CompositionContextBuilder};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult};
+use crate::models::TaskType;
+use crate::jobs::job_processor_utils;
 
 pub struct RegexPatternGenerationProcessor;
 
@@ -35,37 +33,21 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
-        // Get dependencies from app state
-        let repo_state = app_handle.state::<std::sync::Arc<BackgroundJobRepository>>();
-        let repo = repo_state.inner().clone();
-        let settings_repo = app_handle.state::<std::sync::Arc<SettingsRepository>>().inner().clone();
+        // Setup job processing
+        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        let llm_client = crate::jobs::job_processor_utils::get_api_client(&app_handle)?;
+        job_processor_utils::log_job_start(&job.id, "regex pattern generation");
         
-        // Update job status to running
-        let timestamp = get_timestamp();
-        let mut db_job = repo.get_job_by_id(&job.id).await?
-            .ok_or_else(|| AppError::JobError(format!("Job {} not found", job.id)))?;
-        db_job.status = "running".to_string();
-        db_job.updated_at = Some(timestamp);
-        db_job.start_time = Some(timestamp);
-        repo.update_job(&db_job).await?;
-        
-        // Create enhanced composition context for sophisticated prompt generation
-        let composition_context = CompositionContextBuilder::new(
-            job.session_id.clone(),
-            TaskType::RegexPatternGeneration,
+        // Build unified prompt using standardized helper
+        let composed_prompt = job_processor_utils::build_unified_prompt(
+            &job,
+            &app_handle,
             payload.task_description.clone(),
-        )
-        .project_directory(Some(payload.project_directory.clone()))
-        .codebase_structure(payload.directory_tree.clone())
-        .build();
-
-        // Use the enhanced prompt composer to generate sophisticated prompts
-        let prompt_composer = PromptComposer::new();
-        let composed_prompt = prompt_composer
-            .compose_prompt(&composition_context, &settings_repo)
-            .await?;
+            payload.directory_tree.clone(),
+            None,
+            None,
+            &settings_repo,
+        ).await?;
 
         info!("Enhanced Regex Pattern Generation prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
@@ -74,65 +56,34 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        let prompt = composed_prompt.final_prompt;
-        let system_prompt_id = composed_prompt.system_prompt_id;
+        // Extract system and user prompts from the composed result
+        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
         info!("Generating regex patterns for task: {}", &payload.task_description);
         
-        // Create messages for the LLM
-        let messages = vec![
-            OpenRouterRequestMessage {
-                role: "user".to_string(),
-                content: vec![OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: prompt,
-                }],
-            },
-        ];
+        // Create messages
+        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
-        // Determine which model to use from config
-        let model = match payload.model_override.clone() {
-            Some(model) => model,
-            None => crate::config::get_model_for_task_with_project(TaskType::RegexPatternGeneration, &payload.project_directory, &app_handle).await?
-        };
-        
-        // Get temperature from payload or config
-        let temperature = match payload.temperature_override {
-            Some(temp) => temp,
-            None => crate::config::get_temperature_for_task_with_project(TaskType::RegexPatternGeneration, &payload.project_directory, &app_handle).await?
-        };
-        
-        // Get max tokens from payload or config
-        let max_tokens = match payload.max_tokens_override {
-            Some(tokens) => Some(tokens),
-            None => Some(crate::config::get_max_tokens_for_task_with_project(TaskType::RegexPatternGeneration, &payload.project_directory, &app_handle).await?)
-        };
-        
-        // Create API client options
-        let api_options = ApiClientOptions {
-            model: model.clone(),
-            max_tokens,
-            temperature: Some(temperature),
-            stream: false,
-        };
+        // Create API options
+        let api_options = job_processor_utils::create_api_client_options(
+            &job.payload,
+            TaskType::RegexPatternGeneration,
+            &payload.project_directory,
+            false,
+            &app_handle,
+        ).await?;
         
         // Call LLM
-        info!("Calling LLM for regex pattern generation with model {}", &model);
-        let llm_response = match llm_client.chat_completion(messages, api_options).await {
+        let model_name = api_options.model.clone();
+        info!("Calling LLM for regex pattern generation with model {}", &model_name);
+        let llm_response = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
             Ok(response) => response,
             Err(e) => {
                 error!("Failed to call LLM: {}", e);
                 let error_msg = format!("Failed to call LLM: {}", e);
                 
-                // Update job to failed
-                let timestamp = get_timestamp();
-                let mut db_job = repo.get_job_by_id(&job.id).await?
-                    .ok_or_else(|| AppError::JobError(format!("Job {} not found", job.id)))?;
-                db_job.status = "failed".to_string();
-                db_job.error_message = Some(error_msg.clone());
-                db_job.updated_at = Some(timestamp);
-                db_job.end_time = Some(timestamp);
-                repo.update_job(&db_job).await?;
+                // Finalize job failure
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
                 
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
@@ -154,35 +105,28 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             }
         };
         
-        // Update the job with the results
-        let timestamp = get_timestamp();
-        let mut db_job = repo.get_job_by_id(&job.id).await?
-            .ok_or_else(|| AppError::JobError(format!("Job {} not found", job.id)))?;
-        db_job.status = "completed".to_string();
-        db_job.response = Some(response_content.clone());  // Always store the raw LLM response
-        db_job.updated_at = Some(timestamp);
-        db_job.end_time = Some(timestamp);
-        db_job.model_used = Some(model);
+        // Create custom metadata with JSON validation info
+        let mut metadata = serde_json::json!({
+            "job_type": "REGEX_PATTERN_GENERATION",
+            "workflow_stage": "RegexGeneration",
+            "jsonValid": json_validation_result.0
+        });
         
-        // Add token usage if available
-        if let Some(usage) = llm_response.usage {
-            db_job.tokens_sent = Some(usage.prompt_tokens as i32);
-            db_job.tokens_received = Some(usage.completion_tokens as i32);
-            db_job.total_tokens = Some(usage.total_tokens as i32);
-        }
-        
-        // Store additional metadata including JSON validation status
-        let mut metadata_map = serde_json::Map::new();
-        metadata_map.insert("json_valid".to_string(), json!(json_validation_result.0));
+        // Add parsed regex data if JSON is valid
         if let Some(parsed_json) = json_validation_result.1 {
-            metadata_map.insert("parsed_json".to_string(), parsed_json);
+            metadata["parsedJson"] = parsed_json;
         }
         
-        db_job.metadata = Some(serde_json::Value::Object(metadata_map).to_string());
-        db_job.system_prompt_id = Some(system_prompt_id);
-        
-        // Update the job
-        repo.update_job(&db_job).await?;
+        // Finalize job success
+        job_processor_utils::finalize_job_success(
+            &job.id,
+            &repo,
+            &response_content,
+            llm_response.usage,
+            &model_name,
+            &system_prompt_id,
+            Some(metadata),
+        ).await?;
         
         // Return success result with the raw LLM response
         Ok(JobProcessResult::success(job.id.clone(), response_content))

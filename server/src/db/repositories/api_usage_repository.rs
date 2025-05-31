@@ -123,7 +123,9 @@ impl ApiUsageRepository {
 
         let total_input = result.total_input.unwrap_or(0);
         let total_output = result.total_output.unwrap_or(0);
-        let total_cost = result.total_cost.unwrap_or_else(|| BigDecimal::from_str("0").unwrap());
+        let total_cost = result.total_cost.unwrap_or_else(|| {
+            BigDecimal::from_str("0").unwrap_or_else(|_| BigDecimal::from(0))
+        });
 
         Ok((total_input, total_output, total_cost))
     }
@@ -157,7 +159,9 @@ impl ApiUsageRepository {
         Ok(ApiUsageReport {
             tokens_input: result.tokens_input.unwrap_or(0),
             tokens_output: result.tokens_output.unwrap_or(0),
-            total_cost: result.total_cost.unwrap_or_else(|| BigDecimal::from_str("0").unwrap()),
+            total_cost: result.total_cost.unwrap_or_else(|| {
+                BigDecimal::from_str("0").unwrap_or_else(|_| BigDecimal::from(0))
+            }),
         })
     }
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 use log::{debug, error, info};
 use sqlx::{SqlitePool, Row, FromRow, Column, TypeInfo};
-use serde_json::Value as JsonValue;
+use serde_json::{Value as JsonValue, Number};
 use crate::error::{AppError, AppResult};
 
 /// Structure for operations in a transaction
@@ -34,7 +34,11 @@ pub async fn db_execute_query(
     // Convert serde_json::Value params to sqlx::query parameters
     let mut query = sqlx::query(&sql);
     for param in params {
-        query = bind_json_value(query, param);
+        query = bind_json_value(query, param)
+            .map_err(|e| {
+                error!("Parameter binding error: {}", e);
+                e
+            })?;
     }
     
     // Execute the query
@@ -64,7 +68,11 @@ pub async fn db_select_query(
     // Convert serde_json::Value params to sqlx::query parameters
     let mut query = sqlx::query(&sql);
     for param in params {
-        query = bind_json_value(query, param);
+        query = bind_json_value(query, param)
+            .map_err(|e| {
+                error!("Parameter binding error: {}", e);
+                e
+            })?;
     }
     
     // Execute the query
@@ -99,9 +107,13 @@ pub async fn db_select_query(
                 },
                 "REAL" => {
                     if let Ok(v) = row.try_get::<f64, _>(column_name) {
-                        let n = serde_json::Number::from_f64(v)
-                            .unwrap_or(serde_json::Number::from(0));
-                        JsonValue::Number(n)
+                        match serde_json::Number::from_f64(v) {
+                            Some(n) => JsonValue::Number(n),
+                            None => {
+                                error!("Invalid f64 value for column '{}': {}", column_name, v);
+                                JsonValue::Null
+                            }
+                        }
                     } else {
                         JsonValue::Null
                     }
@@ -151,7 +163,11 @@ pub async fn db_execute_transaction(
         // Bind parameters if provided
         if let Some(params) = op.params {
             for param in params {
-                query = bind_json_value(query, param);
+                query = bind_json_value(query, param)
+                    .map_err(|e| {
+                        error!("Transaction parameter binding error: {}", e);
+                        e
+                    })?;
             }
         }
         
@@ -190,31 +206,59 @@ pub async fn db_table_exists(
     Ok(result.is_some())
 }
 
-/// Helper function to bind JSON values to a query
+/// Safely convert a JSON number to i64
+fn safe_json_number_to_i64(n: &Number) -> Result<i64, AppError> {
+    n.as_i64()
+        .ok_or_else(|| AppError::DatabaseError("Failed to convert JSON number to i64".to_string()))
+}
+
+/// Safely convert a JSON number to f64
+fn safe_json_number_to_f64(n: &Number) -> Result<f64, AppError> {
+    n.as_f64()
+        .ok_or_else(|| AppError::DatabaseError("Failed to convert JSON number to f64".to_string()))
+}
+
+/// Safely serialize a value to JSON string
+fn safe_json_serialize<T: Serialize>(value: &T) -> Result<String, AppError> {
+    serde_json::to_string(value)
+        .map_err(|e| AppError::DatabaseError(format!("Failed to serialize JSON: {}", e)))
+}
+
+/// Helper function to bind JSON values to a query with safe conversions
 fn bind_json_value<'a>(
     query: sqlx::query::Query<'a, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'a>>,
     value: JsonValue,
-) -> sqlx::query::Query<'a, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'a>> {
-    match value {
+) -> Result<sqlx::query::Query<'a, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'a>>, AppError> {
+    let result = match value {
         JsonValue::Null => query.bind(None::<String>),
         JsonValue::Bool(v) => query.bind(v),
         JsonValue::Number(n) => {
             if n.is_i64() {
-                query.bind(n.as_i64().unwrap())
+                query.bind(safe_json_number_to_i64(&n)?)
             } else if n.is_u64() {
-                query.bind(n.as_u64().unwrap() as i64)
+                // Handle potential overflow for u64 to i64 conversion
+                let u_val = n.as_u64().ok_or_else(|| 
+                    AppError::DatabaseError("Failed to convert JSON number to u64".to_string())
+                )?;
+                if u_val > i64::MAX as u64 {
+                    return Err(AppError::DatabaseError("Number too large for i64".to_string()));
+                }
+                query.bind(u_val as i64)
             } else {
-                query.bind(n.as_f64().unwrap())
+                query.bind(safe_json_number_to_f64(&n)?)
             }
         },
         JsonValue::String(s) => query.bind(s),
         JsonValue::Array(a) => {
-            // Convert array to string representation
-            query.bind(serde_json::to_string(&a).unwrap_or_default())
+            // Convert array to string representation with safe serialization
+            let serialized = safe_json_serialize(&a)?;
+            query.bind(serialized)
         },
         JsonValue::Object(o) => {
-            // Convert object to string representation
-            query.bind(serde_json::to_string(&o).unwrap_or_default())
+            // Convert object to string representation with safe serialization
+            let serialized = safe_json_serialize(&o)?;
+            query.bind(serialized)
         },
-    }
+    };
+    Ok(result)
 }
