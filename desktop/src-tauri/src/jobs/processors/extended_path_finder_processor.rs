@@ -35,10 +35,15 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         };
         
         // Setup job processing using standardized utility
-        let (repo, settings_repo, _background_job) = job_processor_utils::setup_job_processing(
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
             &payload.background_job_id,
             &app_handle,
         ).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&payload.background_job_id, "Extended Path Finding");
         info!("Starting extended path finding for workflow {} with {} initial paths", 
@@ -59,6 +64,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             None,
             Some(payload.directory_tree.clone()),
             &settings_repo,
+            &model_used,
         ).await?;
 
         info!("Enhanced Extended Path Finder prompt composition for job {}", job.id);
@@ -85,12 +91,11 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         // Create API client options using standardized utility
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::PathFinder,
-            &payload.project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         // Check for cancellation before LLM call using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -100,7 +105,8 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         // Call LLM using standardized utility
         info!("Calling LLM for extended path finding with model {}", &api_options.model);
-        let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await?;
+        let api_options_clone = api_options.clone();
+        let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await?;
         
         // Extract the response content
         let response_content = llm_response.choices[0].message.content.clone();
@@ -143,19 +149,16 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             "workflowId": payload.workflow_id,
             "taskDescription": payload.task_description,
             "projectDirectory": payload.project_directory,
-            "modelUsed": api_options.model,
+            "modelUsed": api_options_clone.model,
             "summary": format!("Extended path finding: {} initial + {} new = {} total paths", 
                 payload.initial_paths.len(), 
                 all_paths.len() - payload.initial_paths.len(), 
                 all_paths.len())
         });
         
-        // Store found paths as newline-separated string in response
-        let final_response_content = if all_paths.is_empty() {
-            String::new()
-        } else {
-            all_paths.join("\n")
-        };
+        // Serialize all_paths (combined initial and LLM-found paths) into a JSON string for typed output
+        let final_response_content = serde_json::to_string(&all_paths)
+            .map_err(|e| AppError::JobError(format!("Failed to serialize extended paths: {}", e)))?;
         
         // Finalize job success using standardized utility
         job_processor_utils::finalize_job_success(
@@ -163,7 +166,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             &repo,
             &final_response_content,
             llm_response.usage,
-            &api_options.model,
+            &api_options_clone.model,
             &system_prompt_id,
             Some(result_metadata),
         ).await?;

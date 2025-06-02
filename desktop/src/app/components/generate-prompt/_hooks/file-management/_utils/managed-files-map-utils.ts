@@ -61,6 +61,7 @@ export function calculateManagedFilesMap(
     }
   }
 
+
   // Cache the result with LRU eviction
   if (mapCache.size >= MAX_CACHE_SIZE) {
     const firstKey = mapCache.keys().next().value;

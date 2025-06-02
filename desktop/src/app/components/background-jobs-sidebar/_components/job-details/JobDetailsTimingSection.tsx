@@ -1,20 +1,12 @@
-import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Progress } from "@/ui/progress";
 import { formatTimestamp } from "@/utils/date-utils";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-import { getStreamingProgressValue, getParsedMetadata } from "../../utils";
+import { getStreamingProgressValue } from "../../utils";
 
-interface JobDetailsTimingSectionProps {
-  job: BackgroundJob;
-  jobDuration: string;
-}
-
-export function JobDetailsTimingSection({
-  job,
-  jobDuration,
-}: JobDetailsTimingSectionProps) {
-  const parsedMetadata = getParsedMetadata(job.metadata);
+export function JobDetailsTimingSection() {
+  const { job, jobDuration, parsedMetadata } = useJobDetailsContext();
   return (
     <Card>
       <CardHeader className="pb-3">

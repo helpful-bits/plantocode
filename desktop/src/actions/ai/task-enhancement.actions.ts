@@ -38,6 +38,21 @@ export async function enhanceTaskDescriptionAction({
     }
 
 
+    // If no projectDirectory provided, derive it from the session
+    let finalProjectDirectory = projectDirectory;
+    if (!finalProjectDirectory && sessionId) {
+      try {
+        const sessionDetails = await invoke<{ projectDirectory: string }>("get_session_command", {
+          sessionId: sessionId,
+        });
+        if (sessionDetails?.projectDirectory) {
+          finalProjectDirectory = sessionDetails.projectDirectory;
+        }
+      } catch (error) {
+        console.warn("Could not retrieve project directory from session:", error);
+      }
+    }
+
     // Call the Tauri command for task enhancement
     const result = await invoke<{ jobId: string }>(
       "enhance_task_description_command",
@@ -45,7 +60,7 @@ export async function enhanceTaskDescriptionAction({
         sessionId,
         taskDescription,
         projectContext: projectContext ?? null,
-        projectDirectory: projectDirectory ?? null,
+        projectDirectory: finalProjectDirectory ?? null,
         targetField: targetField ?? null,
         modelOverride: modelOverride ?? null,
         temperatureOverride: temperatureOverride ?? null,

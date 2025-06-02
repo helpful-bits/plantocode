@@ -94,7 +94,7 @@ export function useAuthTokenRefresher(user: User | undefined) {
             await logError(refreshError as Error, '[AuthTokenRefresher] App JWT refresh failed');
             
             try {
-              await invoke('get_user_info_with_app_jwt', { appToken: currentToken });
+              await invoke('get_user_info_with_app_jwt', { app_token: currentToken });
               logger.debug('[AuthTokenRefresher] Existing JWT token still valid after refresh attempt failed.');
             } catch (validationError) {
               await logError(validationError as Error, '[AuthTokenRefresher] Existing JWT token validation failed after refresh error');

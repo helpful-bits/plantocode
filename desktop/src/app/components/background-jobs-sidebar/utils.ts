@@ -1,40 +1,32 @@
-import { type ApiType, type TaskType, type JobMetadata } from "@/types/session-types";
+import { type ApiType, type JobMetadata } from "@/types/session-types";
+import { type TaskType, TaskTypeDetails } from "@/types/task-type-defs";
 import { formatTimeAgo as formatTimeAgoUtil } from "@/utils/date-utils";
 
 /**
  * Helper function to safely parse job metadata
+ * Handles both new JobWorkerMetadata structure and legacy JobMetadata
  * Ensures all UI components consistently use the standardized JobMetadata interface
- * Enhanced to handle JobMetadataBuilder output from backend
  */
 export const getParsedMetadata = (
   metadataInput: JobMetadata | string | null | undefined
 ): JobMetadata | null => {
   if (!metadataInput) return null;
   
-  // If already an object, validate and return it
+  // If already an object, check if it's new JobWorkerMetadata structure or legacy JobMetadata
   if (typeof metadataInput === 'object' && metadataInput !== null) {
-    // Validate it has expected JobMetadata structure
-    const metadata = metadataInput as JobMetadata;
-    // Return validated metadata with defensive checks for all numeric and string fields
-    return {
-      ...metadata,
-      // Ensure numeric fields are properly typed
-      streamProgress: typeof metadata.streamProgress === 'number' ? metadata.streamProgress : undefined,
-      responseLength: typeof metadata.responseLength === 'number' ? metadata.responseLength : undefined,
-      estimatedTotalLength: typeof metadata.estimatedTotalLength === 'number' ? metadata.estimatedTotalLength : undefined,
-      lastStreamUpdateTime: typeof metadata.lastStreamUpdateTime === 'number' ? metadata.lastStreamUpdateTime : undefined,
-      streamStartTime: typeof metadata.streamStartTime === 'number' ? metadata.streamStartTime : undefined,
-      jobPriorityForWorker: typeof metadata.jobPriorityForWorker === 'number' ? metadata.jobPriorityForWorker : undefined,
-      tokensUsed: typeof metadata.tokensUsed === 'number' ? metadata.tokensUsed : undefined,
-      retryCount: typeof metadata.retryCount === 'number' ? metadata.retryCount : undefined,
-      pathCount: typeof metadata.pathCount === 'number' ? metadata.pathCount : undefined,
-      // Ensure boolean fields are properly typed
-      isStreaming: typeof metadata.isStreaming === 'boolean' ? metadata.isStreaming : undefined,
-      showPureContent: typeof metadata.showPureContent === 'boolean' ? metadata.showPureContent : undefined,
-    };
+    const metadata = metadataInput as any;
+    
+    // Check if it's the new JobWorkerMetadata structure
+    if (metadata.jobTypeForWorker && metadata.jobPayloadForWorker && metadata.jobPriorityForWorker !== undefined) {
+      // Convert JobWorkerMetadata to JobMetadata format for UI consumption
+      return convertJobWorkerMetadataToJobMetadata(metadata);
+    }
+    
+    // Otherwise, treat as legacy JobMetadata and validate
+    return validateAndNormalizeJobMetadata(metadata as JobMetadata);
   }
   
-  // If string, attempt to parse as JSON (from JobMetadataBuilder)
+  // If string, attempt to parse as JSON (could be JobWorkerMetadata or legacy format)
   if (typeof metadataInput === 'string') {
     // Handle empty strings gracefully
     if (metadataInput.trim() === '') {
@@ -49,7 +41,7 @@ export const getParsedMetadata = (
     }
     
     try {
-      const parsed = JSON.parse(metadataInput) as JobMetadata;
+      const parsed = JSON.parse(metadataInput);
       
       // Validate that parsed result is an object and not null
       if (!parsed || typeof parsed !== 'object') {
@@ -57,21 +49,13 @@ export const getParsedMetadata = (
         return null;
       }
       
-      // Apply same validation as above
-      return {
-        ...parsed,
-        streamProgress: typeof parsed.streamProgress === 'number' ? parsed.streamProgress : undefined,
-        responseLength: typeof parsed.responseLength === 'number' ? parsed.responseLength : undefined,
-        estimatedTotalLength: typeof parsed.estimatedTotalLength === 'number' ? parsed.estimatedTotalLength : undefined,
-        lastStreamUpdateTime: typeof parsed.lastStreamUpdateTime === 'number' ? parsed.lastStreamUpdateTime : undefined,
-        streamStartTime: typeof parsed.streamStartTime === 'number' ? parsed.streamStartTime : undefined,
-        jobPriorityForWorker: typeof parsed.jobPriorityForWorker === 'number' ? parsed.jobPriorityForWorker : undefined,
-        tokensUsed: typeof parsed.tokensUsed === 'number' ? parsed.tokensUsed : undefined,
-        retryCount: typeof parsed.retryCount === 'number' ? parsed.retryCount : undefined,
-        pathCount: typeof parsed.pathCount === 'number' ? parsed.pathCount : undefined,
-        isStreaming: typeof parsed.isStreaming === 'boolean' ? parsed.isStreaming : undefined,
-        showPureContent: typeof parsed.showPureContent === 'boolean' ? parsed.showPureContent : undefined,
-      };
+      // Check if it's the new JobWorkerMetadata structure
+      if (parsed.jobTypeForWorker && parsed.jobPayloadForWorker && parsed.jobPriorityForWorker !== undefined) {
+        return convertJobWorkerMetadataToJobMetadata(parsed);
+      }
+      
+      // Otherwise, treat as legacy JobMetadata
+      return validateAndNormalizeJobMetadata(parsed as JobMetadata);
     } catch (e) {
       console.warn("Failed to parse job metadata JSON string:", e instanceof Error ? e.message : String(e), "String preview:", metadataInput.substring(0, 100));
       return null;
@@ -80,6 +64,65 @@ export const getParsedMetadata = (
   
   return null;
 };
+
+/**
+ * Convert JobWorkerMetadata structure to JobMetadata for UI consumption
+ * This preserves the nested structure from the backend while extracting commonly used fields for UI convenience
+ */
+function convertJobWorkerMetadataToJobMetadata(workerMetadata: any): JobMetadata {
+  const result: JobMetadata = {
+    // Core workflow fields from JobWorkerMetadata (top level)
+    jobTypeForWorker: workerMetadata.jobTypeForWorker,
+    jobPriorityForWorker: typeof workerMetadata.jobPriorityForWorker === 'number' ? workerMetadata.jobPriorityForWorker : undefined,
+    workflowId: workerMetadata.workflowId,
+    workflowStage: workerMetadata.workflowStage,
+    // Store the full nested payload structure for advanced access
+    jobPayloadForWorker: workerMetadata.jobPayloadForWorker,
+  };
+
+  // Extract commonly used fields from jobPayloadForWorker.data for UI convenience
+  // This maintains backward compatibility while supporting the new nested structure
+  if (workerMetadata.jobPayloadForWorker && workerMetadata.jobPayloadForWorker.data) {
+    const data = workerMetadata.jobPayloadForWorker.data;
+    
+    // Extract common fields that UI components frequently access
+    if (data.backgroundJobId) result.backgroundJobId = data.backgroundJobId;
+    if (data.sessionId) result.sessionId = data.sessionId;
+    if (data.taskDescription) result.taskDescription = data.taskDescription;
+    if (data.projectDirectory) result.projectDirectory = data.projectDirectory;
+    if (data.targetField) result.targetField = data.targetField;
+    if (data.workflowId && !result.workflowId) result.workflowId = data.workflowId; // Don't override top-level workflowId
+  }
+
+  // Merge additional parameters if present (preserves any extra metadata)
+  if (workerMetadata.additionalParams && typeof workerMetadata.additionalParams === 'object') {
+    Object.assign(result, workerMetadata.additionalParams);
+  }
+
+  return validateAndNormalizeJobMetadata(result);
+}
+
+/**
+ * Validate and normalize JobMetadata fields
+ */
+function validateAndNormalizeJobMetadata(metadata: JobMetadata): JobMetadata {
+  return {
+    ...metadata,
+    // Ensure numeric fields are properly typed
+    streamProgress: typeof metadata.streamProgress === 'number' ? metadata.streamProgress : undefined,
+    responseLength: typeof metadata.responseLength === 'number' ? metadata.responseLength : undefined,
+    estimatedTotalLength: typeof metadata.estimatedTotalLength === 'number' ? metadata.estimatedTotalLength : undefined,
+    lastStreamUpdateTime: typeof metadata.lastStreamUpdateTime === 'number' ? metadata.lastStreamUpdateTime : undefined,
+    streamStartTime: typeof metadata.streamStartTime === 'number' ? metadata.streamStartTime : undefined,
+    jobPriorityForWorker: typeof metadata.jobPriorityForWorker === 'number' ? metadata.jobPriorityForWorker : undefined,
+    tokensUsed: typeof metadata.tokensUsed === 'number' ? metadata.tokensUsed : undefined,
+    retryCount: typeof metadata.retryCount === 'number' ? metadata.retryCount : undefined,
+    pathCount: typeof metadata.pathCount === 'number' ? metadata.pathCount : undefined,
+    // Ensure boolean fields are properly typed
+    isStreaming: typeof metadata.isStreaming === 'boolean' ? metadata.isStreaming : undefined,
+    showPureContent: typeof metadata.showPureContent === 'boolean' ? metadata.showPureContent : undefined,
+  };
+}
 
 /**
  * Returns the icon name for a job status
@@ -172,62 +215,23 @@ export function formatApiType(apiType: ApiType): string {
 }
 
 /**
- * Returns human-readable task type
- * Updated to handle new workflow stage types from orchestrated workflows
+ * Returns human-readable task type using consolidated TaskTypeDetails
  */
 export function formatTaskType(taskType: TaskType): string {
   // If taskType is undefined or null, return 'Unknown Task'
   if (!taskType) return "Unknown Task";
 
-  // Convert enum values to human readable format
-  switch (taskType) {
-    case "path_finder":
-      return "Path Finding";
-    case "voice_transcription":
-      return "Voice Transcription";
-    case "path_correction":
-      return "Path Correction";
-    case "text_improvement":
-      return "Text Improvement";
-    case "text_correction":
-      return "Text Correction";
-    case "task_enhancement":
-      return "Task Enhancement";
-    case "guidance_generation":
-      return "Guidance Generation";
-    case "implementation_plan":
-      return "Implementation Plan";
-    
-    // New workflow stage types from orchestrated file finder workflows
-    case "directory_tree_generation":
-      return "Directory Tree";
-    case "regex_summary_generation":
-      return "Regex Summary";
-    case "regex_pattern_generation":
-      return "Regex Pattern";
-    case "regex_generation":
-      return "Regex Generation";
-    case "local_file_filtering":
-      return "Local Filtering";
-    case "initial_path_finding":
-      return "Initial Paths";
-    case "extended_path_finding":
-      return "Extended Paths";
-    case "extended_path_correction":
-      return "Path Refinement";
-    case "file_finder_workflow":
-      return "File Finder";
-      
-    default: {
-      // Return the raw value if it doesn't match any known type
-      // Convert to title case for better readability
-      const rawValue = taskType.toString();
-      return rawValue
-        .split("_")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
-    }
+  // Use the displayName from TaskTypeDetails if available
+  const taskDetails = TaskTypeDetails[taskType];
+  if (taskDetails?.displayName) {
+    return taskDetails.displayName;
   }
+
+  // Fallback to converting snake_case to Title Case
+  return taskType
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /**

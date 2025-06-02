@@ -151,6 +151,9 @@ impl WorkflowErrorHandler {
         let stage_payload = self.create_stage_payload(&workflow_state, &stage).await?;
         let (model, temperature, max_tokens) = self.get_stage_model_config(&stage, &workflow_state.project_directory).await?;
 
+        // Convert the JSON payload to the appropriate JobPayload variant
+        let job_payload = self.convert_json_to_job_payload(&stage_payload, &stage)?;
+        
         // Create the retry job
         let retry_job_id = job_creation_utils::create_and_queue_background_job(
             &workflow_state.session_id,
@@ -160,8 +163,10 @@ impl WorkflowErrorHandler {
             &format!("{}_RETRY_{}", stage.display_name().to_uppercase().replace(" ", "_"), new_retry_count),
             &workflow_state.task_description,
             Some((model, temperature, max_tokens)),
-            stage_payload,
+            job_payload,
             10, // High priority for workflow jobs
+            Some(workflow_id.to_string()), // workflow_id
+            Some(stage.display_name().to_string()), // workflow_stage
             Some(serde_json::json!({
                 "workflowId": workflow_id,
                 "workflowStage": stage,
@@ -437,6 +442,49 @@ impl WorkflowErrorHandler {
                 let abort_message = format!("Failed to retry stage '{}': {}. Original error: {}", 
                                           stage.display_name(), e, comprehensive_error);
                 self.handle_abort_strategy(workflow_id, &abort_message).await
+            }
+        }
+    }
+
+    /// Convert JSON payload to the appropriate JobPayload variant
+    fn convert_json_to_job_payload(&self, json_payload: &serde_json::Value, stage: &WorkflowStage) -> AppResult<crate::jobs::types::JobPayload> {
+        use crate::jobs::types::{JobPayload, DirectoryTreeGenerationPayload, RegexPatternGenerationWorkflowPayload, LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, ExtendedPathFinderPayload, ExtendedPathCorrectionPayload};
+        
+        match stage {
+            WorkflowStage::GeneratingDirTree => {
+                let payload: DirectoryTreeGenerationPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize DirectoryTreeGenerationPayload: {}", e)))?;
+                Ok(JobPayload::DirectoryTreeGeneration(payload))
+            }
+            WorkflowStage::GeneratingRegex => {
+                let payload: RegexPatternGenerationWorkflowPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationWorkflowPayload: {}", e)))?;
+                Ok(JobPayload::RegexPatternGenerationWorkflow(payload))
+            }
+            WorkflowStage::LocalFiltering => {
+                let payload: LocalFileFilteringPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize LocalFileFilteringPayload: {}", e)))?;
+                Ok(JobPayload::LocalFileFiltering(payload))
+            }
+            WorkflowStage::InitialPathFinder => {
+                let payload: PathFinderPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize PathFinderPayload: {}", e)))?;
+                Ok(JobPayload::PathFinder(payload))
+            }
+            WorkflowStage::InitialPathCorrection => {
+                let payload: PathCorrectionPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize PathCorrectionPayload: {}", e)))?;
+                Ok(JobPayload::PathCorrection(payload))
+            }
+            WorkflowStage::ExtendedPathFinder => {
+                let payload: ExtendedPathFinderPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathFinderPayload: {}", e)))?;
+                Ok(JobPayload::ExtendedPathFinder(payload))
+            }
+            WorkflowStage::ExtendedPathCorrection => {
+                let payload: ExtendedPathCorrectionPayload = serde_json::from_value(json_payload.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathCorrectionPayload: {}", e)))?;
+                Ok(JobPayload::ExtendedPathCorrection(payload))
             }
         }
     }

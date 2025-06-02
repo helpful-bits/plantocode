@@ -3,7 +3,7 @@ use log::info;
 use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobCommandResponse};
-use crate::jobs::types::RegexPatternGenerationPayload;
+use crate::jobs::types::{RegexPatternGenerationPayload, JobPayload};
 
 /// Arguments for regex generation command (for the command handler service)
 #[derive(Debug, Deserialize)]
@@ -73,7 +73,7 @@ pub async fn generate_regex_patterns_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_output_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::RegexPatternGeneration,
         &args.project_directory,
@@ -89,9 +89,6 @@ pub async fn generate_regex_patterns_command(
         task_description: args.task_description.clone(),
         project_directory: args.project_directory.clone(),
         directory_tree: args.directory_tree.clone(),
-        model_override: None, // Will be passed directly to create_and_queue_background_job
-        temperature_override: None, // Will be passed directly to create_and_queue_background_job
-        max_tokens_override: None, // Will be passed directly to create_and_queue_background_job
     };
     
     // Create additional metadata for the job
@@ -113,10 +110,11 @@ pub async fn generate_regex_patterns_command(
         TaskType::RegexPatternGeneration,
         "REGEX_PATTERN_GENERATION",
         &args.task_description,
-        Some((model, temperature, max_output_tokens)),
-        serde_json::to_value(processor_payload).map_err(|e| 
-            AppError::SerdeError(e.to_string()))?,
+        model_settings,
+        JobPayload::RegexPatternGeneration(processor_payload),
         2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         Some(extra_metadata),
         &app_handle,
     ).await?;

@@ -101,17 +101,14 @@ pub async fn generate_directory_tree(project_dir_path: &Path, options: Directory
         all_paths.extend(entries);
     }
     
-    // Filter out binary files - using async version correctly
+    // Filter out binary files - but do it more efficiently without file locks
     let mut filtered_paths = Vec::new();
     for path in all_paths {
-        // Make a single clone outside the condition to use in both branches
-        let path_clone = path.clone();
-        
-        // Check if the file is binary, awaiting the async function properly
-        let is_binary = fs_utils::is_binary_file(&path_clone).await;
+        // Use a fast, non-blocking binary check based on extension only
+        let is_binary = fs_utils::is_binary_file_fast(&path);
         
         if !is_binary {
-            filtered_paths.push(path_clone);
+            filtered_paths.push(path);
         }
     }
     

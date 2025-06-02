@@ -47,7 +47,7 @@ export async function listFiles(
   const response = await tauriInvoke<NativeFileInfo[]>("list_files_command", {
     directory,
     pattern: pattern ?? null,
-    includeStats: includeStats ?? null,
+    include_stats: includeStats ?? null,
     exclude: exclude ?? null,
   });
   return response;

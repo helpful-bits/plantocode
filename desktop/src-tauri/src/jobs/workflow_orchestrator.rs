@@ -297,12 +297,6 @@ impl WorkflowOrchestrator {
 
         workflow_state.status = WorkflowStatus::Running;
 
-        // Store the workflow state
-        {
-            let mut workflows = self.workflows.lock().await;
-            workflows.insert(workflow_id.clone(), workflow_state.clone());
-        }
-
         // Emit workflow started event
         self.emit_workflow_status_event(&workflow_state, "Workflow started").await;
 
@@ -313,9 +307,15 @@ impl WorkflowOrchestrator {
             return Err(AppError::JobError(format!("No entry stages found in workflow definition: {}", workflow_definition_name)));
         }
 
-        // Start all entry stages (they can run in parallel if they allow it)
-        for entry_stage in entry_stages {
-            self.create_abstract_stage_job(&workflow_state, entry_stage, &workflow_definition).await?;
+        // Store the workflow state and create entry stage jobs in the same lock scope
+        {
+            let mut workflows = self.workflows.lock().await;
+            workflows.insert(workflow_id.clone(), workflow_state.clone());
+            
+            // Create all entry stage jobs while holding the lock
+            for entry_stage in entry_stages {
+                self.create_abstract_stage_job_with_lock(&mut workflows, &workflow_state, entry_stage, &workflow_definition).await?;
+            }
         }
 
         info!("Started workflow '{}' with ID: {}", workflow_definition_name, workflow_id);
@@ -756,6 +756,8 @@ impl WorkflowOrchestrator {
             model_settings,
             job_payload,
             10, // High priority for workflow jobs
+            Some(workflow_state.workflow_id.clone()), // workflow_id
+            Some(stage.display_name().to_string()), // workflow_stage
             Some(serde_json::json!({
                 "workflowId": workflow_state.workflow_id,
                 "workflowStage": self.stage_to_task_type(&stage).to_string(),
@@ -781,6 +783,97 @@ impl WorkflowOrchestrator {
     }
 
     /// Create and queue a job for a specific workflow stage using abstract workflow definitions
+    /// Create a stage job while holding the workflows lock (avoids deadlock)
+    async fn create_abstract_stage_job_with_lock(
+        &self,
+        workflows: &mut std::collections::HashMap<String, WorkflowState>,
+        workflow_state: &WorkflowState,
+        stage_definition: &WorkflowStageDefinition,
+        workflow_definition: &WorkflowDefinition
+    ) -> AppResult<String> {
+        let task_type = stage_definition.task_type;
+        
+        // Create stage payload based on task type and dependency data
+        let job_payload = self.create_abstract_stage_payload(workflow_state, stage_definition, workflow_definition).await?;
+        
+        // Convert to WorkflowStage for model configuration
+        let stage = match task_type {
+            TaskType::DirectoryTreeGeneration => WorkflowStage::GeneratingDirTree,
+            TaskType::RegexPatternGeneration => WorkflowStage::GeneratingRegex,
+            TaskType::LocalFileFiltering => WorkflowStage::LocalFiltering,
+            TaskType::PathFinder => WorkflowStage::InitialPathFinder,
+            TaskType::PathCorrection => WorkflowStage::InitialPathCorrection,
+            TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
+            TaskType::ExtendedPathCorrection => WorkflowStage::ExtendedPathCorrection,
+            _ => return Err(AppError::JobError(format!("Unsupported task type for workflow stage: {:?}", task_type))),
+        };
+        
+        // Get model configuration for the stage
+        let model_settings = self.get_stage_model_config(&stage, &workflow_state.project_directory).await?;
+
+        // Determine API type based on whether the task requires LLM
+        let api_type_str = if model_settings.is_some() {
+            "openrouter"
+        } else {
+            "filesystem"
+        };
+
+        // Create the background job
+        let job_id = job_creation_utils::create_and_queue_background_job(
+            &workflow_state.session_id,
+            &workflow_state.project_directory,
+            api_type_str,
+            task_type,
+            &stage_definition.stage_name.to_uppercase().replace(" ", "_"),
+            &workflow_state.task_description,
+            model_settings,
+            job_payload,
+            10, // High priority for workflow jobs
+            Some(workflow_state.workflow_id.clone()), // workflow_id
+            Some(stage_definition.stage_name.clone()), // workflow_stage
+            Some(serde_json::json!({
+                "workflowId": workflow_state.workflow_id,
+                "workflowStage": task_type.to_string(),
+                "stageName": stage_definition.stage_name
+            })),
+            &self.app_handle,
+        ).await?;
+
+        // Add the stage job to workflow state using the provided mutable reference
+        if let Some(workflow) = workflows.get_mut(&workflow_state.workflow_id) {
+            let depends_on = if stage_definition.dependencies.is_empty() {
+                None
+            } else {
+                // Find the job ID of the first dependency
+                stage_definition.dependencies.first()
+                    .and_then(|dep_stage_name| {
+                        workflow_definition.get_stage(dep_stage_name)
+                    })
+                    .and_then(|dep_stage_def| {
+                        workflow.stage_jobs.iter()
+                            .find(|job| {
+                                let job_task_type = match &job.stage {
+                                    WorkflowStage::GeneratingDirTree => TaskType::DirectoryTreeGeneration,
+                                    WorkflowStage::GeneratingRegex => TaskType::RegexPatternGeneration,
+                                    WorkflowStage::LocalFiltering => TaskType::LocalFileFiltering,
+                                    WorkflowStage::InitialPathFinder => TaskType::PathFinder,
+                                    WorkflowStage::InitialPathCorrection => TaskType::PathCorrection,
+                                    WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
+                                    WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,
+                                };
+                                job_task_type == dep_stage_def.task_type
+                            })
+                    })
+                    .map(|job| job.job_id.clone())
+            };
+            
+            workflow.add_stage_job(stage.clone(), job_id.clone(), depends_on);
+        }
+
+        info!("Created abstract stage job {} for stage '{}'", job_id, stage_definition.stage_name);
+        Ok(job_id)
+    }
+
     async fn create_abstract_stage_job(
         &self, 
         workflow_state: &WorkflowState, 
@@ -825,6 +918,8 @@ impl WorkflowOrchestrator {
             model_settings,
             job_payload,
             10, // High priority for workflow jobs
+            Some(workflow_state.workflow_id.clone()), // workflow_id
+            Some(stage_definition.stage_name.clone()), // workflow_stage
             Some(serde_json::json!({
                 "workflowId": workflow_state.workflow_id,
                 "workflowStage": task_type.to_string(),
@@ -877,7 +972,7 @@ impl WorkflowOrchestrator {
         workflow_state: &WorkflowState,
         stage_definition: &WorkflowStageDefinition,
         workflow_definition: &WorkflowDefinition
-    ) -> AppResult<serde_json::Value> {
+    ) -> AppResult<super::types::JobPayload> {
         let task_type = stage_definition.task_type;
         let repo = self.app_handle.state::<std::sync::Arc<crate::db_utils::BackgroundJobRepository>>().inner().clone();
         let settings_repo = self.app_handle.state::<std::sync::Arc<crate::db_utils::SettingsRepository>>().inner().clone();
@@ -892,13 +987,24 @@ impl WorkflowOrchestrator {
                     workflow_state.excluded_paths.clone(),
                     Some(workflow_state.workflow_id.clone())
                 );
-                serde_json::to_value(&payload)
-                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize DirectoryTree payload: {}", e)))
+                Ok(super::types::JobPayload::DirectoryTreeGeneration(payload))
             }
             TaskType::RegexPatternGeneration => {
-                // Find the directory tree generation job
+                // Find the directory tree generation job - critical dependency
                 let dir_tree_job = self.find_dependency_job(workflow_state, TaskType::DirectoryTreeGeneration)?;
-                let directory_tree = super::stage_data_extractors::StageDataExtractor::extract_directory_tree(&dir_tree_job.job_id, &repo).await?;
+                
+                // Extract directory tree with graceful handling of missing data
+                let directory_tree = match super::stage_data_extractors::StageDataExtractor::extract_directory_tree(&dir_tree_job.job_id, &repo).await {
+                    Ok(tree) if !tree.trim().is_empty() => tree,
+                    Ok(_) => {
+                        warn!("Directory tree is empty for job {}, using minimal fallback", dir_tree_job.job_id);
+                        "No directory structure available".to_string()
+                    },
+                    Err(e) => {
+                        error!("Failed to extract directory tree for RegexPatternGeneration: {}", e);
+                        return Err(AppError::JobError(format!("Critical dependency data missing: directory tree from job {}", dir_tree_job.job_id)));
+                    }
+                };
                 
                 // Create a temporary base payload to match StageDataInjector signature
                 let base_payload = super::types::DirectoryTreeGenerationPayload {
@@ -916,55 +1022,72 @@ impl WorkflowOrchestrator {
                     directory_tree,
                     uuid::Uuid::new_v4().to_string()
                 );
-                serde_json::to_value(&payload)
-                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize RegexGeneration payload: {}", e)))
+                Ok(super::types::JobPayload::RegexPatternGenerationWorkflow(payload))
             }
             TaskType::LocalFileFiltering => {
                 // LocalFileFiltering requires: directory_tree (from DirectoryTreeGeneration) and regex_patterns (from RegexPatternGeneration)
                 debug!("LocalFileFiltering: Verifying dependency requirements");
                 
-                // Check if regex generation was completed first
-                if let Ok(regex_job) = self.find_dependency_job(workflow_state, TaskType::RegexPatternGeneration) {
-                    // Verify regex job is completed
-                    if regex_job.status != crate::models::JobStatus::Completed {
-                        return Err(AppError::JobError(format!(
-                            "LocalFileFiltering requires completed RegexPatternGeneration, but job {} has status: {:?}",
-                            regex_job.job_id, regex_job.status
-                        )));
-                    }
+                // First, ensure we have the critical dependency: directory tree
+                let dir_tree_job = self.find_dependency_job(workflow_state, TaskType::DirectoryTreeGeneration)?;
+                let directory_tree = super::stage_data_extractors::StageDataExtractor::extract_directory_tree(&dir_tree_job.job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract directory tree for LocalFileFiltering: {}", e)))?;
+                
+                // Try to get regex patterns from completed job, or from latest job with output (even if failed/skipped)
+                let (regex_patterns, regex_context) = if let Ok(regex_job) = self.find_dependency_job(workflow_state, TaskType::RegexPatternGeneration) {
+                    // Standard path: completed regex job
+                    debug!("Using completed RegexPatternGeneration job: {}", regex_job.job_id);
+                    let patterns = super::stage_data_extractors::StageDataExtractor::extract_regex_patterns(&regex_job.job_id, &repo).await
+                        .map_err(|e| AppError::JobError(format!("Failed to extract regex patterns from completed job: {}", e)))?;
                     
-                    let regex_patterns = super::stage_data_extractors::StageDataExtractor::extract_regex_patterns(&regex_job.job_id, &repo).await
-                        .map_err(|e| AppError::JobError(format!("Failed to extract regex patterns for LocalFileFiltering: {}", e)))?;
-                    
-                    // Get the original regex payload to access directory_tree and other context
                     let regex_job_data = repo.get_job_by_id(&regex_job.job_id).await?
                         .ok_or_else(|| AppError::JobError(format!("Regex job {} not found", regex_job.job_id)))?;
                     let regex_payload: super::types::RegexPatternGenerationWorkflowPayload = 
                         serde_json::from_str(&regex_job_data.prompt)
                             .map_err(|e| AppError::SerializationError(format!("Failed to parse regex payload: {}", e)))?;
                     
-                    let payload = super::stage_data_injectors::StageDataInjector::create_local_filtering_payload(
+                    (patterns, Some(regex_payload))
+                } else if let Some(regex_job) = self.get_latest_dependency_job_output(workflow_state, TaskType::RegexPatternGeneration) {
+                    // Fallback: use partial data from failed-but-skipped regex job
+                    warn!("Using partial data from failed/skipped RegexPatternGeneration job: {} (status: {:?})", 
+                          regex_job.job_id, regex_job.status);
+                    
+                    match super::stage_data_extractors::StageDataExtractor::extract_regex_patterns(&regex_job.job_id, &repo).await {
+                        Ok(patterns) => {
+                            debug!("Successfully extracted {} patterns from failed/skipped job", patterns.len());
+                            
+                            let regex_job_data = repo.get_job_by_id(&regex_job.job_id).await?
+                                .ok_or_else(|| AppError::JobError(format!("Regex job {} not found", regex_job.job_id)))?;
+                            match serde_json::from_str::<super::types::RegexPatternGenerationWorkflowPayload>(&regex_job_data.prompt) {
+                                Ok(regex_payload) => (patterns, Some(regex_payload)),
+                                Err(e) => {
+                                    warn!("Failed to parse regex payload from failed job, using empty patterns: {}", e);
+                                    (vec![], None)
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            warn!("Failed to extract patterns from failed/skipped job, using empty patterns: {}", e);
+                            (vec![], None)
+                        }
+                    }
+                } else {
+                    // No regex job found at all - proceed with empty patterns
+                    warn!("No RegexPatternGeneration job found, proceeding with empty patterns");
+                    (vec![], None)
+                };
+                
+                // Create the filtering payload based on available data
+                let payload = if let Some(regex_payload) = regex_context {
+                    // Use existing regex context
+                    super::stage_data_injectors::StageDataInjector::create_local_filtering_payload(
                         &settings_repo,
                         &regex_payload,
                         regex_patterns,
                         uuid::Uuid::new_v4().to_string()
-                    ).await;
-                    
-                    // Validate payload before returning
-                    super::stage_data_injectors::StageDataInjector::validate_filtering_payload(&payload)
-                        .map_err(|e| AppError::JobError(format!("LocalFiltering payload validation failed: {}", e)))?;
-                    
-                    serde_json::to_value(&payload)
-                        .map_err(|e| AppError::SerializationError(format!("Failed to serialize LocalFiltering payload: {}", e)))
+                    ).await
                 } else {
-                    // Fallback: Create filtering payload directly from directory tree if regex stage was skipped
-                    warn!("LocalFileFiltering: RegexPatternGeneration job not found, falling back to directory tree only");
-                    
-                    let dir_tree_job = self.find_dependency_job(workflow_state, TaskType::DirectoryTreeGeneration)?;
-                    let directory_tree = super::stage_data_extractors::StageDataExtractor::extract_directory_tree(&dir_tree_job.job_id, &repo).await
-                        .map_err(|e| AppError::JobError(format!("Failed to extract directory tree for LocalFileFiltering: {}", e)))?;
-                    
-                    // Create temporary regex payload for filtering
+                    // Create minimal context from directory tree
                     let temp_regex_payload = super::types::RegexPatternGenerationWorkflowPayload {
                         background_job_id: uuid::Uuid::new_v4().to_string(),
                         session_id: workflow_state.session_id.clone(),
@@ -974,31 +1097,35 @@ impl WorkflowOrchestrator {
                         workflow_id: workflow_state.workflow_id.clone(),
                         previous_stage_job_id: Some(dir_tree_job.job_id.clone()),
                         next_stage_job_id: Some(uuid::Uuid::new_v4().to_string()),
-                        model_override: None,
-                        temperature_override: None,
-                        max_tokens_override: None,
                     };
                     
-                    let payload = super::stage_data_injectors::StageDataInjector::create_local_filtering_payload(
+                    super::stage_data_injectors::StageDataInjector::create_local_filtering_payload(
                         &settings_repo,
                         &temp_regex_payload,
-                        vec![], // Empty regex patterns for direct transition
+                        regex_patterns, // Empty if no regex data available
                         uuid::Uuid::new_v4().to_string()
-                    ).await;
-                    
-                    // Validate payload before returning
-                    super::stage_data_injectors::StageDataInjector::validate_filtering_payload(&payload)
-                        .map_err(|e| AppError::JobError(format!("LocalFiltering payload validation failed: {}", e)))?;
-                    
-                    serde_json::to_value(&payload)
-                        .map_err(|e| AppError::SerializationError(format!("Failed to serialize LocalFiltering payload: {}", e)))
-                }
+                    ).await
+                };
+                
+                // Validate payload before returning
+                super::stage_data_injectors::StageDataInjector::validate_filtering_payload(&payload)
+                    .map_err(|e| AppError::JobError(format!("LocalFiltering payload validation failed: {}", e)))?;
+                
+                Ok(super::types::JobPayload::LocalFileFiltering(payload))
             }
             TaskType::PathFinder => {
                 let filtering_job = self.find_dependency_job(workflow_state, TaskType::LocalFileFiltering)?;
-                let filtered_paths = super::stage_data_extractors::StageDataExtractor::extract_filtered_paths(&filtering_job.job_id, &repo).await?;
                 
-                // Get the original filtering payload
+                // Extract filtered paths with graceful handling of missing data
+                let filtered_paths = match super::stage_data_extractors::StageDataExtractor::extract_filtered_paths(&filtering_job.job_id, &repo).await {
+                    Ok(paths) => paths,
+                    Err(e) => {
+                        warn!("Failed to extract filtered paths from job {}, using empty list: {}", filtering_job.job_id, e);
+                        vec![]
+                    }
+                };
+                
+                // Get the original filtering payload with error handling
                 let filtering_job_data = repo.get_job_by_id(&filtering_job.job_id).await?
                     .ok_or_else(|| AppError::JobError(format!("Filtering job {} not found", filtering_job.job_id)))?;
                 let filtering_payload: super::types::LocalFileFilteringPayload = 
@@ -1012,8 +1139,7 @@ impl WorkflowOrchestrator {
                     uuid::Uuid::new_v4().to_string()
                 ).await;
                 
-                serde_json::to_value(&payload)
-                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize PathFinder payload: {}", e)))
+                Ok(super::types::JobPayload::PathFinder(payload))
             }
             TaskType::PathCorrection => {
                 let finder_job = self.find_dependency_job(workflow_state, TaskType::PathFinder)?;
@@ -1032,8 +1158,7 @@ impl WorkflowOrchestrator {
                     initial_paths
                 ).await;
                 
-                serde_json::to_value(&payload)
-                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize PathCorrection payload: {}", e)))
+                Ok(super::types::JobPayload::PathCorrection(payload))
             }
             TaskType::ExtendedPathFinder => {
                 let filtering_job = self.find_dependency_job(workflow_state, TaskType::LocalFileFiltering)?;
@@ -1053,8 +1178,7 @@ impl WorkflowOrchestrator {
                     uuid::Uuid::new_v4().to_string()
                 ).await;
                 
-                serde_json::to_value(&payload)
-                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize ExtendedPathFinder payload: {}", e)))
+                Ok(super::types::JobPayload::ExtendedPathFinder(payload))
             }
             TaskType::ExtendedPathCorrection => {
                 let extended_finder_job = self.find_dependency_job(workflow_state, TaskType::ExtendedPathFinder)?;
@@ -1072,8 +1196,7 @@ impl WorkflowOrchestrator {
                     extended_paths
                 );
                 
-                serde_json::to_value(&payload)
-                    .map_err(|e| AppError::SerializationError(format!("Failed to serialize ExtendedPathCorrection payload: {}", e)))
+                Ok(super::types::JobPayload::ExtendedPathCorrection(payload))
             }
             _ => Err(AppError::JobError(format!("Unsupported task type for abstract workflow: {:?}", task_type)))
         }
@@ -1097,6 +1220,28 @@ impl WorkflowOrchestrator {
             .ok_or_else(|| AppError::JobError(format!("No completed dependency job found for task type: {:?}", dependency_task_type)))
     }
 
+    /// Find the latest dependency job (even if failed) that has output data
+    /// This is useful for workflows that can continue with partial data from failed-but-skipped stages
+    fn get_latest_dependency_job_output<'a>(&self, workflow_state: &'a WorkflowState, dependency_task_type: TaskType) -> Option<&'a super::workflow_types::WorkflowStageJob> {
+        workflow_state.stage_jobs.iter()
+            .filter(|job| {
+                let job_task_type = match &job.stage {
+                    WorkflowStage::GeneratingDirTree => TaskType::DirectoryTreeGeneration,
+                    WorkflowStage::GeneratingRegex => TaskType::RegexPatternGeneration,
+                    WorkflowStage::LocalFiltering => TaskType::LocalFileFiltering,
+                    WorkflowStage::InitialPathFinder => TaskType::PathFinder,
+                    WorkflowStage::InitialPathCorrection => TaskType::PathCorrection,
+                    WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
+                    WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,
+                };
+                job_task_type == dependency_task_type && 
+                (job.status == crate::models::JobStatus::Completed || 
+                 job.status == crate::models::JobStatus::Failed ||
+                 job.status == crate::models::JobStatus::Canceled)
+            })
+            .max_by_key(|job| job.created_at)
+    }
+
     /// Convert workflow stage to TaskType
     fn stage_to_task_type(&self, stage: &WorkflowStage) -> TaskType {
         match stage {
@@ -1111,71 +1256,96 @@ impl WorkflowOrchestrator {
     }
 
     /// Create payload for a specific stage
-    async fn create_stage_payload(&self, workflow_state: &WorkflowState, stage: &WorkflowStage) -> AppResult<serde_json::Value> {
+    async fn create_stage_payload(&self, workflow_state: &WorkflowState, stage: &WorkflowStage) -> AppResult<super::types::JobPayload> {
         match stage {
             WorkflowStage::GeneratingDirTree => {
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "excludedPaths": workflow_state.excluded_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                let payload = super::types::DirectoryTreeGenerationPayload {
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: workflow_state.session_id.clone(),
+                    task_description: workflow_state.task_description.clone(),
+                    project_directory: workflow_state.project_directory.clone(),
+                    excluded_paths: workflow_state.excluded_paths.clone(),
+                    workflow_id: workflow_state.workflow_id.clone(),
+                    next_stage_job_id: None,
+                };
+                Ok(super::types::JobPayload::DirectoryTreeGeneration(payload))
             }
             WorkflowStage::GeneratingRegex => {
                 let directory_tree = workflow_state.intermediate_data.directory_tree_content
                     .as_ref()
                     .ok_or_else(|| AppError::JobError("Directory tree not available for regex generation".to_string()))?;
                 
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                let payload = super::types::RegexPatternGenerationWorkflowPayload {
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: workflow_state.session_id.clone(),
+                    task_description: workflow_state.task_description.clone(),
+                    project_directory: workflow_state.project_directory.clone(),
+                    directory_tree: directory_tree.clone(),
+                    workflow_id: workflow_state.workflow_id.clone(),
+                    previous_stage_job_id: None,
+                    next_stage_job_id: None,
+                };
+                Ok(super::types::JobPayload::RegexPatternGenerationWorkflow(payload))
             }
             WorkflowStage::LocalFiltering => {
-                let regex_patterns = workflow_state.intermediate_data.raw_regex_patterns
+                // For LocalFiltering, I'll need to create a proper LocalFileFilteringPayload
+                // This needs directory tree and regex patterns
+                let directory_tree = workflow_state.intermediate_data.directory_tree_content
                     .as_ref()
-                    .ok_or_else(|| AppError::JobError("Regex patterns not available for local filtering".to_string()))?;
+                    .ok_or_else(|| AppError::JobError("Directory tree not available for local filtering".to_string()))?;
                 
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "regexPatterns": regex_patterns,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                let payload = super::types::LocalFileFilteringPayload {
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: workflow_state.session_id.clone(),
+                    task_description: workflow_state.task_description.clone(),
+                    project_directory: workflow_state.project_directory.clone(),
+                    directory_tree: directory_tree.clone(),
+                    excluded_paths: workflow_state.excluded_paths.clone(),
+                    workflow_id: workflow_state.workflow_id.clone(),
+                    previous_stage_job_id: uuid::Uuid::new_v4().to_string(), // This should be the dir tree job id
+                    next_stage_job_id: None,
+                };
+                Ok(super::types::JobPayload::LocalFileFiltering(payload))
             }
             WorkflowStage::InitialPathFinder => {
                 let directory_tree = workflow_state.intermediate_data.directory_tree_content
                     .as_ref()
                     .ok_or_else(|| AppError::JobError("Directory tree not available for path finding".to_string()))?;
                 
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "includedFiles": workflow_state.intermediate_data.locally_filtered_files,
-                    "excludedFiles": workflow_state.excluded_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                // Create a PathFinderPayload for the initial path finder
+                let payload = super::types::PathFinderPayload {
+                    session_id: workflow_state.session_id.clone(),
+                    task_description: workflow_state.task_description.clone(),
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    project_directory: workflow_state.project_directory.clone(),
+                    system_prompt: "Path finding system prompt".to_string(), // This should be loaded from settings
+                    directory_tree: Some(directory_tree.clone()),
+                    relevant_file_contents: std::collections::HashMap::new(),
+                    estimated_input_tokens: None,
+                    options: crate::jobs::processors::path_finder_types::PathFinderOptions::default(),
+                };
+                Ok(super::types::JobPayload::PathFinder(payload))
             }
             WorkflowStage::InitialPathCorrection => {
                 let directory_tree = workflow_state.intermediate_data.directory_tree_content
                     .as_ref()
                     .ok_or_else(|| AppError::JobError("Directory tree not available for path correction".to_string()))?;
                 
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "pathsToCorrect": workflow_state.intermediate_data.initial_unverified_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                let paths_to_correct = workflow_state.intermediate_data.initial_unverified_paths
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                
+                let payload = super::types::PathCorrectionPayload {
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: workflow_state.session_id.clone(),
+                    paths_to_correct,
+                    context_description: workflow_state.task_description.clone(),
+                    directory_tree: Some(directory_tree.clone()),
+                    system_prompt_override: None,
+                };
+                Ok(super::types::JobPayload::PathCorrection(payload))
             }
             WorkflowStage::ExtendedPathFinder => {
                 let directory_tree = workflow_state.intermediate_data.directory_tree_content
@@ -1185,29 +1355,35 @@ impl WorkflowOrchestrator {
                 let mut current_verified = workflow_state.intermediate_data.initial_verified_paths.clone();
                 current_verified.extend(workflow_state.intermediate_data.initial_corrected_paths.clone());
                 
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "currentVerified": current_verified,
-                    "excludedFiles": workflow_state.excluded_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                let payload = super::types::ExtendedPathFinderPayload {
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: workflow_state.session_id.clone(),
+                    task_description: workflow_state.task_description.clone(),
+                    project_directory: workflow_state.project_directory.clone(),
+                    directory_tree: directory_tree.clone(),
+                    initial_paths: current_verified,
+                    workflow_id: workflow_state.workflow_id.clone(),
+                    previous_stage_job_id: uuid::Uuid::new_v4().to_string(), // Should be local filtering job id
+                    next_stage_job_id: None,
+                };
+                Ok(super::types::JobPayload::ExtendedPathFinder(payload))
             }
             WorkflowStage::ExtendedPathCorrection => {
                 let directory_tree = workflow_state.intermediate_data.directory_tree_content
                     .as_ref()
                     .ok_or_else(|| AppError::JobError("Directory tree not available for extended path correction".to_string()))?;
                 
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "pathsToCorrect": workflow_state.intermediate_data.extended_unverified_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
+                let payload = super::types::ExtendedPathCorrectionPayload {
+                    background_job_id: uuid::Uuid::new_v4().to_string(),
+                    session_id: workflow_state.session_id.clone(),
+                    task_description: workflow_state.task_description.clone(),
+                    project_directory: workflow_state.project_directory.clone(),
+                    directory_tree: directory_tree.clone(),
+                    extended_paths: workflow_state.intermediate_data.extended_unverified_paths.clone(),
+                    workflow_id: workflow_state.workflow_id.clone(),
+                    previous_stage_job_id: uuid::Uuid::new_v4().to_string(), // Should be extended path finder job id
+                };
+                Ok(super::types::JobPayload::ExtendedPathCorrection(payload))
             }
         }
     }
@@ -1667,6 +1843,8 @@ impl WorkflowOrchestrator {
             model_settings,
             stage_payload,
             10, // High priority for workflow jobs
+            Some(workflow_id.to_string()), // workflow_id
+            Some(stage_to_retry.display_name().to_string()), // workflow_stage
             Some(serde_json::json!({
                 "workflowId": workflow_id,
                 "workflowStage": stage_to_retry,
@@ -1722,7 +1900,7 @@ impl WorkflowOrchestrator {
     }
 
     /// Create stage payload for retry (similar to create_stage_payload but using existing intermediate data)
-    async fn create_stage_payload_for_retry(&self, workflow_state: &WorkflowState, stage: &WorkflowStage) -> AppResult<serde_json::Value> {
+    async fn create_stage_payload_for_retry(&self, workflow_state: &WorkflowState, stage: &WorkflowStage) -> AppResult<super::types::JobPayload> {
         // Use the same payload creation logic as normal stages, since we want to retry with the same data
         self.create_stage_payload(workflow_state, stage).await
     }

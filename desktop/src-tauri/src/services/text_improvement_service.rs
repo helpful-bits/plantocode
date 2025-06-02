@@ -1,12 +1,14 @@
 //! Service functions for text improvement.
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use log::info;
 use crate::error::{AppResult, AppError};
 use crate::models::{TaskType, JobCommandResponse};
-use crate::SESSION_REPO;
+use crate::jobs::types::JobPayload;
 use crate::utils::job_creation_utils;
 use crate::commands::text_commands::ImproveTextArgs;
+use crate::db_utils::SessionRepository;
+use std::sync::Arc;
 
 /// Creates a background job to improve text for clarity and grammar.
 pub async fn create_text_improvement_job_service(
@@ -32,10 +34,7 @@ pub async fn create_text_improvement_job_service(
         dir
     } else {
         // Try to get project directory from session
-        let session_repo = SESSION_REPO
-            .get()
-            .ok_or_else(|| AppError::InitializationError("Session repository not initialized".to_string()))?
-            .clone();
+        let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
 
         let session = session_repo.get_session_by_id(&args.session_id)
             .await
@@ -50,7 +49,7 @@ pub async fn create_text_improvement_job_service(
     };
 
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         app_handle,
         TaskType::TextImprovement,
         &project_directory,
@@ -66,7 +65,6 @@ pub async fn create_text_improvement_job_service(
         project_directory: Some(project_directory.clone()),
         text_to_improve: args.text.clone(),
         target_field: args.target_field.clone(),
-        model_override: None,
     };
 
     // Extra metadata specific to text improvement
@@ -82,10 +80,11 @@ pub async fn create_text_improvement_job_service(
         TaskType::TextImprovement,
         "TEXT_IMPROVEMENT",
         "Improve text clarity and grammar",
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(payload)
-            .map_err(|e| AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
+        model_settings,
+        JobPayload::TextImprovement(payload),
         2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         Some(extra_metadata),
         app_handle
     )

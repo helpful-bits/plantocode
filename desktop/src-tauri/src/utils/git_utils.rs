@@ -16,15 +16,55 @@ pub fn get_repository(path: impl AsRef<Path>) -> AppResult<Repository> {
     })
 }
 
-/// Get all non-ignored files in a git repository, returning paths relative to the repository root
-/// and a boolean indicating whether the path is a git repository
+/// Get all non-ignored files in a git repository using git command (fast approach)
+/// Returns paths relative to the repository root and a boolean indicating if it's a git repo
 ///
-/// Returns a tuple with:
-/// - Vec<PathBuf>: relative paths to non-ignored files
-/// - bool: true if path is a git repository, false otherwise
+/// This uses the same efficient approach as the frontend: `git ls-files --cached --others --exclude-standard`
 pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathBuf>, bool)> {
     let path = path.as_ref();
     
+    // First check if this is a git repository
+    if !is_git_repository(path) {
+        debug!("Path {} is not a git repository", path.display());
+        return Ok((Vec::new(), false));
+    }
+    
+    // Use git command to get tracked and untracked files (excluding ignored ones)
+    // This matches the frontend approach: git ls-files --cached --others --exclude-standard
+    let output = std::process::Command::new("git")
+        .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
+        .current_dir(path)
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let files: Vec<PathBuf> = stdout
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .map(|line| PathBuf::from(line.trim()))
+                    .collect();
+                
+                debug!("Found {} non-ignored files in git repository at {} using git ls-files", files.len(), path.display());
+                Ok((files, true))
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                error!("Git ls-files command failed: {}", stderr);
+                // Fall back to git2 library approach
+                get_all_non_ignored_files_fallback(path)
+            }
+        }
+        Err(e) => {
+            error!("Failed to execute git command: {}", e);
+            // Fall back to git2 library approach
+            get_all_non_ignored_files_fallback(path)
+        }
+    }
+}
+
+/// Fallback method using git2 library (slower but more reliable)
+fn get_all_non_ignored_files_fallback(path: &Path) -> AppResult<(Vec<PathBuf>, bool)> {
     let repo = match get_repository(path) {
         Ok(r) => r,
         Err(e) => {
@@ -72,7 +112,7 @@ pub fn get_all_non_ignored_files(path: impl AsRef<Path>) -> AppResult<(Vec<PathB
         }
     }
     
-    debug!("Found {} non-ignored files in git repository at {}", files.len(), path.display());
+    debug!("Found {} non-ignored files in git repository at {} using git2 fallback", files.len(), path.display());
     Ok((files, true))
 }
 

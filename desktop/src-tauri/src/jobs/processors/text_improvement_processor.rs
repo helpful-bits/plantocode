@@ -43,9 +43,13 @@ impl JobProcessor for TextImprovementProcessor {
             }
         };
         
-        // Setup repositories and update job status to running
-        let (repo, settings_repo) = job_processor_utils::setup_repositories(&app_handle)?;
-        job_processor_utils::update_status_running(&repo, &job_id, "Processing text improvement").await?;
+        // Setup job processing and update status to running
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job_id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         // Build unified prompt using standardized utility
         let composed_prompt = job_processor_utils::build_unified_prompt(
@@ -56,6 +60,7 @@ impl JobProcessor for TextImprovementProcessor {
             None, // file_contents
             None, // directory_tree
             &settings_repo,
+            &model_used,
         ).await?;
 
         info!("Enhanced Text Improvement prompt composition for job {}", job_id);
@@ -77,16 +82,16 @@ impl JobProcessor for TextImprovementProcessor {
         let messages = job_processor_utils::create_openrouter_messages(&system_prompt_text, &user_prompt_text);
         
         // Create API options and execute LLM request
-        let project_directory = payload.project_directory.as_deref().unwrap_or("");
         let options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::TextImprovement,
-            project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
-        let response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &options).await?;
+        // Clone model name before moving options
+        let model_name = options.model.clone();
+        let response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, options).await?;
         
         // LOG: Full OpenRouter response for debugging
         info!("OpenRouter Text Improvement Response - Job ID: {}", job_id);
@@ -136,7 +141,7 @@ impl JobProcessor for TextImprovementProcessor {
             &repo,
             &final_improved_text,
             usage_clone,
-            &options.model,
+            &model_name,
             &system_prompt_id,
             Some(metadata),
         ).await?;

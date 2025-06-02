@@ -69,11 +69,11 @@ export async function startFileFinderWorkflowAction(
     const result = await invoke<WorkflowCommandResponse>(
       "start_file_finder_workflow",
       {
-        session_id: args.sessionId,
-        task_description: args.taskDescription,
-        project_directory: args.projectDirectory,
-        excluded_paths: args.excludedPaths || [],
-        timeout_ms: args.timeoutMs,
+        sessionId: args.sessionId,
+        taskDescription: args.taskDescription,
+        projectDirectory: args.projectDirectory,
+        excludedPaths: args.excludedPaths || [],
+        timeoutMs: args.timeoutMs,
       }
     );
 

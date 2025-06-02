@@ -17,6 +17,7 @@ import {
   Button,
   Label,
 } from "@/ui";
+import { useNotification } from "@/contexts/notification-context";
 import { OUTPUT_FILE_EDITOR_COMMAND_KEY } from "@/utils/constants";
 
 interface SystemSettingsProps {
@@ -31,6 +32,7 @@ export default function SystemSettings({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const { showNotification } = useNotification();
 
   // Fetch the output file editor command when component mounts or projectDirectory changes
   useEffect(() => {
@@ -89,15 +91,29 @@ export default function SystemSettings({
         setSaveSuccess(true);
         // Hide success message after a delay
         setTimeout(() => setSaveSuccess(false), 3000);
+        showNotification({
+          title: "Settings Saved",
+          message: "Output file editor command has been saved successfully.",
+          type: "success",
+        });
       } else {
         setError(result.message || "Failed to save output file editor command");
+        showNotification({
+          title: "Save Failed",
+          message: result.message || "Failed to save output file editor command",
+          type: "error",
+        });
       }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to save output file editor command"
-      );
+      const errorMessage = err instanceof Error
+        ? err.message
+        : "Failed to save output file editor command";
+      setError(errorMessage);
+      showNotification({
+        title: "Save Failed",
+        message: errorMessage,
+        type: "error",
+      });
       console.error("Error saving output file editor command:", err);
     } finally {
       setIsLoading(false);

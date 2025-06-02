@@ -4,6 +4,7 @@ import { FolderTree } from "lucide-react";
 import { useState, ChangeEvent } from "react";
 
 import { generateDirectoryTreeAction } from "@/actions/file-system/directory-tree.actions";
+import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
@@ -26,6 +27,7 @@ export default function CodebaseStructure({
 }: CodebaseStructureProps) {
   // UI state
   const { projectDirectory } = useProject();
+  const { showNotification } = useNotification();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +56,28 @@ export default function CodebaseStructure({
         onChange(result.data.directoryTree);
         setIsExpanded(true);
         setError(null);
+        showNotification({
+          title: "Directory Tree Generated",
+          message: "Project structure has been successfully generated.",
+          type: "success",
+        });
       } else {
-        setError(result.message || "Failed to generate directory tree");
+        const errorMessage = result.message || "Failed to generate directory tree";
+        setError(errorMessage);
+        showNotification({
+          title: "Generation Failed",
+          message: errorMessage,
+          type: "error",
+        });
       }
     } catch (error) {
-      setError("Failed to generate directory tree.");
+      const errorMessage = "Failed to generate directory tree.";
+      setError(errorMessage);
+      showNotification({
+        title: "Generation Failed",
+        message: errorMessage,
+        type: "error",
+      });
     } finally {
       setIsGenerating(false);
     }

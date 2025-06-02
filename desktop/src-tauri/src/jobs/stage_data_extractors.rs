@@ -212,32 +212,39 @@ impl StageDataExtractor {
         
         debug!("Extracting filtered paths from response (length: {} chars)", response.len());
         
-        // LocalFileFiltering processor stores newline-separated strings, not JSON
-        let paths = if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
-            debug!("LocalFileFiltering response parsed as JSON");
-            
-            // Check if it's a simple array of strings
-            if let Some(array) = json_value.as_array() {
-                debug!("Response is JSON array with {} elements", array.len());
-                array.iter()
-                    .filter_map(|item| {
-                        if let Some(path_str) = item.as_str() {
-                            Some(path_str.to_string())
-                        } else {
-                            warn!("Non-string item in filtered paths array: {:?}", item);
-                            None
-                        }
-                    })
-                    .collect()
-            } else {
-                // Fallback to generic JSON extraction
-                debug!("Response is not a simple array, attempting generic JSON extraction");
-                Self::extract_paths_from_json(&json_value)?
-            }
+        // LocalFileFiltering processor now stores JSON array of strings
+        let paths = if let Ok(filtered_paths) = serde_json::from_str::<Vec<String>>(&response) {
+            debug!("LocalFileFiltering response parsed as JSON Vec<String> with {} paths", filtered_paths.len());
+            filtered_paths
         } else {
-            // Primary format: newline-separated text (most common for LocalFileFiltering)
-            debug!("LocalFileFiltering response is plain text, parsing as newline-separated paths");
-            Self::extract_paths_from_text(&response)?
+            // Fallback to original parsing logic for backward compatibility
+            debug!("Failed to parse as Vec<String>, falling back to legacy parsing");
+            if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
+                debug!("LocalFileFiltering response parsed as JSON");
+                
+                // Check if it's a simple array of strings
+                if let Some(array) = json_value.as_array() {
+                    debug!("Response is JSON array with {} elements", array.len());
+                    array.iter()
+                        .filter_map(|item| {
+                            if let Some(path_str) = item.as_str() {
+                                Some(path_str.to_string())
+                            } else {
+                                warn!("Non-string item in filtered paths array: {:?}", item);
+                                None
+                            }
+                        })
+                        .collect()
+                } else {
+                    // Fallback to generic JSON extraction
+                    debug!("Response is not a simple array, attempting generic JSON extraction");
+                    Self::extract_paths_from_json(&json_value)?
+                }
+            } else {
+                // Primary format: newline-separated text (most common for LocalFileFiltering)
+                debug!("LocalFileFiltering response is plain text, parsing as newline-separated paths");
+                Self::extract_paths_from_text(&response)?
+            }
         };
         
         debug!("Extracted {} raw paths before validation", paths.len());
@@ -281,35 +288,42 @@ impl StageDataExtractor {
         
         debug!("Extracting extended paths from response (length: {} chars)", response.len());
         
-        // ExtendedPathFinder should primarily return structured JSON (PathFinderResult)
-        let paths = if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
-            debug!("ExtendedPathFinder response parsed as JSON");
-            
-            // Try to parse as PathFinderResult first (structured response)
-            if let Ok(result) = serde_json::from_value::<crate::jobs::processors::path_finder_types::PathFinderResult>(json_value.clone()) {
-                debug!("Extracted PathFinderResult with {} verified paths and {} unverified paths", 
-                       result.paths.len(), result.unverified_paths.len());
+        // ExtendedPathFinder processor now stores JSON array of strings (all_paths)
+        let paths = if let Ok(extended_paths) = serde_json::from_str::<Vec<String>>(&response) {
+            debug!("ExtendedPathFinder response parsed as JSON Vec<String> with {} paths", extended_paths.len());
+            extended_paths
+        } else {
+            // Fallback to original parsing logic for backward compatibility
+            debug!("Failed to parse as Vec<String>, falling back to legacy parsing");
+            if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
+                debug!("ExtendedPathFinder response parsed as JSON");
                 
-                // Prefer verified paths, but include unverified if no verified paths found
-                if !result.paths.is_empty() {
-                    debug!("Using {} verified paths from PathFinderResult", result.paths.len());
-                    result.paths
-                } else if !result.unverified_paths.is_empty() {
-                    debug!("No verified paths found, using {} unverified paths from PathFinderResult", result.unverified_paths.len());
-                    result.unverified_paths
+                // Try to parse as PathFinderResult first (structured response)
+                if let Ok(result) = serde_json::from_value::<crate::jobs::processors::path_finder_types::PathFinderResult>(json_value.clone()) {
+                    debug!("Extracted PathFinderResult with {} verified paths and {} unverified paths", 
+                           result.paths.len(), result.unverified_paths.len());
+                    
+                    // Prefer verified paths, but include unverified if no verified paths found
+                    if !result.paths.is_empty() {
+                        debug!("Using {} verified paths from PathFinderResult", result.paths.len());
+                        result.paths
+                    } else if !result.unverified_paths.is_empty() {
+                        debug!("No verified paths found, using {} unverified paths from PathFinderResult", result.unverified_paths.len());
+                        result.unverified_paths
+                    } else {
+                        debug!("PathFinderResult contains no paths");
+                        vec![]
+                    }
                 } else {
-                    debug!("PathFinderResult contains no paths");
-                    vec![]
+                    // Fallback to generic path extraction for other JSON structures
+                    debug!("Could not parse as PathFinderResult, attempting generic path extraction");
+                    Self::extract_paths_from_path_finder_json(&json_value)?
                 }
             } else {
-                // Fallback to generic path extraction for other JSON structures
-                debug!("Could not parse as PathFinderResult, attempting generic path extraction");
-                Self::extract_paths_from_path_finder_json(&json_value)?
+                // Fallback to text parsing - might be newline-separated paths
+                debug!("ExtendedPathFinder response is plain text, parsing as newline-separated paths");
+                Self::extract_paths_from_text(&response)?
             }
-        } else {
-            // Fallback to text parsing - might be newline-separated paths
-            debug!("ExtendedPathFinder response is plain text, parsing as newline-separated paths");
-            Self::extract_paths_from_text(&response)?
         };
         
         debug!("Extracted {} raw extended paths before validation", paths.len());
@@ -353,39 +367,47 @@ impl StageDataExtractor {
         
         debug!("Extracting final paths from response (length: {} chars)", response.len());
         
-        // Path correction processors can produce multiple formats:
-        // 1. Newline-separated paths (most common)
-        // 2. JSON array of strings
-        // 3. XML with path tags (legacy format)
-        let paths = if response.trim().starts_with('<') && response.contains("<path") {
-            // XML format - extract paths using XML parsing
-            debug!("PathCorrection response appears to be XML format");
-            Self::extract_paths_from_xml(&response)?
-        } else if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
-            debug!("PathCorrection response parsed as JSON");
-            
-            // Check if it's a simple array of strings
-            if let Some(array) = json_value.as_array() {
-                debug!("Response is JSON array with {} elements", array.len());
-                array.iter()
-                    .filter_map(|item| {
-                        if let Some(path_str) = item.as_str() {
-                            Some(path_str.to_string())
-                        } else {
-                            warn!("Non-string item in final paths array: {:?}", item);
-                            None
-                        }
-                    })
-                    .collect()
-            } else {
-                // Fallback to generic JSON extraction
-                debug!("Response is not a simple array, attempting generic JSON extraction");
-                Self::extract_paths_from_json(&json_value)?
-            }
+        // ExtendedPathCorrection processor now stores JSON array of strings (final_paths)
+        let paths = if let Ok(final_paths) = serde_json::from_str::<Vec<String>>(&response) {
+            debug!("PathCorrection response parsed as JSON Vec<String> with {} paths", final_paths.len());
+            final_paths
         } else {
-            // Primary format: newline-separated text
-            debug!("PathCorrection response is plain text, parsing as newline-separated paths");
-            Self::extract_paths_from_text(&response)?
+            // Fallback to original parsing logic for backward compatibility
+            debug!("Failed to parse as Vec<String>, falling back to legacy parsing");
+            // Path correction processors can produce multiple formats:
+            // 1. Newline-separated paths (most common)
+            // 2. JSON array of strings
+            // 3. XML with path tags (legacy format)
+            if response.trim().starts_with('<') && response.contains("<path") {
+                // XML format - extract paths using XML parsing
+                debug!("PathCorrection response appears to be XML format");
+                Self::extract_paths_from_xml(&response)?
+            } else if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
+                debug!("PathCorrection response parsed as JSON");
+                
+                // Check if it's a simple array of strings
+                if let Some(array) = json_value.as_array() {
+                    debug!("Response is JSON array with {} elements", array.len());
+                    array.iter()
+                        .filter_map(|item| {
+                            if let Some(path_str) = item.as_str() {
+                                Some(path_str.to_string())
+                            } else {
+                                warn!("Non-string item in final paths array: {:?}", item);
+                                None
+                            }
+                        })
+                        .collect()
+                } else {
+                    // Fallback to generic JSON extraction
+                    debug!("Response is not a simple array, attempting generic JSON extraction");
+                    Self::extract_paths_from_json(&json_value)?
+                }
+            } else {
+                // Primary format: newline-separated text
+                debug!("PathCorrection response is plain text, parsing as newline-separated paths");
+                Self::extract_paths_from_text(&response)?
+            }
         };
         
         debug!("Extracted {} raw final paths before validation", paths.len());
@@ -487,29 +509,57 @@ impl StageDataExtractor {
         let patterns = if let Ok(json_value) = serde_json::from_str::<Value>(&response) {
             debug!("Successfully parsed response as JSON");
             
-            // First, check if it's a simple array of strings (most common format)
-            if let Some(array) = json_value.as_array() {
-                debug!("Response is a JSON array with {} elements", array.len());
-                array.iter()
-                    .filter_map(|item| {
-                        if let Some(pattern_str) = item.as_str() {
-                            Some(pattern_str.to_string())
-                        } else if let Some(pattern_obj) = item.as_object() {
-                            // Handle objects that might have a "pattern" field
-                            pattern_obj.get("pattern")
-                                .and_then(|p| p.as_str())
-                                .map(|s| s.to_string())
-                        } else {
-                            warn!("Non-string item in regex patterns array: {:?}", item);
-                            None
+            // Extract patterns from specific fields like titleRegex, contentRegex, etc.
+            let mut extracted_patterns = Vec::new();
+            
+            // Define the expected regex field names from RegexPatternGenerationProcessor
+            let regex_fields = ["titleRegex", "contentRegex", "negativeTitleRegex", "negativeContentRegex"];
+            
+            for field_name in &regex_fields {
+                if let Some(field_value) = json_value.get(field_name) {
+                    if let Some(pattern_str) = field_value.as_str() {
+                        let trimmed_pattern = pattern_str.trim();
+                        if !trimmed_pattern.is_empty() {
+                            debug!("Extracted pattern from {}: {}", field_name, trimmed_pattern);
+                            extracted_patterns.push(trimmed_pattern.to_string());
                         }
-                    })
-                    .collect()
-            } else {
-                // Fallback to complex JSON extraction with various possible structures
-                debug!("Response is not a simple array, attempting complex JSON extraction");
-                Self::extract_regex_patterns_from_json(&json_value)?
+                    } else {
+                        debug!("Field {} is not a string: {:?}", field_name, field_value);
+                    }
+                } else {
+                    debug!("Field {} not found in JSON response", field_name);
+                }
             }
+            
+            // If no patterns found from expected fields, fall back to generic extraction
+            if extracted_patterns.is_empty() {
+                debug!("No patterns found in expected fields, attempting generic extraction");
+                
+                // Check if it's a simple array of strings
+                if let Some(array) = json_value.as_array() {
+                    debug!("Response is a JSON array with {} elements", array.len());
+                    extracted_patterns = array.iter()
+                        .filter_map(|item| {
+                            if let Some(pattern_str) = item.as_str() {
+                                Some(pattern_str.to_string())
+                            } else if let Some(pattern_obj) = item.as_object() {
+                                // Handle objects that might have a "pattern" field
+                                pattern_obj.get("pattern")
+                                    .and_then(|p| p.as_str())
+                                    .map(|s| s.to_string())
+                            } else {
+                                warn!("Non-string item in regex patterns array: {:?}", item);
+                                None
+                            }
+                        })
+                        .collect();
+                } else {
+                    // Use the existing complex JSON extraction method
+                    extracted_patterns = Self::extract_regex_patterns_from_json(&json_value)?;
+                }
+            }
+            
+            extracted_patterns
         } else {
             // Fallback to text parsing - the response might be plain text with one pattern per line
             warn!("Could not parse response as JSON, falling back to text parsing");

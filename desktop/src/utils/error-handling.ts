@@ -190,18 +190,46 @@ interface TauriErrorPayload {
 }
 
 /**
- * Attempts to parse a Tauri error from a string that may contain JSON
+ * Recursively attempts to parse nested JSON error structures
  */
-function parseTauriError(errorString: string): TauriErrorPayload | null {
+function parseNestedJsonError(input: string, depth = 0): TauriErrorPayload | null {
+  // Prevent infinite recursion
+  if (depth > 3) return null;
+  
   try {
-    const parsed = JSON.parse(errorString);
+    const parsed = JSON.parse(input);
     if (parsed && typeof parsed === "object") {
+      // If parsed object has a message field that's also stringified JSON, parse it recursively
+      if (parsed.message && typeof parsed.message === "string") {
+        const nestedParsed = parseNestedJsonError(parsed.message, depth + 1);
+        if (nestedParsed) {
+          // Merge nested error info with current level, with nested taking precedence for message
+          return {
+            ...parsed,
+            message: nestedParsed.message || parsed.message,
+            errorType: nestedParsed.errorType || parsed.errorType,
+            errorCode: nestedParsed.errorCode || parsed.errorCode,
+            errorCategory: nestedParsed.errorCategory || parsed.errorCategory,
+            statusCode: nestedParsed.statusCode || parsed.statusCode,
+            metadata: { ...parsed.metadata, ...nestedParsed.metadata },
+            workflowContext: nestedParsed.workflowContext || parsed.workflowContext
+          };
+        }
+      }
+      
       return parsed as TauriErrorPayload;
     }
   } catch {
     // Not JSON, return null
   }
   return null;
+}
+
+/**
+ * Attempts to parse a Tauri error from a string that may contain JSON
+ */
+function parseTauriError(errorString: string): TauriErrorPayload | null {
+  return parseNestedJsonError(errorString);
 }
 
 /**
@@ -254,13 +282,31 @@ export function getErrorMessage(error: unknown, contextHint?: 'transcription' | 
       // Use the structured error message if available
       errorMessage = parsedTauriError.message || error;
     } else {
-      // Attempt to parse string as JSON to extract structured error
+      // Attempt to parse string as JSON to extract structured error, including nested structures
       try {
         const parsed = JSON.parse(error);
         if (parsed && typeof parsed === "object") {
-          // Check for message property and return if it's a non-empty string
-          if (parsed.message && typeof parsed.message === "string" && parsed.message.trim()) {
-            errorMessage = parsed.message;
+          // Check for nested JSON in message field and parse recursively
+          let finalMessage = parsed.message;
+          if (parsed.message && typeof parsed.message === "string") {
+            const nestedParsed = parseNestedJsonError(parsed.message);
+            if (nestedParsed?.message) {
+              finalMessage = nestedParsed.message;
+            }
+          }
+          
+          // Check for AppError-specific fields in the parsed structure
+          if (parsed.type && typeof parsed.type === "string") {
+            // This looks like a serialized AppError
+            appErrorInfo = {
+              type: parsed.type as ErrorType || ErrorType.UNKNOWN_ERROR,
+              workflowContext: parsed.workflowContext
+            };
+          }
+          
+          // Use the final message if it's a non-empty string
+          if (finalMessage && typeof finalMessage === "string" && finalMessage.trim()) {
+            errorMessage = finalMessage;
           } else if (error.trim() && error !== "[object Object]") {
             // If parsed.message was not useful, and the original string 'error'
             // is not just a generic placeholder, return the original string.
@@ -353,16 +399,19 @@ function applyContextSpecificTransformations(
   parsedTauriError?: TauriErrorPayload | null,
   appErrorInfo?: { type: ErrorType; workflowContext?: WorkflowErrorContext } | null
 ): string {
+  // Enhanced error type detection - combine info from both sources
+  const errorType = appErrorInfo?.type || parsedTauriError?.errorType || 
+    (parsedTauriError?.errorCode ? mapRustErrorCodeToErrorType(parsedTauriError.errorCode) : null);
+  
+  const workflowContext = appErrorInfo?.workflowContext || parsedTauriError?.workflowContext;
+  
   // Handle billing errors from AppError or structured Tauri errors
-  if (appErrorInfo?.type === ErrorType.BILLING_ERROR ||
-      parsedTauriError?.errorType === ErrorType.BILLING_ERROR || 
-      parsedTauriError?.errorCategory === 'billing') {
+  if (errorType === ErrorType.BILLING_ERROR || parsedTauriError?.errorCategory === 'billing') {
     return "This feature is not available on your current plan. Please upgrade to access this functionality.";
   }
 
   // Handle workflow errors with more context from AppError or Tauri errors
-  const workflowContext = appErrorInfo?.workflowContext || parsedTauriError?.workflowContext;
-  if ((appErrorInfo?.type === ErrorType.WORKFLOW_ERROR || parsedTauriError?.errorType === ErrorType.WORKFLOW_ERROR) && workflowContext) {
+  if (errorType === ErrorType.WORKFLOW_ERROR && workflowContext) {
     const { stageName, retryAttempt } = workflowContext;
     if (stageName && retryAttempt) {
       return `Workflow failed at stage "${stageName}" (attempt ${retryAttempt}): ${errorMessage}`;
@@ -371,9 +420,9 @@ function applyContextSpecificTransformations(
     }
   }
   
-  // Handle other AppError types with user-friendly messages
-  if (appErrorInfo) {
-    switch (appErrorInfo.type) {
+  // Handle structured error types with user-friendly messages
+  if (errorType) {
+    switch (errorType) {
       case ErrorType.TOKEN_LIMIT_ERROR:
         return "The prompt is too long for the selected model. Please reduce the number of selected files, shorten the task description, or choose a model with a larger context window.";
       
@@ -406,6 +455,12 @@ function applyContextSpecificTransformations(
       
       case ErrorType.VALIDATION_ERROR:
         return `Invalid input: ${errorMessage}`;
+      
+      case ErrorType.API_ERROR:
+        if (contextHint === 'transcription') {
+          return "Voice transcription service error. Please try again or contact support if the issue persists.";
+        }
+        return "API service error occurred. Please try again or contact support if the issue persists.";
     }
   }
 
@@ -488,6 +543,32 @@ export function extractErrorInfo(error: unknown): {
         workflowContext: parsedTauriError.workflowContext,
       };
     }
+    
+    // Additional parsing for workflow context in plain error strings
+    try {
+      const parsed = JSON.parse(error);
+      if (parsed && typeof parsed === "object" && parsed.workflowContext) {
+        return {
+          message: parsed.message || error,
+          type: parsed.errorType ? mapRustErrorCodeToErrorType(parsed.errorType) : ErrorType.WORKFLOW_ERROR,
+          metadata: parsed.metadata,
+          workflowContext: parsed.workflowContext,
+        };
+      }
+    } catch {
+      // Not JSON, continue with fallback
+    }
+  }
+
+  // Try to extract workflow context from object errors
+  if (error && typeof error === "object" && "workflowContext" in error) {
+    const errorObj = error as any;
+    return {
+      message: errorObj.message || getErrorMessage(error),
+      type: errorObj.type || ErrorType.WORKFLOW_ERROR,
+      metadata: errorObj.metadata,
+      workflowContext: errorObj.workflowContext,
+    };
   }
 
   return {
@@ -582,7 +663,7 @@ export function createUserFriendlyErrorMessage(
           ? ` (retry attempt ${workflowContext.retryAttempt})` 
           : '';
         const stageDisplayName = getWorkflowStageDisplayName(workflowContext.stageName);
-        return `The "${stageDisplayName || workflowContext.stageName}" stage failed${retryText}. This workflow step can typically be retried automatically or manually restarted.`;
+        return `Failed at stage: "${stageDisplayName || workflowContext.stageName}"${retryText}. ${message}`;
       }
       return `Workflow execution failed: ${message}. The workflow may be retried or restarted.`;
     

@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 
 import { type FilesMap } from "./use-project-file-list";
-import { ensureProjectRelativePath } from "@/utils/path-utils";
+import { createComparablePathKey } from "@/utils/path-utils";
 
 interface UseExternalPathHandlerProps {
   managedFilesMap: FilesMap;
@@ -46,7 +46,7 @@ export function useExternalPathHandler({
       paths
         .map((path) => {
           if (!path) return "";
-          return ensureProjectRelativePath(path);
+          return createComparablePathKey(path);
         })
         .filter(Boolean)
     ); // Filter out empty strings

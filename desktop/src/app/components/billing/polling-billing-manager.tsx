@@ -44,15 +44,12 @@ export function PollingBillingManager({
   
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(false);
 
   useEffect(() => {
-    if (subscription?.status && !lastKnownStatus) {
-      setLastKnownStatus(subscription.status);
-    }
-  }, [subscription?.status, lastKnownStatus]);
-
-  useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
@@ -61,6 +58,12 @@ export function PollingBillingManager({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (subscription?.status && !lastKnownStatus) {
+      setLastKnownStatus(subscription.status);
+    }
+  }, [subscription?.status, lastKnownStatus]);
 
   const stopPolling = useCallback(() => {
     // Clear all timers safely
@@ -73,48 +76,56 @@ export function PollingBillingManager({
       timeoutRef.current = null;
     }
     
-    // Reset state
-    setPollingState(null);
-    setIsProcessing(false);
-    setPollingErrorCount(0); // Reset error count when stopping
+    // Reset state only if component is still mounted
+    if (isMountedRef.current) {
+      setPollingState(null);
+      setIsProcessing(false);
+      setPollingErrorCount(0); // Reset error count when stopping
+    }
   }, []);
 
   const checkSubscriptionStatus = useCallback(async (): Promise<boolean> => {
     try {
       const response = await invoke<SubscriptionDetails>("get_subscription_details_command");
       
-      // Reset error count on successful fetch
-      setPollingErrorCount(0);
+      // Reset error count on successful fetch only if mounted
+      if (isMountedRef.current) {
+        setPollingErrorCount(0);
+      }
       
       // Check if status changed
       if (response?.status && response.status !== lastKnownStatus) {
         console.log(`Subscription status changed: ${lastKnownStatus} → ${response.status}`);
         
-        // Update local state
-        setLastKnownStatus(response.status);
+        // Update local state only if mounted
+        if (isMountedRef.current) {
+          setLastKnownStatus(response.status);
+        }
         
         // Refresh the parent component
         if (onRefresh) {
           onRefresh();
         }
         
-        // Show success notification with more context
-        const statusMessages: Record<string, string> = {
-          'active': 'Your subscription is now active and all features are available.',
-          'trialing': 'Your trial period has started.',
-          'past_due': 'Your subscription payment is past due. Please update your payment method.',
-          'canceled': 'Your subscription has been canceled.',
-          'incomplete': 'Your subscription setup is incomplete. Please complete the payment process.',
-          'incomplete_expired': 'Your subscription setup has expired. Please restart the process.',
-          'unpaid': 'Your subscription is unpaid. Please update your payment method.'
-        };
-        
-        showNotification({
-          title: "Subscription Updated",
-          message: statusMessages[response.status] || `Your subscription status changed to: ${response.status}`,
-          type: response.status === 'active' || response.status === 'trialing' ? "success" : 
-                response.status === 'past_due' || response.status === 'unpaid' ? "warning" : "info",
-        });
+        // Show success notification with more context only if mounted
+        if (isMountedRef.current) {
+          const statusMessages: Record<string, string> = {
+            'active': 'Your subscription is now active and all features are available.',
+            'trialing': 'Your trial period has started.',
+            'past_due': 'Your subscription payment is past due. Please update your payment method.',
+            'canceled': 'Your subscription has been canceled.',
+            'incomplete': 'Your subscription setup is incomplete. Please complete the payment process.',
+            'incomplete_expired': 'Your subscription setup has expired. Please restart the process.',
+            'unpaid': 'Your subscription is unpaid. Please update your payment method.'
+          };
+          
+          showNotification({
+            title: "Subscription Updated",
+            message: statusMessages[response.status] || `Your subscription status changed to: ${response.status}`,
+            type: response.status === 'active' || response.status === 'trialing' ? "success" : 
+                  response.status === 'past_due' || response.status === 'unpaid' ? "warning" : "info",
+          });
+        }
         
         return true; // Status changed
       }
@@ -125,7 +136,9 @@ export function PollingBillingManager({
       console.error("Failed to check subscription status:", error);
       
       const newErrorCount = pollingErrorCount + 1;
-      setPollingErrorCount(newErrorCount);
+      if (isMountedRef.current) {
+        setPollingErrorCount(newErrorCount);
+      }
       
       // Provide specific error handling based on error type
       let shouldStopPolling = false;
@@ -151,12 +164,14 @@ export function PollingBillingManager({
       
       if (shouldStopPolling) {
         stopPolling();
-        showNotification({
-          title: errorTitle,
-          message: errorMsg,
-          type: "error",
-        });
-      } else if (newErrorCount >= 3) {
+        if (isMountedRef.current) {
+          showNotification({
+            title: errorTitle,
+            message: errorMsg,
+            type: "error",
+          });
+        }
+      } else if (newErrorCount >= 3 && isMountedRef.current) {
         showNotification({
           title: errorTitle,
           message: errorMsg,
@@ -174,15 +189,17 @@ export function PollingBillingManager({
     
     const timeoutDuration = timeoutMinutes * 60 * 1000;
     
-    // Reset error count when starting polling
-    setPollingErrorCount(0);
-    
-    setPollingState({
-      isActive: true,
-      action,
-      startTime: Date.now(),
-      timeoutDuration,
-    });
+    // Reset error count when starting polling only if mounted
+    if (isMountedRef.current) {
+      setPollingErrorCount(0);
+      
+      setPollingState({
+        isActive: true,
+        action,
+        startTime: Date.now(),
+        timeoutDuration,
+      });
+    }
 
     // Start polling with proper error handling
     pollingIntervalRef.current = setInterval(async () => {
@@ -200,69 +217,83 @@ export function PollingBillingManager({
     // Set timeout with better messaging
     timeoutRef.current = setTimeout(() => {
       stopPolling();
-      const actionContext = action === "upgrade" ? "checkout completion" : "billing changes";
-      showNotification({
-        title: "Monitoring Timeout",
-        message: `Stopped automatically checking for ${actionContext}. You can manually refresh if needed or the status will update when you return to the app.`,
-        type: "info",
-      });
+      if (isMountedRef.current) {
+        const actionContext = action === "upgrade" ? "checkout completion" : "billing changes";
+        showNotification({
+          title: "Monitoring Timeout",
+          message: `Stopped automatically checking for ${actionContext}. You can manually refresh if needed or the status will update when you return to the app.`,
+          type: "info",
+        });
+      }
     }, timeoutDuration);
 
   }, [checkSubscriptionStatus, stopPolling, showNotification]);
 
   const handleUpgrade = async (plan: string) => {
     try {
-      setIsProcessing(true);
+      if (isMountedRef.current) {
+        setIsProcessing(true);
+      }
       
       const result = await invoke<CheckoutSessionResponse>("create_checkout_session_command", { plan });
 
       if (result?.url) {
         await open(result.url);
         
-        showNotification({
-          title: "Checkout Opened",
-          message: "Complete your purchase in the browser. The app will automatically detect when your subscription is activated.",
-          type: "info",
-        });
+        if (isMountedRef.current) {
+          showNotification({
+            title: "Checkout Opened",
+            message: "Complete your purchase in the browser. The app will automatically detect when your subscription is activated.",
+            type: "info",
+          });
+        }
         
         startPolling("upgrade", 10);
       }
     } catch (err) {
       const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: "Checkout Failed",
-        message: errorMessage,
-        type: "error",
-      });
-      setIsProcessing(false);
+      if (isMountedRef.current) {
+        showNotification({
+          title: "Checkout Failed",
+          message: errorMessage,
+          type: "error",
+        });
+        setIsProcessing(false);
+      }
     }
   };
 
   const handleManageBilling = async () => {
     try {
-      setIsProcessing(true);
+      if (isMountedRef.current) {
+        setIsProcessing(true);
+      }
       
       const result = await invoke<BillingPortalResponse>("create_billing_portal_command");
 
       if (result?.url) {
         await open(result.url);
         
-        showNotification({
-          title: "Billing Portal Opened",
-          message: "Manage your subscription in the browser. The app will automatically detect any changes you make.",
-          type: "info",
-        });
+        if (isMountedRef.current) {
+          showNotification({
+            title: "Billing Portal Opened",
+            message: "Manage your subscription in the browser. The app will automatically detect any changes you make.",
+            type: "info",
+          });
+        }
         
         startPolling("manage", 5);
       }
     } catch (err) {
       const errorMessage = getErrorMessage(err);
-      showNotification({
-        title: "Portal Access Failed",
-        message: errorMessage,
-        type: "error",
-      });
-      setIsProcessing(false);
+      if (isMountedRef.current) {
+        showNotification({
+          title: "Portal Access Failed",
+          message: errorMessage,
+          type: "error",
+        });
+        setIsProcessing(false);
+      }
     }
   };
 

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use std::collections::HashMap;
 use log::{info, warn, error};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use crate::constants::SERVER_API_URL;
 use crate::utils::env_utils::read_env;
 
@@ -30,7 +30,8 @@ pub static CONFIG: Lazy<RwLock<Option<crate::models::RuntimeAIConfig>>> = Lazy::
 use crate::error::{AppResult, AppError};
 use crate::models::{TaskType, RuntimeAIConfig};
 use crate::utils::hash_utils::hash_string;
-use crate::SETTINGS_REPO;
+use crate::db_utils::SettingsRepository;
+use std::sync::Arc;
 
 // Update runtime AI configuration
 pub fn update_runtime_ai_config(new_config: RuntimeAIConfig) -> AppResult<()> {
@@ -197,13 +198,33 @@ pub fn get_default_max_tokens_for_task(task_type: Option<TaskType>) -> AppResult
         if let Some(task) = task_type {
             let task_key = task.to_string();
             
+            // First try task-specific configuration
             if let Some(task_config) = runtime_config.tasks.get(&task_key) {
                 if let Some(max_tokens) = task_config.max_tokens {
                     return Ok(max_tokens);
                 }
             }
             
-            return Err(AppError::ConfigError(format!("No max_tokens configuration found for task {:?}. Please check server configuration.", task)));
+            // Fall back to server general default if available
+            if let Some(server_default) = runtime_config.default_max_tokens {
+                warn!("No max_tokens configuration found for task {:?}, using server default: {}", task, server_default);
+                return Ok(server_default);
+            }
+            
+            // Final fallback to task-specific hardcoded defaults
+            let fallback_max_tokens = match task {
+                TaskType::ImplementationPlan => 4000,  // Long-form content
+                TaskType::PathFinder | TaskType::ExtendedPathFinder => 2000,  // Structured output
+                TaskType::TextImprovement | TaskType::TextCorrection => 1000,  // Text refinement
+                TaskType::GuidanceGeneration => 1500,  // Guidance content
+                TaskType::TaskEnhancement => 1000,  // Task refinement
+                TaskType::RegexSummaryGeneration | TaskType::RegexPatternGeneration => 500,  // Short regex output
+                TaskType::PathCorrection | TaskType::ExtendedPathCorrection => 500,  // Path corrections
+                _ => 1000,  // General default for other LLM tasks
+            };
+            
+            warn!("No max_tokens configuration found for task {:?}, using hardcoded fallback: {}", task, fallback_max_tokens);
+            return Ok(fallback_max_tokens);
         }
     }
     
@@ -233,6 +254,7 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
         if let Some(task) = task_type {
             let task_key = task.to_string();
             
+            // First try task-specific configuration
             if let Some(task_config) = runtime_config.tasks.get(&task_key) {
                 if let Some(temperature) = task_config.temperature {
                     if temperature < 0.0 || temperature > 2.0 {
@@ -242,7 +264,28 @@ pub fn get_default_temperature_for_task(task_type: Option<TaskType>) -> AppResul
                 }
             }
             
-            return Err(AppError::ConfigError(format!("No temperature configuration found for task {:?}. Please check server configuration.", task)));
+            // Fall back to server general default if available
+            if let Some(server_default) = runtime_config.default_temperature {
+                if server_default < 0.0 || server_default > 2.0 {
+                    return Err(AppError::ConfigError(format!("Invalid server default temperature {} for task {:?}. Must be between 0.0 and 2.0.", server_default, task)));
+                }
+                warn!("No temperature configuration found for task {:?}, using server default: {}", task, server_default);
+                return Ok(server_default);
+            }
+            
+            // Final fallback to task-specific hardcoded defaults
+            let fallback_temperature = match task {
+                TaskType::ImplementationPlan | TaskType::GuidanceGeneration => 0.3,  // More deterministic for structured content
+                TaskType::PathFinder | TaskType::ExtendedPathFinder => 0.1,  // Very deterministic for path finding
+                TaskType::TextImprovement | TaskType::TextCorrection => 0.5,  // Balanced creativity for text improvement
+                TaskType::RegexSummaryGeneration | TaskType::RegexPatternGeneration => 0.2,  // Deterministic for regex
+                TaskType::PathCorrection | TaskType::ExtendedPathCorrection => 0.1,  // Very deterministic for corrections
+                TaskType::TaskEnhancement => 0.4,  // Slightly creative for task enhancement
+                _ => 0.3,  // General default for other LLM tasks
+            };
+            
+            warn!("No temperature configuration found for task {:?}, using hardcoded fallback: {}", task, fallback_temperature);
+            return Ok(fallback_temperature);
         }
     }
     
@@ -269,19 +312,23 @@ pub fn get_model_context_window(model_name: &str) -> AppResult<u32> {
                     return Ok(context_window);
                 }
                 
-                // Model found but context_window is None - this should not happen with database-sourced models
-                return Err(AppError::ConfigError(format!("Model {} found but context_window is missing from server config", model_name)));
+                // Model found but context_window is None - use a conservative fallback
+                warn!("Model {} found but context_window is missing from server config, using fallback: 4096", model_name);
+                return Ok(4096);  // Conservative fallback that works for most models
             }
         }
         
         // Model not found in available_models list - this indicates the model selection is invalid
         // and should be validated earlier in the workflow
-        return Err(AppError::ConfigError(format!("Model {} not found in server configuration. This model may not be available or properly configured. Available models: {}", 
+        let available_models = runtime_config.available_models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>().join(", ");
+        return Err(AppError::ConfigError(format!(
+            "Model '{}' not found in server configuration. This model may not be available or properly configured. Available models: {}", 
             model_name, 
-            runtime_config.available_models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>().join(", "))));
+            if available_models.is_empty() { "None configured" } else { &available_models }
+        )));
     }
     
-    Err(AppError::ConfigError("Runtime AI configuration not yet loaded from server".to_string()))
+    Err(AppError::ConfigError("Runtime AI configuration not yet loaded from server. Please check server connection and try again.".to_string()))
 }
 
 // Project-aware configuration functions that check user settings first, then fall back to server defaults
@@ -403,19 +450,16 @@ pub async fn get_model_for_task_with_project(task_type: TaskType, project_direct
     }
     
     // First try to get project-specific settings
-    if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    }) {
-        let project_hash = hash_string(project_directory);
-        let key = format!("project_task_model_settings_{}", project_hash);
-        
-        // Try to get project settings
-        if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
-            if let Some(model) = extract_model_from_project_settings(&settings_json, task_type) {
-                if !model.is_empty() {
-                    log::debug!("Using project-specific model for {:?}: {}", task_type, model);
-                    return Ok(model);
-                }
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let project_hash = hash_string(project_directory);
+    let key = format!("project_task_model_settings_{}", project_hash);
+    
+    // Try to get project settings
+    if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+        if let Some(model) = extract_model_from_project_settings(&settings_json, task_type) {
+            if !model.is_empty() {
+                log::debug!("Using project-specific model for {:?}: {}", task_type, model);
+                return Ok(model);
             }
         }
     }
@@ -433,18 +477,15 @@ pub async fn get_temperature_for_task_with_project(task_type: TaskType, project_
     }
     
     // First try to get project-specific settings
-    if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    }) {
-        let project_hash = hash_string(project_directory);
-        let key = format!("project_task_model_settings_{}", project_hash);
-        
-        // Try to get project settings
-        if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
-            if let Some(temperature) = extract_temperature_from_project_settings(&settings_json, task_type) {
-                log::debug!("Using project-specific temperature for {:?}: {}", task_type, temperature);
-                return Ok(temperature);
-            }
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let project_hash = hash_string(project_directory);
+    let key = format!("project_task_model_settings_{}", project_hash);
+    
+    // Try to get project settings
+    if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+        if let Some(temperature) = extract_temperature_from_project_settings(&settings_json, task_type) {
+            log::debug!("Using project-specific temperature for {:?}: {}", task_type, temperature);
+            return Ok(temperature);
         }
     }
     
@@ -461,18 +502,15 @@ pub async fn get_max_tokens_for_task_with_project(task_type: TaskType, project_d
     }
     
     // First try to get project-specific settings
-    if let Ok(settings_repo) = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    }) {
-        let project_hash = hash_string(project_directory);
-        let key = format!("project_task_model_settings_{}", project_hash);
-        
-        // Try to get project settings
-        if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
-            if let Some(max_tokens) = extract_max_tokens_from_project_settings(&settings_json, task_type) {
-                log::debug!("Using project-specific max_tokens for {:?}: {}", task_type, max_tokens);
-                return Ok(max_tokens);
-            }
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
+    let project_hash = hash_string(project_directory);
+    let key = format!("project_task_model_settings_{}", project_hash);
+    
+    // Try to get project settings
+    if let Ok(Some(settings_json)) = settings_repo.get_value(&key).await {
+        if let Some(max_tokens) = extract_max_tokens_from_project_settings(&settings_json, task_type) {
+            log::debug!("Using project-specific max_tokens for {:?}: {}", task_type, max_tokens);
+            return Ok(max_tokens);
         }
     }
     

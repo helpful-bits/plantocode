@@ -219,8 +219,8 @@ pub async fn list_directory(path: impl AsRef<Path>) -> AppResult<Vec<FileInfo>> 
     // The lock is automatically released when _guard goes out of scope
 }
 
-/// Check if a file is a binary file based on extension (async version)
-pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
+/// Fast binary file check based on extension only (non-blocking)
+pub fn is_binary_file_fast(path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
     
     // Check if the file has a binary extension
@@ -229,6 +229,18 @@ pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
         if BINARY_EXTENSIONS.contains(ext.as_str()) {
             return true;
         }
+    }
+    
+    false
+}
+
+/// Check if a file is a binary file based on extension (async version)
+pub async fn is_binary_file(path: impl AsRef<Path>) -> bool {
+    let path = path.as_ref();
+    
+    // First do the fast extension check
+    if is_binary_file_fast(path) {
+        return true;
     }
     
     // For content check, we need to read the file, so let's lock it

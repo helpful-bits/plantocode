@@ -4,6 +4,7 @@ use log::{debug, error};
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{
     JobPayload,
+    JobWorkerMetadata,
     PathFinderPayload,
     ImplementationPlanPayload, 
     GuidanceGenerationPayload,
@@ -28,10 +29,19 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
         AppError::JobError("Missing metadata for job payload deserialization".to_string())
     )?;
 
-    // Parse metadata string to JSON
+    // Try to deserialize as structured JobWorkerMetadata first
+    if let Ok(worker_metadata) = serde_json::from_str::<JobWorkerMetadata>(metadata_str) {
+        debug!("Successfully parsed structured JobWorkerMetadata for task_type: {}", task_type);
+        return Ok(worker_metadata.job_payload_for_worker);
+    }
+
+    debug!("Failed to parse as JobWorkerMetadata, falling back to legacy format for task_type: {}", task_type);
+
+    // Parse metadata string to JSON for legacy fallback
     let metadata_json: Value = serde_json::from_str(metadata_str)
         .map_err(|e| AppError::JobError(format!("Failed to parse job metadata for task_type '{}': {}", task_type, e)))?;
 
+    // Fallback to legacy format for backward compatibility
     // Extract jobPayloadForWorker field
     let payload_value = metadata_json.get("jobPayloadForWorker").ok_or_else(|| 
         AppError::JobError(format!("jobPayloadForWorker not found in metadata for task_type '{}'", task_type))
@@ -61,15 +71,8 @@ pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> A
                         task_description: input_payload.task_description,
                         background_job_id: input_payload.background_job_id,
                         project_directory: input_payload.project_directory,
-                        model_override: input_payload.model_override,
                         // Default values will be properly set by the processor
                         system_prompt: String::new(),
-                        temperature: match input_payload.temperature_override {
-                            Some(temp) => temp,
-                            None => crate::config::get_default_temperature_for_task(Some(crate::models::TaskType::PathFinder))
-                                .map_err(|e| AppError::ConfigError(format!("Failed to get temperature for PathFinder: {}", e)))?,
-                        },
-                        max_output_tokens: input_payload.max_tokens_override,
                         // Use provided directory_tree if available, otherwise empty string (processor will generate it)
                         directory_tree: Some(input_payload.directory_tree.unwrap_or_default()),
                         relevant_file_contents: std::collections::HashMap::new(),
