@@ -1,26 +1,17 @@
 import { useState } from "react";
 import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
-import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-import { getStreamingProgressValue, getParsedMetadata } from "../../utils";
+import { getStreamingProgressValue } from "../../utils";
 
-interface JobDetailsResponseSectionProps {
-  job: BackgroundJob;
-  responseContent: string;
-}
-
-export function JobDetailsResponseSection({
-  job,
-  responseContent,
-}: JobDetailsResponseSectionProps) {
-  const [isResponseOpen, setIsResponseOpen] = useState(true);
-  
-  const parsedMetadata = getParsedMetadata(job.metadata);
+export function JobDetailsResponseSection() {
+  const { job, responseContent, parsedMetadata } = useJobDetailsContext();
+  const [isResponseOpen, setIsResponseOpen] = useState(false);
 
   return (
     <Card>
@@ -29,7 +20,7 @@ export function JobDetailsResponseSection({
           <CardHeader className="py-4 px-6 cursor-pointer hover:bg-accent/30 transition-all duration-200 rounded-t-xl group">
             <div className="flex justify-between items-center">
               <div>
-                <CardTitle className="text-base font-semibold flex items-center gap-2 group-hover:text-foreground/80 transition-colors">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 group-hover:text-foreground/80 transition-colors">
                   {job.taskType === "implementation_plan" &&
                   parsedMetadata?.showPureContent === true ? (
                     <>
@@ -59,7 +50,7 @@ export function JobDetailsResponseSection({
         <CollapsibleContent>
           <CardContent className="pt-0">
             {/* Show progress bar for streaming jobs */}
-            {job.status === "running" && parsedMetadata?.isStreaming && (
+            {job.status === "running" && parsedMetadata?.isStreaming ? (
               <div className="mb-3">
                 <Progress
                   value={
@@ -73,8 +64,8 @@ export function JobDetailsResponseSection({
                       : parsedMetadata?.responseLength &&
                           parsedMetadata?.estimatedTotalLength
                         ? Math.min(
-                            (parsedMetadata.responseLength /
-                              parsedMetadata.estimatedTotalLength) *
+                            (Number(parsedMetadata.responseLength) /
+                              Number(parsedMetadata.estimatedTotalLength)) *
                               100,
                             97
                           )
@@ -95,18 +86,18 @@ export function JobDetailsResponseSection({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {parsedMetadata?.responseLength && (
+                    {parsedMetadata?.responseLength ? (
                       <span>
-                        {Math.floor(parsedMetadata.responseLength / 1024)} KB received
+                        {Math.floor(Number(parsedMetadata.responseLength) / 1024)} KB received
                       </span>
-                    )}
+                    ) : null}
                     {typeof parsedMetadata?.streamProgress === "number" && (
                       <span>{Math.floor(parsedMetadata.streamProgress)}% complete</span>
                     )}
                   </div>
                 </div>
               </div>
-            )}
+            ) : null}
 
             <VirtualizedCodeViewer
               content={responseContent}
@@ -114,7 +105,7 @@ export function JobDetailsResponseSection({
               showCopy={true}
               copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
               showContentSize={true}
-              isLoading={job.status === "running" && parsedMetadata?.isStreaming}
+              isLoading={job.status === "running" && Boolean(parsedMetadata?.isStreaming)}
               placeholder="No response content available"
               className={
                 job.taskType === "implementation_plan" &&

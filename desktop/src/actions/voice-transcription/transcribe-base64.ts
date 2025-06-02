@@ -119,10 +119,10 @@ export async function transcribeAudioAction(
     const result = await invoke<{ jobId: string }>(
       "create_transcription_job_command",
       {
-        session_id: sessionId,
-        audio_data: cleanBase64,
+        sessionId: sessionId,
+        audioData: cleanBase64,
         filename,
-        project_directory: projectDirectory ?? null,
+        projectDirectory: projectDirectory ?? null,
       }
     );
 

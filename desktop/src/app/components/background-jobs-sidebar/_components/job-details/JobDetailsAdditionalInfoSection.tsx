@@ -1,18 +1,12 @@
 import { FileCode } from "lucide-react";
 
-import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
-import { getParsedMetadata } from "../../utils";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-interface JobDetailsAdditionalInfoSectionProps {
-  job: BackgroundJob;
-}
-
-export function JobDetailsAdditionalInfoSection({
-  job,
-}: JobDetailsAdditionalInfoSectionProps) {
-  const parsedMeta = getParsedMetadata(job.metadata);
-  const outputPathFromMeta = parsedMeta?.outputPath;
+export function JobDetailsAdditionalInfoSection() {
+  const { job, parsedMetadata } = useJobDetailsContext();
+  const parsedMeta = parsedMetadata;
+  const outputPathFromMeta = typeof parsedMeta?.outputPath === 'string' ? parsedMeta.outputPath : null;
   
   if (!outputPathFromMeta && !job.statusMessage) {
     return null;

@@ -18,8 +18,8 @@ export type * from "./error-types";
 // Export task settings types
 export type * from "./task-settings-types";
 
-// Export task type validation utilities
-export * from "./task-type-validation";
+// Export consolidated task type definitions and validation utilities
+export * from "./task-type-defs";
 
 // Export system prompt types (excluding TaskType to avoid conflict)
 export type {

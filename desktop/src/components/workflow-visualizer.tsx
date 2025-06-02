@@ -12,6 +12,7 @@ import { Button } from '@/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/ui/collapsible';
 import { WorkflowUtils } from '@/utils/workflow-utils';
 import { retryWorkflowStageAction, cancelWorkflowStageAction } from '@/actions/file-system/workflow-stage.actions';
+import { extractErrorInfo, createUserFriendlyErrorMessage } from '@/utils/error-handling';
 import type { WorkflowState, WorkflowStageJob, WorkflowStage, WorkflowStatusResponse, WorkflowStatus, JobStatus } from '@/types/workflow-types';
 
 // Helper functions for robust type mapping from backend responses
@@ -369,12 +370,12 @@ function StageJobCard({
     }
     
     if (onStageRetry) {
-      // Use callback if provided (expects workflowId and jobId)
+      // Use callback if provided - pass the jobId directly
       onStageRetry(stageJob.jobId);
       return;
     }
     
-    // Fall back to direct action
+    // Fall back to direct action with proper workflow ID and stage job ID
     setRetryingStage(stageJob.jobId);
     try {
       const result = await retryWorkflowStageAction(workflowId, stageJob.jobId);
@@ -403,12 +404,12 @@ function StageJobCard({
     }
     
     if (onStageCancel) {
-      // Use callback if provided
+      // Use callback if provided - pass the jobId directly
       onStageCancel(stageJob.jobId);
       return;
     }
     
-    // Fall back to direct action
+    // Fall back to direct action with proper workflow ID and stage job ID
     setCancelingStage(stageJob.jobId);
     try {
       const result = await cancelWorkflowStageAction(workflowId, stageJob.jobId);
@@ -491,11 +492,28 @@ function StageJobCard({
         </div>
       )}
 
-      {stageJob.errorMessage && (
-        <div className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded p-2">
-          {stageJob.errorMessage}
-        </div>
-      )}
+      {stageJob.errorMessage && (() => {
+        const errorInfo = extractErrorInfo(stageJob.errorMessage);
+        const userFriendlyMessage = errorInfo.workflowContext 
+          ? createUserFriendlyErrorMessage(errorInfo)
+          : stageJob.errorMessage;
+        
+        return (
+          <div className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded p-2">
+            <div className="font-medium mb-1">
+              {errorInfo.workflowContext?.stageName && (
+                <span>Failed at stage: {errorInfo.workflowContext.stageName}</span>
+              )}
+              {errorInfo.workflowContext?.retryAttempt && (
+                <span className="ml-2 text-xs opacity-75">
+                  (Retry attempt: {errorInfo.workflowContext.retryAttempt})
+                </span>
+              )}
+            </div>
+            <div>{userFriendlyMessage}</div>
+          </div>
+        );
+      })()}
 
       {stageJob.dependsOn && (
         <div className="mt-2 text-xs text-gray-500">

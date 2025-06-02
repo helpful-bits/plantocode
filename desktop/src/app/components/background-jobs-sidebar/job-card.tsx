@@ -400,11 +400,12 @@ export const JobCard = React.memo(
                 let count = 0;
                 
                 // First try parsedMeta.pathCount if available (reliable count source)
-                if (parsedMeta?.pathCount !== undefined) {
+                if (typeof parsedMeta?.pathCount === 'number') {
                   count = parsedMeta.pathCount;
                 } else if (parsedMeta?.pathFinderData) {
-                  // Use new structured pathFinderData
-                  count = parsedMeta.pathFinderData.count || parsedMeta.pathFinderData.paths?.length || 0;
+                  // Use new structured pathFinderData with type guard
+                  const pathData = parsedMeta.pathFinderData as { count?: number; paths?: string[] };
+                  count = pathData.count || pathData.paths?.length || 0;
                 } else if (typeof pathFinderData === 'string') {
                   // Legacy pathData handling
                   try {

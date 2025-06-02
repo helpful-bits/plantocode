@@ -185,31 +185,10 @@ pub async fn build_unified_prompt(
     file_contents: Option<std::collections::HashMap<String, String>>,
     directory_tree: Option<String>,
     settings_repo: &SettingsRepository,
+    model_name: &str,
 ) -> AppResult<ComposedPrompt> {
     // Get session name
     let session_name = get_session_name(&job.session_id, app_handle).await?;
-    
-    // Get model name for context
-    let model_override = match &job.payload {
-        JobPayload::PathFinder(payload) => payload.model_override.clone(),
-        JobPayload::ImplementationPlan(payload) => Some(payload.model.clone()),
-        JobPayload::GuidanceGeneration(payload) => payload.model_override.clone(),
-        JobPayload::PathCorrection(payload) => payload.model_override.clone(),
-        JobPayload::TextImprovement(payload) => payload.model_override.clone(),
-        JobPayload::TaskEnhancement(payload) => payload.model_override.clone(),
-        JobPayload::TextCorrection(payload) => payload.model_override.clone(),
-        JobPayload::VoiceTranscription(payload) => Some(payload.model.clone()),
-        JobPayload::GenericLlmStream(payload) => payload.model.clone(),
-        JobPayload::RegexPatternGeneration(payload) => payload.model_override.clone(),
-        _ => None,
-    };
-    
-    let model_name = get_model_name_for_context(
-        job.job_type,
-        job.project_directory.as_deref().unwrap_or(""),
-        model_override,
-        app_handle,
-    ).await?;
     
     let context = UnifiedPromptContextBuilder::new(
         job.session_id.clone(),
@@ -221,67 +200,20 @@ pub async fn build_unified_prompt(
     .file_contents(file_contents)
     .directory_tree(directory_tree)
     .session_name(session_name)
-    .model_name(Some(model_name))
+    .model_name(Some(model_name.to_string()))
     .build();
 
     let prompt_processor = UnifiedPromptProcessor::new();
     prompt_processor.compose_prompt(&context, settings_repo).await
 }
 
-/// Creates API client options for LLM calls, extracting overrides from payload
-/// and using config_resolver::resolve_model_settings for fallback defaults
-pub async fn create_api_client_options(
-    job_payload: &JobPayload,
-    task_type: TaskType,
-    project_directory: &str,
+/// Creates API client options for LLM calls using provided model settings
+pub fn create_api_client_options(
+    model: String,
+    temperature: f32,
+    max_tokens: u32,
     stream: bool,
-    app_handle: &AppHandle,
 ) -> AppResult<ApiClientOptions> {
-    // Extract overrides from payload
-    let (model_override, max_tokens_override, temperature_override) = match job_payload {
-        JobPayload::PathFinder(payload) => {
-            (payload.model_override.clone(), payload.max_output_tokens, Some(payload.temperature))
-        },
-        JobPayload::ImplementationPlan(payload) => {
-            (Some(payload.model.clone()), Some(payload.max_tokens), Some(payload.temperature))
-        },
-        JobPayload::GuidanceGeneration(payload) => {
-            (payload.model_override.clone(), payload.max_output_tokens, payload.temperature)
-        },
-        JobPayload::PathCorrection(payload) => {
-            (payload.model_override.clone(), payload.max_output_tokens, payload.temperature)
-        },
-        JobPayload::TextImprovement(payload) => {
-            (payload.model_override.clone(), None, None)
-        },
-        JobPayload::TaskEnhancement(payload) => {
-            (payload.model_override.clone(), None, None)
-        },
-        JobPayload::TextCorrection(payload) => {
-            (payload.model_override.clone(), None, None)
-        },
-        JobPayload::VoiceTranscription(payload) => {
-            (Some(payload.model.clone()), None, None)
-        },
-        JobPayload::GenericLlmStream(payload) => {
-            (payload.model.clone(), payload.max_output_tokens, payload.temperature)
-        },
-        JobPayload::RegexPatternGeneration(payload) => {
-            (payload.model_override.clone(), payload.max_tokens_override, payload.temperature_override)
-        },
-        _ => (None, None, None),
-    };
-    
-    // Use config_resolver to resolve all settings consistently
-    let (model, temperature, max_tokens) = crate::utils::config_resolver::resolve_model_settings(
-        app_handle,
-        task_type,
-        project_directory,
-        model_override,
-        temperature_override,
-        max_tokens_override,
-    ).await?;
-
     Ok(ApiClientOptions {
         model,
         max_tokens,
@@ -294,10 +226,10 @@ pub async fn create_api_client_options(
 pub async fn execute_llm_chat_completion(
     app_handle: &AppHandle,
     messages: Vec<OpenRouterRequestMessage>,
-    api_options: &ApiClientOptions,
+    api_options: ApiClientOptions,
 ) -> AppResult<OpenRouterResponse> {
     let llm_client = get_api_client(app_handle)?;
-    llm_client.chat_completion(messages, api_options.clone()).await
+    llm_client.chat_completion(messages, api_options).await
 }
 
 /// Checks if job has been canceled

@@ -4,7 +4,7 @@ use serde::Deserialize;
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobCommandResponse};
 use std::sync::Arc;
-use crate::jobs::types::GuidanceGenerationPayload;
+use crate::jobs::types::{GuidanceGenerationPayload, JobPayload};
 
 /// Arguments for guidance generation command
 #[derive(Debug, Deserialize)]
@@ -69,7 +69,7 @@ pub async fn generate_guidance_command(
         .clone();
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_output_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::GuidanceGeneration,
         &args.project_directory,
@@ -87,9 +87,6 @@ pub async fn generate_guidance_command(
         paths: args.paths.clone(),
         file_contents_summary: args.file_contents_summary.clone(),
         system_prompt_override: args.system_prompt_override.clone(),
-        model_override: None, // We'll pass the model directly to create_and_queue_background_job
-        temperature: None,    // We'll pass the temperature directly to create_and_queue_background_job
-        max_output_tokens: None, // We'll pass the max_tokens directly to create_and_queue_background_job
     };
     
     // Create additional metadata for the job
@@ -116,10 +113,11 @@ pub async fn generate_guidance_command(
         TaskType::GuidanceGeneration,
         "GUIDANCE_GENERATION",
         &args.task_description,
-        Some((model, temperature, max_output_tokens)),
-        serde_json::to_value(processor_payload).map_err(|e| 
-            AppError::SerdeError(e.to_string()))?,
+        model_settings,
+        JobPayload::GuidanceGeneration(processor_payload),
         2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         Some(extra_metadata),
         &app_handle,
     ).await?;

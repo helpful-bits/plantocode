@@ -54,10 +54,11 @@ export function useFileSelectionCore({
         return;
       }
 
-      // Use functional updates to ensure we have the latest state
+
+      // Save history before making changes
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
-      // Check if file is currently in excluded state
+      // Use fresh state references to avoid stale closures
       const isCurrentlyExcluded = currentExcludedFiles.includes(targetComparablePath);
       
       if (fileInfo.included && !isCurrentlyExcluded) {
@@ -73,7 +74,9 @@ export function useFileSelectionCore({
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
         
         onUpdateIncludedFiles(newIncludedFiles);
-        onUpdateExcludedFiles(newExcludedFiles);
+        if (isCurrentlyExcluded) {
+          onUpdateExcludedFiles(newExcludedFiles);
+        }
       }
     },
     [
@@ -106,14 +109,11 @@ export function useFileSelectionCore({
       }
 
       // Save current state before making changes
-      // Note: currentIncludedFiles and currentExcludedFiles represent the state *before* this toggle action
-      // This is the correct behavior for history tracking - we capture the "before" state for undo operations
       pushHistory(currentIncludedFiles, currentExcludedFiles);
 
       if (fileInfo.forceExcluded) {
         // If it was excluded, now removing exclusion (neutral state, not auto-included)
         const newExcludedFiles = currentExcludedFiles.filter(p => p !== targetComparablePath);
-        
         onUpdateExcludedFiles(newExcludedFiles);
       } else {
         // If it wasn't excluded, now excluding it and removing from included

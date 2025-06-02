@@ -34,7 +34,12 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&job.id, "regex pattern generation");
         
@@ -47,6 +52,7 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             None,
             None,
             &settings_repo,
+            &model_used,
         ).await?;
 
         info!("Enhanced Regex Pattern Generation prompt composition for job {}", job.id);
@@ -66,17 +72,16 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         
         // Create API options
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::RegexPatternGeneration,
-            &payload.project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         // Call LLM
         let model_name = api_options.model.clone();
         info!("Calling LLM for regex pattern generation with model {}", &model_name);
-        let llm_response = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
+        let llm_response = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
             Ok(response) => response,
             Err(e) => {
                 error!("Failed to call LLM: {}", e);

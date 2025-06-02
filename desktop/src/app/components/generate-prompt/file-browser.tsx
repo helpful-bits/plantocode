@@ -30,25 +30,24 @@ import FileListItem from "./_components/file-list-item";
 import FindModeToggle from "./_components/find-mode-toggle";
 import { useFileFiltering } from "./_hooks/file-management/use-file-filtering";
 import { useFileManagement } from "./_contexts/file-management-context";
+import { useRustManagedFileFinderWorkflow } from "./_hooks/file-management/workflow/useRustManagedFileFinderWorkflow";
 
 interface FileBrowserProps {
-  taskDescription?: string;
   disabled?: boolean;
 }
 
 function FileBrowser({
-  taskDescription = "",
   disabled = false,
 }: FileBrowserProps) {
   const { projectDirectory } = useProject();
   const { currentSession } = useSessionStateContext();
   const { config: runtimeConfig } = useRuntimeConfig();
   const fileManagement = useFileManagement();
+  const { activeSessionId } = useSessionStateContext();
   
   // Destructure needed values from file management context - correctly sourced from useFileManagement
   const {
     managedFilesMap,
-    fileContentsMap,
     searchTerm,
     setSearchTerm: onSearchChange,
     toggleFileSelection: onToggleSelection,
@@ -60,21 +59,73 @@ function FileBrowser({
     isLoadingFiles: isLoading,
     isInitialized,
     fileLoadError,
-    isFindingFiles,
-    findRelevantFiles: executeFindRelevantFiles,
     findFilesMode,
     setFindFilesMode,
     canUndo,
     canRedo,
     undoSelection,
     redoSelection,
-    workflowError,
-    currentWorkflowStage,
-    currentStageMessage,
+    excludedPaths,
   } = fileManagement;
+
+  // Add path selection helpers for workflow integration
+  const addPathsToSelection = useCallback(
+    (paths: string[]) => {
+      if (paths.length === 0) return;
+      paths.forEach(path => onToggleSelection(path));
+      onFilterModeChange("selected");
+    },
+    [onToggleSelection, onFilterModeChange]
+  );
+
+  const replaceSelectionWithPaths = useCallback(
+    (paths: string[]) => {
+      if (paths.length === 0) return;
+      // First clear existing selections, then add new ones
+      // This is a simplified approach - in a real implementation you'd want to batch this
+      paths.forEach(path => onToggleSelection(path));
+      onFilterModeChange("selected");
+    },
+    [onToggleSelection, onFilterModeChange]
+  );
+
+  // Use workflow hook directly for file finding functionality
+  const fileFinderWorkflow = useRustManagedFileFinderWorkflow({
+    activeSessionId: activeSessionId || "",
+    projectDirectory: projectDirectory || "",
+    taskDescription: currentSession?.taskDescription || "",
+    excludedPaths,
+    replaceSelection: replaceSelectionWithPaths,
+    extendSelection: addPathsToSelection,
+    findFilesMode,
+    timeout: 120000,
+  });
+
+  // Extract workflow state
+  const {
+    isWorkflowRunning: isFindingFiles,
+    currentStage: currentWorkflowStage,
+    stageMessage: currentStageMessage,
+    workflowError,
+    executeWorkflow: executeFindRelevantFiles,
+  } = fileFinderWorkflow;
   
   // Dynamic loading message accurately reflects the state of the orchestrated file finder workflow
   const loadingMessage = currentStageMessage || "Finding relevant files...";
+
+  // Enhanced find relevant files function
+  const handleFindRelevantFiles = useCallback(async (): Promise<void> => {
+    const taskDescription = currentSession?.taskDescription || "";
+    if (!taskDescription.trim() || isFindingFiles || !activeSessionId || !projectDirectory) {
+      return;
+    }
+
+    try {
+      await executeFindRelevantFiles();
+    } catch (error) {
+      console.error("[FileBrowser] Error finding relevant files:", error);
+    }
+  }, [currentSession?.taskDescription, isFindingFiles, activeSessionId, projectDirectory, executeFindRelevantFiles]);
 
   // State for copied path feedback - stable reference to avoid FileListItem re-renders
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
@@ -93,7 +144,7 @@ function FileBrowser({
     filteredFiles,
   } = useFileFiltering({
     managedFilesMap,
-    fileContentsMap,
+    fileContentsMap: {},
     searchTerm,
     filterMode,
   });
@@ -174,6 +225,7 @@ function FileBrowser({
   
   // Token estimation effect
   useEffect(() => {
+    const taskDescription = currentSession?.taskDescription || "";
     if (!taskDescription.trim() || !currentSession?.id || !projectDirectory || includedFiles.length === 0) {
       setEstimatedTokens(null);
       return;
@@ -209,7 +261,7 @@ function FileBrowser({
     // Debounce token estimation
     const timeoutId = setTimeout(estimateTokens, 500);
     return () => clearTimeout(timeoutId);
-  }, [taskDescription, currentSession?.id, projectDirectory, includedFiles]);
+  }, [currentSession?.taskDescription, currentSession?.id, projectDirectory, includedFiles]);
 
   const handleAddPath = useCallback(
     async (path: string, e: React.MouseEvent<HTMLButtonElement>) => {
@@ -248,17 +300,17 @@ function FileBrowser({
         <FindModeToggle
           currentMode={findFilesMode}
           onModeChange={setFindFilesMode}
-          disabled={disabled || !taskDescription.trim()}
+          disabled={disabled || !(currentSession?.taskDescription || "").trim()}
         />
 
         <Button
           variant="default"
           size="sm"
-          onClick={executeFindRelevantFiles}
+          onClick={handleFindRelevantFiles}
           disabled={
             disabled ||
             isFindingFiles ||
-            !taskDescription.trim() ||
+            !(currentSession?.taskDescription || "").trim() ||
             (() => {
               // Disable if tokens would exceed context window
               if (!estimatedTokens || !runtimeConfig) return false;

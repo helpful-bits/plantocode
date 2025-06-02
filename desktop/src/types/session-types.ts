@@ -3,114 +3,36 @@
  * These types represent the structures used for sessions and background jobs
  */
 
-// Define the possible statuses for background jobs processing
-export type JobStatus =
-  | "idle"
-  | "preparing"
-  | "running"
-  | "completed"
-  | "failed"
-  | "canceled"
-  | "created"
-  | "queued"
-  | "acknowledged_by_worker"
-  // New granular statuses for implementation plans and streaming jobs
-  | "preparing_input" // Preparing input for LLM, e.g., loading files
-  | "generating_stream" // Sending request to LLM and starting stream
-  | "processing_stream" // Processing the incoming stream
-  | "completed_by_tag"; // Stream completed early due to tag detection
-
-// Constants for job status groups - use these instead of hardcoded arrays
-export const JOB_STATUSES = {
-  // Active job statuses (non-terminal)
-  ACTIVE: [
-    "idle",
-    "preparing",
-    "running",
-    "queued",
-    "created",
-    "acknowledged_by_worker",
-    "preparing_input",
-    "generating_stream",
-    "processing_stream",
-  ] as JobStatus[],
-
-  // Terminal job statuses
-  TERMINAL: [
-    "completed",
-    "failed",
-    "canceled",
-    "completed_by_tag",
-  ] as JobStatus[],
-
-  // Specific status groups
-  COMPLETED: ["completed", "completed_by_tag"] as JobStatus[],
-
-  FAILED: ["failed", "canceled"] as JobStatus[],
-
-  // All valid statuses
-  ALL: [
-    "idle",
-    "preparing",
-    "running",
-    "queued",
-    "created",
-    "completed",
-    "failed",
-    "canceled",
-    "acknowledged_by_worker",
-    "preparing_input",
-    "generating_stream",
-    "processing_stream",
-    "completed_by_tag",
-  ] as JobStatus[],
-};
+// Import job status types and constants from consolidated definitions
+import { type JobStatus, JOB_STATUSES } from './task-type-defs';
+export { type JobStatus, JOB_STATUSES };
 
 // Type for API types
 export type ApiType = "openrouter" | "filesystem";
 
-/**
- * Task types supported by the application
- * Updated to include orchestrated workflow stage types
- */
-export type TaskType =
-  | "implementation_plan"
-  | "path_finder"
-  | "text_improvement"
-  | "voice_transcription"
-  | "text_correction"
-  | "path_correction"
-  | "guidance_generation"
-  | "task_enhancement"
-  | "generic_llm_stream"
-  | "regex_summary_generation"
-  | "regex_pattern_generation"
-  | "file_finder_workflow"
-  | "server_proxy_transcription"
-  | "streaming"
-  
-  // New orchestrated workflow stage types
-  | "directory_tree_generation"
-  | "local_file_filtering"
-  | "extended_path_finder"
-  | "extended_path_correction"
-  | "initial_path_finding"
-  | "extended_path_finding"
-  | "initial_path_correction"
-  | "regex_generation"
-  
-  | "unknown";
+// Import task types and metadata from consolidated definitions
+import { type TaskType, TaskTypeDetails } from './task-type-defs';
+export { type TaskType, TaskTypeDetails };
 
 /**
  * Interface defining structured job metadata
- * Standardizes the structure of BackgroundJob.metadata across frontend and backend
+ * Aligned with backend JobWorkerMetadata structure
  */
 export interface JobMetadata {
-  // Common workflow fields
+  // Core fields from JobWorkerMetadata - top level workflow metadata
+  jobTypeForWorker?: string; // e.g., "PATH_FINDER", "TEXT_IMPROVEMENT"
+  jobPayloadForWorker?: any; // The full JobPayload enum from backend - task-specific payload data nested
+  jobPriorityForWorker?: number;
   workflowId?: string;
   workflowStage?: string; // e.g., "DirectoryTreeGeneration", "PathFinding", "ResultProcessing"
-  jobTypeForWorker?: string; // e.g., "PATH_FINDER", "TEXT_IMPROVEMENT"
-  jobPriorityForWorker?: number;
+  additionalParams?: any; // Additional metadata from backend
+
+  // Common extracted fields for UI convenience - extracted from jobPayloadForWorker
+  backgroundJobId?: string;
+  sessionId?: string;
+  taskDescription?: string;
+  projectDirectory?: string;
+  targetField?: string; // Extracted from jobPayloadForWorker.data.targetField
 
   // Streaming fields
   isStreaming?: boolean;
@@ -120,40 +42,9 @@ export interface JobMetadata {
   lastStreamUpdateTime?: number; // Timestamp of last stream update
   streamStartTime?: number; // Timestamp when streaming started
 
-  // Task-specific output fields
+  // Output fields
   outputPath?: string; // For implementation plans, file outputs, etc.
-  targetField?: string; // For text improvement (e.g., "taskDescription", "titleRegex")
   sessionName?: string; // For implementation plans and session-related tasks
-
-  // Path finder specific data
-  pathFinderData?: {
-    paths?: string[];
-    count?: number;
-    unverifiedPaths?: string[];
-    searchTerm?: string;
-    totalFound?: number;
-  };
-
-  // Regex generation specific data
-  regexData?: {
-    titleRegex?: string;
-    contentRegex?: string;
-    negativeTitleRegex?: string;
-    negativeContentRegex?: string;
-    titleRegexDescription?: string;
-    contentRegexDescription?: string;
-    negativeTitleRegexDescription?: string;
-    negativeContentRegexDescription?: string;
-    regexSummaryExplanation?: string;
-  } | Record<string, any> | string; // Legacy support for string format
-
-  // File finder workflow data
-  fileFinderWorkflowData?: {
-    stage?: string; // e.g., "tree_generation", "path_finding", "validation"
-    treeGenerated?: boolean;
-    pathsFound?: number;
-    validatedPaths?: number;
-  };
 
   // Retry and error handling
   retryCount?: number;
@@ -166,11 +57,6 @@ export interface JobMetadata {
   // Model and token information
   modelUsed?: string;
   tokensUsed?: number;
-
-  // Legacy fields (for backward compatibility)
-  pathCount?: number;
-  pathData?: string;
-  showPureContent?: boolean;
 
   // Allow additional dynamic fields for extensibility
   [key: string]: unknown;

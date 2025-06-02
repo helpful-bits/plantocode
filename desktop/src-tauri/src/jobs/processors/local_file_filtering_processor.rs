@@ -204,12 +204,9 @@ impl JobProcessor for LocalFileFilteringProcessor {
             "summary": format!("Found {} potentially relevant files", filtered_paths.len())
         });
         
-        // Store filtered paths as newline-separated string in response
-        let response_content = if filtered_paths.is_empty() {
-            String::new()
-        } else {
-            filtered_paths.join("\n")
-        };
+        // Serialize filtered_paths into a JSON string for typed output
+        let response_content = serde_json::to_string(&filtered_paths)
+            .map_err(|e| AppError::JobError(format!("Failed to serialize filtered paths: {}", e)))?;
         
         // Finalize job success using standardized utility
         job_processor_utils::finalize_job_success(

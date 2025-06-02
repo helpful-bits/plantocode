@@ -72,20 +72,9 @@ export interface HasCustomSystemPromptResponse {
   error?: string;
 }
 
-import type { TaskType } from './session-types';
-
-// Task types that support system prompts - using snake_case to match backend TaskType::to_string()
-export type TaskTypeSupportingSystemPrompts = 
-  | 'path_finder'
-  | 'text_improvement' 
-  | 'guidance_generation'
-  | 'text_correction'
-  | 'implementation_plan'
-  | 'path_correction'
-  | 'task_enhancement'
-  | 'regex_pattern_generation'
-  | 'regex_summary_generation'
-  | 'generic_llm_stream';
+// Import task types from consolidated definitions
+import type { TaskType, TaskTypeSupportingSystemPrompts } from './task-type-defs';
+export type { TaskType, TaskTypeSupportingSystemPrompts };
 
 // UI-specific types
 export interface SystemPromptFormData {

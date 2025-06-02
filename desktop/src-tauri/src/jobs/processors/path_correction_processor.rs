@@ -96,7 +96,12 @@ impl JobProcessor for PathCorrectionProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&job.id, "path correction");
         debug!("Paths to correct: {}", payload.paths_to_correct);
@@ -130,6 +135,7 @@ impl JobProcessor for PathCorrectionProcessor {
                 None,
                 payload.directory_tree.clone(),
                 &settings_repo,
+                &model_used,
             ).await?
         };
 
@@ -141,17 +147,17 @@ impl JobProcessor for PathCorrectionProcessor {
         
         // Create API options
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::PathCorrection,
-            project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         debug!("Sending path correction request with options: {:?}", api_options);
         
         // Call the LLM API
-        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
+        let api_options_clone = api_options.clone();
+        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
             Ok(llm_response) => {
                 debug!("Received path correction response");
                 
@@ -185,7 +191,7 @@ impl JobProcessor for PathCorrectionProcessor {
                     let simple_response = corrected_paths.join("\n");
                     
                     // Get model used
-                    let model_used = &api_options.model;
+                    let model_used = &api_options_clone.model;
                     
                     // Clone usage before moving it
                     let usage_clone = llm_response.usage.clone();

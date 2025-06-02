@@ -37,6 +37,9 @@ pub struct UnifiedPromptContext {
     
     // Advanced features
     pub metadata: Option<HashMap<String, String>>,
+    
+    // Text correction specific
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,10 +177,17 @@ impl UnifiedPromptProcessor {
             substitutions.insert("{{PROJECT_DIRECTORY}}", project_dir.as_str());
         }
         
+        if let Some(ref language) = context.language {
+            substitutions.insert("{{LANGUAGE}}", language.as_str());
+        }
+        
         // Apply substitutions
         for (placeholder, value) in substitutions {
             result = result.replace(placeholder, value);
         }
+        
+        // Clean up any remaining {{LANGUAGE}} placeholders if no language was provided
+        result = result.replace("{{LANGUAGE}}", "English");
         
         Ok(result)
     }
@@ -302,6 +312,7 @@ impl UnifiedPromptContextBuilder {
                 codebase_structure: None,
                 directory_tree: None,
                 metadata: None,
+                language: None,
             },
         }
     }
@@ -353,6 +364,11 @@ impl UnifiedPromptContextBuilder {
 
     pub fn metadata(mut self, metadata: Option<HashMap<String, String>>) -> Self {
         self.context.metadata = metadata;
+        self
+    }
+
+    pub fn language(mut self, language: Option<String>) -> Self {
+        self.context.language = language;
         self
     }
 

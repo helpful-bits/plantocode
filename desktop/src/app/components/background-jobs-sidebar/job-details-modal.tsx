@@ -14,7 +14,7 @@ import { useExistingWorkflowTracker } from "@/hooks/use-workflow-tracker";
 import { getParsedMetadata } from "./utils";
 import { WorkflowVisualizer } from "@/components/workflow-visualizer";
 import { retryWorkflowStageAction } from "@/actions/file-system/workflow-stage.actions";
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 
 // Import component sections
@@ -28,6 +28,7 @@ import { JobDetailsResponseSection } from "./_components/job-details/JobDetailsR
 import { JobDetailsStatusSection } from "./_components/job-details/JobDetailsStatusSection";
 import { JobDetailsTimingSection } from "./_components/job-details/JobDetailsTimingSection";
 import { JobDetailsCostUsageSection } from "./_components/job-details/JobDetailsCostUsageSection";
+import { JobDetailsContextProvider } from "./_contexts/job-details-context";
 
 interface JobDetailsModalProps {
   job: BackgroundJob | null;
@@ -90,7 +91,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
 
   if (!workflowState) {
     return (
-      <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+      <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm">Loading workflow details...</span>
@@ -113,7 +114,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
             return (
               <div
                 key={stageJob.jobId || stageJob.stage}
-                className="border border-border rounded-lg p-3 bg-white dark:bg-gray-800"
+                className="border border-border rounded-lg p-3 bg-card"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -202,7 +203,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
   // All job output content is now stored directly in the job.response field
 
   // Format JSON data for display
-  const formatMetadata = (metadata: string | Record<string, unknown> | null | undefined) => {
+  const formatMetadata = useCallback((metadata: string | Record<string, unknown> | null | undefined) => {
     try {
       if (!metadata) return "None";
 
@@ -225,6 +226,9 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         "lastUpdateTime", // This is redundant with the updatedAt field
         "outputFilePath", // This is shown separately in the UI
         "regexData", // This will be displayed separately if present
+        "jobPayloadForWorker", // This contains duplicate data, will be shown separately if needed
+        "jobTypeForWorker", // Redundant with task type
+        "jobPriorityForWorker", // Internal worker field
       ];
 
       keysToRemove.forEach((key) => {
@@ -238,10 +242,10 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     } catch (_e) {
       return "Invalid metadata";
     }
-  };
+  }, []);
 
   // Format regex patterns for display
-  const formatRegexPatterns = (regexDataInput: string | Record<string, unknown> | null | undefined): string | null => {
+  const formatRegexPatterns = useCallback((regexDataInput: string | Record<string, unknown> | null | undefined): string | null => {
     if (!regexDataInput) return null;
 
     try {
@@ -262,13 +266,26 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       const data = regexData as any;
       const patternsOutput: string[] = [];
       
-      // Extract primary pattern
+      // First, check if this is regex data from a JobPayload::RegexPatternGeneration within jobPayloadForWorker
+      if (data.type === "RegexPatternGeneration" && data.data) {
+        // This is the new structured format from JobPayload
+        const regexPayload = data.data;
+        if (regexPayload.taskDescription) {
+          patternsOutput.push(`Task: ${regexPayload.taskDescription}`);
+        }
+        if (regexPayload.projectDirectory) {
+          patternsOutput.push(`Project: ${regexPayload.projectDirectory}`);
+        }
+        return patternsOutput.length > 0 ? patternsOutput.join("\n") : "Regex generation payload";
+      }
+      
+      // Extract primary pattern (existing logic)
       const primaryPattern = data?.primaryPattern?.pattern;
       if (primaryPattern) {
         patternsOutput.push(`Primary: /${primaryPattern}/`);
       }
 
-      // Extract alternative patterns
+      // Extract alternative patterns (existing logic)
       const alternatives = data?.alternativePatterns;
       if (Array.isArray(alternatives)) {
         alternatives.forEach((alt: any, index: number) => {
@@ -279,7 +296,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         });
       }
 
-      // Extract flags
+      // Extract flags (existing logic)
       const flags = data?.flags;
       if (Array.isArray(flags) && flags.length > 0) {
         patternsOutput.push(`Flags: ${flags.join("")}`);
@@ -310,208 +327,258 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
     } catch (_e) {
       return JSON.stringify(regexDataInput, null, 2);
     }
-  };
+  }, []);
 
-  if (!job) return null;
+  // Create context value with useMemo (must be called before any conditional returns)
+  const contextValue = useMemo(() => {
+    if (!job) return null;
 
-  // Get job duration if possible, using startTime and endTime if available
-  const jobDuration = job.startTime
-    ? formatJobDuration(job.startTime, job.endTime, job.status)
-    : "N/A";
+    // Get job duration if possible, using startTime and endTime if available
+    const jobDuration = job.startTime
+      ? formatJobDuration(job.startTime, job.endTime, job.status)
+      : "N/A";
 
-  // Determine which content to show as the prompt
-  const promptContent = job.prompt || "No prompt data available";
+    // Determine which content to show as the prompt
+    const promptContent = job.prompt || "No prompt data available";
 
-  const getResponseContent = () => {
-    // For Content View - show EXACTLY what would be copied with the copy button
-    if (
-      job.taskType === "implementation_plan" &&
-      getParsedMetadata(job.metadata)?.showPureContent === true
-    ) {
-      // Always return the raw response for implementation plans in content view
-      // This is EXACTLY what gets copied by the copy button
-      return job.response || "No content available yet.";
-    }
-
-    // Standard streaming response handling for details view
-    if (
-      job.taskType === "implementation_plan" &&
-      (job.status === "running" || job.status === "processing_stream") &&
-      getParsedMetadata(job.metadata)?.isStreaming === true
-    ) {
-      if (job.response) {
-        return job.response;
-      } else {
-        return "Waiting for implementation plan content to stream...";
-      }
-    }
-
-    // Standard completed response handling for details view
-    if (job.taskType === "implementation_plan" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-      if (job.response) {
-        return job.response;
+    const getResponseContent = () => {
+      // For Content View - show EXACTLY what would be copied with the copy button
+      if (
+        job.taskType === "implementation_plan" &&
+        getParsedMetadata(job.metadata)?.showPureContent === true
+      ) {
+        // Always return the raw response for implementation plans in content view
+        // This is EXACTLY what gets copied by the copy button
+        return job.response || "No content available yet.";
       }
 
-      return "Implementation plan job completed, but no content is available.";
-    }
-
-    // Handle structured JSON responses for specific task types
-    if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && job.response) {
-      const structuredJsonTaskTypes = [
-        "path_finder", 
-        "regex_pattern_generation",
-        "regex_summary_generation",
-        "guidance_generation"
-      ];
-      
-      if (structuredJsonTaskTypes.includes(job.taskType)) {
-        try {
-          const parsed = JSON.parse(job.response);
-          return JSON.stringify(parsed, null, 2);
-        } catch {
-          // Not valid JSON, continue with existing logic
+      // Standard streaming response handling for details view
+      if (
+        job.taskType === "implementation_plan" &&
+        (job.status === "running" || job.status === "processing_stream") &&
+        getParsedMetadata(job.metadata)?.isStreaming === true
+      ) {
+        if (job.response) {
+          return job.response;
+        } else {
+          return "Waiting for implementation plan content to stream...";
         }
       }
-    }
 
-    // Enhanced handling for path finder and workflow stage jobs
-    if ((job.taskType === "path_finder" || 
-         job.taskType === "initial_path_finding" || 
-         job.taskType === "extended_path_finding" ||
-         job.taskType === "file_finder_workflow") && 
-        JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-      
-      const parsedMeta = getParsedMetadata(job.metadata);
-
-      // Handle workflow metadata first
-      if (parsedMeta?.workflowId) {
-        const workflowInfo = `Workflow ID: ${parsedMeta.workflowId}\nStage: ${parsedMeta.workflowStage || job.taskType}`;
-        
+      // Standard completed response handling for details view
+      if (job.taskType === "implementation_plan" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
         if (job.response) {
-          // Try to format JSON response nicely for path finder workflow stages
+          return job.response;
+        }
+
+        return "Implementation plan job completed, but no content is available.";
+      }
+
+      // Handle structured JSON responses for specific task types
+      if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && job.response) {
+        const structuredJsonTaskTypes = [
+          "path_finder", 
+          "regex_pattern_generation",
+          "regex_summary_generation",
+          "guidance_generation"
+        ];
+        
+        if (structuredJsonTaskTypes.includes(job.taskType)) {
           try {
             const parsed = JSON.parse(job.response);
+            
+            // Handle Vec<String> responses from path_finder and workflow stage jobs
+            if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+              const count = parsed.length;
+              return `Found ${count} file${count !== 1 ? "s" : ""}:\n\n${parsed.join("\n")}`;
+            }
+            
+            return JSON.stringify(parsed, null, 2);
+          } catch {
+            // Not valid JSON, continue with existing logic
+          }
+        }
+      }
+
+      // Enhanced handling for path finder and workflow stage jobs
+      if ((job.taskType === "path_finder" || 
+           job.taskType === "initial_path_finding" || 
+           job.taskType === "extended_path_finding" ||
+           job.taskType === "file_finder_workflow") && 
+          JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+        
+        const parsedMeta = getParsedMetadata(job.metadata);
+
+        // Handle workflow metadata first
+        if (parsedMeta?.workflowId) {
+          const workflowInfo = `Workflow ID: ${parsedMeta.workflowId}\nStage: ${parsedMeta.workflowStage || job.taskType}`;
+          
+          if (job.response) {
+            // Try to format JSON response nicely for path finder workflow stages
+            try {
+              const parsed = JSON.parse(job.response);
+              
+              // Handle Vec<String> responses (array of file paths)
+              if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+                const count = parsed.length;
+                return `${workflowInfo}\n\nFound ${count} file${count !== 1 ? "s" : ""}:\n${parsed.join("\n")}`;
+              }
+              
+              // Handle structured responses
+              if (parsed && (parsed.paths || parsed.count !== undefined)) {
+                return `${workflowInfo}\n\nStage Output:\n${JSON.stringify(parsed, null, 2)}`;
+              }
+            } catch {
+              // Not JSON, return as-is
+            }
+            return `${workflowInfo}\n\nStage Output:\n${job.response}`;
+          }
+          return `${workflowInfo}\n\nWorkflow stage completed successfully.`;
+        }
+
+        // Handle structured pathFinderData from metadata
+        if (parsedMeta?.pathFinderData) {
+          const pathData: {
+            count?: number;
+            paths?: string[];
+            searchTerm?: string;
+            unverifiedPaths?: string[];
+          } = parsedMeta.pathFinderData as any;
+          let displayContent = "";
+          
+          if (pathData.count !== undefined || pathData.paths?.length) {
+            const count = pathData.count || pathData.paths?.length || 0;
+            displayContent += `Found ${count} relevant file${count !== 1 ? "s" : ""}`;
+            
+            if (pathData.searchTerm) {
+              displayContent += ` for search term: "${pathData.searchTerm}"`;
+            }
+            displayContent += "\n\n";
+            
+            if (pathData.paths && pathData.paths.length > 0) {
+              displayContent += pathData.paths.join("\n");
+            }
+            
+            if (pathData.unverifiedPaths && pathData.unverifiedPaths.length > 0) {
+              displayContent += "\n\nUnverified paths:\n" + pathData.unverifiedPaths.join("\n");
+            }
+            
+            return displayContent;
+          }
+        }
+
+        // Handle legacy pathData from metadata
+        if (parsedMeta?.pathData && typeof parsedMeta.pathData === 'string') {
+          try {
+            const pathDataParsed = JSON.parse(parsedMeta.pathData) as { paths?: string[]; allFiles?: string[]; count?: number };
+            const pathsArray = pathDataParsed?.allFiles || pathDataParsed?.paths;
+            const count = pathDataParsed?.count || pathsArray?.length || 0;
+            
+            if (Array.isArray(pathsArray) && pathsArray.every(p => typeof p === 'string')) {
+              return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${pathsArray.join("\n")}`;
+            }
+          } catch (e) {
+            console.warn("Failed to parse pathData from metadata for path_finder job:", e);
+          }
+        }
+
+        // Fallback to job.response, format JSON if possible
+        if (job.response) {
+          try {
+            const parsed = JSON.parse(job.response);
+            
+            // Handle Vec<String> responses (array of file paths)
+            if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+              const count = parsed.length;
+              return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${parsed.join("\n")}`;
+            }
+            
+            // Handle structured responses with paths property
             if (parsed && (parsed.paths || parsed.count !== undefined)) {
-              return `${workflowInfo}\n\nStage Output:\n${JSON.stringify(parsed, null, 2)}`;
+              const count = parsed.count || parsed.paths?.length || 0;
+              return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${JSON.stringify(parsed, null, 2)}`;
             }
           } catch {
-            // Not JSON, return as-is
+            // Not JSON, handle as text
+            const count = parsedMeta?.pathCount ?? job.response.split('\n').filter(Boolean).length;
+            return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${job.response}`;
           }
-          return `${workflowInfo}\n\nStage Output:\n${job.response}`;
         }
-        return `${workflowInfo}\n\nWorkflow stage completed successfully.`;
-      }
-
-      // Handle structured pathFinderData from metadata
-      if (parsedMeta?.pathFinderData) {
-        const pathData = parsedMeta.pathFinderData;
-        let displayContent = "";
         
-        if (pathData.count !== undefined || pathData.paths?.length) {
-          const count = pathData.count || pathData.paths?.length || 0;
-          displayContent += `Found ${count} relevant file${count !== 1 ? "s" : ""}`;
-          
-          if (pathData.searchTerm) {
-            displayContent += ` for search term: "${pathData.searchTerm}"`;
-          }
-          displayContent += "\n\n";
-          
-          if (pathData.paths && pathData.paths.length > 0) {
-            displayContent += pathData.paths.join("\n");
-          }
-          
-          if (pathData.unverifiedPaths && pathData.unverifiedPaths.length > 0) {
-            displayContent += "\n\nUnverified paths:\n" + pathData.unverifiedPaths.join("\n");
-          }
-          
-          return displayContent;
+        return `${job.taskType === "file_finder_workflow" ? "File finder" : "Path finder"} job completed, but no path data found.`;
+      }
+
+      // Streaming jobs special handling - for jobs with isStreaming flag
+      if ((job.status === "running" || job.status === "processing_stream") && getParsedMetadata(job.metadata)?.isStreaming === true) {
+        if (job.response) {
+          // For streaming jobs, show the response with a note that it's streaming
+          return `${job.response}\n\n[Streaming in progress...]`;
+        } else {
+          return "Waiting for streaming content to begin...";
         }
       }
 
-      // Handle legacy pathData from metadata
-      if (parsedMeta?.pathData && typeof parsedMeta.pathData === 'string') {
-        try {
-          const pathDataParsed = JSON.parse(parsedMeta.pathData) as { paths?: string[]; allFiles?: string[]; count?: number };
-          const pathsArray = pathDataParsed?.allFiles || pathDataParsed?.paths;
-          const count = pathDataParsed?.count || pathsArray?.length || 0;
-          
-          if (Array.isArray(pathsArray) && pathsArray.every(p => typeof p === 'string')) {
-            return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${pathsArray.join("\n")}`;
-          }
-        } catch (e) {
-          console.warn("Failed to parse pathData from metadata for path_finder job:", e);
-        }
-      }
-
-      // Fallback to job.response, format JSON if possible
+      // Handle standard response case with JSON detection
       if (job.response) {
-        try {
-          const parsed = JSON.parse(job.response);
-          if (parsed && (parsed.paths || parsed.count !== undefined)) {
-            const count = parsed.count || parsed.paths?.length || 0;
-            return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${JSON.stringify(parsed, null, 2)}`;
+        // Check if response is JSON and format it nicely if so
+        if (
+          job.response.trim().startsWith("{") ||
+          job.response.trim().startsWith("[")
+        ) {
+          try {
+            const parsedResponse = JSON.parse(job.response) as unknown;
+            return JSON.stringify(parsedResponse, null, 2);
+          } catch (_e) {
+            // Not valid JSON, continue to return as-is
           }
-        } catch {
-          // Not JSON, handle as text
-          const count = parsedMeta?.pathCount ?? job.response.split('\n').filter(Boolean).length;
-          return `Found ${count} relevant file${count !== 1 ? "s" : ""}:\n\n${job.response}`;
         }
-      }
-      
-      return `${job.taskType === "file_finder_workflow" ? "File finder" : "Path finder"} job completed, but no path data found.`;
-    }
 
-    // Streaming jobs special handling - for jobs with isStreaming flag
-    if ((job.status === "running" || job.status === "processing_stream") && getParsedMetadata(job.metadata)?.isStreaming === true) {
-      if (job.response) {
-        // For streaming jobs, show the response with a note that it's streaming
-        return `${job.response}\n\n[Streaming in progress...]`;
+        // Not JSON or parsing failed, return as is
+        return job.response;
+      }
+
+      // Customize the fallback based on job status
+      if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+        return "Job completed but no response data is available.";
+      } else if (job.status === "failed") {
+        return (
+          job.errorMessage || "Job failed but no error details are available."
+        );
+      } else if (job.status === "canceled") {
+        return job.errorMessage || "Job was canceled by the user.";
+      } else if (job.status === "running" || job.status === "processing_stream") {
+        return job.statusMessage || "Job is currently processing...";
+      } else if (["preparing", "queued", "created", "acknowledged_by_worker", "preparing_input", "generating_stream"].includes(job.status)) {
+        return job.statusMessage || "Job is preparing to run...";
+      } else if (job.status === "idle") {
+        return "Job is waiting to start...";
       } else {
-        return "Waiting for streaming content to begin...";
+        return "No response data available";
       }
-    }
+    };
 
-    // Handle standard response case with JSON detection
-    if (job.response) {
-      // Check if response is JSON and format it nicely if so
-      if (
-        job.response.trim().startsWith("{") ||
-        job.response.trim().startsWith("[")
-      ) {
-        try {
-          const parsedResponse = JSON.parse(job.response) as unknown;
-          return JSON.stringify(parsedResponse, null, 2);
-        } catch (_e) {
-          // Not valid JSON, continue to return as-is
-        }
-      }
+    // Get response content using the helper function
+    const responseContent = getResponseContent();
 
-      // Not JSON or parsing failed, return as is
-      return job.response;
-    }
+    // Calculate derived values for context
+    const parsedMetadata = getParsedMetadata(job.metadata);
+    const isStreaming = (job.status === "running" || job.status === "processing_stream") && parsedMetadata?.isStreaming === true;
+    const progress = isStreaming && parsedMetadata?.streamProgress ? parsedMetadata.streamProgress : undefined;
 
-    // Customize the fallback based on job status
-    if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
-      return "Job completed but no response data is available.";
-    } else if (job.status === "failed") {
-      return (
-        job.errorMessage || "Job failed but no error details are available."
-      );
-    } else if (job.status === "canceled") {
-      return job.errorMessage || "Job was canceled by the user.";
-    } else if (job.status === "running" || job.status === "processing_stream") {
-      return job.statusMessage || "Job is currently processing...";
-    } else if (["preparing", "queued", "created", "acknowledged_by_worker", "preparing_input", "generating_stream"].includes(job.status)) {
-      return job.statusMessage || "Job is preparing to run...";
-    } else if (job.status === "idle") {
-      return "Job is waiting to start...";
-    } else {
-      return "No response data available";
-    }
-  };
+    return {
+      job,
+      parsedMetadata,
+      isStreaming,
+      progress,
+      jobDuration,
+      responseContent,
+      promptContent,
+      formatMetadata,
+      formatRegexPatterns,
+    };
+  }, [job, formatMetadata, formatRegexPatterns]);
 
-  // Get response content using the helper function
-  const responseContent = getResponseContent();
+  if (!job || !contextValue) return null;
 
   return (
     <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
@@ -521,7 +588,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             className={`${job.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
           >
             {(() => {
-              const parsedMeta = getParsedMetadata(job.metadata);
+              const parsedMeta = contextValue.parsedMetadata;
 
               // Show workflow context prominently in title
               if (parsedMeta?.workflowId) {
@@ -562,7 +629,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
           </DialogTitle>
           <DialogDescription className="text-balance text-muted-foreground">
             {(() => {
-              const parsedMeta = getParsedMetadata(job.metadata);
+              const parsedMeta = contextValue.parsedMetadata;
 
               // Show workflow stage in description
               if (parsedMeta?.workflowId && parsedMeta?.workflowStage) {
@@ -588,46 +655,41 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             })()}
           </DialogDescription>
         </DialogHeader>
-        <div
-          className="flex flex-col space-y-4 overflow-y-auto pr-2 mt-4 w-full"
-          style={{ maxHeight: "calc(90vh - 150px)" }}
-        >
-          {/* Main job information cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <JobDetailsStatusSection job={job} />
-            <JobDetailsModelConfigSection job={job} />
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <JobDetailsTimingSection job={job} jobDuration={jobDuration} />
-            <JobDetailsCostUsageSection job={job} />
-          </div>
+        <JobDetailsContextProvider value={contextValue}>
+          <div
+            className="flex flex-col space-y-4 overflow-y-auto pr-2 mt-4 w-full"
+            style={{ maxHeight: "calc(90vh - 150px)" }}
+          >
+            {/* Main job information cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <JobDetailsStatusSection />
+              <JobDetailsModelConfigSection />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <JobDetailsTimingSection />
+              <JobDetailsCostUsageSection />
+            </div>
 
-          <JobDetailsAdditionalInfoSection job={job} />
-          
-          <JobDetailsErrorSection job={job} />
-          
-          {/* Workflow Stages Section - show for any job that's part of a workflow */}
-          {(() => {
-            const parsedMeta = getParsedMetadata(job.metadata);
-            return parsedMeta?.workflowId ? <WorkflowStages job={job} /> : null;
-          })()}
+            <JobDetailsAdditionalInfoSection />
+            
+            <JobDetailsErrorSection />
+            
+            {/* Workflow Stages Section - show for any job that's part of a workflow */}
+            {(() => {
+              const parsedMeta = contextValue.parsedMetadata;
+              return parsedMeta?.workflowId ? <WorkflowStages job={job} /> : null;
+            })()}
 
-          {/* Content sections */}
-          <div className="space-y-4">
-            <JobDetailsSystemPromptSection job={job} />
-            <JobDetailsPromptSection promptContent={promptContent} />
-            <JobDetailsResponseSection
-              job={job}
-              responseContent={responseContent}
-            />
-            <JobDetailsMetadataSection
-              job={job}
-              formatMetadata={formatMetadata}
-              formatRegexPatterns={formatRegexPatterns}
-            />
+            {/* Content sections */}
+            <div className="space-y-4">
+              <JobDetailsSystemPromptSection />
+              <JobDetailsPromptSection />
+              <JobDetailsResponseSection />
+              <JobDetailsMetadataSection />
+            </div>
           </div>
-        </div>
+        </JobDetailsContextProvider>
         <DialogFooter className="mt-6">
           <Button 
             onClick={onClose} 

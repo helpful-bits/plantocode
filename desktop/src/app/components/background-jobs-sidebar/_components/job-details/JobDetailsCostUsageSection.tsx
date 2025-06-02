@@ -1,23 +1,19 @@
-import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
 // Helper function to identify local/filesystem tasks
 const isLocalTask = (taskType: string): boolean => {
   const localTaskTypes = [
     "local_file_filtering",
-    "directory_tree_generation"
+    "directory_tree_generation",
+    "file_finder_workflow"
   ];
   return localTaskTypes.includes(taskType);
 };
 
-interface JobDetailsCostUsageSectionProps {
-  job: BackgroundJob;
-}
-
-export function JobDetailsCostUsageSection({
-  job,
-}: JobDetailsCostUsageSectionProps) {
+export function JobDetailsCostUsageSection() {
+  const { job } = useJobDetailsContext();
   // Don't render for filesystem/local jobs
   if (job.apiType === "filesystem" || isLocalTask(job.taskType)) {
     return (

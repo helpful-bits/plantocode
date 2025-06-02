@@ -1,11 +1,8 @@
-import { type BackgroundJob } from "@/types/session-types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-interface JobDetailsStatusSectionProps {
-  job: BackgroundJob;
-}
-
-export function JobDetailsStatusSection({ job }: JobDetailsStatusSectionProps) {
+export function JobDetailsStatusSection() {
+  const { job } = useJobDetailsContext();
   return (
     <Card>
       <CardHeader className="pb-3">

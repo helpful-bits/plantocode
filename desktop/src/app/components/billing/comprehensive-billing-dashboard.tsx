@@ -452,7 +452,7 @@ export function ComprehensiveBillingDashboard() {
             <CardContent>
               <div className="space-y-4">
                 {analytics.trends.map((trend, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div key={index} className="flex items-center justify-between p-3 border border-border/60 rounded-lg">
                     <div>
                       <div className="font-medium">
                         {new Date(trend.periodStart).toLocaleDateString('en-US', { 
@@ -510,7 +510,7 @@ export function ComprehensiveBillingDashboard() {
 
                   {forecast.monthlyForecasts && forecast.monthlyForecasts.length > 0 ? (
                     forecast.monthlyForecasts.map((monthly, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={index} className="flex items-center justify-between p-3 border border-border/60 rounded-lg">
                         <div>
                           <div className="font-medium">
                             Month +{monthly.monthOffset || index + 1}
@@ -560,7 +560,7 @@ export function ComprehensiveBillingDashboard() {
                 ) : (
                   <div className="space-y-3">
                     {paymentMethods.paymentMethods.map((method) => (
-                      <div key={method.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={method.id} className="flex items-center justify-between p-3 border border-border/60 rounded-lg">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-6 bg-gray-200 rounded flex items-center justify-center text-xs font-medium">
                             {method.brand?.toUpperCase() || method.typeName?.toUpperCase() || "CARD"}
@@ -611,7 +611,7 @@ export function ComprehensiveBillingDashboard() {
                 ) : (
                   <div className="space-y-3">
                     {invoiceHistory.invoices.map((invoice) => (
-                      <div key={invoice.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={invoice.id} className="flex items-center justify-between p-3 border border-border/60 rounded-lg">
                         <div>
                           <div className="font-medium">
                             {invoice.description || "Invoice"}

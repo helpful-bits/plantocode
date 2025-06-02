@@ -40,18 +40,33 @@ impl JobProcessor for TextCorrectionProcessor {
         };
         
         // Setup repositories and mark job as running
-        let (repo, settings_repo, _background_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Build unified prompt using the standardized utility
-        let composed_prompt = job_processor_utils::build_unified_prompt(
-            &job,
-            &app_handle,
-            payload.text_to_correct.clone(),
-            None, // codebase_structure
-            None, // file_contents
-            None, // directory_tree
-            &settings_repo,
-        ).await?;
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        
+        // Create minimal XML-formatted user prompt with just the text to correct
+        let user_prompt = format!(
+            r#"<text_to_correct>
+{}
+</text_to_correct>"#,
+            payload.text_to_correct
+        );
+
+        // Build unified prompt context with XML-structured user prompt
+        let context = crate::utils::unified_prompt_system::UnifiedPromptContextBuilder::new(
+            job.session_id.clone(),
+            job.job_type,
+            user_prompt,
+        )
+        .project_directory(payload.project_directory.clone())
+        .language(Some(payload.language.clone()))
+        .build();
+
+        let prompt_processor = crate::utils::unified_prompt_system::UnifiedPromptProcessor::new();
+        let composed_prompt = prompt_processor.compose_prompt(&context, &settings_repo).await?;
 
         info!("Enhanced Text Correction prompt composition for job {}", job.id);
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
@@ -68,17 +83,16 @@ impl JobProcessor for TextCorrectionProcessor {
         
         // Create API options using helper
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::TextCorrection,
-            payload.project_directory.as_deref().unwrap_or(""),
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         // Send the request to the LLM using helper
         debug!("Sending text correction request to LLM");
         let model_name = api_options.model.clone(); // Clone before move
-        let result = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
+        let result = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
             Ok(response) => {
                 if response.choices.is_empty() {
                     error!("Empty response from LLM");

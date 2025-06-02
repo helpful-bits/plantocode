@@ -2,15 +2,11 @@ import { AlertCircle, CreditCard, Settings, Key, Wifi, Clock, Database, RotateCc
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
-import { type BackgroundJob } from "@/types/session-types";
 import { extractErrorInfo, createUserFriendlyErrorMessage, ErrorType } from "@/utils/error-handling";
-import { getParsedMetadata } from "../../utils";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-interface JobDetailsErrorSectionProps {
-  job: BackgroundJob;
-}
-
-export function JobDetailsErrorSection({ job }: JobDetailsErrorSectionProps) {
+export function JobDetailsErrorSection() {
+  const { job, parsedMetadata } = useJobDetailsContext();
   if (!job.errorMessage) {
     return null;
   }
@@ -19,7 +15,6 @@ export function JobDetailsErrorSection({ job }: JobDetailsErrorSectionProps) {
   const errorInfo = extractErrorInfo(job.errorMessage);
   
   // Check for structured error information in metadata
-  const parsedMetadata = getParsedMetadata(job.metadata);
   const isMetadataBillingError = parsedMetadata?.errorCode === 'BILLING_ERROR' || 
     parsedMetadata?.errorType === 'BILLING_ERROR' ||
     parsedMetadata?.errorCategory === 'billing';

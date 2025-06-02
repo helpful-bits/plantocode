@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use crate::error::AppResult;
 use crate::models::{JobStatus, JobCommandResponse};
 use crate::error::AppError;
+use crate::jobs::types::JobPayload;
 
 
 /// Request payload for the improve text command
@@ -96,12 +97,11 @@ pub async fn correct_text_command(
         text_to_correct: args.text_to_correct.clone(),
         language: args.language.clone(),
         original_transcription_job_id: args.original_transcription_job_id.clone(),
-        model_override: None,
     };
     
     // Get the model and settings for this task using centralized resolver
     let project_dir = args.project_directory.clone().unwrap_or_default();
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         crate::models::TaskType::TextCorrection,
         &project_dir,
@@ -117,11 +117,12 @@ pub async fn correct_text_command(
         "openrouter",
         crate::models::TaskType::TextCorrection,
         "TEXT_CORRECTION",
-        &format!("Correct text: {}", args.text_to_correct),
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(payload).map_err(|e| 
-            AppError::SerdeError(e.to_string()))?,
+        &args.text_to_correct,
+        model_settings,
+        JobPayload::TextCorrection(payload),
         1, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         None, // No extra metadata
         &app_handle,
     ).await?;

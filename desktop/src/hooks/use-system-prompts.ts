@@ -4,7 +4,7 @@ import {
   DefaultSystemPrompt, 
   SystemPromptDisplayData
 } from '../types/system-prompts';
-import { TaskType } from '../types/session-types';
+import { TaskType, TaskTypeDetails } from '../types/task-type-defs';
 import {
   getSystemPrompt,
   setSystemPrompt,
@@ -300,44 +300,16 @@ export function useSystemPromptDisplayData(
 }
 
 /**
- * Utility function to get display names for task types
- * Comprehensive mapping of all task types to user-friendly names
+ * Utility function to get display names for task types using consolidated TaskTypeDetails
  */
 export function getTaskTypeDisplayName(taskType: TaskType): string {
-  const displayNames: Record<TaskType, string> = {
-    // Core AI tasks
-    'path_finder': 'Path Finder',
-    'text_improvement': 'Text Improvement',
-    'guidance_generation': 'Guidance Generation',
-    'text_correction': 'Text Correction',
-    'implementation_plan': 'Implementation Plan',
-    'path_correction': 'Path Correction',
-    'task_enhancement': 'Task Enhancement',
-    'regex_pattern_generation': 'Regex Pattern Generation',
-    'regex_summary_generation': 'Regex Summary Generation',
-    'generic_llm_stream': 'Generic LLM Stream',
-    'voice_transcription': 'Voice Transcription',
-    
-    // Workflow tasks
-    'file_finder_workflow': 'File Finder Workflow',
-    'server_proxy_transcription': 'Server Proxy Transcription',
-    'streaming': 'Streaming',
-    
-    // Workflow stage tasks
-    'directory_tree_generation': 'Directory Tree Generation',
-    'local_file_filtering': 'Local File Filtering',
-    'extended_path_finder': 'Extended Path Finder',
-    'extended_path_correction': 'Extended Path Correction',
-    'initial_path_finding': 'Initial Path Finding',
-    'extended_path_finding': 'Extended Path Finding',
-    'initial_path_correction': 'Initial Path Correction',
-    'regex_generation': 'Regex Generation',
-    
-    // Fallback
-    'unknown': 'Unknown Task Type'
-  };
+  const taskDetails = TaskTypeDetails[taskType];
+  if (taskDetails?.displayName) {
+    return taskDetails.displayName;
+  }
   
-  return displayNames[taskType] || taskType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  // Fallback to converting snake_case to Title Case
+  return taskType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
 /**

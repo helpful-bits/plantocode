@@ -1,6 +1,7 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use crate::error::{AppResult, AppError};
-use crate::SETTINGS_REPO;
+use crate::db_utils::SettingsRepository;
+use std::sync::Arc;
 use crate::utils::hash_utils::hash_string;
 use serde_json::{json, Map};
 use serde::{Serialize, Deserialize};
@@ -26,7 +27,7 @@ pub enum ProjectConfigStatus {
 }
 
 #[tauri::command]
-pub async fn validate_configuration_health(_app_handle: AppHandle, project_directory: Option<String>) -> AppResult<ConfigurationHealthReport> {
+pub async fn validate_configuration_health(app_handle: AppHandle, project_directory: Option<String>) -> AppResult<ConfigurationHealthReport> {
     let mut report = ConfigurationHealthReport {
         server_connectivity: false,
         server_config_complete: false,
@@ -71,7 +72,7 @@ pub async fn validate_configuration_health(_app_handle: AppHandle, project_direc
     }
     
     if let Some(project_dir) = project_directory {
-        if let Ok(Some(project_settings_json)) = get_project_task_model_settings_command(_app_handle, project_dir).await {
+        if let Ok(Some(project_settings_json)) = get_project_task_model_settings_command(app_handle.clone(), project_dir).await {
             match validate_project_settings_completeness(&project_settings_json) {
                 Ok(true) => {
                     report.project_config_status = ProjectConfigStatus::Complete;
@@ -101,87 +102,67 @@ pub async fn validate_configuration_health(_app_handle: AppHandle, project_direc
 }
 
 #[tauri::command]
-pub async fn get_key_value_command(_app_handle: AppHandle, key: String) -> AppResult<Option<String>> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn get_key_value_command(app_handle: AppHandle, key: String) -> AppResult<Option<String>> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.get_value(&key).await
 }
 
 #[tauri::command]
-pub async fn set_key_value_command(_app_handle: AppHandle, key: String, value: String) -> AppResult<()> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn set_key_value_command(app_handle: AppHandle, key: String, value: String) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.set_value(&key, &value).await
 }
 
 #[tauri::command]
-pub async fn get_project_task_model_settings_command(_app_handle: AppHandle, project_directory: String) -> AppResult<Option<String>> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn get_project_task_model_settings_command(app_handle: AppHandle, project_directory: String) -> AppResult<Option<String>> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     let project_hash = hash_string(&project_directory);
     let key = format!("project_task_model_settings_{}", project_hash);
     settings_repo.get_value(&key).await
 }
 
 #[tauri::command]
-pub async fn set_project_task_model_settings_command(_app_handle: AppHandle, project_directory: String, settings_json: String) -> AppResult<()> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn set_project_task_model_settings_command(app_handle: AppHandle, project_directory: String, settings_json: String) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     let project_hash = hash_string(&project_directory);
     let key = format!("project_task_model_settings_{}", project_hash);
     settings_repo.set_value(&key, &settings_json).await
 }
 
 #[tauri::command]
-pub async fn set_onboarding_completed_command(_app_handle: AppHandle) -> AppResult<()> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn set_onboarding_completed_command(app_handle: AppHandle) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.set_value("onboarding_completed", "true").await
 }
 
 #[tauri::command]
-pub async fn is_onboarding_completed_command(_app_handle: AppHandle) -> AppResult<bool> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn is_onboarding_completed_command(app_handle: AppHandle) -> AppResult<bool> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     let value = settings_repo.get_value("onboarding_completed").await?;
     Ok(value.as_deref() == Some("true"))
 }
 
 #[tauri::command]
-pub async fn get_workflow_setting_command(_app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<Option<String>> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn get_workflow_setting_command(app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<Option<String>> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.get_workflow_setting(&workflow_name, &setting_key).await
 }
 
 #[tauri::command]
-pub async fn set_workflow_setting_command(_app_handle: AppHandle, workflow_name: String, setting_key: String, value: String) -> AppResult<()> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn set_workflow_setting_command(app_handle: AppHandle, workflow_name: String, setting_key: String, value: String) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.set_workflow_setting(&workflow_name, &setting_key, &value).await
 }
 
 #[tauri::command]
-pub async fn delete_workflow_setting_command(_app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<()> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn delete_workflow_setting_command(app_handle: AppHandle, workflow_name: String, setting_key: String) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.delete_workflow_setting(&workflow_name, &setting_key).await
 }
 
 #[tauri::command]
-pub async fn get_all_workflow_settings_command(_app_handle: AppHandle, workflow_name: String) -> AppResult<std::collections::HashMap<String, String>> {
-    let settings_repo = SETTINGS_REPO.get().ok_or_else(|| {
-        AppError::InitializationError("SettingsRepository not initialized".to_string())
-    })?;
+pub async fn get_all_workflow_settings_command(app_handle: AppHandle, workflow_name: String) -> AppResult<std::collections::HashMap<String, String>> {
+    let settings_repo = app_handle.state::<Arc<SettingsRepository>>().inner().clone();
     settings_repo.get_all_workflow_settings(&workflow_name).await
 }
 

@@ -2,7 +2,6 @@
 
 import React from "react";
 
-import { useSessionStateContext } from "@/contexts/session";
 import FileBrowser from "../file-browser";
 
 interface FileSectionProps {
@@ -12,12 +11,10 @@ interface FileSectionProps {
 const FileSection = React.memo(function FileSection({
   disabled = false,
 }: FileSectionProps) {
-  const { currentSession } = useSessionStateContext();
 
   return (
     <>
       <FileBrowser
-        taskDescription={currentSession?.taskDescription || ""}
         disabled={disabled}
       />
     </>

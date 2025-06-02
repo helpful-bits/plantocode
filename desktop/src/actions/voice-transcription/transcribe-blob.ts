@@ -116,10 +116,10 @@ export async function createTranscriptionJobFromBlobAction(
     const result = await invoke<{ jobId: string }>(
       "create_transcription_job_command",
       {
-        session_id: sessionId,
-        audio_data: base64Audio,
+        sessionId: sessionId,
+        audioData: base64Audio,
         filename,
-        project_directory: projectDirectory ?? null,
+        projectDirectory: projectDirectory ?? null,
       }
     );
 

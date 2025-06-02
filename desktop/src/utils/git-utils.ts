@@ -9,7 +9,7 @@ import { exists, readDir } from "@tauri-apps/plugin-fs";
 import { Command } from "@tauri-apps/plugin-shell";
 
 import { BINARY_EXTENSIONS } from "@/utils/file-binary-utils";
-import { normalizePath, ensureProjectRelativePath } from "@/utils/path-utils";
+import { normalizePath, createComparablePathKey } from "@/utils/path-utils";
 import { createLogger } from "@/utils/logger";
 
 // File cache with TTL to prevent frequent scans
@@ -259,7 +259,7 @@ export async function getAllNonIgnoredFiles(
               // Check if the file still exists
               const fileExists = await exists(filePath);
               // Normalize the path before adding to ensure consistency
-              const normalizedPath = ensureProjectRelativePath(file);
+              const normalizedPath = createComparablePathKey(file);
               return { exists: fileExists, path: normalizedPath };
             } catch (_error) {
               // If error occurs, consider file missing

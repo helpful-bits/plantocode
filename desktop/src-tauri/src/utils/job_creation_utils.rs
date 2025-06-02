@@ -5,6 +5,7 @@ use log::info;
 use crate::models::{BackgroundJob, TaskType, JobStatus};
 use crate::error::{AppError, AppResult};
 use crate::utils::get_timestamp;
+use crate::jobs::types::{JobWorkerMetadata, JobPayload};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -21,8 +22,10 @@ use tauri::{AppHandle, Manager};
 /// * `job_type_for_worker` - The job type string to include in metadata
 /// * `prompt_text` - The prompt text to include in the job
 /// * `model_settings` - Optional tuple of (model, temperature, max_tokens), None for local tasks
-/// * `payload_for_worker` - The serialized payload JSON to include in metadata
+/// * `payload_for_worker` - The typed JobPayload to include in metadata
 /// * `priority` - The job priority (higher is more important)
+/// * `workflow_id` - Optional workflow identifier for multi-stage workflows
+/// * `workflow_stage` - Optional workflow stage identifier
 /// * `extra_metadata` - Optional additional metadata to include
 ///
 /// # Returns
@@ -35,46 +38,44 @@ pub async fn create_and_queue_background_job(
     job_type_for_worker: &str,
     prompt_text: &str,
     model_settings: Option<(String, f32, u32)>,
-    payload_for_worker: Value,
+    payload_for_worker: JobPayload,
     priority: i64,
+    workflow_id: Option<String>,
+    workflow_stage: Option<String>,
     extra_metadata: Option<Value>,
     app_handle: &AppHandle,
 ) -> AppResult<String> {
     // Create a unique job ID
     let job_id = format!("job_{}", Uuid::new_v4());
     
-    // Clone and inject job_id into payload if it's an object
+    // Inject job_id into the payload by cloning and updating it
     let mut payload_with_job_id = payload_for_worker.clone();
-    if let Value::Object(ref mut obj) = payload_with_job_id {
-        obj.insert("backgroundJobId".to_string(), Value::String(job_id.clone()));
-    }
+    inject_job_id_into_payload(&mut payload_with_job_id, &job_id);
     
-    // Prepare the base metadata with payload as direct JSON object
-    let mut metadata = serde_json::json!({
-        "jobTypeForWorker": job_type_for_worker,
-        "jobPayloadForWorker": payload_with_job_id,
-        "jobPriorityForWorker": priority,
-    });
+    // Use the typed payload directly
+    let typed_job_payload = payload_with_job_id;
     
-    // Add any extra metadata fields if provided
-    if let Some(extra) = extra_metadata {
-        if let Some(obj) = metadata.as_object_mut() {
-            if let Some(extra_obj) = extra.as_object() {
-                for (key, value) in extra_obj {
-                    obj.insert(key.clone(), value.clone());
-                }
-            }
-        }
-    }
+    // Create structured JobWorkerMetadata
+    let worker_metadata = JobWorkerMetadata {
+        job_type_for_worker: task_type_enum.to_string(),
+        job_payload_for_worker: typed_job_payload.clone(),
+        job_priority_for_worker: priority,
+        workflow_id: workflow_id.clone(),
+        workflow_stage: workflow_stage.clone(),
+        additional_params: extra_metadata.clone(),
+    };
     
-    // Convert metadata to string
-    let metadata_str = metadata.to_string();
+    // Serialize the structured metadata to string
+    let metadata_str = serde_json::to_string(&worker_metadata)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobWorkerMetadata: {}", e)))?;
     
-    // Extract model settings (if provided)
+    // Extract model settings (if provided) or set appropriate values for local tasks
     let (model_used, temperature, max_output_tokens) = if let Some((model, temp, max_tokens)) = model_settings {
         (Some(model), Some(temp), if max_tokens > 0 { Some(max_tokens as i32) } else { None })
     } else {
-        (None, None, None)
+        // For local tasks (where model_settings is None), set model_used to the task type
+        // to clearly indicate what type of processing was performed
+        (Some(task_type_enum.to_string()), None, None)
     };
     
     // Create the background job object
@@ -117,25 +118,11 @@ pub async fn create_and_queue_background_job(
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to create background job: {}", e)))?;
     
-    // Note: We now use the unified payload deserialization logic to handle input/processor payload conversion
-    
-    // Create a temporary metadata structure to use the centralized deserialization logic
-    let temp_metadata = serde_json::json!({
-        "jobPayloadForWorker": payload_with_job_id
-    });
-    let temp_metadata_str = temp_metadata.to_string();
-    
-    // Use the centralized deserialize_job_payload function to handle input/processor payload conversion
-    let job_payload = crate::jobs::job_payload_utils::deserialize_job_payload(
-        &task_type_enum.to_string(), 
-        Some(&temp_metadata_str)
-    ).map_err(|e| AppError::SerializationError(format!("Failed to deserialize job payload for immediate dispatch: {}", e)))?;
-
-    // Create a Job struct for the queue
+    // Create a Job struct for the queue using the already typed payload
     let job_for_queue = crate::jobs::types::Job {
         id: job_id.clone(),
         job_type: task_type_enum,
-        payload: job_payload,
+        payload: typed_job_payload,
         created_at: timestamp.to_string(),
         session_id: session_id.to_string(),
         task_type_str: task_type_enum.to_string(),
@@ -152,4 +139,30 @@ pub async fn create_and_queue_background_job(
     
     // Return the job ID
     Ok(job_id)
+}
+
+/// Helper function to inject job ID into a JobPayload
+fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
+    match payload {
+        JobPayload::PathFinder(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::ImplementationPlan(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::GuidanceGeneration(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::PathCorrection(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::TextImprovement(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::TaskEnhancement(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::TextCorrection(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::GenericLlmStream(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::RegexPatternGeneration(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::DirectoryTreeGeneration(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::LocalFileFiltering(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::ExtendedPathFinder(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::ExtendedPathCorrection(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::RegexPatternGenerationWorkflow(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::RegexSummaryGeneration(p) => p.background_job_id = job_id.to_string(),
+        // Note: VoiceTranscriptionPayload and OpenRouterLlmPayload don't have background_job_id fields
+        _ => {
+            // For payloads that don't have background_job_id field, do nothing
+            // This includes VoiceTranscription and OpenRouterLlm
+        }
+    }
 }

@@ -8,6 +8,7 @@ use crate::models::{BackgroundJob, JobStatus, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use crate::db_utils::{SessionRepository, BackgroundJobRepository, SettingsRepository};
 use crate::utils::job_creation_utils;
+use crate::jobs::types::JobPayload;
 
 // Request arguments for generic LLM stream command
 #[derive(Debug, Deserialize)]
@@ -59,10 +60,40 @@ pub async fn generic_llm_stream_command(
     }
     
     // Determine project directory for settings lookup
-    let project_dir = args.project_directory.clone().unwrap_or_default();
+    let project_dir = if let Some(dir) = args.project_directory.clone() {
+        if !dir.is_empty() {
+            dir
+        } else {
+            // If empty, derive from session
+            let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
+            let session = session_repo.get_session_by_id(&args.session_id)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
+                .ok_or_else(|| AppError::NotFoundError(format!("Session not found: {}", args.session_id)))?;
+            
+            if session.project_directory.is_empty() {
+                return Err(AppError::ValidationError("Project directory not found in session".to_string()));
+            }
+            
+            session.project_directory
+        }
+    } else {
+        // If None, derive from session
+        let session_repo = app_handle.state::<Arc<SessionRepository>>().inner().clone();
+        let session = session_repo.get_session_by_id(&args.session_id)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to get session: {}", e)))?
+            .ok_or_else(|| AppError::NotFoundError(format!("Session not found: {}", args.session_id)))?;
+        
+        if session.project_directory.is_empty() {
+            return Err(AppError::ValidationError("Project directory not found in session".to_string()));
+        }
+        
+        session.project_directory
+    };
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::GenericLlmStream,
         &project_dir,
@@ -72,16 +103,18 @@ pub async fn generic_llm_stream_command(
     ).await?;
     
     // Use the job creation utility to create and queue the job
-    let payload = crate::jobs::types::GenericLlmStreamPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
-        project_directory: args.project_directory.clone(),
-        prompt_text: args.prompt_text.clone(),
-        system_prompt: args.system_prompt.clone(),
-        model: Some(model.clone()),
-        temperature: Some(temperature),
-        max_output_tokens: Some(max_tokens),
-        metadata: args.metadata.clone(),
+    let payload = if let Some((model, temperature, max_tokens)) = &model_settings {
+        crate::jobs::types::GenericLlmStreamPayload {
+            background_job_id: String::new(), // Will be set by create_and_queue_background_job
+            session_id: args.session_id.clone(),
+            project_directory: Some(project_dir.clone()),
+            prompt_text: args.prompt_text.clone(),
+            system_prompt: args.system_prompt.clone(),
+            metadata: args.metadata.clone(),
+        }
+    } else {
+        // This should never happen for GenericLlmStream as it requires LLM
+        return Err(AppError::ConfigError("GenericLlmStream requires LLM configuration".to_string()));
     };
     
     // Create additional metadata from the payload metadata if provided
@@ -101,15 +134,16 @@ pub async fn generic_llm_stream_command(
     // Create and queue the job
     let job_id = job_creation_utils::create_and_queue_background_job(
         &args.session_id,
-        &args.project_directory.clone().unwrap_or_default(),
+        &project_dir,
         "openrouter",
         TaskType::GenericLlmStream,
         "GENERIC_LLM_STREAM",
         &args.prompt_text.clone(),
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(payload).map_err(|e| 
-            AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
+        model_settings,
+        JobPayload::GenericLlmStream(payload),
         1, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         Some(additional_metadata), // Add the streaming flag and any other metadata
         &app_handle,
     ).await?;
@@ -192,7 +226,7 @@ pub async fn enhance_task_description_command(
     };
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::TaskEnhancement,
         &project_directory,
@@ -209,7 +243,6 @@ pub async fn enhance_task_description_command(
         task_description: args.task_description.clone(),
         project_context: args.project_context.clone(),
         target_field: args.target_field.clone(),
-        model_override: None,
     };
     
     // Additional metadata for job
@@ -225,10 +258,11 @@ pub async fn enhance_task_description_command(
         TaskType::TaskEnhancement,
         "TASK_ENHANCEMENT",
         &args.task_description,
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(task_enhancement_payload).map_err(|e| 
-            AppError::SerializationError(format!("Failed to serialize task enhancement payload: {}", e)))?,
+        model_settings,
+JobPayload::TaskEnhancement(task_enhancement_payload),
         2, // Higher priority for task enhancement
+        None, // No workflow_id
+        None, // No workflow_stage
         Some(additional_metadata),
         &app_handle,
     ).await?;

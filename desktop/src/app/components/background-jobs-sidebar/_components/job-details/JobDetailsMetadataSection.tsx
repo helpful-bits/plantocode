@@ -1,29 +1,19 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import { type BackgroundJob } from "@/types/session-types";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { ScrollArea } from "@/ui/scroll-area";
-import { getParsedMetadata } from "../../utils";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-interface JobDetailsMetadataSectionProps {
-  job: BackgroundJob;
-  formatMetadata: (metadata: string | Record<string, unknown> | null | undefined) => string;
-  formatRegexPatterns: (regexData: string | Record<string, unknown> | null | undefined) => string | null;
-}
-
-export function JobDetailsMetadataSection({
-  job,
-  formatMetadata,
-  formatRegexPatterns,
-}: JobDetailsMetadataSectionProps) {
+export function JobDetailsMetadataSection() {
+  const { parsedMetadata, formatMetadata, formatRegexPatterns } = useJobDetailsContext();
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [showFullMetadata, setShowFullMetadata] = useState(false);
   const [showFullRegex, setShowFullRegex] = useState(false);
   
-  const parsedMeta = getParsedMetadata(job.metadata);
+  const parsedMeta = parsedMetadata;
   
   if (!parsedMeta || Object.keys(parsedMeta).length === 0) {
     return null;
@@ -36,7 +26,23 @@ export function JobDetailsMetadataSection({
     ? formattedMetadata 
     : formattedMetadata.substring(0, PREVIEW_CHARS) + "...";
 
-  const formattedRegex = parsedMeta.regexData ? formatRegexPatterns(parsedMeta.regexData) : null;
+  // Access regex data from new JobWorkerMetadata structure or legacy format
+  let regexData = null;
+  
+  // First, check if this is a regex pattern generation job with structured payload
+  if (parsedMeta.jobPayloadForWorker && typeof parsedMeta.jobPayloadForWorker === 'object' && 'type' in parsedMeta.jobPayloadForWorker && parsedMeta.jobPayloadForWorker.type === "RegexPatternGeneration") {
+    regexData = parsedMeta.jobPayloadForWorker;
+  }
+  // Then check legacy direct regexData field
+  else if (parsedMeta.jobPayloadForWorker && typeof parsedMeta.jobPayloadForWorker === 'object' && 'data' in parsedMeta.jobPayloadForWorker && parsedMeta.jobPayloadForWorker.data && typeof parsedMeta.jobPayloadForWorker.data === 'object' && 'regexData' in parsedMeta.jobPayloadForWorker.data) {
+    regexData = (parsedMeta.jobPayloadForWorker.data as any).regexData;
+  }
+  // Finally, fall back to legacy structure
+  else if ('regexData' in parsedMeta && parsedMeta.regexData) {
+    regexData = parsedMeta.regexData;
+  }
+  
+  const formattedRegex = regexData ? formatRegexPatterns(regexData) : null;
   const isLongRegex = formattedRegex ? formattedRegex.length > PREVIEW_CHARS : false;
   const displayRegex = showFullRegex || !isLongRegex || !formattedRegex
     ? formattedRegex 
@@ -63,12 +69,12 @@ export function JobDetailsMetadataSection({
             {parsedMeta.targetField && (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Target Field</div>
-                <div className="text-sm font-medium text-foreground">{parsedMeta.targetField}</div>
+                <div className="text-sm font-medium text-foreground">{String(parsedMeta.targetField || '')}</div>
               </div>
             )}
 
-            {/* Display regex patterns separately if they exist */}
-            {parsedMeta.regexData && (
+            {/* Display regex patterns separately if they exist - now accessed via jobPayloadForWorker */}
+            {regexData && (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Regex Patterns</div>
                 <ScrollArea className={`${showFullRegex ? "max-h-[300px]" : "max-h-[150px]"}`}>

@@ -1,25 +1,20 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ChevronDown, ChevronUp, Settings } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
-import { ScrollArea } from "@/ui/scroll-area";
 import { Badge } from "@/ui/badge";
 import { Alert } from "@/ui/alert";
-import { BackgroundJob } from "@/types/session-types";
+import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { TaskType } from "@/types/session-types";
 import { useSystemPrompt } from "@/hooks/use-system-prompts";
 import { extractPlaceholders } from "@/actions/system-prompts.actions";
-import { supportsSystemPrompts } from "@/types/task-type-validation";
+import { supportsSystemPrompts } from "@/types/task-type-defs";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-interface JobDetailsSystemPromptSectionProps {
-  job: BackgroundJob;
-}
-
-export function JobDetailsSystemPromptSection({
-  job,
-}: JobDetailsSystemPromptSectionProps) {
+export function JobDetailsSystemPromptSection() {
+  const { job } = useJobDetailsContext();
   // Don't render for task types that don't support system prompts
   if (!supportsSystemPrompts(job.taskType)) {
     return (
@@ -40,7 +35,6 @@ export function JobDetailsSystemPromptSection({
   }
 
   const [isPromptOpen, setIsPromptOpen] = useState(false);
-  const [showFullPrompt, setShowFullPrompt] = useState(false);
   
   // Get the system prompt template from the database
   const { prompt, loading, error, isCustom } = useSystemPrompt({
@@ -49,17 +43,25 @@ export function JobDetailsSystemPromptSection({
     autoLoad: isPromptOpen // Only load when opened
   });
   
-  const PREVIEW_CHARS = 500;
-  
   // Use the template from the database if available, otherwise fall back to the job prompt
   const templateContent = prompt?.systemPrompt || job.prompt;
-  const isLongContent = templateContent.length > PREVIEW_CHARS;
-  const displayContent = showFullPrompt || !isLongContent 
-    ? templateContent 
-    : templateContent.substring(0, PREVIEW_CHARS) + "...";
     
   const placeholders = extractPlaceholders(templateContent);
   const isTemplate = placeholders.length > 0;
+  
+  // Calculate intelligent height based on content size with modal constraints
+  const editorHeight = useMemo(() => {
+    if (!templateContent) return "25vh";
+    
+    const lines = templateContent.split('\n').length;
+    
+    // Use viewport-relative units that respect modal constraints
+    // Modal content area is calc(90vh - 150px), we need to be smaller
+    if (lines <= 5) return "20vh";           // Short content
+    if (lines <= 15) return "25vh";          // Medium content  
+    if (lines <= 30) return "30vh";          // Long content
+    return "35vh";                           // Very long content (max)
+  }, [templateContent]);
   
   const getTaskTypeDisplayName = (taskType: string): string => {
     const displayNames: Record<string, string> = {
@@ -154,32 +156,20 @@ export function JobDetailsSystemPromptSection({
                   <div className="text-sm font-medium">
                     {isTemplate ? "Template Content" : "Prompt Content"}
                   </div>
-                  <ScrollArea className={`${showFullPrompt ? "max-h-[400px]" : "max-h-[200px]"}`}>
-                    <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full text-foreground bg-muted/50 p-3 rounded border border-border/60">
-                      {displayContent}
-                    </pre>
-                  </ScrollArea>
-                  {isLongContent && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setShowFullPrompt(!showFullPrompt)}
-                    >
-                      {showFullPrompt ? "Show Less" : "Show More"}
-                    </Button>
-                  )}
+                  <VirtualizedCodeViewer
+                    content={templateContent}
+                    height={editorHeight}
+                    showCopy={true}
+                    copyText="Copy System Prompt"
+                    showContentSize={true}
+                    placeholder="No system prompt content available"
+                    language="markdown"
+                    virtualizationThreshold={30000}
+                    warningThreshold={100000}
+                    isLoading={loading}
+                    className="border-border/60 bg-muted/30"
+                  />
                 </div>
-                
-                {isTemplate && (
-                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-border/60">
-                    <div className="text-sm font-medium text-blue-900 mb-1">About This Template</div>
-                    <div className="text-xs text-blue-800">
-                      This is a template with placeholders that were replaced with actual values when the job ran. 
-                      The placeholders shown above were substituted with task-specific data to create the final prompt.
-                    </div>
-                  </div>
-                )}
                 
                 {isCustom && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">

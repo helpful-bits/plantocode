@@ -2,14 +2,14 @@ use tauri::AppHandle;
 use crate::error::{AppError, AppResult};
 use crate::models::TaskType;
 
-/// Resolves model, temperature, and max_tokens settings for a task
+/// Resolves model, temperature, and max_tokens settings for LLM tasks
 /// 
 /// This function centralizes the logic for resolving model configuration by:
 /// 1. Using override values if provided
 /// 2. Otherwise falling back to project-specific settings
 /// 3. Finally falling back to server defaults
 /// 
-/// For non-LLM tasks (like LocalFileFiltering), returns a non-LLM marker tuple.
+/// For non-LLM tasks, returns None.
 pub async fn resolve_model_settings(
     app_handle: &AppHandle,
     task_type: TaskType,
@@ -17,7 +17,7 @@ pub async fn resolve_model_settings(
     model_override: Option<String>,
     temperature_override: Option<f32>,
     max_tokens_override: Option<u32>,
-) -> AppResult<(String, f32, u32)> {
+) -> AppResult<Option<(String, f32, u32)>> {
     // Check if this task requires LLM configuration
     if !task_type.requires_llm() {
         // If any LLM-related overrides are provided for a local task, return an error
@@ -28,8 +28,8 @@ pub async fn resolve_model_settings(
             )));
         }
         
-        // Return a non-LLM marker tuple for local tasks
-        return Ok(("local_task_no_model".to_string(), 0.0, 0));
+        // Return None for non-LLM tasks
+        return Ok(None);
     }
 
     // Resolve model
@@ -59,5 +59,5 @@ pub async fn resolve_model_settings(
             .map_err(|e| AppError::ConfigError(format!("Failed to get max_tokens for task {:?}: {}", task_type, e)))?
     };
 
-    Ok((model, temperature, max_tokens))
+    Ok(Some((model, temperature, max_tokens)))
 }

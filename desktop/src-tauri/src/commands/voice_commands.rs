@@ -8,6 +8,7 @@ use crate::models::{BackgroundJob, JobStatus, TaskType, JobCommandResponse};
 use crate::utils::get_timestamp;
 use crate::db_utils::{SessionRepository, BackgroundJobRepository};
 use crate::utils::job_creation_utils;
+use crate::jobs::types::JobPayload;
 use crate::error::AppError;
 use crate::api_clients::client_factory;
 use crate::api_clients::client_trait::TranscriptionClient;
@@ -115,9 +116,10 @@ pub async fn create_transcription_job_command(
         "VOICE_TRANSCRIPTION",
         &format!("Transcribe audio file: {}", filename),
         Some((transcription_model, 0.0, 0)), // Temperature and max tokens not relevant for transcription
-        serde_json::to_value(transcription_payload)
-            .map_err(|e| AppError::SerializationError(format!("Failed to serialize transcription payload: {}", e)))?,
+        JobPayload::VoiceTranscription(transcription_payload),
         1, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         Some(metadata), // Extra metadata
         &app_handle,
     ).await?;

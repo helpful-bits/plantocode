@@ -65,12 +65,26 @@ export async function improveSelectedTextAction(
       };
     }
 
+    // If no projectDirectory provided, derive it from the session
+    let finalProjectDirectory = actualProjectDirectory;
+    if (!finalProjectDirectory && actualSessionId) {
+      try {
+        const sessionDetails = await invoke<{ projectDirectory: string }>("get_session_command", {
+          sessionId: actualSessionId,
+        });
+        if (sessionDetails?.projectDirectory) {
+          finalProjectDirectory = sessionDetails.projectDirectory;
+        }
+      } catch (error) {
+        console.warn("Could not retrieve project directory from session:", error);
+      }
+    }
+
     // Call the Tauri command to improve text
-    // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
     const result = await invoke<{ jobId: string }>("improve_text_command", {
       sessionId: actualSessionId,
       text,
-      projectDirectory: actualProjectDirectory ?? null,
+      projectDirectory: finalProjectDirectory ?? null,
       modelOverride: modelOverride ?? null,
       temperatureOverride: temperatureOverride ?? null,
       maxTokensOverride: maxTokensOverride ?? null,

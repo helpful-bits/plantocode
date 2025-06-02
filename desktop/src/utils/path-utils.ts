@@ -79,23 +79,34 @@ export async function makePathRelative(
 }
 
 /**
- * Creates a comparable relative path for consistent file identification
- * This ensures consistent path formatting across all file management components
- * Synchronous version for project-relative path normalization
+ * Creates a comparable path key for consistent file identification in UI state.
  * 
- * This function:
+ * **Primary Use Case**: Creating consistent, comparable string keys for UI state management,
+ * especially when backend normalization for every UI update might be too slow or when you 
+ * need synchronous path comparison keys.
+ * 
+ * **When to Use**:
+ * - UI state comparison keys (e.g., tracking selected files in React state)
+ * - Display paths in lists where performance is critical
+ * - Creating consistent path identifiers for UI caching and mapping
+ * 
+ * **When NOT to Use**:
+ * - File system operations - use `tauriFs.normalizePath()` instead
+ * - Paths sent to Rust backend - use backend-derived normalized paths
+ * - Security-critical path validation - use backend normalization
+ * 
+ * This function performs basic string manipulation for normalization:
  * - Normalizes path separators to forward slashes
  * - Removes leading "./", "../", or "/" prefixes
  * - Handles multiple consecutive slashes
  * - Removes trailing slashes (except for root)
  * - Resolves basic "." and ".." components
  * 
- * NOTE: This function performs basic string manipulation for normalization.
- * For more robust path handling, consider using the async normalizePath() 
- * function which calls the Tauri backend, especially when dealing with
- * complex paths, symlinks, or edge cases.
+ * **Important**: This is a lightweight, synchronous function for UI consistency.
+ * For actual file system operations, always prefer `tauriFs.normalizePath()` 
+ * or other backend-derived paths which handle complex paths, symlinks, and edge cases.
  */
-export function ensureProjectRelativePath(relativePath: string): string {
+export function createComparablePathKey(relativePath: string): string {
   if (!relativePath) return "";
   
   // Start with basic normalization
@@ -240,7 +251,7 @@ export async function parseFilePathsFromAIResponse(
       }
       
       // 4. Apply final consistent formatting
-      const finalComparablePath = ensureProjectRelativePath(processedPath);
+      const finalComparablePath = createComparablePathKey(processedPath);
 
       if (!paths.includes(finalComparablePath)) {
         paths.push(finalComparablePath);
@@ -298,7 +309,7 @@ export async function parseFilePathsFromAIResponse(
             }
           }
           
-          const finalComparablePath = ensureProjectRelativePath(processedPath);
+          const finalComparablePath = createComparablePathKey(processedPath);
           if (!paths.includes(finalComparablePath)) {
             paths.push(finalComparablePath);
           }
@@ -346,7 +357,7 @@ export async function parseFilePathsFromAIResponse(
           }
         }
         
-        const finalComparablePath = ensureProjectRelativePath(processedPath);
+        const finalComparablePath = createComparablePathKey(processedPath);
         if (!paths.includes(finalComparablePath)) {
           paths.push(finalComparablePath);
         }

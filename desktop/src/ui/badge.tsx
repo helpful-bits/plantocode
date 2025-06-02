@@ -5,7 +5,7 @@ import { cn } from "@/utils/utils";
 
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all duration-200 backdrop-blur-sm",
+  "inline-flex items-center rounded-full border border-border/50 px-2.5 py-0.5 text-xs font-medium transition-all duration-200 backdrop-blur-sm",
   {
     variants: {
       variant: {

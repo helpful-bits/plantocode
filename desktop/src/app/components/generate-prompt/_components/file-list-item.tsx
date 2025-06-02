@@ -61,6 +61,7 @@ function FileListItem({
 
 
 
+
   return (
     <div
       className={cn(
@@ -95,15 +96,17 @@ function FileListItem({
         >
           <input
             type="checkbox"
-            checked={!!file.included}
-            readOnly
+            checked={file.included}
+            onChange={() => {}} 
             disabled={disabled}
             className={cn(
-              "appearance-none flex-shrink-0 w-3.5 h-3.5 border rounded-[2px] transition-colors",
-              "bg-input border-border/50",
-              "checked:bg-primary checked:border-primary checked:text-primary-foreground",
+              "flex-shrink-0 w-3.5 h-3.5 rounded-[2px] transition-colors",
+              "border border-border/50 bg-input",
+              file.included 
+                ? "bg-primary border-primary text-primary-foreground" 
+                : "bg-input border-border/50",
               "hover:border-border/70",
-              "checked:hover:bg-primary/90 checked:hover:border-primary",
+              file.included && "hover:bg-primary/90 hover:border-primary",
               "focus:ring-offset-0 focus:ring-1 focus:ring-primary/50",
               "relative",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
@@ -111,18 +114,6 @@ function FileListItem({
             title="Include file in generation"
             aria-label={`Include ${file.path}`}
           />
-          {/* Checkmark icon for include checkbox */}
-          {file.included && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <svg 
-                className="w-2.5 h-2.5 text-primary-foreground" 
-                fill="currentColor" 
-                viewBox="0 0 20 20"
-              >
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </div>
-          )}
         </div>
 
         {/* Force exclude checkbox */}
@@ -234,17 +225,15 @@ FileListItem.displayName = "FileListItem";
 
 // Custom comparison function to prevent unnecessary re-renders
 const arePropsEqual = (prevProps: FileListItemProps, nextProps: FileListItemProps) => {
-  // Only re-render if the file's selection state, path, or copied state changed
+  // Only re-render if the file's visual state or essential props changed
+  // Callback functions are stable through the context chain and don't need comparison
   return (
     prevProps.file.path === nextProps.file.path &&
     prevProps.file.included === nextProps.file.included &&
     prevProps.file.forceExcluded === nextProps.file.forceExcluded &&
     prevProps.file.size === nextProps.file.size &&
     prevProps.copiedPath === nextProps.copiedPath &&
-    prevProps.disabled === nextProps.disabled &&
-    prevProps.onToggleSelection === nextProps.onToggleSelection &&
-    prevProps.onToggleExclusion === nextProps.onToggleExclusion &&
-    prevProps.onAddPath === nextProps.onAddPath
+    prevProps.disabled === nextProps.disabled
   );
 };
 

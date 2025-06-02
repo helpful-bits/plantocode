@@ -12,6 +12,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::JobCommandResponse;
 use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder, ComposedPrompt as UnifiedComposedPrompt};
 use crate::db_utils::SettingsRepository;
+use crate::jobs::types::JobPayload;
 
 /// Request payload for the implementation plan generation command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +68,7 @@ pub async fn create_implementation_plan_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::ImplementationPlan,
         &args.project_directory,
@@ -84,9 +85,6 @@ pub async fn create_implementation_plan_command(
         project_directory: args.project_directory.clone(),
         project_structure: args.project_structure,
         relevant_files: args.relevant_files,
-        model: model.clone(),
-        temperature,
-        max_tokens: max_tokens,
     };
     
     // Create and queue the job
@@ -97,10 +95,11 @@ pub async fn create_implementation_plan_command(
         TaskType::ImplementationPlan,
         "IMPLEMENTATION_PLAN",
         &args.task_description.clone(),
-        Some((model.clone(), temperature, max_tokens)),
-        serde_json::to_value(payload).map_err(|e| 
-            AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
+        model_settings,
+        JobPayload::ImplementationPlan(payload),
         2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         None, // No extra metadata
         &app_handle,
     ).await?;

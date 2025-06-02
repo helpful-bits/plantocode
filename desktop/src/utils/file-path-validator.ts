@@ -24,8 +24,20 @@ export async function validateFilePath(
       return false;
     }
 
-    // Normalize path using the Tauri filesystem wrapper
-    const normalizedPath = await tauriFs.normalizePath(filePath);
+    // Determine if input is absolute or relative, then normalize appropriately
+    const isInputAbsolute = await tauriFs.isAbsolute(filePath);
+    let normalizedPath: string;
+    
+    if (isInputAbsolute) {
+      // For absolute paths, normalize directly
+      normalizedPath = await tauriFs.normalizePath(filePath);
+    } else {
+      // For relative paths, join with project directory first, then normalize
+      const absolutePath = await tauriFs.pathJoin(projectDirectory, filePath);
+      const normalizedAbsolutePath = await tauriFs.normalizePath(absolutePath);
+      // Convert back to relative for consistent comparison with fileContents keys
+      normalizedPath = normalizedAbsolutePath.replace(projectDirectory, '').replace(/^[/\\]+/, '');
+    }
 
     // Security check: reject paths with suspicious patterns
     if (normalizedPath.includes("..") || normalizedPath.includes("//") || 
@@ -88,11 +100,14 @@ export async function validateFilePath(
 
         // Try to read the file to check if it's binary or too large
         try {
-          // Resolve the full path (always use project directory as base for normalized path)
-          const fullPath = await tauriFs.pathJoin(
-            projectDirectory,
-            normalizedPath
-          );
+          // Resolve the full path - if normalizedPath is already absolute, just use it
+          // Otherwise, join with project directory
+          let fullPath: string;
+          if (isInputAbsolute) {
+            fullPath = normalizedPath;
+          } else {
+            fullPath = await tauriFs.pathJoin(projectDirectory, normalizedPath);
+          }
 
           try {
             // Try to get file details using listFiles (which includes file size info)

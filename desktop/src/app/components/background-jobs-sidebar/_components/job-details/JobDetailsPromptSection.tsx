@@ -4,14 +4,10 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
+import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
-interface JobDetailsPromptSectionProps {
-  promptContent: string;
-}
-
-export function JobDetailsPromptSection({
-  promptContent,
-}: JobDetailsPromptSectionProps) {
+export function JobDetailsPromptSection() {
+  const { promptContent } = useJobDetailsContext();
   const [isPromptOpen, setIsPromptOpen] = useState(false);
 
   return (

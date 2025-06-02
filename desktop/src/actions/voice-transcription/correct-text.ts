@@ -35,10 +35,10 @@ export async function createTextCorrectionJobAction(
     const result = await invoke<{ jobId: string }>(
       "correct_text_command",
       {
-        session_id: sessionId,
-        text_to_correct: text,
-        original_transcription_job_id: originalJobId ?? null,
-        project_directory: projectDirectory ?? null,
+        sessionId: sessionId,
+        textToCorrect: text,
+        originalTranscriptionJobId: originalJobId ?? null,
+        projectDirectory: projectDirectory ?? null,
         language,
       }
     );

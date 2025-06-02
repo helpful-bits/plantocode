@@ -175,7 +175,7 @@ pub async fn finalize_auth0_login(
 pub async fn refresh_app_token_auth0(
     user_id_from_jwt: web::ReqData<crate::middleware::secure_auth::UserId>,
     auth_service: web::Data<Auth0OAuthService>,
-    user_repo: web::Data<crate::db::repositories::user_repository::UserRepository>,
+    user_repo: web::Data<std::sync::Arc<crate::db::repositories::user_repository::UserRepository>>,
 ) -> Result<HttpResponse, AppError> {
     let app_user_id = user_id_from_jwt.into_inner().0;
     

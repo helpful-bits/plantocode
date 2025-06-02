@@ -46,7 +46,7 @@ export function UILayoutProvider({ children }: { children: ReactNode }) {
 
   // Enhanced setter for app initializing state with logging
   const setAppInitializing = useCallback((initializing: boolean) => {
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log(`[UILayout] App initializing state changed: ${initializing}`);
     }
     setIsAppInitializing(initializing);

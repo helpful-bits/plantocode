@@ -6,6 +6,22 @@ use std::collections::HashMap;
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
 
+// Structured metadata for jobs processed by workers (dispatcher/scheduler)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobWorkerMetadata {
+    pub job_type_for_worker: String,
+    pub job_payload_for_worker: JobPayload,
+    pub job_priority_for_worker: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_stage: Option<String>,
+    // Additional metadata fields that don't fit the structured format
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
+}
+
 
 // Event emitted when a job status changes
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,10 +85,7 @@ pub struct PathFinderPayload {
     pub task_description: String,
     pub background_job_id: String,
     pub project_directory: String,
-    pub model_override: Option<String>,
     pub system_prompt: String,
-    pub temperature: f32,
-    pub max_output_tokens: Option<u32>,
     pub directory_tree: Option<String>,
     pub relevant_file_contents: std::collections::HashMap<String, String>,
     pub estimated_input_tokens: Option<u32>,
@@ -91,9 +104,6 @@ pub struct ImplementationPlanPayload {
     pub task_description: String,
     pub project_structure: Option<String>, // Renamed from codebase_structure
     pub relevant_files: Vec<String>,     // New field
-    pub model: String,                   // Changed from model_override
-    pub temperature: f32,
-    pub max_tokens: u32,              // Changed from max_output_tokens
     pub project_directory: String,
 }
 
@@ -108,9 +118,6 @@ pub struct GuidanceGenerationPayload {
     pub paths: Option<Vec<String>>,
     pub file_contents_summary: Option<String>,
     pub system_prompt_override: Option<String>,
-    pub model_override: Option<String>, 
-    pub temperature: Option<f32>,
-    pub max_output_tokens: Option<u32>,
     pub project_directory: String,
 }
 
@@ -124,9 +131,6 @@ pub struct PathCorrectionPayload {
     pub context_description: String,
     pub directory_tree: Option<String>,
     pub system_prompt_override: Option<String>,
-    pub model_override: Option<String>,
-    pub temperature: Option<f32>,
-    pub max_output_tokens: Option<u32>,
 }
 
 // Payload for Text Improvement job
@@ -138,7 +142,6 @@ pub struct TextImprovementPayload {
     pub text_to_improve: String,
     pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
     pub project_directory: Option<String>,
-    pub model_override: Option<String>,
 }
 
 // Payload for Task Enhancement job
@@ -151,7 +154,6 @@ pub struct TaskEnhancementPayload {
     pub project_context: Option<String>, // e.g., codebase structure, relevant files
     pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
     pub project_directory: String,
-    pub model_override: Option<String>,
 }
 
 // Payload for Text Correction job (consolidates voice correction and post-transcription correction)
@@ -164,7 +166,6 @@ pub struct TextCorrectionPayload {
     pub language: String,
     pub original_transcription_job_id: Option<String>,
     pub project_directory: Option<String>,
-    pub model_override: Option<String>,
 }
 
 // Payload for Generic LLM Stream job
@@ -175,9 +176,6 @@ pub struct GenericLlmStreamPayload {
     pub session_id: String,
     pub prompt_text: String,
     pub system_prompt: Option<String>,
-    pub model: Option<String>,
-    pub temperature: Option<f32>,
-    pub max_output_tokens: Option<u32>,
     pub metadata: Option<serde_json::Value>,
     pub project_directory: Option<String>,
 }
@@ -191,9 +189,6 @@ pub struct RegexPatternGenerationPayload {
     pub task_description: String,
     pub project_directory: String, // For model/temp config
     pub directory_tree: Option<String>, // For context
-    pub model_override: Option<String>,
-    pub temperature_override: Option<f32>,
-    pub max_tokens_override: Option<u32>,
 }
 
 // FileFinderWorkflowPayload removed - workflows now use WorkflowOrchestrator with individual stage payloads
@@ -241,9 +236,6 @@ pub struct ExtendedPathFinderPayload {
     pub workflow_id: String,
     pub previous_stage_job_id: String, // Links to LocalFileFiltering job
     pub next_stage_job_id: Option<String>, // For job chaining
-    pub model_override: Option<String>,
-    pub temperature_override: Option<f32>,
-    pub max_tokens_override: Option<u32>,
 }
 
 // Payload for Extended Path Correction stage  
@@ -258,9 +250,6 @@ pub struct ExtendedPathCorrectionPayload {
     pub extended_paths: Vec<String>, // From ExtendedPathFinder stage
     pub workflow_id: String,
     pub previous_stage_job_id: String, // Links to ExtendedPathFinder job
-    pub model_override: Option<String>,
-    pub temperature_override: Option<f32>,
-    pub max_tokens_override: Option<u32>,
 }
 
 // Payload for Regex Pattern Generation workflow stage
@@ -275,9 +264,6 @@ pub struct RegexPatternGenerationWorkflowPayload {
     pub workflow_id: String,
     pub previous_stage_job_id: Option<String>, // May be used in different workflow positions
     pub next_stage_job_id: Option<String>, // For job chaining
-    pub model_override: Option<String>,
-    pub temperature_override: Option<f32>,
-    pub max_tokens_override: Option<u32>,
 }
 
 
