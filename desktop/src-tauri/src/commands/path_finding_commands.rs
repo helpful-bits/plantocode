@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskType, JobCommandResponse};
+use crate::jobs::types::JobPayload;
 use crate::utils::job_creation_utils;
 use crate::db_utils::{SessionRepository, SettingsRepository};
 use crate::utils::unified_prompt_system::{UnifiedPromptProcessor, UnifiedPromptContextBuilder};
@@ -106,7 +107,7 @@ pub async fn find_relevant_files_command(
     };
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::PathFinder,
         &project_directory,
@@ -131,14 +132,14 @@ pub async fn find_relevant_files_command(
         session_id: args.session_id.clone(),
         task_description: args.task_description.clone(),
         project_directory: project_directory.clone(),
-        model_override: Some(model.clone()),
-        temperature_override: Some(temperature),
-        max_tokens_override: Some(max_tokens),
-        options: path_finder_options,
-        directory_tree: args.directory_tree,
+        model_override: model_settings.as_ref().map(|(model, _, _)| model.clone()),
+        temperature_override: model_settings.as_ref().map(|(_, temp, _)| *temp),
+        max_tokens_override: model_settings.as_ref().map(|(_, _, tokens)| *tokens),
+        options: path_finder_options.clone(),
+        directory_tree: args.directory_tree.clone(),
     };
     
-    // Queue the job
+    // Queue the job using typed JobPayload
     let job_id = job_creation_utils::create_and_queue_background_job(
         &args.session_id,
         &project_directory,
@@ -146,9 +147,21 @@ pub async fn find_relevant_files_command(
         TaskType::PathFinder,
         "PATH_FINDER",
         &format!("Finding relevant files for task: {}", args.task_description.chars().take(50).collect::<String>()),
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(input_payload).map_err(|e| AppError::SerdeError(e.to_string()))?,
+        model_settings,
+        JobPayload::PathFinder(crate::jobs::types::PathFinderPayload {
+            session_id: args.session_id.clone(),
+            task_description: args.task_description.clone(),
+            background_job_id: String::new(), // Will be set by create_and_queue_background_job
+            project_directory: project_directory.clone(),
+            system_prompt: String::new(), // Will be populated by the processor
+            directory_tree: args.directory_tree.clone(),
+            relevant_file_contents: std::collections::HashMap::new(), // Will be populated by the processor
+            estimated_input_tokens: None, // Will be calculated by the processor
+            options: path_finder_options,
+        }),
         2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         None, // No extra metadata
         &app_handle, // Add app_handle parameter
     ).await?;
@@ -232,7 +245,7 @@ pub async fn create_path_correction_job_command(
     }
     
     // Get model configuration for this task using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::PathCorrection,
         &args.project_directory,
@@ -249,12 +262,9 @@ pub async fn create_path_correction_job_command(
         context_description: args.context_description.unwrap_or_else(|| "No additional context provided".to_string()),
         directory_tree: args.directory_tree,
         system_prompt_override: None,
-        model_override: Some(model.clone()),
-        temperature: Some(temperature),
-        max_output_tokens: Some(max_tokens),
     };
     
-    // Queue the job
+    // Queue the job using typed JobPayload
     let job_id = job_creation_utils::create_and_queue_background_job(
         &args.session_id,
         &args.project_directory,
@@ -262,9 +272,11 @@ pub async fn create_path_correction_job_command(
         TaskType::PathCorrection,
         "PATH_CORRECTION",
         &format!("Correcting file paths: {}", args.paths_to_correct.chars().take(50).collect::<String>()),
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(payload).map_err(|e| AppError::SerdeError(e.to_string()))?,
+        model_settings,
+        JobPayload::PathCorrection(payload),
         2, // Priority
+        None, // No workflow_id
+        None, // No workflow_stage
         None, // No extra metadata
         &app_handle,
     ).await?;

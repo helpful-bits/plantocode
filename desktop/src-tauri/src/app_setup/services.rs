@@ -20,13 +20,17 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     // This MUST happen before clients that use it are created.
     match token_manager.init().await {
         Ok(_) => {
-            info!("TokenManager initialized and token loaded from persistence.");
+            // Check if a token was actually loaded
+            if let Some(token) = token_manager.get().await {
+                info!("TokenManager initialized successfully with persisted token (length: {})", token.len());
+            } else {
+                info!("TokenManager initialized successfully, but no persisted token found - user will need to authenticate");
+            }
         },
         Err(e) => {
-            error!("TokenManager initialization with keyring/storage failed: {}", e);
-            // For critical startup issues, we should fail fast rather than continue in a broken state
-            // However, for auth token loading, we can continue as the user can re-authenticate
-            warn!("Continuing without persisted token - user will need to re-authenticate");
+            error!("TokenManager initialization failed: {}", e);
+            // For auth token loading failures, we can continue as the user can re-authenticate
+            warn!("Continuing without persisted token - user will need to authenticate through the UI");
         }
     }
 

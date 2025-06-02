@@ -52,7 +52,12 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         };
 
         // Setup job processing
-        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&job.id, "regex summary generation");
 
@@ -71,6 +76,7 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
             None,
             None,
             &settings_repo,
+            &model_used,
         ).await?;
 
         info!("Enhanced Regex Summary Generation prompt composition for job {}", job.id);
@@ -86,18 +92,19 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         debug!("Generated regex summary prompt for job {}: {}", job.id, user_prompt);
 
         // Create API options
-        let project_dir = job.project_directory.as_deref().unwrap_or("");
         let request_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::RegexSummaryGeneration,
-            project_dir,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
+
+        // Store model name before moving request_options
+        let model_name = request_options.model.clone();
 
         // Create messages and call LLM
         let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
-        let api_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &request_options).await?;
+        let api_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, request_options).await?;
         
         // Extract the response content
         let response = api_response.choices.first()
@@ -112,7 +119,7 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
             &repo,
             &response,
             api_response.usage,
-            &request_options.model,
+            &model_name,
             &system_prompt_id,
             None,
         ).await?;

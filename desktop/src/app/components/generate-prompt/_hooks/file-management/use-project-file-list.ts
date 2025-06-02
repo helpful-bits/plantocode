@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 
 import { listProjectFilesAction } from "@/actions/file-system/list-project-files.action";
-import { ensureProjectRelativePath } from "@/utils/path-utils";
+import { createComparablePathKey } from "@/utils/path-utils";
 import { invalidateFileCache } from "@/utils/git-utils";
 import { areFileMapsEqual } from "./_utils/managed-files-map-utils";
 
@@ -85,8 +85,8 @@ export function useProjectFileList(
 
           // comparablePath is used for consistent lookups and comparisons.
           // It should be a consistently formatted version of fileInfo.path.
-          // Apply ensureProjectRelativePath to normalize the path format consistently
-          const comparablePath = ensureProjectRelativePath(projectRelativePath);
+          // Apply createComparablePathKey to normalize the path format consistently
+          const comparablePath = createComparablePathKey(projectRelativePath);
 
           // Add to file map
           filesMap[projectRelativePath] = {

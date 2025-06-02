@@ -59,10 +59,15 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         };
         
         // Setup job processing using standardized utility
-        let (repo, settings_repo, _background_job) = job_processor_utils::setup_job_processing(
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
             &payload.background_job_id,
             &app_handle,
         ).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&payload.background_job_id, "Extended Path Correction");
         info!("Starting extended path correction for workflow {} with {} paths", 
@@ -93,6 +98,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
                 None,
                 Some(payload.directory_tree.clone()),
                 &settings_repo,
+                &model_used,
             ).await?;
 
             info!("Enhanced Path Correction prompt composition for job {}", job.id);
@@ -123,12 +129,11 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             
             // Create API client options using standardized utility
             let api_options = job_processor_utils::create_api_client_options(
-                &job.payload,
-                TaskType::PathCorrection,
-                &payload.project_directory,
+                model_used.clone(),
+                temperature,
+                max_output_tokens,
                 false,
-                &app_handle,
-            ).await?;
+            )?;
             
             // Check for cancellation before LLM call using standardized utility
             if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -138,7 +143,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             
             // Call LLM using standardized utility
             info!("Calling LLM for path correction with model {}", &api_options.model);
-            let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await?;
+            let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options.clone()).await?;
             
             // Extract the response content
             let response_content = llm_response.choices[0].message.content.clone();
@@ -201,27 +206,14 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
                 final_paths.len())
         });
         
-        // Store corrected paths as newline-separated string in response
-        let response_content = if final_paths.is_empty() {
-            String::new()
-        } else {
-            final_paths.join("\n")
-        };
+        // Serialize final_paths (combined valid and AI-corrected paths) into a JSON string for typed output
+        let response_content = serde_json::to_string(&final_paths)
+            .map_err(|e| AppError::JobError(format!("Failed to serialize final paths: {}", e)))?;
         
         // Finalize job success using standardized utility
-        // Note: For non-LLM or mixed jobs, we use generic model name and system prompt ID
-        let model_used = if !invalid_paths.is_empty() {
-            // Get the model from the job payload or default
-            match job_processor_utils::create_api_client_options(
-                &job.payload,
-                TaskType::PathCorrection,
-                &payload.project_directory,
-                false,
-                &app_handle,
-            ).await {
-                Ok(options) => options.model,
-                Err(_) => "ExtendedPathCorrection".to_string(),
-            }
+        // Use model_used variable for finalization (already extracted from db_job)
+        let final_model_used = if !invalid_paths.is_empty() {
+            model_used.clone()
         } else {
             "ExtendedPathCorrection".to_string()
         };
@@ -231,7 +223,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             &repo,
             &response_content,
             None, // No direct LLM usage since it's conditional
-            &model_used,
+            &final_model_used,
             "ExtendedPathCorrection",
             Some(result_metadata),
         ).await?;

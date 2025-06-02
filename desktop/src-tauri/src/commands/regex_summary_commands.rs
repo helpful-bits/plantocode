@@ -1,11 +1,11 @@
 use tauri::{AppHandle, Manager};
 use serde::Deserialize;
-use serde_json::json;
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::models::{TaskType, JobCommandResponse};
 use crate::db_utils::session_repository::SessionRepository;
 use crate::jobs::processors::RegexSummaryGenerationPayload;
+use crate::jobs::types::JobPayload;
 use crate::utils::job_creation_utils::create_and_queue_background_job;
 
 #[derive(Debug, Deserialize)]
@@ -34,7 +34,7 @@ pub async fn generate_regex_summary_command(
         .ok_or_else(|| crate::error::AppError::NotFoundError(format!("Session {} not found", args.session_id)))?;
 
     // Get model settings using centralized resolver
-    let (model, temperature, max_tokens) = crate::utils::resolve_model_settings(
+    let model_settings = crate::utils::resolve_model_settings(
         &app_handle,
         TaskType::RegexSummaryGeneration,
         &session.project_directory,
@@ -52,8 +52,8 @@ pub async fn generate_regex_summary_command(
         negative_title_regex: session.negative_title_regex.unwrap_or_default(),
         negative_content_regex: session.negative_content_regex.unwrap_or_default(),
         model_override: None, // Will be passed separately to create_and_queue_background_job
-        temperature,
-        max_output_tokens: Some(max_tokens),
+        temperature: model_settings.as_ref().map(|(_, temp, _)| *temp).unwrap_or(0.7),
+        max_output_tokens: Some(model_settings.as_ref().map(|(_, _, tokens)| *tokens).unwrap_or(1000)),
     };
 
     // Create and queue the background job
@@ -64,10 +64,11 @@ pub async fn generate_regex_summary_command(
         TaskType::RegexSummaryGeneration,
         "REGEX_SUMMARY_GENERATION",
         "Generating regex filter summary explanation",
-        Some((model, temperature, max_tokens)),
-        serde_json::to_value(payload).map_err(|e| 
-            AppError::SerializationError(format!("Failed to serialize payload: {}", e)))?,
+        model_settings,
+        JobPayload::RegexSummaryGeneration(payload),
         1, // priority
+        None, // No workflow_id
+        None, // No workflow_stage
         None, // extra_metadata
         &app_handle,
     ).await?;

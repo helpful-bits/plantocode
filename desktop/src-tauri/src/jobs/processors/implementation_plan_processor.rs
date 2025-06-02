@@ -144,6 +144,11 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Setup job processing
         let (repo, settings_repo, mut db_job) = job_processor_utils::setup_job_processing(&payload.background_job_id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         let llm_client = job_processor_utils::get_api_client(&app_handle)?;
         let job_id = payload.background_job_id.clone();
         
@@ -165,6 +170,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             file_contents,
             directory_tree,
             &settings_repo,
+            &model_used,
         ).await?;
 
         info!("Enhanced Implementation Plan prompt composition for job {}", payload.background_job_id);
@@ -245,12 +251,11 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         // Create API client options
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::ImplementationPlan,
-            project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -259,10 +264,10 @@ impl JobProcessor for ImplementationPlanProcessor {
         }
         
         // Call LLM using streaming
-        info!("Calling LLM for implementation plan with model {} (streaming enabled)", &payload.model);
+        info!("Calling LLM for implementation plan with model {} (streaming enabled)", &model_used);
         
         // Set streaming to true for the API client options
-        let mut streaming_api_options = api_options;
+        let mut streaming_api_options = api_options.clone();
         streaming_api_options.stream = true;
         
         // Prepare variables to collect the streaming response
@@ -360,7 +365,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             
             // Log additional context for debugging
             warn!("Implementation plan job {} received empty response. Accumulated tokens: {}, Model: {}", 
-                payload.background_job_id, accumulated_tokens, payload.model);
+                payload.background_job_id, accumulated_tokens, model_used);
             
             // Save updated job
             repo.update_job(&job).await?;
@@ -459,7 +464,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         job.response = Some(clean_xml_content.clone());
         job.updated_at = Some(timestamp);
         job.end_time = Some(timestamp);
-        job.model_used = Some(payload.model.clone());
+        job.model_used = Some(model_used.clone());
         
         
         // Set token usage from streaming
@@ -471,8 +476,8 @@ impl JobProcessor for ImplementationPlanProcessor {
         }
         
         // Set model parameters
-        job.max_output_tokens = Some(payload.max_tokens as i32);
-        job.temperature = Some(payload.temperature);
+        job.max_output_tokens = Some(max_output_tokens as i32);
+        job.temperature = Some(temperature);
         
         // Store structured data in metadata, preserving any existing metadata fields
         let updated_metadata = match repo.get_job_by_id(&payload.background_job_id).await?

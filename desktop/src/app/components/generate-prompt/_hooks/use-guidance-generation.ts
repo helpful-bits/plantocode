@@ -6,7 +6,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
-import { AppError, ErrorType } from "@/utils/error-handling";
+import { AppError, ErrorType, extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-handling";
 import { handleActionError } from "@/utils/action-utils";
 
 export interface UseGuidanceGenerationProps {
@@ -208,9 +208,13 @@ export function useGuidanceGeneration({
           return;
         }
 
+        // Extract error info and create user-friendly message
+        const errorInfo = extractErrorInfo(error);
+        const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'guidance generation');
+        
         showNotification({
           title: "Error Generating Guidance",
-          message: errorState.message || "An unknown error occurred.",
+          message: userFriendlyMessage,
           type: "error",
         });
 

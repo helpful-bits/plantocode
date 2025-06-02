@@ -6,7 +6,7 @@ import { useState, useCallback, useMemo } from "react";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
-import { AppError, ErrorType } from "@/utils/error-handling";
+import { AppError, ErrorType, extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-handling";
 import { handleActionError } from "@/utils/action-utils";
 
 /**
@@ -107,10 +107,14 @@ export function useImplementationPlanActions() {
           return;
         }
 
+        // Extract error info and create user-friendly message
+        const errorInfo = extractErrorInfo(error);
+        const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'implementation plan');
+        
         // Notify the user
         showNotification({
           title: "Implementation Plan Creation Failed",
-          message: errorState.message || "An unknown error occurred.",
+          message: userFriendlyMessage,
           type: "error",
         });
       }

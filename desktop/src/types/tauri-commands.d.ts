@@ -503,7 +503,7 @@ export type TauriInvoke = {
   "check_auth_status_and_exchange_token": (args: CheckAuthStatusAndExchangeTokenArgs) => Promise<TokenExchangeResult>;
   "refresh_app_jwt_auth0": () => Promise<TokenExchangeResult>;
   "logout_auth0": () => Promise<void>;
-  "get_user_info_with_app_jwt": (args: GetUserInfoWithAppJwtArgs) => Promise<Record<string, unknown>>;
+  "get_user_info_with_app_jwt": (args: GetUserInfoWithAppJwtArgs) => Promise<UserInfo>;
   "get_app_jwt": () => Promise<string | null>;
   "set_app_jwt": (args: SetAppJwtArgs) => Promise<void>;
   "clear_stored_app_jwt": () => Promise<void>;
@@ -560,10 +560,10 @@ export type TauriInvoke = {
   "get_all_workflow_settings_command": (args: GetAllWorkflowSettingsCommandArgs) => Promise<Record<string, string>>;
   "get_all_task_model_settings_for_project_command": (args: GetAllTaskModelSettingsForProjectCommandArgs) => Promise<import("@/types").TaskSettings>;
   "set_project_task_model_settings_command": (args: SetProjectTaskModelSettingsCommandArgs) => Promise<void>;
-  "fetch_runtime_ai_config": (args: FetchRuntimeAiConfigArgs) => Promise<Record<string, unknown>>;
-  "check_database_health_command": (args: CheckDatabaseHealthCommandArgs) => Promise<Record<string, unknown>>;
-  "repair_database_command": (args: RepairDatabaseCommandArgs) => Promise<Record<string, unknown>>;
-  "reset_database_command": (args: ResetDatabaseCommandArgs) => Promise<Record<string, unknown>>;
+  "fetch_runtime_ai_config": (args: FetchRuntimeAiConfigArgs) => Promise<import("@/types/config-types").RuntimeAIConfig>;
+  "check_database_health_command": (args: CheckDatabaseHealthCommandArgs) => Promise<DatabaseHealthResult>;
+  "repair_database_command": (args: RepairDatabaseCommandArgs) => Promise<DatabaseRepairResult>;
+  "reset_database_command": (args: ResetDatabaseCommandArgs) => Promise<DatabaseResetResult>;
   "get_system_prompt_command": (args: GetSystemPromptCommandArgs) => Promise<import("@/types").SystemPromptResponse | null>;
   "set_system_prompt_command": (args: SetSystemPromptCommandArgs) => Promise<void>;
   "reset_system_prompt_command": (args: ResetSystemPromptCommandArgs) => Promise<void>;
@@ -579,8 +579,8 @@ export type TauriInvoke = {
   "acknowledge_spending_alert_command": (args: { alertId: string }) => Promise<boolean>;
   "update_spending_limits_command": (args: { monthlySpendingLimit?: number; hardLimit?: number }) => Promise<boolean>;
   "get_invoice_history_command": () => Promise<InvoiceHistoryResponse>;
-  "get_spending_history_command": () => Promise<any>;
-  "check_service_access_command": () => Promise<any>;
+  "get_spending_history_command": () => Promise<SpendingHistoryResponse>;
+  "check_service_access_command": () => Promise<ServiceAccessResponse>;
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
@@ -665,6 +665,56 @@ export interface InvoiceHistoryResponse {
   invoices: InvoiceHistoryEntry[];
   totalCount: number;
   hasMore: boolean;
+}
+
+// Database health and maintenance result types
+export interface DatabaseHealthResult {
+  isHealthy: boolean;
+  issues: string[];
+  recommendations?: string[];
+}
+
+export interface DatabaseRepairResult {
+  success: boolean;
+  repairsPerformed: string[];
+  errors?: string[];
+}
+
+export interface DatabaseResetResult {
+  success: boolean;
+  message: string;
+}
+
+// User info interface
+export interface UserInfo {
+  sub: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+  email_verified?: boolean;
+  [key: string]: unknown; // Allow additional Auth0 claims
+}
+
+// Additional billing response types
+export interface SpendingHistoryResponse {
+  history: SpendingHistoryEntry[];
+  totalCount: number;
+  periodStart: string;
+  periodEnd: string;
+}
+
+export interface SpendingHistoryEntry {
+  date: string;
+  amount: number;
+  currency: string;
+  description: string;
+  serviceType?: string;
+}
+
+export interface ServiceAccessResponse {
+  hasAccess: boolean;
+  reason?: string;
+  blockedServices?: string[];
 }
 
 // Strongly typed invoke function

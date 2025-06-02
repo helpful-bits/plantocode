@@ -7,67 +7,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { type TaskType } from "@/types/session-types";
+import type {
+  RuntimeAIConfig,
+  ModelInfo,
+  TaskModelSettings,
+} from "@/types/config-types";
 // Using Record<string, any> instead of HashMap from Tauri
-
-/**
- * Runtime AI configuration interface
- * Must match the Rust backend RuntimeAIConfig struct
- */
-export interface RuntimeAIConfig {
-  defaultLlmModelId: string;
-  defaultVoiceModelId: string;
-  defaultTranscriptionModelId: string;
-  tasks: Record<string, TaskModelSettings>; // Backend uses string keys, not TaskType enum
-  availableModels: ModelInfo[];
-  pathFinderSettings: PathFinderSettings;
-  limits: TokenLimits; // Remove optional since backend uses #[serde(default)]
-  maxConcurrentJobs?: number;
-}
-
-/**
- * Model information interface
- */
-export interface ModelInfo {
-  id: string;
-  name: string;
-  provider: string;
-  description?: string;
-  contextWindow?: number;
-  pricePerInputToken: number;
-  pricePerOutputToken: number;
-}
-
-/**
- * Task-specific model configuration interface
- * Must match the Rust backend TaskSpecificModelConfig struct
- */
-export interface TaskModelSettings {
-  model?: string;
-  maxTokens?: number;
-  temperature?: number;
-}
-
-/**
- * Path finder settings interface
- * Must match the Rust backend PathFinderSettings struct
- */
-export interface PathFinderSettings {
-  maxFilesWithContent?: number;
-  includeFileContents?: boolean;
-  maxContentSizePerFile?: number;
-  maxFileCount?: number;
-  fileContentTruncationChars?: number;
-  tokenLimitBuffer?: number; // Backend uses tokenLimitBuffer, not contentLimitBuffer
-}
-
-/**
- * Token limits interface to match backend
- * Must match the Rust backend TokenLimits struct
- */
-export interface TokenLimits {
-  maxTokensPerRequest?: number;
-  maxTokensPerMonth?: number;
-}
 
 /**
  * Fetch runtime AI configuration from the server
@@ -82,6 +27,9 @@ export async function fetchRuntimeAIConfig(): Promise<RuntimeAIConfig> {
 export async function getAvailableAIModels(): Promise<ModelInfo[]> {
   return invoke("get_available_ai_models");
 }
+
+// Re-export ModelInfo for convenience
+export type { ModelInfo } from "@/types/config-types";
 
 /**
  * Get default task configurations from the cached configuration

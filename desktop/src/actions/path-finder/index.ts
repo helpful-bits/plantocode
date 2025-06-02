@@ -59,13 +59,28 @@ export async function findRelevantFilesAction({
     // Check if all fields in pathFinderOptionsArg are null or undefined to pass null for the whole struct
     const allOptionsNull = Object.values(pathFinderOptionsArg).every(val => val === null || val === undefined);
 
+    // If no projectDirectory provided in options, derive it from the session
+    let finalProjectDirectory = currentOptions.projectDirectory;
+    if (!finalProjectDirectory && sessionId) {
+      try {
+        const sessionDetails = await invoke<{ projectDirectory: string }>("get_session_command", {
+          sessionId: sessionId,
+        });
+        if (sessionDetails?.projectDirectory) {
+          finalProjectDirectory = sessionDetails.projectDirectory;
+        }
+      } catch (error) {
+        console.warn("Could not retrieve project directory from session:", error);
+      }
+    }
+
     // Invoke the Tauri command to find relevant files
     const result = await invoke<{ jobId: string }>(
       "find_relevant_files_command",
       {
         sessionId: sessionId,
         taskDescription: taskDescription,
-        projectDirectory: currentOptions.projectDirectory ?? null,
+        projectDirectory: finalProjectDirectory ?? null,
         modelOverride: currentOptions.modelOverride ?? null,
         temperatureOverride: currentOptions.temperatureOverride ?? null,
         maxTokensOverride: currentOptions.maxTokensOverride ?? null,

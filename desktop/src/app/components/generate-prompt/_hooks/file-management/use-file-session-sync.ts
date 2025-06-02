@@ -6,6 +6,7 @@ import {
   useSessionStateContext,
   useSessionActionsContext,
 } from "@/contexts/session";
+import { areArraysEqual } from "@/utils/array-utils";
 
 export function useFileSessionSync() {
   const { currentSession } = useSessionStateContext();
@@ -52,97 +53,28 @@ export function useFileSessionSync() {
     [updateCurrentSessionFields, setSessionModified, searchSelectedFilesOnly]
   );
 
-  // Use refs to avoid expensive array comparisons
-  const lastIncludedFilesRef = useRef<string[]>([]);
-  const lastExcludedFilesRef = useRef<string[]>([]);
-  
-  // Fast array equality check without JSON.stringify
-  const areArraysEqual = useCallback((arr1: string[], arr2: string[]): boolean => {
-    if (arr1.length !== arr2.length) return false;
-    for (let i = 0; i < arr1.length; i++) {
-      if (arr1[i] !== arr2[i]) return false;
-    }
-    return true;
-  }, []);
-
-  // Debounced session update to avoid backend calls on every click
-  const debouncedSessionUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingIncludedRef = useRef<string[] | null>(null);
-  const pendingExcludedRef = useRef<string[] | null>(null);
-  
-  const flushPendingUpdates = useCallback(() => {
-    if (pendingIncludedRef.current !== null || pendingExcludedRef.current !== null) {
-      const updates: Partial<any> = {};
-      
-      if (pendingIncludedRef.current !== null) {
-        updates.includedFiles = pendingIncludedRef.current;
-        pendingIncludedRef.current = null;
-      }
-      
-      if (pendingExcludedRef.current !== null) {
-        updates.forceExcludedFiles = pendingExcludedRef.current;
-        pendingExcludedRef.current = null;
-      }
-      
-      updateCurrentSessionFields(updates);
-      setSessionModified(true);
-    }
-  }, [updateCurrentSessionFields, setSessionModified]);
-  
-  const scheduleDebouncedUpdate = useCallback(() => {
-    if (debouncedSessionUpdateRef.current) {
-      clearTimeout(debouncedSessionUpdateRef.current);
-    }
-    
-    debouncedSessionUpdateRef.current = setTimeout(() => {
-      flushPendingUpdates();
-    }, 100); // Much shorter debounce for responsiveness
-  }, [flushPendingUpdates]);
-
   const updateIncludedFiles = useCallback(
     (includedPaths: string[]) => {
-      // Fast equality check using array comparison instead of JSON.stringify
       const currentFiles = currentSession?.includedFiles || [];
       if (!areArraysEqual(currentFiles, includedPaths)) {
-        // Update ref for next comparison
-        lastIncludedFilesRef.current = includedPaths;
-        
-        // Store pending update instead of immediately calling backend
-        pendingIncludedRef.current = includedPaths;
-        scheduleDebouncedUpdate();
-        
+        updateCurrentSessionFields({ includedFiles: includedPaths });
         return true;
       }
       return false;
     },
-    [
-      currentSession?.includedFiles,
-      areArraysEqual,
-      scheduleDebouncedUpdate,
-    ]
+    [currentSession?.includedFiles, updateCurrentSessionFields]
   );
 
   const updateExcludedFiles = useCallback(
     (excludedPaths: string[]) => {
-      // Fast equality check using array comparison instead of JSON.stringify
       const currentFiles = currentSession?.forceExcludedFiles || [];
       if (!areArraysEqual(currentFiles, excludedPaths)) {
-        // Update ref for next comparison
-        lastExcludedFilesRef.current = excludedPaths;
-        
-        // Store pending update instead of immediately calling backend
-        pendingExcludedRef.current = excludedPaths;
-        scheduleDebouncedUpdate();
-        
+        updateCurrentSessionFields({ forceExcludedFiles: excludedPaths });
         return true;
       }
       return false;
     },
-    [
-      currentSession?.forceExcludedFiles,
-      areArraysEqual,
-      scheduleDebouncedUpdate,
-    ]
+    [currentSession?.forceExcludedFiles, updateCurrentSessionFields]
   );
 
   const syncFileSelectionsToSession = useCallback(
@@ -173,25 +105,18 @@ export function useFileSessionSync() {
   }, [currentSession]);
 
   const flushFileStateSaves = useCallback(async () => {
-    // First flush any pending debounced updates
-    if (debouncedSessionUpdateRef.current) {
-      clearTimeout(debouncedSessionUpdateRef.current);
-      debouncedSessionUpdateRef.current = null;
-      flushPendingUpdates();
-    }
-    
     if (!currentSession?.id) {
       return false;
     }
 
     try {
-      // Correctly call saveCurrentSession to persist all pending changes
+      // Save current session - no need to flush pending updates since we update immediately
       return await saveCurrentSession();
     } catch (error) {
       console.error("[useFileSessionSync] Error saving session:", error);
       return false;
     }
-  }, [currentSession?.id, saveCurrentSession, flushPendingUpdates]);
+  }, [currentSession?.id, saveCurrentSession]);
 
   return useMemo(
     () => ({
@@ -213,9 +138,6 @@ export function useFileSessionSync() {
       // Expose current session's file lists directly for reading
       sessionIncludedFiles: currentSession?.includedFiles || [],
       sessionForceExcludedFiles: currentSession?.forceExcludedFiles || [],
-      
-      // Expose flush function for immediate updates when needed
-      flushPendingUpdates,
     }),
     [
       searchTerm,
@@ -229,7 +151,6 @@ export function useFileSessionSync() {
       flushFileStateSaves,
       currentSession?.includedFiles,
       currentSession?.forceExcludedFiles,
-      flushPendingUpdates,
     ]
   );
 }

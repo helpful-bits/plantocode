@@ -61,15 +61,8 @@ impl JobProcessor for ServerProxyTranscriptionProcessor {
             }
         };
         
-        // Setup repositories using standardized utility
-        let (repo, _settings_repo) = job_processor_utils::setup_repositories(&app_handle)?;
-        
-        // Update job status to running using standardized utility
-        job_processor_utils::update_status_running(
-            &repo,
-            &job_id,
-            "Processing voice transcription"
-        ).await?;
+        // Setup job processing and update status to running
+        let (repo, _settings_repo, _background_job) = job_processor_utils::setup_job_processing(&job_id, &app_handle).await?;
         
         // Get the transcription client from app state
         let transcription_client = client_factory::get_transcription_client(&self.app_handle)?;

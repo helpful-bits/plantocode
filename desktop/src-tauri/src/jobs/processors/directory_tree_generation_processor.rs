@@ -101,6 +101,7 @@ impl JobProcessor for DirectoryTreeGenerationProcessor {
         let line_count = directory_tree.lines().count();
         
         // Finalize job success using standardized utility
+        // The directory_tree string is the primary output, store it directly in job.response
         job_processor_utils::finalize_job_success(
             &payload.background_job_id,
             &repo,

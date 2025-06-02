@@ -47,7 +47,12 @@ impl JobProcessor for PathFinderProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&payload.background_job_id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&payload.background_job_id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&payload.background_job_id, "path finding");
 
@@ -185,50 +190,24 @@ impl JobProcessor for PathFinderProcessor {
         
         info!("Estimated input tokens: {}", estimated_input_tokens);
         
-        // Determine the effective model to use
-        // Get model for this task - get from payload override or from config
-        let effective_model = match payload.model_override.as_deref() {
-            Some(model) => model.to_string(),
-            None => {
-                let project_dir = job.project_directory.as_deref().unwrap_or("");
-                match config::get_model_for_task_with_project(crate::models::TaskType::PathFinder, project_dir, &app_handle).await {
-                    Ok(model) => model,
-                    Err(e) => {
-                        error!("Failed to get model for PathFinder task: {}", e);
-                        return Err(e);
-                    }
-                }
-            }
-        };
+        // Use the model from BackgroundJob (already extracted above)
+        let effective_model = model_used.clone();
         
         // Get max tokens from server config
         let max_allowed_model_tokens = config::get_model_context_window(&effective_model)?;
         
         // Calculate max input tokens for model (context window minus output tokens and buffer)
-        // Get max tokens from payload override or from config
-        let max_output_tokens = match payload.max_output_tokens {
-            Some(tokens) => tokens,
-            None => {
-                let project_dir = job.project_directory.as_deref().unwrap_or("");
-                match config::get_max_tokens_for_task_with_project(crate::models::TaskType::PathFinder, project_dir, &app_handle).await {
-                    Ok(tokens) => tokens,
-                    Err(e) => {
-                        error!("Failed to get max tokens for PathFinder task: {}", e);
-                        // When config fails, use a reasonable default
-                        1000
-                    }
-                }
-            }
-        };
+        // Use the max_output_tokens from BackgroundJob (already extracted above)
+        let max_output_tokens_for_calc = max_output_tokens;
         
         // Get token_limit_buffer from config - server configuration is required
         let token_limit_buffer = config::get_path_finder_token_limit_buffer_async(&app_handle).await
             .map_err(|e| AppError::ConfigError(format!("Failed to get path finder token limit buffer from server config: {}", e)))?;
             
-        let max_input_tokens_for_model = max_allowed_model_tokens - max_output_tokens - token_limit_buffer;
+        let max_input_tokens_for_model = max_allowed_model_tokens as i32 - max_output_tokens_for_calc as i32 - token_limit_buffer as i32;
         
         // Check estimated token count to ensure we're not over limits
-        if estimated_input_tokens > max_input_tokens_for_model {
+        if estimated_input_tokens > max_input_tokens_for_model as u32 {
             warn!("Estimated input tokens ({}) exceeds max allowed input tokens ({}) for model {} in job {}. Will apply reduction strategies", 
                   estimated_input_tokens, max_input_tokens_for_model, effective_model, payload.background_job_id);
         }
@@ -294,7 +273,7 @@ impl JobProcessor for PathFinderProcessor {
             initial_estimated_tokens, max_allowable_tokens, effective_model);
         
         // Log warning if estimated tokens exceed limits but proceed with full content
-        if initial_estimated_tokens > max_allowable_tokens {
+        if initial_estimated_tokens > max_allowable_tokens as u32 {
             warn!("Estimated input tokens ({}) exceeds max allowed input tokens ({}) for model {} in job {}. Proceeding with full content - API provider will handle rejection if necessary", 
                 initial_estimated_tokens, max_allowable_tokens, effective_model, payload.background_job_id);
         }
@@ -313,6 +292,7 @@ impl JobProcessor for PathFinderProcessor {
             if final_file_contents.is_empty() { None } else { Some(final_file_contents) },
             Some(final_directory_tree),
             &settings_repo,
+            &model_used,
         ).await?;
 
         info!("Enhanced Path Finder prompt composition for job {}", job.id);
@@ -333,12 +313,11 @@ impl JobProcessor for PathFinderProcessor {
         
         // Create API client options using standardized helper
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::PathFinder,
-            project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -348,7 +327,7 @@ impl JobProcessor for PathFinderProcessor {
         
         // Call LLM using standardized helper
         info!("Calling LLM for path finding with model {}", &api_options.model);
-        let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await?;
+        let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await?;
         
         // Extract the response content
         let response_content = llm_response.choices[0].message.content.clone();

@@ -7,6 +7,7 @@ import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
 import { useSessionActionsContext, useSessionStateContext } from "@/contexts/session";
+import { extractErrorInfo, createUserFriendlyErrorMessage } from "@/utils/error-handling";
 
 // Import TaskDescriptionHandle type directly
 import type { TaskDescriptionHandle } from "../_components/task-description";
@@ -252,12 +253,13 @@ export function useTaskDescriptionState({
         setIsImprovingText(false);
         selectionRangeRef.current = null;
 
+        // Extract error info and create user-friendly message
+        const errorInfo = extractErrorInfo(error);
+        const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'text improvement');
+        
         showNotification({
           title: "Error improving text",
-          message:
-            error instanceof Error
-              ? error.message
-              : "An unknown error occurred.",
+          message: userFriendlyMessage,
           type: "error",
         });
       }

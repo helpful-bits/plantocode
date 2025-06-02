@@ -54,6 +54,7 @@ impl StageDataInjector {
         })
     }
     /// Create LocalFileFilteringPayload from RegexPatternGeneration results
+    /// Now handles Optional directory_tree gracefully for failed but skipped dependencies
     pub async fn create_local_filtering_payload(
         settings_repo: &Arc<SettingsRepository>,
         regex_payload: &RegexPatternGenerationWorkflowPayload,
@@ -80,7 +81,11 @@ impl StageDataInjector {
             session_id: regex_payload.session_id.clone(),
             task_description: regex_payload.task_description.clone(),
             project_directory: regex_payload.project_directory.clone(),
-            directory_tree: regex_payload.directory_tree.clone(), // Passed through from RegexPatternGeneration
+            directory_tree: if regex_payload.directory_tree.trim().is_empty() {
+                "No directory structure available".to_string()
+            } else {
+                regex_payload.directory_tree.clone()
+            }, // Handle empty/missing directory_tree gracefully
             excluded_paths,
             workflow_id: regex_payload.workflow_id.clone(),
             previous_stage_job_id: regex_payload.background_job_id.clone(),
@@ -89,10 +94,11 @@ impl StageDataInjector {
     }
 
     /// Create ExtendedPathFinderPayload from LocalFileFiltering results
+    /// Now handles missing/empty data from failed but skipped dependencies
     pub async fn create_extended_finder_payload(
         settings_repo: &Arc<SettingsRepository>,
         filtering_payload: &LocalFileFilteringPayload,
-        filtered_paths: Vec<String>, // Paths extracted from LocalFileFiltering job
+        filtered_paths: Vec<String>, // Paths extracted from LocalFileFiltering job (may be empty)
         next_job_id: String
     ) -> ExtendedPathFinderPayload {
         info!("Creating ExtendedPathFinder payload from LocalFileFiltering results");
@@ -100,13 +106,7 @@ impl StageDataInjector {
         debug!("Filtered paths count: {}, next_job_id: {}", 
                filtered_paths.len(), next_job_id);
         
-        // Get model override from workflow settings
-        let model_override = Self::get_workflow_setting(
-            settings_repo,
-            "FileFinderWorkflow",
-            "ExtendedPathFinder_model",
-            None
-        ).await;
+        // Model settings are handled by the job creation system, not stored in payload
         
         // Get max files with content setting
         let max_files_setting = Self::get_workflow_setting(
@@ -123,22 +123,24 @@ impl StageDataInjector {
             session_id: filtering_payload.session_id.clone(),
             task_description: filtering_payload.task_description.clone(),
             project_directory: filtering_payload.project_directory.clone(),
-            directory_tree: filtering_payload.directory_tree.clone(), // Passed through from LocalFileFiltering
-            initial_paths: filtered_paths, // Filtered paths from LocalFileFiltering
+            directory_tree: if filtering_payload.directory_tree.trim().is_empty() {
+                "No directory structure available".to_string()
+            } else {
+                filtering_payload.directory_tree.clone()
+            }, // Handle empty/missing directory_tree gracefully
+            initial_paths: filtered_paths, // May be empty if filtering failed but was skipped
             workflow_id: filtering_payload.workflow_id.clone(),
             previous_stage_job_id: filtering_payload.background_job_id.clone(),
             next_stage_job_id: Some(uuid::Uuid::new_v4().to_string()), // Pre-generate next stage ID
-            model_override,
-            temperature_override: None, // Could be extended to support temperature settings
-            max_tokens_override: None,  // Could be extended to support token settings
         }
     }
 
     /// Create PathFinderPayload from LocalFileFiltering results
+    /// Now handles missing/empty data from failed but skipped dependencies
     pub async fn create_initial_path_finder_payload(
         settings_repo: &Arc<SettingsRepository>,
         filtering_payload: &LocalFileFilteringPayload,
-        filtered_paths: Vec<String>,
+        filtered_paths: Vec<String>, // May be empty if filtering failed but was skipped
         next_job_id: String
     ) -> PathFinderPayload {
         info!("Creating InitialPathFinder payload from LocalFileFiltering results");
@@ -146,24 +148,19 @@ impl StageDataInjector {
         debug!("Filtered paths count: {}, next_job_id: {}", 
                filtered_paths.len(), next_job_id);
         
-        // Get model override from workflow settings
-        let model_override = Self::get_workflow_setting(
-            settings_repo,
-            "FileFinderWorkflow",
-            "InitialPathFinder_model",
-            None
-        ).await;
+        // Model settings are handled by the job creation system, not stored in payload
         
         PathFinderPayload {
             session_id: filtering_payload.session_id.clone(),
             task_description: filtering_payload.task_description.clone(),
             background_job_id: next_job_id.clone(),
             project_directory: filtering_payload.project_directory.clone(),
-            model_override,
             system_prompt: "You are a file path finder assistant. Help identify relevant files.".to_string(),
-            temperature: 0.5,
-            max_output_tokens: Some(4000),
-            directory_tree: Some(filtering_payload.directory_tree.clone()),
+            directory_tree: if filtering_payload.directory_tree.trim().is_empty() {
+                None // Gracefully handle missing directory tree
+            } else {
+                Some(filtering_payload.directory_tree.clone())
+            },
             relevant_file_contents: std::collections::HashMap::new(),
             estimated_input_tokens: None,
             options: Default::default(), // Assuming PathFinderOptions has Default
@@ -171,40 +168,37 @@ impl StageDataInjector {
     }
 
     /// Create PathCorrectionPayload from PathFinder results
+    /// Now handles missing/empty data from failed but skipped dependencies
     pub async fn create_initial_path_correction_payload(
         settings_repo: &Arc<SettingsRepository>,
         finder_payload: &PathFinderPayload,
-        initial_paths: Vec<String>
+        initial_paths: Vec<String> // May be empty if PathFinder failed but was skipped
     ) -> PathCorrectionPayload {
         info!("Creating InitialPathCorrection payload from PathFinder results");
         
         debug!("Initial paths count: {}", initial_paths.len());
         
-        // Get model override from workflow settings
-        let model_override = Self::get_workflow_setting(
-            settings_repo,
-            "FileFinderWorkflow", 
-            "InitialPathCorrection_model",
-            None
-        ).await;
+        // Model settings are handled by the job creation system, not stored in payload
         
         PathCorrectionPayload {
             background_job_id: uuid::Uuid::new_v4().to_string(),
             session_id: finder_payload.session_id.clone(),
-            paths_to_correct: initial_paths.join("\n"),
+            paths_to_correct: if initial_paths.is_empty() {
+                "No paths provided for correction".to_string()
+            } else {
+                initial_paths.join("\n")
+            }, // Handle empty paths gracefully
             context_description: finder_payload.task_description.clone(),
-            directory_tree: finder_payload.directory_tree.clone(),
+            directory_tree: finder_payload.directory_tree.clone(), // Already handles Option type
             system_prompt_override: None,
-            model_override: model_override.or(finder_payload.model_override.clone()),
-            temperature: Some(finder_payload.temperature),
-            max_output_tokens: finder_payload.max_output_tokens,
         }
     }
 
     /// Create ExtendedPathCorrectionPayload from ExtendedPathFinder results
+    /// Now handles missing/empty data from failed but skipped dependencies
     pub fn create_path_correction_payload(
         finder_payload: &ExtendedPathFinderPayload,
-        extended_paths: Vec<String> // Paths extracted from ExtendedPathFinder job
+        extended_paths: Vec<String> // Paths extracted from ExtendedPathFinder job (may be empty)
     ) -> ExtendedPathCorrectionPayload {
         info!("Creating ExtendedPathCorrection payload from ExtendedPathFinder results");
         
@@ -215,13 +209,18 @@ impl StageDataInjector {
             session_id: finder_payload.session_id.clone(),
             task_description: finder_payload.task_description.clone(),
             project_directory: finder_payload.project_directory.clone(),
-            directory_tree: finder_payload.directory_tree.clone(), // Passed through from ExtendedPathFinder
-            extended_paths, // Extended paths from ExtendedPathFinder
+            directory_tree: if finder_payload.directory_tree.trim().is_empty() {
+                "No directory structure available".to_string()
+            } else {
+                finder_payload.directory_tree.clone()
+            }, // Handle empty/missing directory_tree gracefully
+            extended_paths: if extended_paths.is_empty() {
+                vec!["No paths available for correction".to_string()]
+            } else {
+                extended_paths
+            }, // Provide fallback for empty paths
             workflow_id: finder_payload.workflow_id.clone(),
             previous_stage_job_id: finder_payload.background_job_id.clone(),
-            model_override: finder_payload.model_override.clone(),
-            temperature_override: finder_payload.temperature_override,
-            max_tokens_override: finder_payload.max_tokens_override,
         }
     }
 
@@ -245,9 +244,6 @@ impl StageDataInjector {
             workflow_id: base_payload.workflow_id.clone(),
             previous_stage_job_id: Some(base_payload.background_job_id.clone()),
             next_stage_job_id: Some(uuid::Uuid::new_v4().to_string()), // Pre-generate next stage ID
-            model_override: None,       // Use default model
-            temperature_override: None, // Use default temperature
-            max_tokens_override: None,  // Use default max tokens
         }
     }
 
@@ -279,31 +275,9 @@ impl StageDataInjector {
         }
     }
 
-    /// Update payload with specific model configuration
-    pub fn with_model_config(
-        mut payload: ExtendedPathFinderPayload,
-        model_override: Option<String>,
-        temperature_override: Option<f32>,
-        max_tokens_override: Option<u32>
-    ) -> ExtendedPathFinderPayload {
-        payload.model_override = model_override;
-        payload.temperature_override = temperature_override;
-        payload.max_tokens_override = max_tokens_override;
-        payload
-    }
+    // Model configuration is handled by the job creation system, not payload
 
-    /// Update correction payload with specific model configuration
-    pub fn with_correction_model_config(
-        mut payload: ExtendedPathCorrectionPayload,
-        model_override: Option<String>,
-        temperature_override: Option<f32>,
-        max_tokens_override: Option<u32>
-    ) -> ExtendedPathCorrectionPayload {
-        payload.model_override = model_override;
-        payload.temperature_override = temperature_override;
-        payload.max_tokens_override = max_tokens_override;
-        payload
-    }
+    // Model configuration is handled by the job creation system, not payload
 
     /// Clone payload with new job ID (for retry scenarios)
     pub fn clone_with_new_job_id(
@@ -351,9 +325,6 @@ impl StageDataInjector {
             workflow_id: original.workflow_id.clone(),
             previous_stage_job_id: original.previous_stage_job_id.clone(),
             next_stage_job_id: Some(uuid::Uuid::new_v4().to_string()),
-            model_override: original.model_override.clone(),
-            temperature_override: original.temperature_override,
-            max_tokens_override: original.max_tokens_override,
         }
     }
 
@@ -370,9 +341,6 @@ impl StageDataInjector {
             extended_paths: original.extended_paths.clone(),
             workflow_id: original.workflow_id.clone(),
             previous_stage_job_id: original.previous_stage_job_id.clone(),
-            model_override: original.model_override.clone(),
-            temperature_override: original.temperature_override,
-            max_tokens_override: original.max_tokens_override,
         }
     }
 
@@ -432,6 +400,7 @@ impl StageDataInjector {
     }
 
     /// Validate filtering payload
+    /// Now allows empty directory_tree for graceful degradation
     pub fn validate_filtering_payload(
         payload: &LocalFileFilteringPayload
     ) -> Result<(), String> {
@@ -439,9 +408,10 @@ impl StageDataInjector {
             return Err("Session ID cannot be empty".to_string());
         }
         
-        if payload.directory_tree.trim().is_empty() {
-            return Err("Directory tree cannot be empty".to_string());
-        }
+        // Allow empty directory_tree - payload creation handles this gracefully
+        // if payload.directory_tree.trim().is_empty() {
+        //     return Err("Directory tree cannot be empty".to_string());
+        // }
         
         if payload.workflow_id.trim().is_empty() {
             return Err("Workflow ID cannot be empty".to_string());
@@ -455,6 +425,7 @@ impl StageDataInjector {
     }
 
     /// Validate finder payload
+    /// Now allows empty directory_tree for graceful degradation
     pub fn validate_finder_payload(
         payload: &ExtendedPathFinderPayload
     ) -> Result<(), String> {
@@ -462,9 +433,10 @@ impl StageDataInjector {
             return Err("Session ID cannot be empty".to_string());
         }
         
-        if payload.directory_tree.trim().is_empty() {
-            return Err("Directory tree cannot be empty".to_string());
-        }
+        // Allow empty directory_tree - payload creation handles this gracefully
+        // if payload.directory_tree.trim().is_empty() {
+        //     return Err("Directory tree cannot be empty".to_string());
+        // }
         
         if payload.workflow_id.trim().is_empty() {
             return Err("Workflow ID cannot be empty".to_string());
@@ -479,6 +451,7 @@ impl StageDataInjector {
     }
 
     /// Validate correction payload
+    /// Now allows empty data for graceful degradation
     pub fn validate_correction_payload(
         payload: &ExtendedPathCorrectionPayload
     ) -> Result<(), String> {
@@ -486,9 +459,10 @@ impl StageDataInjector {
             return Err("Session ID cannot be empty".to_string());
         }
         
-        if payload.directory_tree.trim().is_empty() {
-            return Err("Directory tree cannot be empty".to_string());
-        }
+        // Allow empty directory_tree - payload creation handles this gracefully
+        // if payload.directory_tree.trim().is_empty() {
+        //     return Err("Directory tree cannot be empty".to_string());
+        // }
         
         if payload.workflow_id.trim().is_empty() {
             return Err("Workflow ID cannot be empty".to_string());
@@ -498,9 +472,10 @@ impl StageDataInjector {
             return Err("Previous stage job ID cannot be empty".to_string());
         }
         
-        if payload.extended_paths.is_empty() {
-            return Err("Extended paths cannot be empty for correction".to_string());
-        }
+        // Allow empty extended_paths - payload creation provides fallback
+        // if payload.extended_paths.is_empty() {
+        //     return Err("Extended paths cannot be empty for correction".to_string());
+        // }
         
         Ok(())
     }
@@ -627,24 +602,10 @@ impl StageDataInjector {
             workflow_id: original.workflow_id.clone(),
             previous_stage_job_id: original.previous_stage_job_id.clone(),
             next_stage_job_id: Some(uuid::Uuid::new_v4().to_string()),
-            model_override: original.model_override.clone(),
-            temperature_override: original.temperature_override,
-            max_tokens_override: original.max_tokens_override,
         }
     }
 
-    /// Update regex payload with specific model configuration
-    pub fn with_regex_model_config(
-        mut payload: RegexPatternGenerationWorkflowPayload,
-        model_override: Option<String>,
-        temperature_override: Option<f32>,
-        max_tokens_override: Option<u32>
-    ) -> RegexPatternGenerationWorkflowPayload {
-        payload.model_override = model_override;
-        payload.temperature_override = temperature_override;
-        payload.max_tokens_override = max_tokens_override;
-        payload
-    }
+    // Model configuration is handled by the job creation system, not payload
 
     /// Add metadata to regex payload (stored as JSON in the background job)
     pub fn add_metadata_to_regex_payload(

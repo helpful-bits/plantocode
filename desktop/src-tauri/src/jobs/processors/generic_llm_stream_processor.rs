@@ -38,7 +38,12 @@ impl JobProcessor for GenericLlmStreamProcessor {
         };
         
         // Setup job processing
-        let (repo, _settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, _settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
@@ -47,14 +52,12 @@ impl JobProcessor for GenericLlmStreamProcessor {
         let messages = job_processor_utils::create_openrouter_messages(system_prompt, &payload.prompt_text);
         
         // Create API options with streaming enabled
-        let project_directory = payload.project_directory.as_deref().unwrap_or("");
         let mut api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::GenericLlmStream,
-            project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             true, // Enable streaming for this processor
-            &app_handle,
-        ).await?;
+        )?;
         
         // Calculate approx tokens in prompt for tracking
         let prompt_text_tokens = crate::utils::token_estimator::estimate_tokens(&payload.prompt_text);

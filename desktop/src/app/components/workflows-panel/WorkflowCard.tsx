@@ -14,6 +14,7 @@ import { Button } from '@/ui/button';
 import { Progress } from '@/ui/progress';
 import { Card } from '@/ui/card';
 import { type WorkflowStatusResponse } from '@/types/workflow-types';
+import { extractErrorInfo, createUserFriendlyErrorMessage } from '@/utils/error-handling';
 
 export interface WorkflowCardProps {
   workflow: WorkflowStatusResponse;
@@ -245,11 +246,17 @@ export const WorkflowCard = React.memo(({
               <AlertCircle className="w-3 h-3 mr-1" />
               {stageCounts.failed} stage{stageCounts.failed > 1 ? 's' : ''} failed
             </div>
-            {workflow.errorMessage && (
-              <div className="text-xs text-gray-500 truncate max-w-32" title={workflow.errorMessage}>
-                {workflow.errorMessage.length > 30 ? `${workflow.errorMessage.substring(0, 30)}...` : workflow.errorMessage}
-              </div>
-            )}
+            {workflow.errorMessage && (() => {
+              const errorInfo = extractErrorInfo(workflow.errorMessage);
+              const displayMessage = errorInfo.workflowContext?.stageName 
+                ? createUserFriendlyErrorMessage(errorInfo)
+                : workflow.errorMessage;
+              return (
+                <div className="text-xs text-gray-500 truncate max-w-32" title={displayMessage}>
+                  {displayMessage.length > 30 ? `${displayMessage.substring(0, 30)}...` : displayMessage}
+                </div>
+              );
+            })()}
           </div>
           
           {onRetryStage && (
@@ -266,7 +273,15 @@ export const WorkflowCard = React.memo(({
                       onClick={() => stage.jobId && onRetryStage(workflow.workflowId, stage.jobId)}
                       className="h-6 px-2 py-0 text-xs border-red-200 text-red-700 hover:bg-red-50"
                       disabled={!stage.jobId}
-                      title={stage.errorMessage || `Retry ${stage.stageName}`}
+                      title={(() => {
+                        if (stage.errorMessage) {
+                          const errorInfo = extractErrorInfo(stage.errorMessage);
+                          return errorInfo.workflowContext?.stageName 
+                            ? createUserFriendlyErrorMessage(errorInfo)
+                            : stage.errorMessage;
+                        }
+                        return `Retry ${stage.stageName}`;
+                      })()}
                     >
                       <Play className="h-2 w-2 mr-1" />
                       {stage.stageName.replace(/_/g, ' ').split(' ').slice(-2).join(' ')}

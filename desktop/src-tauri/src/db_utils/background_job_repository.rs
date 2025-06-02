@@ -464,7 +464,7 @@ impl BackgroundJobRepository {
                 .execute(&*self.pool)
                 .await
         } else {
-            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2 WHERE id = $3")
+            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, status_message = NULL WHERE id = $3")
                 .bind(status)
                 .bind(now)
                 .bind(job_id)

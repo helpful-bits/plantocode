@@ -293,7 +293,7 @@ export function WorkflowsPanel({ className }: WorkflowsPanelProps) {
                 <div className="space-y-3">
                   <h4 className="font-medium text-sm">Stage Details</h4>
                   {selectedWorkflow.stageStatuses.map((stage) => (
-                    <div key={stage.stageName} className="border rounded-lg p-4 space-y-2">
+                    <div key={stage.stageName} className="border border-border/60 rounded-lg p-4 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="text-sm font-medium">{stage.stageName}</div>

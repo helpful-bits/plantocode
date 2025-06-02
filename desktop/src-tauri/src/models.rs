@@ -625,6 +625,11 @@ pub struct RuntimeAIConfig {
     // Job system configuration
     #[serde(default)]
     pub job_settings: Option<JobSettings>,
+    
+    // General defaults for when task-specific configs are missing
+    // These provide server-level control over fallbacks instead of hardcoded values
+    pub default_temperature: Option<f32>,
+    pub default_max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

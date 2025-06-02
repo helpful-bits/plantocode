@@ -39,7 +39,12 @@ impl JobProcessor for GuidanceGenerationProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, _) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
+        
+        // Extract model settings from BackgroundJob
+        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+        let temperature = db_job.temperature.unwrap_or(0.7);
+        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&job.id, "guidance generation");
         debug!("Task description: {}", payload.task_description);
@@ -74,6 +79,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
                 file_contents,
                 directory_tree,
                 &settings_repo,
+                &model_used,
             ).await?
         };
 
@@ -93,17 +99,17 @@ impl JobProcessor for GuidanceGenerationProcessor {
         
         // Create API options
         let api_options = job_processor_utils::create_api_client_options(
-            &job.payload,
-            TaskType::GuidanceGeneration,
-            &payload.project_directory,
+            model_used.clone(),
+            temperature,
+            max_output_tokens,
             false,
-            &app_handle,
-        ).await?;
+        )?;
         
         debug!("Sending guidance generation request with options: {:?}", api_options);
         
         // Call the LLM API
-        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, &api_options).await {
+        let api_options_clone = api_options.clone();
+        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
             Ok(llm_response) => {
                 debug!("Received guidance response");
                 
@@ -117,7 +123,7 @@ impl JobProcessor for GuidanceGenerationProcessor {
                         &repo,
                         content,
                         llm_response.usage,
-                        &api_options.model,
+                        &api_options_clone.model,
                         &system_prompt_id,
                         None,
                     ).await?;
