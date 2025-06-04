@@ -404,6 +404,32 @@ impl SessionRepository {
         }
     }
 
+    /// Get all sessions for a specific project hash, ordered by most recent first
+    pub async fn get_sessions_by_project_hash(&self, project_hash: &str) -> AppResult<Vec<Session>> {
+        let rows = sqlx::query("SELECT * FROM sessions WHERE project_hash = $1 ORDER BY updated_at DESC")
+            .bind(project_hash)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch sessions for project: {}", e)))?;
+            
+        let mut sessions = Vec::new();
+        
+        for row in rows {
+            match self.row_to_session(&row).await {
+                Ok(session) => {
+                    sessions.push(session);
+                },
+                Err(e) => {
+                    let session_id_for_log: String = row.try_get("id").unwrap_or_else(|_| "unknown_id".to_string());
+                    log::error!("Failed to process session with id '{}': {}", session_id_for_log, e);
+                    continue;
+                }
+            }
+        }
+        
+        Ok(sessions)
+    }
+
     /// Delete all sessions for a project
     pub async fn delete_all_sessions(&self, project_hash: &str) -> AppResult<()> {
         // Delete all sessions with the given project hash

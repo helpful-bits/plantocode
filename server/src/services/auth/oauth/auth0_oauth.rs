@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use log::{debug, error, info};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Auth0AccessTokenClaims {
@@ -96,7 +97,7 @@ pub struct Auth0OAuthService {
     auth0_server_client_id: Option<String>,
     auth0_server_client_secret: Option<String>,
     db_pool: PgPool,
-    jwks_cache: Arc<std::sync::Mutex<Option<(Auth0Jwks, std::time::Instant)>>>,
+    jwks_cache: Arc<tokio::sync::Mutex<Option<(Auth0Jwks, std::time::Instant)>>>,
     jwt_token_duration_days: i64,
 }
 
@@ -109,41 +110,23 @@ impl Auth0OAuthService {
             auth0_server_client_id: settings.api_keys.auth0_server_client_id.clone(),
             auth0_server_client_secret: settings.api_keys.auth0_server_client_secret.clone(),
             db_pool,
-            jwks_cache: Arc::new(std::sync::Mutex::new(None)),
+            jwks_cache: Arc::new(tokio::sync::Mutex::new(None)),
             jwt_token_duration_days: settings.auth.token_duration_days,
         }
     }
 
-    /// Helper function to get JWKS cache with timeout
-    fn get_jwks_cache(&self) -> Result<std::sync::MutexGuard<Option<(Auth0Jwks, std::time::Instant)>>, AppError> {
-        // Try to acquire lock with timeout
-        match self.jwks_cache.try_lock() {
-            Ok(guard) => Ok(guard),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                // Lock is held by another thread, wait a bit and try again
-                std::thread::sleep(Duration::from_millis(10));
-                match self.jwks_cache.try_lock() {
-                    Ok(guard) => Ok(guard),
-                    Err(_) => Err(AppError::LockPoisoned("JWKS cache lock timeout: could not acquire lock".to_string())),
-                }
-            },
-            Err(std::sync::TryLockError::Poisoned(e)) => {
-                Err(AppError::LockPoisoned(format!("JWKS cache lock poisoned: {}", e)))
-            }
-        }
-    }
 
     async fn get_jwks(&self) -> Result<Auth0Jwks, AppError> {
         let cache_ttl = std::time::Duration::from_secs(300); // 5 minutes
 
         {
-            let cache = self.get_jwks_cache()?;
-            if let Some((jwks, cached_at)) = &*cache {
+            let cache_guard = self.jwks_cache.lock().await;
+            if let Some((jwks, cached_at)) = &*cache_guard {
                 if cached_at.elapsed() < cache_ttl {
                     return Ok(jwks.clone());
                 }
             }
-        }
+        } // cache_guard dropped here
 
         let jwks_url = format!("https://{}/.well-known/jwks.json", self.auth0_domain);
         let response = self.client
@@ -158,9 +141,9 @@ impl Auth0OAuthService {
             .map_err(|e| AppError::Auth(format!("Failed to parse JWKS: {}", e)))?;
 
         {
-            let mut cache = self.get_jwks_cache()?;
-            *cache = Some((jwks.clone(), std::time::Instant::now()));
-        }
+            let mut cache_guard = self.jwks_cache.lock().await;
+            *cache_guard = Some((jwks.clone(), std::time::Instant::now()));
+        } // cache_guard dropped here
 
         Ok(jwks)
     }

@@ -6,7 +6,7 @@ import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { getStreamingProgressValue } from "../../utils";
 
 export function JobDetailsTimingSection() {
-  const { job, jobDuration, parsedMetadata } = useJobDetailsContext();
+  const { job, jobDuration } = useJobDetailsContext();
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -39,44 +39,18 @@ export function JobDetailsTimingSection() {
             {job.status === "running" && job.startTime && (
               <div className="mt-2">
                 <Progress
-                  value={
-                    // Calculate progress with unified handling for implementation plans
-                    job.taskType === "implementation_plan" &&
-                    parsedMetadata?.isStreaming === true
-                      ? getStreamingProgressValue(
-                          job.metadata,
-                          job.startTime,
-                          job.maxOutputTokens
-                        )
-                      : // For other streaming jobs
-                        parsedMetadata?.isStreaming
-                        ? typeof parsedMetadata.responseLength === "number" &&
-                          typeof parsedMetadata.estimatedTotalLength === "number"
-                          ? Math.min(
-                              (parsedMetadata.responseLength /
-                                parsedMetadata.estimatedTotalLength) *
-                                100,
-                              98
-                            )
-                          : typeof parsedMetadata.streamProgress === "number"
-                          ? parsedMetadata.streamProgress
-                          : Math.min(
-                              Math.floor((Date.now() - job.startTime) / 200),
-                              95
-                            )
-                        : Math.min(
-                            Math.floor((Date.now() - job.startTime) / 300),
-                            90
-                          )
-                  }
+                  value={getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens) || 5}
                   className="h-1 w-full animate-pulse"
                 />
                 <div className="text-xs text-muted-foreground mt-1">Running...</div>
-                {typeof parsedMetadata?.streamProgress === "number" && (
-                  <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
-                    {Math.floor(parsedMetadata.streamProgress)}%
-                  </div>
-                )}
+                {(() => {
+                  const progressValue = getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens);
+                  return progressValue !== undefined ? (
+                    <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
+                      {Math.floor(progressValue)}%
+                    </div>
+                  ) : null;
+                })()}
               </div>
             )}
           </div>

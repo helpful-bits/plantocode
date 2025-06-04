@@ -11,6 +11,7 @@ import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 
 import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
+import { parsePlanResponseContent } from "../_utils/plan-content-parser";
 
 interface PlanContentModalProps {
   plan?: BackgroundJob;
@@ -38,9 +39,28 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
     plan.startTime,
     plan.maxOutputTokens
   );
-  const planContent = plan.response || "No content available yet";
+
+  let displayContent = "No content available yet.";
+  let viewerLanguage = "xml"; // Default to XML for implementation plans
+
+  if (plan) {
+    if (isStreaming) { // isStreaming is already defined in the component
+      displayContent = plan.response || "Streaming content...";
+      // viewerLanguage remains "xml" as LLM is instructed to output XML
+    } else if (plan.status === "completed") {
+      displayContent = parsePlanResponseContent(plan.response);
+      // viewerLanguage remains "xml" for the parsed original content
+    } else if (plan.response) { // For other non-streaming, non-completed states with a response
+      displayContent = plan.response;
+      // Potentially could be error messages, but stick to "xml" or "markdown"
+      // if error, it might not be XML. For now, assume "xml" is fine.
+    }
+  }
+
   const parsedMetadata = getParsedMetadata(plan.metadata);
-  const sessionName = parsedMetadata?.sessionName || "Untitled Session";
+  const sessionName = (typeof parsedMetadata?.additionalParams?.sessionName === 'string' 
+    ? parsedMetadata.additionalParams.sessionName 
+    : "Untitled Session");
 
   const handleRefresh = async () => {
     if (!plan) return;
@@ -109,14 +129,14 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
         {/* Content */}
         <VirtualizedCodeViewer
-          content={planContent}
+          content={displayContent}
           height="60vh"
           showCopy={true}
           copyText="Copy Plan"
           showContentSize={true}
           isLoading={isStreaming}
           placeholder="No implementation plan content available yet"
-          language="markdown"
+          language={viewerLanguage}
           className="mt-2"
           loadingIndicator={
             <div className="flex items-center justify-center h-full">

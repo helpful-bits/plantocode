@@ -1,229 +1,164 @@
-use serde_json::Value;
-use log::{debug, error};
+use log::{debug, error, warn};
 
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{
-    JobPayload,
-    JobWorkerMetadata,
-    PathFinderPayload,
-    ImplementationPlanPayload, 
-    GuidanceGenerationPayload,
-    PathCorrectionPayload,
-    TextImprovementPayload,
-    TaskEnhancementPayload,
-    VoiceTranscriptionPayload,
-    TextCorrectionPayload,
-    GenericLlmStreamPayload,
-    RegexPatternGenerationPayload,
-    DirectoryTreeGenerationPayload,
-    LocalFileFilteringPayload,
-    ExtendedPathFinderPayload,
-    ExtendedPathCorrectionPayload
-};
-use crate::models::TaskType;
+use crate::jobs::types::{JobPayload, JobWorkerMetadata};
 
 /// Deserialize job payload from metadata based on the task type
 pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> AppResult<JobPayload> {
-    // Check if metadata is present
     let metadata_str = metadata_str.ok_or_else(|| 
         AppError::JobError("Missing metadata for job payload deserialization".to_string())
     )?;
 
-    // Try to deserialize as structured JobWorkerMetadata first
-    if let Ok(worker_metadata) = serde_json::from_str::<JobWorkerMetadata>(metadata_str) {
-        debug!("Successfully parsed structured JobWorkerMetadata for task_type: {}", task_type);
-        return Ok(worker_metadata.job_payload_for_worker);
-    }
-
-    debug!("Failed to parse as JobWorkerMetadata, falling back to legacy format for task_type: {}", task_type);
-
-    // Parse metadata string to JSON for legacy fallback
-    let metadata_json: Value = serde_json::from_str(metadata_str)
-        .map_err(|e| AppError::JobError(format!("Failed to parse job metadata for task_type '{}': {}", task_type, e)))?;
-
-    // Fallback to legacy format for backward compatibility
-    // Extract jobPayloadForWorker field
-    let payload_value = metadata_json.get("jobPayloadForWorker").ok_or_else(|| 
-        AppError::JobError(format!("jobPayloadForWorker not found in metadata for task_type '{}'", task_type))
-    )?;
-    
-    // Use the payload value directly (it's now stored as a JSON object)
-    let payload_json = payload_value.clone();
-    
-    debug!("Deserializing payload for task_type: '{}', payload_json snippet: {}", task_type, 
-        serde_json::to_string(&payload_json).unwrap_or_default().chars().take(200).collect::<String>());
-
-    // Deserialize based on task type
-    match task_type {
-        // Match against PathFinder task type
-        path_finder if path_finder == TaskType::PathFinder.to_string() => {
-            debug!("Deserializing PathFinder payload for task_type: {}", path_finder);
-            
-            // Try to deserialize as InputPathFinderPayload first (command input struct)
-            match serde_json::from_value::<crate::jobs::types::InputPathFinderPayload>(payload_json.clone()) {
-                Ok(input_payload) => {
-                    debug!("Successfully deserialized InputPathFinderPayload, converting to PathFinderPayload");
-                    // Convert input payload to PathFinderPayload for processor
-                    // Note: Fields like directory_tree, relevant_file_contents, and system_prompt 
-                    // are initialized with empty/default values and will be populated by the processor
-                    let processor_payload = PathFinderPayload {
-                        session_id: input_payload.session_id,
-                        task_description: input_payload.task_description,
-                        background_job_id: input_payload.background_job_id,
-                        project_directory: input_payload.project_directory,
-                        // Default values will be properly set by the processor
-                        system_prompt: String::new(),
-                        // Use provided directory_tree if available, otherwise empty string (processor will generate it)
-                        directory_tree: Some(input_payload.directory_tree.unwrap_or_default()),
-                        relevant_file_contents: std::collections::HashMap::new(),
-                        estimated_input_tokens: None,
-                        options: input_payload.options,
-                    };
-                    Ok(JobPayload::PathFinder(processor_payload))
-                },
-                Err(input_err) => {
-                    debug!("Failed to deserialize as InputPathFinderPayload: {}, trying as PathFinderPayload", input_err);
-                    // Try to deserialize as PathFinderPayload directly (processor struct)
-                    let processor_payload: PathFinderPayload = serde_json::from_value(payload_json.clone())
-                        .map_err(|e| AppError::JobError(format!("Failed to deserialize as both InputPathFinderPayload ({}) and PathFinderPayload ({})", input_err, e)))?;
-                    debug!("Successfully deserialized as PathFinderPayload directly");
-                    Ok(JobPayload::PathFinder(processor_payload))
-                }
+    match serde_json::from_str::<JobWorkerMetadata>(metadata_str) {
+        Ok(worker_metadata) => {
+            debug!("Successfully parsed JobWorkerMetadata for task_type: {}", task_type);
+            // Validate that the task_type in the deserialized metadata matches the job's task_type.
+            // This is a significant inconsistency that could indicate data corruption or version mismatch.
+            if worker_metadata.task_type != task_type {
+                warn!(
+                    "Critical inconsistency: task_type in metadata ('{}') does not match job task_type ('{}'). \
+                     This may indicate data corruption or version mismatch. Using payload from metadata as it reflects the actual stored job data.",
+                    worker_metadata.task_type, task_type
+                );
+                // Continue processing using the payload from metadata as it's what was actually stored
+                // The task_type parameter is used for context/logging but the payload structure is what matters
             }
-        },
-        
-        // Match against ImplementationPlan task type
-        implementation_plan if implementation_plan == TaskType::ImplementationPlan.to_string() => {
-            debug!("Deserializing ImplementationPlanPayload for task_type: {}", implementation_plan);
-            let payload: ImplementationPlanPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize ImplementationPlanPayload for task_type '{}': {}", implementation_plan, e)))?;
-            debug!("Successfully deserialized ImplementationPlanPayload");
-            Ok(JobPayload::ImplementationPlan(payload))
-        },
-        
-        
-        // Match against GuidanceGeneration task type
-        guidance_generation if guidance_generation == TaskType::GuidanceGeneration.to_string() => {
-            debug!("Deserializing GuidanceGenerationPayload for task_type: {}", guidance_generation);
-            let payload: GuidanceGenerationPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize GuidanceGenerationPayload for task_type '{}': {}", guidance_generation, e)))?;
-            debug!("Successfully deserialized GuidanceGenerationPayload");
-            Ok(JobPayload::GuidanceGeneration(payload))
-        },
-        
-        // Match against PathCorrection task type
-        path_correction if path_correction == TaskType::PathCorrection.to_string() => {
-            debug!("Deserializing PathCorrectionPayload");
-            let payload: PathCorrectionPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize PathCorrectionPayload: {}", e)))?;
-            Ok(JobPayload::PathCorrection(payload))
-        },
+            Ok(worker_metadata.job_payload_for_worker)
+        }
+        Err(e) => {
+            // Log the beginning of the metadata string for easier debugging
+            let metadata_snippet = metadata_str.chars().take(200).collect::<String>();
+            error!(
+                "Failed to parse metadata string as JobWorkerMetadata for task_type '{}'. Error: {}. Metadata snippet: '{}'",
+                task_type, e, metadata_snippet
+            );
+            Err(AppError::JobError(format!(
+                "Invalid job metadata structure for task_type '{}'. Failed to deserialize JobWorkerMetadata: {}",
+                task_type, e
+            )))
+        }
+    }
+}
 
-        // Match against TextImprovement task type
-        text_improvement if text_improvement == TaskType::TextImprovement.to_string() => {
-            debug!("Deserializing TextImprovementPayload");
-            let payload: TextImprovementPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextImprovementPayload: {}", e)))?;
-            Ok(JobPayload::TextImprovement(payload))
-        },
-        
-        // Match against TaskEnhancement task type
-        task_enhancement if task_enhancement == TaskType::TaskEnhancement.to_string() => {
-            debug!("Deserializing TaskEnhancementPayload");
-            let payload: TaskEnhancementPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TaskEnhancementPayload: {}", e)))?;
-            Ok(JobPayload::TaskEnhancement(payload))
-        },
-        
-        
-        // Match against GenericLlmStream and Streaming task types (both use GenericLlmStreamPayload)
-        task_str if task_str == TaskType::GenericLlmStream.to_string() || task_str == TaskType::Streaming.to_string() => {
-            debug!("Deserializing GenericLlmStreamPayload for task type: {}", task_str);
-            let payload: crate::jobs::types::GenericLlmStreamPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize GenericLlmStreamPayload: {}", e)))?;
-            Ok(JobPayload::GenericLlmStream(payload))
-        },
-        
-        // Match against TextCorrection task type (consolidates voice correction and post-transcription correction)
-        text_correction if text_correction == TaskType::TextCorrection.to_string() => {
-            debug!("Deserializing TextCorrectionPayload");
-            let payload: TextCorrectionPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextCorrectionPayload: {}", e)))?;
-            Ok(JobPayload::TextCorrection(payload))
-        },
-        
-        // Match against VoiceTranscription task type
-        voice_transcription if voice_transcription == TaskType::VoiceTranscription.to_string() => {
-            debug!("Deserializing VoiceTranscriptionPayload");
-            let payload: VoiceTranscriptionPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize VoiceTranscriptionPayload: {}", e)))?;
-            Ok(JobPayload::VoiceTranscription(payload))
-        },
-        
-        // Match against RegexPatternGeneration task type
-        regex_pattern_generation if regex_pattern_generation == TaskType::RegexPatternGeneration.to_string() => {
-            debug!("Deserializing RegexPatternGenerationPayload");
-            let payload: RegexPatternGenerationPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
-            Ok(JobPayload::RegexPatternGeneration(payload))
-        },
-        
-        // Match against RegexSummaryGeneration task type
-        regex_summary_generation if regex_summary_generation == TaskType::RegexSummaryGeneration.to_string() => {
-            debug!("Deserializing RegexSummaryGenerationPayload");
-            let payload: crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
-            Ok(JobPayload::RegexSummaryGeneration(payload))
-        },
-        
-        // Match against DirectoryTreeGeneration task type
-        directory_tree_generation if directory_tree_generation == TaskType::DirectoryTreeGeneration.to_string() => {
-            debug!("Deserializing DirectoryTreeGenerationPayload");
-            let payload: crate::jobs::types::DirectoryTreeGenerationPayload = serde_json::from_value(payload_json.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize DirectoryTreeGenerationPayload: {}", e)))?;
-            Ok(JobPayload::DirectoryTreeGeneration(payload))
-        },
-        
-        // Match against LocalFileFiltering task type
-        local_file_filtering if local_file_filtering == TaskType::LocalFileFiltering.to_string() => {
-            debug!("Deserializing LocalFileFilteringPayload");
-            let payload: crate::jobs::types::LocalFileFilteringPayload = serde_json::from_value(payload_json.clone())
+/// Create a default JobPayload for a given task type with minimal default fields
+/// This is used when metadata parsing fails and we need to create fallback metadata
+pub fn create_default_payload_for_task_type(
+    task_type_str: &str, 
+    job_id: &str, 
+    _session_id: &str, 
+    _project_directory: Option<&str>
+) -> AppResult<JobPayload> {
+    Err(AppError::JobError(format!(
+        "Cannot create fallback payload for task type '{}' - job metadata is corrupted for job {}. \
+        This indicates a serious issue with job data integrity that requires manual intervention.",
+        task_type_str, job_id
+    )))
+}
+
+/// Convert a JSON value to the appropriate JobPayload variant based on TaskType
+/// This is useful for workflow retries and other scenarios where we need to deserialize
+/// JSON payloads back into typed JobPayload structs.
+pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_type: &crate::models::TaskType) -> AppResult<JobPayload> {
+    use crate::jobs::types::{
+        JobPayload, RegexPatternGenerationWorkflowPayload, 
+        LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, 
+        ExtendedPathFinderPayload, ExtendedPathCorrectionPayload, ImplementationPlanPayload,
+        GuidanceGenerationPayload, TextImprovementPayload, TaskEnhancementPayload,
+        TextCorrectionPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
+        OpenRouterLlmPayload, VoiceTranscriptionPayload, FileRelevanceAssessmentPayload
+    };
+    use crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload;
+    use crate::models::TaskType;
+    
+    match task_type {
+        TaskType::RegexPatternGeneration => {
+            // Check if this is a workflow stage or standalone regex pattern generation
+            // Try workflow payload first, then fallback to standalone
+            if let Ok(workflow_payload) = serde_json::from_value::<RegexPatternGenerationWorkflowPayload>(json_value.clone()) {
+                Ok(JobPayload::RegexPatternGenerationWorkflow(workflow_payload))
+            } else {
+                let standalone_payload: RegexPatternGenerationPayload = serde_json::from_value(json_value.clone())
+                    .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationPayload: {}", e)))?;
+                Ok(JobPayload::RegexPatternGeneration(standalone_payload))
+            }
+        }
+        TaskType::LocalFileFiltering => {
+            let payload: LocalFileFilteringPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize LocalFileFilteringPayload: {}", e)))?;
             Ok(JobPayload::LocalFileFiltering(payload))
-        },
-        
-        // Match against ExtendedPathFinder task type
-        extended_path_finder if extended_path_finder == TaskType::ExtendedPathFinder.to_string() => {
-            debug!("Deserializing ExtendedPathFinderPayload");
-            let payload: crate::jobs::types::ExtendedPathFinderPayload = serde_json::from_value(payload_json.clone())
+        }
+        TaskType::PathFinder => {
+            let payload: PathFinderPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize PathFinderPayload: {}", e)))?;
+            Ok(JobPayload::PathFinder(payload))
+        }
+        TaskType::PathCorrection => {
+            let payload: PathCorrectionPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize PathCorrectionPayload: {}", e)))?;
+            Ok(JobPayload::PathCorrection(payload))
+        }
+        TaskType::ExtendedPathFinder => {
+            let payload: ExtendedPathFinderPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathFinderPayload: {}", e)))?;
             Ok(JobPayload::ExtendedPathFinder(payload))
-        },
-        
-        // Match against ExtendedPathCorrection task type
-        extended_path_correction if extended_path_correction == TaskType::ExtendedPathCorrection.to_string() => {
-            debug!("Deserializing ExtendedPathCorrectionPayload");
-            let payload: crate::jobs::types::ExtendedPathCorrectionPayload = serde_json::from_value(payload_json.clone())
+        }
+        TaskType::ExtendedPathCorrection => {
+            let payload: ExtendedPathCorrectionPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathCorrectionPayload: {}", e)))?;
             Ok(JobPayload::ExtendedPathCorrection(payload))
-        },
-        
-        
-        
-        // Handle Unknown task type
-        unknown if unknown == TaskType::Unknown.to_string() => {
-            error!("Received Unknown task type");
-            Err(AppError::JobError("Unknown task type cannot be processed".to_string()))
-        },
-        
-        // For other task types not yet implemented
-        
-        // Unsupported task type
-        _ => {
-            error!("Unsupported task_type for payload deserialization: '{}', payload_json snippet: {}", 
-                task_type, 
-                serde_json::to_string(&payload_json).unwrap_or_default().chars().take(200).collect::<String>());
-            Err(AppError::JobError(format!("Unsupported task_type for payload deserialization: '{}'", task_type)))
+        }
+        TaskType::ImplementationPlan => {
+            let payload: ImplementationPlanPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize ImplementationPlanPayload: {}", e)))?;
+            Ok(JobPayload::ImplementationPlan(payload))
+        }
+        TaskType::GuidanceGeneration => {
+            let payload: GuidanceGenerationPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize GuidanceGenerationPayload: {}", e)))?;
+            Ok(JobPayload::GuidanceGeneration(payload))
+        }
+        TaskType::TextImprovement => {
+            let payload: TextImprovementPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextImprovementPayload: {}", e)))?;
+            Ok(JobPayload::TextImprovement(payload))
+        }
+        TaskType::TaskEnhancement => {
+            let payload: TaskEnhancementPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize TaskEnhancementPayload: {}", e)))?;
+            Ok(JobPayload::TaskEnhancement(payload))
+        }
+        TaskType::TextCorrection => {
+            let payload: TextCorrectionPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextCorrectionPayload: {}", e)))?;
+            Ok(JobPayload::TextCorrection(payload))
+        }
+        TaskType::GenericLlmStream => {
+            let payload: GenericLlmStreamPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize GenericLlmStreamPayload: {}", e)))?;
+            Ok(JobPayload::GenericLlmStream(payload))
+        }
+        TaskType::RegexSummaryGeneration => {
+            let payload: RegexSummaryGenerationPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexSummaryGenerationPayload: {}", e)))?;
+            Ok(JobPayload::RegexSummaryGeneration(payload))
+        }
+        TaskType::VoiceTranscription => {
+            let payload: VoiceTranscriptionPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize VoiceTranscriptionPayload: {}", e)))?;
+            Ok(JobPayload::VoiceTranscription(payload))
+        }
+        TaskType::FileRelevanceAssessment => {
+            let payload: FileRelevanceAssessmentPayload = serde_json::from_value(json_value.clone())
+                .map_err(|e| AppError::JobError(format!("Failed to deserialize FileRelevanceAssessmentPayload: {}", e)))?;
+            Ok(JobPayload::FileRelevanceAssessment(payload))
+        }
+        // FileFinderWorkflow is handled by workflow orchestrator, not individual payload deserialization
+        TaskType::FileFinderWorkflow => {
+            Err(AppError::JobError("FileFinderWorkflow should be handled by WorkflowOrchestrator, not individual payload deserialization".to_string()))
+        }
+        // Streaming and Unknown are not retryable job types
+        TaskType::Streaming | TaskType::Unknown => {
+            Err(AppError::JobError(format!("Task type {:?} is not supported for JSON to JobPayload conversion", task_type)))
         }
     }
 }

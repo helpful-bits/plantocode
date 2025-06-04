@@ -7,9 +7,7 @@ use crate::services::auth::oauth::Auth0OAuthService;
 use crate::error::AppError;
 use log::{info, error, warn};
 use chrono::Utc;
-use std::sync::Arc;
-use crate::config::settings::AppSettings;
-use std::sync::RwLock;
+use crate::models::runtime_config::AppState;
 
 #[derive(Deserialize)]
 pub struct InitiateLoginQuery {
@@ -52,12 +50,11 @@ pub struct FinalizeLoginRequest {
 pub async fn initiate_auth0_login(
     query: web::Query<InitiateLoginQuery>,
     auth0_state_store: web::Data<Auth0StateStore>,
-    app_settings: web::Data<Arc<RwLock<AppSettings>>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let auth0_server_state = Uuid::new_v4().to_string();
     
-    let settings = app_settings.read().map_err(|_| AppError::Internal("Failed to read app settings".to_string()))?;
-    let auth0_domain = &settings.api_keys.auth0_domain;
+    let auth0_domain = &app_state.settings.api_keys.auth0_domain;
     
     auth0_state_store.insert(
         auth0_server_state.clone(),

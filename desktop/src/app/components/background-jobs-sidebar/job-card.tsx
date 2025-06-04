@@ -15,6 +15,7 @@ import {
   JOB_STATUSES,
   type JobStatus,
 } from "@/types/session-types";
+import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Progress } from "@/ui/progress";
@@ -27,6 +28,7 @@ import {
   getStreamingProgressValue,
   getParsedMetadata,
 } from "./utils";
+import { WorkflowUtils } from "@/utils/workflow-utils";
 
 export interface JobCardProps {
   job: BackgroundJob;
@@ -37,61 +39,95 @@ export interface JobCardProps {
   onSelect: (job: BackgroundJob) => void;
 }
 
-// Helper function to identify local/filesystem tasks
-const isLocalTask = (taskType: string): boolean => {
-  const localTaskTypes = [
-    "local_file_filtering",
-    "directory_tree_generation",
-    "regex_generation"
-  ];
-  return localTaskTypes.includes(taskType);
-};
+
 
 // Helper functions for previews
 const getResponsePreview = (job: BackgroundJob) => {
-  if (
-    job.taskType === "implementation_plan" &&
-    JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)
-  ) {
-    return "Implementation plan generated.";
+  // Primary source of displayable response is job.response
+  if (!job.response) {
+    return "";
   }
 
-  if (job.response) {
-    // Check if this is a path finder job with structured JSON response
-    if (job.taskType === "path_finder" || 
-        job.taskType === "initial_path_finding" || 
-        job.taskType === "extended_path_finding" ||
-        job.taskType === "file_finder_workflow") {
-      try {
-        const parsed = JSON.parse(job.response);
-        // If it's structured data with paths, show a summary instead of raw JSON
-        if (parsed && (parsed.paths || parsed.count !== undefined)) {
-          const count = parsed.count || parsed.paths?.length || 0;
-          return count > 0 ? `Found ${count} relevant file${count !== 1 ? "s" : ""}` : "Path finder completed";
-        }
-      } catch {
-        // Fall through to regular preview if not valid JSON
-      }
-    }
+  // PRIMARY PATH: Task type specific previews (consolidated logic based on job.taskType)
+  switch (job.taskType) {
+    case "implementation_plan":
+      return "Implementation plan generated.";
 
-    // Check for regex pattern generation - show meaningful summary instead of raw JSON
-    if (job.taskType === "regex_pattern_generation" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+    case "regex_pattern_generation":
       try {
         const parsed = JSON.parse(job.response);
         if (parsed && parsed.primaryPattern) {
           return `Generated regex pattern: /${parsed.primaryPattern.pattern || 'pattern'}/`;
+        } else if (parsed && Array.isArray(parsed)) {
+          return `Generated ${parsed.length} regex patterns.`;
         }
       } catch {
-        // Fall through to regular preview if not valid JSON
+        // Fall through to generic message
       }
-    }
+      return "Regex patterns generated.";
 
-    const maxLength = 150; // Max characters for preview
-    return job.response.length > maxLength
-      ? `${job.response.substring(0, maxLength)}...`
-      : job.response;
+    case "path_finder":
+    case "extended_path_finder":
+      try {
+        const parsed = JSON.parse(job.response);
+        if (parsed && typeof parsed === 'object') {
+          // First priority: summary field from processors
+          if (typeof parsed.summary === 'string' && parsed.summary.trim()) {
+            return parsed.summary;
+          }
+          
+          // Second priority: verifiedPaths and unverifiedPaths structure
+          if (Array.isArray(parsed.verifiedPaths) || Array.isArray(parsed.unverifiedPaths)) {
+            const verifiedCount = Array.isArray(parsed.verifiedPaths) ? parsed.verifiedPaths.length : 0;
+            const unverifiedCount = Array.isArray(parsed.unverifiedPaths) ? parsed.unverifiedPaths.length : 0;
+            
+            return `Found ${verifiedCount} verified, ${unverifiedCount} unverified files`;
+          }
+          
+          // Third priority: count field fallback
+          if (typeof parsed.count === 'number' && parsed.count >= 0) {
+            return `Found ${parsed.count} files`;
+          }
+        }
+      } catch {
+        // Fall through to generic fallback messages
+      }
+      
+      return job.taskType === "extended_path_finder" ? "Extended path finding completed" : "Path finder completed";
+
+    case "file_finder_workflow":
+      try {
+        const parsed = JSON.parse(job.response);
+        // Handle Vec<String> format (array of strings)
+        if (Array.isArray(parsed)) {
+          const count = parsed.length;
+          return count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
+        }
+      } catch {
+        // Fall through to generic message
+      }
+      return "Path finder completed";
+
+    default:
+      // For tasks without specific handling, continue to secondary logic
+      break;
   }
-  return "";
+
+  // SECONDARY PATH: Generic workflow stage messages (fallback for unknown task types)
+  const parsedMeta = getParsedMetadata(job.metadata);
+  if (parsedMeta?.workflowId && parsedMeta?.workflowStage) {
+    if (JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) {
+      return `Stage ${parsedMeta.workflowStage} completed`;
+    } else if (job.status === "running" || job.status === "processing_stream") {
+      return `Running stage: ${parsedMeta.workflowStage}`;
+    }
+  }
+
+  // FALLBACK: Show truncated job.response for all other cases
+  const maxLength = 150;
+  return job.response.length > maxLength
+    ? `${job.response.substring(0, maxLength)}...`
+    : job.response;
 };
 
 const getErrorPreview = (errorMessage?: string) => {
@@ -230,6 +266,35 @@ export const JobCard = React.memo(
           </div>
         </div>
 
+        {/* Workflow context in header for better visibility */}
+        {(() => {
+          const parsedMeta = getParsedMetadata(job.metadata);
+          if (parsedMeta?.workflowId) {
+            // Use workflowStage from parsedMeta if available, with consistent fallback handling
+            let displayStageName = parsedMeta.workflowStage || formatTaskType(job.taskType);
+            
+            // Use WorkflowUtils to get proper display name if it's a workflow stage
+            if (parsedMeta.workflowStage) {
+              const stageEnum = WorkflowUtils.mapStageNameToEnum(parsedMeta.workflowStage);
+              if (stageEnum) {
+                displayStageName = WorkflowUtils.getStageName(stageEnum);
+              }
+            }
+            
+            const displayWorkflowId = parsedMeta.workflowId.length > 12
+              ? `${parsedMeta.workflowId.substring(0, 8)}...`
+              : parsedMeta.workflowId;
+            return (
+              <div className="text-[10px] text-muted-foreground mt-1 w-full min-w-0 overflow-hidden">
+                <span className="font-medium">Workflow:</span> {displayWorkflowId}
+                <br />
+                <span className="font-medium">Stage:</span> <span className="truncate">{displayStageName}</span>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         <div className="text-muted-foreground text-[10px] mt-2">{timeAgo}</div>
 
         {/* Progress bar for running jobs */}
@@ -272,15 +337,17 @@ export const JobCard = React.memo(
         )}
 
         {/* Token count and model display - only for LLM jobs */}
-        {job.apiType !== "filesystem" && !isLocalTask(job.taskType) && (
+        {job.apiType !== "filesystem" && (!job.taskType || TaskTypeDetails[job.taskType as TaskType]?.requiresLlm !== false) && (
           <div className="text-muted-foreground text-[10px] mt-2 flex items-center justify-between min-h-[24px] w-full min-w-0">
             <div className="flex flex-col gap-0.5 max-w-[90%] overflow-hidden min-w-0 flex-1">
               {/* Display token counts with better formatting and fallback to metadata */}
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
-                const tokensSent = (typeof job.tokensSent === 'number' ? job.tokensSent : 0) || (typeof parsedMeta?.tokensSent === 'number' ? parsedMeta.tokensSent : 0);
-                const tokensReceived = (typeof job.tokensReceived === 'number' ? job.tokensReceived : 0) || (typeof parsedMeta?.tokensReceived === 'number' ? parsedMeta.tokensReceived : 0);
-                const totalTokens = (typeof job.totalTokens === 'number' ? job.totalTokens : 0) || (typeof parsedMeta?.totalTokens === 'number' ? parsedMeta.totalTokens : 0) || (typeof parsedMeta?.tokensUsed === 'number' ? parsedMeta.tokensUsed : 0);
+                
+                // Priority order: job fields > parsed metadata fields
+                const tokensSent = Number(job.tokensSent || parsedMeta?.additionalParams?.tokensSent || 0);
+                const tokensReceived = Number(job.tokensReceived || parsedMeta?.additionalParams?.tokensReceived || 0);
+                const totalTokens = Number(job.totalTokens || parsedMeta?.additionalParams?.totalTokens || parsedMeta?.additionalParams?.tokensUsed || 0);
                 
                 return (tokensSent > 0 || tokensReceived > 0 || totalTokens > 0) ? (
                   <span className="flex items-center gap-1 overflow-hidden min-w-0">
@@ -307,7 +374,7 @@ export const JobCard = React.memo(
               
               {(() => {
                 const parsedMeta = getParsedMetadata(job.metadata);
-                const modelUsed = job.modelUsed ?? parsedMeta?.modelUsed;
+                const modelUsed = job.modelUsed ?? parsedMeta?.additionalParams?.modelUsed;
                 
                 return modelUsed ? (
                   <span
@@ -346,15 +413,15 @@ export const JobCard = React.memo(
                 <span className="font-medium text-foreground">
                   {(() => {
                     const parsedMeta = getParsedMetadata(job.metadata);
-                    return parsedMeta?.sessionName
-                      ? `Plan: ${parsedMeta.sessionName}`
+                    return parsedMeta?.additionalParams?.sessionName
+                      ? `Plan: ${parsedMeta.additionalParams.sessionName}`
                       : "Implementation plan in database";
                   })()}
                 </span>
               </div>
             )}
 
-          {/* Legacy file output is no longer supported */}
+          {/* File output handling deprecated */}
 
           {/* Workflow context display - prominently show workflow information */}
           {(() => {
@@ -370,8 +437,23 @@ export const JobCard = React.memo(
                       Workflow: {parsedMeta.workflowId}
                     </span>
                     <span className="text-foreground text-[10px]">
-                      Stage: {parsedMeta.workflowStage || formatTaskType(job.taskType)}
+                      Stage: {(() => {
+                        let stageName = parsedMeta.workflowStage || formatTaskType(job.taskType);
+                        if (parsedMeta.workflowStage) {
+                          const stageEnum = WorkflowUtils.mapStageNameToEnum(parsedMeta.workflowStage);
+                          if (stageEnum) {
+                            stageName = WorkflowUtils.getStageName(stageEnum);
+                          }
+                        }
+                        return stageName;
+                      })()}
                     </span>
+                    {/* Show additional workflow context if available */}
+                    {parsedMeta?.additionalParams?.outputPath && (
+                      <span className="text-[9px] text-muted-foreground truncate">
+                        Output: {parsedMeta.additionalParams.outputPath}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -382,8 +464,7 @@ export const JobCard = React.memo(
 
           {/* Enhanced display for workflow stage jobs and path finder jobs */}
           {(job.taskType === "path_finder" || 
-            job.taskType === "initial_path_finding" || 
-            job.taskType === "extended_path_finding" ||
+            job.taskType === "extended_path_finder" ||
             job.taskType === "file_finder_workflow") && 
            JOB_STATUSES.COMPLETED.includes(job.status as JobStatus) && (
             <div className="text-[10px] mt-2 border-t border-border/60 pt-2 flex items-center gap-1.5 text-muted-foreground">
@@ -395,38 +476,44 @@ export const JobCard = React.memo(
                   return null;
                 }
                 
-                // Handle path finder data - use multiple sources with preference order
-                const pathFinderData = parsedMeta?.pathFinderData || parsedMeta?.pathData;
-                let count = 0;
-                
-                // First try parsedMeta.pathCount if available (reliable count source)
-                if (typeof parsedMeta?.pathCount === 'number') {
-                  count = parsedMeta.pathCount;
-                } else if (parsedMeta?.pathFinderData) {
-                  // Use new structured pathFinderData with type guard
-                  const pathData = parsedMeta.pathFinderData as { count?: number; paths?: string[] };
-                  count = pathData.count || pathData.paths?.length || 0;
-                } else if (typeof pathFinderData === 'string') {
-                  // Legacy pathData handling
+                // Primary source: Parse job.response for final paths
+                let displayText = "";
+                if (job.response) {
                   try {
-                    const parsedPathData = JSON.parse(pathFinderData);
-                    count = parsedPathData?.count || parsedPathData?.paths?.length || 0;
+                    const parsed = JSON.parse(job.response);
+                    
+                    // For path_finder tasks, try PathFinderResult format first
+                    if (job.taskType === "path_finder" && parsed && typeof parsed === 'object' && 'paths' in parsed && 'unverified_paths' in parsed) {
+                      const verifiedCount = Array.isArray(parsed.paths) ? parsed.paths.length : 0;
+                      const unverifiedCount = Array.isArray(parsed.unverified_paths) ? parsed.unverified_paths.length : 0;
+                      const totalCount = verifiedCount + unverifiedCount;
+                      
+                      if (totalCount > 0) {
+                        displayText = `Found ${verifiedCount} verified, ${unverifiedCount} unverified file${totalCount !== 1 ? "s" : ""}`;
+                      } else {
+                        displayText = "Path finder completed";
+                      }
+                    }
+                    // For other path-related tasks, use Vec<String> format
+                    else if (Array.isArray(parsed)) {
+                      const count = parsed.length;
+                      displayText = count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
+                    }
                   } catch {
-                    count = 0;
+                    // Fallback to metadata if job.response isn't valid JSON
+                    const parsedMeta = getParsedMetadata(job.metadata);
+                    const count = (typeof parsedMeta?.additionalParams?.pathCount === 'number') ? parsedMeta.additionalParams.pathCount : 0;
+                    displayText = count > 0 ? `Found ${count} file${count !== 1 ? "s" : ""}` : "Path finder completed";
                   }
-                } else if (typeof pathFinderData === 'object' && pathFinderData !== null) {
-                  // Legacy pathData as object
-                  const pathData = pathFinderData as { count?: number; paths?: string[] };
-                  count = pathData?.count || pathData?.paths?.length || 0;
                 }
-                return count > 0 ? (
+                
+                if (!displayText) {
+                  displayText = job.taskType === "file_finder_workflow" ? "File finder completed" : "Path finder completed";
+                }
+                
+                return (
                   <span className="font-medium text-foreground">
-                    Found {count} relevant file
-                    {count !== 1 ? "s" : ""}
-                  </span>
-                ) : (
-                  <span className="font-medium text-foreground">
-                    {job.taskType === "file_finder_workflow" ? "File finder completed" : "Path finder completed"}
+                    {displayText}
                   </span>
                 );
               })()}
@@ -435,7 +522,9 @@ export const JobCard = React.memo(
 
           {/* For regular jobs or those without special indicators, show response preview */}
           {job.response &&
-            !(job.taskType === "path_finder" && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) && (
+            !((job.taskType === "path_finder" || 
+               job.taskType === "extended_path_finder" ||
+               job.taskType === "file_finder_workflow") && JOB_STATUSES.COMPLETED.includes(job.status as JobStatus)) && (
               <div className="text-[10px] mt-2 border-t border-border/60 pt-2 text-muted-foreground break-words text-balance overflow-hidden">
                 <div className="h-[40px] w-full overflow-y-auto overflow-x-hidden">
                   <div className="break-words whitespace-pre-wrap overflow-wrap-anywhere">

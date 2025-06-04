@@ -96,11 +96,13 @@ where
                 last_error = Some(e);
                 
                 if attempt < config.max_attempts {
-                    warn!(
-                        "Operation '{}' failed on attempt {} of {}: {}. Retrying in {:?}",
-                        operation_name, attempt, config.max_attempts, 
-                        last_error.as_ref().unwrap(), delay
-                    );
+                    if let Some(ref error) = last_error {
+                        warn!(
+                            "Operation '{}' failed on attempt {} of {}: {}. Retrying in {:?}",
+                            operation_name, attempt, config.max_attempts, 
+                            error, delay
+                        );
+                    }
                     
                     sleep(delay).await;
                     
@@ -112,17 +114,19 @@ where
                         config.max_delay,
                     );
                 } else {
-                    error!(
-                        "Operation '{}' failed after {} attempts: {}",
-                        operation_name, config.max_attempts, 
-                        last_error.as_ref().unwrap()
-                    );
+                    if let Some(ref error) = last_error {
+                        error!(
+                            "Operation '{}' failed after {} attempts: {}",
+                            operation_name, config.max_attempts, 
+                            error
+                        );
+                    }
                 }
             }
         }
     }
 
-    Err(last_error.unwrap())
+    Err(last_error.expect("BUG: retry_with_backoff reached end with no error captured - check that max_attempts > 0"))
 }
 
 /// Circuit breaker pattern implementation

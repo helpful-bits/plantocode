@@ -12,9 +12,7 @@ import {
 import type { SyntheticEvent, ChangeEvent } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
-import {
-  useSessionActionsContext,
-} from "@/contexts/session";
+import { useSessionActionsContext } from "@/contexts/session";
 import { useTextareaResize } from "@/hooks/use-textarea-resize";
 import { Button } from "@/ui/button";
 import { Textarea } from "@/ui/textarea";
@@ -71,16 +69,12 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       const insertTextAtCursor = useCallback(
         (newText: string, start: number, end: number) => {
           if (!internalTextareaRef.current) {
-            console.error(
-              "Cannot insert text: internalTextareaRef is not available"
-            );
             return;
           }
 
 
           // Validate that text is not empty
           if (!newText || newText.trim() === "") {
-            console.warn("Attempted to insert empty text");
             return;
           }
 
@@ -137,7 +131,6 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
             internalTextareaRef.current?.selectionEnd ?? 0;
 
           if (currentSelectionStart === currentSelectionEnd) {
-            console.warn("Cannot replace selection: no text is selected");
             return;
           }
 

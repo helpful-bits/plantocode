@@ -213,14 +213,45 @@ export default function DatabaseErrorHandler() {
             <AlertDescription>
               <p className="mb-2">{userFriendlyMessage}</p>
               <p className="text-sm text-muted-foreground">
-                Run the database health check for more detailed diagnostics.
+                {(() => {
+                  switch (structuredErrorInfo.type) {
+                    case "DATABASE_ERROR":
+                      return "This appears to be a database-specific error. Try running the database health check first.";
+                    case "PERMISSION_ERROR":
+                      return "The application may not have proper file system permissions to access the database.";
+                    case "NETWORK_ERROR":
+                      return "If using a remote database, check your network connection.";
+                    case "CONFIGURATION_ERROR":
+                      return "Check if the database configuration is correct in your settings.";
+                    case "INTERNAL_ERROR":
+                      return "This is an internal system error. Database repair or reset may be needed.";
+                    case "WORKFLOW_ERROR":
+                      if (structuredErrorInfo.workflowContext?.stageName) {
+                        return `Database error occurred during ${structuredErrorInfo.workflowContext.stageName} workflow stage.`;
+                      }
+                      return "Database error occurred during workflow execution.";
+                    default:
+                      return "Run the database health check for more detailed diagnostics.";
+                  }
+                })()}
               </p>
               {structuredErrorInfo.type && (
                 <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
                   <div className="font-medium mb-1">Error Classification:</div>
                   <div>Type: {structuredErrorInfo.type}</div>
+                  {structuredErrorInfo.workflowContext && (
+                    <div className="mt-1">
+                      <div className="font-medium">Workflow Context:</div>
+                      {structuredErrorInfo.workflowContext.stageName && (
+                        <div>Stage: {structuredErrorInfo.workflowContext.stageName}</div>
+                      )}
+                      {structuredErrorInfo.workflowContext.retryAttempt && (
+                        <div>Retry Attempt: {structuredErrorInfo.workflowContext.retryAttempt}</div>
+                      )}
+                    </div>
+                  )}
                   {structuredErrorInfo.metadata && Object.keys(structuredErrorInfo.metadata).length > 0 && (
-                    <div>Metadata: {JSON.stringify(structuredErrorInfo.metadata, null, 2)}</div>
+                    <div className="mt-1">Additional Info: {JSON.stringify(structuredErrorInfo.metadata, null, 2)}</div>
                   )}
                 </div>
               )}

@@ -1,12 +1,17 @@
-import { AlertCircle, CreditCard, Settings, Key, Wifi, Clock, Database, RotateCcw } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, CreditCard, Settings, Key, Wifi, Clock, Database, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { extractErrorInfo, createUserFriendlyErrorMessage, ErrorType } from "@/utils/error-handling";
+import { WorkflowUtils } from "@/utils/workflow-utils";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
 export function JobDetailsErrorSection() {
   const { job, parsedMetadata } = useJobDetailsContext();
+  const [isTechnicalDetailsOpen, setIsTechnicalDetailsOpen] = useState(false);
+  
   if (!job.errorMessage) {
     return null;
   }
@@ -14,27 +19,21 @@ export function JobDetailsErrorSection() {
   // Extract structured error information
   const errorInfo = extractErrorInfo(job.errorMessage);
   
-  // Check for structured error information in metadata
-  const isMetadataBillingError = parsedMetadata?.errorCode === 'BILLING_ERROR' || 
-    parsedMetadata?.errorType === 'BILLING_ERROR' ||
-    parsedMetadata?.errorCategory === 'billing';
-
-  // Check if the extracted error info indicates a billing error
-  const isStructuredBillingError = errorInfo.type === 'BILLING_ERROR';
-
-  // Fallback to string matching for backward compatibility
-  const errorMessageLower = job.errorMessage?.toLowerCase() || "";
-  const isStringMatchBillingError = job.errorMessage && 
-    (errorMessageLower.includes("not available on your current plan") || 
-     errorMessageLower.includes("payment required") || 
-     errorMessageLower.includes("billing error") || 
-     errorMessageLower.includes("upgrade required") ||
-     errorMessageLower.includes("subscription plan") ||
-     errorMessageLower.includes("insufficient credits") ||
-     errorMessageLower.includes("quota exceeded"));
-
-  // Prefer structured error information, then metadata, then fall back to string matching
-  const isBillingError = isStructuredBillingError || isMetadataBillingError || isStringMatchBillingError;
+  // Check for billing errors in metadata
+  const isMetadataBillingError = parsedMetadata?.error_type === 'BILLING_ERROR' || 
+    parsedMetadata?.billingError === true ||
+    parsedMetadata?.subscription_required === true;
+    
+  // Check for billing errors in string content
+  const isStringMatchBillingError = typeof job.errorMessage === 'string' && (
+    job.errorMessage.toLowerCase().includes('subscription') ||
+    job.errorMessage.toLowerCase().includes('billing') ||
+    job.errorMessage.toLowerCase().includes('upgrade required') ||
+    job.errorMessage.toLowerCase().includes('payment required')
+  );
+  
+  // Prioritize structured error information from extractErrorInfo
+  const isBillingError = errorInfo.type === ErrorType.BILLING_ERROR || isMetadataBillingError || isStringMatchBillingError;
   
   // Check for workflow errors
   const isWorkflowError = errorInfo.type === ErrorType.WORKFLOW_ERROR;
@@ -92,32 +91,14 @@ export function JobDetailsErrorSection() {
     if (isApiError) return "An API service error occurred";
     if (isValidationError) return "Invalid input or data was provided";
     if (isWorkflowError && workflowContext?.stageName) {
-      const stageDisplayName = getWorkflowStageDisplayName(workflowContext.stageName);
-      return `Job failed during the "${stageDisplayName || workflowContext.stageName}" stage`;
+      // Use WorkflowUtils for consistent stage name mapping across all formats
+      const stageEnum = WorkflowUtils.mapStageNameToEnum(workflowContext.stageName);
+      const stageDisplayName = stageEnum ? WorkflowUtils.getStageName(stageEnum) : workflowContext.stageName;
+      return `Job failed during the "${stageDisplayName}" stage`;
     }
     return "Job execution failed with the following error";
   };
   
-  // Helper function to get workflow stage display names
-  const getWorkflowStageDisplayName = (stageName: string): string | null => {
-    const stageMap: Record<string, string> = {
-      "GeneratingDirTree": "Directory Tree Generation",
-      "GeneratingRegex": "Pattern Generation", 
-      "LocalFiltering": "Local File Filtering",
-      "InitialPathFinder": "Initial Path Finding",
-      "InitialPathCorrection": "Initial Path Correction",
-      "ExtendedPathFinder": "Extended Path Finding",
-      "ExtendedPathCorrection": "Extended Path Correction",
-      "GENERATING_DIR_TREE": "Directory Tree Generation",
-      "GENERATING_REGEX": "Pattern Generation",
-      "LOCAL_FILTERING": "Local File Filtering",
-      "INITIAL_PATH_FINDER": "Initial Path Finding",
-      "INITIAL_PATH_CORRECTION": "Initial Path Correction",
-      "EXTENDED_PATH_FINDER": "Extended Path Finding",
-      "EXTENDED_PATH_CORRECTION": "Extended Path Correction",
-    };
-    return stageMap[stageName] || null;
-  };
 
   return (
     <div className="mb-6">
@@ -141,7 +122,11 @@ export function JobDetailsErrorSection() {
               )}
               {workflowContext.stageName && (
                 <div>Failed Stage: <span className="font-medium">
-                  {getWorkflowStageDisplayName(workflowContext.stageName) || workflowContext.stageName}
+                  {(() => {
+                    // Use WorkflowUtils for consistent stage name mapping across all formats
+                    const stageEnum = WorkflowUtils.mapStageNameToEnum(workflowContext.stageName);
+                    return stageEnum ? WorkflowUtils.getStageName(stageEnum) : workflowContext.stageName;
+                  })()}
                 </span></div>
               )}
               {workflowContext.retryAttempt && (
@@ -163,15 +148,30 @@ export function JobDetailsErrorSection() {
           </div>
           
           {/* Technical error details */}
-          <details className="group">
-            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground mb-2">
-              Technical Details
-              <span className="ml-1 transition-transform group-open:rotate-90">▶</span>
-            </summary>
-            <pre className="whitespace-pre-wrap text-balance text-xs text-destructive w-full p-2 bg-destructive/5 rounded border border-border/60">
-              {displayMessage}
-            </pre>
-          </details>
+          <Card>
+            <Collapsible open={isTechnicalDetailsOpen} onOpenChange={setIsTechnicalDetailsOpen}>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="py-4 cursor-pointer hover:bg-accent/50 transition-colors">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-sm">Technical Details</CardTitle>
+                      <CardDescription className="text-xs">
+                        Raw error information for debugging
+                      </CardDescription>
+                    </div>
+                    {isTechnicalDetailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0">
+                  <pre className="whitespace-pre-wrap text-balance text-xs text-destructive w-full p-2 bg-destructive/5 rounded border border-border/60">
+                    {displayMessage}
+                  </pre>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </Card>
           
           {isBillingError && (
             <div className="mt-4 p-3 bg-warning/10 border border-border/60 rounded">

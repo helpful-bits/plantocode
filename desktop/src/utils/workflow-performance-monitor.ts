@@ -187,8 +187,8 @@ export class WorkflowPerformanceMonitor {
     if (allMetrics.length === 0) {
       return {
         averageExecutionTime: 0,
-        slowestStage: 'GENERATING_DIR_TREE',
-        fastestStage: 'GENERATING_DIR_TREE',
+        slowestStage: 'GENERATING_REGEX',
+        fastestStage: 'GENERATING_REGEX',
         failureRate: 0,
         recommendations: ['No workflow data available'],
       };
@@ -217,8 +217,8 @@ export class WorkflowPerformanceMonitor {
     }));
 
     avgStagePerformance.sort((a, b) => b.avgTime - a.avgTime);
-    const slowestStage = avgStagePerformance[0]?.stage as WorkflowStage || 'GENERATING_DIR_TREE';
-    const fastestStage = avgStagePerformance[avgStagePerformance.length - 1]?.stage as WorkflowStage || 'GENERATING_DIR_TREE';
+    const slowestStage = avgStagePerformance[0]?.stage as WorkflowStage || 'GENERATING_REGEX';
+    const fastestStage = avgStagePerformance[avgStagePerformance.length - 1]?.stage as WorkflowStage || 'GENERATING_REGEX';
 
     // Calculate failure rate
     const failedWorkflows = Array.from(this.performanceData.values()).filter(data => {
@@ -401,17 +401,14 @@ export class WorkflowPerformanceMonitor {
   private estimateStageInputSize(stage: WorkflowStage, workflowState: WorkflowState): number {
     // Estimate input size based on stage type and available data
     switch (stage) {
-      case 'GENERATING_DIR_TREE':
-        return workflowState.projectDirectory.length;
       case 'GENERATING_REGEX':
         return workflowState.taskDescription.length;
       case 'LOCAL_FILTERING':
         return workflowState.intermediateData.directoryTreeContent?.length || 0;
-      case 'INITIAL_PATH_FINDER':
-      case 'EXTENDED_PATH_FINDER':
+      case 'FILE_RELEVANCE_ASSESSMENT':
         return workflowState.intermediateData.locallyFilteredFiles.length;
-      case 'INITIAL_PATH_CORRECTION':
-        return workflowState.intermediateData.initialUnverifiedPaths.length;
+      case 'EXTENDED_PATH_FINDER':
+        return workflowState.intermediateData.aiFilteredFiles.length;
       case 'EXTENDED_PATH_CORRECTION':
         return workflowState.intermediateData.extendedUnverifiedPaths.length;
       default:
@@ -422,17 +419,12 @@ export class WorkflowPerformanceMonitor {
   private estimateStageOutputSize(stage: WorkflowStage, workflowState: WorkflowState): number {
     // Estimate output size based on stage type and available data
     switch (stage) {
-      case 'GENERATING_DIR_TREE':
-        return workflowState.intermediateData.directoryTreeContent?.length || 0;
       case 'GENERATING_REGEX':
         return JSON.stringify(workflowState.intermediateData.rawRegexPatterns).length || 0;
       case 'LOCAL_FILTERING':
         return workflowState.intermediateData.locallyFilteredFiles.length;
-      case 'INITIAL_PATH_FINDER':
-        return workflowState.intermediateData.initialVerifiedPaths.length + 
-               workflowState.intermediateData.initialUnverifiedPaths.length;
-      case 'INITIAL_PATH_CORRECTION':
-        return workflowState.intermediateData.initialCorrectedPaths.length;
+      case 'FILE_RELEVANCE_ASSESSMENT':
+        return workflowState.intermediateData.aiFilteredFiles.length;
       case 'EXTENDED_PATH_FINDER':
         return workflowState.intermediateData.extendedVerifiedPaths.length + 
                workflowState.intermediateData.extendedUnverifiedPaths.length;
@@ -494,12 +486,10 @@ export class WorkflowPerformanceMonitor {
       recommendations.push(`High failure rate detected (${(failureRate * 100).toFixed(1)}%). Consider reviewing error handling and input validation.`);
     }
 
-    if (slowestStage === 'GENERATING_DIR_TREE') {
-      recommendations.push('Directory tree generation is the slowest stage. Consider optimizing file system traversal or implementing caching.');
-    } else if (slowestStage === 'EXTENDED_PATH_FINDER') {
+    if (slowestStage === 'EXTENDED_PATH_FINDER') {
       recommendations.push('Extended path finding is taking longer than expected. Consider tuning AI model parameters or reducing search scope.');
-    } else if (slowestStage === 'INITIAL_PATH_FINDER') {
-      recommendations.push('Initial path finding is taking longer than expected. Consider optimizing search parameters.');
+    } else if (slowestStage === 'FILE_RELEVANCE_ASSESSMENT') {
+      recommendations.push('File relevance assessment is taking longer than expected. Consider simplifying your task description.');
     }
 
     const avgMemoryUsage = metrics.reduce((sum, m) => sum + m.memoryUsage.peak, 0) / metrics.length;

@@ -56,8 +56,8 @@ export function areJobsEqual(
   // For running jobs, especially streaming ones, check streaming indicators
   if (jobA.status === "running") {
     // Use parsed metadata for type safety
-    const jobAIsStreaming = metaA?.isStreaming === true;
-    const jobBIsStreaming = metaB?.isStreaming === true;
+    const jobAIsStreaming = metaA?.additionalParams?.isStreaming === true;
+    const jobBIsStreaming = metaB?.additionalParams?.isStreaming === true;
 
     // If streaming status changed, jobs are different
     if (jobAIsStreaming !== jobBIsStreaming) {
@@ -69,9 +69,9 @@ export function areJobsEqual(
 
     // Special check for implementation plan jobs - these need to be checked more carefully
     if (jobA.taskType === "implementation_plan") {
-      // Always check these critical fields for implementation plans
-      const streamProgressA = metaA?.streamProgress;
-      const streamProgressB = metaB?.streamProgress;
+      // Always check these critical fields for implementation plans - use additionalParams for consistency
+      const streamProgressA = metaA?.additionalParams?.streamProgress;
+      const streamProgressB = metaB?.additionalParams?.streamProgress;
 
       if (streamProgressA !== streamProgressB) {
         logger.debug(
@@ -81,8 +81,8 @@ export function areJobsEqual(
       }
 
       // Check response length for implementation plans specifically
-      const responseLengthA = metaA?.responseLength;
-      const responseLengthB = metaB?.responseLength;
+      const responseLengthA = metaA?.additionalParams?.responseLength;
+      const responseLengthB = metaB?.additionalParams?.responseLength;
 
       if (responseLengthA !== responseLengthB) {
         logger.debug(
@@ -107,21 +107,21 @@ export function areJobsEqual(
 
     // For streaming jobs, check crucial streaming indicators
     if (jobAIsStreaming && jobBIsStreaming) {
-      // Check streaming progress indicators
-      const streamTimeA = metaA?.lastStreamUpdateTime;
-      const streamTimeB = metaB?.lastStreamUpdateTime;
+      // Check streaming progress indicators - prioritize additionalParams for consistency
+      const streamTimeA = metaA?.additionalParams?.lastStreamUpdateTime || metaA?.lastStreamUpdateTime;
+      const streamTimeB = metaB?.additionalParams?.lastStreamUpdateTime || metaB?.lastStreamUpdateTime;
       const charsA = jobA.charsReceived;
       const charsB = jobB.charsReceived;
       const tokensA = jobA.tokensReceived;
       const tokensB = jobB.tokensReceived;
 
-      // Enhanced check for streaming metrics including responseLength for better UI updates
-      const responseLengthA = metaA?.responseLength;
-      const responseLengthB = metaB?.responseLength;
-      const streamProgressA = metaA?.streamProgress;
-      const streamProgressB = metaB?.streamProgress;
-      const estimatedTotalLengthA = metaA?.estimatedTotalLength;
-      const estimatedTotalLengthB = metaB?.estimatedTotalLength;
+      // Enhanced check for streaming metrics - all from additionalParams for consistency
+      const responseLengthA = metaA?.additionalParams?.responseLength;
+      const responseLengthB = metaB?.additionalParams?.responseLength;
+      const streamProgressA = metaA?.additionalParams?.streamProgress;
+      const streamProgressB = metaB?.additionalParams?.streamProgress;
+      const estimatedTotalLengthA = metaA?.additionalParams?.estimatedTotalLength;
+      const estimatedTotalLengthB = metaB?.additionalParams?.estimatedTotalLength;
 
       // If any streaming metric changed, jobs are different - this triggers UI updates
       if (
@@ -146,6 +146,14 @@ export function areJobsEqual(
             responseLengthChange:
               responseLengthA !== responseLengthB
                 ? `${responseLengthA} → ${responseLengthB}`
+                : "unchanged",
+            streamProgressChange:
+              streamProgressA !== streamProgressB
+                ? `${streamProgressA} → ${streamProgressB}`
+                : "unchanged",
+            estimatedTotalLengthChange:
+              estimatedTotalLengthA !== estimatedTotalLengthB
+                ? `${estimatedTotalLengthA} → ${estimatedTotalLengthB}`
                 : "unchanged",
           }
         );
@@ -200,7 +208,7 @@ export function areJobsEqual(
   // For path finder jobs, check pathCount in metadata
   if (jobA.taskType === "path_finder" && jobA.status === "completed") {
     // Compare metadata using parsed objects
-    if (metaA?.pathCount !== metaB?.pathCount) {
+    if (metaA?.additionalParams?.pathCount !== metaB?.additionalParams?.pathCount) {
       logger.debug(`Path count changed for job ${jobA.id}`);
       return false;
     }
@@ -263,11 +271,11 @@ export function hasMetadataChanged(
   const metaA = getParsedMetadata(jobA.metadata);
   const metaB = getParsedMetadata(jobB.metadata);
 
-  // Check for regexPatterns in completed jobs (especially for regex generation tasks)
+  // Check for regex patterns in completed jobs (especially for regex generation tasks)
   if (jobA.status === "completed") {
-    // Check if regexData exists in only one of the jobs
-    const hasRegexPatternsA = metaA?.regexData !== undefined;
-    const hasRegexPatternsB = metaB?.regexData !== undefined;
+    // Check if parsedJsonData exists in only one of the jobs
+    const hasRegexPatternsA = metaA?.additionalParams?.parsedJsonData !== undefined;
+    const hasRegexPatternsB = metaB?.additionalParams?.parsedJsonData !== undefined;
 
     if (hasRegexPatternsA !== hasRegexPatternsB) {
       logger.debug(
@@ -280,7 +288,7 @@ export function hasMetadataChanged(
     if (
       hasRegexPatternsA &&
       hasRegexPatternsB &&
-      metaA?.regexData !== metaB?.regexData
+      metaA?.additionalParams?.parsedJsonData !== metaB?.additionalParams?.parsedJsonData
     ) {
       logger.debug(
         `Metadata differs: regexPatterns changed for job ${jobA.id}`
@@ -293,16 +301,16 @@ export function hasMetadataChanged(
   if (jobA.taskType === "path_finder") {
     // For completed path finder jobs, check pathCount
     if (jobA.status === "completed") {
-      if (metaA?.pathCount !== metaB?.pathCount) {
+      if (metaA?.additionalParams?.pathCount !== metaB?.additionalParams?.pathCount) {
         logger.debug(
-          `Path finder job metadata differs: pathCount ${metaA?.pathCount} !== ${metaB?.pathCount}`
+          `Path finder job metadata differs: pathCount ${metaA?.additionalParams?.pathCount} !== ${metaB?.additionalParams?.pathCount}`
         );
         return true;
       }
 
       // If pathData is present in only one, they differ
-      const hasPathDataA = metaA?.pathData !== undefined;
-      const hasPathDataB = metaB?.pathData !== undefined;
+      const hasPathDataA = metaA?.additionalParams?.pathData !== undefined;
+      const hasPathDataB = metaB?.additionalParams?.pathData !== undefined;
 
       if (hasPathDataA !== hasPathDataB) {
         logger.debug(
@@ -315,7 +323,7 @@ export function hasMetadataChanged(
       if (
         hasPathDataA &&
         hasPathDataB &&
-        metaA?.pathData !== metaB?.pathData
+        metaA?.additionalParams?.pathData !== metaB?.additionalParams?.pathData
       ) {
         logger.debug(
           `Path finder job metadata differs: pathData reference changes`
@@ -328,8 +336,8 @@ export function hasMetadataChanged(
   // For streaming jobs, check streaming indicators first
   if (jobA.status === "running") {
     // Check isStreaming flag
-    const jobAIsStreaming = metaA?.isStreaming === true;
-    const jobBIsStreaming = metaB?.isStreaming === true;
+    const jobAIsStreaming = metaA?.additionalParams?.isStreaming === true;
+    const jobBIsStreaming = metaB?.additionalParams?.isStreaming === true;
 
     if (jobAIsStreaming !== jobBIsStreaming) {
       logger.debug(`Streaming status differs in metadata`);
@@ -339,26 +347,26 @@ export function hasMetadataChanged(
     // Special handling for implementation plan jobs
     if (jobA.taskType === "implementation_plan") {
       // Check all relevant streaming fields for implementation plans specifically
-      // These are all critical for proper UI updates
+      // These are all critical for proper UI updates - use additionalParams for consistency
 
       // Check streamProgress
-      if (metaA?.streamProgress !== metaB?.streamProgress) {
+      if (metaA?.additionalParams?.streamProgress !== metaB?.additionalParams?.streamProgress) {
         logger.debug(
-          `Implementation plan stream progress differs: ${metaA?.streamProgress} !== ${metaB?.streamProgress}`
+          `Implementation plan stream progress differs: ${metaA?.additionalParams?.streamProgress} !== ${metaB?.additionalParams?.streamProgress}`
         );
         return true;
       }
 
       // Check response length (critically important for UI updates)
-      if (metaA?.responseLength !== metaB?.responseLength) {
+      if (metaA?.additionalParams?.responseLength !== metaB?.additionalParams?.responseLength) {
         logger.debug(
-          `Implementation plan response length differs: ${metaA?.responseLength} !== ${metaB?.responseLength}`
+          `Implementation plan response length differs: ${metaA?.additionalParams?.responseLength} !== ${metaB?.additionalParams?.responseLength}`
         );
         return true;
       }
 
       // Check session name for implementation plans (used for display)
-      if (metaA?.sessionName !== metaB?.sessionName) {
+      if (metaA?.additionalParams?.sessionName !== metaB?.additionalParams?.sessionName) {
         logger.debug(
           `Implementation plan session name differs`
         );
@@ -368,40 +376,37 @@ export function hasMetadataChanged(
 
     // For active streaming jobs, check critical streaming indicators
     if (jobAIsStreaming) {
-      // Check stream update timestamp
-      if (
-        metaA?.lastStreamUpdateTime !==
-        metaB?.lastStreamUpdateTime
-      ) {
+      // Check stream update timestamp - this may be in additionalParams or at root level
+      const streamTimeA = metaA?.additionalParams?.lastStreamUpdateTime || metaA?.lastStreamUpdateTime;
+      const streamTimeB = metaB?.additionalParams?.lastStreamUpdateTime || metaB?.lastStreamUpdateTime;
+      
+      if (streamTimeA !== streamTimeB) {
         logger.debug(
-          `Stream update time differs: ${metaA?.lastStreamUpdateTime} !== ${metaB?.lastStreamUpdateTime}`
+          `Stream update time differs: ${streamTimeA} !== ${streamTimeB}`
         );
         return true;
       }
 
-      // Check streamProgress for implementation plan and streaming jobs
-      if (metaA?.streamProgress !== metaB?.streamProgress) {
+      // Check streamProgress for all streaming jobs - use additionalParams for consistency
+      if (metaA?.additionalParams?.streamProgress !== metaB?.additionalParams?.streamProgress) {
         logger.debug(
-          `Stream progress differs: ${metaA?.streamProgress} !== ${metaB?.streamProgress}`
+          `Stream progress differs: ${metaA?.additionalParams?.streamProgress} !== ${metaB?.additionalParams?.streamProgress}`
         );
         return true;
       }
 
-      // Check response length tracking
-      if (metaA?.responseLength !== metaB?.responseLength) {
+      // Check response length tracking - use additionalParams for consistency
+      if (metaA?.additionalParams?.responseLength !== metaB?.additionalParams?.responseLength) {
         logger.debug(
-          `Response length differs in metadata: ${metaA?.responseLength} !== ${metaB?.responseLength}`
+          `Response length differs in metadata: ${metaA?.additionalParams?.responseLength} !== ${metaB?.additionalParams?.responseLength}`
         );
         return true;
       }
 
-      // Check estimated total length
-      if (
-        metaA?.estimatedTotalLength !==
-        metaB?.estimatedTotalLength
-      ) {
+      // Check estimated total length - use additionalParams for consistency
+      if (metaA?.additionalParams?.estimatedTotalLength !== metaB?.additionalParams?.estimatedTotalLength) {
         logger.debug(
-          `Estimated total length differs: ${metaA?.estimatedTotalLength} !== ${metaB?.estimatedTotalLength}`
+          `Estimated total length differs: ${metaA?.additionalParams?.estimatedTotalLength} !== ${metaB?.additionalParams?.estimatedTotalLength}`
         );
         return true;
       }
@@ -409,24 +414,47 @@ export function hasMetadataChanged(
   }
 
   // Define fields that are important for UI updates, in priority order
+  // These should match what's actually displayed in JobDetails components and JobCard
   const importantFields = [
-    // Most important fields for UI display
-    "targetField", // Determines which form field gets updated
-    "progress", // Progress indicators
+    // Root-level fields from JobMetadata - core display fields
+    "workflowId", // Workflow identifier for workflow jobs
+    "workflowStage", // Current stage in workflow
+    "sessionId", // Session identifier
+    "taskDescription", // Task description
+    "projectDirectory", // Project directory path
+    "modelUsed", // Model name to display
+    "tokensUsed", // Total tokens used
+    
+    // Important nested payload fields (from parsedJobPayload)
     "pathCount", // Number of paths found (for path finder)
-
-    // UI display modifiers
-    "responseFormat", // How response is formatted (e.g. JSON, markdown)
+    "outputPath", // Output file path for workflow results
+    "targetField", // Determines which form field gets updated
+    "responseFormat", // How response is formatted
     "contentType", // Content type for response display
+    "showPureContent", // Flag for content view mode
+  ];
 
-    // Performance metrics
+  // Define additionalParams fields that are critical for streaming UI updates
+  const streamingFields = [
+    "isStreaming", // Streaming status flag
+    "streamProgress", // Streaming progress percentage - critical for progress bars
+    "responseLength", // Current response length for streaming jobs - critical for UI updates
+    "estimatedTotalLength", // Estimated total length for progress calculation
+    "lastStreamUpdateTime", // Last streaming update timestamp - triggers UI refreshes
+    "sessionName", // Session name for display
     "tokensReceived", // Token counts shown in UI
     "tokensSent", // Token counts shown in UI
     "charsReceived", // Character counts for display
-    "modelUsed", // Model name to display
   ];
 
-  // Check each important field efficiently with early returns
+  // Define complex object fields that need reference comparison (not deep comparison)
+  const complexObjectFields = [
+    "parsedJsonData", // Regex patterns and other parsed JSON - reference comparison only
+    "pathData", // Path finder results data - reference comparison only
+    "planData", // Implementation plan data - reference comparison only
+  ];
+
+  // Check each important root-level field efficiently with early returns
   for (const field of importantFields) {
     const valueA = metaA ? (metaA as any)[field] : undefined;
     const valueB = metaB ? (metaB as any)[field] : undefined;
@@ -440,6 +468,37 @@ export function hasMetadataChanged(
         );
         return true;
       }
+    }
+  }
+
+  // Check streaming-related fields in additionalParams for running jobs
+  if (jobA.status === "running" || metaA?.additionalParams?.isStreaming || metaB?.additionalParams?.isStreaming) {
+    for (const field of streamingFields) {
+      const valueA = metaA?.additionalParams ? (metaA.additionalParams as any)[field] : undefined;
+      const valueB = metaB?.additionalParams ? (metaB.additionalParams as any)[field] : undefined;
+
+      if (valueA !== undefined || valueB !== undefined) {
+        if (valueA !== valueB) {
+          logger.debug(
+            `Metadata differs for additionalParams.${field}: ${String(valueA)} !== ${String(valueB)}`
+          );
+          return true;
+        }
+      }
+    }
+  }
+
+  // Check complex object fields in additionalParams with efficient reference comparison
+  for (const field of complexObjectFields) {
+    const valueA = metaA?.additionalParams ? (metaA.additionalParams as any)[field] : undefined;
+    const valueB = metaB?.additionalParams ? (metaB.additionalParams as any)[field] : undefined;
+    
+    // Reference comparison only - these objects should be treated as immutable
+    if (valueA !== valueB) {
+      logger.debug(
+        `Metadata differs for additionalParams.${field}: reference changed`
+      );
+      return true;
     }
   }
 

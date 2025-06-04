@@ -123,8 +123,8 @@ pub async fn generic_llm_stream_command(
     });
     
     // Add any additional metadata provided by the caller
-    if let Some(extra_metadata) = args.metadata.clone() {
-        if let (Some(obj), Some(extra_obj)) = (additional_metadata.as_object_mut(), extra_metadata.as_object()) {
+    if let Some(additional_params_input) = args.metadata.clone() {
+        if let (Some(obj), Some(extra_obj)) = (additional_metadata.as_object_mut(), additional_params_input.as_object()) {
             for (key, value) in extra_obj {
                 obj.insert(key.clone(), value.clone());
             }

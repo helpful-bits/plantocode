@@ -20,7 +20,6 @@ export interface TaskSettings {
   streaming: TaskModelSettings;
   unknown: TaskModelSettings;
   // New individual workflow stage types
-  directoryTreeGeneration: TaskModelSettings;
   localFileFiltering: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
   extendedPathCorrection: TaskModelSettings;

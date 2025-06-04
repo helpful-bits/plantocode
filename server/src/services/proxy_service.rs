@@ -93,7 +93,7 @@ impl ProxyService {
         app_settings: &crate::config::settings::AppSettings,
     ) -> Result<Self, AppError> {
         // Initialize OpenRouter client with app settings
-        let openrouter_client = OpenRouterClient::new(app_settings);
+        let openrouter_client = OpenRouterClient::new(app_settings)?;
         
         // Initialize Groq client with app settings
         let groq_client = GroqClient::new(app_settings)?;
@@ -162,18 +162,30 @@ impl ProxyService {
         let input_tokens = response.usage.prompt_tokens;
         let output_tokens = response.usage.completion_tokens;
         
-        // Calculate the final cost - NO FALLBACKS!
+        // Calculate the final cost - prioritize provider cost, fallback to DB pricing
         let final_cost_bd = if let Some(cost_f64) = response.usage.cost {
-            // If OpenRouter provides a cost, use it
+            // If OpenRouter provides a cost, use it (preferred for accuracy)
             bigdecimal::BigDecimal::try_from(cost_f64)
-                .map_err(|_| AppError::Internal("Invalid cost from OpenRouter".to_string()))?
+                .map_err(|e| AppError::Internal(format!("Invalid cost value {} from OpenRouter: {}", cost_f64, e)))?
         } else {
-            // Get model from repository and calculate - HARD ERROR if not found
+            // Fallback to model repository pricing - HARD ERROR if model not configured properly
             let model = self.model_repository.find_by_id(&model_id).await
                 .map_err(|e| AppError::Internal(format!("Failed to lookup model {} in repository: {}", model_id, e)))?
-                .ok_or_else(|| AppError::Configuration(format!("Model {} not found in repository", model_id)))?;
+                .ok_or_else(|| {
+                    error!("CRITICAL: Model '{}' used in request but not found or inactive in database. This indicates a data integrity or configuration issue.", model_id);
+                    AppError::Internal(format!("Model '{}' used in request but not found or inactive in database. This indicates a data integrity or configuration issue.", model_id))
+                })?;
             
-            ApiUsageRepository::calculate_cost(input_tokens, output_tokens, &model.price_input, &model.price_output)?
+            // Validate this is a token-based model for chat completions
+            if model.is_duration_based() {
+                error!("CRITICAL: Model '{}' is misconfigured as duration-based for a token-based chat completion task. Review model configuration in database.", model_id);
+                return Err(AppError::Configuration(format!(
+                    "Model {} is configured for duration-based pricing but used for chat completions. Check model configuration.", 
+                    model_id
+                )));
+            }
+            
+            model.calculate_token_cost(input_tokens, output_tokens)?
         };
         
         // Record API usage in the database
@@ -212,11 +224,24 @@ impl ProxyService {
         // Check if user has access to this model
         self.billing_service.check_service_access(&user_id, &model_id).await?;
         
-        // Pre-load model pricing information for use in streaming closure - NO FALLBACKS!
+        // Pre-load model pricing information for use in streaming closure
         let model = self.model_repository.find_by_id(&model_id).await
             .map_err(|e| AppError::Internal(format!("Failed to lookup model {} in repository: {}", model_id, e)))?
-            .ok_or_else(|| AppError::Configuration(format!("Model {} not found in repository", model_id)))?;
-        let model_pricing = (model.price_input, model.price_output);
+            .ok_or_else(|| {
+                error!("CRITICAL: Model '{}' used in request but not found or inactive in database. This indicates a data integrity or configuration issue.", model_id);
+                AppError::Internal(format!("Model '{}' used in request but not found or inactive in database. This indicates a data integrity or configuration issue.", model_id))
+            })?;
+        
+        // Validate this is a token-based model for chat completions
+        if model.is_duration_based() {
+            error!("CRITICAL: Model '{}' is misconfigured as duration-based for a token-based chat completion task. Review model configuration in database.", model_id);
+            return Err(AppError::Configuration(format!(
+                "Model {} is configured for duration-based pricing but used for chat completions. Check model configuration.", 
+                model_id
+            )));
+        }
+        
+        let model_for_task = model.clone();
         
         // Ensure payload has the determined model ID
         let mut request_payload = payload.clone();
@@ -230,7 +255,7 @@ impl ProxyService {
         let api_usage_repository_clone = self.api_usage_repository.clone();
         let model_id_string = model_id.to_string();
         let user_id_string = user_id.to_string();
-        let model_pricing_for_task = model_pricing;
+        let model_for_async_task = model_for_task;
         
         // Create a new owned boxed stream with static lifetime
         // We'll create the response in a more direct way that ensures 'static lifetime
@@ -256,7 +281,7 @@ impl ProxyService {
                 let usage_tracking_for_task = usage_tracking.clone();
                 let user_id_for_task = user_id;
                 let model_id_for_task = model_id_string.clone();
-                let model_pricing_for_usage = model_pricing_for_task;
+                let model_for_usage = model_for_async_task;
                 
                 tokio::spawn(async move {
                     // After stream completes, record the usage
@@ -271,22 +296,34 @@ impl ProxyService {
                               model_id_for_task, tracker.prompt_tokens, tracker.completion_tokens, tracker.cost);
                         
                         let final_cost_bd = if let Some(cost_f64) = tracker.cost {
-                            // If OpenRouter provides a cost, use it
+                            // If OpenRouter provides a cost, use it (preferred for accuracy)
                             match bigdecimal::BigDecimal::try_from(cost_f64) {
                                 Ok(bd) => bd,
                                 Err(e) => {
-                                    error!("Failed to convert OpenRouter cost to BigDecimal: {}", e);
-                                    bigdecimal::BigDecimal::from(0)
+                                    error!("Failed to convert OpenRouter streaming cost {} to BigDecimal: {}. Using fallback calculation.", cost_f64, e);
+                                    // Fallback to manual calculation if provider cost is invalid
+                                    match model_for_usage.calculate_token_cost(tracker.prompt_tokens, tracker.completion_tokens) {
+                                        Ok(cost) => cost,
+                                        Err(calc_err) => {
+                                            error!("CRITICAL: Both provider cost conversion and fallback calculation failed for model {}: provider_error={}, calc_error={}. Recording zero cost.", 
+                                                   model_id_for_task, e, calc_err);
+                                            bigdecimal::BigDecimal::from(0)
+                                        }
+                                    }
                                 }
                             }
                         } else {
-                            // Use pre-loaded model pricing and calculate using recorded token usage - NO FALLBACKS!
-                            ApiUsageRepository::calculate_cost(tracker.prompt_tokens, tracker.completion_tokens, &model_pricing_for_usage.0, &model_pricing_for_usage.1)
-                                .unwrap_or_else(|e| {
-                                    error!("Failed to calculate cost for streaming model {}: {}", model_id_for_task, e);
+                            // Use pre-loaded model pricing and calculate using recorded token usage
+                            match model_for_usage.calculate_token_cost(tracker.prompt_tokens, tracker.completion_tokens) {
+                                Ok(cost) => cost,
+                                Err(e) => {
+                                    error!("CRITICAL: Failed to calculate cost for streaming model {}: {}. This indicates a system error with validated model data. Tokens: input={}, output={}", 
+                                           model_id_for_task, e, tracker.prompt_tokens, tracker.completion_tokens);
                                     // This should never happen with valid model data from database
+                                    // Log as critical error for monitoring systems
                                     bigdecimal::BigDecimal::from(0)
-                                })
+                                }
+                            }
                         };
                         
                         let entry = ApiUsageEntryDto {
@@ -304,24 +341,17 @@ impl ProxyService {
                             error!("Failed to record API usage: {}", e);
                         }
                     } else {
-                        // If no usage data was found in the stream at all, use minimal values 
-                        // to ensure we have a record of the API call
-                        warn!("No usage data found in stream, recording minimal usage values");
-                        
-                        let minimal_cost = ApiUsageRepository::calculate_cost(1, 1, &model_pricing_for_usage.0, &model_pricing_for_usage.1)
-                            .unwrap_or_else(|e| {
-                                error!("Failed to calculate minimal cost for {}: {}", model_id_for_task, e);
-                                bigdecimal::BigDecimal::from(0)
-                            });
+                        // CRITICAL: No usage data from OpenRouter and no content chunks processed
+                        error!("CRITICAL: No usage data from OpenRouter and no content chunks processed for model {}. Recording zero cost. Request ID: {:?}, User ID: {}", model_id_for_task, request_id, user_id_for_task);
                         
                         let entry = ApiUsageEntryDto {
                             user_id: user_id_for_task,
                             service_name: model_id_for_task.clone(),
-                            tokens_input: 1,
-                            tokens_output: 1,
-                            cost: minimal_cost,
+                            tokens_input: 0,
+                            tokens_output: 0,
+                            cost: bigdecimal::BigDecimal::from(0),
                             request_id: request_id.clone(),
-                            metadata: None,
+                            metadata: Some(json!({"warning": "No usage data from provider and no content chunks processed. Zero cost recorded."})),
                             processing_ms,
                             input_duration_ms: None,
                         };
@@ -439,20 +469,26 @@ impl ProxyService {
         let input_tokens = duration_ms / 1000;
         let output_tokens = (transcribed_text.len() / 4) as i32; // Approximate chars per token for output text
         
-        // Calculate cost using model-specific pricing from database
-        let model = self.model_repository.find_by_id(&model_id).await?
-            .ok_or_else(|| AppError::Internal(format!("Model {} not found", model_id)))?;
+        // Calculate cost using model-specific pricing from database - transcription models must be duration-based
+        let model = self.model_repository.find_by_id(&model_id).await
+            .map_err(|e| AppError::Internal(format!("Failed to lookup transcription model {} in repository: {}", model_id, e)))?
+            .ok_or_else(|| {
+                error!("CRITICAL: Transcription model '{}' used in request but not found or inactive in database. Check model configuration.", model_id);
+                AppError::Internal(format!("Transcription model '{}' used in request but not found or inactive in database. Check model configuration.", model_id))
+            })?;
         
-        let final_cost_bd = if model.is_duration_based() {
-            // Use duration-based pricing with automatic minimum billing enforcement
-            model.calculate_duration_cost(duration_ms)?
-        } else {
-            // NO FALLBACKS! Transcription models MUST be duration-based
+        // Validate transcription model is properly configured for duration-based pricing
+        if !model.is_duration_based() {
+            error!("CRITICAL: Transcription model '{}' is misconfigured as token-based. It must be duration-based. Review model configuration in database.", model_id);
             return Err(AppError::Configuration(format!(
-                "Transcription model {} is not configured for duration-based pricing. All transcription models must use duration-based pricing.", 
+                "Transcription model {} is not configured for duration-based pricing. All transcription models must use duration-based pricing with price_per_hour set.", 
                 model_id
             )));
-        };
+        }
+        
+        // Calculate duration-based cost with automatic minimum billing enforcement
+        let final_cost_bd = model.calculate_duration_cost(duration_ms)
+            .map_err(|e| AppError::Internal(format!("Failed to calculate duration cost for model {}: {}", model_id, e)))?;
         
         // Record API usage
         let entry = ApiUsageEntryDto {
@@ -479,7 +515,7 @@ impl Clone for ProxyService {
     fn clone(&self) -> Self {
         Self {
             openrouter_client: self.openrouter_client.clone(),
-            groq_client: GroqClient::new(&self.app_settings).expect("Failed to clone GroqClient"),
+            groq_client: self.groq_client.clone(),
             billing_service: self.billing_service.clone(),
             api_usage_repository: self.api_usage_repository.clone(),
             model_repository: self.model_repository.clone(),

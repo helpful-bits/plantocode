@@ -82,18 +82,15 @@ export function useGuidanceGeneration({
     // Handle failed job
     else if (job.status === "failed" || job.status === "canceled") {
       const errorMessage = typeof job.errorMessage === 'string' ? job.errorMessage : "Failed to generate guidance.";
-      const errorMessageLower = errorMessage.toLowerCase();
-      const isBillingError = errorMessage && 
-        (errorMessageLower.includes("not available on your current plan") || 
-         errorMessageLower.includes("payment required") || 
-         errorMessageLower.includes("billing error") || 
-         errorMessageLower.includes("upgrade required") ||
-         errorMessageLower.includes("subscription plan"));
-
-      if (isBillingError) {
+      
+      // Extract structured error information for better handling
+      const errorInfo = extractErrorInfo(errorMessage);
+      const userFriendlyMessage = createUserFriendlyErrorMessage(errorInfo, 'guidance generation');
+      
+      if (errorInfo.type === ErrorType.BILLING_ERROR) {
         showNotification({
           title: "Upgrade Required",
-          message: errorMessage || "This feature or model requires a higher subscription plan.",
+          message: userFriendlyMessage,
           type: "warning",
           duration: 10000,
           actionButton: {
@@ -106,7 +103,7 @@ export function useGuidanceGeneration({
       } else {
         showNotification({
           title: "Error Generating Guidance",
-          message: errorMessage,
+          message: userFriendlyMessage,
           type: "error",
         });
       }

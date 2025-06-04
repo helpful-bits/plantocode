@@ -1,4 +1,5 @@
-use log::{debug, info, error};
+use std::path::Path;
+use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
 
@@ -6,7 +7,9 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ExtendedPathFinderPayload};
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{llm_api_utils, prompt_utils, response_parser_utils, fs_context_utils};
 use crate::models::TaskType;
+use crate::utils::directory_tree::get_directory_tree_with_defaults;
 
 pub struct ExtendedPathFinderProcessor;
 
@@ -46,7 +49,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
         job_processor_utils::log_job_start(&payload.background_job_id, "Extended Path Finding");
-        info!("Starting extended path finding for workflow {} with {} initial paths", 
+        info!("Starting extended path finding for workflow {} with {} AI-filtered initial paths", 
             payload.workflow_id, payload.initial_paths.len());
         
         // Check if job has been canceled using standardized utility
@@ -55,14 +58,44 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
+        // Generate directory tree on-demand
+        let directory_tree = match get_directory_tree_with_defaults(&payload.project_directory).await {
+            Ok(tree) => {
+                info!("Generated directory tree on-demand for extended path finder ({} lines)", tree.lines().count());
+                tree
+            }
+            Err(e) => {
+                warn!("Failed to generate directory tree on-demand: {}. Using empty fallback.", e);
+                "No directory structure available".to_string()
+            }
+        };
+        
+        // Read file contents for all initial paths to provide complete context
+        let mut file_contents = std::collections::HashMap::new();
+        for path in &payload.initial_paths {
+            let absolute_path = Path::new(&payload.project_directory).join(path);
+            match tokio::fs::read_to_string(&absolute_path).await {
+                Ok(content) => {
+                    info!("Read file content for AI context: {} ({} bytes)", path, content.len());
+                    file_contents.insert(path.clone(), content);
+                },
+                Err(e) => {
+                    warn!("Failed to read file content for {}: {}", path, e);
+                    // Continue without this file's content - don't fail the whole process
+                }
+            }
+        }
+        
+        info!("Sending {} file contents to AI for better path finding", file_contents.len());
+        
         // Build unified prompt using standardized utility
-        let composed_prompt = job_processor_utils::build_unified_prompt(
+        let composed_prompt = prompt_utils::build_unified_prompt(
             &job,
             &app_handle,
             payload.task_description.clone(),
-            Some(payload.directory_tree.clone()),
-            None,
-            Some(payload.directory_tree.clone()),
+            Some(directory_tree.clone()),
+            Some(file_contents),
+            Some(directory_tree.clone()),
             &settings_repo,
             &model_used,
         ).await?;
@@ -71,13 +104,13 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         info!("System prompt ID: {}", composed_prompt.system_prompt_id);
         
         // Extract prompts using standardized utility
-        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+        let (system_prompt, user_prompt, system_prompt_id) = llm_api_utils::extract_prompts_from_composed(&composed_prompt);
         
         // Add initial paths context to the user prompt
         let initial_paths_text = if payload.initial_paths.is_empty() {
-            "No initial paths were found through local filtering.".to_string()
+            "No initial paths were found through AI relevance assessment.".to_string()
         } else {
-            format!("Initial paths found through local filtering:\n{}", 
+            format!("Initial paths found through AI relevance assessment:\n{}", 
                 payload.initial_paths.iter().map(|p| format!("- {}", p)).collect::<Vec<_>>().join("\n"))
         };
         
@@ -87,10 +120,10 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         );
 
         // Create messages using standardized utility
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &enhanced_user_prompt);
+        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &enhanced_user_prompt);
         
         // Create API client options using standardized utility
-        let api_options = job_processor_utils::create_api_client_options(
+        let api_options = llm_api_utils::create_api_client_options(
             model_used.clone(),
             temperature,
             max_output_tokens,
@@ -106,13 +139,13 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Call LLM using standardized utility
         info!("Calling LLM for extended path finding with model {}", &api_options.model);
         let api_options_clone = api_options.clone();
-        let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await?;
+        let llm_response = llm_api_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await?;
         
         // Extract the response content
         let response_content = llm_response.choices[0].message.content.clone();
         
         // Parse paths from the LLM response using standardized utility
-        let extended_paths = match job_processor_utils::parse_paths_from_text_response(&response_content, &payload.project_directory) {
+        let extended_paths = match response_parser_utils::parse_paths_from_text_response(&response_content, &payload.project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse paths from LLM response: {}", e);
@@ -125,16 +158,25 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         };
         
-        // Combine initial paths with extended paths, removing duplicates
-        let mut all_paths = payload.initial_paths.clone();
-        for path in extended_paths {
-            if !all_paths.contains(&path) {
-                all_paths.push(path);
+        // Validate extended paths found by LLM
+        let (validated_extended_paths, unverified_extended_paths) = fs_context_utils::validate_paths_against_filesystem(
+            &extended_paths, 
+            &payload.project_directory
+        ).await;
+        
+        info!("Extended paths validation: {} valid, {} invalid paths", 
+            validated_extended_paths.len(), unverified_extended_paths.len());
+        
+        // Combine initial paths (already validated and filtered by AI relevance assessment) with validated extended paths
+        let mut combined_validated_paths = payload.initial_paths.clone();
+        for path in &validated_extended_paths {
+            if !combined_validated_paths.contains(path) {
+                combined_validated_paths.push(path.clone());
             }
         }
         
-        info!("Extended path finding completed for workflow {}: {} initial + {} new = {} total paths", 
-            payload.workflow_id, payload.initial_paths.len(), all_paths.len() - payload.initial_paths.len(), all_paths.len());
+        info!("Extended path finding completed for workflow {}: {} AI-filtered initial + {} validated = {} total verified paths", 
+            payload.workflow_id, payload.initial_paths.len(), validated_extended_paths.len(), combined_validated_paths.len());
         
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -144,27 +186,42 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         
         // Store results in job metadata (supplementary info only)
         let result_metadata = json!({
-            "initialPaths": payload.initial_paths,
+            "initialPaths": payload.initial_paths.len(),
+            "llmRawPaths": extended_paths.len(),
+            "validatedLlmPaths": validated_extended_paths.len(),
+            "unverifiedLlmPaths": unverified_extended_paths.len(),
+            "finalVerifiedPaths": combined_validated_paths.len(),
+            "initialPathsList": payload.initial_paths,
+            "extendedPaths": extended_paths,
+            "validatedExtendedPaths": validated_extended_paths,
+            "unverifiedExtendedPaths": unverified_extended_paths,
             "llmResponse": response_content,
             "workflowId": payload.workflow_id,
             "taskDescription": payload.task_description,
             "projectDirectory": payload.project_directory,
             "modelUsed": api_options_clone.model,
-            "summary": format!("Extended path finding: {} initial + {} new = {} total paths", 
+            "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
                 payload.initial_paths.len(), 
-                all_paths.len() - payload.initial_paths.len(), 
-                all_paths.len())
+                validated_extended_paths.len(),
+                combined_validated_paths.len())
         });
         
-        // Serialize all_paths (combined initial and LLM-found paths) into a JSON string for typed output
-        let final_response_content = serde_json::to_string(&all_paths)
-            .map_err(|e| AppError::JobError(format!("Failed to serialize extended paths: {}", e)))?;
+        // Create standardized JSON response with verifiedPaths and unverifiedPaths structure
+        let response_json_content = serde_json::json!({
+            "verifiedPaths": combined_validated_paths,
+            "unverifiedPaths": unverified_extended_paths,
+            "count": combined_validated_paths.len(),
+            "summary": format!("Extended path finding: {} AI-filtered initial + {} validated = {} total verified paths", 
+                payload.initial_paths.len(), 
+                validated_extended_paths.len(),
+                combined_validated_paths.len())
+        }).to_string();
         
         // Finalize job success using standardized utility
         job_processor_utils::finalize_job_success(
             &payload.background_job_id,
             &repo,
-            &final_response_content,
+            &response_json_content,
             llm_response.usage,
             &api_options_clone.model,
             &system_prompt_id,
@@ -178,7 +235,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Return success result
         Ok(JobProcessResult::success(
             payload.background_job_id.clone(), 
-            format!("Extended path finding completed, found {} total relevant files", all_paths.len())
+            response_json_content
         ))
     }
 }

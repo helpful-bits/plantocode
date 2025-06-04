@@ -84,7 +84,12 @@ pub async fn generate_directory_tree(project_dir_path: &Path, options: Directory
             let files = tokio::task::spawn_blocking(move || {
                 git_utils::get_all_non_ignored_files(&project_dir_path_clone_for_listing)
             }).await.map_err(|e| crate::error::AppError::JobError(format!("Failed to spawn blocking task for git: {}", e)))??;
-            all_paths.extend(files.0);
+            
+            // Convert relative paths from git to absolute paths
+            for relative_path in files.0 {
+                let absolute_path = project_dir_path.join(&relative_path);
+                all_paths.push(absolute_path);
+            }
         }
     } else {
         // Use standard file system traversal
@@ -147,10 +152,8 @@ fn format_directory_tree(paths: &[PathBuf]) -> String {
         // Add tree branch
         result.push_str("├── ");
         
-        // Add file or directory name
-        if let Some(file_name) = path.file_name() {
-            result.push_str(&file_name.to_string_lossy());
-        }
+        // Add full relative path
+        result.push_str(&path.to_string_lossy());
         
         result.push('\n');
     }
@@ -253,4 +256,58 @@ async fn list_directory_recursive(
     }
     
     Ok(result)
+}
+
+/// On-demand directory tree generation utility for processors
+/// This function provides a simple interface for processors to generate directory trees
+/// without requiring a separate workflow stage
+pub async fn get_directory_tree_for_processor(
+    project_directory: &str,
+    excluded_paths: Option<&[String]>
+) -> AppResult<String> {
+    debug!("Generating directory tree on-demand for: {}", project_directory);
+    
+    let project_dir_path = Path::new(project_directory);
+    
+    // Create default options with sensible defaults for most processors
+    let tree_options = DirectoryTreeOptions {
+        max_depth: None,
+        include_ignored: false,
+        respect_gitignore: true,
+        exclude_patterns: excluded_paths.map(|paths| paths.to_vec()),
+        include_files: true,
+        include_dirs: true,
+        include_hidden: false,
+    };
+    
+    // Generate directory tree
+    let directory_tree = generate_directory_tree(project_dir_path, tree_options).await?;
+    
+    debug!("Generated on-demand directory tree with {} lines", 
+           directory_tree.lines().count());
+    
+    Ok(directory_tree)
+}
+
+/// Convenience function for processors that need directory tree with default excluded paths
+/// Uses common excluded paths for development projects
+pub async fn get_directory_tree_with_defaults(project_directory: &str) -> AppResult<String> {
+    let default_excluded = vec![
+        ".git".to_string(),
+        "node_modules".to_string(),
+        "target".to_string(),
+        "dist".to_string(),
+        "build".to_string(),
+        ".vscode".to_string(),
+        ".idea".to_string(),
+        "__pycache__".to_string(),
+        ".pytest_cache".to_string(),
+        ".mypy_cache".to_string(),
+        "venv".to_string(),
+        ".venv".to_string(),
+        "env".to_string(),
+        ".env".to_string(),
+    ];
+    
+    get_directory_tree_for_processor(project_directory, Some(&default_excluded)).await
 }

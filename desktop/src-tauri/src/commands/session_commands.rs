@@ -76,12 +76,8 @@ pub async fn get_sessions_for_project_command(app_handle: AppHandle, project_dir
     // Calculate the project hash
     let project_hash = hash_string(&project_directory);
 
-    // Get sessions with the given project hash
-    let all_sessions = repo.get_all_sessions().await?;
-    let project_sessions = all_sessions
-        .into_iter()
-        .filter(|s| s.project_hash == project_hash)
-        .collect();
+    // Get sessions with the given project hash, already ordered by updated_at DESC
+    let project_sessions = repo.get_sessions_by_project_hash(&project_hash).await?;
 
     Ok(project_sessions)
 }
@@ -182,11 +178,7 @@ pub async fn clear_all_project_sessions_command(app_handle: AppHandle, project_d
     let project_hash = hash_string(&project_directory);
 
     // Get all sessions for this project
-    let all_sessions = session_repo.get_all_sessions().await?;
-    let project_sessions: Vec<Session> = all_sessions
-        .into_iter()
-        .filter(|s| s.project_hash == project_hash)
-        .collect();
+    let project_sessions = session_repo.get_sessions_by_project_hash(&project_hash).await?;
 
     // Cancel all jobs and delete all sessions for this project
     for session in project_sessions {

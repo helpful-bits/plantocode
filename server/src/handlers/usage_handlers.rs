@@ -13,9 +13,9 @@ use crate::models::runtime_config::AppState;
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSummaryResponse {
-    current_spending: f64,
-    monthly_allowance: f64,
-    hard_limit: f64,
+    current_spending: String,
+    monthly_allowance: String,
+    hard_limit: String,
     cycle_start_date: Option<DateTime<Utc>>,
     cycle_end_date: Option<DateTime<Utc>>,
     usage_percentage: f64,
@@ -33,10 +33,10 @@ pub async fn get_usage_summary_handler(
 ) -> impl Responder {
     match cost_billing_service.get_current_spending_status(&user_id.0).await {
         Ok(spending_status) => {
-            // Convert BigDecimal to f64
-            let current_spending = spending_status.current_spending.to_f64().unwrap_or(0.0);
-            let monthly_allowance = spending_status.included_allowance.to_f64().unwrap_or(0.0);
-            let hard_limit = spending_status.hard_limit.to_f64().unwrap_or(0.0);
+            // Convert BigDecimal to String
+            let current_spending = spending_status.current_spending.to_string();
+            let monthly_allowance = spending_status.included_allowance.to_string();
+            let hard_limit = spending_status.hard_limit.to_string();
             
             // Use correct billing period dates from spending status
             let cycle_start_date = spending_status.billing_period_start;

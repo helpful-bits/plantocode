@@ -3,36 +3,36 @@
   "description": "Finds relevant files based on a task description.",
   "stages": [
     {
-      "stage_name": "DirectoryTreeGeneration",
-      "task_type": "directoryTreeGeneration",
+      "stage_name": "RegexPatternGeneration", 
+      "task_type": "regex_pattern_generation",
       "processor_name": null,
       "dependencies": [],
       "allow_parallel_execution": false
     },
     {
-      "stage_name": "RegexPatternGeneration", 
-      "task_type": "regexPatternGeneration",
-      "processor_name": null,
-      "dependencies": ["DirectoryTreeGeneration"],
-      "allow_parallel_execution": false
-    },
-    {
       "stage_name": "LocalFileFiltering",
-      "task_type": "localFileFiltering",
+      "task_type": "local_file_filtering",
       "processor_name": null,
       "dependencies": ["RegexPatternGeneration"],
       "allow_parallel_execution": false
     },
     {
-      "stage_name": "ExtendedPathFinder",
-      "task_type": "extendedPathFinder",
+      "stage_name": "FileRelevanceAssessment",
+      "task_type": "file_relevance_assessment",
       "processor_name": null,
       "dependencies": ["LocalFileFiltering"],
       "allow_parallel_execution": false
     },
     {
+      "stage_name": "ExtendedPathFinder",
+      "task_type": "extended_path_finder",
+      "processor_name": null,
+      "dependencies": ["FileRelevanceAssessment"],
+      "allow_parallel_execution": false
+    },
+    {
       "stage_name": "ExtendedPathCorrection",
-      "task_type": "extendedPathCorrection",
+      "task_type": "extended_path_correction",
       "processor_name": null,
       "dependencies": ["ExtendedPathFinder"],
       "allow_parallel_execution": false

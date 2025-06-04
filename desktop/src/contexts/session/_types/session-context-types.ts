@@ -14,6 +14,16 @@ export interface SessionStateContextType {
   activeSessionId: string | null;
   // Session error
   sessionError: Error | null;
+  // Memoized session field accessors to reduce re-renders
+  sessionBasicFields: {
+    id?: string;
+    name?: string;
+    projectDirectory?: string;
+  };
+  sessionFileFields: {
+    includedFiles?: string[];
+    forceExcludedFiles?: string[];
+  };
 }
 
 // Define the actions context type (functions that modify session state)

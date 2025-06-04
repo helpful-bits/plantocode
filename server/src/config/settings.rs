@@ -13,6 +13,7 @@ pub struct AppSettings {
     pub rate_limit: RateLimitConfig,
     pub subscription: SubscriptionConfig,
     pub stripe: StripeConfig,
+    pub auth_stores: AuthStoreConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -56,6 +57,10 @@ pub struct AuthConfig {
 pub struct RateLimitConfig {
     pub window_ms: u64,
     pub max_requests: u64,
+    pub use_redis: bool,
+    pub redis_url: Option<String>,
+    pub redis_key_prefix: Option<String>,
+    pub cleanup_interval_secs: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -67,9 +72,13 @@ pub struct SubscriptionConfig {
 pub struct StripeConfig {
     pub secret_key: String,
     pub webhook_secret: String,
-    pub price_id_free: Option<String>,
-    pub price_id_pro: Option<String>,
-    pub price_id_enterprise: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AuthStoreConfig {
+    pub polling_store_expiry_mins: i64,
+    pub auth0_state_store_expiry_mins: i64,
+    pub cleanup_interval_secs: u64,
 }
 
 impl AppSettings {
@@ -140,6 +149,19 @@ impl AppSettings {
             .parse::<u64>()
             .map_err(|_| AppError::Configuration("RATE_LIMIT_MAX_REQUESTS must be a valid number".to_string()))?;
         
+        let rate_limit_use_redis = env::var("RATE_LIMIT_USE_REDIS")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .map_err(|_| AppError::Configuration("RATE_LIMIT_USE_REDIS must be true or false".to_string()))?;
+        
+        let rate_limit_redis_url = env::var("RATE_LIMIT_REDIS_URL").ok();
+        
+        let rate_limit_redis_key_prefix = env::var("RATE_LIMIT_REDIS_KEY_PREFIX").ok();
+        
+        let rate_limit_cleanup_interval_secs = env::var("RATE_LIMIT_CLEANUP_INTERVAL_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        
         // Subscription defaults
         let default_trial_days = env::var("DEFAULT_TRIAL_DAYS")
             .unwrap_or_else(|_| "7".to_string())
@@ -153,9 +175,22 @@ impl AppSettings {
         let stripe_webhook_secret = env::var("STRIPE_WEBHOOK_SECRET")
             .map_err(|_| AppError::Configuration("STRIPE_WEBHOOK_SECRET must be set".to_string()))?;
             
-        let stripe_price_id_free = env::var("STRIPE_PRICE_ID_FREE").ok();
-        let stripe_price_id_pro = env::var("STRIPE_PRICE_ID_PRO").ok();
-        let stripe_price_id_enterprise = env::var("STRIPE_PRICE_ID_ENTERPRISE").ok();
+        
+        // Auth Store configuration
+        let polling_store_expiry_mins = env::var("POLLING_STORE_EXPIRY_MINS")
+            .unwrap_or_else(|_| "30".to_string())
+            .parse::<i64>()
+            .map_err(|_| AppError::Configuration("POLLING_STORE_EXPIRY_MINS must be a valid number".to_string()))?;
+            
+        let auth0_state_store_expiry_mins = env::var("AUTH0_STATE_STORE_EXPIRY_MINS")
+            .unwrap_or_else(|_| "30".to_string())
+            .parse::<i64>()
+            .map_err(|_| AppError::Configuration("AUTH0_STATE_STORE_EXPIRY_MINS must be a valid number".to_string()))?;
+            
+        let auth_store_cleanup_interval_secs = env::var("AUTH_STORE_CLEANUP_INTERVAL_SECS")
+            .unwrap_or_else(|_| "300".to_string())
+            .parse::<u64>()
+            .map_err(|_| AppError::Configuration("AUTH_STORE_CLEANUP_INTERVAL_SECS must be a valid number".to_string()))?;
         
         Ok(Self {
             app: AppConfig {
@@ -188,6 +223,10 @@ impl AppSettings {
             rate_limit: RateLimitConfig {
                 window_ms: rate_limit_window_ms,
                 max_requests: rate_limit_max_requests,
+                use_redis: rate_limit_use_redis,
+                redis_url: rate_limit_redis_url,
+                redis_key_prefix: rate_limit_redis_key_prefix,
+                cleanup_interval_secs: rate_limit_cleanup_interval_secs,
             },
             subscription: SubscriptionConfig {
                 default_trial_days,
@@ -195,9 +234,11 @@ impl AppSettings {
             stripe: StripeConfig {
                 secret_key: stripe_secret_key,
                 webhook_secret: stripe_webhook_secret,
-                price_id_free: stripe_price_id_free,
-                price_id_pro: stripe_price_id_pro,
-                price_id_enterprise: stripe_price_id_enterprise,
+            },
+            auth_stores: AuthStoreConfig {
+                polling_store_expiry_mins,
+                auth0_state_store_expiry_mins,
+                cleanup_interval_secs: auth_store_cleanup_interval_secs,
             },
         })
     }

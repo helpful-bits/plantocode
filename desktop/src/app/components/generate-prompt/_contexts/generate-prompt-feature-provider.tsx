@@ -25,7 +25,6 @@ import { CorePromptContextProvider } from "./core-prompt-context";
 import { DisplayContextProvider } from "./display-context";
 import { PlanContextProvider } from "./plan-context";
 import { TaskContextProvider } from "./task-context";
-import { FileManagementProvider } from "./file-management-provider";
 
 // Import context types
 
@@ -288,9 +287,7 @@ export function GeneratePromptFeatureProvider({
       <TaskContextProvider value={taskContextValue}>
         <DisplayContextProvider value={displayContextValue}>
           <PlanContextProvider value={planContextValue}>
-            <FileManagementProvider>
-              {children}
-            </FileManagementProvider>
+            {children}
           </PlanContextProvider>
         </DisplayContextProvider>
       </TaskContextProvider>

@@ -134,19 +134,20 @@ export function useOrchestratedBackgroundJobsState({
           JOB_STATUSES.ACTIVE.includes(job.status)
         );
         
-        // Update jobs state first, then active jobs in callback to ensure consistency
+        // Ensure jobs and activeJobs are correctly updated atomically
         setJobs((prevJobs) => {
           if (!areJobArraysEqual(prevJobs, jobsData)) {
-            // Update active jobs in the same cycle for consistency
-            setActiveJobs((prevActiveJobs) => {
-              if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
-                return activeJobsList;
-              }
-              return prevActiveJobs;
-            });
             return jobsData;
           }
           return prevJobs;
+        });
+
+        // Update active jobs separately but consistently
+        setActiveJobs((prevActiveJobs) => {
+          if (!areJobArraysEqual(prevActiveJobs, activeJobsList)) {
+            return activeJobsList;
+          }
+          return prevActiveJobs;
         });
       }
     } finally {
@@ -182,11 +183,17 @@ export function useOrchestratedBackgroundJobsState({
         // Refresh jobs to get updated state
         await refreshJobs();
       } catch (err) {
-        console.error("[BackgroundJobs] Error canceling job:", err);
-
+        await logError(err, "Background Jobs - Cancel Job Failed", { jobId });
+        
         // Refresh to get current state after error
         await refreshJobs();
-        throw err;
+        
+        // Create user-friendly error message
+        const userMessage = getErrorMessage(err).includes("not found") 
+          ? "Job not found or already completed"
+          : "Failed to cancel job. Please try again.";
+        
+        throw new Error(userMessage);
       }
     },
     [refreshJobs]
@@ -206,11 +213,17 @@ export function useOrchestratedBackgroundJobsState({
         // Refresh jobs to get updated state
         await refreshJobs();
       } catch (err) {
-        console.error("[BackgroundJobs] Error deleting job:", err);
-
+        await logError(err, "Background Jobs - Delete Job Failed", { jobId });
+        
         // Refresh to get current state after error
         await refreshJobs();
-        throw err;
+        
+        // Create user-friendly error message
+        const userMessage = getErrorMessage(err).includes("not found")
+          ? "Job not found or already deleted"
+          : "Failed to delete job. Please try again.";
+        
+        throw new Error(userMessage);
       }
     },
     [refreshJobs]
@@ -226,11 +239,14 @@ export function useOrchestratedBackgroundJobsState({
         // Refresh jobs to get updated state
         await refreshJobs();
       } catch (err) {
-        console.error("[BackgroundJobs] Error clearing job history:", err);
-
+        await logError(err, "Background Jobs - Clear History Failed", { daysToKeep });
+        
         // Refresh to get current state after error
         await refreshJobs();
-        throw err;
+        
+        // Create user-friendly error message
+        const userMessage = "Failed to clear job history. Please try again.";
+        throw new Error(userMessage);
       }
     },
     [refreshJobs]
@@ -317,6 +333,12 @@ export function useOrchestratedBackgroundJobsState({
 
               // Use optimized update function
               updateJobInState(updatedJob);
+
+              // Special handling for workflow jobs: If this job belongs to a workflow,
+              // the workflow state managed by useWorkflowTracker should be refreshed
+              // However, we rely on useWorkflowTracker's polling mechanism for workflow updates
+              // since it has more complete workflow context. The individual job updates here
+              // are sufficient for non-workflow-specific job display needs.
             } catch (err) {
               console.error(
                 `[BackgroundJobs] Error fetching updated job ${jobId}:`,

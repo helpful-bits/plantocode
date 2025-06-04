@@ -5,7 +5,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use log::{debug, error, info, trace};
 use uuid::Uuid;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::OnceLock;
 
 // Default JWT duration in days
 pub const DEFAULT_JWT_DURATION_DAYS: i64 = 30;
@@ -14,8 +14,8 @@ pub const DEFAULT_JWT_DURATION_DAYS: i64 = 30;
 pub const JWT_ISSUER: &str = "vibe-manager";
 
 // Global static holders for JWT keys
-static JWT_ENCODING_KEY: OnceLock<Arc<Mutex<Option<EncodingKey>>>> = OnceLock::new();
-static JWT_DECODING_KEY: OnceLock<Arc<Mutex<Option<DecodingKey>>>> = OnceLock::new();
+static JWT_ENCODING_KEY: OnceLock<EncodingKey> = OnceLock::new();
+static JWT_DECODING_KEY: OnceLock<DecodingKey> = OnceLock::new();
 
 /// Initialize the JWT keys from the secret
 /// This should be called once at application startup
@@ -25,60 +25,32 @@ pub fn init_jwt_keys(jwt_secret_str: &str) -> Result<(), AppError> {
     // Use the provided JWT secret
     let jwt_secret = jwt_secret_str.as_bytes();
     
-    // Initialize global static variables if not already done
-    JWT_ENCODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
-    JWT_DECODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
-    
     // Set the encoding key
     let encoding_key = EncodingKey::from_secret(jwt_secret);
-    if let Some(key_holder) = JWT_ENCODING_KEY.get() {
-        let mut key = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT encoding key lock poisoned during init: {}", e)))?;
-        *key = Some(encoding_key);
-    }
-    
+    JWT_ENCODING_KEY.set(encoding_key)
+        .map_err(|_| AppError::Internal("JWT_ENCODING_KEY was already initialized".to_string()))?;
+
     // Set the decoding key
     let decoding_key = DecodingKey::from_secret(jwt_secret);
-    if let Some(key_holder) = JWT_DECODING_KEY.get() {
-        let mut key = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT decoding key lock poisoned during init: {}", e)))?;
-        *key = Some(decoding_key);
-    }
+    JWT_DECODING_KEY.set(decoding_key)
+        .map_err(|_| AppError::Internal("JWT_DECODING_KEY was already initialized".to_string()))?;
     
     info!("JWT keys initialized successfully");
     Ok(())
 }
 
-/// Get the JWT encoding key, initializing if necessary
+/// Get the JWT encoding key
 fn get_encoding_key() -> Result<EncodingKey, AppError> {
-    // Get the key holder, initializing if needed
-    let key_holder = JWT_ENCODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
-    
-    // Get the key from the holder
-    let key_guard = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT encoding key lock poisoned: {}", e)))?;
-    
-    // Clone the key if it exists
-    if let Some(key) = &*key_guard {
-        // Clone the key (this will make a copy)
-        Ok(key.clone())
-    } else {
-        Err(AppError::Configuration("JWT encoding key not initialized".to_string()))
-    }
+    JWT_ENCODING_KEY.get()
+        .cloned() // EncodingKey is Clone
+        .ok_or_else(|| AppError::Configuration("JWT encoding key not initialized.".to_string()))
 }
 
-/// Get the JWT decoding key, initializing if necessary
+/// Get the JWT decoding key
 fn get_decoding_key() -> Result<DecodingKey, AppError> {
-    // Get the key holder, initializing if needed
-    let key_holder = JWT_DECODING_KEY.get_or_init(|| Arc::new(Mutex::new(None)));
-    
-    // Get the key from the holder
-    let key_guard = key_holder.lock().map_err(|e| AppError::LockPoisoned(format!("JWT decoding key lock poisoned: {}", e)))?;
-    
-    // Clone the key if it exists
-    if let Some(key) = &*key_guard {
-        // Extract a reference to the key
-        Ok(key.clone())
-    } else {
-        Err(AppError::Configuration("JWT decoding key not initialized".to_string()))
-    }
+    JWT_DECODING_KEY.get()
+        .cloned() // DecodingKey is Clone
+        .ok_or_else(|| AppError::Configuration("JWT decoding key not initialized.".to_string()))
 }
 
 /// Generate a JWT token for a user
@@ -89,7 +61,7 @@ pub fn generate_token(user_id: Uuid, email: &str, token_duration_days: i64) -> R
     let iat = Utc::now();
     let exp = iat
         .checked_add_signed(Duration::try_days(duration_days).unwrap_or_else(|| Duration::days(DEFAULT_JWT_DURATION_DAYS)))
-        .expect("Failed to calculate expiration time");
+        .ok_or_else(|| AppError::Internal("Failed to calculate JWT expiration time".to_string()))?;
 
     // Create claims
     let claims = Claims {
@@ -139,7 +111,11 @@ pub fn verify_token(token: &str) -> Result<Claims, AppError> {
                 jsonwebtoken::errors::ErrorKind::InvalidToken => AppError::Auth("Invalid token format".to_string()),
                 jsonwebtoken::errors::ErrorKind::InvalidSignature => AppError::Auth("Invalid token signature".to_string()),
                 jsonwebtoken::errors::ErrorKind::InvalidIssuer => AppError::Auth("Invalid token issuer".to_string()),
-                _ => AppError::Auth("Token validation failed".to_string()),
+                jsonwebtoken::errors::ErrorKind::InvalidAudience => AppError::Auth("Invalid token audience".to_string()),
+                jsonwebtoken::errors::ErrorKind::InvalidSubject => AppError::Auth("Invalid token subject".to_string()),
+                jsonwebtoken::errors::ErrorKind::ImmatureSignature => AppError::Auth("Token not yet valid (immature)".to_string()),
+                jsonwebtoken::errors::ErrorKind::MissingRequiredClaim(claim) => AppError::Auth(format!("Token missing required claim: {}", claim)),
+                _ => AppError::Auth(format!("Token validation failed: {:?}", err.kind())), // Generic auth error for other cases
             }
         })?;
     

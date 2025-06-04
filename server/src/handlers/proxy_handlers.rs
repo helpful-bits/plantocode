@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, post, http::header, HttpRequest};
+use actix_web::{web, HttpResponse, http::header, HttpRequest};
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::services::proxy_service::ProxyService;
@@ -18,7 +18,6 @@ pub struct ProxyRequest {
 }
 
 /// OpenRouter Chat Completions Proxy - handles both streaming and non-streaming
-#[post("/openrouter/chat/completions")]
 pub async fn openrouter_chat_completions_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,
@@ -83,7 +82,6 @@ pub async fn openrouter_chat_completions_proxy(
 }
 
 /// Audio Transcription API proxy (Groq)
-#[post("/audio/transcriptions")]
 pub async fn audio_transcriptions_proxy(
     user_id: UserId,
     proxy_service: web::Data<ProxyService>,

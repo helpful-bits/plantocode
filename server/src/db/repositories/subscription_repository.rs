@@ -46,6 +46,36 @@ impl SubscriptionRepository {
         trial_ends_at: Option<DateTime<Utc>>,
         current_period_ends_at: DateTime<Utc>,
     ) -> Result<Uuid, AppError> {
+        let mut tx = self.db_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        let result = self.create_with_executor(
+            user_id,
+            plan_id,
+            status,
+            stripe_customer_id,
+            stripe_subscription_id,
+            trial_ends_at,
+            current_period_ends_at,
+            &mut tx,
+        ).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(result)
+    }
+
+    // Create a new subscription with custom executor
+    pub async fn create_with_executor(
+        &self,
+        user_id: &Uuid,
+        plan_id: &str,
+        status: &str,
+        stripe_customer_id: Option<&str>,
+        stripe_subscription_id: Option<&str>,
+        trial_ends_at: Option<DateTime<Utc>>,
+        current_period_ends_at: DateTime<Utc>,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Uuid, AppError>
+    {
         let id = Uuid::new_v4();
         
         query!(
@@ -65,7 +95,7 @@ impl SubscriptionRepository {
             trial_ends_at,
             current_period_ends_at,
         )
-        .execute(&self.db_pool)
+        .execute(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to create subscription: {}", e)))?;
 
@@ -97,6 +127,24 @@ impl SubscriptionRepository {
 
     // Get subscription by user ID
     pub async fn get_by_user_id(&self, user_id: &Uuid) -> Result<Option<Subscription>, AppError> {
+        let mut tx = self.db_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        let result = self.get_by_user_id_with_executor(user_id, &mut tx).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(result)
+    }
+
+    // Get subscription by user ID with custom executor
+    pub async fn get_by_user_id_with_executor(&self, user_id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Option<Subscription>, AppError>
+    {
+        // Set user context for RLS within this transaction
+        sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+            .bind(user_id.to_string())
+            .execute(&mut **executor)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to set user context for RLS: {}", e)))?;
+
         let record = query_as!(
             Subscription,
             r#"
@@ -113,7 +161,7 @@ impl SubscriptionRepository {
             "#,
             user_id
         )
-        .fetch_optional(&self.db_pool)
+        .fetch_optional(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to fetch user subscription: {}", e)))?;
 
@@ -122,6 +170,17 @@ impl SubscriptionRepository {
 
     // Update an existing subscription
     pub async fn update(&self, subscription: &Subscription) -> Result<(), AppError> {
+        let mut tx = self.db_pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        self.update_with_executor(subscription, &mut tx).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(())
+    }
+
+    // Update an existing subscription with custom executor
+    pub async fn update_with_executor(&self, subscription: &Subscription, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError>
+    {
         query!(
             r#"
             UPDATE subscriptions 
@@ -142,7 +201,7 @@ impl SubscriptionRepository {
             subscription.current_period_ends_at,
             subscription.id
         )
-        .execute(&self.db_pool)
+        .execute(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to update subscription: {}", e)))?;
 

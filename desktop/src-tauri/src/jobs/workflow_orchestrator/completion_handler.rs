@@ -1,0 +1,95 @@
+use std::sync::Arc;
+use log::{debug, error, info, warn};
+use crate::error::{AppError, AppResult};
+use crate::jobs::workflow_orchestrator::data_extraction;
+use crate::jobs::workflow_types::{WorkflowState, WorkflowStage, WorkflowDefinition};
+use crate::models::TaskType;
+
+/// Handle successful completion of a stage
+pub(super) async fn handle_stage_completion_internal(
+    workflows: &tokio::sync::Mutex<std::collections::HashMap<String, WorkflowState>>,
+    orchestrator: &super::WorkflowOrchestrator,
+    workflow_id: &str,
+    job_id: &str,
+    store_stage_data_fn: impl Fn(&str, serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::error::AppResult<()>> + Send>>
+) -> AppResult<()> {
+    info!("Handling stage completion for job: {}", job_id);
+
+    // Get the workflow definition and current state
+    let (workflow_definition, workflow_state_for_dependency_check) = {
+        let workflows_guard = workflows.lock().await;
+        let workflow_state = workflows_guard.get(workflow_id)
+            .ok_or_else(|| AppError::JobError(format!("Workflow not found: {}", workflow_id)))?;
+
+        // Find the workflow definition being used
+        let workflow_definitions = orchestrator.get_workflow_definitions().await
+            .map_err(|e| AppError::JobError(format!("Failed to get workflow definitions: {}", e)))?;
+        let workflow_definition = workflow_definitions.get(&workflow_state.workflow_definition_name)
+            .cloned() // Clone the Arc<WorkflowDefinition>
+            .ok_or_else(|| AppError::JobError(format!("Workflow definition '{}' not found for workflow {}", workflow_state.workflow_definition_name, workflow_id)))?;
+
+        (workflow_definition, workflow_state.clone())
+    };
+
+    // Extract and store stage data from the completed job
+    // This now includes graceful fallbacks for missing data within the extraction methods
+    if let Err(e) = data_extraction::extract_and_store_stage_data_internal(
+        &orchestrator.app_handle,
+        job_id,
+        &workflow_state_for_dependency_check,
+        store_stage_data_fn
+    ).await {
+        warn!("Failed to extract stage data from completed job {}: {} - workflow will continue but may have partial data", job_id, e);
+        // Log but continue workflow execution - missing data is handled gracefully by subsequent stages
+        // The StageDataExtractor methods now return Ok with empty values instead of Err for recoverable scenarios
+    } else {
+        debug!("Successfully extracted and stored stage data from job {}", job_id);
+    }
+
+    // Re-fetch workflow state after data extraction to get updated intermediate_data
+    let workflow_state_for_payload_building = {
+        let workflows_guard = workflows.lock().await;
+        workflows_guard.get(workflow_id)
+            .ok_or_else(|| AppError::JobError(format!("Workflow not found after data extraction: {}", workflow_id)))?
+            .clone()
+    };
+    // Lock is released here
+
+    // Find next stages that can be executed based on the workflow definition
+    let next_stages = super::stage_scheduler::find_next_abstract_stages_to_execute_internal(&workflow_state_for_dependency_check, &workflow_definition).await;
+
+    if next_stages.is_empty() {
+        // Check if all stages are completed
+        if super::workflow_utils::is_workflow_complete(&workflow_state_for_dependency_check, &workflow_definition) {
+            orchestrator.mark_workflow_completed(workflow_id).await?;
+            info!("Workflow {} completed successfully", workflow_id);
+        } else {
+            debug!("No stages ready to execute for workflow: {}", workflow_id);
+        }
+    } else {
+        // Check concurrency limits before starting new stages
+        let max_concurrent = super::stage_scheduler::get_max_concurrent_stages_internal().await;
+        let currently_running = super::stage_scheduler::count_running_jobs_in_workflow_internal(
+            workflows,
+            workflow_id
+        ).await;
+        let available_slots = max_concurrent.saturating_sub(currently_running);
+
+        if available_slots == 0 {
+            debug!("Cannot start more stages for workflow {} - concurrency limit reached ({} running)", workflow_id, currently_running);
+            return Ok(());
+        }
+
+        // Start eligible stages up to the concurrency limit
+        let stages_to_start = next_stages.into_iter().take(available_slots);
+        for stage_def in stages_to_start {
+            info!("Starting next stage: {} for workflow: {}", stage_def.stage_name, workflow_id);
+            if let Err(e) = orchestrator.create_abstract_stage_job(&workflow_state_for_payload_building, stage_def, &workflow_definition).await {
+                error!("Failed to create next stage job for {}: {}", stage_def.stage_name, e);
+            }
+        }
+    }
+
+    Ok(())
+}
+

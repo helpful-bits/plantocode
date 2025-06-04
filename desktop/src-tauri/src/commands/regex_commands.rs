@@ -92,13 +92,13 @@ pub async fn generate_regex_patterns_command(
     };
     
     // Create additional metadata for the job
-    let mut extra_metadata = serde_json::json!({
+    let mut additional_params = serde_json::json!({
         "task_description": args.task_description,
     });
     
     // Add optional fields to metadata
     if let Some(directory_tree) = &args.directory_tree {
-        extra_metadata["directory_tree"] = serde_json::to_value(directory_tree)
+        additional_params["directory_tree"] = serde_json::to_value(directory_tree)
             .map_err(|e| AppError::SerdeError(e.to_string()))?;
     }
     
@@ -115,7 +115,7 @@ pub async fn generate_regex_patterns_command(
         2, // Priority
         None, // No workflow_id
         None, // No workflow_stage
-        Some(extra_metadata),
+        Some(additional_params),
         &app_handle,
     ).await?;
     

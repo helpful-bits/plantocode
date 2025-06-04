@@ -126,17 +126,17 @@ pub async fn find_relevant_files_command(
         excluded_files: options.excluded_files,
     };
     
-    // Create input payload for PathFinderProcessor
-    let input_payload = crate::jobs::types::InputPathFinderPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
+    // Create PathFinderPayload directly for the processor
+    let path_finder_payload = crate::jobs::types::PathFinderPayload {
         session_id: args.session_id.clone(),
         task_description: args.task_description.clone(),
+        background_job_id: String::new(), // Will be set by create_and_queue_background_job
         project_directory: project_directory.clone(),
-        model_override: model_settings.as_ref().map(|(model, _, _)| model.clone()),
-        temperature_override: model_settings.as_ref().map(|(_, temp, _)| *temp),
-        max_tokens_override: model_settings.as_ref().map(|(_, _, tokens)| *tokens),
-        options: path_finder_options.clone(),
+        system_prompt: String::new(), // Will be populated by the processor
         directory_tree: args.directory_tree.clone(),
+        relevant_file_contents: std::collections::HashMap::new(), // Will be populated by the processor
+        estimated_input_tokens: None, // Will be calculated by the processor
+        options: path_finder_options,
     };
     
     // Queue the job using typed JobPayload
@@ -148,22 +148,12 @@ pub async fn find_relevant_files_command(
         "PATH_FINDER",
         &format!("Finding relevant files for task: {}", args.task_description.chars().take(50).collect::<String>()),
         model_settings,
-        JobPayload::PathFinder(crate::jobs::types::PathFinderPayload {
-            session_id: args.session_id.clone(),
-            task_description: args.task_description.clone(),
-            background_job_id: String::new(), // Will be set by create_and_queue_background_job
-            project_directory: project_directory.clone(),
-            system_prompt: String::new(), // Will be populated by the processor
-            directory_tree: args.directory_tree.clone(),
-            relevant_file_contents: std::collections::HashMap::new(), // Will be populated by the processor
-            estimated_input_tokens: None, // Will be calculated by the processor
-            options: path_finder_options,
-        }),
+        JobPayload::PathFinder(path_finder_payload),
         2, // Priority
         None, // No workflow_id
         None, // No workflow_stage
-        None, // No extra metadata
-        &app_handle, // Add app_handle parameter
+        None, // No additional_params
+        &app_handle,
     ).await?;
     
     info!("Created path finder job: {}", job_id);
@@ -277,7 +267,7 @@ pub async fn create_path_correction_job_command(
         2, // Priority
         None, // No workflow_id
         None, // No workflow_stage
-        None, // No extra metadata
+        None, // No additional_params
         &app_handle,
     ).await?;
     

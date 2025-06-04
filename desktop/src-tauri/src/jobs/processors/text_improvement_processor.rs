@@ -7,6 +7,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 
 pub struct TextImprovementProcessor;
@@ -51,73 +52,45 @@ impl JobProcessor for TextImprovementProcessor {
         let temperature = db_job.temperature.unwrap_or(0.7);
         let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
         
-        // Build unified prompt using standardized utility
-        let composed_prompt = job_processor_utils::build_unified_prompt(
-            &job,
-            &app_handle,
-            payload.text_to_improve.clone(),
-            None, // codebase_structure
-            None, // file_contents
-            None, // directory_tree
-            &settings_repo,
-            &model_used,
-        ).await?;
-
-        info!("Enhanced Text Improvement prompt composition for job {}", job_id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
-        info!("Context sections: {:?}", composed_prompt.context_sections);
-        if let Some(tokens) = composed_prompt.estimated_tokens {
-            info!("Estimated tokens: {}", tokens);
-        }
-
-        // Extract system and user parts from the composed prompt
-        let (system_prompt_text, user_prompt_text, system_prompt_id) = 
-            job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
         
-        info!("Text Improvement prompts for job {}", job_id);
-        info!("System prompt: {}", system_prompt_text);
-        info!("User prompt: {}", user_prompt_text);
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Create the message objects for the OpenRouter request
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt_text, &user_prompt_text);
-        
-        // Create API options and execute LLM request
-        let options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
-        
-        // Clone model name before moving options
-        let model_name = options.model.clone();
-        let response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, options).await?;
-        
-        // LOG: Full OpenRouter response for debugging
-        info!("OpenRouter Text Improvement Response - Job ID: {}", job_id);
-        info!("Full Response: {:#?}", response);
-        
-        // Extract the response content
-        let response_content = if !response.choices.is_empty() {
-            let content = response.choices[0].message.content.clone();
-            info!("Extracted content from OpenRouter response: {}", content);
-            content
-        } else {
-            error!("No response choices received from OpenRouter API");
-            return Err(AppError::JobError("No response content received from API".to_string()));
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: payload.text_to_improve.clone(),
+            file_contents: None,
+            directory_tree: None,
+            codebase_structure: None,
+            system_prompt_override: None,
         };
         
+        info!("Executing Text Improvement LLM task for job {}", job_id);
+        
+        // Execute LLM task using the task runner
+        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Text Improvement LLM task execution failed: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &job_id, &error_msg).await?;
+                return Ok(JobProcessResult::failure(job_id, error_msg));
+            }
+        };
+        
+        info!("Text Improvement LLM task completed successfully for job {}", job_id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
+        
         // The simplified prompt returns plain text directly
-        let improved_text = response_content.trim().to_string();
+        let improved_text = llm_result.response.trim().to_string();
         info!("Processing plain text response (length: {})", improved_text.len());
-        
-        // Get usage statistics before moving the response
-        let tokens_sent = response.usage.as_ref().map(|u| u.prompt_tokens as i32);
-        let tokens_received = response.usage.as_ref().map(|u| u.completion_tokens as i32);
-        let total_tokens = response.usage.as_ref().map(|u| u.total_tokens as i32);
-        let usage_clone = response.usage.clone();
-        
-        info!("Token usage - Sent: {:?}, Received: {:?}, Total: {:?}", tokens_sent, tokens_received, total_tokens);
         
         // Use improved text or fallback to original if empty
         let final_improved_text = if improved_text.is_empty() {
@@ -135,27 +108,30 @@ impl JobProcessor for TextImprovementProcessor {
             "target_field": payload.target_field
         });
         
-        // Finalize job success
+        // Extract usage before moving it
+        let usage_for_result = llm_result.usage.clone();
+        
+        // Use manual finalization since we need to set the response to final_improved_text
+        // instead of the raw LLM response
         job_processor_utils::finalize_job_success(
             &job_id,
             &repo,
-            &final_improved_text,
-            usage_clone,
-            &model_name,
-            &system_prompt_id,
+            &final_improved_text, // Use final improved text as response
+            llm_result.usage,
+            &model_used,
+            &llm_result.system_prompt_id,
             Some(metadata),
         ).await?;
         
         info!("Completed Text Improvement job {}", job_id);
-        info!("Tokens sent: {:?}, Tokens received: {:?}", tokens_sent, tokens_received);
         
         let text_len = final_improved_text.len() as i32;
         
         Ok(JobProcessResult::success(job_id, final_improved_text)
             .with_tokens(
-                tokens_sent,
-                tokens_received,
-                total_tokens,
+                usage_for_result.as_ref().map(|u| u.prompt_tokens as i32),
+                usage_for_result.as_ref().map(|u| u.completion_tokens as i32),
+                usage_for_result.as_ref().map(|u| u.total_tokens as i32),
                 Some(text_len),
             ))
     }

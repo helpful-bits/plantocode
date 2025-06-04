@@ -1,13 +1,12 @@
-use futures::StreamExt;
-use log::{info, error, debug, trace};
+use log::{info, error, debug};
 use tauri::AppHandle;
 use async_trait::async_trait;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{llm_api_utils};
 
 /// Processor for generic LLM streaming tasks
 pub struct GenericLlmStreamProcessor;
@@ -47,25 +46,14 @@ impl JobProcessor for GenericLlmStreamProcessor {
         
         job_processor_utils::log_job_start(&job.id, "generic LLM stream");
         
-        // Create messages (use empty system prompt if none provided)
-        let system_prompt = payload.system_prompt.as_deref().unwrap_or("");
-        let messages = job_processor_utils::create_openrouter_messages(system_prompt, &payload.prompt_text);
-        
         // Create API options with streaming enabled
-        let mut api_options = job_processor_utils::create_api_client_options(
+        let api_options = llm_api_utils::create_api_client_options(
             model_used.clone(),
             temperature,
             max_output_tokens,
             true, // Enable streaming for this processor
         )?;
         
-        // Calculate approx tokens in prompt for tracking
-        let prompt_text_tokens = crate::utils::token_estimator::estimate_tokens(&payload.prompt_text);
-        let system_prompt_tokens = payload.system_prompt.as_ref()
-            .map(|s| crate::utils::token_estimator::estimate_tokens(s))
-            .unwrap_or(0);
-        let overhead_tokens = 100; // Approximate tokens for formatting, roles, etc.
-        let estimated_prompt_tokens = prompt_text_tokens + system_prompt_tokens + overhead_tokens;
         
         // Stream the response from the LLM
         debug!("Starting LLM stream with model: {}", api_options.model);
@@ -74,17 +62,30 @@ impl JobProcessor for GenericLlmStreamProcessor {
         let model_name = api_options.model.clone();
         
         // Get the API client for streaming
-        let llm_client = job_processor_utils::get_api_client(&app_handle)?;
+        let llm_client = llm_api_utils::get_api_client(&app_handle)?;
         
         // Combine system and user prompts for stream_complete
-        let combined_prompt = format!(
-            "{}{}",
-            payload.system_prompt.as_deref().unwrap_or(""),
-            payload.prompt_text
+        let system_prompt = payload.system_prompt.as_deref().unwrap_or("");
+        let user_prompt = &payload.prompt_text;
+        let combined_prompt = format!("{}{}", system_prompt, user_prompt);
+        
+        // Create streaming handler configuration
+        let stream_config = crate::jobs::streaming_handler::create_stream_config(system_prompt, user_prompt);
+        
+        // Create streaming handler
+        let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
+            repo.clone(),
+            job.id.clone(),
+            db_job.metadata.clone(),
+            stream_config,
         );
         
-        let mut stream = match llm_client.stream_complete(&combined_prompt, api_options).await {
-            Ok(response_stream) => response_stream,
+        // Process the stream using the handler
+        let stream_result = match streaming_handler
+            .process_stream_from_client(&llm_client, &combined_prompt, api_options)
+            .await 
+        {
+            Ok(result) => result,
             Err(e) => {
                 let error_message = e.to_string();
                 error!("{}", error_message);
@@ -97,87 +98,20 @@ impl JobProcessor for GenericLlmStreamProcessor {
             }
         };
         
-        // Variables to track streaming progress
-        let mut collected_response = String::new();
-        let mut total_tokens = estimated_prompt_tokens;
-        let mut tokens_received = 0;
-        let mut chars_received = 0;
-        
-        // Process stream chunks
-        debug!("Processing stream chunks for job {}", job.id);
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(chunk) => {
-                    trace!("Received chunk: {:?}", chunk);
-                    
-                    // Process each choice individually
-                    let mut chunk_content = String::new();
-                    for choice in &chunk.choices {
-                        if let Some(content) = &choice.delta.content {
-                            if !content.is_empty() {
-                                chunk_content.push_str(content);
-                            }
-                        }
-                    }
-                    
-                    if !chunk_content.is_empty() {
-                        // Track progress
-                        collected_response.push_str(&chunk_content);
-                        chars_received += chunk_content.len() as i32;
-                        
-                        // Estimate tokens in this chunk
-                        let chunk_tokens = crate::utils::token_estimator::estimate_tokens(&chunk_content);
-                        tokens_received += chunk_tokens;
-                        total_tokens = estimated_prompt_tokens + tokens_received;
-                        
-                        // Update the job with the new chunk
-                        debug!("Appending chunk to job response, char count: {}", chunk_content.len());
-                        match repo.append_to_job_response(&job.id, &chunk_content, chunk_tokens as i32, chars_received).await {
-                            Ok(_) => {},
-                            Err(e) => {
-                                error!("Failed to append chunk to job response: {}", e);
-                                // Continue processing even if this update fails
-                            }
-                        }
-                    }
-                    
-                    // Check for completion
-                    let is_finished = chunk.choices.iter()
-                        .any(|choice| choice.finish_reason.is_some());
-                    
-                    if is_finished {
-                        debug!("Stream finished with reason: {:?}", 
-                            chunk.choices.iter().filter_map(|c| c.finish_reason.clone()).collect::<Vec<String>>());
-                        break;
-                    }
-                },
-                Err(e) => {
-                    let error_message = format!("Error during stream processing: {}", e);
-                    error!("{}", error_message);
-                    
-                    // Don't fail the job for a single chunk error, just log it and continue
-                    // This is more resilient as we might still have received some useful content
-                }
-            }
-        }
+        let collected_response = stream_result.accumulated_response;
+        let usage = stream_result.final_usage;
+        let response_len = collected_response.len() as i32;
         
         // Update job status to completed
         let result = if !collected_response.is_empty() {
             debug!("Stream completed successfully, updating job status");
-            
-            // Create usage info for finalization
-            let usage = crate::models::OpenRouterUsage {
-                prompt_tokens: estimated_prompt_tokens as u32,
-                completion_tokens: tokens_received as u32,
-                total_tokens: total_tokens as u32,
-            };
             
             // Finalize job success
             job_processor_utils::finalize_job_success(
                 &job.id,
                 &repo,
                 &collected_response,
-                Some(usage),
+                Some(usage.clone()),
                 &model_name,
                 "generic_stream", // No specific system prompt ID for generic streams
                 None,
@@ -185,10 +119,10 @@ impl JobProcessor for GenericLlmStreamProcessor {
             
             JobProcessResult::success(job.id.to_string(), collected_response)
                 .with_tokens(
-                    Some(estimated_prompt_tokens as i32),
-                    Some(tokens_received as i32),
-                    Some(total_tokens as i32),
-                    Some(chars_received)
+                    Some(usage.prompt_tokens as i32),
+                    Some(usage.completion_tokens as i32),
+                    Some(usage.total_tokens as i32),
+                    Some(response_len)  // Use response length as char count
                 )
         } else {
             let error_message = "Stream completed but no content was received".to_string();

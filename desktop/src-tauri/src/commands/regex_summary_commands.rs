@@ -69,7 +69,7 @@ pub async fn generate_regex_summary_command(
         1, // priority
         None, // No workflow_id
         None, // No workflow_stage
-        None, // extra_metadata
+        None, // additional_params
         &app_handle,
     ).await?;
 

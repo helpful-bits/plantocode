@@ -1,130 +1,133 @@
 use serde_json::{json, Value, Map};
 use std::collections::HashMap;
 
-/// Builder for creating standardized job metadata that conforms to the TypeScript JobMetadata interface
-/// This ensures consistency between frontend and backend metadata structures
+/// Builder for creating standardized job metadata that builds the `additional_params` field within JobWorkerMetadata
+/// This ensures consistency between frontend and backend metadata structures while preserving the core JobWorkerMetadata structure
 pub struct JobMetadataBuilder {
-    metadata: Map<String, Value>,
+    additional_params: Map<String, Value>,
 }
 
 impl JobMetadataBuilder {
-    /// Create a new metadata builder
+    /// Create a new metadata builder with empty additional_params
     pub fn new() -> Self {
         Self {
-            metadata: Map::new(),
+            additional_params: Map::new(),
         }
     }
 
-    /// Create a new builder from existing metadata string
+    /// Create a new builder from existing additional_params Value
+    pub fn from_existing_additional_params(additional_params: Option<Value>) -> Self {
+        let additional_params_map = additional_params
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_else(Map::new);
+        
+        Self { 
+            additional_params: additional_params_map 
+        }
+    }
+
+    /// Create a new builder from existing metadata string (for backward compatibility)
     pub fn from_existing(metadata_str: &str) -> Self {
         let metadata = serde_json::from_str::<Value>(metadata_str)
             .ok()
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_else(Map::new);
         
-        Self { metadata }
+        Self { additional_params: metadata }
     }
 
     // Common workflow fields
     pub fn workflow_id(mut self, workflow_id: impl Into<String>) -> Self {
-        self.metadata.insert("workflowId".to_string(), json!(workflow_id.into()));
+        self.additional_params.insert("workflowId".to_string(), json!(workflow_id.into()));
         self
     }
 
     pub fn workflow_stage(mut self, stage: impl Into<String>) -> Self {
-        self.metadata.insert("workflowStage".to_string(), json!(stage.into()));
+        self.additional_params.insert("workflowStage".to_string(), json!(stage.into()));
         self
     }
 
-    pub fn job_type_for_worker(mut self, job_type: impl Into<String>) -> Self {
-        self.metadata.insert("jobTypeForWorker".to_string(), json!(job_type.into()));
-        self
-    }
 
-    pub fn job_priority_for_worker(mut self, priority: i32) -> Self {
-        self.metadata.insert("jobPriorityForWorker".to_string(), json!(priority));
-        self
-    }
 
     // Streaming fields
     pub fn is_streaming(mut self, is_streaming: bool) -> Self {
-        self.metadata.insert("isStreaming".to_string(), json!(is_streaming));
+        self.additional_params.insert("isStreaming".to_string(), json!(is_streaming));
         self
     }
 
     pub fn stream_progress(mut self, progress: f64) -> Self {
-        self.metadata.insert("streamProgress".to_string(), json!(progress));
+        self.additional_params.insert("streamProgress".to_string(), json!(progress));
         self
     }
 
     pub fn response_length(mut self, length: usize) -> Self {
-        self.metadata.insert("responseLength".to_string(), json!(length));
+        self.additional_params.insert("responseLength".to_string(), json!(length));
         self
     }
 
     pub fn estimated_total_length(mut self, length: usize) -> Self {
-        self.metadata.insert("estimatedTotalLength".to_string(), json!(length));
+        self.additional_params.insert("estimatedTotalLength".to_string(), json!(length));
         self
     }
 
     pub fn last_stream_update_time(mut self, timestamp: u64) -> Self {
-        self.metadata.insert("lastStreamUpdateTime".to_string(), json!(timestamp));
+        self.additional_params.insert("lastStreamUpdateTime".to_string(), json!(timestamp));
         self
     }
 
     pub fn stream_start_time(mut self, timestamp: u64) -> Self {
-        self.metadata.insert("streamStartTime".to_string(), json!(timestamp));
+        self.additional_params.insert("streamStartTime".to_string(), json!(timestamp));
         self
     }
 
     // Task-specific output fields
     pub fn output_path(mut self, path: impl Into<String>) -> Self {
-        self.metadata.insert("outputPath".to_string(), json!(path.into()));
+        self.additional_params.insert("outputPath".to_string(), json!(path.into()));
         self
     }
 
     pub fn target_field(mut self, field: impl Into<String>) -> Self {
-        self.metadata.insert("targetField".to_string(), json!(field.into()));
+        self.additional_params.insert("targetField".to_string(), json!(field.into()));
         self
     }
 
     pub fn session_name(mut self, name: impl Into<String>) -> Self {
-        self.metadata.insert("sessionName".to_string(), json!(name.into()));
+        self.additional_params.insert("sessionName".to_string(), json!(name.into()));
         self
     }
 
     // Path finder specific data
     pub fn path_finder_data(mut self, data: PathFinderMetadata) -> Self {
-        self.metadata.insert("pathFinderData".to_string(), json!(data));
+        self.additional_params.insert("pathFinderData".to_string(), json!(data));
         self
     }
 
     // Regex generation specific data
     pub fn regex_data(mut self, data: RegexMetadata) -> Self {
-        self.metadata.insert("regexData".to_string(), json!(data));
+        self.additional_params.insert("regexData".to_string(), json!(data));
         self
     }
 
     // File finder workflow data
     pub fn file_finder_workflow_data(mut self, data: FileFinderWorkflowMetadata) -> Self {
-        self.metadata.insert("fileFinderWorkflowData".to_string(), json!(data));
+        self.additional_params.insert("fileFinderWorkflowData".to_string(), json!(data));
         self
     }
 
     // Model and token information
     pub fn model_used(mut self, model: impl Into<String>) -> Self {
-        self.metadata.insert("modelUsed".to_string(), json!(model.into()));
+        self.additional_params.insert("modelUsed".to_string(), json!(model.into()));
         self
     }
 
     pub fn tokens_used(mut self, tokens: u32) -> Self {
-        self.metadata.insert("tokensUsed".to_string(), json!(tokens));
+        self.additional_params.insert("tokensUsed".to_string(), json!(tokens));
         self
     }
 
     // Retry and error handling
     pub fn retry_count(mut self, count: u32) -> Self {
-        self.metadata.insert("retryCount".to_string(), json!(count));
+        self.additional_params.insert("retryCount".to_string(), json!(count));
         self
     }
 
@@ -135,46 +138,46 @@ impl JobMetadataBuilder {
             "message": message.into()
         });
 
-        if let Some(errors) = self.metadata.get_mut("errors") {
+        if let Some(errors) = self.additional_params.get_mut("errors") {
             if let Some(errors_array) = errors.as_array_mut() {
                 errors_array.push(error);
             }
         } else {
-            self.metadata.insert("errors".to_string(), json!([error]));
+            self.additional_params.insert("errors".to_string(), json!([error]));
         }
         self
     }
 
     // Legacy fields for backward compatibility
     pub fn path_count(mut self, count: usize) -> Self {
-        self.metadata.insert("pathCount".to_string(), json!(count));
+        self.additional_params.insert("pathCount".to_string(), json!(count));
         self
     }
 
     pub fn path_data(mut self, data: impl Into<String>) -> Self {
-        self.metadata.insert("pathData".to_string(), json!(data.into()));
+        self.additional_params.insert("pathData".to_string(), json!(data.into()));
         self
     }
 
     pub fn show_pure_content(mut self, show: bool) -> Self {
-        self.metadata.insert("showPureContent".to_string(), json!(show));
+        self.additional_params.insert("showPureContent".to_string(), json!(show));
         self
     }
 
     // Custom field support for extensibility
     pub fn custom_field(mut self, key: impl Into<String>, value: Value) -> Self {
-        self.metadata.insert(key.into(), value);
+        self.additional_params.insert(key.into(), value);
         self
     }
 
-    /// Build the metadata as a JSON string
+    /// Build the additional_params as a JSON string
     pub fn build(self) -> String {
-        Value::Object(self.metadata).to_string()
+        Value::Object(self.additional_params).to_string()
     }
 
-    /// Build the metadata as a serde_json::Value
+    /// Build the additional_params as a serde_json::Value
     pub fn build_value(self) -> Value {
-        Value::Object(self.metadata)
+        Value::Object(self.additional_params)
     }
 }
 

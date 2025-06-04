@@ -117,6 +117,7 @@ impl UnifiedPromptProcessor {
     }
 
     /// Create placeholder mapping (from prompt_composition.rs)
+    /// Handles None and empty values gracefully by only adding non-empty content
     fn create_placeholders(&self, context: &UnifiedPromptContext) -> AppResult<PromptPlaceholders> {
         let mut placeholders = PromptPlaceholders::new();
         
@@ -126,22 +127,28 @@ impl UnifiedPromptProcessor {
         placeholders = placeholders.with_task_type(Some(&context.task_type.to_string()));
         
         if let Some(ref project_dir) = context.project_directory {
-            placeholders = placeholders.with_project_context(Some(project_dir));
-        }
-
-        // Convert file contents to XML format if available
-        if let Some(ref file_contents) = context.file_contents {
-            let file_contents_xml = self.generate_file_contents_xml(file_contents); // This function already returns an empty string if file_contents is empty
-            if !file_contents_xml.is_empty() { // Only add if there's actual XML content
-                placeholders = placeholders.with_file_contents(Some(&file_contents_xml));
+            if !project_dir.trim().is_empty() {
+                placeholders = placeholders.with_project_context(Some(project_dir));
             }
         }
 
-        // Convert directory tree to XML format if available
+        // Convert file contents to XML format if available and non-empty
+        if let Some(ref file_contents) = context.file_contents {
+            if !file_contents.is_empty() {
+                let file_contents_xml = self.generate_file_contents_xml(file_contents);
+                if !file_contents_xml.is_empty() {
+                    placeholders = placeholders.with_file_contents(Some(&file_contents_xml));
+                }
+            }
+        }
+
+        // Convert directory tree to XML format if available and non-empty
         if let Some(ref tree) = context.directory_tree {
-            let tree_xml = self.generate_project_structure_xml(tree); // This function already returns an empty string if tree is empty
-            if !tree_xml.is_empty() { // Only add if there's actual XML content
-                placeholders = placeholders.with_directory_tree(Some(&tree_xml));
+            if !tree.trim().is_empty() {
+                let tree_xml = self.generate_project_structure_xml(tree);
+                if !tree_xml.is_empty() {
+                    placeholders = placeholders.with_directory_tree(Some(&tree_xml));
+                }
             }
         }
 
@@ -193,41 +200,47 @@ impl UnifiedPromptProcessor {
     }
 
     /// Process rich content placeholders with conditional sections
+    /// Removes empty placeholders and cleans up formatting to prevent malformed prompts
     fn process_rich_content(&self, template: &str, context: &UnifiedPromptContext) -> AppResult<String> {
         let mut result = template.to_string();
         
         // Process conditional sections - remove empty placeholders
         let empty_placeholders = vec![
-            ("{{PROJECT_CONTEXT}}", context.project_directory.is_none()),
+            ("{{PROJECT_CONTEXT}}", context.project_directory.as_ref().map_or(true, |p| p.trim().is_empty())),
             ("{{FILE_CONTENTS}}", context.file_contents.as_ref().map_or(true, |fc| fc.is_empty())),
-            ("{{DIRECTORY_TREE}}", context.directory_tree.is_none()),
-            ("{{CUSTOM_INSTRUCTIONS}}", context.custom_instructions.is_none()),
-            ("{{MODEL_NAME}}", context.model_name.is_none()),
-            ("{{SESSION_NAME}}", context.session_name.is_none()),
+            ("{{DIRECTORY_TREE}}", context.directory_tree.as_ref().map_or(true, |dt| dt.trim().is_empty())),
+            ("{{CUSTOM_INSTRUCTIONS}}", context.custom_instructions.as_ref().map_or(true, |ci| ci.trim().is_empty())),
+            ("{{MODEL_NAME}}", context.model_name.as_ref().map_or(true, |mn| mn.trim().is_empty())),
+            ("{{SESSION_NAME}}", context.session_name.as_ref().map_or(true, |sn| sn.trim().is_empty())),
+            ("{{CODEBASE_STRUCTURE}}", context.codebase_structure.as_ref().map_or(true, |cs| cs.trim().is_empty())),
         ];
         
-        // Remove lines containing only empty placeholders
+        // Remove lines containing only empty placeholders and clean up remaining placeholder text
         for (placeholder, is_empty) in empty_placeholders {
             if is_empty {
-                // Remove entire lines that contain only this placeholder
+                // Remove entire lines that contain only this placeholder (with optional whitespace)
                 let lines: Vec<&str> = result.lines().collect();
                 let filtered_lines: Vec<&str> = lines.into_iter()
                     .filter(|line| {
                         let trimmed = line.trim();
-                        !trimmed.is_empty() && trimmed != placeholder
+                        // Keep lines that are not empty and don't contain only the placeholder
+                        !(trimmed == placeholder || trimmed.is_empty() && line.contains(placeholder))
                     })
                     .collect();
                 result = filtered_lines.join("\n");
                 
-                // Also remove any remaining placeholder text
+                // Remove any remaining placeholder text
                 result = result.replace(placeholder, "");
             }
         }
         
-        // Clean up multiple consecutive newlines
+        // Clean up excessive whitespace and newlines
         if let Ok(re_multiple_newlines) = Regex::new(r"\n\s*\n\s*\n+") {
             result = re_multiple_newlines.replace_all(&result, "\n\n").to_string();
         }
+        
+        // Clean up leading/trailing whitespace
+        result = result.trim().to_string();
         
         Ok(result)
     }

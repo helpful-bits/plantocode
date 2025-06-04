@@ -6,12 +6,26 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collap
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
+import { parsePlanResponseContent } from "../../../implementation-plans-panel/_utils/plan-content-parser";
 
 import { getStreamingProgressValue } from "../../utils";
 
 export function JobDetailsResponseSection() {
   const { job, responseContent, parsedMetadata } = useJobDetailsContext();
   const [isResponseOpen, setIsResponseOpen] = useState(false);
+
+  let displayContentForViewer = responseContent || "";
+  let viewerLanguage = "markdown"; // Default for most jobs
+
+  const isJobStreaming = (job.status === "running" || job.status === "processing_stream") && Boolean(parsedMetadata?.additionalParams?.isStreaming);
+
+  if (job.taskType === "implementation_plan") {
+    viewerLanguage = "xml"; // Implementation plans are expected to be XML
+    if (!isJobStreaming && job.status === "completed") {
+      displayContentForViewer = parsePlanResponseContent(responseContent);
+    }
+    // For streaming or other states of implementation_plan, responseContent (raw job.response) is used directly.
+  }
 
   return (
     <Card>
@@ -21,11 +35,10 @@ export function JobDetailsResponseSection() {
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle className="text-sm font-semibold flex items-center gap-2 group-hover:text-foreground/80 transition-colors">
-                  {job.taskType === "implementation_plan" &&
-                  parsedMetadata?.showPureContent === true ? (
+                  {job.taskType === "implementation_plan" ? (
                     <>
                       <span>Content</span>
-                      {job.status === "running" && parsedMetadata?.isStreaming && (
+                      {isJobStreaming && (
                         <div className="flex items-center gap-1">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           <span className="text-xs">Live Updates</span>
@@ -50,31 +63,16 @@ export function JobDetailsResponseSection() {
         <CollapsibleContent>
           <CardContent className="pt-0">
             {/* Show progress bar for streaming jobs */}
-            {job.status === "running" && parsedMetadata?.isStreaming ? (
+            {(job.status === "running" || job.status === "processing_stream") && parsedMetadata?.additionalParams?.isStreaming ? (
               <div className="mb-3">
                 <Progress
                   value={
-                    // Calculate progress with unified handling for implementation plans
-                    job.taskType === "implementation_plan"
-                      ? getStreamingProgressValue(
-                          job.metadata,
-                          job.startTime,
-                          job.maxOutputTokens
-                        )
-                      : parsedMetadata?.responseLength &&
-                          parsedMetadata?.estimatedTotalLength
-                        ? Math.min(
-                            (Number(parsedMetadata.responseLength) /
-                              Number(parsedMetadata.estimatedTotalLength)) *
-                              100,
-                            97
-                          )
-                        : Math.min(
-                            Math.floor(
-                              (Date.now() - (job.startTime || Date.now())) / 150
-                            ),
-                            90
-                          )
+                    // Use unified streaming progress calculation for all job types
+                    getStreamingProgressValue(
+                      job.metadata,
+                      job.startTime,
+                      job.maxOutputTokens
+                    ) || 10 // Fallback to 10% if no progress can be calculated
                   }
                   className="h-1 mb-2"
                 />
@@ -86,13 +84,13 @@ export function JobDetailsResponseSection() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {parsedMetadata?.responseLength ? (
+                    {parsedMetadata?.additionalParams?.responseLength ? (
                       <span>
-                        {Math.floor(Number(parsedMetadata.responseLength) / 1024)} KB received
+                        {Math.floor(Number(parsedMetadata.additionalParams.responseLength) / 1024)} KB received
                       </span>
                     ) : null}
-                    {typeof parsedMetadata?.streamProgress === "number" && (
-                      <span>{Math.floor(parsedMetadata.streamProgress)}% complete</span>
+                    {typeof parsedMetadata?.additionalParams?.streamProgress === "number" && (
+                      <span>{Math.floor(parsedMetadata.additionalParams.streamProgress)}% complete</span>
                     )}
                   </div>
                 </div>
@@ -100,19 +98,21 @@ export function JobDetailsResponseSection() {
             ) : null}
 
             <VirtualizedCodeViewer
-              content={responseContent}
+              content={displayContentForViewer}
+              language={viewerLanguage}
               height="60vh"
               showCopy={true}
               copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
               showContentSize={true}
-              isLoading={job.status === "running" && Boolean(parsedMetadata?.isStreaming)}
+              isLoading={isJobStreaming}
               placeholder="No response content available"
               className={
-                job.taskType === "implementation_plan" &&
-                parsedMetadata?.showPureContent === true
-                  ? job.status === "running" && parsedMetadata?.isStreaming
+                job.taskType === "implementation_plan"
+                  ? isJobStreaming
                     ? "border-info/60 bg-info/5"
-                    : "border-success/60 bg-success/5"
+                    : job.status === "completed"
+                      ? "border-success/60 bg-success/5"
+                      : undefined
                   : job.taskType === "path_finder" || job.taskType === "regex_pattern_generation"
                     ? "border-border/60 bg-slate-50/50 dark:bg-slate-900/50"
                     : undefined

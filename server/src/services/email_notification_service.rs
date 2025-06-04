@@ -9,41 +9,38 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use sqlx::PgPool;
 use bigdecimal::BigDecimal;
+use mailgun_v3::{Credentials, EmailAddress};
+use mailgun_v3::email::{Message, MessageBody, send_email};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct EmailNotificationService {
     email_repository: Arc<EmailNotificationRepository>,
     config_repository: Arc<BillingConfigurationRepository>,
-    smtp_config: SmtpConfig,
+    mailgun_config: MailgunConfig,
+    mailgun_credentials: Credentials,
 }
 
 #[derive(Debug, Clone)]
-pub struct SmtpConfig {
-    pub smtp_host: String,
-    pub smtp_port: u16,
-    pub smtp_username: String,
-    pub smtp_password: String,
+pub struct MailgunConfig {
+    pub api_key: String,
+    pub domain: String,
     pub from_email: String,
     pub from_name: String,
+    pub base_url: Option<String>,
 }
 
-impl SmtpConfig {
+impl MailgunConfig {
     pub fn from_env() -> Result<Self, AppError> {
         Ok(Self {
-            smtp_host: std::env::var("SMTP_HOST")
-                .unwrap_or_else(|_| "localhost".to_string()),
-            smtp_port: std::env::var("SMTP_PORT")
-                .unwrap_or_else(|_| "587".to_string())
-                .parse()
-                .map_err(|_| AppError::Configuration("Invalid SMTP_PORT".to_string()))?,
-            smtp_username: std::env::var("SMTP_USERNAME")
-                .map_err(|_| AppError::Configuration("SMTP_USERNAME not set".to_string()))?,
-            smtp_password: std::env::var("SMTP_PASSWORD")
-                .map_err(|_| AppError::Configuration("SMTP_PASSWORD not set".to_string()))?,
+            api_key: std::env::var("MAILGUN_API_KEY")
+                .map_err(|_| AppError::Configuration("MAILGUN_API_KEY not set".to_string()))?,
+            domain: std::env::var("MAILGUN_DOMAIN")
+                .map_err(|_| AppError::Configuration("MAILGUN_DOMAIN not set".to_string()))?,
             from_email: std::env::var("FROM_EMAIL")
-                .unwrap_or_else(|_| "noreply@vibemanager.com".to_string()),
+                .map_err(|_| AppError::Configuration("FROM_EMAIL not set".to_string()))?,
             from_name: std::env::var("FROM_NAME")
-                .unwrap_or_else(|_| "Vibe Manager".to_string()),
+                .map_err(|_| AppError::Configuration("FROM_NAME not set".to_string()))?,
+            base_url: std::env::var("MAILGUN_BASE_URL").ok(),
         })
     }
 }
@@ -52,12 +49,16 @@ impl EmailNotificationService {
     pub fn new(db_pool: PgPool) -> Result<Self, AppError> {
         let email_repository = Arc::new(EmailNotificationRepository::new(db_pool.clone()));
         let config_repository = Arc::new(BillingConfigurationRepository::new(db_pool));
-        let smtp_config = SmtpConfig::from_env()?;
+        let mailgun_config = MailgunConfig::from_env()?;
+        
+        // Initialize Mailgun credentials
+        let mailgun_credentials = Credentials::new(&mailgun_config.api_key, &mailgun_config.domain);
 
         Ok(Self {
             email_repository,
             config_repository,
-            smtp_config,
+            mailgun_config,
+            mailgun_credentials,
         })
     }
 
@@ -314,28 +315,188 @@ impl EmailNotificationService {
             return Ok(());
         }
 
-        // Example implementation with a hypothetical email service
-        self.send_via_smtp(notification).await
+        // Send email via Mailgun API
+        self.send_via_mailgun(notification).await
     }
 
-    /// Example SMTP implementation (simplified)
-    async fn send_via_smtp(&self, notification: &EmailNotification) -> Result<(), AppError> {
-        // This is a simplified example. In production, you would use:
-        // - lettre crate for SMTP
-        // - AWS SDK for SES
-        // - reqwest for API-based services like SendGrid
+    /// Send email via Mailgun API
+    async fn send_via_mailgun(&self, notification: &EmailNotification) -> Result<(), AppError> {
+        debug!("Sending email via Mailgun API:");
+        debug!("  From: {} <{}>", self.mailgun_config.from_name, self.mailgun_config.from_email);
+        debug!("  To: {}", notification.email_address);
+        debug!("  Subject: {}", notification.subject);
+        debug!("  Template: {}", notification.template_name);
 
-        info!("Would send email via SMTP:");
-        info!("  From: {} <{}>", self.smtp_config.from_name, self.smtp_config.from_email);
-        info!("  To: {}", notification.email_address);
-        info!("  Subject: {}", notification.subject);
-        info!("  Template: {}", notification.template_name);
-        info!("  Template Data: {}", notification.template_data);
+        // Render email content from template data
+        let html_content = self.render_email_template(
+            &notification.template_name, 
+            &notification.template_data
+        ).await?;
 
-        // For now, just log the email details
-        // In production, implement actual SMTP sending here
+        // Create email addresses
+        let from_address = EmailAddress::name_address(&self.mailgun_config.from_name, &self.mailgun_config.from_email);
+        let to_address = EmailAddress::address(&notification.email_address);
 
-        Ok(())
+        // Build Mailgun message
+        let message = Message {
+            to: vec![to_address],
+            subject: notification.subject.clone(),
+            body: MessageBody::Html(html_content),
+            ..Default::default()
+        };
+
+        // Send email via Mailgun (non-async function)
+        match send_email(&self.mailgun_credentials, &from_address, message) {
+            Ok(response) => {
+                info!("Email sent successfully via Mailgun: {} (ID: {})", 
+                      notification.email_address, 
+                      response.id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to send email via Mailgun: {}", e);
+                Err(AppError::External(format!("Mailgun error: {}", e)))
+            }
+        }
+    }
+
+    /// Render email template with data
+    async fn render_email_template(&self, template_name: &str, template_data: &JsonValue) -> Result<String, AppError> {
+        // For now, create a simple HTML template
+        // In production, you would use a proper template engine like Tera or Handlebars
+        let html = match template_name {
+            "spending_alert_75" => self.create_spending_alert_html(template_data, "75% Spending Alert"),
+            "spending_alert_90" => self.create_spending_alert_html(template_data, "90% Spending Alert"),
+            "spending_limit_reached" => self.create_spending_alert_html(template_data, "Spending Limit Reached"),
+            "services_blocked" => self.create_spending_alert_html(template_data, "Services Blocked"),
+            "invoice_created" => self.create_invoice_html(template_data),
+            "payment_failed" => self.create_payment_failed_html(template_data),
+            _ => return Err(AppError::InvalidArgument(format!("Unknown template: {}", template_name))),
+        };
+
+        Ok(html)
+    }
+
+    fn create_spending_alert_html(&self, data: &JsonValue, alert_title: &str) -> String {
+        let current_spending = data.get("current_spending").and_then(|v| v.as_str()).unwrap_or("0");
+        let threshold_amount = data.get("threshold_amount").and_then(|v| v.as_str()).unwrap_or("0");
+        let usage_percentage = data.get("usage_percentage").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let currency_symbol = data.get("currency_symbol").and_then(|v| v.as_str()).unwrap_or("$");
+        let dashboard_url = data.get("dashboard_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .alert {{ background: #f8f9fa; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0; }}
+        .btn {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+        .stats {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{}</h1>
+        <div class="alert">
+            <p>Your current spending has reached <strong>{:.1}%</strong> of your threshold.</p>
+        </div>
+        <div class="stats">
+            <p><strong>Current Spending:</strong> {}{}</p>
+            <p><strong>Threshold Amount:</strong> {}{}</p>
+            <p><strong>Usage Percentage:</strong> {:.1}%</p>
+        </div>
+        <p>You can view your detailed usage and billing information in your dashboard.</p>
+        <a href="{}" class="btn">View Dashboard</a>
+        <p><small>This is an automated notification from Vibe Manager.</small></p>
+    </div>
+</body>
+</html>
+        "#, alert_title, alert_title, usage_percentage, currency_symbol, current_spending, 
+           currency_symbol, threshold_amount, usage_percentage, dashboard_url)
+    }
+
+    fn create_invoice_html(&self, data: &JsonValue) -> String {
+        let invoice_id = data.get("invoice_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let amount_due = data.get("amount_due").and_then(|v| v.as_str()).unwrap_or("0");
+        let due_date = data.get("due_date").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let currency_symbol = data.get("currency_symbol").and_then(|v| v.as_str()).unwrap_or("$");
+        let pay_url = data.get("pay_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Created</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .invoice-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+        .btn {{ background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>New Invoice Created</h1>
+        <p>A new invoice has been generated for your account.</p>
+        <div class="invoice-info">
+            <p><strong>Invoice ID:</strong> {}</p>
+            <p><strong>Amount Due:</strong> {}{}</p>
+            <p><strong>Due Date:</strong> {}</p>
+        </div>
+        <p>Please review and pay your invoice to continue using our services.</p>
+        <a href="{}" class="btn">Pay Invoice</a>
+        <p><small>This is an automated notification from Vibe Manager.</small></p>
+    </div>
+</body>
+</html>
+        "#, invoice_id, currency_symbol, amount_due, due_date, pay_url)
+    }
+
+    fn create_payment_failed_html(&self, data: &JsonValue) -> String {
+        let invoice_id = data.get("invoice_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let amount = data.get("amount").and_then(|v| v.as_str()).unwrap_or("0");
+        let currency_symbol = data.get("currency_symbol").and_then(|v| v.as_str()).unwrap_or("$");
+        let update_payment_url = data.get("update_payment_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Failed</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .alert {{ background: #f8f9fa; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0; }}
+        .btn {{ background: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+        .payment-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Payment Failed</h1>
+        <div class="alert">
+            <p>We were unable to process your payment. Please update your payment method.</p>
+        </div>
+        <div class="payment-info">
+            <p><strong>Invoice ID:</strong> {}</p>
+            <p><strong>Amount:</strong> {}{}</p>
+        </div>
+        <p>To avoid service interruption, please update your payment method as soon as possible.</p>
+        <a href="{}" class="btn">Update Payment Method</a>
+        <p><small>This is an automated notification from Vibe Manager.</small></p>
+    </div>
+</body>
+</html>
+        "#, invoice_id, currency_symbol, amount, update_payment_url)
     }
 
     /// Get application base URL for links in emails

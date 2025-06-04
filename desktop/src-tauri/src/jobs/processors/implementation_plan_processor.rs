@@ -6,11 +6,14 @@ use tauri::AppHandle;
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
-use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep};
+use crate::jobs::types::{Job, JobPayload, JobProcessResult, StructuredImplementationPlan, StructuredImplementationPlanStep, JobWorkerMetadata};
 use crate::models::{JobStatus, TaskType, OpenRouterRequestMessage, OpenRouterContent};
 use crate::utils::{get_timestamp, fs_utils, path_utils};
 use crate::utils::xml_utils::extract_xml_from_markdown;
+use crate::utils::job_metadata_builder::JobMetadataBuilder;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{fs_context_utils, prompt_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 pub struct ImplementationPlanProcessor;
 
@@ -29,8 +32,11 @@ impl ImplementationPlanProcessor {
         }
         
         // First, try to validate that the content at least looks like XML
-        if !clean_xml_content.trim_start().starts_with('<') {
+        let is_xml_format = clean_xml_content.trim_start().starts_with('<');
+        if !is_xml_format {
             warn!("Content does not appear to be XML: {}", &clean_xml_content[..100.min(clean_xml_content.len())]);
+            // Don't fail immediately, let's try to create a structured plan from the text
+            return self.create_fallback_plan_from_text(clean_xml_content);
         }
         
         // Attempt to deserialize the clean XML content into structured format
@@ -56,72 +62,124 @@ impl ImplementationPlanProcessor {
             },
             Err(e) => {
                 warn!("Failed to parse structured XML: {}. Content length: {}", e, clean_xml_content.len());
-                
-                // Enhanced fallback: try to extract meaningful content even from malformed XML
-                let fallback_content = if clean_xml_content.len() > 500 {
-                    // Try to extract first meaningful paragraph or section
-                    if let Some(first_tag_end) = clean_xml_content.find('>') {
-                        if let Some(last_tag_start) = clean_xml_content.rfind('<') {
-                            if first_tag_end < last_tag_start {
-                                clean_xml_content[first_tag_end + 1..last_tag_start].trim().to_string()
-                            } else {
-                                clean_xml_content.to_string()
-                            }
-                        } else {
-                            clean_xml_content.to_string()
-                        }
-                    } else {
-                        clean_xml_content.to_string()
-                    }
-                } else {
-                    clean_xml_content.to_string()
-                };
-                
-                let fallback_plan = StructuredImplementationPlan {
-                    agent_instructions: Some("Note: This plan was parsed from malformed XML and may need manual review.".to_string()),
-                    steps: vec![StructuredImplementationPlanStep {
-                        number: Some("1".to_string()),
-                        title: "Implementation Plan (Fallback)".to_string(),
-                        description: fallback_content.clone(),
-                        file_operations: None,
-                    }],
-                };
-                
-                let summary = format!("Implementation Plan (parsed with fallback): {}", 
-                    if fallback_content.len() > 200 {
-                        format!("{}...", &fallback_content[..200])
-                    } else {
-                        fallback_content
-                    }
-                );
-                
-                Ok((fallback_plan, summary))
+                // Fall back to text parsing
+                self.create_fallback_plan_from_text(clean_xml_content)
             }
         }
     }
     
-    // Save implementation plan to a file
-    async fn save_implementation_plan_to_file(&self, content: &str, project_directory: &str, job_id: &str, session_id: &str, app_handle: &AppHandle) -> AppResult<String> {
-        // Create a unique file path using the new utility function
-        let file_path = path_utils::create_unique_output_filepath(
-            session_id,
-            "implementation_plan",
-            Some(Path::new(project_directory)),
-            "xml",
-            Some(crate::constants::IMPLEMENTATION_PLANS_DIR_NAME),
-            app_handle
-        ).await?;
+    // Create a structured plan from plain text response
+    fn create_fallback_plan_from_text(&self, text_content: &str) -> AppResult<(StructuredImplementationPlan, String)> {
+        debug!("Creating fallback plan from text content");
         
-        // Save the plan - properly await the async function and pass the PathBuf directly
-        fs_utils::write_string_to_file(&file_path, content).await?;
+        // Try to parse the text content into meaningful steps
+        let mut steps = Vec::new();
+        let mut current_step = 1;
         
-        // Make this path relative to the project directory for storage
-        let relative_path = match path_utils::make_relative_to(&file_path, project_directory) {
-            Ok(rel_path) => rel_path.to_string_lossy().to_string(),
-            Err(_) => file_path.to_string_lossy().to_string(), // Fallback to absolute path if needed
+        // Split by common step indicators (numbers, bullet points, etc.)
+        let lines: Vec<&str> = text_content.lines().collect();
+        let mut current_description = String::new();
+        let mut step_title = "Implementation Step".to_string();
+        
+        for line in lines.iter() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            
+            // Check if this line looks like a step header (starts with number, bullet, etc.)
+            if trimmed.starts_with(char::is_numeric) || 
+               trimmed.starts_with("Step") ||
+               trimmed.starts_with("##") ||
+               trimmed.starts_with("-") ||
+               trimmed.starts_with("*") {
+                
+                // Save previous step if we have content
+                if !current_description.trim().is_empty() {
+                    steps.push(StructuredImplementationPlanStep {
+                        number: Some(current_step.to_string()),
+                        title: step_title.clone(),
+                        description: current_description.trim().to_string(),
+                        file_operations: None,
+                    });
+                    current_step += 1;
+                    current_description.clear();
+                }
+                
+                // Extract title from this line
+                step_title = trimmed
+                    .trim_start_matches(char::is_numeric)
+                    .trim_start_matches('.')
+                    .trim_start_matches('-')
+                    .trim_start_matches('*')
+                    .trim_start_matches('#')
+                    .trim_start_matches("Step")
+                    .trim_start_matches(':')
+                    .trim()
+                    .to_string();
+                
+                if step_title.is_empty() {
+                    step_title = format!("Implementation Step {}", current_step);
+                }
+            } else {
+                // Add to current description
+                if !current_description.is_empty() {
+                    current_description.push('\n');
+                }
+                current_description.push_str(trimmed);
+            }
+        }
+        
+        // Add the last step
+        if !current_description.trim().is_empty() {
+            steps.push(StructuredImplementationPlanStep {
+                number: Some(current_step.to_string()),
+                title: step_title,
+                description: current_description.trim().to_string(),
+                file_operations: None,
+            });
+        }
+        
+        // If no steps were parsed, create a single step with all content
+        if steps.is_empty() {
+            steps.push(StructuredImplementationPlanStep {
+                number: Some("1".to_string()),
+                title: "Implementation Plan".to_string(),
+                description: text_content.trim().to_string(),
+                file_operations: None,
+            });
+        }
+        
+        let fallback_plan = StructuredImplementationPlan {
+            agent_instructions: Some("Note: This plan was parsed from text format. The LLM did not return XML as expected.".to_string()),
+            steps,
         };
         
-        Ok(relative_path)
+        // Generate summary
+        let summary = format!("Implementation Plan with {} steps (parsed from text format)", fallback_plan.steps.len());
+        
+        Ok((fallback_plan, summary))
+    }
+    
+    // Parse implementation plan and create response content for database storage
+    fn create_response_content(&self, structured_plan: &StructuredImplementationPlan, clean_xml_content: &str) -> String {
+        // If we have valid structured data, serialize it as JSON for better database storage
+        // But also include the original content for fallback
+        let mut response_content = String::new();
+        
+        // Add structured JSON for programmatic access
+        if let Ok(json_str) = serde_json::to_string_pretty(structured_plan) {
+            response_content.push_str("<!-- STRUCTURED_DATA -->\n");
+            response_content.push_str(&json_str);
+            response_content.push_str("\n<!-- /STRUCTURED_DATA -->\n\n");
+        }
+        
+        // Add original content for human readability
+        response_content.push_str("<!-- ORIGINAL_CONTENT -->\n");
+        response_content.push_str(clean_xml_content);
+        response_content.push_str("\n<!-- /ORIGINAL_CONTENT -->");
+        
+        response_content
     }
 }
 
@@ -149,7 +207,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
         let temperature = db_job.temperature.unwrap_or(0.7);
         let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
-        let llm_client = job_processor_utils::get_api_client(&app_handle)?;
+        let llm_client = crate::jobs::processors::utils::llm_api_utils::get_api_client(&app_handle)?;
         let job_id = payload.background_job_id.clone();
         
         job_processor_utils::log_job_start(&job_id, "implementation plan");
@@ -158,11 +216,11 @@ impl JobProcessor for ImplementationPlanProcessor {
             .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
             
         // Load file contents and generate directory tree - FULL CONTENT WITHOUT TRUNCATION
-        let file_contents = Some(job_processor_utils::load_file_contents(&payload.relevant_files, project_directory).await);
-        let directory_tree = job_processor_utils::generate_directory_tree_for_context(project_directory).await;
+        let file_contents = Some(fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await);
+        let directory_tree = fs_context_utils::generate_directory_tree_for_context(project_directory).await;
         
         // Build unified prompt using full content without preemptive truncation
-        let composed_prompt = job_processor_utils::build_unified_prompt(
+        let composed_prompt = prompt_utils::build_unified_prompt(
             &job,
             &app_handle,
             payload.task_description.clone(),
@@ -228,34 +286,26 @@ impl JobProcessor for ImplementationPlanProcessor {
         
         info!("Generated implementation plan prompt for task: {}", &payload.task_description);
         
-        // Use token estimation from the unified prompt system
-        let estimated_prompt_tokens = composed_prompt.estimated_tokens.unwrap_or(0) as i32;
-        info!("Estimated prompt tokens: {}", estimated_prompt_tokens);
         
-        // Store token estimate in the job
-        db_job.tokens_sent = Some(estimated_prompt_tokens);
+        // Setup LLM task configuration for streaming
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(true) // Enable streaming for implementation plans
+            .build();
         
-        // Update the job with token estimate before LLM call
-        repo.update_job(&db_job).await?;
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Create messages for the LLM (note: prompt will be used later for streaming)
-        let _messages = vec![
-            OpenRouterRequestMessage {
-                role: "user".to_string(),
-                content: vec![OpenRouterContent::Text {
-                    content_type: "text".to_string(),
-                    text: prompt.clone(),
-                }],
-            },
-        ];
-        
-        // Create API client options
-        let api_options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: payload.task_description.clone(),
+            file_contents: Some(fs_context_utils::load_file_contents(&payload.relevant_files, project_directory).await),
+            directory_tree: fs_context_utils::generate_directory_tree_for_context(project_directory).await,
+            codebase_structure: payload.project_structure.clone(),
+            system_prompt_override: None,
+        };
         
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -263,113 +313,34 @@ impl JobProcessor for ImplementationPlanProcessor {
             return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Call LLM using streaming
-        info!("Calling LLM for implementation plan with model {} (streaming enabled)", &model_used);
-        
-        // Set streaming to true for the API client options
-        let mut streaming_api_options = api_options.clone();
-        streaming_api_options.stream = true;
-        
-        // Prepare variables to collect the streaming response
-        let mut response_content = String::new();
-        let mut accumulated_tokens = 0;
-        let mut accumulated_chars = 0;
-        
-        // Use the full generated prompt instead of a simplified one to maintain consistency
-        // The prompt variable already contains the comprehensive implementation plan prompt
-        let stream = match llm_client.stream_complete(&prompt, streaming_api_options).await {
-            Ok(stream) => stream,
+        // Execute streaming LLM task using the task runner
+        info!("Calling LLM for implementation plan with model {} (streaming enabled)", model_used);
+        let llm_result = match task_runner.execute_streaming_llm_task(
+            prompt_context,
+            &settings_repo,
+            &repo,
+            &payload.background_job_id,
+        ).await {
+            Ok(result) => result,
             Err(e) => {
-                error!("Failed to initiate LLM stream for job {}: {}", payload.background_job_id, e);
-                let error_msg = format!("Failed to initiate LLM stream: {}", e);
-                
-                // Update job to failed using helper
-                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
-                
+                error!("Streaming LLM task execution failed: {}", e);
+                let error_msg = format!("Streaming LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
                 return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
             }
         };
         
-        // Process the stream and collect the response
-        use futures::StreamExt;
-        let mut stream_handle = stream;
+        info!("Streaming LLM task completed successfully for job {}", job.id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
-        while let Some(chunk_result) = stream_handle.next().await {
-            // Check if job has been canceled during streaming
-            let job_status = match repo.get_job_by_id(&job_id).await {
-                Ok(Some(job)) => crate::models::JobStatus::from_str(&job.status).unwrap_or(crate::models::JobStatus::Created),
-                _ => crate::models::JobStatus::Created,
-            };
-            
-            if job_status == crate::models::JobStatus::Canceled {
-                info!("Job {} was canceled during streaming", job_id);
-                return Ok(JobProcessResult::failure(job_id.clone(), "Job was canceled by user".to_string()));
-            }
-            
-            // Process the chunk
-            match chunk_result {
-                Ok(chunk) => {
-                    // Safely extract content from the choice message with bounds checking
-                    if !chunk.choices.is_empty() {
-                        if let Some(content) = &chunk.choices[0].delta.content {
-                            if !content.is_empty() {
-                                // Use the token estimator for more accurate token counting
-                                let estimated_tokens = crate::utils::token_estimator::estimate_tokens(content) as i32;
-                                accumulated_tokens += estimated_tokens;
-                                accumulated_chars += content.len() as i32;
-                                
-                                // Append the chunk to the response
-                                response_content.push_str(content);
-                                
-                                // Update the job's response with the new chunk, but don't fail on update errors
-                                if let Err(e) = repo.append_to_job_response(
-                                    &payload.background_job_id,
-                                    content,
-                                    estimated_tokens,
-                                    accumulated_chars
-                                ).await {
-                                    warn!("Failed to append chunk to job response: {}", e);
-                                    // Continue processing even if updates fail
-                                }
-                            }
-                        }
-                    }
-                },
-                Err(e) => {
-                    warn!("Error receiving stream chunk: {}", e);
-                    // Continue processing despite errors in individual chunks
-                }
-            }
-        }
-        
-        // Log completion of streaming
-        info!("Completed streaming response for job {}, received {} tokens", job_id, accumulated_tokens);
+        // Use the response from the task runner
+        let response_content = llm_result.response;
         
         // Continue with regular processing using the collected response
         if response_content.is_empty() {
             let error_msg = "No content received from LLM stream";
             error!("Implementation plan job {} failed: {}", payload.background_job_id, error_msg);
-            
-            // Update job to failed with detailed information
-            let timestamp = get_timestamp();
-            
-            // Get the job
-            let mut job = repo.get_job_by_id(&payload.background_job_id).await?
-                .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
-            
-            // Update job fields with comprehensive error information
-            job.status = JobStatus::Failed.to_string();
-            job.error_message = Some(error_msg.to_string());
-            job.updated_at = Some(timestamp);
-            job.end_time = Some(timestamp);
-            
-            // Log additional context for debugging
-            warn!("Implementation plan job {} received empty response. Accumulated tokens: {}, Model: {}", 
-                payload.background_job_id, accumulated_tokens, model_used);
-            
-            // Save updated job
-            repo.update_job(&job).await?;
-            
+            task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
             return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg.to_string()));
         }
         
@@ -396,40 +367,8 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         };
         
-        // Save the clean XML content to a file
-        let file_path = match self.save_implementation_plan_to_file(
-            &clean_xml_content,
-            &payload.project_directory,
-            &payload.background_job_id,
-            &payload.session_id,
-            &app_handle
-        ).await {
-            Ok(path) => path,
-            Err(e) => {
-                error!("Failed to save implementation plan file for job {}: {}", payload.background_job_id, e);
-                let error_msg = format!("Failed to save implementation plan file: {}", e);
-                
-                // Update job to failed but include the parsed content in response
-                let timestamp = get_timestamp();
-                let mut job = repo.get_job_by_id(&payload.background_job_id).await?
-                    .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
-                
-                job.status = JobStatus::Failed.to_string();
-                job.error_message = Some(error_msg.clone());
-                job.response = Some(human_readable_summary.clone());
-                job.updated_at = Some(timestamp);
-                job.end_time = Some(timestamp);
-                
-                // Still set token usage since LLM call succeeded
-                job.tokens_received = Some(accumulated_tokens as i32);
-                if let Some(tokens_sent) = job.tokens_sent {
-                    job.total_tokens = Some(tokens_sent + accumulated_tokens as i32);
-                }
-                
-                repo.update_job(&job).await?;
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
-            }
-        };
+        // Create response content for database storage (no file saving needed)
+        let response_content = self.create_response_content(&structured_plan, &clean_xml_content);
         
         // Extract the generated title from job metadata, if it exists
         let metadata: Option<serde_json::Value> = match &db_job.metadata {
@@ -459,54 +398,38 @@ impl JobProcessor for ImplementationPlanProcessor {
         let mut job = repo.get_job_by_id(&payload.background_job_id).await?
             .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
             
-        // Update job fields for completion
-        job.status = JobStatus::Completed.to_string();
-        job.response = Some(clean_xml_content.clone());
-        job.updated_at = Some(timestamp);
-        job.end_time = Some(timestamp);
-        job.model_used = Some(model_used.clone());
+        // Construct the additional_params specific to the implementation plan
+        let mut impl_plan_additional_params = json!({
+            "planData": serde_json::to_value(structured_plan.clone()).unwrap_or_default(),
+            "planTitle": generated_title.clone(),
+            "summary": human_readable_summary.clone(),
+            "isStructured": true
+        });
         
-        
-        // Set token usage from streaming
-        job.tokens_received = Some(accumulated_tokens as i32);
-        
-        // Calculate total tokens based on tokens_sent (which we set earlier) + tokens_received
-        if let Some(tokens_sent) = job.tokens_sent {
-            job.total_tokens = Some(tokens_sent + accumulated_tokens as i32);
+        // Ensure streaming flags are cleared for completed jobs
+        if let Some(obj) = impl_plan_additional_params.as_object_mut() {
+            obj.insert("isStreaming".to_string(), json!(false));
+            // Remove streaming-specific fields that should not persist for completed jobs
+            obj.remove("streamProgress");
+            obj.remove("responseLength");
+            obj.remove("estimatedTotalLength");
+            obj.remove("lastStreamUpdateTime");
+            obj.remove("streamStartTime");
         }
         
-        // Set model parameters
-        job.max_output_tokens = Some(max_output_tokens as i32);
-        job.temperature = Some(temperature);
-        
-        // Store structured data in metadata, preserving any existing metadata fields
-        let updated_metadata = match repo.get_job_by_id(&payload.background_job_id).await?
-            .and_then(|job| job.metadata)
-            .and_then(|metadata_str| serde_json::from_str::<serde_json::Value>(&metadata_str).ok()) {
-            Some(mut json) => {
-                json["planData"] = serde_json::to_value(structured_plan).unwrap_or_default();
-                json["outputPath"] = json!(file_path);
-                json["planTitle"] = json!(generated_title);
-                json["summary"] = json!(human_readable_summary);
-                // Keep any other existing metadata
-                json
-            },
-            None => json!({
-                "planData": serde_json::to_value(structured_plan).unwrap_or_default(),
-                "outputPath": file_path,
-                "planTitle": generated_title,
-                "summary": human_readable_summary,
-            }),
-        };
-        
-        job.metadata = Some(updated_metadata.to_string());
-        job.system_prompt_id = Some(system_prompt_id);
-        
-        // Update the job with the additional fields
-        repo.update_job(&job).await?;
+        // Finalize job success with the response content stored in database
+        job_processor_utils::finalize_job_success(
+            &payload.background_job_id,
+            &repo,
+            &response_content, // Use formatted response content for database storage
+            llm_result.usage,
+            &model_used,
+            &llm_result.system_prompt_id,
+            Some(impl_plan_additional_params), // Pass the correctly structured additional_params
+        ).await?;
         
         // Return success result
-        let success_message = format!("Implementation plan '{}' generated and saved to {}", generated_title, file_path);
+        let success_message = format!("Implementation plan '{}' generated successfully", generated_title);
         Ok(JobProcessResult::success(payload.background_job_id.clone(), success_message))
     }
 }

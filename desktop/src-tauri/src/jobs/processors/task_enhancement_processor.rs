@@ -9,6 +9,7 @@ use crate::jobs::processor_trait::JobProcessor;
 use crate::models::TaskType;
 use crate::utils::xml_utils::extract_xml_from_markdown;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 // Define structs for parsing the XML response
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -76,64 +77,43 @@ impl JobProcessor for TaskEnhancementProcessor {
         
         job_processor_utils::log_job_start(&job_id, "task enhancement");
         
-        // Build unified prompt
-        let composed_prompt = job_processor_utils::build_unified_prompt(
-            &job,
-            &app_handle,
-            payload.task_description.clone(),
-            payload.project_context.clone(),
-            None,
-            None,
-            &settings_repo,
-            &model_used,
-        ).await?;
-
-        info!("Enhanced Task Enhancement prompt composition for job {}", job_id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
-        info!("Context sections: {:?}", composed_prompt.context_sections);
-        if let Some(tokens) = composed_prompt.estimated_tokens {
-            info!("Estimated tokens: {}", tokens);
-        }
-
-        // Extract system and user parts from the composed prompt - USING HELPER
-        let (system_prompt_text, user_prompt_text, system_prompt_id) = 
-            job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
         
-        // Get the LLM client using the standardized factory function - USING HELPER
-        let client = job_processor_utils::get_api_client(&app_handle)?;
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Create the message objects for the OpenRouter request - USING HELPER
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt_text, &user_prompt_text);
-        
-        // Combine messages for token estimation
-        let combined_prompt = format!("{}\n{}", system_prompt_text, user_prompt_text);
-        
-        // Estimate the tokens in the prompt
-        let prompt_tokens = crate::utils::token_estimator::estimate_tokens(&combined_prompt);
-        
-        // Create API options using helper
-        let options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
-        
-        // Store model name before options is moved
-        let model_name = options.model.clone();
-        debug!("Using model: {} for Task Enhancement", model_name);
-        
-        // Send the request with the messages using helper
-        let response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, options).await?;
-        
-        // Extract the response content
-        let response_content = if !response.choices.is_empty() {
-            response.choices[0].message.content.clone()
-        } else {
-            return Err(AppError::JobError("No response content received from API".to_string()));
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: payload.task_description.clone(),
+            file_contents: None,
+            directory_tree: None,
+            codebase_structure: payload.project_context.clone(),
+            system_prompt_override: None,
         };
         
-        let clean_xml_content = extract_xml_from_markdown(&response_content);
+        debug!("Using model: {} for Task Enhancement", model_used);
+        
+        // Execute LLM task using the task runner
+        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Task Enhancement LLM task execution failed: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &job_id, &error_msg).await?;
+                return Ok(JobProcessResult::failure(job_id, error_msg));
+            }
+        };
+        
+        info!("Task Enhancement LLM task completed successfully for job {}", job_id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
+        
+        let clean_xml_content = extract_xml_from_markdown(&llm_result.response);
         
         // Parse the XML from the cleaned content
         let xml_response: Result<TaskEnhancementResponseXml, _> = quick_xml::de::from_str(&clean_xml_content);
@@ -147,7 +127,7 @@ impl JobProcessor for TaskEnhancementProcessor {
                 let enhanced_task = if !clean_xml_content.is_empty() {
                     clean_xml_content
                 } else {
-                    response_content
+                    llm_result.response.clone()
                 };
                 
                 // Create a basic response with just the text
@@ -161,11 +141,6 @@ impl JobProcessor for TaskEnhancementProcessor {
             }
         };
         
-        // Get usage statistics
-        let tokens_sent = response.usage.as_ref().map(|u| u.prompt_tokens as i32);
-        let tokens_received = response.usage.as_ref().map(|u| u.completion_tokens as i32);
-        let total_tokens = response.usage.as_ref().map(|u| u.total_tokens as i32);
-        
         // Serialize the detailed analysis data for storing in metadata
         let metadata = serde_json::json!({
             "originalTask": parsed_response.original_task,
@@ -175,28 +150,31 @@ impl JobProcessor for TaskEnhancementProcessor {
             "targetField": payload.target_field,
         });
         
-        // Finalize job success using helper
+        // Extract usage before moving it
+        let usage_for_result = llm_result.usage.clone();
+        
+        // Use manual finalization since we need to set the response to enhanced_task
+        // instead of the raw LLM response
         job_processor_utils::finalize_job_success(
             &job_id,
             &repo,
             &parsed_response.enhanced_task,
-            response.usage,
-            &model_name,
-            &system_prompt_id,
+            llm_result.usage,
+            &model_used,
+            &llm_result.system_prompt_id,
             Some(metadata),
         ).await?;
         
         info!("Completed Task Enhancement job {}", job_id);
-        info!("Tokens sent: {:?}, Tokens received: {:?}", tokens_sent, tokens_received);
         
         let enhanced_task = parsed_response.enhanced_task.clone();
         let task_len = enhanced_task.len() as i32;
         
         Ok(JobProcessResult::success(job_id, enhanced_task)
             .with_tokens(
-                tokens_sent,
-                tokens_received,
-                total_tokens,
+                usage_for_result.as_ref().map(|u| u.prompt_tokens as i32),
+                usage_for_result.as_ref().map(|u| u.completion_tokens as i32),
+                usage_for_result.as_ref().map(|u| u.total_tokens as i32),
                 Some(task_len),
             ))
     }

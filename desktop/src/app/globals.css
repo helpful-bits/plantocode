@@ -303,6 +303,104 @@
   .success-state {
     @apply bg-success-background border border-success-border text-success-foreground rounded-lg p-4;
   }
+
+  /* Custom Checkbox Styling */
+  .custom-checkbox-container {
+    @apply relative inline-flex items-center justify-center;
+  }
+
+  .custom-checkbox {
+    @apply appearance-none inline-block align-middle select-none flex-shrink-0 cursor-pointer;
+    @apply w-4 h-4 rounded-[3px] border-2;
+    @apply border-border bg-background; /* Solid background for better contrast against muted row backgrounds */
+    @apply transition-all duration-150 ease-in-out;
+    @apply shadow-sm; /* Subtle shadow for depth */
+  }
+
+  .custom-checkbox:hover:not(:disabled) {
+    @apply border-primary/70 shadow-md;
+  }
+
+  .custom-checkbox:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background shadow-md;
+    @apply border-primary; /* Stronger border on focus */
+  }
+
+  .custom-checkbox:checked {
+    @apply bg-primary border-primary;
+  }
+
+  .custom-checkbox.destructive:checked {
+    @apply bg-destructive border-destructive;
+  }
+
+  .custom-checkbox:disabled {
+    @apply border-border/40 bg-muted/50 cursor-not-allowed opacity-60;
+  }
+
+  .custom-checkbox:checked:disabled {
+    @apply bg-primary/40 border-primary/40;
+  }
+
+  .custom-checkbox.destructive:checked:disabled {
+    @apply bg-destructive/40 border-destructive/40;
+  }
+
+  .custom-checkbox-checkmark {
+    @apply absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-100 ease-in-out;
+  }
+
+  .custom-checkbox:checked + .custom-checkbox-checkmark {
+    @apply opacity-100;
+  }
+
+  .custom-checkbox:checked:disabled + .custom-checkbox-checkmark {
+    @apply opacity-60; /* Dim checkmark on disabled checked */
+  }
+
+  /* Enhanced styling for checkboxes in selected file rows */
+  .file-row-selected .custom-checkbox {
+    @apply border-border/80 bg-background shadow-md; /* Enhanced contrast against muted background with more prominent shadow */
+  }
+
+  .file-row-selected .custom-checkbox:hover:not(:disabled) {
+    @apply border-primary/80 shadow-lg bg-background;
+  }
+
+  .file-row-selected .custom-checkbox:checked {
+    @apply bg-primary border-primary shadow-md;
+  }
+
+  .file-row-selected .custom-checkbox.destructive:checked {
+    @apply bg-destructive border-destructive shadow-md;
+  }
+
+  /* Dark mode specific overrides for better visibility in selected rows */
+  .dark .file-row-selected .custom-checkbox {
+    @apply border-border bg-card shadow-lg; /* Stronger contrast in dark mode */
+  }
+
+  .dark .file-row-selected .custom-checkbox:hover:not(:disabled) {
+    @apply border-primary/90 shadow-xl;
+  }
+
+  /* SVG checkmark colors for better visibility */
+  .custom-checkbox:checked + .custom-checkbox-checkmark svg {
+    color: var(--color-primary-foreground);
+  }
+
+  .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
+    color: var(--color-destructive-foreground);
+  }
+
+  /* Dark mode overrides for better checkmark visibility */
+  .dark .custom-checkbox:checked + .custom-checkbox-checkmark svg {
+    color: oklch(0.98 0 0); /* Explicit light color for dark mode primary checkmark */
+  }
+
+  .dark .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
+    color: oklch(0.97 0.01 25); /* Explicit light color for dark mode destructive checkmark */
+  }
 }
 
 @layer base {

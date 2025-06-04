@@ -16,8 +16,10 @@ import { extractErrorInfo, createUserFriendlyErrorMessage } from '@/utils/error-
 import type { WorkflowState, WorkflowStageJob, WorkflowStage, WorkflowStatusResponse, WorkflowStatus, JobStatus } from '@/types/workflow-types';
 
 // Helper functions for robust type mapping from backend responses
+// These handle various string formats from the backend and map them to frontend enum types
 function mapWorkflowStatus(status: string): WorkflowStatus {
-  switch (status.toLowerCase()) {
+  const normalizedStatus = status.toLowerCase().trim();
+  switch (normalizedStatus) {
     case 'created': return 'Created';
     case 'running': return 'Running';
     case 'paused': return 'Paused';
@@ -25,12 +27,15 @@ function mapWorkflowStatus(status: string): WorkflowStatus {
     case 'failed': return 'Failed';
     case 'canceled':
     case 'cancelled': return 'Canceled';
-    default: return 'Created';
+    default: 
+      console.warn(`Unknown workflow status: ${status}, defaulting to Created`);
+      return 'Created';
   }
 }
 
 function mapJobStatus(status: string): JobStatus {
-  switch (status.toLowerCase()) {
+  const normalizedStatus = status.toLowerCase().trim();
+  switch (normalizedStatus) {
     case 'idle': return 'idle';
     case 'created': return 'created';
     case 'queued': return 'queued';
@@ -44,50 +49,40 @@ function mapJobStatus(status: string): JobStatus {
     case 'completed': return 'completed';
     case 'failed': return 'failed';
     case 'canceled': return 'canceled';
-    default: return 'idle';
+    default: 
+      console.warn(`Unknown job status: ${status}, defaulting to idle`);
+      return 'idle';
   }
 }
 
 function mapWorkflowStage(stageName: string): WorkflowStage {
-  // Handle both snake_case and display name formats
-  const normalizedStage = stageName.toUpperCase().replace(/\s+/g, '_');
-  
-  switch (normalizedStage) {
-    case 'GENERATING_DIR_TREE':
-    case 'GENERATINGDIRTREE':
-      return 'GENERATING_DIR_TREE';
-    case 'GENERATING_REGEX':
-    case 'GENERATINGREGEX':
-      return 'GENERATING_REGEX';
-    case 'LOCAL_FILTERING':
-    case 'LOCALFILTERING':
-      return 'LOCAL_FILTERING';
-    case 'INITIAL_PATH_FINDER':
-    case 'INITIALPATHFINDER':
-      return 'INITIAL_PATH_FINDER';
-    case 'INITIAL_PATH_CORRECTION':
-    case 'INITIALPATHCORRECTION':
-      return 'INITIAL_PATH_CORRECTION';
-    case 'EXTENDED_PATH_FINDER':
-    case 'EXTENDEDPATHFINDER':
-      return 'EXTENDED_PATH_FINDER';
-    case 'EXTENDED_PATH_CORRECTION':
-    case 'EXTENDEDPATHCORRECTION':
-      return 'EXTENDED_PATH_CORRECTION';
-    default:
-      console.warn(`Unknown workflow stage: ${stageName}, defaulting to GENERATING_DIR_TREE`);
-      return 'GENERATING_DIR_TREE';
+  // Primary: Use the centralized mapping utility that handles all backend formats
+  const mappedStage = WorkflowUtils.mapStageNameToEnum(stageName);
+  if (mappedStage) {
+    return mappedStage;
   }
+  
+  // Secondary: If the centralized utility couldn't map it, try a more flexible approach
+  // by normalizing any input to uppercase with underscores (for edge cases)
+  const normalizedStage = stageName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z_]/g, '').trim();
+  
+  // Try the normalized version with the centralized utility again
+  const secondAttempt = WorkflowUtils.mapStageNameToEnum(normalizedStage);
+  if (secondAttempt) {
+    return secondAttempt;
+  }
+  
+  // Ultimate fallback with warning - log more details for debugging
+  console.warn(`Unknown workflow stage: "${stageName}" (normalized: "${normalizedStage}"), defaulting to GENERATING_REGEX`);
+  return 'GENERATING_REGEX';
 }
 
 // Helper function to get all workflow stages in order
 function getAllWorkflowStages(): WorkflowStage[] {
   return [
-    'GENERATING_DIR_TREE',
     'GENERATING_REGEX',
     'LOCAL_FILTERING',
-    'INITIAL_PATH_FINDER',
-    'INITIAL_PATH_CORRECTION',
+    'FILE_RELEVANCE_ASSESSMENT',
     'EXTENDED_PATH_FINDER',
     'EXTENDED_PATH_CORRECTION'
   ];
@@ -100,6 +95,12 @@ function createPlaceholderStageJob(stage: WorkflowStage): WorkflowStageJob {
     jobId: `placeholder-${stage}`,
     status: 'idle',
     createdAt: Date.now(),
+    startedAt: undefined,
+    completedAt: undefined,
+    executionTimeMs: undefined,
+    errorMessage: undefined,
+    subStatusMessage: undefined,
+    dependsOn: undefined,
   };
 }
 
@@ -145,18 +146,21 @@ export function WorkflowVisualizer({
       workflowId: workflowStatus.workflowId,
       sessionId: workflowStatus.sessionId || '',
       status: mapWorkflowStatus(workflowStatus.status),
-      stageJobs: workflowStatus.stageStatuses.map(stage => ({
-        stage: mapWorkflowStage(stage.stageName),
-        jobId: stage.jobId || `placeholder-${stage.stageName}`,
-        status: mapJobStatus(stage.status),
-        createdAt: stage.createdAt ? new Date(stage.createdAt).getTime() : Date.now(),
-        startedAt: stage.startedAt ? new Date(stage.startedAt).getTime() : undefined,
-        completedAt: stage.completedAt ? new Date(stage.completedAt).getTime() : undefined,
-        executionTimeMs: stage.executionTimeMs,
-        errorMessage: stage.errorMessage,
-        dependsOn: stage.dependsOn,
-        subStatusMessage: stage.subStatusMessage,
-      })),
+      stageJobs: workflowStatus.stageStatuses.map(stage => {
+        const mappedStage = mapWorkflowStage(stage.stageName);
+        return {
+          stage: mappedStage,
+          jobId: stage.jobId || `placeholder-${mappedStage}`,
+          status: mapJobStatus(stage.status),
+          createdAt: stage.createdAt ? new Date(stage.createdAt).getTime() : Date.now(),
+          startedAt: stage.startedAt ? new Date(stage.startedAt).getTime() : undefined,
+          completedAt: stage.completedAt ? new Date(stage.completedAt).getTime() : undefined,
+          executionTimeMs: stage.executionTimeMs || undefined,
+          errorMessage: stage.errorMessage || undefined,
+          dependsOn: stage.dependsOn || undefined,
+          subStatusMessage: stage.subStatusMessage || undefined,
+        };
+      }),
       progressPercentage: workflowStatus.progressPercentage,
       currentStage: workflowStatus.currentStage ? mapWorkflowStage(workflowStatus.currentStage) : undefined,
       createdAt: workflowStatus.createdAt || Date.now(),
@@ -170,6 +174,7 @@ export function WorkflowVisualizer({
       timeoutMs: workflowStatus.timeoutMs,
       intermediateData: {
         locallyFilteredFiles: [],
+        aiFilteredFiles: [],
         initialVerifiedPaths: [],
         initialUnverifiedPaths: [],
         initialCorrectedPaths: [],
@@ -354,18 +359,21 @@ function StageJobCard({
   
   const isRetrying = retryingStage === stageJob.jobId;
   const isCanceling = cancelingStage === stageJob.jobId;
-  const canRetry = isFailed && !isRetrying && !stageJob.jobId.startsWith('placeholder-');
-  const canCancel = isRunning && !isCanceling && !stageJob.jobId.startsWith('placeholder-');
+  // Only allow actions on stages with valid jobIds (not placeholders)
+  const hasValidJobId = stageJob.jobId && !stageJob.jobId.startsWith('placeholder-');
+  const canRetry = isFailed && !isRetrying && hasValidJobId;
+  const canCancel = isRunning && !isCanceling && hasValidJobId;
   
   const handleRetryStage = async () => {
-    // Ensure we have a valid jobId before attempting retry
-    if (!stageJob.jobId || stageJob.jobId.startsWith('placeholder-')) {
+    // Validate jobId - must exist and not be a placeholder
+    if (!hasValidJobId || !stageJob.jobId || stageJob.jobId.trim() === '') {
       console.warn('Cannot retry stage without valid jobId:', stageJob.jobId);
       return;
     }
     
-    if (!workflowId) {
-      console.warn('Cannot retry stage without workflow ID');
+    // Validate workflowId - must exist and not be empty
+    if (!workflowId || workflowId.trim() === '') {
+      console.warn('Cannot retry stage without valid workflow ID:', workflowId);
       return;
     }
     
@@ -392,14 +400,15 @@ function StageJobCard({
   };
   
   const handleCancelStage = async () => {
-    // Ensure we have a valid jobId before attempting cancel
-    if (!stageJob.jobId || stageJob.jobId.startsWith('placeholder-')) {
+    // Validate jobId - must exist and not be a placeholder
+    if (!hasValidJobId || !stageJob.jobId || stageJob.jobId.trim() === '') {
       console.warn('Cannot cancel stage without valid jobId:', stageJob.jobId);
       return;
     }
     
-    if (!workflowId) {
-      console.warn('Cannot cancel stage without workflow ID');
+    // Validate workflowId - must exist and not be empty
+    if (!workflowId || workflowId.trim() === '') {
+      console.warn('Cannot cancel stage without valid workflow ID:', workflowId);
       return;
     }
     
@@ -502,7 +511,11 @@ function StageJobCard({
           <div className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded p-2">
             <div className="font-medium mb-1">
               {errorInfo.workflowContext?.stageName && (
-                <span>Failed at stage: {errorInfo.workflowContext.stageName}</span>
+                <span>Failed at stage: {(() => {
+                  // Use WorkflowUtils to get consistent stage display names
+                  const stageEnum = WorkflowUtils.mapStageNameToEnum(errorInfo.workflowContext.stageName);
+                  return stageEnum ? WorkflowUtils.getStageName(stageEnum) : errorInfo.workflowContext.stageName;
+                })()}</span>
               )}
               {errorInfo.workflowContext?.retryAttempt && (
                 <span className="ml-2 text-xs opacity-75">
@@ -723,14 +736,21 @@ export function WorkflowTimeline({
                     {/* Timeline Stage Actions */}
                     {enableStageActions && stageJob && (
                       <div className="flex gap-1">
-                        {isFailed && !stageJob.jobId.startsWith('placeholder-') && (
+                        {/* Timeline Stage Actions - only show for valid job IDs */}
+                        {isFailed && stageJob && stageJob.jobId && !stageJob.jobId.startsWith('placeholder-') && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={async () => {
+                              // Validate inputs before proceeding
+                              if (!stageJob.jobId || stageJob.jobId.trim() === '') {
+                                console.warn('Cannot retry stage without valid jobId:', stageJob.jobId);
+                                return;
+                              }
+                              
                               if (onStageRetry) {
                                 onStageRetry(stageJob.jobId);
-                              } else if (workflowState.workflowId) {
+                              } else if (workflowState.workflowId && workflowState.workflowId.trim() !== '') {
                                 setRetryingStage(stageJob.jobId);
                                 try {
                                   const result = await retryWorkflowStageAction(workflowState.workflowId, stageJob.jobId);
@@ -756,14 +776,20 @@ export function WorkflowTimeline({
                             )}
                           </Button>
                         )}
-                        {isActive && !stageJob.jobId.startsWith('placeholder-') && (
+                        {isActive && stageJob && stageJob.jobId && !stageJob.jobId.startsWith('placeholder-') && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={async () => {
+                              // Validate inputs before proceeding
+                              if (!stageJob.jobId || stageJob.jobId.trim() === '') {
+                                console.warn('Cannot cancel stage without valid jobId:', stageJob.jobId);
+                                return;
+                              }
+                              
                               if (onStageCancel) {
                                 onStageCancel(stageJob.jobId);
-                              } else if (workflowState.workflowId) {
+                              } else if (workflowState.workflowId && workflowState.workflowId.trim() !== '') {
                                 setCancelingStage(stageJob.jobId);
                                 try {
                                   const result = await cancelWorkflowStageAction(workflowState.workflowId, stageJob.jobId);

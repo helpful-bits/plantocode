@@ -12,6 +12,7 @@ export function JobDetailsMetadataSection() {
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [showFullMetadata, setShowFullMetadata] = useState(false);
   const [showFullRegex, setShowFullRegex] = useState(false);
+  const [showFullPlanData, setShowFullPlanData] = useState(false);
   
   const parsedMeta = parsedMetadata;
   
@@ -26,27 +27,23 @@ export function JobDetailsMetadataSection() {
     ? formattedMetadata 
     : formattedMetadata.substring(0, PREVIEW_CHARS) + "...";
 
-  // Access regex data from new JobWorkerMetadata structure or legacy format
-  let regexData = null;
+  // Access parsed JSON data from regex pattern generation
+  const parsedJsonData = parsedMeta?.additionalParams?.parsedJsonData;
+  const jsonValid = parsedMeta?.additionalParams?.jsonValid;
   
-  // First, check if this is a regex pattern generation job with structured payload
-  if (parsedMeta.jobPayloadForWorker && typeof parsedMeta.jobPayloadForWorker === 'object' && 'type' in parsedMeta.jobPayloadForWorker && parsedMeta.jobPayloadForWorker.type === "RegexPatternGeneration") {
-    regexData = parsedMeta.jobPayloadForWorker;
-  }
-  // Then check legacy direct regexData field
-  else if (parsedMeta.jobPayloadForWorker && typeof parsedMeta.jobPayloadForWorker === 'object' && 'data' in parsedMeta.jobPayloadForWorker && parsedMeta.jobPayloadForWorker.data && typeof parsedMeta.jobPayloadForWorker.data === 'object' && 'regexData' in parsedMeta.jobPayloadForWorker.data) {
-    regexData = (parsedMeta.jobPayloadForWorker.data as any).regexData;
-  }
-  // Finally, fall back to legacy structure
-  else if ('regexData' in parsedMeta && parsedMeta.regexData) {
-    regexData = parsedMeta.regexData;
-  }
-  
-  const formattedRegex = regexData ? formatRegexPatterns(regexData) : null;
+  const formattedRegex = parsedJsonData ? formatRegexPatterns(parsedJsonData) : null;
   const isLongRegex = formattedRegex ? formattedRegex.length > PREVIEW_CHARS : false;
   const displayRegex = showFullRegex || !isLongRegex || !formattedRegex
     ? formattedRegex 
     : formattedRegex.substring(0, PREVIEW_CHARS) + "...";
+
+  // Access implementation plan data
+  const planData = parsedMeta?.additionalParams?.planData;
+  const formattedPlanData = planData ? JSON.stringify(planData, null, 2) : null;
+  const isLongPlanData = formattedPlanData ? formattedPlanData.length > PREVIEW_CHARS : false;
+  const displayPlanData = showFullPlanData || !isLongPlanData || !formattedPlanData
+    ? formattedPlanData 
+    : formattedPlanData.substring(0, PREVIEW_CHARS) + "...";
 
   return (
     <Card>
@@ -66,15 +63,23 @@ export function JobDetailsMetadataSection() {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-3">
-            {parsedMeta.targetField && (
+            {parsedMeta?.additionalParams?.targetField ? (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Target Field</div>
-                <div className="text-sm font-medium text-foreground">{String(parsedMeta.targetField || '')}</div>
+                <div className="text-sm font-medium text-foreground">{String(parsedMeta.additionalParams.targetField || '')}</div>
+              </div>
+            ) : null}
+
+            {jsonValid != null && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">JSON Parsing Status</div>
+                <div className={`text-sm font-medium ${jsonValid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {jsonValid ? 'Valid JSON' : 'Invalid JSON'}
+                </div>
               </div>
             )}
 
-            {/* Display regex patterns separately if they exist - now accessed via jobPayloadForWorker */}
-            {regexData && (
+            {parsedJsonData != null && (
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Regex Patterns</div>
                 <ScrollArea className={`${showFullRegex ? "max-h-[300px]" : "max-h-[150px]"}`}>
@@ -90,6 +95,27 @@ export function JobDetailsMetadataSection() {
                     onClick={() => setShowFullRegex(!showFullRegex)}
                   >
                     {showFullRegex ? "Show Less" : "Show More"}
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {planData != null && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Implementation Plan Data</div>
+                <ScrollArea className={`${showFullPlanData ? "max-h-[300px]" : "max-h-[150px]"}`}>
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-balance w-full p-2 bg-muted/20 rounded-md border border-border/60 text-foreground">
+                    {displayPlanData || 'No implementation plan data found'}
+                  </pre>
+                </ScrollArea>
+                {isLongPlanData && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-xs"
+                    onClick={() => setShowFullPlanData(!showFullPlanData)}
+                  >
+                    {showFullPlanData ? "Show Less" : "Show More"}
                   </Button>
                 )}
               </div>

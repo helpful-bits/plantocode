@@ -19,7 +19,7 @@ pub use invoice_repository::{InvoiceRepository, Invoice};
 pub use payment_method_repository::{PaymentMethodRepository, PaymentMethod};
 pub use spending_period_repository::{SpendingPeriodRepository, SpendingPeriod, UserSpendingSummary, SpendingTrend, TopSpender};
 pub use subscription_repository::SubscriptionRepository;
-pub use subscription_plan_repository::SubscriptionPlanRepository;
+pub use subscription_plan_repository::{SubscriptionPlanRepository, PlanFeatures, SpendingDetails, SupportLevel, OveragePolicy};
 pub use user_repository::UserRepository;
 pub use settings_repository::{SettingsRepository, DatabaseAIModelSettings, DatabaseTaskConfig, DatabasePathFinderSettings};
 pub use model_repository::{ModelRepository, ModelWithProvider, Model};

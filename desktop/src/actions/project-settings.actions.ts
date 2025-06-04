@@ -75,11 +75,6 @@ export async function getModelSettingsForProject(
 }
 
 /**
- * Alias for getModelSettingsForProject to maintain backward compatibility
- */
-export const getProjectTaskModelSettingsAction = getModelSettingsForProject;
-
-/**
  * Save task model settings for a project
  */
 export async function saveProjectTaskModelSettingsAction(

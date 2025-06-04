@@ -9,7 +9,7 @@ pub struct GroqTranscriptionResponse {
     pub text: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GroqClient {
     client: Client,
     api_key: String,

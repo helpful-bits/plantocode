@@ -25,24 +25,26 @@ impl Default for WorkflowStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WorkflowStage {
-    GeneratingDirTree,
     GeneratingRegex,
     LocalFiltering,
-    InitialPathFinder,
-    InitialPathCorrection,
+    FileRelevanceAssessment,
     ExtendedPathFinder,
     ExtendedPathCorrection,
+}
+
+impl std::fmt::Display for WorkflowStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.display_name())
+    }
 }
 
 impl WorkflowStage {
     /// Get all stages in execution order
     pub fn all_stages() -> Vec<WorkflowStage> {
         vec![
-            WorkflowStage::GeneratingDirTree,
             WorkflowStage::GeneratingRegex,
             WorkflowStage::LocalFiltering,
-            WorkflowStage::InitialPathFinder,
-            WorkflowStage::InitialPathCorrection,
+            WorkflowStage::FileRelevanceAssessment,
             WorkflowStage::ExtendedPathFinder,
             WorkflowStage::ExtendedPathCorrection,
         ]
@@ -51,11 +53,9 @@ impl WorkflowStage {
     /// Get the next stage in the workflow
     pub fn next_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::GeneratingDirTree => Some(WorkflowStage::GeneratingRegex),
             WorkflowStage::GeneratingRegex => Some(WorkflowStage::LocalFiltering),
-            WorkflowStage::LocalFiltering => Some(WorkflowStage::InitialPathFinder),
-            WorkflowStage::InitialPathFinder => Some(WorkflowStage::InitialPathCorrection),
-            WorkflowStage::InitialPathCorrection => Some(WorkflowStage::ExtendedPathFinder),
+            WorkflowStage::LocalFiltering => Some(WorkflowStage::FileRelevanceAssessment),
+            WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathCorrection),
             WorkflowStage::ExtendedPathCorrection => None,
         }
@@ -64,12 +64,10 @@ impl WorkflowStage {
     /// Get the previous stage in the workflow
     pub fn previous_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::GeneratingDirTree => None,
-            WorkflowStage::GeneratingRegex => Some(WorkflowStage::GeneratingDirTree),
+            WorkflowStage::GeneratingRegex => None,
             WorkflowStage::LocalFiltering => Some(WorkflowStage::GeneratingRegex),
-            WorkflowStage::InitialPathFinder => Some(WorkflowStage::LocalFiltering),
-            WorkflowStage::InitialPathCorrection => Some(WorkflowStage::InitialPathFinder),
-            WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::InitialPathCorrection),
+            WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::LocalFiltering),
+            WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathFinder),
         }
     }
@@ -77,26 +75,46 @@ impl WorkflowStage {
     /// Get stage index for progress calculation (0-based)
     pub fn stage_index(&self) -> usize {
         match self {
-            WorkflowStage::GeneratingDirTree => 0,
-            WorkflowStage::GeneratingRegex => 1,
-            WorkflowStage::LocalFiltering => 2,
-            WorkflowStage::InitialPathFinder => 3,
-            WorkflowStage::InitialPathCorrection => 4,
-            WorkflowStage::ExtendedPathFinder => 5,
-            WorkflowStage::ExtendedPathCorrection => 6,
+            WorkflowStage::GeneratingRegex => 0,
+            WorkflowStage::LocalFiltering => 1,
+            WorkflowStage::FileRelevanceAssessment => 2,
+            WorkflowStage::ExtendedPathFinder => 3,
+            WorkflowStage::ExtendedPathCorrection => 4,
         }
     }
 
     /// Get stage display name
     pub fn display_name(&self) -> &'static str {
         match self {
-            WorkflowStage::GeneratingDirTree => "Generating Directory Tree",
             WorkflowStage::GeneratingRegex => "Generating Regex Patterns",
             WorkflowStage::LocalFiltering => "Local File Filtering",
-            WorkflowStage::InitialPathFinder => "Initial Path Finding",
-            WorkflowStage::InitialPathCorrection => "Initial Path Correction",
+            WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
             WorkflowStage::ExtendedPathCorrection => "Extended Path Correction",
+        }
+    }
+
+    /// Convert from stage display name to WorkflowStage enum
+    pub fn from_display_name(display_name: &str) -> Option<WorkflowStage> {
+        match display_name {
+            "Generating Regex Patterns" => Some(WorkflowStage::GeneratingRegex),
+            "Local File Filtering" => Some(WorkflowStage::LocalFiltering),
+            "AI File Relevance Assessment" => Some(WorkflowStage::FileRelevanceAssessment),
+            "Extended Path Finding" => Some(WorkflowStage::ExtendedPathFinder),
+            "Extended Path Correction" => Some(WorkflowStage::ExtendedPathCorrection),
+            _ => None,
+        }
+    }
+
+    /// Convert from TaskType to WorkflowStage enum
+    pub fn from_task_type(task_type: &TaskType) -> Option<WorkflowStage> {
+        match task_type {
+            TaskType::RegexPatternGeneration => Some(WorkflowStage::GeneratingRegex),
+            TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFiltering),
+            TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
+            TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
+            TaskType::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathCorrection),
+            _ => None,
         }
     }
 }
@@ -105,7 +123,8 @@ impl WorkflowStage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowStageJob {
-    pub stage: WorkflowStage,
+    pub stage_name: String,
+    pub task_type: TaskType,
     pub job_id: String,
     pub status: JobStatus,
     pub depends_on: Option<String>, // Job ID this stage depends on
@@ -117,10 +136,11 @@ pub struct WorkflowStageJob {
 }
 
 impl WorkflowStageJob {
-    pub fn new(stage: WorkflowStage, job_id: String, depends_on: Option<String>) -> Self {
+    pub fn new(stage_name: String, task_type: TaskType, job_id: String, depends_on: Option<String>) -> Self {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
-            stage,
+            stage_name,
+            task_type,
             job_id,
             status: JobStatus::Queued,
             depends_on,
@@ -152,6 +172,7 @@ impl WorkflowStageJob {
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowState {
     pub workflow_id: String,
+    pub workflow_definition_name: String,
     pub session_id: String,
     pub status: WorkflowStatus,
     pub stage_jobs: Vec<WorkflowStageJob>,
@@ -171,6 +192,7 @@ pub struct WorkflowState {
 impl WorkflowState {
     pub fn new(
         workflow_id: String,
+        workflow_definition_name: String,
         session_id: String,
         task_description: String,
         project_directory: String,
@@ -180,6 +202,7 @@ impl WorkflowState {
         let now = chrono::Utc::now().timestamp_millis();
         Self {
             workflow_id,
+            workflow_definition_name,
             session_id,
             status: WorkflowStatus::Created,
             stage_jobs: Vec::new(),
@@ -201,7 +224,7 @@ impl WorkflowState {
             return 0.0;
         }
 
-        let total_stages = WorkflowStage::all_stages().len() as f32;
+        let total_stages = self.stage_jobs.len() as f32;
         let completed_stages = self.stage_jobs.iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
@@ -219,7 +242,7 @@ impl WorkflowState {
         // If no running stage, find the next stage that can be executed
         self.stage_jobs.iter()
             .filter(|job| job.status == JobStatus::Queued && job.can_execute(self))
-            .min_by_key(|job| job.stage.stage_index())
+            .next() // Remove stage_index dependency for now, TODO: implement proper ordering
     }
 
     /// Get all completed stages
@@ -238,13 +261,10 @@ impl WorkflowState {
 
     /// Check if all stages are completed
     pub fn is_completed(&self) -> bool {
-        let all_stages = WorkflowStage::all_stages();
-        let completed_stages: std::collections::HashSet<_> = self.stage_jobs.iter()
-            .filter(|job| job.status == JobStatus::Completed)
-            .map(|job| &job.stage)
-            .collect();
-
-        all_stages.iter().all(|stage| completed_stages.contains(stage))
+        // For now, check if all stage jobs are completed
+        // TODO: This should be updated to work with workflow definitions
+        !self.stage_jobs.is_empty() && 
+        self.stage_jobs.iter().all(|job| job.status == JobStatus::Completed)
     }
 
     /// Check if any stage has failed
@@ -296,8 +316,8 @@ impl WorkflowState {
     }
 
     /// Add a stage job to the workflow
-    pub fn add_stage_job(&mut self, stage: WorkflowStage, job_id: String, depends_on: Option<String>) {
-        let stage_job = WorkflowStageJob::new(stage, job_id, depends_on);
+    pub fn add_stage_job(&mut self, stage_name: String, task_type: TaskType, job_id: String, depends_on: Option<String>) {
+        let stage_job = WorkflowStageJob::new(stage_name, task_type, job_id, depends_on);
         self.stage_jobs.push(stage_job);
         self.updated_at = chrono::Utc::now().timestamp_millis();
     }
@@ -307,9 +327,9 @@ impl WorkflowState {
         self.stage_jobs.iter().find(|job| job.job_id == job_id)
     }
 
-    /// Get stage job by stage
-    pub fn get_stage_job_by_stage(&self, stage: &WorkflowStage) -> Option<&WorkflowStageJob> {
-        self.stage_jobs.iter().find(|job| &job.stage == stage)
+    /// Get stage job by stage name
+    pub fn get_stage_job_by_name(&self, stage_name: &str) -> Option<&WorkflowStageJob> {
+        self.stage_jobs.iter().find(|job| job.stage_name == stage_name)
     }
 }
 
@@ -320,6 +340,7 @@ pub struct WorkflowIntermediateData {
     pub directory_tree_content: Option<String>,
     pub raw_regex_patterns: Option<serde_json::Value>,
     pub locally_filtered_files: Vec<String>,
+    pub ai_filtered_files: Vec<String>,
     pub initial_verified_paths: Vec<String>,
     pub initial_unverified_paths: Vec<String>,
     pub initial_corrected_paths: Vec<String>,
@@ -335,6 +356,9 @@ impl WorkflowIntermediateData {
         
         // Add locally filtered files
         files.extend(self.locally_filtered_files.clone());
+        
+        // Add AI filtered files
+        files.extend(self.ai_filtered_files.clone());
         
         // Add initial verified paths
         files.extend(self.initial_verified_paths.clone());
@@ -378,7 +402,8 @@ pub struct WorkflowStatusEvent {
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowStageEvent {
     pub workflow_id: String,
-    pub stage: WorkflowStage,
+    pub stage_name: String,
+    pub task_type: TaskType,
     pub job_id: String,
     pub status: JobStatus,
     pub message: String,
@@ -421,7 +446,7 @@ pub struct FailedCancellation {
 impl WorkflowResult {
     pub fn from_workflow_state(workflow_state: &WorkflowState) -> Self {
         let selected_files = workflow_state.intermediate_data.get_final_selected_files();
-        let total_stages = WorkflowStage::all_stages().len();
+        let total_stages = workflow_state.stage_jobs.len();
         let completed_stages = workflow_state.completed_stages().len();
         let failed_stages = workflow_state.failed_stages().len();
         
@@ -454,7 +479,8 @@ pub enum RecoveryStrategy {
     /// Retry a specific stage within a workflow
     RetrySpecificStage { 
         job_id: String, 
-        stage: WorkflowStage, 
+        stage_name: String,
+        task_type: TaskType, 
         attempt_count: u32 
     },
     /// Abort the entire workflow
@@ -480,11 +506,9 @@ impl Default for ErrorRecoveryConfig {
         let mut strategy_map = HashMap::new();
         
         // Define default strategies for each stage
-        strategy_map.insert("GeneratingDirTree".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 5000 });
         strategy_map.insert("GeneratingRegex".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 3000 });
         strategy_map.insert("LocalFiltering".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 2000 });
-        strategy_map.insert("InitialPathFinder".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 5000 });
-        strategy_map.insert("InitialPathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });
+        strategy_map.insert("FileRelevanceAssessment".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 4000 });
         strategy_map.insert("ExtendedPathFinder".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 5000 });
         strategy_map.insert("ExtendedPathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });
         
@@ -614,6 +638,16 @@ impl WorkflowDefinition {
         for stage in &self.stages {
             if stage.dependencies.contains(&stage.stage_name) {
                 return Err(format!("Stage '{}' depends on itself", stage.stage_name));
+            }
+        }
+
+        // Check that all task types are valid (not Unknown)
+        for stage in &self.stages {
+            if stage.task_type == TaskType::Unknown {
+                return Err(format!(
+                    "Stage '{}' has invalid task type 'Unknown'",
+                    stage.stage_name
+                ));
             }
         }
 

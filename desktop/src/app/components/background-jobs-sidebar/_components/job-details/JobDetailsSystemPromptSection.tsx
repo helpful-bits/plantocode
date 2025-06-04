@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronUp, Settings } from "lucide-react";
 
-import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { Badge } from "@/ui/badge";
@@ -36,10 +35,11 @@ export function JobDetailsSystemPromptSection() {
 
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   
-  // Get the system prompt template from the database
+  // Get the system prompt template from the database using job.systemPromptId if available
   const { prompt, loading, error, isCustom } = useSystemPrompt({
     sessionId: job.sessionId,
     taskType: job.taskType as TaskType,
+    systemPromptId: job.systemPromptId, // Use the specific system prompt ID from the job
     autoLoad: isPromptOpen // Only load when opened
   });
   
@@ -78,7 +78,6 @@ export function JobDetailsSystemPromptSection() {
       'voice_transcription': 'Voice Transcription',
       'file_finder_workflow': 'File Finder Workflow',
       // Workflow stage task types
-      'directory_tree_generation': 'Directory Tree Generation',
       'local_file_filtering': 'Local File Filtering',
       'extended_path_finder': 'Extended Path Finder',
       'extended_path_correction': 'Extended Path Correction',

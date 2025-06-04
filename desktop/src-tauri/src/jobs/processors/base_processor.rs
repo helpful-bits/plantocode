@@ -5,6 +5,13 @@ use crate::jobs::types::{Job, JobProcessResult};
 use crate::jobs::processor_trait::JobProcessor;
 
 /// Base processor that provides common functionality for all job processors
+/// 
+/// Note: For reducing boilerplate, processors should use utility functions from
+/// `job_processor_utils.rs` for common tasks like:
+/// - `setup_job_processing()` for initialization and marking jobs as running
+/// - `check_job_canceled()` for cancellation checks
+/// - `finalize_job_success()` and `finalize_job_failure()` for completion
+/// - `LlmTaskRunner` for complex LLM-based processing workflows
 pub struct BaseProcessor;
 
 impl BaseProcessor {

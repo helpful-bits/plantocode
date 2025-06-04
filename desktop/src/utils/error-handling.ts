@@ -3,6 +3,7 @@
  */
 
 import { type ActionState } from "@/types";
+import { WorkflowUtils } from "./workflow-utils";
 
 /**
  * Standard error types used across the application
@@ -544,16 +545,47 @@ export function extractErrorInfo(error: unknown): {
       };
     }
     
-    // Additional parsing for workflow context in plain error strings
+    // Additional parsing for workflow context in plain error strings using nested JSON parsing
     try {
-      const parsed = JSON.parse(error);
-      if (parsed && typeof parsed === "object" && parsed.workflowContext) {
-        return {
-          message: parsed.message || error,
-          type: parsed.errorType ? mapRustErrorCodeToErrorType(parsed.errorType) : ErrorType.WORKFLOW_ERROR,
-          metadata: parsed.metadata,
-          workflowContext: parsed.workflowContext,
-        };
+      const parsed = parseNestedJsonError(error);
+      if (parsed && typeof parsed === "object") {
+        // Check for workflow context or other structured error information
+        const workflowContext = parsed.workflowContext;
+        
+        if (workflowContext) {
+          const errorCode = parsed.errorCode;
+          const mappedType = errorCode 
+            ? mapRustErrorCodeToErrorType(errorCode) 
+            : parsed.errorType || ErrorType.WORKFLOW_ERROR;
+            
+          return {
+            message: parsed.message || error,
+            type: mappedType,
+            metadata: parsed.metadata || { errorCode, source: 'backend-serialized' },
+            workflowContext: normalizeWorkflowContext(workflowContext),
+          };
+        }
+        
+        // Handle general structured errors
+        const errorCode = parsed.errorCode;
+        if (errorCode) {
+          return {
+            message: parsed.message || error,
+            type: mapRustErrorCodeToErrorType(errorCode),
+            metadata: parsed.metadata || { errorCode, source: 'backend-serialized' },
+            workflowContext: parsed.workflowContext ? normalizeWorkflowContext(parsed.workflowContext) : undefined,
+          };
+        }
+        
+        // Check if the entire parsed object might be an AppError
+        if (parsed.errorType && typeof parsed.errorType === "string" && parsed.message) {
+          return {
+            message: parsed.message,
+            type: parsed.errorType as ErrorType || ErrorType.UNKNOWN_ERROR,
+            metadata: parsed.metadata,
+            workflowContext: parsed.workflowContext ? normalizeWorkflowContext(parsed.workflowContext) : undefined,
+          };
+        }
       }
     } catch {
       // Not JSON, continue with fallback
@@ -561,14 +593,33 @@ export function extractErrorInfo(error: unknown): {
   }
 
   // Try to extract workflow context from object errors
-  if (error && typeof error === "object" && "workflowContext" in error) {
+  if (error && typeof error === "object") {
     const errorObj = error as any;
-    return {
-      message: errorObj.message || getErrorMessage(error),
-      type: errorObj.type || ErrorType.WORKFLOW_ERROR,
-      metadata: errorObj.metadata,
-      workflowContext: errorObj.workflowContext,
-    };
+    
+    // Check for various workflow context field names
+    const workflowContext = errorObj.workflowContext || 
+                           errorObj.workflow_context || 
+                           errorObj.workflowCtx ||
+                           errorObj.workflow_ctx;
+    
+    if (workflowContext) {
+      return {
+        message: errorObj.message || getErrorMessage(error),
+        type: errorObj.type || ErrorType.WORKFLOW_ERROR,
+        metadata: errorObj.metadata,
+        workflowContext: normalizeWorkflowContext(workflowContext),
+      };
+    }
+    
+    // Check if it looks like an AppError object
+    if (errorObj.type && typeof errorObj.type === "string") {
+      return {
+        message: errorObj.message || getErrorMessage(error),
+        type: errorObj.type as ErrorType || ErrorType.UNKNOWN_ERROR,
+        metadata: errorObj.metadata,
+        workflowContext: errorObj.workflowContext ? normalizeWorkflowContext(errorObj.workflowContext) : undefined,
+      };
+    }
   }
 
   return {
@@ -578,13 +629,36 @@ export function extractErrorInfo(error: unknown): {
 }
 
 /**
+ * Normalize workflow context to ensure consistent field names
+ */
+function normalizeWorkflowContext(context: any): WorkflowErrorContext | undefined {
+  if (!context || typeof context !== "object") {
+    return undefined;
+  }
+  
+  return {
+    workflowId: context.workflowId || context.workflow_id || context.id,
+    stageName: context.stageName || context.stage_name || context.stage,
+    stageId: context.stageId || context.stage_id,
+    stageJobId: context.stageJobId || context.stage_job_id || context.job_id,
+    retryAttempt: context.retryAttempt || context.retry_attempt || context.retry,
+    originalJobId: context.originalJobId || context.original_job_id || context.original_id,
+  };
+}
+
+/**
  * Maps Rust AppError codes to ErrorType
  */
 export function mapRustErrorCodeToErrorType(code: string): ErrorType {
-  switch (code) {
+  switch (code.toUpperCase()) {
     case "BILLING_ERROR":
       return ErrorType.BILLING_ERROR;
     case "TOKEN_LIMIT_EXCEEDED_ERROR":
+    case "TOKEN_LIMIT_ERROR":
+    case "TOKEN_LIMIT_EXCEEDED":
+    case "CONTEXT_LENGTH_EXCEEDED":
+    case "MAXIMUM_CONTEXT_LENGTH":
+    case "PROMPT_TOO_LARGE":
       return ErrorType.TOKEN_LIMIT_ERROR;
     case "JOB_ERROR":
     case "WORKFLOW_ERROR":
@@ -662,8 +736,33 @@ export function createUserFriendlyErrorMessage(
         const retryText = workflowContext.retryAttempt && workflowContext.retryAttempt > 1 
           ? ` (retry attempt ${workflowContext.retryAttempt})` 
           : '';
-        const stageDisplayName = getWorkflowStageDisplayName(workflowContext.stageName);
-        return `Failed at stage: "${stageDisplayName || workflowContext.stageName}"${retryText}. ${message}`;
+        // STANDARDIZED: Convert any format to SCREAMING_SNAKE_CASE, then to display name
+        const stageEnum = WorkflowUtils.mapStageNameToEnum(workflowContext.stageName);
+        const stageName = stageEnum ? WorkflowUtils.getStageName(stageEnum) : workflowContext.stageName;
+        
+        // Provide stage-specific guidance using standardized enum values
+        let stageGuidance = '';
+        if (stageEnum) {
+          switch (stageEnum) {
+            case 'GENERATING_REGEX':
+              stageGuidance = ' Consider simplifying your search criteria or providing more specific terms.';
+              break;
+            case 'LOCAL_FILTERING':
+              stageGuidance = ' Check if the specified files exist and are accessible.';
+              break;
+            case 'FILE_RELEVANCE_ASSESSMENT':
+              stageGuidance = ' The AI had trouble assessing file relevance. Try refining your task description.';
+              break;
+            case 'EXTENDED_PATH_FINDER':
+              stageGuidance = ' Try refining your search terms or expanding the search scope.';
+              break;
+            case 'EXTENDED_PATH_CORRECTION':
+              stageGuidance = ' The system encountered issues validating found paths.';
+              break;
+          }
+        }
+        
+        return `Failed at "${stageName}" stage${retryText}.${stageGuidance} ${message}`;
       }
       return `Workflow execution failed: ${message}. The workflow may be retried or restarted.`;
     
@@ -686,28 +785,6 @@ export function createUserFriendlyErrorMessage(
   }
 }
 
-/**
- * Get user-friendly display name for workflow stages
- */
-function getWorkflowStageDisplayName(stageName: string): string | null {
-  const stageMap: Record<string, string> = {
-    "GeneratingDirTree": "Directory Tree Generation",
-    "GeneratingRegex": "Pattern Generation", 
-    "LocalFiltering": "Local File Filtering",
-    "InitialPathFinder": "Initial Path Finding",
-    "InitialPathCorrection": "Initial Path Correction",
-    "ExtendedPathFinder": "Extended Path Finding",
-    "ExtendedPathCorrection": "Extended Path Correction",
-    "GENERATING_DIR_TREE": "Directory Tree Generation",
-    "GENERATING_REGEX": "Pattern Generation",
-    "LOCAL_FILTERING": "Local File Filtering",
-    "INITIAL_PATH_FINDER": "Initial Path Finding",
-    "INITIAL_PATH_CORRECTION": "Initial Path Correction",
-    "EXTENDED_PATH_FINDER": "Extended Path Finding",
-    "EXTENDED_PATH_CORRECTION": "Extended Path Correction",
-  };
-  return stageMap[stageName] || null;
-}
 
 /**
  * Safely logs errors with standardized format

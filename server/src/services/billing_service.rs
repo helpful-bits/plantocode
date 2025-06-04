@@ -1,10 +1,11 @@
 use crate::error::AppError;
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
-use crate::db::repositories::subscription_repository::SubscriptionRepository;
+use crate::db::repositories::subscription_repository::{SubscriptionRepository, Subscription};
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
 use crate::db::repositories::spending_repository::SpendingRepository;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::utils::error_handling::{retry_with_backoff, RetryConfig, validate_amount, validate_currency};
+use crate::utils::stripe_currency_utils::generate_idempotency_key;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -12,6 +13,7 @@ use std::env;
 use chrono::{DateTime, Utc, Duration, Datelike};
 use std::sync::Arc;
 use sqlx::PgPool;
+use crate::db::connection::DatabasePools;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 
 // Import Stripe crate if available
@@ -39,29 +41,29 @@ pub struct BillingService {
 
 impl BillingService {
     pub fn new(
-        db_pool: PgPool,
+        db_pools: DatabasePools,
         app_settings: crate::config::settings::AppSettings,
     ) -> Self {
-        // Create repositories
-        let subscription_repository = Arc::new(SubscriptionRepository::new(db_pool.clone()));
-        let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pool.clone()));
-        let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pool.clone()));
-        let spending_repository = Arc::new(SpendingRepository::new(db_pool.clone()));
+        // Create repositories with appropriate pools
+        // User-specific operations use user pool (subject to RLS)
+        let subscription_repository = Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
+        let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pools.user_pool.clone()));
+        let spending_repository = Arc::new(SpendingRepository::new(db_pools.user_pool.clone()));
         
-        // Create cost-based billing service
+        // System operations use system pool
+        let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
+        
+        // Create cost-based billing service with dual pools
         let cost_based_billing_service = Arc::new(CostBasedBillingService::new(
-            db_pool,
+            db_pools,
             api_usage_repository.clone(),
             subscription_repository.clone(),
             subscription_plan_repository.clone(),
             spending_repository,
         ));
         
-        // Get default trial days from environment
-        let default_trial_days = env::var("DEFAULT_TRIAL_DAYS")
-            .unwrap_or_else(|_| "7".to_string())
-            .parse::<i64>()
-            .unwrap_or(7);
+        // Get default trial days from app settings
+        let default_trial_days = app_settings.subscription.default_trial_days as i64;
         
         // Initialize Stripe client if feature is enabled
         #[cfg(feature = "stripe")]
@@ -98,10 +100,12 @@ impl BillingService {
         let mut sub_option = self.subscription_repository.get_by_user_id(user_id).await?;
         
         if sub_option.is_none() {
-            debug!("No subscription found for user {}, creating trial", user_id);
-            self.create_trial_subscription(user_id).await?;
-            // Re-fetch the subscription after creating the trial
-            sub_option = self.subscription_repository.get_by_user_id(user_id).await?;
+            debug!("No subscription found for user {}, creating trial and initial limit", user_id);
+            // Start a transaction for atomic subscription and spending limit creation
+            let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
+            let new_subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
+            tx.commit().await.map_err(AppError::from)?;
+            sub_option = Some(new_subscription);
         }
         
         let subscription = sub_option.ok_or_else(|| {
@@ -175,13 +179,18 @@ impl BillingService {
         self.cost_based_billing_service.get_current_spending_status(user_id).await
     }
     
-    // Create a trial subscription for a new user
-    async fn create_trial_subscription(&self, user_id: &Uuid) -> Result<(), AppError> {
+    // Create a trial subscription and initial spending limit atomically
+    async fn create_trial_subscription_and_limit_in_tx<'a>(
+        &self, 
+        user_id: &Uuid, 
+        tx: &mut sqlx::Transaction<'a, sqlx::Postgres>
+    ) -> Result<Subscription, AppError>
+    {
         let now = Utc::now();
         let trial_ends_at = now + Duration::days(self.default_trial_days);
         
         // Create subscription with trial period
-        self.subscription_repository.create(
+        let subscription_id = self.subscription_repository.create_with_executor(
             user_id,
             "free", // Default plan for trial
             "trialing",
@@ -189,11 +198,20 @@ impl BillingService {
             None,
             Some(trial_ends_at),
             trial_ends_at, // Current period ends when trial ends
+            tx,
         ).await?;
         
-        info!("Created trial subscription for user {}", user_id);
-        Ok(())
+        // Create initial spending limit for the user using the same transaction
+        self.cost_based_billing_service.get_or_create_current_spending_limit_in_tx(user_id, tx).await?;
+        
+        // Fetch the created subscription to return it
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, tx).await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve newly created subscription".to_string()))?;
+        
+        info!("Created trial subscription and initial spending limit for user {}", user_id);
+        Ok(subscription)
     }
+
     
     // Get the database pool for use by other components
     pub fn get_db_pool(&self) -> PgPool {
@@ -223,14 +241,9 @@ impl BillingService {
         // Get or create Stripe customer
         let customer_id = self.get_or_create_stripe_customer(user_id).await?;
         
-        // Get price ID for the plan from AppSettings
-        let price_id = match plan_id {
-            "free" => self.app_settings.stripe.price_id_free.clone(),
-            "pro" => self.app_settings.stripe.price_id_pro.clone(),
-            "enterprise" => self.app_settings.stripe.price_id_enterprise.clone(),
-            _ => None,
-        }.ok_or_else(|| AppError::Configuration(
-            format!("Price ID not configured for plan: {}", plan_id)
+        // Get price ID for the plan from database (using monthly for now)
+        let price_id = plan.stripe_price_id_monthly.clone().ok_or_else(|| AppError::Configuration(
+            format!("Stripe monthly Price ID not configured in database for plan: {}", plan.id)
         ))?;
         
         // Get URLs from configuration
@@ -244,8 +257,11 @@ impl BillingService {
         metadata.insert("plan_id".to_string(), plan_id.to_string());
         metadata.insert("user_id".to_string(), user_id.to_string());
         
+        // Generate idempotency key for this checkout session
+        let idempotency_key = generate_idempotency_key("checkout", &format!("{}_{}", user_id, plan_id));
+        
         // Create checkout session
-        let session_params = CheckoutSessionCreateParams {
+        let mut session_params = CheckoutSessionCreateParams {
             line_items: Some(vec![
                 CheckoutSessionCreateParams::LineItems {
                     price: Some(price_id),
@@ -260,6 +276,11 @@ impl BillingService {
             metadata: Some(metadata),
             ..Default::default()
         };
+        
+        // Set idempotency key if supported by the Stripe client
+        if let Ok(mut request_options) = stripe::RequestOptions::default().try_into() {
+            request_options.idempotency_key = Some(idempotency_key);
+        }
         
         // Create the session
         let session = CheckoutSession::create(stripe, session_params).await
@@ -359,26 +380,16 @@ impl BillingService {
         let subscription = match subscription {
             Some(sub) => sub,
             None => {
-                // Create a trial subscription first
-                self.create_trial_subscription(user_id).await?;
-                self.subscription_repository.get_by_user_id(user_id).await?
-                    .ok_or_else(|| AppError::Internal("Failed to retrieve newly created subscription".to_string()))?
+                // Create a trial subscription and initial spending limit first
+                let mut tx = self.get_db_pool().begin().await.map_err(AppError::from)?;
+                let subscription = self.create_trial_subscription_and_limit_in_tx(user_id, &mut tx).await?;
+                tx.commit().await.map_err(AppError::from)?;
+                subscription
             }
         };
         
         let _plan = self.get_plan_by_id(&subscription.plan_id).await?;
         
-        // Get usage for current month
-        let now = Utc::now();
-        let start_of_month = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-            .ok_or_else(|| AppError::Internal("Failed to construct start of month date".to_string()))?
-            .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| AppError::Internal("Failed to construct start of month time".to_string()))?
-            .and_utc();
-        
-        let usage = self.api_usage_repository
-            .get_usage_for_period(user_id, Some(start_of_month), None)
-            .await?;
         
         // COST-BASED BILLING: Get spending status instead of just usage cost
         let spending_status = self.cost_based_billing_service.get_current_spending_status(user_id).await?;
@@ -426,25 +437,26 @@ impl BillingService {
         let plan = self.get_plan_by_id(&subscription.plan_id).await?;
 
         // Calculate base subscription amount (monthly price)
-        let base_amount = plan.base_price_monthly;
+        let base_amount = &plan.base_price_monthly;
 
         // Calculate overage charges
         let overage_amount = if spending_status.overage_amount > BigDecimal::from(0) {
-            let overage_cost = &spending_status.overage_amount * FromPrimitive::from_f64(plan.overage_rate)
-                .unwrap_or_else(|| BigDecimal::from(1));
-            overage_cost.to_f64().unwrap_or(0.0)
+            &spending_status.overage_amount * &plan.overage_rate
         } else {
-            0.0
+            BigDecimal::from(0)
         };
 
         // Total next invoice amount
-        let total_amount = base_amount + overage_amount;
+        let total_amount = base_amount + &overage_amount;
+
+        // Convert to f64 for return (this is acceptable here as it's for display purposes)
+        let amount_f64 = total_amount.to_f64().unwrap_or(0.0);
 
         // Return None if amount is 0 (free plans)
-        if total_amount <= 0.0 {
+        if amount_f64 <= 0.0 {
             Ok(None)
         } else {
-            Ok(Some(total_amount))
+            Ok(Some(amount_f64))
         }
     }
 

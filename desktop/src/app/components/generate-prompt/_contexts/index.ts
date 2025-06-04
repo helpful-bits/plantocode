@@ -13,6 +13,3 @@ export * from "./plan-context";
 // Export feature provider
 export * from "./generate-prompt-feature-provider";
 
-// Export file management
-export * from "./file-management-context";
-export * from "./file-management-provider";

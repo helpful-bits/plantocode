@@ -7,6 +7,9 @@ use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{prompt_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
+use crate::utils::directory_tree::get_directory_tree_with_defaults;
 
 pub struct RegexPatternGenerationProcessor;
 
@@ -23,14 +26,31 @@ impl JobProcessor for RegexPatternGenerationProcessor {
     }
     
     fn can_handle(&self, job: &Job) -> bool {
-        matches!(job.payload, JobPayload::RegexPatternGeneration(_))
+        matches!(job.payload, JobPayload::RegexPatternGeneration(_) | JobPayload::RegexPatternGenerationWorkflow(_))
     }
     
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        // Get payload
-        let payload = match &job.payload {
-            JobPayload::RegexPatternGeneration(p) => p,
-            _ => return Err(AppError::JobError("Invalid payload type".to_string())),
+        // Extract task description, session_id, and project_directory from either payload type
+        let (task_description_for_prompt, session_id_for_prompt, project_dir_for_prompt) = match &job.payload {
+            JobPayload::RegexPatternGeneration(p) => {
+                (p.task_description.clone(), p.session_id.clone(), p.project_directory.clone())
+            }
+            JobPayload::RegexPatternGenerationWorkflow(p_wf) => {
+                (p_wf.task_description.clone(), p_wf.session_id.clone(), p_wf.project_directory.clone())
+            }
+            _ => return Err(AppError::JobError("Invalid payload type for RegexPatternGenerationProcessor".to_string())),
+        };
+        
+        // Generate directory tree on-demand
+        let directory_tree_for_prompt = match get_directory_tree_with_defaults(&project_dir_for_prompt).await {
+            Ok(tree) => {
+                info!("Generated directory tree on-demand for regex pattern generation ({})", tree.lines().count());
+                Some(tree)
+            }
+            Err(e) => {
+                warn!("Failed to generate directory tree on-demand: {}. Continuing without directory context.", e);
+                None
+            }
         };
         
         // Setup job processing
@@ -44,11 +64,11 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         job_processor_utils::log_job_start(&job.id, "regex pattern generation");
         
         // Build unified prompt using standardized helper
-        let composed_prompt = job_processor_utils::build_unified_prompt(
+        let composed_prompt = prompt_utils::build_unified_prompt(
             &job,
             &app_handle,
-            payload.task_description.clone(),
-            payload.directory_tree.clone(),
+            task_description_for_prompt.clone(),
+            directory_tree_for_prompt.clone(),
             None,
             None,
             &settings_repo,
@@ -62,40 +82,45 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        // Extract system and user prompts from the composed result
-        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
         
-        info!("Generating regex patterns for task: {}", &payload.task_description);
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Create messages
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: task_description_for_prompt.clone(),
+            file_contents: None,
+            directory_tree: directory_tree_for_prompt.clone(), // This is now correctly an Option<String>
+            codebase_structure: None, // RegexPatternGeneration typically doesn't need codebase_structure
+            system_prompt_override: None,
+        };
         
-        // Create API options
-        let api_options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
+        info!("Generating regex patterns for task: {}", &task_description_for_prompt);
+        info!("Calling LLM for regex pattern generation with model {}", &model_used);
         
-        // Call LLM
-        let model_name = api_options.model.clone();
-        info!("Calling LLM for regex pattern generation with model {}", &model_name);
-        let llm_response = match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
-            Ok(response) => response,
+        // Execute LLM task using the task runner
+        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(result) => result,
             Err(e) => {
-                error!("Failed to call LLM: {}", e);
-                let error_msg = format!("Failed to call LLM: {}", e);
-                
-                // Finalize job failure
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
-                
+                error!("Regex Pattern Generation LLM task execution failed: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &job.id, &error_msg).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
+        info!("Regex Pattern Generation LLM task completed successfully for job {}", job.id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
+        
         // Extract the response content
-        let response_content = llm_response.choices[0].message.content.clone();
+        let response_content = llm_result.response.clone();
         debug!("LLM response content: {}", response_content);
         
         // Attempt to parse the content as JSON
@@ -111,25 +136,18 @@ impl JobProcessor for RegexPatternGenerationProcessor {
         };
         
         // Create custom metadata with JSON validation info
-        let mut metadata = serde_json::json!({
-            "job_type": "REGEX_PATTERN_GENERATION",
-            "workflow_stage": "RegexGeneration",
-            "jsonValid": json_validation_result.0
+        let metadata = serde_json::json!({
+            "job_type": "REGEX_PATTERN_GENERATION", // Keep for clarity
+            "workflow_stage": "RegexGeneration", // Keep for clarity
+            "jsonValid": json_validation_result.0,
+            "parsedJsonData": json_validation_result.1 // Store parsed JSON under this key
         });
         
-        // Add parsed regex data if JSON is valid
-        if let Some(parsed_json) = json_validation_result.1 {
-            metadata["parsedJson"] = parsed_json;
-        }
-        
-        // Finalize job success
-        job_processor_utils::finalize_job_success(
-            &job.id,
+        // Finalize job success using task runner
+        task_runner.finalize_success(
             &repo,
-            &response_content,
-            llm_response.usage,
-            &model_name,
-            &system_prompt_id,
+            &job.id,
+            &llm_result,
             Some(metadata),
         ).await?;
         

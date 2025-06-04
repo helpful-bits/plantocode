@@ -181,12 +181,36 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             },
             variant: "outline" as const
           };
+        } else if (errorInfo.workflowContext?.stageJobId) {
+          return {
+            label: "View Stage Job",
+            onClick: () => {
+              const event = new CustomEvent('show-job-details', {
+                detail: { jobId: errorInfo.workflowContext?.stageJobId }
+              });
+              window.dispatchEvent(event);
+            },
+            variant: "outline" as const
+          };
         } else if (errorInfo.workflowContext?.stageId) {
           return {
             label: "View Stage Details",
             onClick: () => {
               const event = new CustomEvent('show-stage-details', {
                 detail: { stageId: errorInfo.workflowContext?.stageId }
+              });
+              window.dispatchEvent(event);
+            },
+            variant: "outline" as const
+          };
+        } else if (errorInfo.workflowContext?.retryAttempt && errorInfo.workflowContext.retryAttempt > 1) {
+          return {
+            label: "View Retry History",
+            onClick: () => {
+              const event = new CustomEvent('show-background-jobs', {
+                detail: { 
+                  filter: { originalJobId: errorInfo.workflowContext?.originalJobId || errorInfo.workflowContext?.workflowId }
+                }
               });
               window.dispatchEvent(event);
             },

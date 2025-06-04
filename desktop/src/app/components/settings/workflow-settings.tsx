@@ -55,11 +55,6 @@ const WORKFLOW_CONFIGS: WorkflowConfig[] = [
     displayName: "File Finder Workflow", 
     description: "Multi-stage process to find relevant files based on task descriptions using AI-powered analysis.",
     stages: {
-      "GeneratingDirTree": {
-        displayName: "Directory Tree Generation",
-        description: "Creates a structured view of the project directory",
-        modelConfigurable: false
-      },
       "GeneratingRegex": {
         displayName: "Regex Pattern Generation", 
         description: "Generates patterns to filter relevant files",
@@ -70,14 +65,9 @@ const WORKFLOW_CONFIGS: WorkflowConfig[] = [
         description: "Filters files based on generated patterns",
         modelConfigurable: false
       },
-      "InitialPathFinder": {
-        displayName: "Initial Path Finding",
-        description: "AI-powered initial file discovery",
-        modelConfigurable: true
-      },
-      "InitialPathCorrection": {
-        displayName: "Initial Path Correction",
-        description: "Corrects and validates initial findings",
+      "FileRelevanceAssessment": {
+        displayName: "AI File Relevance Assessment",
+        description: "Uses AI to assess relevance of filtered files before extended path finding.",
         modelConfigurable: true
       },
       "ExtendedPathFinder": {

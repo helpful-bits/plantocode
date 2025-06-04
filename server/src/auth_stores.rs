@@ -39,21 +39,23 @@ pub mod store_utils {
     use log::info;
 
     // Main function to start cleanup task
-    pub fn start_cleanup_task(polling_store: PollingStore, auth0_state_store: Auth0StateStore) {
-        // Default intervals and expiry times
-        let polling_interval_secs = 300; // 5 minutes
-        let polling_expiry_mins = 30;    // 30 minutes
-        
+    pub fn start_cleanup_task(
+        polling_store: PollingStore, 
+        auth0_state_store: Auth0StateStore,
+        polling_expiry_mins: i64,
+        auth0_state_expiry_mins: i64,
+        cleanup_interval_secs: u64
+    ) {
         // Spawn polling store cleanup task
         let ps = polling_store.clone();
         spawn(async move {
-            start_polling_store_cleanup(ps, polling_interval_secs, polling_expiry_mins).await;
+            start_polling_store_cleanup(ps, cleanup_interval_secs, polling_expiry_mins).await;
         });
         
         // Spawn auth0 state store cleanup task
         let ass = auth0_state_store.clone();
         spawn(async move {
-            start_auth0_state_cleanup(ass, polling_interval_secs, polling_expiry_mins).await;
+            start_auth0_state_cleanup(ass, cleanup_interval_secs, auth0_state_expiry_mins).await;
         });
         
         info!("Started cleanup task for polling store and auth0 state store");

@@ -145,20 +145,22 @@ export function useSessionActions({
   // Direct reference to saveCurrentSession as flushSaves
   const flushSaves = saveCurrentSession;
   
-  // Debounced auto-save function
+  // Debounced auto-save function with improved timing
   const debouncedSaveCurrentSession = useCallback(() => {
     if (autoSaveDebounceRef.current) {
       clearTimeout(autoSaveDebounceRef.current);
     }
     
     autoSaveDebounceRef.current = setTimeout(() => {
-      // Use refs to avoid stale closures
-      if (currentSessionRef.current && isSessionModifiedRef.current) {
+      // Use current session from the closure at call time for more reliable state
+      if (currentSession && isSessionModified) {
         void saveCurrentSession();
       }
-    }, 2000); // 2 second debounce
+    }, 1500); // Reduced debounce for more responsive saves
   }, [
-    saveCurrentSession, // Memoized function dependency
+    currentSession,
+    isSessionModified,
+    saveCurrentSession,
   ]);
 
 
@@ -166,38 +168,52 @@ export function useSessionActions({
   const updateCurrentSessionFields = useCallback(
     (fields: Partial<Session>) => {
       // Using Session type for the function parameter ensures proper typing
-      if (currentSessionRef.current) {
-        let changed = false;
-        const updatedFields: Partial<Session> = {};
+      if (!currentSession) {
+        return;
+      }
 
-        for (const key in fields) {
-          const typedKey = key as keyof Session;
-          const fieldValue = fields[typedKey];
-          if (fieldValue !== undefined && fieldValue !== currentSessionRef.current[typedKey]) {
-            // For arrays, do a shallow content comparison
-            if (Array.isArray(fieldValue) && Array.isArray(currentSessionRef.current[typedKey])) {
-              if (!areArraysEqual(fieldValue as unknown[], currentSessionRef.current[typedKey] as unknown[])) {
+      let changed = false;
+      const updatedFields: Partial<Session> = {};
+
+      for (const key in fields) {
+        const typedKey = key as keyof Session;
+        const fieldValue = fields[typedKey];
+        if (fieldValue !== undefined && fieldValue !== currentSession[typedKey]) {
+          // For arrays, do a shallow content comparison
+          if (Array.isArray(fieldValue) && Array.isArray(currentSession[typedKey])) {
+            // For file selection arrays, sort before comparison to ensure consistent representation
+            const isFileSelectionArray = typedKey === 'includedFiles' || typedKey === 'forceExcludedFiles';
+            if (isFileSelectionArray) {
+              const sortedNewValue = [...(fieldValue as string[])].sort();
+              const sortedCurrentValue = [...(currentSession[typedKey] as string[])].sort();
+              if (!areArraysEqual(sortedNewValue, sortedCurrentValue)) {
+                changed = true;
+                (updatedFields as any)[typedKey] = sortedNewValue;
+              }
+            } else {
+              if (!areArraysEqual(fieldValue as unknown[], currentSession[typedKey] as unknown[])) {
                 changed = true;
                 (updatedFields as any)[typedKey] = fieldValue;
               }
-            } else {
-              changed = true;
-              (updatedFields as any)[typedKey] = fieldValue;
             }
+          } else {
+            changed = true;
+            (updatedFields as any)[typedKey] = fieldValue;
           }
         }
+      }
 
-        if (changed) {
-          const updatedSession = { ...currentSessionRef.current, ...updatedFields };
-          setSessionModified(true);
-          setCurrentSession(updatedSession);
-          
-          // Trigger debounced auto-save
-          debouncedSaveCurrentSession();
-        }
+      if (changed) {
+        const updatedSession = { ...currentSession, ...updatedFields };
+        setSessionModified(true);
+        setCurrentSession(updatedSession);
+        
+        // Trigger debounced auto-save
+        debouncedSaveCurrentSession();
       }
     },
     [
+      currentSession, // Use currentSession directly instead of ref
       setCurrentSession, // Stable setter from SessionStateContext
       setSessionModified, // Stable setter from SessionStateContext
       debouncedSaveCurrentSession, // Memoized function dependency

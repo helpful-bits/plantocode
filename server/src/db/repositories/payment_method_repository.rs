@@ -37,6 +37,17 @@ impl PaymentMethodRepository {
 
     /// Create or update a payment method from Stripe webhook data
     pub async fn create_or_update(&self, payment_method: &PaymentMethod) -> Result<PaymentMethod, AppError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        let result = self.create_or_update_with_executor(payment_method, &mut tx).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(result)
+    }
+
+    /// Create or update a payment method from Stripe webhook data with custom executor
+    pub async fn create_or_update_with_executor(&self, payment_method: &PaymentMethod, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<PaymentMethod, AppError>
+    {
         let updated_payment_method = sqlx::query_as!(
             PaymentMethod,
             r#"
@@ -73,7 +84,7 @@ impl PaymentMethodRepository {
             payment_method.is_default,
             payment_method.created_at,
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to create/update payment method: {}", e)))?;
 
@@ -98,7 +109,7 @@ impl PaymentMethodRepository {
     }
 
     /// Get payment methods for a user
-    pub async fn get_by_user_id(&self, user_id: &Uuid) -> Result<Vec<PaymentMethod>, AppError> {
+    pub async fn get_by_user_id(&self, user_id: &Uuid, limit: i32, offset: i32) -> Result<Vec<PaymentMethod>, AppError> {
         let payment_methods = sqlx::query_as!(
             PaymentMethod,
             r#"
@@ -108,14 +119,29 @@ impl PaymentMethodRepository {
             FROM payment_methods 
             WHERE user_id = $1 
             ORDER BY is_default DESC, created_at DESC
+            LIMIT $2 OFFSET $3
             "#,
-            user_id
+            user_id,
+            limit as i64,
+            offset as i64
         )
         .fetch_all(&self.pool)
         .await
         .map_err(|e| AppError::Database(format!("Failed to get user payment methods: {}", e)))?;
 
         Ok(payment_methods)
+    }
+
+    /// Count payment methods for a user
+    pub async fn count_by_user_id(&self, user_id: &Uuid) -> Result<i64, AppError> {
+        let count = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM payment_methods WHERE user_id = $1",
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to count user payment methods: {}", e)))?;
+        Ok(count.unwrap_or(0))
     }
 
     /// Get payment methods by Stripe customer ID
@@ -192,12 +218,23 @@ impl PaymentMethodRepository {
 
     /// Delete a payment method
     pub async fn delete(&self, payment_method_id: &str, user_id: &Uuid) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        self.delete_with_executor(payment_method_id, user_id, &mut tx).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(())
+    }
+
+    /// Delete a payment method with custom executor
+    pub async fn delete_with_executor(&self, payment_method_id: &str, user_id: &Uuid, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError>
+    {
         sqlx::query!(
             "DELETE FROM payment_methods WHERE id = $1 AND user_id = $2",
             payment_method_id,
             user_id
         )
-        .execute(&self.pool)
+        .execute(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to delete payment method: {}", e)))?;
 

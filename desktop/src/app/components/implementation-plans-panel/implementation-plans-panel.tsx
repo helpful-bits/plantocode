@@ -238,7 +238,7 @@ export function ImplementationPlansPanel({
                       
                       if (tokenPercentage > 100) {
                         return (
-                          <Alert className="border-red-200 bg-red-50 text-red-800">
+                          <Alert variant="destructive">
                             <XCircle className="h-4 w-4" />
                             <AlertDescription className="text-xs">
                               <strong>Prompt too large:</strong> {estimatedTokens.toLocaleString()} tokens exceeds the {contextWindow.toLocaleString()}-token limit for {modelInfo.name}. Please reduce the number of files or select a model with a larger context window.
@@ -247,7 +247,7 @@ export function ImplementationPlansPanel({
                         );
                       } else if (tokenPercentage > 90) {
                         return (
-                          <Alert className="border-amber-200 bg-amber-50 text-amber-800">
+                          <Alert variant="warning">
                             <AlertTriangle className="h-4 w-4" />
                             <AlertDescription className="text-xs">
                               <strong>Large prompt:</strong> Using {Math.round(tokenPercentage)}% of {modelInfo.name}'s context window. Generation might be slow or fail. Consider reducing files.

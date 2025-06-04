@@ -92,6 +92,25 @@ impl Model {
             .map(|secs| secs as i64 * 1000)
             .unwrap_or(0)
     }
+
+    /// Calculate cost for token-based models (e.g., chat completions)
+    pub fn calculate_token_cost(&self, tokens_input: i32, tokens_output: i32) -> AppResult<BigDecimal> {
+        if self.is_duration_based() {
+            return Err(AppError::Internal(
+                format!("Model {} is duration-based, token pricing is not applicable", self.id)
+            ));
+        }
+
+        // Calculate cost using BigDecimal arithmetic: (tokens / 1000) * price_per_1k
+        let thousand = BigDecimal::from(1000);
+        let tokens_input_bd = BigDecimal::from(tokens_input);
+        let tokens_output_bd = BigDecimal::from(tokens_output);
+        
+        let input_cost = (&tokens_input_bd / &thousand) * &self.price_input;
+        let output_cost = (&tokens_output_bd / &thousand) * &self.price_output;
+        
+        Ok(input_cost + output_cost)
+    }
 }
 
 /// Repository for managing AI models with provider relationships

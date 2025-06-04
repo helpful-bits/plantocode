@@ -52,9 +52,6 @@ impl Default for AppState {
 }
 
 
-static SESSION_REPO: OnceCell<Arc<SessionRepository>> = OnceCell::const_new();
-static BACKGROUND_JOB_REPO: OnceCell<Arc<BackgroundJobRepository>> = OnceCell::const_new();
-static SETTINGS_REPO: OnceCell<Arc<SettingsRepository>> = OnceCell::const_new();
 pub(crate) static FILE_LOCK_MANAGER: OnceCell<Arc<FileLockManager>> = OnceCell::const_new();
 
 fn main() {
@@ -183,7 +180,7 @@ fn main() {
             commands::file_system_commands::normalize_path_command,
             commands::file_system_commands::get_temp_dir_command,
             commands::file_system_commands::path_is_absolute_command,
-            commands::file_system_commands::cancel_workflow_stage_command,
+            commands::file_finder_workflow_commands::cancel_workflow_stage_command,
             
             // Text commands
             commands::text_commands::improve_text_command,

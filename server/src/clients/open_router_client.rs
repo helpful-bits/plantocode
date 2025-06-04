@@ -134,18 +134,18 @@ pub struct OpenRouterClient {
 }
 
 impl OpenRouterClient {
-    pub fn new(app_settings: &AppSettings) -> Self {
+    pub fn new(app_settings: &AppSettings) -> Result<Self, crate::error::AppError> {
         let api_key = app_settings.api_keys.openrouter_api_key.clone()
-            .expect("OpenRouter API key must be configured");
+            .ok_or_else(|| crate::error::AppError::Configuration("OpenRouter API key must be configured".to_string()))?;
         
         let client = Client::new();
         
-        Self {
+        Ok(Self {
             client,
             api_key,
             base_url: OPENROUTER_BASE_URL.to_string(),
             request_id_counter: Arc::new(Mutex::new(0)),
-        }
+        })
     }
 
     pub fn with_base_url(mut self, base_url: String) -> Self {

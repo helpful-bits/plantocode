@@ -2,10 +2,11 @@
 
 import { H3, P, Subtle } from "@/ui/typography";
 
-import { MemoizedFileManagementWrapper } from "./_components/file-management-wrapper";
 import { useCorePromptContext } from "./_contexts/core-prompt-context";
 import { useTaskContext } from "./_contexts/task-context";
 import ProjectSection from "./_sections/project-section";
+import TaskSection from "./_sections/task-section";
+import FileSection from "./_sections/file-section";
 import { ErrorBoundary } from "@/components/error-boundary";
 
 /**
@@ -23,13 +24,12 @@ export default function GeneratePromptForm() {
 function GeneratePromptFormContent() {
   // Get data from contexts
   const {
-    state: { projectDirectory, activeSessionId },
+    state: { projectDirectory },
   } = useCorePromptContext();
 
   // Initialize task context
   useTaskContext();
 
-  const hasSession = Boolean(activeSessionId);
 
   return (
     <div className="py-4 w-full flex h-full">
@@ -49,7 +49,21 @@ function GeneratePromptFormContent() {
           </div>
         </ErrorBoundary>
 
-        {/* FileManagementContent wrapped with its own provider */}
+        {/* Task Description Section */}
+        <ErrorBoundary
+          fallback={
+            <div className="p-6 border border-destructive/20 bg-background/95 backdrop-blur-sm shadow-soft rounded-xl">
+              <H3 className="text-destructive">Task Section Error</H3>
+              <P className="text-destructive text-sm mt-1">Unable to load task section. Please try refreshing.</P>
+            </div>
+          }
+        >
+          <div className="relative">
+            <TaskSection disabled={false} />
+          </div>
+        </ErrorBoundary>
+
+        {/* Simple File Browser */}
         {projectDirectory ? (
           <ErrorBoundary
             fallback={
@@ -60,9 +74,7 @@ function GeneratePromptFormContent() {
             }
           >
             <div className="relative">
-              <MemoizedFileManagementWrapper
-                hasSession={hasSession}
-              />
+              <FileSection />
             </div>
           </ErrorBoundary>
         ) : (

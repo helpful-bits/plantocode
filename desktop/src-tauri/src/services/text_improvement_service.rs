@@ -67,8 +67,8 @@ pub async fn create_text_improvement_job_service(
         target_field: args.target_field.clone(),
     };
 
-    // Extra metadata specific to text improvement
-    let extra_metadata = serde_json::json!({
+    // Additional params specific to text improvement
+    let additional_params = serde_json::json!({
         "targetField": args.target_field,
     });
 
@@ -85,7 +85,7 @@ pub async fn create_text_improvement_job_service(
         2, // Priority
         None, // No workflow_id
         None, // No workflow_stage
-        Some(extra_metadata),
+        Some(additional_params),
         app_handle
     )
     .await

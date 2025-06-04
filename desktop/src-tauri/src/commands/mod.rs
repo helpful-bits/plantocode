@@ -46,7 +46,6 @@ pub use file_system_commands::{
     normalize_path_command,
     get_temp_dir_command,
     path_is_absolute_command,
-    cancel_workflow_stage_command,
 };
 pub use app_commands::{
     get_app_info,
@@ -87,6 +86,7 @@ pub use file_finder_workflow_commands::{
     retry_workflow_stage_command,
     get_all_workflows_command,
     get_workflow_details_command,
+    cancel_workflow_stage_command,
 };
 
 // Re-exports from voice commands module

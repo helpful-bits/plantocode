@@ -21,7 +21,7 @@ actix-multipart = "0.7.2"
 actix-files = "0.6.6"
 
 # Database
-sqlx = { version = "0.8.5", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono", "macros", "bigdecimal"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono", "macros", "bigdecimal"] }
 tokio = { version = "1.44.1", features = ["full"] }
 
 # Authentication
@@ -57,6 +57,9 @@ async-trait = "0.1.77"
 # HTTP client
 reqwest = { version = "0.12.15", features = ["json", "multipart", "stream"] }
 
+# Email service
+mailgun_v3 = "0.14.0"
+
 # Error handling
 thiserror = "2.0.12"
 anyhow = "1.0.97"
@@ -74,8 +77,11 @@ bytes = "0.5"
 dashmap = "5.5.3"
 tera = "1.19.1"
 
+# Redis for distributed rate limiting
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
 # Stripe
-async-stripe = { version = "0.41.0", optional = true }
+async-stripe = { version = "0.41.0", optional = true, features = ["runtime-tokio-hyper-rustls"] }
 hmac = { version = "0.12.1", optional = true }
 hex = { version = "0.4.3", optional = true }
 

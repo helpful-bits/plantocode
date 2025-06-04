@@ -10,7 +10,7 @@ use crate::models::{BackgroundJob, JobStatus, TaskType};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobWorkerMetadata {
-    pub job_type_for_worker: String,
+    pub task_type: String,
     pub job_payload_for_worker: JobPayload,
     pub job_priority_for_worker: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -42,6 +42,7 @@ pub struct JobResponseUpdateEvent {
 }
 
 // Payload for OpenRouter LLM job
+// Note: This payload does NOT include background_job_id as it's processed by external services
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenRouterLlmPayload {
@@ -53,6 +54,7 @@ pub struct OpenRouterLlmPayload {
 }
 
 // Payload for voice audio transcription job
+// Note: This payload does NOT include background_job_id as it's processed by external services
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceTranscriptionPayload {
@@ -78,6 +80,7 @@ pub struct InputPathFinderPayload {
 }
 
 // Payload for Path Finder job with additional fields needed by the processor
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathFinderPayload {
@@ -96,6 +99,7 @@ pub struct PathFinderPayload {
 // and is converted to PathFinderPayload in the job_payload_utils.rs
 
 // Payload for Implementation Plan job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImplementationPlanPayload {
@@ -109,6 +113,7 @@ pub struct ImplementationPlanPayload {
 
 
 // Payload for Guidance Generation job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GuidanceGenerationPayload {
@@ -122,6 +127,7 @@ pub struct GuidanceGenerationPayload {
 }
 
 // Payload for Path Correction job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathCorrectionPayload {
@@ -134,6 +140,7 @@ pub struct PathCorrectionPayload {
 }
 
 // Payload for Text Improvement job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextImprovementPayload {
@@ -145,6 +152,7 @@ pub struct TextImprovementPayload {
 }
 
 // Payload for Task Enhancement job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEnhancementPayload {
@@ -157,6 +165,7 @@ pub struct TaskEnhancementPayload {
 }
 
 // Payload for Text Correction job (consolidates voice correction and post-transcription correction)
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextCorrectionPayload {
@@ -169,6 +178,7 @@ pub struct TextCorrectionPayload {
 }
 
 // Payload for Generic LLM Stream job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenericLlmStreamPayload {
@@ -181,6 +191,7 @@ pub struct GenericLlmStreamPayload {
 }
 
 // Payload for Regex Pattern Generation job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexPatternGenerationPayload {
@@ -195,20 +206,8 @@ pub struct RegexPatternGenerationPayload {
 
 // Individual workflow stage payloads for separate background jobs
 
-// Payload for Directory Tree Generation stage
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DirectoryTreeGenerationPayload {
-    pub background_job_id: String,
-    pub session_id: String,
-    pub task_description: String,
-    pub project_directory: String,
-    pub excluded_paths: Vec<String>,
-    pub workflow_id: String, // Links multiple stage jobs together
-    pub next_stage_job_id: Option<String>, // For job chaining
-}
-
 // Payload for Local File Filtering stage
+// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalFileFilteringPayload {
@@ -216,14 +215,13 @@ pub struct LocalFileFilteringPayload {
     pub session_id: String,
     pub task_description: String,
     pub project_directory: String,
-    pub directory_tree: String, // Result from DirectoryTreeGeneration stage
     pub excluded_paths: Vec<String>,
+    pub regex_patterns: Vec<String>, // Regex patterns from RegexPatternGeneration stage
     pub workflow_id: String,
-    pub previous_stage_job_id: String, // Links to DirectoryTreeGeneration job
-    pub next_stage_job_id: Option<String>, // For job chaining
 }
 
 // Payload for Extended Path Finder stage
+// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedPathFinderPayload {
@@ -231,14 +229,12 @@ pub struct ExtendedPathFinderPayload {
     pub session_id: String,
     pub task_description: String,
     pub project_directory: String,
-    pub directory_tree: String, // From DirectoryTreeGeneration
     pub initial_paths: Vec<String>, // From LocalFileFiltering stage
     pub workflow_id: String,
-    pub previous_stage_job_id: String, // Links to LocalFileFiltering job
-    pub next_stage_job_id: Option<String>, // For job chaining
 }
 
-// Payload for Extended Path Correction stage  
+// Payload for Extended Path Correction stage
+// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedPathCorrectionPayload {
@@ -246,13 +242,12 @@ pub struct ExtendedPathCorrectionPayload {
     pub session_id: String,
     pub task_description: String,
     pub project_directory: String,
-    pub directory_tree: String, // From DirectoryTreeGeneration
     pub extended_paths: Vec<String>, // From ExtendedPathFinder stage
     pub workflow_id: String,
-    pub previous_stage_job_id: String, // Links to ExtendedPathFinder job
 }
 
 // Payload for Regex Pattern Generation workflow stage
+// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexPatternGenerationWorkflowPayload {
@@ -260,10 +255,20 @@ pub struct RegexPatternGenerationWorkflowPayload {
     pub session_id: String,
     pub task_description: String,
     pub project_directory: String,
-    pub directory_tree: String, // From DirectoryTreeGeneration stage
     pub workflow_id: String,
-    pub previous_stage_job_id: Option<String>, // May be used in different workflow positions
-    pub next_stage_job_id: Option<String>, // For job chaining
+}
+
+// Payload for File Relevance Assessment stage
+// Includes background_job_id for internal job tracking and workflow coordination
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileRelevanceAssessmentPayload {
+    pub background_job_id: String,
+    pub session_id: String,
+    pub task_description: String,
+    pub project_directory: String,
+    pub locally_filtered_files: Vec<String>, // Input from LocalFileFiltering
+    pub workflow_id: String,
 }
 
 
@@ -283,11 +288,11 @@ pub enum JobPayload {
     RegexSummaryGeneration(crate::jobs::processors::regex_summary_generation_processor::RegexSummaryGenerationPayload),
     RegexPatternGeneration(RegexPatternGenerationPayload),
     // Individual workflow stage payloads
-    DirectoryTreeGeneration(DirectoryTreeGenerationPayload),
     LocalFileFiltering(LocalFileFilteringPayload),
     ExtendedPathFinder(ExtendedPathFinderPayload),
     ExtendedPathCorrection(ExtendedPathCorrectionPayload),
     RegexPatternGenerationWorkflow(RegexPatternGenerationWorkflowPayload),
+    FileRelevanceAssessment(FileRelevanceAssessmentPayload),
 }
 
 // Structured types for Implementation Plan parsing
@@ -407,7 +412,6 @@ impl Job {
 // Workflow stage enumeration for error tracking
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum WorkflowStage {
-    DirectoryTreeGeneration,
     LocalFileFiltering,
     ExtendedPathFinder,
     ExtendedPathCorrection,
@@ -418,7 +422,6 @@ pub enum WorkflowStage {
 impl std::fmt::Display for WorkflowStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WorkflowStage::DirectoryTreeGeneration => write!(f, "DirectoryTreeGeneration"),
             WorkflowStage::LocalFileFiltering => write!(f, "LocalFileFiltering"),
             WorkflowStage::ExtendedPathFinder => write!(f, "ExtendedPathFinder"),
             WorkflowStage::ExtendedPathCorrection => write!(f, "ExtendedPathCorrection"),

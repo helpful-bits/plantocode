@@ -1,9 +1,5 @@
 import React, { createContext, useContext } from "react";
-import { type BackgroundJob } from "@/types/session-types";
-
-interface JobMetadata {
-  [key: string]: unknown;
-}
+import { type BackgroundJob, type JobMetadata } from "@/types/session-types";
 
 interface JobDetailsContextValue {
   job: BackgroundJob;
@@ -14,7 +10,7 @@ interface JobDetailsContextValue {
   responseContent: string;
   promptContent: string;
   formatMetadata: (metadata: any) => string;
-  formatRegexPatterns: (regexData: any) => string | null;
+  formatRegexPatterns: (parsedJsonData: any) => string | null;
 }
 
 const JobDetailsContext = createContext<JobDetailsContextValue | null>(null);

@@ -255,9 +255,12 @@ export class WorkflowTracker {
   }
 
   private async setupEventListener(): Promise<void> {
+    let statusUnlisten: UnlistenFn | null = null;
+    let stageUnlisten: UnlistenFn | null = null;
+    
     try {
       // Listen for workflow status events (file-finder-workflow-status)
-      this.eventUnlisten = await listen<WorkflowStatusEvent>(
+      statusUnlisten = await listen<WorkflowStatusEvent>(
         'file-finder-workflow-status',
         (event) => {
           const statusEvent = event.payload;
@@ -275,7 +278,7 @@ export class WorkflowTracker {
       );
       
       // Also listen for stage events (file-finder-workflow-stage) 
-      const stageUnlisten = await listen<WorkflowStageEvent>(
+      stageUnlisten = await listen<WorkflowStageEvent>(
         'file-finder-workflow-stage',
         (event) => {
           const stageEvent = event.payload;
@@ -286,13 +289,31 @@ export class WorkflowTracker {
         }
       );
       
-      // Combine the unlisten functions
-      const originalUnlisten = this.eventUnlisten;
+      // Combine the unlisten functions with proper error handling
       this.eventUnlisten = () => {
-        originalUnlisten();
-        stageUnlisten();
+        try {
+          statusUnlisten?.();
+        } catch (error) {
+          console.warn('Error cleaning up status event listener:', error);
+        }
+        try {
+          stageUnlisten?.();
+        } catch (error) {
+          console.warn('Error cleaning up stage event listener:', error);
+        }
       };
     } catch (error) {
+      // Cleanup partial listeners on error
+      try {
+        statusUnlisten?.();
+      } catch (cleanupError) {
+        console.warn('Error cleaning up partial status listener:', cleanupError);
+      }
+      try {
+        stageUnlisten?.();
+      } catch (cleanupError) {
+        console.warn('Error cleaning up partial stage listener:', cleanupError);
+      }
       console.warn('Failed to setup workflow event listeners:', error);
     }
   }
@@ -349,6 +370,7 @@ export class WorkflowTracker {
         directoryTreeContent: undefined,
         rawRegexPatterns: undefined,
         locallyFilteredFiles: [],
+        aiFilteredFiles: [],
         initialVerifiedPaths: [],
         initialUnverifiedPaths: [],
         initialCorrectedPaths: [],
@@ -381,6 +403,7 @@ export class WorkflowTracker {
         directoryTreeContent: undefined,
         rawRegexPatterns: undefined,
         locallyFilteredFiles: [],
+        aiFilteredFiles: [],
         initialVerifiedPaths: [],
         initialUnverifiedPaths: [],
         initialCorrectedPaths: [],
@@ -464,33 +487,8 @@ export class WorkflowTracker {
   }
   
   private mapStageNameToType(stageName: string): WorkflowStage {
-    // Handle both SCREAMING_SNAKE_CASE from Rust backend and human-readable formats
-    const normalizedStage = stageName.toUpperCase().replace(/[\s-]/g, '_');
-    
-    switch (normalizedStage) {
-      case 'GENERATING_DIR_TREE':
-      case 'GENERATING_DIRECTORY_TREE':
-        return 'GENERATING_DIR_TREE';
-      case 'GENERATING_REGEX':
-      case 'GENERATING_REGEX_PATTERNS':
-        return 'GENERATING_REGEX';
-      case 'LOCAL_FILTERING':
-      case 'LOCAL_FILE_FILTERING':
-        return 'LOCAL_FILTERING';
-      case 'INITIAL_PATH_FINDER':
-      case 'INITIAL_PATH_FINDING':
-        return 'INITIAL_PATH_FINDER';
-      case 'INITIAL_PATH_CORRECTION':
-        return 'INITIAL_PATH_CORRECTION';
-      case 'EXTENDED_PATH_FINDER':
-      case 'EXTENDED_PATH_FINDING':
-        return 'EXTENDED_PATH_FINDER';
-      case 'EXTENDED_PATH_CORRECTION':
-        return 'EXTENDED_PATH_CORRECTION';
-      default:
-        console.warn(`Unknown stage name: ${stageName}, defaulting to GENERATING_DIR_TREE`);
-        return 'GENERATING_DIR_TREE';
-    }
+    // STANDARDIZED: Convert ANY backend stage name format to SCREAMING_SNAKE_CASE
+    return WorkflowUtils.mapStageNameToEnum(stageName) || 'GENERATING_REGEX';
   }
 
   private notifyProgress(state: WorkflowState): void {
@@ -621,12 +619,83 @@ class WorkflowError extends Error implements WorkflowErrorType {
  */
 export const WorkflowUtils = {
   /**
+   * Convert human-readable stage name from backend to SCREAMING_SNAKE_CASE enum value
+   * Handles all possible backend formats: human-readable, PascalCase, and SCREAMING_SNAKE_CASE
+   */
+  mapStageNameToEnum(stageName: string): WorkflowStage | null {
+    // First normalize the input by trimming whitespace and ensuring consistent format
+    const normalizedStageName = stageName.trim();
+    
+    // If input is already in SCREAMING_SNAKE_CASE format, try it directly first
+    if (normalizedStageName.includes('_') && normalizedStageName === normalizedStageName.toUpperCase()) {
+      const directMatch = this.tryDirectScreamingSnakeCaseMatch(normalizedStageName);
+      if (directMatch) return directMatch;
+    }
+    
+    switch (normalizedStageName) {
+      // Human-readable names from WorkflowStage::display_name() (status responses)
+      case 'Generating Regex Patterns':
+        return 'GENERATING_REGEX';
+      case 'Local File Filtering':
+        return 'LOCAL_FILTERING';
+      case 'AI File Relevance Assessment':
+        return 'FILE_RELEVANCE_ASSESSMENT';
+      case 'Extended Path Finding':
+        return 'EXTENDED_PATH_FINDER';
+      case 'Extended Path Correction':
+        return 'EXTENDED_PATH_CORRECTION';
+        
+      // PascalCase variants from results responses
+      case 'GeneratingRegex':
+        return 'GENERATING_REGEX';
+      case 'LocalFiltering':
+        return 'LOCAL_FILTERING';
+      case 'FileRelevanceAssessment':
+        return 'FILE_RELEVANCE_ASSESSMENT';
+      case 'ExtendedPathFinder':
+        return 'EXTENDED_PATH_FINDER';
+      case 'ExtendedPathCorrection':
+        return 'EXTENDED_PATH_CORRECTION';
+        
+      // SCREAMING_SNAKE_CASE from WorkflowStageJob.stage and WorkflowStageEvent.stage
+      case 'GENERATING_REGEX':
+        return 'GENERATING_REGEX';
+      case 'LOCAL_FILTERING':
+        return 'LOCAL_FILTERING';
+      case 'FILE_RELEVANCE_ASSESSMENT':
+        return 'FILE_RELEVANCE_ASSESSMENT';
+      case 'EXTENDED_PATH_FINDER':
+        return 'EXTENDED_PATH_FINDER';
+      case 'EXTENDED_PATH_CORRECTION':
+        return 'EXTENDED_PATH_CORRECTION';
+        
+      default:
+        return null;
+    }
+  },
+
+  /**
+   * Helper method to try direct SCREAMING_SNAKE_CASE matching
+   */
+  tryDirectScreamingSnakeCaseMatch(stageName: string): WorkflowStage | null {
+    const validStages: WorkflowStage[] = [
+      'GENERATING_REGEX', 
+      'LOCAL_FILTERING',
+      'FILE_RELEVANCE_ASSESSMENT',
+      'EXTENDED_PATH_FINDER',
+      'EXTENDED_PATH_CORRECTION'
+    ];
+    
+    return validStages.includes(stageName as WorkflowStage) ? (stageName as WorkflowStage) : null;
+  },
+
+  /**
    * Calculate overall progress percentage from stage jobs
    */
   calculateProgress(stageJobs: any[]): number {
     if (stageJobs.length === 0) return 0;
     
-    const totalStages = 7; // Updated to match backend: GENERATING_DIR_TREE, GENERATING_REGEX, LOCAL_FILTERING, INITIAL_PATH_FINDER, INITIAL_PATH_CORRECTION, EXTENDED_PATH_FINDER, EXTENDED_PATH_CORRECTION
+    const totalStages = 5; // Updated to match FileFinderWorkflow: GENERATING_REGEX, LOCAL_FILTERING, FILE_RELEVANCE_ASSESSMENT, EXTENDED_PATH_FINDER, EXTENDED_PATH_CORRECTION
     const completedStages = stageJobs.filter(job => job.status === 'completed' || job.status === 'completed_by_tag').length;
     const runningStages = stageJobs.filter(job => 
       job.status === 'running' || 
@@ -646,11 +715,9 @@ export const WorkflowUtils = {
    */
   getStageName(stage: string): string {
     const stageNames: Record<string, string> = {
-      'GENERATING_DIR_TREE': 'Generating Directory Tree',
       'GENERATING_REGEX': 'Generating Regex Patterns',
       'LOCAL_FILTERING': 'Local File Filtering',
-      'INITIAL_PATH_FINDER': 'Initial Path Finding',
-      'INITIAL_PATH_CORRECTION': 'Initial Path Correction',
+      'FILE_RELEVANCE_ASSESSMENT': 'AI File Relevance Assessment',
       'EXTENDED_PATH_FINDER': 'Extended Path Finding',
       'EXTENDED_PATH_CORRECTION': 'Extended Path Correction',
     };
@@ -662,11 +729,9 @@ export const WorkflowUtils = {
    */
   getStageDescription(stage: string): string {
     const descriptions: Record<string, string> = {
-      'GENERATING_DIR_TREE': 'Analyzing project structure and generating directory tree',
       'GENERATING_REGEX': 'Creating regex patterns based on task description',
       'LOCAL_FILTERING': 'Filtering files based on local patterns and criteria',
-      'INITIAL_PATH_FINDER': 'Finding initial relevant paths using AI analysis',
-      'INITIAL_PATH_CORRECTION': 'Correcting and validating initial file paths',
+      'FILE_RELEVANCE_ASSESSMENT': 'Using AI to assess relevance of filtered files to the task',
       'EXTENDED_PATH_FINDER': 'Finding additional relevant paths for comprehensive results',
       'EXTENDED_PATH_CORRECTION': 'Final path correction and validation',
     };
