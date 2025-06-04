@@ -291,7 +291,6 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   implementationPlan: "implementation_plan",
   fileFinderWorkflow: "file_finder_workflow",
   localFileFiltering: "local_file_filtering",
-  directoryTreeGeneration: "directory_tree_generation",
   extendedPathFinder: "extended_path_finder",
   extendedPathCorrection: "extended_path_correction",
   taskEnhancement: "task_enhancement",
@@ -320,15 +319,6 @@ export default function TaskModelSettings({
     }
 
     if (!settings) {
-      console.error(
-        `HARD ERROR: No settings found for task type: ${camelCaseKey}`,
-        { 
-          camelCaseKey, 
-          availableKeys: Object.keys(taskSettings),
-          fullTaskSettings: taskSettings 
-        }
-      );
-      
       throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${camelCaseKey}. Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
     }
 

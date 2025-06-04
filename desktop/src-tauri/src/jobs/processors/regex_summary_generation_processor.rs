@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
-use log::{debug, info};
+use log::{debug, info, error};
 
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
@@ -9,7 +9,11 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::db_utils::SessionRepository;
 use crate::models::TaskType;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{prompt_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
+// Payload for Regex Summary Generation job
+// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexSummaryGenerationPayload {
@@ -68,7 +72,7 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
         );
         
         // Build unified prompt
-        let composed_prompt = job_processor_utils::build_unified_prompt(
+        let composed_prompt = prompt_utils::build_unified_prompt(
             &job,
             &app_handle,
             task_description,
@@ -86,41 +90,58 @@ impl JobProcessor for RegexSummaryGenerationProcessor {
             info!("Estimated tokens: {}", tokens);
         }
 
-        // Extract system and user prompts from the composed result
-        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
+        
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
+        
+        // Create task description for prompt
+        let task_description = format!(
+            "Title regex: {}\nContent regex: {}\nNegative title regex: {}\nNegative content regex: {}",
+            payload.title_regex, payload.content_regex, payload.negative_title_regex, payload.negative_content_regex
+        );
+        
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description,
+            file_contents: None,
+            directory_tree: None,
+            codebase_structure: None,
+            system_prompt_override: None,
+        };
 
-        debug!("Generated regex summary prompt for job {}: {}", job.id, user_prompt);
+        debug!("Generated regex summary prompt for job {}", job.id);
 
-        // Create API options
-        let request_options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
-
-        // Store model name before moving request_options
-        let model_name = request_options.model.clone();
-
-        // Create messages and call LLM
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
-        let api_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, request_options).await?;
+        // Execute LLM task using the task runner
+        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Regex Summary Generation LLM task execution failed: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &job.id, &error_msg).await?;
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+            }
+        };
+        
+        info!("Regex Summary Generation LLM task completed successfully for job {}", job.id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Extract the response content
-        let response = api_response.choices.first()
-            .ok_or_else(|| AppError::InvalidResponse("No response choices received".to_string()))?
-            .message.content.clone();
+        let response = llm_result.response.clone();
 
         debug!("Received regex summary response for job {}: {}", job.id, response);
 
-        // Finalize job success
-        job_processor_utils::finalize_job_success(
-            &job.id,
+        // Finalize job success using task runner
+        task_runner.finalize_success(
             &repo,
-            &response,
-            api_response.usage,
-            &model_name,
-            &system_prompt_id,
+            &job.id,
+            &llm_result,
             None,
         ).await?;
 

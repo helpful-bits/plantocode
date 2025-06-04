@@ -9,6 +9,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::models::TaskType;
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{llm_api_utils, prompt_utils, response_parser_utils};
 
 /// Processor for path correction jobs
 pub struct PathCorrectionProcessor;
@@ -127,7 +128,7 @@ impl JobProcessor for PathCorrectionProcessor {
             }
         } else {
             // Use build_unified_prompt helper
-            job_processor_utils::build_unified_prompt(
+            prompt_utils::build_unified_prompt(
                 &job,
                 &app_handle,
                 task_description,
@@ -140,13 +141,13 @@ impl JobProcessor for PathCorrectionProcessor {
         };
 
         // Extract system and user prompts from the composed result
-        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+        let (system_prompt, user_prompt, system_prompt_id) = llm_api_utils::extract_prompts_from_composed(&composed_prompt);
         
         // Build messages array
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
+        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
         // Create API options
-        let api_options = job_processor_utils::create_api_client_options(
+        let api_options = llm_api_utils::create_api_client_options(
             model_used.clone(),
             temperature,
             max_output_tokens,
@@ -157,7 +158,7 @@ impl JobProcessor for PathCorrectionProcessor {
         
         // Call the LLM API
         let api_options_clone = api_options.clone();
-        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
+        match llm_api_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
             Ok(llm_response) => {
                 debug!("Received path correction response");
                 
@@ -165,30 +166,45 @@ impl JobProcessor for PathCorrectionProcessor {
                 if let Some(choice) = llm_response.choices.first() {
                     let content = &choice.message.content;
                     
-                    // Parse response to extract corrected paths using standardized utility
-                    let corrected_paths = match job_processor_utils::parse_paths_from_text_response(content, project_directory) {
-                        Ok(paths) => paths,
+                    // Primary parsing: XML output (as expected by system prompt)
+                    let corrected_paths = match Self::parse_corrected_paths(content) {
+                        Ok((paths, _)) => {
+                            info!("Successfully parsed {} paths using XML parsing", paths.len());
+                            paths
+                        },
                         Err(e) => {
-                            warn!("Failed to parse paths from response, trying XML parsing: {}", e);
-                            // Fallback to custom XML parsing
-                            match Self::parse_corrected_paths(content) {
-                                Ok((paths, _)) => paths,
+                            warn!("XML parsing failed: {}, trying fallback plain text parsing", e);
+                            // Fallback to plain text parsing for robustness
+                            match response_parser_utils::parse_paths_from_text_response(content, project_directory) {
+                                Ok(paths) => {
+                                    info!("Successfully parsed {} paths using plain text fallback", paths.len());
+                                    paths
+                                },
                                 Err(_) => {
-                                    warn!("XML parsing also failed, using raw content");
+                                    warn!("Both XML and plain text parsing failed, using raw content");
                                     vec![content.clone()]
                                 }
                             }
                         }
                     };
                     
-                    // Create metadata
-                    let metadata = serde_json::json!({
-                        "correctedPaths": corrected_paths,
-                        "fullResponse": content
+                    // Create JSON response object
+                    let json_response_obj = serde_json::json!({ 
+                        "correctedPaths": corrected_paths, 
+                        "count": corrected_paths.len() 
                     });
+                    let json_response_str = json_response_obj.to_string();
                     
-                    // Create simple newline-separated response
-                    let simple_response = corrected_paths.join("\n");
+                    // Create metadata with LLM raw response and detailed corrections for additionalParams
+                    let (_, detailed_metadata) = match Self::parse_corrected_paths(content) {
+                        Ok((_, meta)) => (corrected_paths.clone(), meta),
+                        Err(_) => (corrected_paths.clone(), serde_json::json!({"correctedPathDetails": []}))
+                    };
+                    
+                    let metadata = serde_json::json!({
+                        "llmRawResponse": content,
+                        "parsedCorrections": detailed_metadata
+                    });
                     
                     // Get model used
                     let model_used = &api_options_clone.model;
@@ -200,7 +216,7 @@ impl JobProcessor for PathCorrectionProcessor {
                     job_processor_utils::finalize_job_success(
                         &job.id,
                         &repo,
-                        &simple_response,
+                        &json_response_str,
                         llm_response.usage,
                         model_used,
                         &system_prompt_id,
@@ -211,12 +227,12 @@ impl JobProcessor for PathCorrectionProcessor {
                     debug!("Corrected paths: {:?}", corrected_paths);
                     
                     // Return success result
-                    Ok(JobProcessResult::success(job.id.clone(), simple_response.clone())
+                    Ok(JobProcessResult::success(job.id.clone(), json_response_str.clone())
                         .with_tokens(
                             usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
                             usage_clone.as_ref().map(|u| u.completion_tokens as i32),
                             usage_clone.as_ref().map(|u| u.total_tokens as i32),
-                            Some(simple_response.len() as i32)
+                            Some(json_response_str.len() as i32)
                         ))
                 } else {
                     // No choices in response

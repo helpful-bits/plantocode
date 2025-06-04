@@ -47,12 +47,25 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     plan.maxOutputTokens
   );
 
-  // Parse the model information from plan metadata if available
-  const modelInfo = plan.modelUsed || parsedMeta?.modelUsed || 'Unknown Model';
+  // Parse the model information from plan metadata with priority order
+  const modelInfo = (() => {
+    const model = plan.modelUsed || parsedMeta?.additionalParams?.modelUsed;
+    if (!model || typeof model !== 'string') return 'Unknown Model';
+    
+    // Format common model names for better display
+    if (model.includes("gemini")) {
+      return model.replace("gemini-", "Gemini ");
+    } else if (model.includes("claude")) {
+      return model.replace(/-\d{8}$/, ""); // Remove date suffix
+    } else if (model.includes("gpt")) {
+      return model.toUpperCase();
+    }
+    return model;
+  })();
 
   // Calculate estimated token count if available - prefer plan fields over metadata
   let tokenCountDisplay = "N/A";
-  const totalTokens = plan.totalTokens ?? parsedMeta?.totalTokens ?? parsedMeta?.tokensUsed;
+  const totalTokens = plan.totalTokens || parsedMeta?.additionalParams?.totalTokens || parsedMeta?.additionalParams?.tokensUsed;
   if (typeof totalTokens === 'number' && totalTokens > 0) {
     tokenCountDisplay = totalTokens.toLocaleString();
   } else if (typeof totalTokens === 'string') {
@@ -67,23 +80,33 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
 
   // Extract session name with improved reliability and better fallbacks
   const sessionName = (() => {
-    // Priority 1: Use sessionName from metadata if available
+    // Priority 1: Use sessionName from parsed metadata (extracted from new structure)
     if (parsedMeta?.sessionName && typeof parsedMeta.sessionName === 'string' && parsedMeta.sessionName.trim()) {
       return parsedMeta.sessionName.trim();
     }
     
-    // Priority 2: Use planTitle from metadata if available (specific to implementation plans)
+    // Priority 2: Check nested jobPayloadForWorker.data.sessionName for new structure
+    if (parsedMeta?.jobPayloadForWorker?.data?.sessionName && typeof parsedMeta.jobPayloadForWorker.data.sessionName === 'string' && parsedMeta.jobPayloadForWorker.data.sessionName.trim()) {
+      return parsedMeta.jobPayloadForWorker.data.sessionName.trim();
+    }
+    
+    // Priority 3: Check additionalParams.sessionName for new structure
+    if (parsedMeta?.additionalParams?.sessionName && typeof parsedMeta.additionalParams.sessionName === 'string' && parsedMeta.additionalParams.sessionName.trim()) {
+      return parsedMeta.additionalParams.sessionName.trim();
+    }
+    
+    // Priority 4: Use planTitle from metadata if available (specific to implementation plans)
     if (parsedMeta?.planTitle && typeof parsedMeta.planTitle === 'string' && parsedMeta.planTitle.trim()) {
       return parsedMeta.planTitle.trim();
     }
     
-    // Priority 3: Use taskDescription from metadata if available
+    // Priority 5: Use taskDescription from metadata if available
     if (parsedMeta?.taskDescription && typeof parsedMeta.taskDescription === 'string' && parsedMeta.taskDescription.trim()) {
       const taskDesc = parsedMeta.taskDescription.trim();
       return taskDesc.length > 60 ? taskDesc.substring(0, 60) + '...' : taskDesc;
     }
     
-    // Priority 4: Extract meaningful content from the first line of the prompt
+    // Priority 6: Extract meaningful content from the first line of the prompt
     if (plan.prompt && typeof plan.prompt === 'string' && plan.prompt.trim()) {
       const firstLine = plan.prompt.trim().split('\n')[0].trim();
       if (firstLine.length > 0) {
@@ -91,7 +114,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
       }
     }
     
-    // Priority 5: Use job ID with a descriptive prefix as last resort
+    // Priority 7: Use job ID with a descriptive prefix as last resort
     if (plan.id) {
       return `Implementation Plan ${plan.id.substring(0, 8)}`;
     }

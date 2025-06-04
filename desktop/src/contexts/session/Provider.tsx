@@ -130,6 +130,25 @@ export function SessionProvider({ children }: SessionProviderProps) {
   });
 
 
+  // Memoize individual session fields to reduce re-renders
+  const sessionBasicFields = useMemo(() => ({
+    id: sessionStateHook.currentSession?.id,
+    name: sessionStateHook.currentSession?.name,
+    projectDirectory: sessionStateHook.currentSession?.projectDirectory,
+  }), [
+    sessionStateHook.currentSession?.id,
+    sessionStateHook.currentSession?.name,
+    sessionStateHook.currentSession?.projectDirectory,
+  ]);
+
+  const sessionFileFields = useMemo(() => ({
+    includedFiles: sessionStateHook.currentSession?.includedFiles,
+    forceExcludedFiles: sessionStateHook.currentSession?.forceExcludedFiles,
+  }), [
+    sessionStateHook.currentSession?.includedFiles,
+    sessionStateHook.currentSession?.forceExcludedFiles,
+  ]);
+
   const stateContextValue = useMemo<SessionStateContextType>(
     () => ({
       // Active session ID from manager
@@ -140,6 +159,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
       isSessionLoading: sessionStateHook.isSessionLoading,
       isSessionModified: sessionStateHook.isSessionModified,
       sessionError: sessionStateHook.sessionError,
+
+      // Memoized session field accessors
+      sessionBasicFields,
+      sessionFileFields,
     }),
     [
       // Primitive values that should trigger re-memoization
@@ -148,6 +171,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
       sessionStateHook.isSessionLoading,
       sessionStateHook.isSessionModified,
       sessionStateHook.sessionError,
+      sessionBasicFields,
+      sessionFileFields,
     ]
   );
 

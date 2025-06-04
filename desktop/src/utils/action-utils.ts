@@ -5,6 +5,42 @@ import { createLogger } from "@/utils/logger";
 const logger = createLogger({ namespace: "ActionUtils" });
 
 /**
+ * Recursively attempts to parse nested JSON error structures
+ */
+function parseNestedJsonError(input: string, depth = 0): any | null {
+  // Prevent infinite recursion
+  if (depth > 3) return null;
+  
+  try {
+    const parsed = JSON.parse(input);
+    if (parsed && typeof parsed === "object") {
+      // If parsed object has a message field that's also stringified JSON, parse it recursively
+      if (parsed.message && typeof parsed.message === "string") {
+        const nestedParsed = parseNestedJsonError(parsed.message, depth + 1);
+        if (nestedParsed) {
+          // Merge nested error info with current level, with nested taking precedence for message
+          return {
+            ...parsed,
+            message: nestedParsed.message || parsed.message,
+            code: nestedParsed.code || parsed.code,
+            type: nestedParsed.type || parsed.type,
+            details: nestedParsed.details || parsed.details,
+            workflowContext: nestedParsed.workflowContext || parsed.workflowContext,
+            workflow_context: nestedParsed.workflow_context || parsed.workflow_context,
+            category: nestedParsed.category || parsed.category
+          };
+        }
+      }
+      
+      return parsed;
+    }
+  } catch {
+    // Not JSON, return null
+  }
+  return null;
+}
+
+/**
  * Tauri Error structure from invoke()
  */
 interface TauriError {
@@ -78,6 +114,15 @@ function mapRustErrorCodeToErrorType(rustCode: string): ErrorType {
     case "SUBSCRIPTION_EXPIRED":
       return ErrorType.BILLING_ERROR;
     
+    // Token limit errors
+    case "TOKEN_LIMIT_EXCEEDED_ERROR":
+    case "TOKEN_LIMIT_ERROR":
+    case "TOKEN_LIMIT_EXCEEDED":
+    case "CONTEXT_LENGTH_EXCEEDED":
+    case "MAXIMUM_CONTEXT_LENGTH":
+    case "PROMPT_TOO_LARGE":
+      return ErrorType.TOKEN_LIMIT_ERROR;
+    
     // Network/API errors
     case "NETWORK_ERROR":
     case "NETWORK":
@@ -150,17 +195,8 @@ function mapRustErrorCodeToErrorType(rustCode: string): ErrorType {
       return ErrorType.INTERNAL_ERROR;
     
     default:
-      // Fallback to substring matching for partial matches
-      const upperCode = rustCode.toUpperCase();
-      if (upperCode.includes("VALIDATION") || upperCode.includes("INVALID")) return ErrorType.VALIDATION_ERROR;
-      if (upperCode.includes("NOT_FOUND") || upperCode.includes("MISSING")) return ErrorType.NOT_FOUND_ERROR;
-      if (upperCode.includes("AUTH") || upperCode.includes("PERMISSION") || upperCode.includes("ACCESS") || upperCode.includes("SECURITY") || upperCode.includes("TOKEN") || upperCode.includes("UNAUTHORIZED") || upperCode.includes("FORBIDDEN")) return ErrorType.PERMISSION_ERROR;
-      if (upperCode.includes("BILLING") || upperCode.includes("PAYMENT") || upperCode.includes("SUBSCRIPTION") || upperCode.includes("QUOTA") || upperCode.includes("CREDITS") || upperCode.includes("PLAN")) return ErrorType.BILLING_ERROR;
-      if (upperCode.includes("NETWORK") || upperCode.includes("HTTP") || upperCode.includes("CONNECTION") || upperCode.includes("SERVICE") || upperCode.includes("API") || upperCode.includes("TIMEOUT") || upperCode.includes("REQUEST")) return ErrorType.NETWORK_ERROR;
-      if (upperCode.includes("CONFIG") || upperCode.includes("INITIALIZATION") || upperCode.includes("SETUP") || upperCode.includes("ENV")) return ErrorType.CONFIGURATION_ERROR;
-      if (upperCode.includes("DATABASE") || upperCode.includes("STORAGE") || upperCode.includes("SQLX") || upperCode.includes("MIGRATION") || upperCode.includes("CONSTRAINT")) return ErrorType.DATABASE_ERROR;
-      if (upperCode.includes("WORKFLOW") || upperCode.includes("JOB") || upperCode.includes("STAGE") || upperCode.includes("PROCESSOR")) return ErrorType.WORKFLOW_ERROR;
-      return ErrorType.UNKNOWN_ERROR;
+      // All error codes should be explicitly defined above
+      throw new Error(`Unknown error code '${rustCode}' - add it to mapRustErrorCodeToErrorType mapping`);
   }
 }
 
@@ -188,24 +224,16 @@ export function handleActionError(
   if (typeof error === 'string') {
     let appError: AppError;
     try {
-      const parsed = JSON.parse(error) as { 
-        code?: string; 
-        message?: string; 
-        details?: string; 
-        type?: string; /* legacy */
-        workflowContext?: any;
-        workflow_context?: any;
-        category?: string;
-      };
+      // Parse the error string, handling nested JSON structures
+      const parsed = parseNestedJsonError(error);
       if (parsed && typeof parsed === 'object') {
-        // Prioritize code field for SerializableError, then fallback to type (legacy)
-        const rustCode = (typeof parsed.code === 'string' && parsed.code) ? parsed.code : 
-                        (typeof parsed.type === 'string' && parsed.type) ? parsed.type : null;
+        // Use only the modern code field from SerializableError
+        const rustCode = (typeof parsed.code === 'string' && parsed.code) ? parsed.code : null;
         
         // Extract workflow context if available - ensure proper structure
         const workflowContext = parsed.workflowContext || parsed.workflow_context;
         
-        // Provide more meaningful fallback messages based on context
+        // Extract error message from parsed JSON
         let errorMessage: string;
         if (typeof parsed.message === 'string' && parsed.message.trim()) {
           errorMessage = parsed.message;
@@ -215,32 +243,13 @@ export function handleActionError(
           errorMessage = "An unexpected backend error occurred";
         }
         
-        // Use rustCode for mapping if available, otherwise fall back to message-based inference
+        // Only use modern error codes - no message parsing
         let errorType: ErrorType;
         if (rustCode) {
           errorType = mapRustErrorCodeToErrorType(rustCode);
         } else {
-          // Fallback to message-based inference when no code/type is available
-          const messageLower = errorMessage.toLowerCase();
-          if (messageLower.includes('not found')) {
-            errorType = ErrorType.NOT_FOUND_ERROR;
-          } else if (messageLower.includes('permission') || messageLower.includes('auth') || messageLower.includes('access denied')) {
-            errorType = ErrorType.PERMISSION_ERROR;
-          } else if (messageLower.includes('billing') || messageLower.includes('payment')) {
-            errorType = ErrorType.BILLING_ERROR;
-          } else if (messageLower.includes('network') || messageLower.includes('connection') || messageLower.includes('http') || messageLower.includes('service')) {
-            errorType = ErrorType.NETWORK_ERROR;
-          } else if (messageLower.includes('config') || messageLower.includes('initialization')) {
-            errorType = ErrorType.CONFIGURATION_ERROR;
-          } else if (messageLower.includes('validation') || messageLower.includes('invalid')) {
-            errorType = ErrorType.VALIDATION_ERROR;
-          } else if (messageLower.includes('database') || messageLower.includes('storage') || messageLower.includes('sqlx')) {
-            errorType = ErrorType.DATABASE_ERROR;
-          } else if (messageLower.includes('workflow') || messageLower.includes('stage') || messageLower.includes('job') || messageLower.includes('processor')) {
-            errorType = ErrorType.WORKFLOW_ERROR; // Workflow/job errors get their own type
-          } else {
-            errorType = ErrorType.UNKNOWN_ERROR;
-          }
+          // No error code available - backend should provide proper error codes
+          throw new Error(`Backend error missing error code: ${errorMessage}`);
         }
         
         // Ensure workflowContext is properly structured when creating AppError
@@ -257,50 +266,12 @@ export function handleActionError(
           workflowContext: finalWorkflowContext
         });
       } else {
-        // String is not our expected JSON structure - provide meaningful fallback
-        const message = error.trim() || "An unspecified backend error occurred";
-        appError = new AppError(message, ErrorType.INTERNAL_ERROR, { metadata: { source: 'client-string-error', rawError: error }});
+        // String is not JobWorkerMetadata JSON structure - backend should send proper format
+        throw new Error(`Backend sent invalid error format (not JobWorkerMetadata): ${error.substring(0, 100)}`);
       }
     } catch (jsonParseError) {
-      // String is not JSON at all - provide robust error type inference and meaningful fallback
-      const errorLower = error.toLowerCase();
-      let inferredType = ErrorType.INTERNAL_ERROR;
-      let meaningfulMessage = error;
-      
-      // Enhanced pattern matching for better error categorization
-      if (errorLower.includes('workflow') || errorLower.includes('stage') || errorLower.includes('job') || errorLower.includes('processor')) {
-        inferredType = ErrorType.WORKFLOW_ERROR;
-        if (!meaningfulMessage.toLowerCase().includes('workflow')) {
-          meaningfulMessage = `Workflow error: ${meaningfulMessage}`;
-        }
-      } else if (errorLower.includes('not found')) {
-        inferredType = ErrorType.NOT_FOUND_ERROR;
-      } else if (errorLower.includes('permission') || errorLower.includes('auth') || errorLower.includes('access denied') || errorLower.includes('unauthorized') || errorLower.includes('forbidden')) {
-        inferredType = ErrorType.PERMISSION_ERROR;
-      } else if (errorLower.includes('billing') || errorLower.includes('payment') || errorLower.includes('subscription') || errorLower.includes('quota')) {
-        inferredType = ErrorType.BILLING_ERROR;
-      } else if (errorLower.includes('network') || errorLower.includes('connection') || errorLower.includes('http') || errorLower.includes('service') || errorLower.includes('timeout')) {
-        inferredType = ErrorType.NETWORK_ERROR;
-      } else if (errorLower.includes('config') || errorLower.includes('initialization') || errorLower.includes('setup')) {
-        inferredType = ErrorType.CONFIGURATION_ERROR;
-      } else if (errorLower.includes('validation') || errorLower.includes('invalid')) {
-        inferredType = ErrorType.VALIDATION_ERROR;
-      } else if (errorLower.includes('database') || errorLower.includes('storage') || errorLower.includes('sqlx')) {
-        inferredType = ErrorType.DATABASE_ERROR;
-      }
-      
-      // Ensure we have a meaningful message even for empty/whitespace strings
-      if (!meaningfulMessage || meaningfulMessage.trim() === '') {
-        meaningfulMessage = "An unknown error occurred during the operation";
-      }
-      
-      appError = new AppError(meaningfulMessage, inferredType, { 
-        metadata: { 
-          source: 'client-string-error',
-          rawError: error,
-          jsonParseError: jsonParseError instanceof Error ? jsonParseError.message : String(jsonParseError)
-        }
-      });
+      // String is not JSON - backend should send proper JSON error format
+      throw new Error(`Backend sent invalid error format (not JSON): ${error}`);
     }
     return { isSuccess: false, message: appError.message, error: appError, metadata: appError.metadata };
   } else if (isTauriError(error)) {
@@ -319,17 +290,12 @@ export function handleActionError(
     
     // Try to parse the message as SerializableError JSON if no direct code is available
     if (!errorCode && typeof potentialTauriError.message === 'string') {
-      try {
-        const parsedMessage = JSON.parse(potentialTauriError.message);
-        if (parsedMessage && typeof parsedMessage === 'object' && 
-            typeof parsedMessage.code === 'string' && typeof parsedMessage.message === 'string') {
-          // Message contains a stringified SerializableError
-          errorCode = parsedMessage.code;
-          errorMessage = parsedMessage.message;
-          errorDetails = parsedMessage.details;
-        }
-      } catch (e) {
-        // Message is not JSON, continue with original message
+      const parsedMessage = parseNestedJsonError(potentialTauriError.message);
+      if (parsedMessage && typeof parsedMessage.code === 'string' && typeof parsedMessage.message === 'string') {
+        // Message contains a stringified SerializableError
+        errorCode = parsedMessage.code;
+        errorMessage = parsedMessage.message;
+        errorDetails = parsedMessage.details;
       }
     }
     
@@ -340,27 +306,8 @@ export function handleActionError(
       // Prioritize code field from SerializableError for reliable mapping
       errorType = mapRustErrorCodeToErrorType(errorCode);
     } else {
-      // Fallback to message-based detection for backward compatibility
-      const lowerMessage = errorMessage.toLowerCase();
-      if (lowerMessage.includes("billing") || lowerMessage.includes("payment required")) {
-        errorType = ErrorType.BILLING_ERROR;
-      } else if (lowerMessage.includes("not found")) {
-        errorType = ErrorType.NOT_FOUND_ERROR;
-      } else if (lowerMessage.includes("auth") || lowerMessage.includes("permission") || lowerMessage.includes("access denied")) {
-        errorType = ErrorType.PERMISSION_ERROR;
-      } else if (lowerMessage.includes("validation") || lowerMessage.includes("invalid")) {
-        errorType = ErrorType.VALIDATION_ERROR;
-      } else if (lowerMessage.includes("network") || lowerMessage.includes("connection") || lowerMessage.includes("http") || lowerMessage.includes("service")) {
-        errorType = ErrorType.NETWORK_ERROR;
-      } else if (lowerMessage.includes("config") || lowerMessage.includes("initialization")) {
-        errorType = ErrorType.CONFIGURATION_ERROR;
-      } else if (lowerMessage.includes("database") || lowerMessage.includes("storage") || lowerMessage.includes("sqlx")) {
-        errorType = ErrorType.DATABASE_ERROR;
-      } else if (lowerMessage.includes("workflow") || lowerMessage.includes("stage") || lowerMessage.includes("job") || lowerMessage.includes("processor")) {
-        errorType = ErrorType.WORKFLOW_ERROR; // Workflow/job errors get their own type
-      } else {
-        errorType = ErrorType.INTERNAL_ERROR;
-      }
+      // No error code available - Tauri errors should have proper error codes
+      throw new Error(`Tauri error missing error code: ${errorMessage}`);
     }
 
     const appError = new AppError(
@@ -386,31 +333,8 @@ export function handleActionError(
     };
   }
 
-  // Fallback for non-Tauri errors or unparseable strings
-  let finalMessage: string;
-  let finalError: AppError;
-  
-  if (error instanceof Error) {
-    logger.error("Unhandled Error in action:", error);
-    const message = error.message.trim() || "An error occurred.";
-    finalMessage = `Action failed: ${message}`;
-    finalError = new AppError(message, ErrorType.INTERNAL_ERROR, { cause: error });
-  } else {
-    logger.error("Unhandled unknown error in action:", error);
-    const stringified = String(error);
-    const message = (stringified === "[object Object]" || stringified.trim() === "") 
-      ? "An error occurred." 
-      : stringified;
-    finalMessage = `Action failed: ${message}`;
-    finalError = new AppError(message, ErrorType.UNKNOWN_ERROR);
-  }
-  
-  return {
-    isSuccess: false,
-    message: finalMessage,
-    error: finalError,
-    metadata: { category: "unknown", source: "client" },
-  };
+  // All errors should be handled by the cases above - no fallback handling
+  throw new Error(`Unhandled error type in handleActionError: ${typeof error} - ${String(error).substring(0, 100)}`);
 }
 
 /**

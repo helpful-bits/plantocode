@@ -60,7 +60,7 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
     
     // Update job status to running
     let background_job_repo = app_handle.state::<Arc<BackgroundJobRepository>>();
-    background_job_repo.update_job_status(&job_id, &JobStatus::Running.to_string(), None).await?;
+    background_job_repo.mark_job_running(&job_id, None).await?;
     
     // Emit job status change event
     emit_job_status_change(
@@ -78,11 +78,12 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
         Err(e) => {
             error!("Error finding processor for job {} (task type: {}): {}", job_id, task_type, e);
             let error_message = format!("Error finding processor for task type '{}': {}", task_type, e);
+            let app_error = AppError::JobError(error_message.clone());
             handle_job_failure(
                 &app_handle,
                 &background_job_repo,
                 &job_id,
-                &error_message,
+                &app_error,
                 None,
             ).await?;
             drop(permit);
@@ -118,15 +119,15 @@ pub async fn process_next_job(app_handle: AppHandle) -> AppResult<Option<JobProc
             drop(permit);
             Ok(Some(result))
         },
-        Err(e) => {
-            error!("Job {} (task type: {}) failed during processing: {}", job_id, task_type, e);
+        Err(app_error) => {
+            error!("Job {} (task type: {}) failed during processing: {}", job_id, task_type, app_error);
             
             // Handle job failure or retry
             let handled = handle_job_failure_or_retry(
                 &app_handle,
                 &background_job_repo,
                 &job_id,
-                &e.to_string(),
+                &app_error,
             ).await?;
             
             drop(permit);
@@ -186,24 +187,28 @@ async fn handle_job_success(
         JobStatus::Completed => {
             info!("Job {} completed successfully", job_id);
             
-            // Update job status to completed
-            background_job_repo.update_job_status(
-                job_id,
-                &JobStatus::Completed.to_string(),
-                None,
-            ).await?;
-            
-            // Update job response with comprehensive result data
+            // Update job status to completed with comprehensive result data
             if let Some(response) = &result.response {
-                background_job_repo.update_job_response(
-                    job_id, 
-                    response, 
-                    Some(JobStatus::Completed), 
-                    None, 
-                    result.tokens_sent, 
-                    result.tokens_received, 
-                    result.total_tokens, 
-                    result.chars_received
+                background_job_repo.mark_job_completed(
+                    job_id,
+                    response,
+                    None,
+                    result.tokens_sent,
+                    result.tokens_received,
+                    result.total_tokens,
+                    None,
+                    None
+                ).await?;
+            } else {
+                background_job_repo.mark_job_completed(
+                    job_id,
+                    "No response content",
+                    None,
+                    result.tokens_sent,
+                    result.tokens_received,
+                    result.total_tokens,
+                    None,
+                    None
                 ).await?;
             }
             
@@ -226,11 +231,7 @@ async fn handle_job_success(
             error!("Job {} failed: {}", job_id, error_message);
             
             // Update job status to failed with detailed error information
-            background_job_repo.update_job_status(
-                job_id,
-                &JobStatus::Failed.to_string(),
-                Some(&error_message),
-            ).await?;
+            background_job_repo.mark_job_failed(job_id, &error_message, None).await?;
             
             // Emit job status change event
             emit_job_status_change(
@@ -259,7 +260,7 @@ async fn handle_job_failure(
     app_handle: &AppHandle,
     background_job_repo: &Arc<BackgroundJobRepository>,
     job_id: &str,
-    error_message: &str,
+    error: &AppError,
     job_copy: Option<BackgroundJob>,
 ) -> AppResult<JobFailureHandlingResult> {
     // Get a copy of the job to access its metadata if not provided
@@ -304,7 +305,7 @@ async fn handle_job_failure(
         app_handle,
         background_job_repo,
         job_id,
-        error_message,
+        error,
         &job_copy,
     ).await
 }
@@ -314,24 +315,28 @@ async fn handle_job_failure_or_retry(
     app_handle: &AppHandle,
     background_job_repo: &Arc<BackgroundJobRepository>,
     job_id: &str,
-    error_message: &str,
+    error: &AppError,
 ) -> AppResult<JobFailureHandlingResult> {
-    handle_job_failure(app_handle, background_job_repo, job_id, error_message, None).await
+    handle_job_failure(app_handle, background_job_repo, job_id, error, None).await
 }
 
-/// Internal implementation of failure handling and retry logic
+/// Internal implementation of failure handling and retry logic with enhanced error context
 async fn handle_job_failure_or_retry_internal(
     app_handle: &AppHandle,
     background_job_repo: &Arc<BackgroundJobRepository>,
     job_id: &str,
-    error_message: &str,
+    error: &AppError,
     job_copy: &BackgroundJob,
 ) -> AppResult<JobFailureHandlingResult> {
-    error!("Failed to process job {} (retry count: {}): {}", job_id, 
-        job_helpers::get_retry_count_from_job(job_copy).unwrap_or(0), error_message);
+    error!("Failed to process job {} (retry count: {}): {} [AppError Variant: {:?}]", 
+        job_id, 
+        job_helpers::get_retry_count_from_job(job_copy).unwrap_or(0), 
+        error.to_string(),
+        error
+    );
     
     // Check if this error type is retryable and get current retry count
-    let (is_retryable, current_retry_count) = job_helpers::get_retry_info(job_copy).await;
+    let (is_retryable, current_retry_count) = job_helpers::get_retry_info(job_copy, Some(error)).await;
     
     // Check if we can retry this job
     if is_retryable && current_retry_count < job_helpers::MAX_RETRY_COUNT {
@@ -339,19 +344,63 @@ async fn handle_job_failure_or_retry_internal(
         let retry_delay = job_helpers::calculate_retry_delay(current_retry_count);
         let next_retry_count = current_retry_count + 1;
         
-        warn!("Job {} failed with retryable error. Scheduling retry #{}/{} in {} seconds: {}", 
-            job_id, next_retry_count, job_helpers::MAX_RETRY_COUNT, retry_delay, error_message);
+        warn!("Job {} failed with retryable error [Type: {:?}]. Scheduling retry #{}/{} in {} seconds: {}", 
+            job_id, 
+            error,
+            next_retry_count, 
+            job_helpers::MAX_RETRY_COUNT, 
+            retry_delay, 
+            error.to_string()
+        );
         
-        // Prepare metadata for the retry
-        let retry_metadata = job_helpers::prepare_retry_metadata(job_copy, next_retry_count, error_message).await;
+        // Prepare enhanced metadata for the retry
+        let retry_metadata = match job_helpers::prepare_retry_metadata(job_copy, next_retry_count, error).await {
+            Ok(metadata) => metadata,
+            Err(metadata_error) => {
+                error!("Failed to prepare retry metadata for job {}: {}. Treating as permanent failure.", job_id, metadata_error);
+                
+                // If metadata preparation fails, treat as permanent failure
+                let failure_reason = format!("Failed to prepare retry metadata: {}", metadata_error);
+                
+                // Update job status to failed
+                let user_facing_error = format_user_error(error);
+                if let Err(e) = background_job_repo.update_job_status(
+                    job_id,
+                    &JobStatus::Failed,
+                    Some(&user_facing_error)
+                ).await {
+                    error!("Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!", job_id, e);
+                }
+                
+                // Emit job status change event with user-friendly message
+                if let Err(e) = emit_job_status_change(
+                    app_handle,
+                    job_id,
+                    &JobStatus::Failed.to_string(),
+                    Some(&user_facing_error)
+                ) {
+                    error!("Failed to emit job status change event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
+                }
+                
+                return Ok(JobFailureHandlingResult::PermanentFailure(failure_reason));
+            }
+        };
         
-        // Update job status to queued with retry metadata
-        let retry_message = format!("Retry #{} scheduled (will retry in {} seconds). Last error: {}", 
-            next_retry_count, retry_delay, error_message);
+        // Create user-friendly retry message with error context
+        let retry_message = format!(
+            "Retry #{} scheduled (will retry in {} seconds). Error Type: {:?}. Last error: {}", 
+            next_retry_count, 
+            retry_delay,
+            error,
+            truncate_error_for_display(&error.to_string(), 100)
+        );
             
+        // Update job status to queued for retry with metadata
+        // Note: Using the deprecated method temporarily for retry logic
+        // TODO: Consider creating a specific method for retry scheduling
         if let Err(e) = background_job_repo.update_job_status_with_metadata(
             job_id,
-            &JobStatus::Queued.to_string(),
+            &JobStatus::Queued,
             Some(&retry_message),
             retry_metadata
         ).await {
@@ -377,34 +426,41 @@ async fn handle_job_failure_or_retry_internal(
         
         Ok(JobFailureHandlingResult::Retrying)
     } else {
-        // Job is not retryable or max retries reached - provide detailed failure logging
+        // Job is not retryable or max retries reached - provide detailed failure logging with enhanced context
         let failure_reason = if !is_retryable {
-            let detailed_reason = format!("Non-retryable error: {}", error_message);
-            error!("Job {} permanently failed due to non-retryable error. Job details: task_type={}, session_id={}, created_at={}, project_directory={}. Error: {}", 
+            let user_friendly_reason = format_user_friendly_error(error);
+            let detailed_reason = format!("Non-retryable error [{:?}]: {}", 
+                error, 
+                user_friendly_reason
+            );
+            
+            error!("Job {} permanently failed due to non-retryable {:?} error. Job details: task_type={}, session_id={}, created_at={}, project_directory={}. Error: {}", 
                 job_id, 
+                error,
                 job_copy.task_type,
                 job_copy.session_id, 
                 job_copy.created_at,
                 job_copy.project_directory.as_deref().unwrap_or("N/A"),
-                error_message
+                error.to_string()
             );
             
             // Log additional context if metadata is available
-            if let Some(metadata) = &job_copy.metadata {
-                if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
-                    if let Some(model) = meta_json.get("model").and_then(|m| m.as_str()) {
-                        error!("Failed job {} was using model: {}", job_id, model);
-                    }
-                    if let Some(priority) = meta_json.get("jobPriorityForWorker").and_then(|p| p.as_str()) {
-                        error!("Failed job {} had priority: {}", job_id, priority);
-                    }
-                }
-            }
+            log_job_metadata_context(job_id, &job_copy.metadata);
+            
+            // Log specific error type context
+            error!("Job {} failed with AppError type: {:?} (Retryable: false)", job_id, error);
             
             detailed_reason
         } else {
-            let detailed_reason = format!("Failed after {}/{} retries. Last error: {}", current_retry_count, job_helpers::MAX_RETRY_COUNT, error_message);
-            error!("Job {} permanently failed after exhausting all retries. Job details: task_type={}, session_id={}, created_at={}, project_directory={}. Retry history: {}/{} attempts. Final error: {}", 
+            let user_friendly_reason = format_user_friendly_error(error);
+            let detailed_reason = format!("Failed after {}/{} retries [{:?}]: {}", 
+                current_retry_count, 
+                job_helpers::MAX_RETRY_COUNT, 
+                error,
+                user_friendly_reason
+            );
+            
+            error!("Job {} permanently failed after exhausting all retries. Job details: task_type={}, session_id={}, created_at={}, project_directory={}. Retry history: {}/{} attempts. Final error [{:?}]: {}", 
                 job_id, 
                 job_copy.task_type,
                 job_copy.session_id, 
@@ -412,41 +468,35 @@ async fn handle_job_failure_or_retry_internal(
                 job_copy.project_directory.as_deref().unwrap_or("N/A"),
                 current_retry_count,
                 job_helpers::MAX_RETRY_COUNT,
-                error_message
+                error,
+                error.to_string()
             );
             
-            // Log retry metadata if available
-            if let Some(metadata) = &job_copy.metadata {
-                if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
-                    if let Some(retry_history) = meta_json.get("retryHistory") {
-                        error!("Failed job {} retry history: {}", job_id, retry_history);
-                    }
-                    if let Some(model) = meta_json.get("model").and_then(|m| m.as_str()) {
-                        error!("Failed job {} was using model: {}", job_id, model);
-                    }
-                }
-            }
+            // Log enhanced retry metadata if available
+            log_retry_history_context(job_id, &job_copy.metadata);
+            log_job_metadata_context(job_id, &job_copy.metadata);
             
             detailed_reason
         };
         
         error!("PERMANENT JOB FAILURE: Job {} has been marked as permanently failed. Reason: {}", job_id, failure_reason);
         
-        // Update job status to failed
+        // Update job status to failed with user-friendly error message
+        let user_facing_error = format_user_error(error);
         if let Err(e) = background_job_repo.update_job_status(
             job_id,
-            &JobStatus::Failed.to_string(),
-            Some(&failure_reason)
+            &JobStatus::Failed,
+            Some(&user_facing_error)
         ).await {
             error!("Critical error: Failed to update job {} status to failed in database: {}. This may lead to inconsistent state!", job_id, e);
         }
         
-        // Emit job status change event
+        // Emit job status change event with user-friendly message
         if let Err(e) = emit_job_status_change(
             app_handle,
             job_id,
             &JobStatus::Failed.to_string(),
-            Some(&failure_reason)
+            Some(&user_facing_error)
         ) {
             error!("Failed to emit job status change event for permanently failed job {}: {}. UI may not reflect current state.", job_id, e);
         }
@@ -454,6 +504,103 @@ async fn handle_job_failure_or_retry_internal(
         Ok(JobFailureHandlingResult::PermanentFailure(failure_reason))
     }
 }
+
+
+/// Create a user-friendly error message based on AppError
+fn format_user_friendly_error(error: &AppError) -> String {
+    match error {
+        AppError::NetworkError(_) => "Network connection issue. Please check your internet connection and try again.".to_string(),
+        AppError::HttpError(msg) => {
+            if let Some(status) = extract_http_status_code(msg) {
+                match status {
+                    429 => "Rate limit exceeded. Please wait a moment before trying again.".to_string(),
+                    500..=599 => "Server is temporarily unavailable. Please try again later.".to_string(),
+                    401 | 403 => "Authentication failed. Please check your credentials.".to_string(),
+                    404 => "Requested resource not found.".to_string(),
+                    _ => format!("HTTP error ({}). Please try again.", status),
+                }
+            } else {
+                "Network request failed. Please try again.".to_string()
+            }
+        },
+        AppError::OpenRouterError(_) => "AI service temporarily unavailable. Please try again in a moment.".to_string(),
+        AppError::ValidationError(_) => "Invalid input data. Please check your request and try again.".to_string(),
+        AppError::AuthError(_) => "Authentication failed. Please check your credentials.".to_string(),
+        AppError::TokenLimitExceededError(_) => "Input is too long for the selected model. Please reduce the content size or choose a different model.".to_string(),
+        AppError::ConfigError(_) => "Configuration error. Please check your settings.".to_string(),
+        AppError::FileSystemError(_) => "File access error. Please check file permissions and try again.".to_string(),
+        AppError::JobError(msg) if msg.to_lowercase().contains("timeout") => "Operation timed out. Please try again.".to_string(),
+        _ => truncate_error_for_display(&error.to_string(), 150),
+    }
+}
+
+/// Create a user-facing error message that combines technical context with user-friendly language
+fn format_user_error(error: &AppError) -> String {
+    let friendly_message = format_user_friendly_error(error);
+    
+    // For some error types, add the technical detail in a user-friendly way
+    match error {
+        AppError::HttpError(msg) => {
+            if let Some(status) = extract_http_status_code(msg) {
+                format!("{} (Error code: {})", friendly_message, status)
+            } else {
+                friendly_message
+            }
+        },
+        AppError::InternalError(_) => friendly_message,
+        _ => {
+            let error_type = std::any::type_name::<AppError>().split("::").last().unwrap_or("Unknown");
+            format!("{} (Type: {})", friendly_message, error_type)
+        }
+    }
+}
+
+/// Truncate error message for display while preserving important information
+fn truncate_error_for_display(error_message: &str, max_length: usize) -> String {
+    if error_message.len() <= max_length {
+        error_message.to_string()
+    } else {
+        format!("{}...", &error_message[..max_length.saturating_sub(3)])
+    }
+}
+
+/// Log job metadata context for debugging
+fn log_job_metadata_context(job_id: &str, metadata: &Option<String>) {
+    if let Some(metadata) = metadata {
+        if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
+            if let Some(model) = meta_json.get("model").and_then(|m| m.as_str()) {
+                error!("Failed job {} was using model: {}", job_id, model);
+            }
+            if let Some(priority) = meta_json.get("jobPriorityForWorker").and_then(|p| p.as_str()) {
+                error!("Failed job {} had priority: {}", job_id, priority);
+            }
+            if let Some(app_error_type) = meta_json.get("app_error_type").and_then(|t| t.as_str()) {
+                error!("Failed job {} detected AppError type: {}", job_id, app_error_type);
+            }
+        }
+    }
+}
+
+/// Log retry history context for debugging
+fn log_retry_history_context(job_id: &str, metadata: &Option<String>) {
+    if let Some(metadata) = metadata {
+        if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(metadata) {
+            if let Some(errors) = meta_json.get("errors").and_then(|e| e.as_array()) {
+                error!("Failed job {} retry history ({} attempts):", job_id, errors.len());
+                for (i, error_entry) in errors.iter().enumerate() {
+                    if let Some(error_msg) = error_entry.get("message").and_then(|m| m.as_str()) {
+                        let timestamp = error_entry.get("timestamp").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                        let error_type = error_entry.get("app_error_type").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                        error!("  Attempt {}: [{}] {} - {}", i + 1, error_type, timestamp, truncate_error_for_display(error_msg, 100));
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper functions that need to be accessible in this module
+use crate::jobs::job_helpers::{extract_http_status_code};
 
 /// Emit a job status change event
 fn emit_job_status_change(

@@ -6,7 +6,7 @@ import { useJobDetailsContext } from "../../_contexts/job-details-context";
 export function JobDetailsAdditionalInfoSection() {
   const { job, parsedMetadata } = useJobDetailsContext();
   const parsedMeta = parsedMetadata;
-  const outputPathFromMeta = typeof parsedMeta?.outputPath === 'string' ? parsedMeta.outputPath : null;
+  const outputPathFromMeta = typeof parsedMeta?.additionalParams?.outputPath === 'string' ? parsedMeta.additionalParams.outputPath : null;
   
   if (!outputPathFromMeta && !job.statusMessage) {
     return null;

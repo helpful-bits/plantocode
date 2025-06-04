@@ -1,11 +1,7 @@
 import { FrontendUser } from '../types';
 
-// Local alias for User to maintain backward compatibility 
-// while matching the backend FrontendUser structure
-export type User = FrontendUser;
-
 export interface AuthContextType {
-  user?: User;
+  user?: FrontendUser;
   loading: boolean;
   error?: string;
   token?: string;

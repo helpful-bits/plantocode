@@ -8,7 +8,6 @@ import { SearchScopeToggle } from "@/ui";
 import { Button } from "@/ui/button";
 
 import FindModeToggle from "../_components/find-mode-toggle";
-import { useCorePromptContext } from "../_contexts/core-prompt-context";
 
 interface ActionsSectionProps {
   isFindingFiles: boolean;
@@ -40,7 +39,6 @@ const ActionsSection = React.memo(function ActionsSection({
 }: ActionsSectionProps) {
   // Get states and actions from the granular contexts
   const { currentSession } = useSessionStateContext();
-  const {} = useCorePromptContext();
 
   const taskDescription = currentSession?.taskDescription || "";
 

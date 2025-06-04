@@ -2,21 +2,13 @@
 
 import React from "react";
 
-import FileBrowser from "../file-browser";
+import { SimpleFileBrowser } from "../simple-file-browser";
 
-interface FileSectionProps {
-  disabled?: boolean;
-}
-
-const FileSection = React.memo(function FileSection({
-  disabled = false,
-}: FileSectionProps) {
+const FileSection = React.memo(function FileSection() {
 
   return (
     <>
-      <FileBrowser
-        disabled={disabled}
-      />
+      <SimpleFileBrowser />
     </>
   );
 });

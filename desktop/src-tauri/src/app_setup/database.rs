@@ -5,7 +5,6 @@ use std::sync::Arc;
 use sqlx::{SqlitePool, migrate::MigrateDatabase, sqlite::SqlitePoolOptions, Executor};
 use std::fs;
 use crate::db_utils::{create_repositories, SessionRepository, BackgroundJobRepository, SettingsRepository};
-use crate::{SESSION_REPO, BACKGROUND_JOB_REPO, SETTINGS_REPO};
 
 pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError> {
     // Initialize the SQLite database connection pool
@@ -100,15 +99,7 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
     app_handle.manage(background_job_repo_arc.clone());
     app_handle.manage(settings_repo_arc.clone());
     
-    // Store references in global statics
-    SESSION_REPO.set(session_repo_arc)
-        .expect("Failed to set SESSION_REPO");
-    BACKGROUND_JOB_REPO.set(background_job_repo_arc)
-        .expect("Failed to set BACKGROUND_JOB_REPO");
-    SETTINGS_REPO.set(settings_repo_arc)
-        .expect("Failed to set SETTINGS_REPO");
-    
-    info!("Repository instances created, managed by Tauri, and stored globally");
+    info!("Repository instances created and managed by Tauri");
     
     Ok(())
 }

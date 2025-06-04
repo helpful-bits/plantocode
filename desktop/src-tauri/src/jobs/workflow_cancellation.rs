@@ -9,7 +9,7 @@ use log::{error, warn, info, debug};
 use crate::error::{AppError, AppResult};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::models::{JobStatus, BackgroundJob};
-use super::workflow_types::{CancellationResult, FailedCancellation};
+use super::workflow_types::{CancellationResult, FailedCancellation, WorkflowDefinition};
 use super::types::WorkflowStage;
 
 /// Service for handling workflow-wide cancellation propagation
@@ -87,14 +87,15 @@ impl WorkflowCancellationHandler {
     pub async fn cancel_from_stage(
         &self,
         workflow_id: &str,
-        from_stage: WorkflowStage,
+        from_stage_name: &str,
+        workflow_definition: &WorkflowDefinition,
         reason: &str,
         app_handle: &AppHandle
     ) -> AppResult<CancellationResult> {
-        log::info!("Canceling workflow {} from stage {} with reason: {}", workflow_id, from_stage, reason);
+        log::info!("Canceling workflow {} from stage {} with reason: {}", workflow_id, from_stage_name, reason);
 
         let workflow_jobs = self.repo.get_jobs_by_metadata_field("workflow_id", workflow_id).await?;
-        let stages_to_cancel = self.get_subsequent_stages(&from_stage);
+        let stages_to_cancel = self.get_subsequent_stages(from_stage_name, workflow_definition);
         
         let mut canceled_jobs = Vec::new();
         let mut failed_cancellations = Vec::new();
@@ -284,7 +285,7 @@ impl WorkflowCancellationHandler {
         app_handle: &AppHandle
     ) -> AppResult<()> {
         // Update job status to canceled
-        self.repo.update_job_status(job_id, &JobStatus::Canceled.to_string(), Some(&format!("Canceled: {}", reason))).await?;
+        self.repo.update_job_status(job_id, &JobStatus::Canceled, Some(&format!("Canceled: {}", reason))).await?;
 
         // Emit cancellation event for frontend
         let event_payload = serde_json::json!({
@@ -336,41 +337,31 @@ impl WorkflowCancellationHandler {
         Ok(true)
     }
 
-    fn get_subsequent_stages(&self, from_stage: &WorkflowStage) -> HashSet<WorkflowStage> {
-        let mut stages = HashSet::new();
+    fn get_subsequent_stages(&self, from_stage_name: &str, workflow_definition: &WorkflowDefinition) -> HashSet<String> {
+        let mut stages_to_cancel = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut stack = vec![from_stage_name.to_string()];
         
-        match from_stage {
-            WorkflowStage::DirectoryTreeGeneration => {
-                stages.insert(WorkflowStage::DirectoryTreeGeneration);
-                stages.insert(WorkflowStage::RegexPatternGeneration);
-                stages.insert(WorkflowStage::LocalFileFiltering);
-                stages.insert(WorkflowStage::ExtendedPathFinder);
-                stages.insert(WorkflowStage::ExtendedPathCorrection);
-            },
-            WorkflowStage::RegexPatternGeneration => {
-                stages.insert(WorkflowStage::RegexPatternGeneration);
-                stages.insert(WorkflowStage::LocalFileFiltering);
-                stages.insert(WorkflowStage::ExtendedPathFinder);
-                stages.insert(WorkflowStage::ExtendedPathCorrection);
-            },
-            WorkflowStage::LocalFileFiltering => {
-                stages.insert(WorkflowStage::LocalFileFiltering);
-                stages.insert(WorkflowStage::ExtendedPathFinder);
-                stages.insert(WorkflowStage::ExtendedPathCorrection);
-            },
-            WorkflowStage::ExtendedPathFinder => {
-                stages.insert(WorkflowStage::ExtendedPathFinder);
-                stages.insert(WorkflowStage::ExtendedPathCorrection);
-            },
-            WorkflowStage::ExtendedPathCorrection => {
-                stages.insert(WorkflowStage::ExtendedPathCorrection);
-            },
+        // Use DFS to find all stages that depend on the from_stage_name (directly or indirectly)
+        while let Some(current_stage) = stack.pop() {
+            if visited.contains(&current_stage) {
+                continue;
+            }
+            visited.insert(current_stage.clone());
+            stages_to_cancel.insert(current_stage.clone());
+            
+            // Find all stages that depend on the current stage
+            for stage_def in &workflow_definition.stages {
+                if stage_def.dependencies.contains(&current_stage) && !visited.contains(&stage_def.stage_name) {
+                    stack.push(stage_def.stage_name.clone());
+                }
+            }
         }
         
-        stages
+        stages_to_cancel
     }
 
-    fn should_cancel_job_for_stage(&self, job: &BackgroundJob, stages_to_cancel: &HashSet<WorkflowStage>) -> bool {
+    fn should_cancel_job_for_stage(&self, job: &BackgroundJob, stages_to_cancel: &HashSet<String>) -> bool {
         // Only cancel jobs that are not already completed or failed
         let status = Self::safe_job_status_from_str(&job.status).unwrap_or_else(|e| {
             warn!("Failed to parse job status '{}' for job {}: {}. Defaulting to Idle.", job.status, job.id, e);
@@ -380,22 +371,29 @@ impl WorkflowCancellationHandler {
             return false;
         }
 
-        // Determine job stage from task type and check if it should be canceled
-        let job_stage = self.get_job_stage(&job.task_type);
-        match job_stage {
-            Some(stage) => stages_to_cancel.contains(&stage),
+        // Extract stage name from job metadata or derive from task type
+        let job_stage_name = self.get_job_stage_name(job);
+        match job_stage_name {
+            Some(stage_name) => stages_to_cancel.contains(&stage_name),
             None => false, // Don't cancel jobs we can't categorize
         }
     }
 
-    fn get_job_stage(&self, task_type: &str) -> Option<WorkflowStage> {
-        match task_type {
-            "DirectoryTreeGeneration" => Some(WorkflowStage::DirectoryTreeGeneration),
-            "LocalFileFiltering" => Some(WorkflowStage::LocalFileFiltering),
-            "ExtendedPathFinder" => Some(WorkflowStage::ExtendedPathFinder),
-            "ExtendedPathCorrection" => Some(WorkflowStage::ExtendedPathCorrection),
-            _ => None,
+    fn get_job_stage_name(&self, job: &BackgroundJob) -> Option<String> {
+        // First try to extract from job metadata
+        if let Some(metadata_str) = &job.metadata {
+            if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                if let Some(workflow_stage) = metadata.get("workflowStage").and_then(|v| v.as_str()) {
+                    return Some(workflow_stage.to_string());
+                }
+                if let Some(stage_name) = metadata.get("stageName").and_then(|v| v.as_str()) {
+                    return Some(stage_name.to_string());
+                }
+            }
         }
+        
+        // Fallback: derive stage name from task type
+        Some(job.task_type.clone())
     }
 
     async fn find_dependent_jobs(&self, job_id: &str) -> AppResult<Vec<String>> {
@@ -417,9 +415,9 @@ impl WorkflowCancellationHandler {
                 JobStatus::Idle
             });
             if status == JobStatus::Failed {
-                // Consider DirectoryTreeGeneration as critical
-                if job.task_type == "DirectoryTreeGeneration" {
-                    log::warn!("Critical stage failure detected in workflow {}: DirectoryTreeGeneration", workflow_id);
+                // Consider LocalFileFiltering as critical since it's usually the first stage
+                if job.task_type == crate::models::TaskType::LocalFileFiltering.to_string() {
+                    log::warn!("Critical stage failure detected in workflow {}: LocalFileFiltering", workflow_id);
                     return Ok(true);
                 }
             }
@@ -430,7 +428,8 @@ impl WorkflowCancellationHandler {
 
     fn is_critical_job(&self, job: &BackgroundJob) -> bool {
         // Define which job types are considered critical and shouldn't be interrupted
-        matches!(job.task_type.as_str(), "DirectoryTreeGeneration" | "DataPersistence")
+        let local_file_filtering_str = crate::models::TaskType::LocalFileFiltering.to_string();
+        job.task_type == local_file_filtering_str || job.task_type == "DataPersistence"
     }
 
     fn current_timestamp(&self) -> i64 {
@@ -526,11 +525,38 @@ mod tests {
         let repo = Arc::new(BackgroundJobRepository::new("test.db".to_string()));
         let handler = WorkflowCancellationHandler::new(repo);
         
-        let stages = handler.get_subsequent_stages(&WorkflowStage::LocalFileFiltering);
-        assert!(stages.contains(&WorkflowStage::LocalFileFiltering));
-        assert!(stages.contains(&WorkflowStage::ExtendedPathFinder));
-        assert!(stages.contains(&WorkflowStage::ExtendedPathCorrection));
-        assert!(!stages.contains(&WorkflowStage::DirectoryTreeGeneration));
+        // Create a test workflow definition
+        let workflow_def = WorkflowDefinition {
+            name: "test_workflow".to_string(),
+            stages: vec![
+                super::super::workflow_types::WorkflowStageDefinition {
+                    stage_name: "LocalFileFiltering".to_string(),
+                    task_type: crate::models::TaskType::LocalFileFiltering,
+                    processor_name: None,
+                    dependencies: vec![],
+                    allow_parallel_execution: false,
+                },
+                super::super::workflow_types::WorkflowStageDefinition {
+                    stage_name: "ExtendedPathFinder".to_string(),
+                    task_type: crate::models::TaskType::ExtendedPathFinder,
+                    processor_name: None,
+                    dependencies: vec!["LocalFileFiltering".to_string()],
+                    allow_parallel_execution: false,
+                },
+                super::super::workflow_types::WorkflowStageDefinition {
+                    stage_name: "ExtendedPathCorrection".to_string(),
+                    task_type: crate::models::TaskType::ExtendedPathCorrection,
+                    processor_name: None,
+                    dependencies: vec!["ExtendedPathFinder".to_string()],
+                    allow_parallel_execution: false,
+                },
+            ],
+        };
+        
+        let stages = handler.get_subsequent_stages("LocalFileFiltering", &workflow_def);
+        assert!(stages.contains("LocalFileFiltering"));
+        assert!(stages.contains("ExtendedPathFinder"));
+        assert!(stages.contains("ExtendedPathCorrection"));
     }
 
     #[tokio::test]

@@ -18,6 +18,7 @@ import {
 interface UseSystemPromptOptions {
   sessionId: string;
   taskType: TaskType;
+  systemPromptId?: string;
   autoLoad?: boolean;
 }
 
@@ -308,8 +309,8 @@ export function getTaskTypeDisplayName(taskType: TaskType): string {
     return taskDetails.displayName;
   }
   
-  // Fallback to converting snake_case to Title Case
-  return taskType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  // All task types should be defined in TaskTypeDetails
+  throw new Error(`Task type '${taskType}' not found in TaskTypeDetails - add it to the enum`);
 }
 
 /**

@@ -30,14 +30,18 @@ impl actix_web::FromRequest for UserId {
     type Error = actix_web::Error;
     type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Error>>>>;
 
-    fn from_request(req: &actix_web::HttpRequest, _: &mut actix_web::dev::Payload) -> Self::Future {
-        let req = req.clone();
+    fn from_request(req: &actix_web::HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
+        let extensions = req.extensions();
+        let user_id_opt = extensions.get::<UserId>().copied(); // Use copied() for Copy types
+        let request_path = req.path().to_string(); // Clone the path to avoid lifetime issues
+
         Box::pin(async move {
-            // Get UserId from extensions (set by SecureAuthentication middleware)
-            req.extensions()
-                .get::<UserId>()
-                .cloned()
-                .ok_or_else(|| actix_web::error::ErrorUnauthorized("User not authenticated"))
+            user_id_opt.ok_or_else(|| {
+                log::error!("UserId not found in request extensions. Auth middleware might not have run or failed for path: {}", request_path);
+                actix_web::error::ErrorInternalServerError(
+                    "Authentication context not found. Please ensure authentication middleware is correctly configured and has run."
+                )
+            })
         })
     }
 }
@@ -47,14 +51,18 @@ impl actix_web::FromRequest for UserRole {
     type Error = actix_web::Error;
     type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Error>>>>;
 
-    fn from_request(req: &actix_web::HttpRequest, _: &mut actix_web::dev::Payload) -> Self::Future {
-        let req = req.clone();
+    fn from_request(req: &actix_web::HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
+        let extensions = req.extensions();
+        let user_role_opt = extensions.get::<UserRole>().cloned();
+        let request_path = req.path().to_string(); // Clone the path to avoid lifetime issues
+
         Box::pin(async move {
-            // Get UserRole from extensions (set by SecureAuthentication middleware)
-            req.extensions()
-                .get::<UserRole>()
-                .cloned()
-                .ok_or_else(|| actix_web::error::ErrorUnauthorized("User role not available"))
+            user_role_opt.ok_or_else(|| {
+                log::error!("UserRole not found in request extensions. Auth middleware might not have run or failed for path: {}", request_path);
+                actix_web::error::ErrorInternalServerError(
+                    "Authentication context (role) not found. Please ensure authentication middleware is correctly configured and has run."
+                )
+            })
         })
     }
 }
@@ -64,21 +72,36 @@ impl actix_web::FromRequest for UserEmail {
     type Error = actix_web::Error;
     type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Error>>>>;
 
-    fn from_request(req: &actix_web::HttpRequest, _: &mut actix_web::dev::Payload) -> Self::Future {
-        let req = req.clone();
+    fn from_request(req: &actix_web::HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
+        let extensions = req.extensions();
+        let user_email_opt = extensions.get::<UserEmail>().cloned();
+        let request_path = req.path().to_string(); // Clone the path to avoid lifetime issues
+
         Box::pin(async move {
-            // Get UserEmail from extensions (set by SecureAuthentication middleware)
-            req.extensions()
-                .get::<UserEmail>()
-                .cloned()
-                .ok_or_else(|| actix_web::error::ErrorUnauthorized("User email not available"))
+            user_email_opt.ok_or_else(|| {
+                log::error!("UserEmail not found in request extensions. Auth middleware might not have run or failed for path: {}", request_path);
+                actix_web::error::ErrorInternalServerError(
+                    "Authentication context (email) not found. Please ensure authentication middleware is correctly configured and has run."
+                )
+            })
         })
     }
 }
 
 /// Authentication middleware using JWT validation.
 #[derive(Clone)]
-pub struct SecureAuthentication;
+pub struct SecureAuthentication {
+    user_pool: std::sync::Arc<sqlx::PgPool>,
+}
+
+impl SecureAuthentication {
+    pub fn new(user_pool: sqlx::PgPool) -> Self {
+        debug!("SecureAuthentication::new called - initializing middleware with user_pool for RLS");
+        Self { 
+            user_pool: std::sync::Arc::new(user_pool)
+        }
+    }
+}
 
 impl<S, B> Transform<S, ServiceRequest> for SecureAuthentication 
 where
@@ -93,13 +116,18 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(SecureAuthenticationMiddleware { service: Arc::new(service) })
+        debug!("SecureAuthentication::new_transform called - creating middleware");
+        ok(SecureAuthenticationMiddleware { 
+            service: Arc::new(service),
+            user_pool: self.user_pool.clone(),
+        })
     }
 }
 
 #[derive(Clone)]
 pub struct SecureAuthenticationMiddleware<S> {
     service: Arc<S>,
+    user_pool: std::sync::Arc<sqlx::PgPool>,
 }
 
 
@@ -117,12 +145,14 @@ where
         self.service.poll_ready(cx)
     }
 
-    fn call(&self, req: ServiceRequest) -> Self::Future {
+    fn call(&self, mut req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
+        
+        debug!("SecureAuthentication middleware called for: {} {}", req.method(), req.path());
 
         // Check if request has already been processed by this middleware
         if req.extensions().get::<AuthProcessed>().is_some() {
-            // Already processed, skip auth logic
+            debug!("Request already processed by auth middleware, skipping");
             return Box::pin(service.call(req));
         }
 
@@ -179,6 +209,7 @@ where
         // Clone data needed in the async block to avoid borrowing issues
         let request_path = req.path().to_string();
         let token = token.to_string();
+        let user_pool = self.user_pool.clone();
         
         // Create a separate async block to verify the token
         Box::pin(async move {
@@ -201,18 +232,57 @@ where
                     // Token Binding Verification (if present in token)
                     if let Some(token_binding_hash_claim) = &claims.tbh {
                         match extract_token_binding_hash_from_service_request(&req) {
-                            Ok(request_binding_hash) if token_binding_hash_claim == &request_binding_hash => {
-                                debug!("Token binding verified successfully for user {}", user_id);
+                            Ok(request_binding_hash) => {
+                                if token_binding_hash_claim == &request_binding_hash {
+                                    debug!("Token binding verified successfully for user {} on path {}", user_id, request_path);
+                                } else {
+                                    warn!(
+                                        "Token binding mismatch for user {} on path {}. Claim_TBH: '{}', Request_Header_TBH: '{}'",
+                                        user_id, request_path, token_binding_hash_claim, request_binding_hash
+                                    );
+                                    return Err(Error::from(actix_web::error::ErrorUnauthorized("Token binding verification failed: mismatch")));
+                                }
                             }
-                            _ => {
-                                warn!("Token binding verification failed for user {}. Request header '{}' missing, mismatched, or hashing failed.", 
-                                    user_id, TOKEN_BINDING_HEADER);
-                                return Err(Error::from(actix_web::error::ErrorUnauthorized("Token binding verification failed")));
+                            Err(AppError::Auth(msg)) if msg.contains(&format!("Missing or invalid {} header", TOKEN_BINDING_HEADER)) => {
+                                warn!(
+                                    "Token binding verification failed for user {} on path {}. Header '{}' missing or invalid.",
+                                    user_id, request_path, TOKEN_BINDING_HEADER
+                                );
+                                return Err(Error::from(actix_web::error::ErrorUnauthorized("Token binding verification failed: header issue")));
+                            }
+                            Err(e) => {
+                                error!("Unexpected error during token binding hash extraction for user {} on path {}: {}", user_id, request_path, e);
+                                return Err(Error::from(actix_web::error::ErrorInternalServerError("Token binding internal error")));
                             }
                         }
                     }
 
                     debug!("JWT valid for user {} (Role: {}) for route {}", user_id, user_role, request_path);
+                    
+                    // CRITICAL: Set PostgreSQL session variable for Row Level Security
+                    // All RLS policies in the database depend on current_setting('app.current_user_id', true)::uuid
+                    // This MUST work or ALL authenticated database queries will fail
+                    
+                    // Use the proper PostgreSQL function to set session variables
+                    match sqlx::query("SELECT set_config('app.current_user_id', $1, false)")
+                        .bind(user_id.to_string())
+                        .execute(&*user_pool)
+                        .await 
+                    {
+                        Ok(_) => {
+                            debug!("PostgreSQL session variable 'app.current_user_id' set to {} for RLS", user_id);
+                        },
+                        Err(e) => {
+                            error!("CRITICAL RLS SETUP FAILURE: Failed to set PostgreSQL session variable 'app.current_user_id' for user {}. RLS will not function correctly. Path: {}. Database error: {:?}", user_id, request_path, e);
+                            error!("Database error details: {:#?}", e);
+                            error!("This will cause ALL database queries to fail due to RLS policies");
+                            return Err(Error::from(actix_web::error::ErrorInternalServerError(
+                                "Failed to set user context for database Row Level Security"
+                            )));
+                        }
+                    }
+                    
+                    debug!("PostgreSQL user context set for user {} on route {}", user_id, request_path);
                     
                     // Insert user information into req.extensions_mut() for handler access
                     req.extensions_mut().insert(UserId(user_id));

@@ -4,7 +4,7 @@ import { formatTimeAgo as formatTimeAgoUtil } from "@/utils/date-utils";
 
 /**
  * Helper function to safely parse job metadata
- * Handles both new JobWorkerMetadata structure and legacy JobMetadata
+ * Handles only the modern JobWorkerMetadata structure
  * Ensures all UI components consistently use the standardized JobMetadata interface
  */
 export const getParsedMetadata = (
@@ -12,21 +12,22 @@ export const getParsedMetadata = (
 ): JobMetadata | null => {
   if (!metadataInput) return null;
   
-  // If already an object, check if it's new JobWorkerMetadata structure or legacy JobMetadata
+  // If already an object, check if it's the modern JobWorkerMetadata structure
   if (typeof metadataInput === 'object' && metadataInput !== null) {
     const metadata = metadataInput as any;
     
-    // Check if it's the new JobWorkerMetadata structure
+    // Only accept the modern JobWorkerMetadata structure
     if (metadata.jobTypeForWorker && metadata.jobPayloadForWorker && metadata.jobPriorityForWorker !== undefined) {
       // Convert JobWorkerMetadata to JobMetadata format for UI consumption
       return convertJobWorkerMetadataToJobMetadata(metadata);
     }
     
-    // Otherwise, treat as legacy JobMetadata and validate
-    return validateAndNormalizeJobMetadata(metadata as JobMetadata);
+    // Invalid or outdated metadata format
+    console.warn("Invalid metadata format - only modern JobWorkerMetadata structure is supported:", metadata);
+    return null;
   }
   
-  // If string, attempt to parse as JSON (could be JobWorkerMetadata or legacy format)
+  // If string, attempt to parse as JSON (must be JobWorkerMetadata format)
   if (typeof metadataInput === 'string') {
     // Handle empty strings gracefully
     if (metadataInput.trim() === '') {
@@ -49,13 +50,14 @@ export const getParsedMetadata = (
         return null;
       }
       
-      // Check if it's the new JobWorkerMetadata structure
+      // Only accept the modern JobWorkerMetadata structure
       if (parsed.jobTypeForWorker && parsed.jobPayloadForWorker && parsed.jobPriorityForWorker !== undefined) {
         return convertJobWorkerMetadataToJobMetadata(parsed);
       }
       
-      // Otherwise, treat as legacy JobMetadata
-      return validateAndNormalizeJobMetadata(parsed as JobMetadata);
+      // Invalid or outdated metadata format
+      console.warn("Invalid metadata format - only modern JobWorkerMetadata structure is supported:", parsed);
+      return null;
     } catch (e) {
       console.warn("Failed to parse job metadata JSON string:", e instanceof Error ? e.message : String(e), "String preview:", metadataInput.substring(0, 100));
       return null;
@@ -67,61 +69,52 @@ export const getParsedMetadata = (
 
 /**
  * Convert JobWorkerMetadata structure to JobMetadata for UI consumption
- * This preserves the nested structure from the backend while extracting commonly used fields for UI convenience
+ * Handles only the modern JobWorkerMetadata structure from the backend
+ * Maps backend snake_case fields (additional_params) to frontend camelCase (additionalParams)
  */
 function convertJobWorkerMetadataToJobMetadata(workerMetadata: any): JobMetadata {
-  const result: JobMetadata = {
-    // Core workflow fields from JobWorkerMetadata (top level)
-    jobTypeForWorker: workerMetadata.jobTypeForWorker,
-    jobPriorityForWorker: typeof workerMetadata.jobPriorityForWorker === 'number' ? workerMetadata.jobPriorityForWorker : undefined,
-    workflowId: workerMetadata.workflowId,
-    workflowStage: workerMetadata.workflowStage,
-    // Store the full nested payload structure for advanced access
-    jobPayloadForWorker: workerMetadata.jobPayloadForWorker,
-  };
+  let result: JobMetadata = {};
+
+  // Set root fields from JobWorkerMetadata
+  if (workerMetadata.jobTypeForWorker) result.jobTypeForWorker = workerMetadata.jobTypeForWorker;
+  if (typeof workerMetadata.jobPriorityForWorker === 'number') result.jobPriorityForWorker = workerMetadata.jobPriorityForWorker;
+  if (workerMetadata.workflowId) result.workflowId = workerMetadata.workflowId;
+  if (workerMetadata.workflowStage) result.workflowStage = workerMetadata.workflowStage;
+
+  // Handle additionalParams from either snake_case (backend) or camelCase (already converted) field names
+  // The backend sends 'additional_params' but Tauri might convert it to 'additionalParams'
+  const additionalParams = workerMetadata.additionalParams || workerMetadata.additional_params;
+  if (additionalParams && typeof additionalParams === 'object') {
+    result.additionalParams = additionalParams as Record<string, any>;
+  } else {
+    result.additionalParams = {} as Record<string, any>;
+  }
+
+  // Store the full nested payload structure for advanced access
+  result.jobPayloadForWorker = workerMetadata.jobPayloadForWorker;
+  if (workerMetadata.jobPayloadForWorker) {
+    if (typeof workerMetadata.jobPayloadForWorker === 'string') {
+      try {
+        result.parsedJobPayload = JSON.parse(workerMetadata.jobPayloadForWorker);
+      } catch (e) {
+        console.warn("Failed to parse jobPayloadForWorker:", e);
+        result.parsedJobPayload = workerMetadata.jobPayloadForWorker;
+      }
+    } else {
+      result.parsedJobPayload = workerMetadata.jobPayloadForWorker;
+    }
+  }
 
   // Extract commonly used fields from jobPayloadForWorker.data for UI convenience
-  // This maintains backward compatibility while supporting the new nested structure
-  if (workerMetadata.jobPayloadForWorker && workerMetadata.jobPayloadForWorker.data) {
-    const data = workerMetadata.jobPayloadForWorker.data;
-    
-    // Extract common fields that UI components frequently access
+  if (result.parsedJobPayload && result.parsedJobPayload.data) {
+    const data = result.parsedJobPayload.data as any;
     if (data.backgroundJobId) result.backgroundJobId = data.backgroundJobId;
     if (data.sessionId) result.sessionId = data.sessionId;
     if (data.taskDescription) result.taskDescription = data.taskDescription;
     if (data.projectDirectory) result.projectDirectory = data.projectDirectory;
-    if (data.targetField) result.targetField = data.targetField;
-    if (data.workflowId && !result.workflowId) result.workflowId = data.workflowId; // Don't override top-level workflowId
   }
 
-  // Merge additional parameters if present (preserves any extra metadata)
-  if (workerMetadata.additionalParams && typeof workerMetadata.additionalParams === 'object') {
-    Object.assign(result, workerMetadata.additionalParams);
-  }
-
-  return validateAndNormalizeJobMetadata(result);
-}
-
-/**
- * Validate and normalize JobMetadata fields
- */
-function validateAndNormalizeJobMetadata(metadata: JobMetadata): JobMetadata {
-  return {
-    ...metadata,
-    // Ensure numeric fields are properly typed
-    streamProgress: typeof metadata.streamProgress === 'number' ? metadata.streamProgress : undefined,
-    responseLength: typeof metadata.responseLength === 'number' ? metadata.responseLength : undefined,
-    estimatedTotalLength: typeof metadata.estimatedTotalLength === 'number' ? metadata.estimatedTotalLength : undefined,
-    lastStreamUpdateTime: typeof metadata.lastStreamUpdateTime === 'number' ? metadata.lastStreamUpdateTime : undefined,
-    streamStartTime: typeof metadata.streamStartTime === 'number' ? metadata.streamStartTime : undefined,
-    jobPriorityForWorker: typeof metadata.jobPriorityForWorker === 'number' ? metadata.jobPriorityForWorker : undefined,
-    tokensUsed: typeof metadata.tokensUsed === 'number' ? metadata.tokensUsed : undefined,
-    retryCount: typeof metadata.retryCount === 'number' ? metadata.retryCount : undefined,
-    pathCount: typeof metadata.pathCount === 'number' ? metadata.pathCount : undefined,
-    // Ensure boolean fields are properly typed
-    isStreaming: typeof metadata.isStreaming === 'boolean' ? metadata.isStreaming : undefined,
-    showPureContent: typeof metadata.showPureContent === 'boolean' ? metadata.showPureContent : undefined,
-  };
+  return result;
 }
 
 /**
@@ -227,11 +220,8 @@ export function formatTaskType(taskType: TaskType): string {
     return taskDetails.displayName;
   }
 
-  // Fallback to converting snake_case to Title Case
-  return taskType
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+  // All task types should be defined in TaskTypeDetails
+  throw new Error(`Task type '${taskType}' not found in TaskTypeDetails - add it to the enum`);
 }
 
 /**
@@ -279,65 +269,149 @@ export function getStreamingProgressValue(
   jobMaxOutputTokens?: number | null
 ): number | undefined {
   // Parse metadata to ensure consistent structure
-  const metadata = getParsedMetadata(metadataInput);
-  if (!metadata) {
-    // Fallback for time-based progress when no metadata is available
-    if (typeof startTime === "number" && startTime > 0) {
-      return Math.min(((Date.now() - startTime) / 1000) * 0.3, 3);
-    }
-    return undefined;
+  const parsedMetadata = getParsedMetadata(metadataInput);
+  
+  // Ensure additionalParams exists and is an object
+  const additionalParams = parsedMetadata?.additionalParams;
+  if (!additionalParams || typeof additionalParams !== 'object') {
+    // Try time-based fallback if we have no metadata but have startTime
+    return getTimeBasedFallbackProgress(startTime);
   }
-
+  
   // Priority 1: Use explicit streamProgress if available and valid
+  const streamProgress = additionalParams.streamProgress;
   if (
-    typeof metadata.streamProgress === "number" &&
-    !isNaN(metadata.streamProgress) &&
-    metadata.streamProgress >= 0 &&
-    metadata.streamProgress <= 100
+    typeof streamProgress === "number" &&
+    !isNaN(streamProgress) &&
+    streamProgress >= 0 &&
+    streamProgress <= 100
   ) {
-    return Math.min(metadata.streamProgress, 99);
+    // Cap at 99% to avoid showing 100% before job completion
+    return Math.min(streamProgress, 99);
   }
 
-  // Priority 2: Calculate based on responseLength and estimatedTotalLength
+  // Priority 2: Calculate based on responseLength and estimatedTotalLength from additionalParams
+  const responseLength = additionalParams.responseLength;
+  const estimatedTotalLength = additionalParams.estimatedTotalLength;
+  
   if (
-    typeof metadata.responseLength === "number" &&
-    typeof metadata.estimatedTotalLength === "number" &&
-    metadata.estimatedTotalLength > 0 &&
-    metadata.responseLength >= 0
+    typeof responseLength === "number" &&
+    typeof estimatedTotalLength === "number" &&
+    estimatedTotalLength > 0 &&
+    responseLength >= 0 &&
+    !isNaN(responseLength) &&
+    !isNaN(estimatedTotalLength)
   ) {
-    const calculatedProgress = (metadata.responseLength / metadata.estimatedTotalLength) * 100;
-    // Ensure the calculated progress is reasonable
-    if (calculatedProgress >= 0 && calculatedProgress <= 200) { // Allow up to 200% for overruns
+    const calculatedProgress = (responseLength / estimatedTotalLength) * 100;
+    // Ensure the calculated progress is reasonable (allow up to 200% for overruns)
+    if (calculatedProgress >= 0 && calculatedProgress <= 200 && !isNaN(calculatedProgress)) {
+      // Cap at 99% for running jobs to avoid premature 100%
       return Math.min(calculatedProgress, 99);
     }
   }
 
   // Priority 3: Calculate based on responseLength and jobMaxOutputTokens with chars-per-token heuristic
   if (
-    typeof metadata.responseLength === "number" &&
+    typeof responseLength === "number" &&
     typeof jobMaxOutputTokens === "number" &&
     jobMaxOutputTokens > 0 &&
-    metadata.responseLength >= 0
+    responseLength >= 0 &&
+    !isNaN(responseLength) &&
+    !isNaN(jobMaxOutputTokens)
   ) {
-    const estimatedTotalLengthFromTokens = jobMaxOutputTokens * 3.5; // 3.5 chars per token heuristic
-    if (estimatedTotalLengthFromTokens > 0) {
-      const calculatedProgress = (metadata.responseLength / estimatedTotalLengthFromTokens) * 100;
-      if (calculatedProgress >= 0 && calculatedProgress <= 200) { // Allow up to 200% for overruns
-        return Math.min(calculatedProgress, 99);
-      }
+    // Use 3.5 chars per token as a reasonable heuristic for most models
+    const estimatedTotalLengthFromTokens = jobMaxOutputTokens * 3.5;
+    const calculatedProgress = (responseLength / estimatedTotalLengthFromTokens) * 100;
+    if (calculatedProgress >= 0 && calculatedProgress <= 200 && !isNaN(calculatedProgress)) {
+      // Cap at 99% for running jobs to avoid premature 100%
+      return Math.min(calculatedProgress, 99);
     }
   }
 
   // Priority 4: Time-based fallback for initial animation
-  if (typeof startTime === "number" && startTime > 0) {
+  return getTimeBasedFallbackProgress(startTime);
+}
+
+/**
+ * Helper function for time-based progress fallback
+ * Extracted for reusability and cleaner code
+ */
+function getTimeBasedFallbackProgress(startTime?: number | null): number | undefined {
+  if (typeof startTime === "number" && startTime > 0 && !isNaN(startTime)) {
     const elapsedMs = Date.now() - startTime;
-    // Show small progress (max 8%) based on elapsed time to indicate activity
-    // Slower progression for better UX
+    // Show very small, slow-growing progress to indicate minimal activity
     if (elapsedMs > 0) {
-      return Math.min((elapsedMs / 1000) * 0.4, 8);
+      const timeBasedProgress = (elapsedMs / 1000) * 0.1;
+      return Math.min(timeBasedProgress, 5);
     }
   }
+  
+  // No valid progress data available - return undefined to let components handle fallback
+  return undefined;
+}
 
-  // No valid progress data available
+/**
+ * Get streaming status from metadata
+ * Checks if a job is currently streaming based on metadata flags
+ */
+export function getStreamingStatus(metadataInput: JobMetadata | string | null | undefined): boolean {
+  const parsedMetadata = getParsedMetadata(metadataInput);
+  const additionalParams = parsedMetadata?.additionalParams;
+  
+  if (!additionalParams || typeof additionalParams !== 'object') {
+    return false;
+  }
+  
+  const isStreaming = additionalParams.isStreaming;
+  return typeof isStreaming === 'boolean' ? isStreaming : false;
+}
+
+/**
+ * Get stream timing information from metadata
+ * Returns stream start time and last update time if available
+ */
+export function getStreamTiming(metadataInput: JobMetadata | string | null | undefined): {
+  streamStartTime?: number;
+  lastStreamUpdateTime?: number;
+} {
+  const parsedMetadata = getParsedMetadata(metadataInput);
+  const additionalParams = parsedMetadata?.additionalParams;
+  
+  if (!additionalParams || typeof additionalParams !== 'object') {
+    return {};
+  }
+  
+  const result: { streamStartTime?: number; lastStreamUpdateTime?: number } = {};
+  
+  const streamStartTime = additionalParams.streamStartTime;
+  if (typeof streamStartTime === 'number' && !isNaN(streamStartTime) && streamStartTime > 0) {
+    result.streamStartTime = streamStartTime;
+  }
+  
+  const lastStreamUpdateTime = additionalParams.lastStreamUpdateTime;
+  if (typeof lastStreamUpdateTime === 'number' && !isNaN(lastStreamUpdateTime) && lastStreamUpdateTime > 0) {
+    result.lastStreamUpdateTime = lastStreamUpdateTime;
+  }
+  
+  return result;
+}
+
+/**
+ * Get estimated remaining time from metadata
+ * Returns estimated remaining milliseconds if available
+ */
+export function getEstimatedRemainingTime(metadataInput: JobMetadata | string | null | undefined): number | undefined {
+  const parsedMetadata = getParsedMetadata(metadataInput);
+  const additionalParams = parsedMetadata?.additionalParams;
+  
+  if (!additionalParams || typeof additionalParams !== 'object') {
+    return undefined;
+  }
+  
+  const estimatedRemainingMs = additionalParams.estimatedRemainingMs;
+  if (typeof estimatedRemainingMs === 'number' && !isNaN(estimatedRemainingMs) && estimatedRemainingMs >= 0) {
+    return estimatedRemainingMs;
+  }
+  
   return undefined;
 }

@@ -16,8 +16,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // Proxy routes (/api/proxy/*)
     cfg.service(
         web::scope("/proxy")
-            .service(handlers::proxy_handlers::openrouter_chat_completions_proxy)
-            .service(handlers::proxy_handlers::audio_transcriptions_proxy)
+            .route("/openrouter/chat/completions", web::post().to(handlers::proxy_handlers::openrouter_chat_completions_proxy))
+            .route("/audio/transcriptions", web::post().to(handlers::proxy_handlers::audio_transcriptions_proxy))
     );
     
     // Billing routes (/api/billing/*)

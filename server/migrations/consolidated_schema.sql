@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS api_usage (
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     request_id TEXT,
     metadata JSONB,
+    processing_ms INTEGER NULL,
     input_duration_ms BIGINT NULL,
     CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -64,17 +65,51 @@ CREATE TABLE IF NOT EXISTS api_usage (
 CREATE INDEX IF NOT EXISTS idx_api_usage_user_id_timestamp ON api_usage(user_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_api_usage_service_name ON api_usage(service_name);
 
+-- API quotas for users per service
+CREATE TABLE IF NOT EXISTS api_quotas (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id VARCHAR(50) NOT NULL,
+    service_name VARCHAR(50) NOT NULL,
+    monthly_tokens_limit INTEGER,
+    daily_requests_limit INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT unique_user_service_quota UNIQUE (user_id, service_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_quotas_user_id ON api_quotas(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_quotas_service_name ON api_quotas(service_name);
+
+-- Service pricing configuration
+CREATE TABLE IF NOT EXISTS service_pricing (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_name TEXT UNIQUE NOT NULL,
+    input_token_price DECIMAL(10,8) NOT NULL,
+    output_token_price DECIMAL(10,8) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    unit VARCHAR(50) NOT NULL DEFAULT 'per_1000_tokens',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_pricing_service_name ON service_pricing(service_name);
+
 -- Subscription plans (must come before user_spending_limits due to foreign key)
 CREATE TABLE IF NOT EXISTS subscription_plans (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
+    base_price_weekly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     base_price_monthly DECIMAL(10, 2) NOT NULL,
     base_price_yearly DECIMAL(10, 2) NOT NULL,
+    included_spending_weekly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     included_spending_monthly DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     overage_rate DECIMAL(5, 4) NOT NULL DEFAULT 1.0000,
     hard_limit_multiplier DECIMAL(3, 2) NOT NULL DEFAULT 2.00,
     currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    stripe_price_id_weekly VARCHAR(100),
     stripe_price_id_monthly VARCHAR(100),
     stripe_price_id_yearly VARCHAR(100),
     features JSONB NOT NULL DEFAULT '{}',
@@ -223,9 +258,14 @@ CREATE INDEX IF NOT EXISTS idx_models_type ON models(model_type);
 CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
 
 -- Add constraint to ensure data integrity
-ALTER TABLE models 
-ADD CONSTRAINT models_provider_id_not_null 
-CHECK (provider_id IS NOT NULL);
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'models_provider_id_not_null') THEN
+        ALTER TABLE models 
+        ADD CONSTRAINT models_provider_id_not_null 
+        CHECK (provider_id IS NOT NULL);
+    END IF;
+END $$;
 
 
 -- AI model pricing data - Updated with provider relationships
@@ -234,6 +274,8 @@ VALUES
 -- Anthropic models
 ('anthropic/claude-opus-4',        'Claude 4 Opus',       200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Advanced language model with strong reasoning capabilities'),
 ('anthropic/claude-sonnet-4',      'Claude 4 Sonnet',     200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true}', 'active', 'Balanced language model with strong reasoning capabilities'),
+('claude-opus-4-20250522',         'Claude Opus 4 (2025-05-22)', 200000, 0.015000, 0.075000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude Opus 4 with 2025-05-22 training cutoff'),
+('claude-3-7-sonnet-20250219',     'Claude 3.7 Sonnet (2025-02-19)', 200000, 0.003000, 0.015000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'anthropic'), 'text', '{"text": true, "chat": true, "reasoning": true, "vision": true}', 'active', 'Claude 3.7 Sonnet with 2025-02-19 training cutoff'),
 
 -- OpenAI models  
 ('openai/gpt-4.1',                 'GPT-4.1',            1000000, 0.002000, 0.008000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'openai'), 'text', '{"text": true, "chat": true, "code": true}', 'active', 'Advanced GPT model with broad capabilities'),
@@ -241,6 +283,13 @@ VALUES
 
 -- Google models
 ('google/gemini-2.5-pro-preview',  'Gemini 2.5 Pro',     1000000, 0.001250, 0.010000, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text', '{"text": true, "chat": true, "multimodal": true, "code": true}', 'active', 'Multimodal AI model with advanced reasoning'),
+('google/gemini-2.5-flash-preview-05-20', 'Gemini 2.5 Flash', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'Google Gemini 2.5 Flash - Fast and efficient text generation model'),
+('google/gemini-2.5-flash-preview-05-20:thinking', 'Gemini 2.5 Flash Thinking', 1000000, 0.000075, 0.000300, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'google'), 'text_generation', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'Google Gemini 2.5 Flash with thinking capabilities'),
+
+-- DeepSeek models
+('deepseek/deepseek-r1',           'DeepSeek R1',         65536, 0.000550, 0.002190, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true, "thinking": true}', 'active', 'DeepSeek R1 - Advanced reasoning model'),
+('deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 Distill Qwen 32B', 32768, 0.000140, 0.000280, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 32B - Efficient reasoning model'),
+('deepseek/deepseek-r1-distill-qwen-14b', 'DeepSeek R1 Distill Qwen 14B', 32768, 0.000070, 0.000140, 'token_based', 0.000000, 0, 'tokens', (SELECT id FROM providers WHERE code = 'deepseek'), 'reasoning', '{"text_generation": true, "code_generation": true, "reasoning": true}', 'active', 'DeepSeek R1 Distilled Qwen 14B - Compact reasoning model'),
 
 -- Groq transcription models
 ('groq/whisper-large-v3',          'Whisper Large V3 (Groq)',          0, 0.000000, 0.000000, 'duration_based', 0.111000, 10, 'hours', (SELECT id FROM providers WHERE code = 'groq'), 'transcription', '{"transcription": true, "audio_processing": true}', 'active', 'High-accuracy audio transcription model'),
@@ -277,21 +326,54 @@ CREATE INDEX IF NOT EXISTS idx_application_configurations_config_key ON applicat
 -- Insert subscription plans
 INSERT INTO subscription_plans (
     id, name, description, 
-    base_price_monthly, base_price_yearly,
-    included_spending_monthly, overage_rate, hard_limit_multiplier,
-    currency, features
+    base_price_weekly, base_price_monthly, base_price_yearly,
+    included_spending_weekly, included_spending_monthly, overage_rate, hard_limit_multiplier,
+    currency, stripe_price_id_weekly, stripe_price_id_monthly, stripe_price_id_yearly, features
 ) VALUES 
 ('free', 'Free', 'Perfect for trying out AI features', 
- 0.00, 0.00, 5.00, 1.0000, 2.00, 'USD',
- '{"features": ["Basic AI models", "Community support", "Usage analytics"], "models": ["anthropic/claude-sonnet-4", "openai/gpt-4.1-mini"], "support": "Community", "limits": {"hard_cutoff": true, "overage_allowed": false}}'::jsonb),
+ 0.00, 0.00, 0.00, 1.25, 5.00, 1.0000, 2.00, 'USD',
+ NULL, NULL, NULL,
+ '{
+   "coreFeatures": ["Basic AI models", "Community support", "Usage analytics"],
+   "allowedModels": ["anthropic/claude-sonnet-4", "openai/gpt-4.1-mini"],
+   "supportLevel": "Community",
+   "apiAccess": false,
+   "analyticsLevel": "Basic",
+   "spendingDetails": {
+     "overagePolicy": "none",
+     "hardCutoff": true
+   }
+ }'::jsonb),
  
 ('pro', 'Pro', 'For power users and small teams', 
- 20.00, 200.00, 50.00, 1.0000, 3.00, 'USD',
- '{"features": ["All AI models", "Priority support", "Advanced analytics", "API access"], "models": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "openai/gpt-4.1-mini", "google/gemini-2.5-pro-preview"], "support": "Priority", "limits": {"hard_cutoff": true, "overage_allowed": true}}'::jsonb),
+ 5.00, 20.00, 200.00, 12.50, 50.00, 1.0000, 3.00, 'USD',
+ NULL, NULL, NULL,
+ '{
+   "coreFeatures": ["All AI models", "Priority support", "Advanced analytics", "API access"],
+   "allowedModels": ["all"],
+   "supportLevel": "Priority",
+   "apiAccess": true,
+   "analyticsLevel": "Advanced",
+   "spendingDetails": {
+     "overagePolicy": "standard_rate",
+     "hardCutoff": true
+   }
+ }'::jsonb),
  
 ('enterprise', 'Enterprise', 'For organizations with high AI usage', 
- 100.00, 1000.00, 200.00, 0.9000, 5.00, 'USD',
- '{"features": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"], "models": ["anthropic/claude-opus-4", "anthropic/claude-sonnet-4", "openai/gpt-4.1", "openai/gpt-4.1-mini", "google/gemini-2.5-pro-preview", "groq/whisper-large-v3", "groq/whisper-large-v3-turbo", "groq/distil-whisper-large-v3-en"], "support": "Dedicated", "limits": {"hard_cutoff": false, "overage_allowed": true, "custom_limits": true}}'::jsonb)
+ 25.00, 100.00, 1000.00, 50.00, 200.00, 0.9000, 5.00, 'USD',
+ NULL, NULL, NULL,
+ '{
+   "coreFeatures": ["All AI models", "Dedicated support", "Custom integrations", "Advanced analytics", "Team management", "SLA guarantee"],
+   "allowedModels": ["all"],
+   "supportLevel": "Dedicated",
+   "apiAccess": true,
+   "analyticsLevel": "Enterprise",
+   "spendingDetails": {
+     "overagePolicy": "negotiated_rate",
+     "hardCutoff": false
+   }
+ }'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 
@@ -476,15 +558,18 @@ INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
 ('ai_settings_task_specific_configs', '{
   "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
-  "path_finder": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.3},
+  "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
   "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
   "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
   "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
-  "path_correction": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.3},
+  "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
   "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
   "regex_summary_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.3},
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
   "task_enhancement": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7},
+  "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
+  "extended_path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
+  "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
   "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
@@ -503,3 +588,443 @@ ON CONFLICT (config_key) DO UPDATE SET
   config_value = EXCLUDED.config_value,
   description = EXCLUDED.description,
   updated_at = CURRENT_TIMESTAMP;
+
+-- Row Level Security Policies
+-- Enable RLS and define security policies for database tables
+-- to ensure users can only access data they own or have explicit permissions for
+-- 
+-- Note: These policies are designed for application-level security.
+-- The application should set the current user context using SET LOCAL current_user_id = '...'
+-- before making database queries to ensure proper row-level security enforcement.
+
+-- Create authenticated role for RLS policies
+CREATE ROLE IF NOT EXISTS authenticated;
+CREATE ROLE IF NOT EXISTS vibe_manager_app;
+
+-- Grant vibe_manager_app ability to switch to authenticated role (for user pool connections)
+GRANT authenticated TO vibe_manager_app;
+
+-- Create helper function to safely get current user ID for RLS
+CREATE OR REPLACE FUNCTION get_current_user_id() RETURNS UUID AS $$
+BEGIN
+    DECLARE
+        user_id_str TEXT;
+    BEGIN
+        user_id_str := current_setting('app.current_user_id', true);
+        IF user_id_str = '' OR user_id_str IS NULL THEN
+            RETURN NULL;
+        END IF;
+        RETURN user_id_str::uuid;
+    EXCEPTION
+        WHEN invalid_text_representation THEN
+            RETURN NULL;
+    END;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- RLS for users table
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can select their own record" ON users;
+CREATE POLICY "Users can select their own record"
+ON users FOR SELECT
+TO authenticated
+USING (id = get_current_user_id());
+
+DROP POLICY IF EXISTS "Users can update their own record" ON users;
+CREATE POLICY "Users can update their own record"
+ON users FOR UPDATE
+TO authenticated
+USING (id = get_current_user_id())
+WITH CHECK (id = get_current_user_id());
+
+DROP POLICY IF EXISTS "Users can insert their own record" ON users;
+CREATE POLICY "Users can insert their own record"
+ON users FOR INSERT
+TO authenticated
+WITH CHECK (id = get_current_user_id());
+
+-- Special policy for Auth0 authentication lookup (bypasses user context requirement)
+CREATE POLICY "App can lookup users by Auth0 ID for authentication"
+ON users FOR SELECT
+TO vibe_manager_app
+USING (auth0_user_id IS NOT NULL);
+
+-- Note: DELETE is typically handled by backend/service roles, not direct user RLS.
+-- Ensure users.id is indexed (Primary Key implicitly creates an index).
+
+-- RLS for refresh_tokens table
+ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can access their own refresh tokens" ON refresh_tokens;
+CREATE POLICY "Users can access their own refresh tokens"
+ON refresh_tokens FOR ALL
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- Index idx_refresh_tokens_user_id already exists.
+
+-- RLS for user_settings table
+ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own settings"
+ON user_settings FOR ALL
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- user_settings.user_id is PK, indexed.
+
+-- RLS for subscriptions table
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own subscription"
+ON subscriptions FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own subscription"
+ON subscriptions FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- UPDATE, DELETE typically handled by backend/service roles.
+-- Index idx_subscriptions_user_id already exists.
+
+-- RLS for api_usage table
+ALTER TABLE api_usage ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own API usage"
+ON api_usage FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own API usage"
+ON api_usage FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- UPDATE, DELETE typically handled by backend/service roles.
+-- Index idx_api_usage_user_id_timestamp already exists.
+
+-- RLS for subscription_plans table
+ALTER TABLE subscription_plans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select subscription plans"
+ON subscription_plans FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- Could also be TO anon, authenticated if plans are shown to non-logged-in users.
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
+-- RLS for user_spending_limits table
+ALTER TABLE user_spending_limits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own spending limits"
+ON user_spending_limits FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own spending limits"
+ON user_spending_limits FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- App can manage user spending limits for billing operations
+CREATE POLICY "App can select user spending limits"
+ON user_spending_limits FOR SELECT
+TO vibe_manager_app
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "App can insert user spending limits"
+ON user_spending_limits FOR INSERT
+TO vibe_manager_app
+WITH CHECK (user_id = get_current_user_id());
+
+CREATE POLICY "App can update user spending limits"
+ON user_spending_limits FOR UPDATE
+TO vibe_manager_app
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- Index idx_user_spending_limits_user_period already exists.
+
+-- RLS for projects table
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select projects they own or are members of"
+ON projects FOR SELECT
+TO authenticated
+USING (
+  (get_current_user_id() = owner_id) OR
+  (EXISTS (
+    SELECT 1 FROM project_members pm
+    WHERE pm.project_id = projects.id AND pm.user_id = get_current_user_id()
+  ))
+);
+
+CREATE POLICY "Users can insert new projects"
+ON projects FOR INSERT
+TO authenticated
+WITH CHECK (get_current_user_id() = owner_id);
+
+CREATE POLICY "Users can update projects they own"
+ON projects FOR UPDATE
+TO authenticated
+USING ((get_current_user_id() = owner_id))
+WITH CHECK ((get_current_user_id() = owner_id));
+
+CREATE POLICY "Users can delete projects they own"
+ON projects FOR DELETE
+TO authenticated
+USING ((get_current_user_id() = owner_id));
+
+-- Index idx_projects_owner_id already exists.
+-- Ensure projects.id is indexed (PK) for join performance.
+
+-- RLS for project_members table
+ALTER TABLE project_members ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select memberships of projects they are part of or own"
+ON project_members FOR SELECT
+TO authenticated
+USING (
+  (get_current_user_id() = user_id) OR
+  (EXISTS (
+    SELECT 1 FROM projects p
+    WHERE p.id = project_members.project_id AND p.owner_id = get_current_user_id()
+  ))
+);
+
+CREATE POLICY "Project owners can insert project members"
+ON project_members FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM projects p
+    WHERE p.id = project_members.project_id AND p.owner_id = get_current_user_id()
+  )
+  -- Ensure user_id being added is not the owner_id again unless intended
+  -- AND project_members.user_id != (SELECT p.owner_id FROM projects p WHERE p.id = project_members.project_id)
+);
+
+CREATE POLICY "Project owners can update project members"
+ON project_members FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM projects p
+    WHERE p.id = project_members.project_id AND p.owner_id = get_current_user_id()
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM projects p
+    WHERE p.id = project_members.project_id AND p.owner_id = get_current_user_id()
+  )
+  -- Ensure the role being set is valid if project_members.role has constraints
+  -- (No changes needed here if the main check is sufficient for the updated row)
+);
+
+
+CREATE POLICY "Users can delete their own membership or owners can delete any member"
+ON project_members FOR DELETE
+TO authenticated
+USING (
+  (get_current_user_id() = user_id) OR
+  (EXISTS (
+    SELECT 1 FROM projects p
+    WHERE p.id = project_members.project_id AND p.owner_id = get_current_user_id()
+  ))
+);
+
+-- project_members.project_id and project_members.user_id are part of PK, indexed.
+
+-- RLS for spending_alerts table
+ALTER TABLE spending_alerts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own spending alerts"
+ON spending_alerts FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can acknowledge their own spending alerts"
+ON spending_alerts FOR UPDATE
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id() AND acknowledged = true); -- Only allow update to acknowledge
+
+CREATE POLICY "Users can insert their own spending alerts"
+ON spending_alerts FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- DELETE typically handled by backend/service roles.
+-- Index idx_spending_alerts_user_period already exists.
+
+-- RLS for user_preferences table
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own preferences"
+ON user_preferences FOR ALL
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- user_preferences.user_id is PK, indexed.
+
+-- RLS for providers table
+ALTER TABLE providers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select providers"
+ON providers FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
+-- RLS for models table
+ALTER TABLE models ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select models"
+ON models FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
+-- RLS for application_configurations table
+ALTER TABLE application_configurations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select application configurations"
+ON application_configurations FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
+-- RLS for invoices table
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own invoices"
+ON invoices FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own invoices"
+ON invoices FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- UPDATE, DELETE typically handled by backend/service roles.
+-- Index idx_invoices_user_id already exists.
+
+-- RLS for payment_methods table
+ALTER TABLE payment_methods ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own payment methods"
+ON payment_methods FOR ALL
+TO authenticated
+USING (user_id = get_current_user_id())
+WITH CHECK (user_id = get_current_user_id());
+
+-- Index idx_payment_methods_user_id already exists.
+
+-- RLS for email_notifications table
+ALTER TABLE email_notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own email notifications"
+ON email_notifications FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own email notifications"
+ON email_notifications FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- UPDATE, DELETE typically handled by backend/service roles.
+-- Index idx_email_notifications_user_id already exists.
+
+-- RLS for spending_periods table
+ALTER TABLE spending_periods ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own spending periods"
+ON spending_periods FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own spending periods"
+ON spending_periods FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- UPDATE, DELETE typically handled by backend/service roles.
+-- Index idx_spending_periods_user_period already exists.
+
+-- RLS for api_quotas table
+ALTER TABLE api_quotas ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can select their own API quotas"
+ON api_quotas FOR SELECT
+TO authenticated
+USING (user_id = get_current_user_id());
+
+CREATE POLICY "Users can insert their own API quotas"
+ON api_quotas FOR INSERT
+TO authenticated
+WITH CHECK (user_id = get_current_user_id());
+
+-- UPDATE, DELETE typically handled by backend/service roles.
+-- Index idx_api_quotas_user_id already exists.
+
+-- RLS for service_pricing table
+ALTER TABLE service_pricing ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select service pricing"
+ON service_pricing FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
+-- RLS for billing_configurations table
+ALTER TABLE billing_configurations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "App users can select billing configurations"
+ON billing_configurations FOR SELECT
+TO vibe_manager_app, authenticated
+USING (true);
+
+-- These configurations contain billing URLs and email templates needed by the application.
+-- INSERT, UPDATE, DELETE typically handled by backend/service roles.
+
+-- Grant necessary table permissions to vibe_manager_app role
+-- These are for system tables that need to be readable by the application
+GRANT SELECT ON providers TO vibe_manager_app;
+GRANT SELECT ON models TO vibe_manager_app; 
+GRANT SELECT ON application_configurations TO vibe_manager_app;
+GRANT SELECT ON subscription_plans TO vibe_manager_app;
+GRANT SELECT ON service_pricing TO vibe_manager_app;
+GRANT SELECT ON billing_configurations TO vibe_manager_app;
+
+-- Grant permissions needed for authentication flow
+GRANT SELECT ON users TO vibe_manager_app;
+GRANT INSERT, UPDATE ON users TO vibe_manager_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON refresh_tokens TO vibe_manager_app;
+
+-- Grant necessary table permissions to authenticated role for user operations
+GRANT SELECT, INSERT, UPDATE ON user_spending_limits TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON api_usage TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON spending_alerts TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON subscriptions TO authenticated;
+GRANT SELECT ON subscription_plans TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON user_settings TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON user_preferences TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON spending_periods TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON email_notifications TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON invoices TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON payment_methods TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON api_quotas TO authenticated;

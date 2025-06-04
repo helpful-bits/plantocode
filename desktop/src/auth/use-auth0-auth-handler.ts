@@ -4,13 +4,12 @@ import { open } from "@/utils/shell-utils";
 import { createLogger } from "@/utils/logger";
 import { getErrorMessage } from "@/utils/error-handling";
 
-import { type User } from "./auth-context-interface";
 import { type FrontendUser } from "../types";
 
 const logger = createLogger({ namespace: "Auth0Handler" });
 
 interface Auth0AuthState {
-  user?: User;
+  user?: FrontendUser;
   loading: boolean;
   error?: string;
   token?: string;

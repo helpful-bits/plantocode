@@ -17,37 +17,19 @@ export interface ImproveTextOptions {
  * Create a job to improve text for clarity and grammar
  */
 export async function improveSelectedTextAction(
-  options: ImproveTextOptions | string,
-  projectDirectory?: string,
-  sessionId?: string,
-  targetField?: string
+  options: ImproveTextOptions
 ): Promise<ActionState<{ jobId: string }>> {
   try {
-    // Handle both new object-style and legacy string parameters
-    let text: string;
-    let actualSessionId: string;
-    let actualProjectDirectory: string | undefined;
-    let targetFieldParam: string | undefined;
-    let modelOverride: string | undefined;
-    let temperatureOverride: number | undefined;
-    let maxTokensOverride: number | undefined;
-
-    if (typeof options === "string") {
-      // Legacy format
-      text = options;
-      actualSessionId = sessionId || "";
-      actualProjectDirectory = projectDirectory;
-      targetFieldParam = targetField;
-    } else {
-      // New object format
-      text = options.text;
-      actualSessionId = options.sessionId;
-      actualProjectDirectory = options.projectDirectory ?? projectDirectory;
-      targetFieldParam = options.targetField ?? targetField;
-      modelOverride = options.modelOverride;
-      temperatureOverride = options.temperatureOverride;
-      maxTokensOverride = options.maxTokensOverride;
-    }
+    // Extract parameters from options object
+    const {
+      text,
+      sessionId: actualSessionId,
+      projectDirectory: actualProjectDirectory,
+      targetField: targetFieldParam,
+      modelOverride,
+      temperatureOverride,
+      maxTokensOverride
+    } = options;
 
     if (!text || !text.trim()) {
       return { isSuccess: false, message: "No text selected for improvement." };

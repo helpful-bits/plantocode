@@ -1,5 +1,5 @@
 use std::path::Path;
-use log::{debug, info, error};
+use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
 
@@ -7,7 +7,9 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, ExtendedPathCorrectionPayload};
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{llm_api_utils, prompt_utils, response_parser_utils, fs_context_utils};
 use crate::models::{TaskType};
+use crate::utils::directory_tree::get_directory_tree_with_defaults;
 
 pub struct ExtendedPathCorrectionProcessor;
 
@@ -16,29 +18,6 @@ impl ExtendedPathCorrectionProcessor {
         Self
     }
     
-    /// Validate paths against the file system
-    async fn validate_paths_against_filesystem(&self, paths: &[String], project_directory: &str) -> (Vec<String>, Vec<String>) {
-        let mut validated_paths = Vec::new();
-        let mut invalid_paths = Vec::new();
-        
-        for relative_path in paths {
-            // Construct absolute path
-            let absolute_path = Path::new(project_directory).join(relative_path);
-            
-            // Check if file exists and is a file
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    validated_paths.push(relative_path.clone());
-                },
-                _ => {
-                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
-                    invalid_paths.push(relative_path.clone());
-                }
-            }
-        }
-        
-        (validated_paths, invalid_paths)
-    }
 }
 
 #[async_trait::async_trait]
@@ -80,7 +59,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         }
         
         // First, validate existing paths against filesystem
-        let (valid_paths, invalid_paths) = self.validate_paths_against_filesystem(
+        let (valid_paths, invalid_paths) = fs_context_utils::validate_paths_against_filesystem(
             &payload.extended_paths, 
             &payload.project_directory
         ).await;
@@ -89,14 +68,26 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         
         // If we have invalid paths, use AI to correct them
         let corrected_paths = if !invalid_paths.is_empty() {
+            // Generate directory tree on-demand
+            let directory_tree = match get_directory_tree_with_defaults(&payload.project_directory).await {
+                Ok(tree) => {
+                    info!("Generated directory tree on-demand for path correction ({} lines)", tree.lines().count());
+                    tree
+                }
+                Err(e) => {
+                    warn!("Failed to generate directory tree on-demand: {}. Using empty fallback.", e);
+                    "No directory structure available".to_string()
+                }
+            };
+        
             // Build unified prompt using standardized utility
-            let composed_prompt = job_processor_utils::build_unified_prompt(
+            let composed_prompt = prompt_utils::build_unified_prompt(
                 &job,
                 &app_handle,
                 payload.task_description.clone(),
-                Some(payload.directory_tree.clone()),
+                Some(directory_tree.clone()),
                 None,
-                Some(payload.directory_tree.clone()),
+                Some(directory_tree.clone()),
                 &settings_repo,
                 &model_used,
             ).await?;
@@ -105,7 +96,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             info!("System prompt ID: {}", composed_prompt.system_prompt_id);
             
             // Extract prompts using standardized utility
-            let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
+            let (system_prompt, user_prompt, system_prompt_id) = llm_api_utils::extract_prompts_from_composed(&composed_prompt);
             
             // Add path correction context to the user prompt
             let invalid_paths_text = format!("Invalid paths that need correction:\n{}", 
@@ -125,10 +116,10 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             );
 
             // Create messages using standardized utility
-            let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &enhanced_user_prompt);
+            let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &enhanced_user_prompt);
             
             // Create API client options using standardized utility
-            let api_options = job_processor_utils::create_api_client_options(
+            let api_options = llm_api_utils::create_api_client_options(
                 model_used.clone(),
                 temperature,
                 max_output_tokens,
@@ -143,13 +134,13 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             
             // Call LLM using standardized utility
             info!("Calling LLM for path correction with model {}", &api_options.model);
-            let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options.clone()).await?;
+            let llm_response = llm_api_utils::execute_llm_chat_completion(&app_handle, messages, api_options.clone()).await?;
             
             // Extract the response content
             let response_content = llm_response.choices[0].message.content.clone();
             
             // Parse corrected paths from the LLM response using standardized utility
-            match job_processor_utils::parse_paths_from_text_response(&response_content, &payload.project_directory) {
+            match response_parser_utils::parse_paths_from_text_response(&response_content, &payload.project_directory) {
                 Ok(paths) => {
                     // Store LLM usage info separately since we're not finalizing yet
                     paths
@@ -169,7 +160,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         
         // Validate corrected paths and add valid ones
         if !corrected_paths.is_empty() {
-            let (valid_corrected, _invalid_corrected) = self.validate_paths_against_filesystem(
+            let (valid_corrected, _invalid_corrected) = fs_context_utils::validate_paths_against_filesystem(
                 &corrected_paths, 
                 &payload.project_directory
             ).await;
@@ -206,9 +197,11 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
                 final_paths.len())
         });
         
-        // Serialize final_paths (combined valid and AI-corrected paths) into a JSON string for typed output
-        let response_content = serde_json::to_string(&final_paths)
-            .map_err(|e| AppError::JobError(format!("Failed to serialize final paths: {}", e)))?;
+        // Serialize final_paths (combined valid and AI-corrected paths) into a simple JSON array for consistent output
+        let response_json_content = serde_json::json!({
+            "correctedPaths": final_paths,
+            "count": final_paths.len()
+        }).to_string();
         
         // Finalize job success using standardized utility
         // Use model_used variable for finalization (already extracted from db_job)
@@ -221,7 +214,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         job_processor_utils::finalize_job_success(
             &payload.background_job_id,
             &repo,
-            &response_content,
+            &response_json_content,
             None, // No direct LLM usage since it's conditional
             &final_model_used,
             "ExtendedPathCorrection",
@@ -233,7 +226,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         // Return success result
         Ok(JobProcessResult::success(
             payload.background_job_id.clone(), 
-            format!("Path correction completed, {} final validated paths", final_paths.len())
+            response_json_content
         ))
     }
 }

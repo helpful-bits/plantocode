@@ -103,7 +103,7 @@ impl ServerProxyClient {
     ) -> AppResult<R> {
         let auth_token = self.get_auth_token().await?;
         
-        let proxy_url = format!("{}/v1/ai-proxy/{}", self.server_url, endpoint);
+        let proxy_url = format!("{}/api/ai-proxy/{}", self.server_url, endpoint);
         
         let mut request_builder = self.http_client
             .post(&proxy_url)

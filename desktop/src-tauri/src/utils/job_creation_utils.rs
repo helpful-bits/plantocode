@@ -1,6 +1,6 @@
 use uuid::Uuid;
 use serde_json::Value;
-use log::info;
+use log::{info, warn};
 
 use crate::models::{BackgroundJob, TaskType, JobStatus};
 use crate::error::{AppError, AppResult};
@@ -26,7 +26,7 @@ use tauri::{AppHandle, Manager};
 /// * `priority` - The job priority (higher is more important)
 /// * `workflow_id` - Optional workflow identifier for multi-stage workflows
 /// * `workflow_stage` - Optional workflow stage identifier
-/// * `extra_metadata` - Optional additional metadata to include
+/// * `additional_params` - Optional additional parameters to include
 ///
 /// # Returns
 /// The job ID string if successful, or an AppError if something fails
@@ -42,7 +42,7 @@ pub async fn create_and_queue_background_job(
     priority: i64,
     workflow_id: Option<String>,
     workflow_stage: Option<String>,
-    extra_metadata: Option<Value>,
+    additional_params: Option<Value>,
     app_handle: &AppHandle,
 ) -> AppResult<String> {
     // Create a unique job ID
@@ -55,14 +55,27 @@ pub async fn create_and_queue_background_job(
     // Use the typed payload directly
     let typed_job_payload = payload_with_job_id;
     
+    // Ensure job_type_for_worker is included in additional_params
+    let mut final_additional_params = additional_params.clone().unwrap_or_else(|| serde_json::json!({}));
+
+    if let Value::Object(map) = &mut final_additional_params {
+        map.insert("jobTypeForWorker".to_string(), Value::String(job_type_for_worker.to_string()));
+    } else {
+        // This case should ideally not happen if additional_params is always an object or null
+        warn!("additional_params was not an object, creating new map for jobTypeForWorker.");
+        let mut map = serde_json::Map::new();
+        map.insert("jobTypeForWorker".to_string(), Value::String(job_type_for_worker.to_string()));
+        final_additional_params = Value::Object(map);
+    }
+
     // Create structured JobWorkerMetadata
     let worker_metadata = JobWorkerMetadata {
-        job_type_for_worker: task_type_enum.to_string(),
+        task_type: task_type_enum.to_string(),
         job_payload_for_worker: typed_job_payload.clone(),
         job_priority_for_worker: priority,
         workflow_id: workflow_id.clone(),
         workflow_stage: workflow_stage.clone(),
-        additional_params: extra_metadata.clone(),
+        additional_params: Some(final_additional_params),
     };
     
     // Serialize the structured metadata to string
@@ -141,9 +154,54 @@ pub async fn create_and_queue_background_job(
     Ok(job_id)
 }
 
+/// Create and queue a background job with delay support
+/// This is a specialized version of the job creation utility that supports delayed execution
+pub async fn create_and_queue_background_job_with_delay(
+    session_id: &str,
+    project_dir: &str,
+    api_type_str: &str,
+    task_type_enum: TaskType,
+    job_type_for_worker: &str,
+    prompt_text: &str,
+    model_settings: Option<(String, f32, u32)>,
+    payload_for_worker: JobPayload,
+    priority: i64,
+    workflow_id: Option<String>,
+    workflow_stage: Option<String>,
+    additional_params: Option<serde_json::Value>,
+    delay_ms: u64,
+    app_handle: &tauri::AppHandle,
+) -> AppResult<String> {
+    // For now, we'll log the delay and fall back to immediate execution
+    // TODO: Implement actual delay support in the job queue
+    info!("Creating delayed job with {}ms delay (delay not yet implemented)", delay_ms);
+    
+    // Use the regular job creation for now
+    create_and_queue_background_job(
+        session_id,
+        project_dir,
+        api_type_str,
+        task_type_enum,
+        job_type_for_worker,
+        prompt_text,
+        model_settings,
+        payload_for_worker,
+        priority,
+        workflow_id,
+        workflow_stage,
+        additional_params,
+        app_handle,
+    ).await
+}
+
 /// Helper function to inject job ID into a JobPayload
+/// 
+/// This function ensures that all payload variants that contain a `background_job_id` field
+/// receive the proper job ID. Payload variants without this field are explicitly handled
+/// in the catch-all case.
 fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
     match payload {
+        // LLM-based task payloads (all have background_job_id)
         JobPayload::PathFinder(p) => p.background_job_id = job_id.to_string(),
         JobPayload::ImplementationPlan(p) => p.background_job_id = job_id.to_string(),
         JobPayload::GuidanceGeneration(p) => p.background_job_id = job_id.to_string(),
@@ -153,16 +211,19 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
         JobPayload::TextCorrection(p) => p.background_job_id = job_id.to_string(),
         JobPayload::GenericLlmStream(p) => p.background_job_id = job_id.to_string(),
         JobPayload::RegexPatternGeneration(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::DirectoryTreeGeneration(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::RegexSummaryGeneration(p) => p.background_job_id = job_id.to_string(),
+        
+        // Workflow stage payloads (all have background_job_id)
         JobPayload::LocalFileFiltering(p) => p.background_job_id = job_id.to_string(),
         JobPayload::ExtendedPathFinder(p) => p.background_job_id = job_id.to_string(),
         JobPayload::ExtendedPathCorrection(p) => p.background_job_id = job_id.to_string(),
         JobPayload::RegexPatternGenerationWorkflow(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::RegexSummaryGeneration(p) => p.background_job_id = job_id.to_string(),
-        // Note: VoiceTranscriptionPayload and OpenRouterLlmPayload don't have background_job_id fields
-        _ => {
-            // For payloads that don't have background_job_id field, do nothing
-            // This includes VoiceTranscription and OpenRouterLlm
+        JobPayload::FileRelevanceAssessment(p) => p.background_job_id = job_id.to_string(),
+        
+        // Server proxy payloads (do not have background_job_id fields)
+        JobPayload::VoiceTranscription(_) | JobPayload::OpenRouterLlm(_) => {
+            // These payload types intentionally do not have background_job_id fields
+            // as they are processed by external services and don't need internal job tracking
         }
     }
 }

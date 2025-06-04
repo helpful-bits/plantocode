@@ -186,7 +186,7 @@ impl ToString for ApiType {
 
 // Task type enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub enum TaskType {
     ImplementationPlan,
     PathFinder,
@@ -201,8 +201,8 @@ pub enum TaskType {
     RegexPatternGeneration,
     FileFinderWorkflow,
     // New individual workflow stage types
-    DirectoryTreeGeneration,
     LocalFileFiltering,
+    FileRelevanceAssessment,
     ExtendedPathFinder,
     ExtendedPathCorrection,
     Streaming,
@@ -224,8 +224,8 @@ impl ToString for TaskType {
             TaskType::RegexSummaryGeneration => "regex_summary_generation".to_string(),
             TaskType::RegexPatternGeneration => "regex_pattern_generation".to_string(),
             TaskType::FileFinderWorkflow => "file_finder_workflow".to_string(),
-            TaskType::DirectoryTreeGeneration => "directory_tree_generation".to_string(),
             TaskType::LocalFileFiltering => "local_file_filtering".to_string(),
+            TaskType::FileRelevanceAssessment => "file_relevance_assessment".to_string(),
             TaskType::ExtendedPathFinder => "extended_path_finder".to_string(),
             TaskType::ExtendedPathCorrection => "extended_path_correction".to_string(),
             TaskType::Streaming => "streaming".to_string(),
@@ -251,8 +251,8 @@ impl std::str::FromStr for TaskType {
             "regex_summary_generation" => Ok(TaskType::RegexSummaryGeneration),
             "regex_pattern_generation" => Ok(TaskType::RegexPatternGeneration),
             "file_finder_workflow" => Ok(TaskType::FileFinderWorkflow),
-            "directory_tree_generation" => Ok(TaskType::DirectoryTreeGeneration),
             "local_file_filtering" => Ok(TaskType::LocalFileFiltering),
+            "file_relevance_assessment" => Ok(TaskType::FileRelevanceAssessment),
             "extended_path_finder" => Ok(TaskType::ExtendedPathFinder),
             "extended_path_correction" => Ok(TaskType::ExtendedPathCorrection),
             "streaming" => Ok(TaskType::Streaming),
@@ -266,11 +266,11 @@ impl TaskType {
     pub fn requires_llm(&self) -> bool {
         match self {
             // Local/filesystem tasks that don't use LLMs
-            TaskType::DirectoryTreeGeneration 
-            | TaskType::LocalFileFiltering 
+            TaskType::LocalFileFiltering 
             | TaskType::FileFinderWorkflow => false,
             // LLM tasks that require configuration
-            TaskType::ExtendedPathFinder
+            TaskType::FileRelevanceAssessment
+            | TaskType::ExtendedPathFinder
             | TaskType::ExtendedPathCorrection
             | TaskType::ImplementationPlan
             | TaskType::PathFinder
@@ -293,11 +293,11 @@ impl TaskType {
     pub fn api_type(&self) -> ApiType {
         match self {
             // Local/filesystem tasks use filesystem API
-            TaskType::DirectoryTreeGeneration 
-            | TaskType::LocalFileFiltering 
+            TaskType::LocalFileFiltering 
             | TaskType::FileFinderWorkflow => ApiType::FileSystem,
             // Extended workflow stages use OpenRouter API
-            TaskType::ExtendedPathFinder
+            TaskType::FileRelevanceAssessment
+            | TaskType::ExtendedPathFinder
             | TaskType::ExtendedPathCorrection => ApiType::OpenRouter,
             // All other LLM tasks use OpenRouter API
             _ => ApiType::OpenRouter,

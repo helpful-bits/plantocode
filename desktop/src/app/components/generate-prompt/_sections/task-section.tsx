@@ -8,7 +8,6 @@ import { Button } from "@/ui/button";
 import VoiceTranscription from "../_components/voice-transcription";
 import TaskDescriptionArea from "../_components/task-description";
 import { useCorePromptContext } from "../_contexts/core-prompt-context";
-import { useFileManagement } from "../_contexts/file-management-context";
 import { useTaskContext } from "../_contexts/task-context";
 import { 
   useSessionStateContext, 
@@ -31,9 +30,6 @@ const TaskSection = React.memo(function TaskSection({
   const { state: taskState, actions: taskActions } = useTaskContext();
   const { actions: coreActions } = useCorePromptContext();
 
-  // Use the FileManagement context directly
-  const fileState = useFileManagement();
-
   const {
     taskDescriptionRef,
     isGeneratingGuidance,
@@ -48,8 +44,8 @@ const TaskSection = React.memo(function TaskSection({
     coreActions.handleInteraction();
   }, [sessionActions, coreActions]);
 
-  // Get file paths from FileManagement context
-  const { includedPaths } = fileState;
+  // Get included files count from session
+  const includedFilesCount = (sessionState.currentSession?.includedFiles || []).length;
 
   // Handler for transcribed text from voice input
   const handleTranscribedText = (text: string) => {
@@ -76,7 +72,7 @@ const TaskSection = React.memo(function TaskSection({
               type="button"
               variant={!(sessionState.currentSession?.taskDescription || "").trim() ? "destructive" : "secondary"}
               size="sm"
-              onClick={() => handleGenerateGuidance(includedPaths)}
+              onClick={() => handleGenerateGuidance()}
               disabled={!(sessionState.currentSession?.taskDescription || "").trim() || disabled}
               isLoading={isGeneratingGuidance}
               loadingText="Generating Guidance..."
@@ -85,9 +81,9 @@ const TaskSection = React.memo(function TaskSection({
                   ? "Enter a task description first"
                   : isGeneratingGuidance
                     ? "Generating guidance..."
-                    : includedPaths.length === 0
+                    : includedFilesCount === 0
                       ? "No files selected - guidance may be limited"
-                      : `Analyze ${includedPaths.length} selected files to generate architectural guidance`
+                      : `Analyze ${includedFilesCount} selected files to generate architectural guidance`
               }
               className="h-9"
             >
