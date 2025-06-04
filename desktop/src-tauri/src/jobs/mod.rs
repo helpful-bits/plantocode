@@ -8,6 +8,7 @@ pub mod scheduler;
 pub mod job_payload_utils;
 pub mod job_helpers;
 pub mod job_processor_utils;
+pub mod streaming_handler;
 pub mod workflow_types;
 pub mod workflow_orchestrator;
 pub mod workflow_cleanup;
@@ -35,10 +36,11 @@ use self::processors::{
     RegexSummaryGenerationProcessor,
     RegexPatternGenerationProcessor,
     // Individual workflow stage processors
-    DirectoryTreeGenerationProcessor,
     LocalFileFilteringProcessor,
     ExtendedPathFinderProcessor,
-    ExtendedPathCorrectionProcessor
+    ExtendedPathCorrectionProcessor,
+    // File relevance assessment processor
+    FileRelevanceAssessmentProcessor
 };
 use self::registry::get_job_registry;
 use self::scheduler::{init_job_scheduler, get_job_scheduler};
@@ -77,10 +79,11 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     let regex_summary_generation_processor = Arc::new(RegexSummaryGenerationProcessor::new());
     let regex_pattern_generation_processor = Arc::new(RegexPatternGenerationProcessor::new());
     // Individual workflow stage processors
-    let directory_tree_generation_processor = Arc::new(DirectoryTreeGenerationProcessor::new());
     let local_file_filtering_processor = Arc::new(LocalFileFilteringProcessor::new());
     let extended_path_finder_processor = Arc::new(ExtendedPathFinderProcessor::new());
     let extended_path_correction_processor = Arc::new(ExtendedPathCorrectionProcessor::new());
+    // File relevance assessment processor
+    let file_relevance_assessment_processor = Arc::new(FileRelevanceAssessmentProcessor::new());
     
     // Register processors
     registry.register(path_finder_processor).await;
@@ -95,10 +98,11 @@ pub async fn register_job_processors(app_handle: &AppHandle) -> AppResult<()> {
     registry.register(regex_summary_generation_processor).await;
     registry.register(regex_pattern_generation_processor).await;
     // Individual workflow stage processors
-    registry.register(directory_tree_generation_processor).await;
     registry.register(local_file_filtering_processor).await;
     registry.register(extended_path_finder_processor).await;
     registry.register(extended_path_correction_processor).await;
+    // File relevance assessment processor
+    registry.register(file_relevance_assessment_processor).await;
     
     debug!("Job processors registered");
     Ok(())

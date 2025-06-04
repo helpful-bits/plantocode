@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS background_jobs (
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   updated_at INTEGER DEFAULT (strftime('%s', 'now')),
   api_type TEXT DEFAULT 'gemini' NOT NULL,
-  task_type TEXT DEFAULT 'xml_generation' NOT NULL,
+  task_type TEXT DEFAULT 'unknown' NOT NULL,
   model_used TEXT,
   max_output_tokens INTEGER,
   response TEXT,
@@ -179,7 +179,6 @@ CREATE INDEX IF NOT EXISTS idx_system_prompts_session_task ON system_prompts(ses
 CREATE INDEX IF NOT EXISTS idx_system_prompts_task_type ON system_prompts(task_type);
 
 -- Create default_system_prompts table to store server-provided defaults
--- Note: For existing databases, this requires manual migration to add id column
 CREATE TABLE IF NOT EXISTS default_system_prompts (
   id TEXT PRIMARY KEY,
   task_type TEXT NOT NULL UNIQUE,
@@ -189,9 +188,6 @@ CREATE TABLE IF NOT EXISTS default_system_prompts (
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
-
--- Create index for default_system_prompts table  
-CREATE INDEX IF NOT EXISTS idx_default_system_prompts_task_type ON default_system_prompts(task_type);
 
 -- Insert default 2025 model configurations
 INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
@@ -206,8 +202,8 @@ VALUES
 ('available_reasoning_models_2025', '["deepseek/deepseek-r1", "deepseek/deepseek-r1-distill-qwen-32b", "deepseek/deepseek-r1-distill-qwen-14b"]', strftime('%s', 'now'));
 
 -- Insert enhanced default system prompts with sophisticated templating
-INSERT OR REPLACE INTO default_system_prompts (task_type, system_prompt, description, version) VALUES
-('path_finder', 'You are a code path finder. Your task is to identify the most relevant files for implementing or fixing a specific task in a codebase.
+INSERT OR REPLACE INTO default_system_prompts (id, task_type, system_prompt, description, version) VALUES
+('default_path_finder', 'path_finder', 'You are a code path finder. Your task is to identify the most relevant files for implementing or fixing a specific task in a codebase.
 
 {{DIRECTORY_TREE}}
 
@@ -240,7 +236,7 @@ To control inference cost, you **MUST** keep the resulting list as concise as po
 
 Return the final list using the same formatting rules described above.', 'Enhanced system prompt for finding relevant files in a codebase', '2.0'),
 
-('text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
+('default_text_improvement', 'text_improvement', 'Please improve the following text to make it clearer and grammatically correct while EXACTLY preserving its formatting style, including:
 - All line breaks
 - All indentation  
 - All bullet points and numbering
@@ -253,7 +249,7 @@ IMPORTANT: Keep the original language of the text.
 
 Return only the improved text without any additional commentary or XML formatting.', 'Simple system prompt for text improvement with formatting preservation', '2.0'),
 
-('guidance_generation', 'You are an AI assistant that provides helpful guidance and recommendations based on code analysis and task requirements.
+('default_guidance_generation', 'guidance_generation', 'You are an AI assistant that provides helpful guidance and recommendations based on code analysis and task requirements.
 
 ## Project Context:
 {{PROJECT_CONTEXT}}
@@ -283,7 +279,7 @@ Your response must be brief and focused primarily on:
 
 Avoid lengthy, philosophical, or overly metaphorical explanations. The reader needs a clear, direct understanding of how data moves through the code. It has to be in engaging Andrew Huberman style (but without the science, just style of talking). The story has to be very short. Use simple English.', 'Enhanced system prompt for generating AI guidance', '2.0'),
 
-('text_correction', '<role>
+('default_text_correction', 'text_correction', '<role>
 You are a professional text editor and proofreader specializing in {{LANGUAGE}} language corrections.
 </role>
 
@@ -308,7 +304,7 @@ When the user provides text within <text_to_correct> tags:
 Respond with only the corrected text. Do not include XML tags, explanations, or any other content in your response.
 </output_format>', 'Complete XML-structured system prompt with all instructions for text correction', '6.0'),
 
-('implementation_plan', 'You are a software development planning assistant. Your task is to create detailed, actionable implementation plans for software development tasks.
+('default_implementation_plan', 'implementation_plan', 'You are a software development planning assistant. Your task is to create detailed, actionable implementation plans for software development tasks.
 
 ## Project Context:
 {{PROJECT_CONTEXT}}
@@ -344,7 +340,7 @@ Please provide your response in XML format:
   </steps>
 </implementation_plan>', 'Enhanced system prompt for creating implementation plans', '2.0'),
 
-('path_correction', 'You are a path correction assistant for file system paths.
+('default_path_correction', 'path_correction', 'You are a path correction assistant for file system paths.
 
 {{DIRECTORY_TREE}}
 
@@ -360,7 +356,7 @@ Your task is to:
 
 Return corrected paths with brief explanations of the changes made.', 'Enhanced system prompt for correcting file paths', '2.0'),
 
-('task_enhancement', 'You are a task enhancement assistant that helps improve and clarify user requirements.
+('default_task_enhancement', 'task_enhancement', 'You are a task enhancement assistant that helps improve and clarify user requirements.
 
 ## Project Context:
 {{PROJECT_CONTEXT}}
@@ -387,7 +383,7 @@ Please provide your response in XML format:
   </acceptance_criteria>
 </task_enhancement>', 'Enhanced system prompt for enhancing requirements', '2.0'),
 
-('regex_pattern_generation', 'You are a regex pattern generation assistant that creates regular expressions for file filtering and text matching.
+('default_regex_pattern_generation', 'regex_pattern_generation', 'You are a regex pattern generation assistant that creates regular expressions for file filtering and text matching.
 
 {{DIRECTORY_TREE}}
 
@@ -410,7 +406,7 @@ Provide the output with these keys:
 
 If a pattern is not applicable, omit the key or set its value to an empty string.', 'Enhanced system prompt for generating regex patterns', '2.0'),
 
-('regex_summary_generation', 'You are a regex summary assistant that explains regular expression patterns in plain language.
+('default_regex_summary_generation', 'regex_summary_generation', 'You are a regex summary assistant that explains regular expression patterns in plain language.
 
 Your role is to:
 - Analyze the provided regular expression patterns
@@ -421,7 +417,7 @@ Your role is to:
 
 Provide clear, non-technical explanations that help users understand the regex patterns.', 'Enhanced system prompt for generating regex summaries', '2.0'),
 
-('generic_llm_stream', 'You are a helpful AI assistant that provides responses based on user requests.
+('default_generic_llm_stream', 'generic_llm_stream', 'You are a helpful AI assistant that provides responses based on user requests.
 
 ## Project Context:
 {{PROJECT_CONTEXT}}
@@ -439,20 +435,8 @@ Your role is to:
 Respond directly to the user''s request with helpful and accurate information.', 'Enhanced system prompt for generic LLM streaming tasks', '2.0'),
 
 -- Workflow stage-specific system prompts
-('directory_tree_generation', 'You are a directory tree generation assistant that creates structured representations of project directory hierarchies.
 
-{{DIRECTORY_TREE}}
-
-Your role is to:
-- Generate clean, organized directory tree structures
-- Focus on relevant files and directories for the given task
-- Exclude unnecessary files (node_modules, .git, build artifacts, etc.)
-- Maintain consistent formatting and indentation
-- Provide a comprehensive but focused view of the project structure
-
-Generate a well-structured directory tree that helps understand the project organization.', 'System prompt for directory tree generation workflow stage', '1.0'),
-
-('local_file_filtering', 'You are a local file filtering assistant that identifies and filters relevant files based on specified criteria.
+('default_local_file_filtering', 'local_file_filtering', 'You are a local file filtering assistant that identifies and filters relevant files based on specified criteria.
 
 {{FILE_CONTENTS}}
 
@@ -467,7 +451,7 @@ Your role is to:
 
 Filter files effectively to reduce noise and focus on task-relevant content.', 'System prompt for local file filtering workflow stage', '1.0'),
 
-('extended_path_finder', 'You are an enhanced path finder that identifies comprehensive file paths for complex implementation tasks.
+('default_extended_path_finder', 'extended_path_finder', 'You are an enhanced path finder that identifies comprehensive file paths for complex implementation tasks.
 
 {{DIRECTORY_TREE}}
 
@@ -482,7 +466,7 @@ Your role is to:
 
 Return ONLY file paths, one per line, with no additional commentary.', 'System prompt for extended path finder workflow stage', '1.0'),
 
-('extended_path_correction', 'You are a path correction assistant that refines and validates file path selections.
+('default_extended_path_correction', 'extended_path_correction', 'You are a path correction assistant that refines and validates file path selections.
 
 {{DIRECTORY_TREE}}
 
@@ -495,7 +479,20 @@ Your role is to:
 - Add missing critical files that were overlooked
 - Ensure the final path list is optimized for the task
 
-Return ONLY the corrected file paths, one per line, with no additional commentary.', 'System prompt for extended path correction workflow stage', '1.0');
+Return ONLY the corrected file paths, one per line, with no additional commentary.', 'System prompt for extended path correction workflow stage', '1.0'),
+
+('default_file_relevance_assessment', 'file_relevance_assessment', 'You are an AI assistant helping to refine a list of files for a software development task.
+Given the task description and the content of several potentially relevant files, identify which of these files are *actually* relevant and necessary for completing the task.
+Return ONLY the file paths of the relevant files, one path per line. Do not include any other text, explanations, or commentary.
+Be very selective. Prioritize files that will require direct modification or are core to understanding the task.
+
+Task Description:
+{{TASK_DESCRIPTION}}
+
+File Contents:
+{{FILE_CONTENTS}}
+
+Respond ONLY with the list of relevant file paths from the provided list, one per line. If no files are relevant, return an empty response.', 'System prompt for AI-powered file relevance assessment', '1.0');
 
 -- Store application-wide configurations, especially those managed dynamically
 CREATE TABLE IF NOT EXISTS application_configurations (
@@ -512,11 +509,11 @@ INSERT INTO application_configurations (config_key, config_value, description)
 VALUES 
 ('ai_settings_task_specific_configs', '{
   "implementation_plan": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 65536, "temperature": 0.7},
-  "path_finder": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.3},
+  "path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
   "text_improvement": {"model": "anthropic/claude-sonnet-4", "max_tokens": 4096, "temperature": 0.7},
   "voice_transcription": {"model": "groq/whisper-large-v3-turbo", "max_tokens": 4096, "temperature": 0.0},
   "text_correction": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.5},
-  "path_correction": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.3},
+  "path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
   "regex_pattern_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 1000, "temperature": 0.2},
   "regex_summary_generation": {"model": "anthropic/claude-sonnet-4", "max_tokens": 2048, "temperature": 0.3},
   "guidance_generation": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.7},
@@ -524,10 +521,10 @@ VALUES
   "file_finder_workflow": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.5},
   "generic_llm_stream": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
   "streaming": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 16384, "temperature": 0.7},
-  "directory_tree_generation": {},
   "local_file_filtering": {},
-  "extended_path_finder": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 8192, "temperature": 0.3},
-  "extended_path_correction": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.3},
+  "extended_path_finder": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 8192, "temperature": 0.3},
+  "extended_path_correction": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 4096, "temperature": 0.3},
+  "file_relevance_assessment": {"model": "google/gemini-2.5-flash-preview-05-20", "max_tokens": 24000, "temperature": 0.3},
   "unknown": {"model": "google/gemini-2.5-pro-preview", "max_tokens": 4096, "temperature": 0.7}
 }', 'Task-specific model configurations including model, tokens, and temperature for all supported task types'),
 

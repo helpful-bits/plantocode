@@ -5,13 +5,11 @@ use tauri::AppHandle;
 use crate::error::{AppError, AppResult};
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::utils::error_utils::log_workflow_error;
-use crate::jobs::queue::{get_job_queue, JobPriority};
+use crate::jobs::queue::get_job_queue;
 use crate::jobs::workflow_types::{
     WorkflowStage, ErrorRecoveryConfig, RecoveryStrategy, WorkflowErrorResponse
 };
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
-use crate::utils::job_creation_utils;
-use crate::models::TaskType;
 
 /// Service responsible for managing errors that occur within a workflow
 pub struct WorkflowErrorHandler {
@@ -97,7 +95,10 @@ impl WorkflowErrorHandler {
                     &comprehensive_error
                 ).await
             }
-            RecoveryStrategy::RetrySpecificStage { job_id, stage: retry_stage, attempt_count } => {
+            RecoveryStrategy::RetrySpecificStage { job_id, stage_name, task_type, attempt_count } => {
+                // Convert task_type to WorkflowStage for the retry
+                let retry_stage = crate::jobs::workflow_types::WorkflowStage::from_task_type(&task_type)
+                    .ok_or_else(|| AppError::JobError(format!("Cannot determine workflow stage from task type: {:?}", task_type)))?;
                 self.handle_specific_stage_retry(
                     workflow_id,
                     &job_id,
@@ -142,54 +143,39 @@ impl WorkflowErrorHandler {
         info!("Retrying stage {:?} for workflow {}, attempt {} of {}", 
               stage, workflow_id, new_retry_count, max_attempts);
 
-        // Get the workflow orchestrator to recreate the stage job
+        // Delegate to the WorkflowOrchestrator's retry mechanism
         let orchestrator = get_workflow_orchestrator().await?;
-        let workflow_state = orchestrator.get_workflow_status(workflow_id).await?;
         
-        // Create a new retry job for this stage
-        let task_type = self.stage_to_task_type(&stage);
-        let stage_payload = self.create_stage_payload(&workflow_state, &stage).await?;
-        let (model, temperature, max_tokens) = self.get_stage_model_config(&stage, &workflow_state.project_directory).await?;
+        // Use the orchestrator's centralized retry functionality with delay and retry count
+        match orchestrator.retry_workflow_stage_with_config(
+            workflow_id, 
+            stage.clone(), 
+            failed_job_id,
+            Some(delay_ms),
+            Some(new_retry_count),
+        ).await {
+            Ok(retry_job_id) => {
+                // If delay is specified, log it (actual delay would need queue support)
+                if delay_ms > 0 {
+                    info!("Would delay retry job {} by {}ms (delay not yet implemented in queue)", retry_job_id, delay_ms);
+                }
 
-        // Convert the JSON payload to the appropriate JobPayload variant
-        let job_payload = self.convert_json_to_job_payload(&stage_payload, &stage)?;
-        
-        // Create the retry job
-        let retry_job_id = job_creation_utils::create_and_queue_background_job(
-            &workflow_state.session_id,
-            &workflow_state.project_directory,
-            "workflow_stage_retry",
-            task_type,
-            &format!("{}_RETRY_{}", stage.display_name().to_uppercase().replace(" ", "_"), new_retry_count),
-            &workflow_state.task_description,
-            Some((model, temperature, max_tokens)),
-            job_payload,
-            10, // High priority for workflow jobs
-            Some(workflow_id.to_string()), // workflow_id
-            Some(stage.display_name().to_string()), // workflow_stage
-            Some(serde_json::json!({
-                "workflowId": workflow_id,
-                "workflowStage": stage,
-                "stageName": stage.display_name(),
-                "retryAttempt": new_retry_count,
-                "originalJobId": failed_job_id
-            })),
-            &self.app_handle,
-        ).await?;
-
-        // If delay is specified, log it (actual delay would need queue support)
-        if delay_ms > 0 {
-            info!("Would delay retry job {} by {}ms", retry_job_id, delay_ms);
+                Ok(WorkflowErrorResponse {
+                    error_handled: true,
+                    recovery_attempted: true,
+                    next_action: format!("Retrying stage '{}' with job {} (attempt {} of {}). Original error: {}", 
+                                       stage.display_name(), retry_job_id, new_retry_count, max_attempts, comprehensive_error),
+                    should_continue: true,
+                    retry_job_id: Some(retry_job_id),
+                })
+            }
+            Err(e) => {
+                error!("Failed to retry stage {:?} for workflow {}: {}", stage, workflow_id, e);
+                let abort_message = format!("Failed to retry stage '{}': {}. Original error: {}", 
+                                          stage.display_name(), e, comprehensive_error);
+                self.handle_abort_strategy(workflow_id, &abort_message).await
+            }
         }
-
-        Ok(WorkflowErrorResponse {
-            error_handled: true,
-            recovery_attempted: true,
-            next_action: format!("Retrying stage '{}' with job {} (attempt {} of {}). Original error: {}", 
-                               stage.display_name(), retry_job_id, new_retry_count, max_attempts, comprehensive_error),
-            should_continue: true,
-            retry_job_id: Some(retry_job_id),
-        })
     }
 
     /// Handle abort strategy for a workflow
@@ -249,141 +235,6 @@ impl WorkflowErrorHandler {
         })
     }
 
-    /// Convert workflow stage to TaskType
-    fn stage_to_task_type(&self, stage: &WorkflowStage) -> TaskType {
-        match stage {
-            WorkflowStage::GeneratingDirTree => TaskType::DirectoryTreeGeneration,
-            WorkflowStage::GeneratingRegex => TaskType::RegexPatternGeneration,
-            WorkflowStage::LocalFiltering => TaskType::LocalFileFiltering,
-            WorkflowStage::InitialPathFinder => TaskType::PathFinder,
-            WorkflowStage::InitialPathCorrection => TaskType::PathCorrection,
-            WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
-            WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,
-        }
-    }
-
-    /// Create payload for a specific stage (similar to WorkflowOrchestrator)
-    async fn create_stage_payload(
-        &self, 
-        workflow_state: &crate::jobs::workflow_types::WorkflowState, 
-        stage: &WorkflowStage
-    ) -> AppResult<serde_json::Value> {
-        match stage {
-            WorkflowStage::GeneratingDirTree => {
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "excludedPaths": workflow_state.excluded_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-            WorkflowStage::GeneratingRegex => {
-                let directory_tree = workflow_state.intermediate_data.directory_tree_content
-                    .as_ref()
-                    .ok_or_else(|| AppError::JobError("Directory tree not available for regex generation".to_string()))?;
-                
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-            WorkflowStage::LocalFiltering => {
-                let regex_patterns = workflow_state.intermediate_data.raw_regex_patterns
-                    .as_ref()
-                    .ok_or_else(|| AppError::JobError("Regex patterns not available for local filtering".to_string()))?;
-                
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "regexPatterns": regex_patterns,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-            WorkflowStage::InitialPathFinder => {
-                let directory_tree = workflow_state.intermediate_data.directory_tree_content
-                    .as_ref()
-                    .ok_or_else(|| AppError::JobError("Directory tree not available for path finding".to_string()))?;
-                
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "includedFiles": workflow_state.intermediate_data.locally_filtered_files,
-                    "excludedFiles": workflow_state.excluded_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-            WorkflowStage::InitialPathCorrection => {
-                let directory_tree = workflow_state.intermediate_data.directory_tree_content
-                    .as_ref()
-                    .ok_or_else(|| AppError::JobError("Directory tree not available for path correction".to_string()))?;
-                
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "pathsToCorrect": workflow_state.intermediate_data.initial_unverified_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-            WorkflowStage::ExtendedPathFinder => {
-                let directory_tree = workflow_state.intermediate_data.directory_tree_content
-                    .as_ref()
-                    .ok_or_else(|| AppError::JobError("Directory tree not available for extended path finding".to_string()))?;
-                
-                let mut current_verified = workflow_state.intermediate_data.initial_verified_paths.clone();
-                current_verified.extend(workflow_state.intermediate_data.initial_corrected_paths.clone());
-                
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "currentVerified": current_verified,
-                    "excludedFiles": workflow_state.excluded_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-            WorkflowStage::ExtendedPathCorrection => {
-                let directory_tree = workflow_state.intermediate_data.directory_tree_content
-                    .as_ref()
-                    .ok_or_else(|| AppError::JobError("Directory tree not available for extended path correction".to_string()))?;
-                
-                Ok(serde_json::json!({
-                    "sessionId": workflow_state.session_id,
-                    "taskDescription": workflow_state.task_description,
-                    "projectDirectory": workflow_state.project_directory,
-                    "directoryTree": directory_tree,
-                    "pathsToCorrect": workflow_state.intermediate_data.extended_unverified_paths,
-                    "workflowId": workflow_state.workflow_id
-                }))
-            }
-        }
-    }
-
-    /// Get model configuration for a specific stage
-    async fn get_stage_model_config(&self, stage: &WorkflowStage, project_directory: &str) -> AppResult<(String, f32, u32)> {
-        let task_type = self.stage_to_task_type(stage);
-        
-        let model = crate::config::get_model_for_task_with_project(task_type, project_directory, &self.app_handle)
-            .await
-            .unwrap_or_else(|_| "file-finder-hybrid".to_string());
-        let temperature = crate::config::get_temperature_for_task_with_project(task_type, project_directory, &self.app_handle)
-            .await
-            .unwrap_or(0.5);
-        let max_tokens = crate::config::get_max_tokens_for_task_with_project(task_type, project_directory, &self.app_handle)
-            .await
-            .unwrap_or(4000);
-
-        Ok((model, temperature, max_tokens))
-    }
 
     /// Retry a specific failed stage within a workflow
     pub async fn retry_failed_stage(
@@ -407,7 +258,9 @@ impl WorkflowErrorHandler {
         }
 
         // Use the workflow orchestrator to retry this specific stage
-        orchestrator.retry_workflow_stage(workflow_id, stage_job.stage.clone(), failed_stage_job_id).await
+        let stage = WorkflowStage::from_task_type(&stage_job.task_type)
+            .ok_or_else(|| AppError::JobError(format!("Cannot determine workflow stage from task type: {:?}", stage_job.task_type)))?;
+        orchestrator.retry_workflow_stage(workflow_id, stage, failed_stage_job_id).await
     }
 
     /// Handle specific stage retry strategy
@@ -446,46 +299,4 @@ impl WorkflowErrorHandler {
         }
     }
 
-    /// Convert JSON payload to the appropriate JobPayload variant
-    fn convert_json_to_job_payload(&self, json_payload: &serde_json::Value, stage: &WorkflowStage) -> AppResult<crate::jobs::types::JobPayload> {
-        use crate::jobs::types::{JobPayload, DirectoryTreeGenerationPayload, RegexPatternGenerationWorkflowPayload, LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, ExtendedPathFinderPayload, ExtendedPathCorrectionPayload};
-        
-        match stage {
-            WorkflowStage::GeneratingDirTree => {
-                let payload: DirectoryTreeGenerationPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize DirectoryTreeGenerationPayload: {}", e)))?;
-                Ok(JobPayload::DirectoryTreeGeneration(payload))
-            }
-            WorkflowStage::GeneratingRegex => {
-                let payload: RegexPatternGenerationWorkflowPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize RegexPatternGenerationWorkflowPayload: {}", e)))?;
-                Ok(JobPayload::RegexPatternGenerationWorkflow(payload))
-            }
-            WorkflowStage::LocalFiltering => {
-                let payload: LocalFileFilteringPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize LocalFileFilteringPayload: {}", e)))?;
-                Ok(JobPayload::LocalFileFiltering(payload))
-            }
-            WorkflowStage::InitialPathFinder => {
-                let payload: PathFinderPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize PathFinderPayload: {}", e)))?;
-                Ok(JobPayload::PathFinder(payload))
-            }
-            WorkflowStage::InitialPathCorrection => {
-                let payload: PathCorrectionPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize PathCorrectionPayload: {}", e)))?;
-                Ok(JobPayload::PathCorrection(payload))
-            }
-            WorkflowStage::ExtendedPathFinder => {
-                let payload: ExtendedPathFinderPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathFinderPayload: {}", e)))?;
-                Ok(JobPayload::ExtendedPathFinder(payload))
-            }
-            WorkflowStage::ExtendedPathCorrection => {
-                let payload: ExtendedPathCorrectionPayload = serde_json::from_value(json_payload.clone())
-                    .map_err(|e| AppError::JobError(format!("Failed to deserialize ExtendedPathCorrectionPayload: {}", e)))?;
-                Ok(JobPayload::ExtendedPathCorrection(payload))
-            }
-        }
-    }
 }

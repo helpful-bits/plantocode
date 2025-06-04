@@ -11,6 +11,8 @@ interface FilterModeToggleProps {
   currentMode: FilterMode;
   onModeChange: (mode: FilterMode) => void;
   disabled?: boolean;
+  includedCount?: number;
+  totalCount?: number;
 }
 
 /**
@@ -20,19 +22,21 @@ export const FilterModeToggle: FC<FilterModeToggleProps> = ({
   currentMode,
   onModeChange,
   disabled = false,
+  includedCount = 0,
+  totalCount = 0,
 }) => {
   return (
-    <div className="flex items-center border border-border rounded-md overflow-hidden">
+    <div className="flex items-center border border-border/50 rounded-lg overflow-hidden">
       <Button
         variant={currentMode === "all" ? "filter-active" : "filter"}
         size="xs"
-        className="px-3"
+        className="px-3 h-9"
         onClick={() => onModeChange("all")}
         disabled={disabled}
-        title="Show all project files"
+        title={`Show all ${totalCount} project files`}
       >
         <Files className="h-3.5 w-3.5 mr-1.5" />
-        All
+        All{totalCount > 0 ? ` (${totalCount})` : ""}
       </Button>
 
       <div className="w-[1px] h-6 bg-border/40" />
@@ -40,13 +44,17 @@ export const FilterModeToggle: FC<FilterModeToggleProps> = ({
       <Button
         variant={currentMode === "selected" ? "filter-active" : "filter"}
         size="xs"
-        className="px-3"
+        className="px-3 h-9"
         onClick={() => onModeChange("selected")}
-        disabled={disabled}
-        title="Show only selected files"
+        disabled={disabled || includedCount === 0}
+        title={
+          includedCount === 0
+            ? "Select files first to use this option"
+            : `Show only the ${includedCount} selected files`
+        }
       >
         <FileCheck className="h-3.5 w-3.5 mr-1.5" />
-        Selected
+        Selected{includedCount > 0 ? ` (${includedCount})` : ""}
       </Button>
 
     </div>

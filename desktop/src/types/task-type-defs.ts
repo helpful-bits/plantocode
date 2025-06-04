@@ -20,17 +20,13 @@ export type TaskType =
   | "regex_summary_generation"
   | "regex_pattern_generation"
   | "file_finder_workflow"
-  | "server_proxy_transcription"
   | "streaming"
   // New orchestrated workflow stage types
-  | "directory_tree_generation"
   | "local_file_filtering"
+  | "file_relevance_assessment"
   | "extended_path_finder"
   | "extended_path_correction"
-  | "initial_path_finding"
-  | "extended_path_finding" // Duplicate of extended_path_finder - kept for compatibility
-  | "initial_path_correction"
-  | "regex_generation" // Duplicate of regex_pattern_generation - kept for compatibility
+  | "server_proxy_transcription"
   | "unknown";
 
 // Task types that support system prompts
@@ -60,16 +56,12 @@ export const ALL_TASK_TYPES: readonly TaskType[] = [
   "regex_summary_generation",
   "regex_pattern_generation",
   "file_finder_workflow",
-  "server_proxy_transcription",
   "streaming",
-  "directory_tree_generation",
   "local_file_filtering",
+  "file_relevance_assessment",
   "extended_path_finder",
   "extended_path_correction",
-  "initial_path_finding",
-  "extended_path_finding",
-  "initial_path_correction",
-  "regex_generation",
+  "server_proxy_transcription",
   "unknown",
 ] as const;
 
@@ -109,7 +101,9 @@ export const TaskTypeDetails: Record<TaskType, {
   category?: string;
   description?: string;
   hidden?: boolean;
-  defaultProvider?: "google" | "anthropic" | "openai" | "deepseek";
+  defaultProvider?: "google" | "anthropic" | "openai" | "deepseek" | "groq";
+  apiType?: "llm" | "filesystem" | "local";
+  systemPromptId?: string | null;
 }> = {
   // Core AI tasks
   implementation_plan: { 
@@ -189,26 +183,13 @@ export const TaskTypeDetails: Record<TaskType, {
     hidden: true,
     defaultProvider: "anthropic"
   },
-  regex_generation: { 
-    requiresLlm: true, 
-    displayName: "Regex Generation", 
-    category: "Pattern Matching",
-    hidden: true,
-    defaultProvider: "anthropic"
-  },
   file_finder_workflow: { 
     requiresLlm: false, 
     displayName: "File Finder Workflow", 
     category: "Workflow",
     description: "Advanced file finding workflow with multiple steps",
-    defaultProvider: "google"
-  },
-  server_proxy_transcription: { 
-    requiresLlm: true, 
-    displayName: "Server Proxy Transcription", 
-    category: "Audio Processing",
-    hidden: true,
-    defaultProvider: "openai"
+    apiType: "filesystem",
+    systemPromptId: null
   },
   streaming: { 
     requiresLlm: true, 
@@ -219,19 +200,19 @@ export const TaskTypeDetails: Record<TaskType, {
   },
   
   // Workflow stage tasks (non-LLM)
-  directory_tree_generation: { 
-    requiresLlm: false, 
-    displayName: "Directory Tree Generation", 
-    category: "Workflow Stage",
-    description: "Generate directory tree structure for projects",
-    hidden: true,
-    defaultProvider: "google"
-  },
   local_file_filtering: { 
     requiresLlm: false, 
     displayName: "Local File Filtering", 
     category: "Workflow Stage",
     description: "Local file filtering and search operations",
+    hidden: true,
+    defaultProvider: "google"
+  },
+  file_relevance_assessment: { 
+    requiresLlm: true, 
+    displayName: "AI File Relevance Assessment", 
+    category: "Workflow Stage",
+    description: "Uses AI to assess relevance of filtered files",
     hidden: true,
     defaultProvider: "google"
   },
@@ -251,29 +232,13 @@ export const TaskTypeDetails: Record<TaskType, {
     hidden: true,
     defaultProvider: "google"
   },
-  initial_path_finding: { 
+  server_proxy_transcription: { 
     requiresLlm: true, 
-    displayName: "Initial Path Finding", 
-    category: "Workflow Stage",
-    description: "Initial path finding stage of workflow",
+    displayName: "Server Proxy Transcription", 
+    category: "Audio Processing",
+    description: "Server-based transcription processing",
     hidden: true,
-    defaultProvider: "google"
-  },
-  extended_path_finding: { 
-    requiresLlm: true, 
-    displayName: "Extended Path Finding", 
-    category: "Workflow Stage",
-    description: "Extended path finding stage of workflow", 
-    hidden: true,
-    defaultProvider: "google"
-  },
-  initial_path_correction: { 
-    requiresLlm: true, 
-    displayName: "Initial Path Correction", 
-    category: "Workflow Stage",
-    description: "Initial path correction stage of workflow",
-    hidden: true,
-    defaultProvider: "google"
+    defaultProvider: "groq"
   },
   
   // Fallback

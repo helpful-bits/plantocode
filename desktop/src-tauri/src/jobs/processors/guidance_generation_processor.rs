@@ -7,6 +7,8 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::models::TaskType;
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{fs_context_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 /// Processor for guidance generation jobs
 pub struct GuidanceGenerationProcessor;
@@ -51,102 +53,64 @@ impl JobProcessor for GuidanceGenerationProcessor {
         
         // Load file contents if paths are provided
         let file_contents = if let Some(paths) = &payload.paths {
-            Some(job_processor_utils::load_file_contents(paths, &payload.project_directory).await)
+            Some(fs_context_utils::load_file_contents(paths, &payload.project_directory).await)
         } else {
             None
         };
         
         // Generate directory tree for enhanced context
-        let directory_tree = job_processor_utils::generate_directory_tree_for_context(
+        let directory_tree = fs_context_utils::generate_directory_tree_for_context(
             &payload.project_directory
         ).await;
         
-        // Handle system prompt override or use unified prompt
-        let composed_prompt = if let Some(override_prompt) = &payload.system_prompt_override {
-            crate::utils::unified_prompt_system::ComposedPrompt {
-                final_prompt: format!("{}\n\n{}", override_prompt, payload.task_description),
-                system_prompt_id: "override".to_string(),
-                context_sections: vec![],
-                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(override_prompt) as usize),
-            }
-        } else {
-            // Use build_unified_prompt helper
-            job_processor_utils::build_unified_prompt(
-                &job,
-                &app_handle,
-                payload.task_description.clone(),
-                payload.file_contents_summary.clone(),
-                file_contents,
-                directory_tree,
-                &settings_repo,
-                &model_used,
-            ).await?
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
+        
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
+        
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: payload.task_description.clone(),
+            file_contents,
+            directory_tree,
+            codebase_structure: payload.file_contents_summary.clone(),
+            system_prompt_override: payload.system_prompt_override.clone(),
         };
-
-        info!("Enhanced Guidance Generation prompt composition for job {}", job.id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
-        info!("Context sections: {:?}", composed_prompt.context_sections);
-        if let Some(tokens) = composed_prompt.estimated_tokens {
-            info!("Estimated tokens: {}", tokens);
-        }
-
-        // Extract system and user parts from the composed prompt
-        let (system_prompt, user_prompt, system_prompt_id) = 
-            job_processor_utils::extract_prompts_from_composed(&composed_prompt);
         
-        // Build messages array
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
+        debug!("Sending guidance generation request with model: {}", model_used);
         
-        // Create API options
-        let api_options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
-        
-        debug!("Sending guidance generation request with options: {:?}", api_options);
-        
-        // Call the LLM API
-        let api_options_clone = api_options.clone();
-        match job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await {
-            Ok(llm_response) => {
+        // Execute LLM task using the task runner
+        match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(llm_result) => {
                 debug!("Received guidance response");
+                info!("System prompt ID: {}", llm_result.system_prompt_id);
                 
-                if let Some(choice) = llm_response.choices.first() {
-                    let content = &choice.message.content;
-                    let usage_clone = llm_response.usage.clone();
-                    
-                    // Finalize job success
-                    job_processor_utils::finalize_job_success(
-                        &job.id,
-                        &repo,
-                        content,
-                        llm_response.usage,
-                        &api_options_clone.model,
-                        &system_prompt_id,
-                        None,
-                    ).await?;
-                    
-                    Ok(JobProcessResult::success(job.id.clone(), content.clone())
-                        .with_tokens(
-                            usage_clone.as_ref().map(|u| u.prompt_tokens as i32),
-                            usage_clone.as_ref().map(|u| u.completion_tokens as i32),
-                            usage_clone.as_ref().map(|u| u.total_tokens as i32),
-                            Some(content.len() as i32)
-                        ))
-                } else {
-                    let error_msg = "No content in LLM response".to_string();
-                    error!("{}", error_msg);
-                    job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
-                    
-                    Ok(JobProcessResult::failure(job.id.clone(), error_msg))
-                }
+                // Finalize job success using task runner
+                task_runner.finalize_success(
+                    &repo,
+                    &job.id,
+                    &llm_result,
+                    None,
+                ).await?;
+                
+                Ok(JobProcessResult::success(job.id.clone(), llm_result.response.clone())
+                    .with_tokens(
+                        llm_result.usage.as_ref().map(|u| u.prompt_tokens as i32),
+                        llm_result.usage.as_ref().map(|u| u.completion_tokens as i32),
+                        llm_result.usage.as_ref().map(|u| u.total_tokens as i32),
+                        Some(llm_result.response.len() as i32)
+                    ))
             },
             Err(e) => {
-                let error_msg = format!("LLM API error: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
                 error!("{}", error_msg);
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg).await?;
                 
                 Ok(JobProcessResult::failure(job.id.clone(), error_msg))
             }

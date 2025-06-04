@@ -1,22 +1,20 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::collections::HashMap;
-use std::str::FromStr;
 use log::{debug, info, warn, error};
 use serde_json::json;
 use tauri::AppHandle;
 
-// Note: Truncation constants removed - full content is now sent to LLM
 use crate::config;
 use crate::error::{AppError, AppResult};
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult};
-use crate::jobs::processors::path_finder_types::{PathFinderResult, PathFinderOptions};
-use crate::models::{JobStatus, TaskType};
+use crate::jobs::processors::path_finder_types::PathFinderOptions;
 use crate::utils::path_utils;
 use crate::utils::fs_utils;
 use crate::utils::token_estimator::{estimate_tokens, estimate_structured_data_tokens, estimate_code_tokens};
-use crate::utils::get_timestamp;
 use crate::jobs::job_processor_utils;
+use crate::jobs::processors::utils::{fs_context_utils, response_parser_utils};
+use crate::jobs::processors::{LlmTaskRunner, LlmTaskConfigBuilder, LlmPromptContext};
 
 pub struct PathFinderProcessor;
 
@@ -25,8 +23,29 @@ impl PathFinderProcessor {
         Self {}
     }
     
-    
-    
+    /// Validate paths against the file system
+    async fn validate_paths_against_filesystem(&self, paths: &[String], project_directory: &str) -> (Vec<String>, Vec<String>) {
+        let mut validated_paths = Vec::new();
+        let mut invalid_paths = Vec::new();
+        
+        for relative_path in paths {
+            // Construct absolute path
+            let absolute_path = Path::new(project_directory).join(relative_path);
+            
+            // Check if file exists and is a file
+            match tokio::fs::metadata(&absolute_path).await {
+                Ok(metadata) if metadata.is_file() => {
+                    validated_paths.push(relative_path.clone());
+                },
+                _ => {
+                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
+                    invalid_paths.push(relative_path.clone());
+                }
+            }
+        }
+        
+        (validated_paths, invalid_paths)
+    }
 }
 
 #[async_trait::async_trait]
@@ -67,12 +86,12 @@ impl JobProcessor for PathFinderProcessor {
                 tree.clone()
             } else {
                 info!("Generating directory tree for project");
-                job_processor_utils::generate_directory_tree_for_context(project_directory)
+                fs_context_utils::generate_directory_tree_for_context(project_directory)
                     .await.unwrap_or_else(|| "Directory tree generation failed".to_string())
             }
         } else {
             info!("Generating directory tree for project");
-            job_processor_utils::generate_directory_tree_for_context(project_directory)
+            fs_context_utils::generate_directory_tree_for_context(project_directory)
                 .await.unwrap_or_else(|| "Directory tree generation failed".to_string())
         };
         
@@ -174,150 +193,30 @@ impl JobProcessor for PathFinderProcessor {
             }
         }
         
-        // We'll do token management and content reduction first, then call UnifiedPromptProcessor at the end
-        // Store variables for final prompt composition
-        let mut final_task_description = payload.task_description.clone();
-        let mut final_directory_tree = directory_tree.clone();
-        let mut final_file_contents = relevant_file_contents.clone();
+        // Store final prompt composition variables
+        let final_task_description = payload.task_description.clone();
+        let final_directory_tree = directory_tree.clone();
+        let final_file_contents = relevant_file_contents.clone();
         
-        // Estimate tokens for the request (using placeholder for system prompt)
-        let estimated_input_tokens = crate::utils::token_estimator::estimate_path_finder_tokens(
-            &final_task_description,
-            "", // We'll get the real system prompt later
-            &final_directory_tree,
-            &final_file_contents
-        );
+        // Setup LLM task configuration
+        let llm_config = LlmTaskConfigBuilder::new()
+            .model(model_used.clone())
+            .temperature(temperature)
+            .max_tokens(max_output_tokens)
+            .stream(false)
+            .build();
         
-        info!("Estimated input tokens: {}", estimated_input_tokens);
+        // Create LLM task runner
+        let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
-        // Use the model from BackgroundJob (already extracted above)
-        let effective_model = model_used.clone();
-        
-        // Get max tokens from server config
-        let max_allowed_model_tokens = config::get_model_context_window(&effective_model)?;
-        
-        // Calculate max input tokens for model (context window minus output tokens and buffer)
-        // Use the max_output_tokens from BackgroundJob (already extracted above)
-        let max_output_tokens_for_calc = max_output_tokens;
-        
-        // Get token_limit_buffer from config - server configuration is required
-        let token_limit_buffer = config::get_path_finder_token_limit_buffer_async(&app_handle).await
-            .map_err(|e| AppError::ConfigError(format!("Failed to get path finder token limit buffer from server config: {}", e)))?;
-            
-        let max_input_tokens_for_model = max_allowed_model_tokens as i32 - max_output_tokens_for_calc as i32 - token_limit_buffer as i32;
-        
-        // Check estimated token count to ensure we're not over limits
-        if estimated_input_tokens > max_input_tokens_for_model as u32 {
-            warn!("Estimated input tokens ({}) exceeds max allowed input tokens ({}) for model {} in job {}. Will apply reduction strategies", 
-                  estimated_input_tokens, max_input_tokens_for_model, effective_model, payload.background_job_id);
-        }
-        
-        // Start generating user prompt with file contents
-        let mut task_description = payload.task_description.clone();
-        let mut directory_tree_content = directory_tree.clone();
-        let mut file_contents_xml_str = String::new();
-        
-        // Get values from config
-        let config_max_files = config::get_path_finder_max_files_with_content_async(&app_handle).await
-            .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder max_files_with_content setting: {}. Please ensure server database is properly configured.", e)))?;
-        
-        // Initialize with values from options or config/constants
-        let max_files_with_content = options.max_files_with_content.unwrap_or(config_max_files);
-        
-        // Function to generate file contents XML (no truncation)
-        let generate_file_contents_xml = |relevant_files: &HashMap<String, String>, max_files: usize| -> String {
-            let mut xml_str = String::new();
-            xml_str.push_str("<file_contents>\n");
-            
-            let mut file_count = 0;
-            for (file_path, content) in relevant_files {
-                if file_count >= max_files {
-                    break;
-                }
-                
-                // Use full content - no truncation
-                xml_str.push_str(&format!(
-                    "  <file path=\"{}\"><![CDATA[{}]]></file>\n", 
-                    file_path, 
-                    content
-                ));
-                
-                file_count += 1;
-            }
-            
-            xml_str.push_str("</file_contents>");
-            xml_str
+        // Create prompt context
+        let prompt_context = LlmPromptContext {
+            task_description: final_task_description,
+            file_contents: if final_file_contents.is_empty() { None } else { Some(final_file_contents) },
+            directory_tree: Some(final_directory_tree),
+            codebase_structure: None,
+            system_prompt_override: None,
         };
-        
-        // Get include_file_contents setting from config
-        let include_file_contents = config::get_path_finder_include_file_contents()
-            .map_err(|e| AppError::ConfigError(format!("Failed to get path_finder include_file_contents setting: {}. Please ensure server database is properly configured.", e)))?;
-        
-        // Create initial file contents XML if needed
-        if options.include_file_contents.unwrap_or(include_file_contents) && !relevant_file_contents.is_empty() {
-            info!("Including file contents in the prompt");
-            file_contents_xml_str = generate_file_contents_xml(
-                &relevant_file_contents, 
-                max_files_with_content
-            );
-        }
-        
-        // We'll generate the final prompt after token reduction
-        // For now, estimate tokens without the actual prompts
-        let initial_estimated_tokens = estimated_input_tokens;
-        
-        // Use the max_input_tokens_for_model calculated earlier as our limit
-        let max_allowable_tokens = max_input_tokens_for_model;
-        
-        info!("Initial token estimate: {} with max allowable tokens {} for model {}", 
-            initial_estimated_tokens, max_allowable_tokens, effective_model);
-        
-        // Log warning if estimated tokens exceed limits but proceed with full content
-        if initial_estimated_tokens > max_allowable_tokens as u32 {
-            warn!("Estimated input tokens ({}) exceeds max allowed input tokens ({}) for model {} in job {}. Proceeding with full content - API provider will handle rejection if necessary", 
-                initial_estimated_tokens, max_allowable_tokens, effective_model, payload.background_job_id);
-        }
-        
-        // Get session name for complete context
-        let session_name = job_processor_utils::get_session_name(&job.session_id, &app_handle).await?;
-        
-        // Now generate the final prompt using the standardized helper
-        info!("Generating final prompt with full content (no truncation)");
-        
-        let composed_prompt = job_processor_utils::build_unified_prompt(
-            &job,
-            &app_handle,
-            final_task_description,
-            None,
-            if final_file_contents.is_empty() { None } else { Some(final_file_contents) },
-            Some(final_directory_tree),
-            &settings_repo,
-            &model_used,
-        ).await?;
-
-        info!("Enhanced Path Finder prompt composition for job {}", job.id);
-        info!("System prompt ID: {}", composed_prompt.system_prompt_id);
-        info!("Context sections: {:?}", composed_prompt.context_sections);
-        if let Some(tokens) = composed_prompt.estimated_tokens {
-            info!("Final estimated tokens: {}", tokens);
-        }
-
-        // Extract system and user prompts from the composed result
-        let (system_prompt, user_prompt, system_prompt_id) = job_processor_utils::extract_prompts_from_composed(&composed_prompt);
-        
-        // Create messages for the LLM
-        let messages = job_processor_utils::create_openrouter_messages(&system_prompt, &user_prompt);
-        
-        // Get the model from the payload or config
-        let model = effective_model.clone();
-        
-        // Create API client options using standardized helper
-        let api_options = job_processor_utils::create_api_client_options(
-            model_used.clone(),
-            temperature,
-            max_output_tokens,
-            false,
-        )?;
         
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -325,70 +224,37 @@ impl JobProcessor for PathFinderProcessor {
             return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Call LLM using standardized helper
-        info!("Calling LLM for path finding with model {}", &api_options.model);
-        let llm_response = job_processor_utils::execute_llm_chat_completion(&app_handle, messages, api_options).await?;
+        // Execute LLM task using the task runner
+        info!("Calling LLM for path finding with model {}", model_used);
+        let llm_result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("LLM task execution failed: {}", e);
+                let error_msg = format!("LLM task execution failed: {}", e);
+                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
+                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+            }
+        };
         
-        // Extract the response content
-        let response_content = llm_response.choices[0].message.content.clone();
+        info!("LLM task completed successfully for job {}", job.id);
+        info!("System prompt ID: {}", llm_result.system_prompt_id);
         
         // Parse paths from the LLM response using standardized utility
-        let raw_paths = match job_processor_utils::parse_paths_from_text_response(&response_content, project_directory) {
+        let raw_paths = match response_parser_utils::parse_paths_from_text_response(&llm_result.response, project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 error!("Failed to parse paths from response: {}", e);
                 let error_msg = format!("Failed to parse paths from response: {}", e);
-                
-                // Update job to failed using helper
-                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
-                
+                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
                 return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
             }
         };
 
-        // Validate paths against the file system
+        // Validate paths against the file system using helper method
         info!("Validating {} parsed paths against filesystem...", raw_paths.len());
-        let mut validated_paths = Vec::new();
-        let mut unverified_paths_raw = Vec::new();
+        let (validated_paths, unverified_paths_raw) = self.validate_paths_against_filesystem(&raw_paths, project_directory).await;
 
-        for relative_path in raw_paths {
-            // Construct absolute path
-            let absolute_path = Path::new(project_directory).join(&relative_path);
-            
-            // Check if file exists and is a file
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    validated_paths.push(relative_path);
-                },
-                _ => {
-                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
-                    unverified_paths_raw.push(relative_path);
-                }
-            }
-        }
-
-        // Create simplified PathFinderResult
-        let mut result = PathFinderResult::new();
-        result.paths = validated_paths.clone();
-        result.all_files = validated_paths.clone();
-        result.count = validated_paths.len();
-        result.unverified_paths = unverified_paths_raw;
-        
-        // Build files_by_directory from validated paths
-        for file_path in &validated_paths {
-            let path = Path::new(file_path);
-            if let Some(parent) = path.parent() {
-                let parent_str = parent.to_string_lossy().to_string();
-                let entry = result.files_by_directory.entry(parent_str).or_insert_with(Vec::new);
-                if let Some(file_name) = path.file_name() {
-                    entry.push(file_name.to_string_lossy().to_string());
-                }
-            } else {
-                // File is in the root directory, use empty string as parent
-                let entry = result.files_by_directory.entry("".to_string()).or_insert_with(Vec::new);
-                entry.push(file_path.clone());
-            }
-        }
+        info!("Path validation: {} valid, {} invalid paths", validated_paths.len(), unverified_paths_raw.len());
 
         // Check if job has been canceled after LLM processing using helper
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
@@ -396,58 +262,27 @@ impl JobProcessor for PathFinderProcessor {
             return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
-        // Create a human-readable display of the results
-        let mut paths_list_display = String::new();
-        
-        // Add validated files section
-        if !validated_paths.is_empty() {
-            paths_list_display.push_str("Validated Files:\n");
-            for path in &validated_paths {
-                paths_list_display.push_str(&format!("- {}\n", path));
-            }
-            paths_list_display.push_str("\n");
-        }
-        
-        // Add unverified paths section
-        if !result.unverified_paths.is_empty() {
-            paths_list_display.push_str("Unverified or Non-existent Files Suggested by AI:\n");
-            for path in &result.unverified_paths {
-                paths_list_display.push_str(&format!("- {}\n", path));
-            }
-            paths_list_display.push_str("\n");
-        }
-        
-        // If no results were found, show fallback message
-        if validated_paths.is_empty() && result.unverified_paths.is_empty() {
-            paths_list_display = "No relevant files found for this task.".to_string();
-        }
-        
-        // Create response string with validated paths (one per line)
-        let response_string = validated_paths.join("\n");
-        
-        // Final check if job has been canceled using helper
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} was canceled before completion", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
-        }
-
-        // Store simplified PathFinderResult as metadata
-        let metadata_json = json!({
-            "pathFinderData": serde_json::to_value(&result).unwrap_or_default()
+        // Create standardized JSON response with verifiedPaths and unverifiedPaths structure
+        let response_json_content = serde_json::json!({
+            "verifiedPaths": validated_paths,
+            "unverifiedPaths": unverified_paths_raw,
+            "count": validated_paths.len(),
+            "summary": format!("Path finding: {} verified paths found", validated_paths.len())
         });
         
-        // Finalize job success using helper
-        job_processor_utils::finalize_job_success(
-            &payload.background_job_id,
+        // Create a modified LLM result with our JSON response
+        let mut modified_llm_result = llm_result.clone();
+        modified_llm_result.response = response_json_content.to_string();
+        
+        // Finalize job success using task runner with structured response
+        task_runner.finalize_success(
             &repo,
-            &response_string,
-            llm_response.usage,
-            &model,
-            &system_prompt_id,
-            Some(metadata_json),
+            &payload.background_job_id,
+            &modified_llm_result,
+            Some(response_json_content.clone()),
         ).await?;
         
-        // Return success result with human-readable display
-        Ok(JobProcessResult::success(payload.background_job_id.clone(), paths_list_display))
+        // Return success result with JSON response
+        Ok(JobProcessResult::success(payload.background_job_id.clone(), response_json_content.to_string()))
     }
 }

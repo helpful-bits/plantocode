@@ -199,26 +199,6 @@ if [[ "$VERBOSE" == true ]]; then
     log_info "📄 File checksum: $CHECKSUM"
 fi
 
-# Check if migration has already been executed
-EXISTING_CHECKSUM=$(psql "$DATABASE_URL" -t -c "SELECT checksum FROM schema_migrations WHERE filename = '$FILENAME';" 2>/dev/null | xargs || echo "")
-
-if [[ -n "$EXISTING_CHECKSUM" ]]; then
-    if [[ "$EXISTING_CHECKSUM" == "$CHECKSUM" ]]; then
-        log_warning "⏭️  Migration '$FILENAME' already executed with same checksum, skipping"
-        exit 0
-    else
-        log_warning "⚠️  Migration '$FILENAME' was executed before but with different content"
-        log_warning "Previous checksum: $EXISTING_CHECKSUM"
-        log_warning "Current checksum:  $CHECKSUM"
-        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Migration cancelled by user"
-            exit 0
-        fi
-    fi
-fi
-
 if [[ "$DRY_RUN" == true ]]; then
     log_info "🔍 DRY RUN - Would execute migration: $FILENAME"
     log_info "📄 File contents:"

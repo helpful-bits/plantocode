@@ -16,7 +16,7 @@ export { type TaskType, TaskTypeDetails };
 
 /**
  * Interface defining structured job metadata
- * Aligned with backend JobWorkerMetadata structure
+ * Aligned with backend JobWorkerMetadata structure from desktop/src-tauri/src/jobs/types.rs
  */
 export interface JobMetadata {
   // Core fields from JobWorkerMetadata - top level workflow metadata
@@ -25,38 +25,18 @@ export interface JobMetadata {
   jobPriorityForWorker?: number;
   workflowId?: string;
   workflowStage?: string; // e.g., "DirectoryTreeGeneration", "PathFinding", "ResultProcessing"
-  additionalParams?: any; // Additional metadata from backend
+  
+  // Additional parameters from backend - contains dynamic/custom metadata
+  additionalParams?: Record<string, any>;
+
+  // New field: Parsed jobPayloadForWorker for easier UI access
+  parsedJobPayload?: any; // Deserialized jobPayloadForWorker content for easier component access
 
   // Common extracted fields for UI convenience - extracted from jobPayloadForWorker
   backgroundJobId?: string;
   sessionId?: string;
   taskDescription?: string;
   projectDirectory?: string;
-  targetField?: string; // Extracted from jobPayloadForWorker.data.targetField
-
-  // Streaming fields
-  isStreaming?: boolean;
-  streamProgress?: number; // Percentage 0-100
-  responseLength?: number; // Characters received so far
-  estimatedTotalLength?: number; // Estimated total characters for progress calculation
-  lastStreamUpdateTime?: number; // Timestamp of last stream update
-  streamStartTime?: number; // Timestamp when streaming started
-
-  // Output fields
-  outputPath?: string; // For implementation plans, file outputs, etc.
-  sessionName?: string; // For implementation plans and session-related tasks
-
-  // Retry and error handling
-  retryCount?: number;
-  errors?: Array<{
-    attempt: number;
-    time: string;
-    message: string;
-  }>;
-
-  // Model and token information
-  modelUsed?: string;
-  tokensUsed?: number;
 
   // Allow additional dynamic fields for extensibility
   [key: string]: unknown;
@@ -117,8 +97,8 @@ export type Session = {
   isRegexActive: boolean; // Whether regex filtering is active
   updatedAt?: number; // Timestamp of last update (managed by repository)
   createdAt: number; // Timestamp when the session was created
-  includedFiles: string[]; // Paths relative to projectDirectory that are selected
-  forceExcludedFiles: string[]; // Paths forced excluded even if they match inclusion criteria
+  includedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) that are selected
+  forceExcludedFiles: string[]; // Array of comparablePath strings (normalized, project-relative paths) forced excluded even if they match inclusion criteria
   backgroundJobs?: BackgroundJob[]; // Associated background jobs
   codebaseStructure?: string; // ASCII structure of codebase
   searchSelectedFilesOnly: boolean; // Whether to search only in selected files

@@ -10,13 +10,13 @@ use bigdecimal::{ToPrimitive, BigDecimal, FromPrimitive};
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpendingStatusResponse {
-    pub current_spending: f64,
-    pub included_allowance: f64,
-    pub remaining_allowance: f64,
-    pub overage_amount: f64,
+    pub current_spending: String,
+    pub included_allowance: String,
+    pub remaining_allowance: String,
+    pub overage_amount: String,
     pub usage_percentage: f64,
     pub services_blocked: bool,
-    pub hard_limit: f64,
+    pub hard_limit: String,
     pub next_billing_date: String,
     pub currency: String,
     pub alerts: Vec<SpendingAlertResponse>,
@@ -27,8 +27,8 @@ pub struct SpendingStatusResponse {
 pub struct SpendingAlertResponse {
     pub id: String,
     pub alert_type: String,
-    pub threshold_amount: f64,
-    pub current_spending: f64,
+    pub threshold_amount: String,
+    pub current_spending: String,
     pub alert_sent_at: String,
     pub acknowledged: bool,
 }
@@ -57,22 +57,22 @@ pub async fn get_spending_status(
     // Get spending status from billing service
     let spending_status = billing_service.get_spending_status(&user_id.0).await?;
     
-    // Convert BigDecimal to f64 for JSON response
+    // Convert BigDecimal to String for JSON response
     let response = SpendingStatusResponse {
-        current_spending: spending_status.current_spending.to_f64().unwrap_or(0.0),
-        included_allowance: spending_status.included_allowance.to_f64().unwrap_or(0.0),
-        remaining_allowance: spending_status.remaining_allowance.to_f64().unwrap_or(0.0),
-        overage_amount: spending_status.overage_amount.to_f64().unwrap_or(0.0),
+        current_spending: spending_status.current_spending.to_string(),
+        included_allowance: spending_status.included_allowance.to_string(),
+        remaining_allowance: spending_status.remaining_allowance.to_string(),
+        overage_amount: spending_status.overage_amount.to_string(),
         usage_percentage: spending_status.usage_percentage,
         services_blocked: spending_status.services_blocked,
-        hard_limit: spending_status.hard_limit.to_f64().unwrap_or(0.0),
+        hard_limit: spending_status.hard_limit.to_string(),
         next_billing_date: spending_status.next_billing_date.to_rfc3339(),
         currency: spending_status.currency,
         alerts: spending_status.alerts.into_iter().map(|alert| SpendingAlertResponse {
             id: alert.id.to_string(),
             alert_type: alert.alert_type,
-            threshold_amount: alert.threshold_amount.to_f64().unwrap_or(0.0),
-            current_spending: alert.current_spending.to_f64().unwrap_or(0.0),
+            threshold_amount: alert.threshold_amount.to_string(),
+            current_spending: alert.current_spending.to_string(),
             alert_sent_at: alert.alert_sent_at.to_rfc3339(),
             acknowledged: alert.acknowledged,
         }).collect(),
@@ -186,9 +186,9 @@ pub async fn update_spending_limits(
     #[derive(serde::Serialize)]
     #[serde(rename_all = "camelCase")]
     struct UpdatedLimitsInfo {
-        monthly_allowance: f64,
-        hard_limit: f64,
-        current_spending: f64,
+        monthly_allowance: String,
+        hard_limit: String,
+        current_spending: String,
         services_blocked: bool,
     }
     
@@ -196,9 +196,9 @@ pub async fn update_spending_limits(
         success: true,
         message: "Spending limits updated successfully".to_string(),
         updated_limits: UpdatedLimitsInfo {
-            monthly_allowance: current_limit.included_allowance.to_f64().unwrap_or(0.0),
-            hard_limit: current_limit.hard_limit.to_f64().unwrap_or(0.0),
-            current_spending: current_limit.current_spending.to_f64().unwrap_or(0.0),
+            monthly_allowance: current_limit.included_allowance.to_string(),
+            hard_limit: current_limit.hard_limit.to_string(),
+            current_spending: current_limit.current_spending.to_string(),
             services_blocked: current_limit.services_blocked,
         },
     };
@@ -255,7 +255,7 @@ pub async fn get_spending_history(
     #[serde(rename_all = "camelCase")]
     struct SpendingHistoryEntry {
         period: String,
-        total_cost: f64,
+        total_cost: String,
         total_tokens_input: i64,
         total_tokens_output: i64,
         request_count: i32,
@@ -267,11 +267,11 @@ pub async fn get_spending_history(
     #[serde(rename_all = "camelCase")]
     struct SpendingHistoryResponse {
         total_periods: usize,
-        total_spending: f64,
+        total_spending: String,
         monthly_breakdown: Vec<SpendingHistoryEntry>,
         currency: String,
-        monthly_average: f64,
-        projected_month_end: f64,
+        monthly_average: String,
+        projected_month_end: String,
         spending_trend: String,
         cost_per_request: f64,
         cost_per_token: f64,
@@ -282,7 +282,7 @@ pub async fn get_spending_history(
     let monthly_breakdown: Vec<SpendingHistoryEntry> = analytics.trends.into_iter().map(|trend| {
         SpendingHistoryEntry {
             period: trend.period_start.format("%Y-%m").to_string(),
-            total_cost: trend.total_spending.to_f64().unwrap_or(0.0),
+            total_cost: trend.total_spending.to_string(),
             total_tokens_input: 0, // Would need to be calculated from api_usage
             total_tokens_output: 0, // Would need to be calculated from api_usage
             request_count: trend.total_requests,
@@ -293,14 +293,14 @@ pub async fn get_spending_history(
     
     let response = SpendingHistoryResponse {
         total_periods: monthly_breakdown.len(),
-        total_spending: analytics.summary.total_spending.to_f64().unwrap_or(0.0),
+        total_spending: analytics.summary.total_spending.to_string(),
         monthly_breakdown,
         currency: analytics.current_status.currency,
-        monthly_average: analytics.monthly_average.to_f64().unwrap_or(0.0),
-        projected_month_end: analytics.projected_month_end_spending.to_f64().unwrap_or(0.0),
+        monthly_average: analytics.monthly_average.to_string(),
+        projected_month_end: analytics.projected_month_end_spending.to_string(),
         spending_trend: analytics.spending_trend,
-        cost_per_request: analytics.cost_per_request,
-        cost_per_token: analytics.cost_per_token,
+        cost_per_request: analytics.cost_per_request.parse().unwrap_or(0.0),
+        cost_per_token: analytics.cost_per_token.parse().unwrap_or(0.0),
         days_until_limit: analytics.days_until_limit,
     };
     

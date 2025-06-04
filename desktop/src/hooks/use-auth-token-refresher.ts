@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { type User } from '@/auth/auth-context-interface';
+import { type FrontendUser } from '@/types';
 import { useAuth } from '@/contexts/auth-context';
 import { createLogger } from '@/utils/logger';
 import { logError } from '@/utils/error-handling';
@@ -14,7 +14,7 @@ const logger = createLogger({ namespace: "AuthTokenRefresher" });
  * This hook calculates the optimal refresh interval based on the token's expiry time,
  * refreshing 5 minutes before expiry. Falls back to 50-minute intervals if expiry is unknown.
  */
-export function useAuthTokenRefresher(user: User | undefined) {
+export function useAuthTokenRefresher(user: FrontendUser | undefined) {
   const { token, tokenExpiresAt, signOut } = useAuth();
   const refreshIntervalRef = useRef<number | null>(null);
 

@@ -1,21 +1,14 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
-
-// Helper function to identify local/filesystem tasks
-const isLocalTask = (taskType: string): boolean => {
-  const localTaskTypes = [
-    "local_file_filtering",
-    "directory_tree_generation",
-    "file_finder_workflow"
-  ];
-  return localTaskTypes.includes(taskType);
-};
+import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
 
 export function JobDetailsCostUsageSection() {
   const { job } = useJobDetailsContext();
   // Don't render for filesystem/local jobs
-  if (job.apiType === "filesystem" || isLocalTask(job.taskType)) {
+  const isLocalTask = job.apiType === "filesystem" || (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false);
+  
+  if (isLocalTask) {
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -40,7 +33,7 @@ export function JobDetailsCostUsageSection() {
   
   const inputTokens = job.tokensSent || 0;
   const outputTokens = job.tokensReceived || 0;
-  const totalTokens = inputTokens + outputTokens;
+  const totalTokens = (job.totalTokens && job.totalTokens > 0) ? job.totalTokens : (inputTokens + outputTokens);
   
   // Show cost data only if we have actual costs, not estimates
   const hasCostData = totalCost > 0;

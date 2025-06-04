@@ -89,19 +89,19 @@ pub async fn generate_guidance_command(
         system_prompt_override: args.system_prompt_override.clone(),
     };
     
-    // Create additional metadata for the job
-    let mut extra_metadata = serde_json::json!({
+    // Create additional params for the job
+    let mut additional_params = serde_json::json!({
         "taskDescription": args.task_description,
     });
     
-    // Add optional fields to metadata
+    // Add optional fields to additional params
     if let Some(paths) = &args.paths {
-        extra_metadata["paths"] = serde_json::to_value(paths)
+        additional_params["paths"] = serde_json::to_value(paths)
             .map_err(|e| AppError::SerdeError(e.to_string()))?;
     }
     
     if let Some(file_contents_summary) = &args.file_contents_summary {
-        extra_metadata["fileContentsSummary"] = serde_json::to_value(file_contents_summary)
+        additional_params["fileContentsSummary"] = serde_json::to_value(file_contents_summary)
             .map_err(|e| AppError::SerdeError(e.to_string()))?;
     }
     
@@ -118,7 +118,7 @@ pub async fn generate_guidance_command(
         2, // Priority
         None, // No workflow_id
         None, // No workflow_stage
-        Some(extra_metadata),
+        Some(additional_params),
         &app_handle,
     ).await?;
     

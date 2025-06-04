@@ -115,6 +115,7 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
     warningThreshold = 100000, // 100KB
     ...props
   }, ref) => {
+    const [editorContainerRef, setEditorContainerRef] = useState<HTMLDivElement | null>(null);
     const { showNotification } = useNotification();
     const resolvedTheme = useResolvedTheme();
 
@@ -213,6 +214,53 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
       }
     };
 
+    // Handle wheel events to prevent scroll propagation conflicts
+    const handleWheel = useCallback((e: WheelEvent) => {
+      const target = e.currentTarget as HTMLElement;
+      if (!target) return;
+
+      // Check if we're scrolling within the editor bounds
+      const editorContainer = target.querySelector('.monaco-editor');
+      if (!editorContainer) return;
+
+      const rect = editorContainer.getBoundingClientRect();
+      const isWithinEditor = (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      );
+
+      if (isWithinEditor) {
+        // Get the editor's scroll container
+        const scrollContainer = editorContainer.querySelector('.monaco-scrollable-element');
+        if (scrollContainer) {
+          const scrollTop = scrollContainer.scrollTop;
+          const scrollHeight = scrollContainer.scrollHeight;
+          const clientHeight = scrollContainer.clientHeight;
+          
+          // Determine if we're at scroll boundaries
+          const isAtTop = scrollTop <= 0;
+          const isAtBottom = scrollTop + clientHeight >= scrollHeight;
+          
+          // Prevent propagation if we're not at scroll boundaries or if scrolling within bounds
+          if ((!isAtTop && e.deltaY < 0) || (!isAtBottom && e.deltaY > 0)) {
+            e.stopPropagation();
+          }
+        }
+      }
+    }, []);
+
+    // Add wheel event listener to prevent scroll conflicts
+    useEffect(() => {
+      if (!editorContainerRef) return;
+
+      editorContainerRef.addEventListener('wheel', handleWheel, { passive: false });
+      return () => {
+        editorContainerRef.removeEventListener('wheel', handleWheel);
+      };
+    }, [handleWheel, editorContainerRef]);
+
     if (isLoading) {
       return (
         <div 
@@ -243,7 +291,14 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
 
     return (
       <div 
-        ref={ref} 
+        ref={(element) => {
+          setEditorContainerRef(element);
+          if (typeof ref === 'function') {
+            ref(element);
+          } else if (ref) {
+            ref.current = element;
+          }
+        }}
         className={cn("relative border border-border/20 rounded-lg bg-card overflow-hidden", className)}
         style={{ height }}
         {...props}
@@ -283,7 +338,14 @@ const VirtualizedCodeViewer = forwardRef<HTMLDivElement, VirtualizedCodeViewerPr
 
 
         {/* Monaco Editor */}
-        <div className="flex-1" style={{ height: `calc(${height} - 40px)` }}>
+        <div 
+          className="flex-1" 
+          style={{ 
+            height: `calc(${height} - 40px)`,
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
           <Editor
             value={content}
             language={contentMetrics.detectedLanguage}

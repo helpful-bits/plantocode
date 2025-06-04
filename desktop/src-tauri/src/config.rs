@@ -359,7 +359,6 @@ fn extract_model_from_project_settings(settings_json: &str, task_type: TaskType)
         TaskType::ExtendedPathFinder => "extendedPathFinder",
         TaskType::ExtendedPathCorrection => "extendedPathCorrection",
         // Local tasks don't have model settings
-        TaskType::DirectoryTreeGeneration => return None,
         TaskType::LocalFileFiltering => return None,
         _ => return None,
     };
@@ -395,7 +394,6 @@ fn extract_temperature_from_project_settings(settings_json: &str, task_type: Tas
         TaskType::ExtendedPathFinder => "extendedPathFinder",
         TaskType::ExtendedPathCorrection => "extendedPathCorrection",
         // Local tasks don't have temperature settings
-        TaskType::DirectoryTreeGeneration => return None,
         TaskType::LocalFileFiltering => return None,
         _ => return None,
     };
@@ -431,7 +429,6 @@ fn extract_max_tokens_from_project_settings(settings_json: &str, task_type: Task
         TaskType::ExtendedPathFinder => "extendedPathFinder",
         TaskType::ExtendedPathCorrection => "extendedPathCorrection",
         // Local tasks don't have max_tokens settings
-        TaskType::DirectoryTreeGeneration => return None,
         TaskType::LocalFileFiltering => return None,
         _ => return None,
     };

@@ -4,15 +4,15 @@
  */
 
 // Core workflow stage definitions - aligned with backend WorkflowStage enum string representations
+// These match the SCREAMING_SNAKE_CASE enum variants from the Rust backend
 export type WorkflowStage =
-  | 'GENERATING_DIR_TREE'
   | 'GENERATING_REGEX'
   | 'LOCAL_FILTERING'
-  | 'INITIAL_PATH_FINDER'
-  | 'INITIAL_PATH_CORRECTION'
+  | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'
   | 'EXTENDED_PATH_CORRECTION';
 
+// Workflow status - matches backend WorkflowStatus string representations
 export type WorkflowStatus =
   | 'Created'
   | 'Running'
@@ -21,7 +21,7 @@ export type WorkflowStatus =
   | 'Failed'
   | 'Canceled';
 
-// Job status enum aligned with backend JobStatus
+// Job status enum aligned with backend JobStatus string representations
 export type JobStatus =
   | 'idle'
   | 'created'
@@ -78,16 +78,17 @@ export interface WorkflowCommandResponse {
   status: string;
 }
 
+// Response from get_file_finder_workflow_status command - matches WorkflowStatusResponse in backend
 export interface WorkflowStatusResponse {
   workflowId: string;
-  status: string; // String representation from backend
-  currentStage: string; // String representation from backend  
+  status: string; // String representation from backend (lowercase: "running", "completed", etc.)
+  currentStage: string; // Human-readable display name from WorkflowStage::display_name()
   progressPercentage: number;
-  stageStatuses: StageStatus[]; // Rich structure containing all stage information
+  stageStatuses: StageStatus[]; // All stages with their current status
   errorMessage?: string;
-  createdAt?: number;
-  updatedAt?: number;
-  completedAt?: number;
+  createdAt?: number; // Unix timestamp
+  updatedAt?: number; // Unix timestamp
+  completedAt?: number; // Unix timestamp
   totalExecutionTimeMs?: number; // Total workflow execution time
   sessionId?: string;
   taskDescription?: string;
@@ -96,17 +97,18 @@ export interface WorkflowStatusResponse {
   timeoutMs?: number;
 }
 
+// Stage status from backend - matches StageStatus struct in file_finder_workflow_commands.rs
 export interface StageStatus {
-  stageName: string;
-  jobId?: string; // Should be reliably available for failed stages
-  status: string;
+  stageName: string; // Human-readable display name from WorkflowStage::display_name()
+  jobId?: string; // Populated from WorkflowStageJob.job_id for active/completed stages
+  status: string; // String representation of JobStatus from backend
   progressPercentage: number;
-  startedAt?: string;
-  completedAt?: string;
+  startedAt?: string; // ISO string timestamp
+  completedAt?: string; // ISO string timestamp
   dependsOn?: string;
-  createdAt?: string;
+  createdAt?: string; // ISO string timestamp
   errorMessage?: string;
-  executionTimeMs?: number; // Execution time for this specific stage
+  executionTimeMs?: number; // Calculated execution time for this specific stage
   subStatusMessage?: string; // Detailed stage progress message
 }
 
@@ -124,6 +126,7 @@ export interface WorkflowIntermediateData {
   directoryTreeContent?: string;
   rawRegexPatterns?: any;
   locallyFilteredFiles: string[];
+  aiFilteredFiles: string[];
   initialVerifiedPaths: string[];
   initialUnverifiedPaths: string[];
   initialCorrectedPaths: string[];

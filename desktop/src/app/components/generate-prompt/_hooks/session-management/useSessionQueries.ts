@@ -75,7 +75,15 @@ export function useSessionQueries({
           return !deletedSessionIdsRef.current.has(String(session.id));
         });
 
-        setSessionsRef.current(filteredList as Session[], forceRefresh);
+        // Ensure sessions are sorted by updatedAt DESC (most recent first)
+        // This is a safety net in case backend ordering has issues
+        const sortedList = filteredList.sort((a, b) => {
+          const aTime = a.updatedAt || 0;
+          const bTime = b.updatedAt || 0;
+          return bTime - aTime; // DESC order (newest first)
+        });
+
+        setSessionsRef.current(sortedList as Session[], forceRefresh);
       } catch (_err) {
         setSessionsErrorRef.current("Failed to load sessions");
         setSessionsRef.current([], true);

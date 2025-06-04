@@ -21,15 +21,87 @@ mod utils;
 use crate::auth_stores::{PollingStore, Auth0StateStore};
 use crate::auth_stores::store_utils;
 use crate::config::AppSettings;
-use crate::db::connection::{create_pool, verify_connection};
+use crate::db::connection::{create_dual_pools, verify_connection, DatabasePools};
 use crate::db::{ApiUsageRepository, SubscriptionRepository, UserRepository, SettingsRepository, ModelRepository, SubscriptionPlanRepository};
-use crate::middleware::SecureAuthentication;
+use crate::middleware::{
+    SecureAuthentication, 
+    create_rate_limit_storage,
+    create_ip_rate_limiter, 
+    create_user_rate_limiter,
+    create_strict_rate_limiter,
+    start_memory_store_cleanup_task
+};
 use crate::models::runtime_config::AppState;
 use crate::services::auth::jwt;
 use crate::services::auth::oauth::Auth0OAuthService;
 use crate::services::billing_service::BillingService;
 use crate::services::proxy_service::ProxyService;
 use crate::routes::{configure_routes, configure_public_api_routes, configure_public_auth_routes, configure_webhook_routes};
+
+/// Validates AI model configurations at startup to catch misconfigurations early
+async fn validate_ai_model_configurations(
+    settings_repo: &SettingsRepository,
+    model_repo: &ModelRepository,
+) -> Result<(), String> {
+    // Fetch AI settings and available models
+    let ai_settings = settings_repo.get_ai_model_settings().await
+        .map_err(|e| format!("Failed to fetch AI model settings: {}", e))?;
+    
+    let available_models = model_repo.get_all_with_providers().await
+        .map_err(|e| format!("Failed to fetch available models: {}", e))?;
+    
+    // Create a map for quick lookups
+    let model_map: std::collections::HashMap<String, &crate::db::repositories::model_repository::ModelWithProvider> = 
+        available_models.iter().map(|m| (m.id.clone(), m)).collect();
+    
+    // Validate default models
+    validate_default_model(&ai_settings.default_llm_model_id, &model_map, "token_based", "default LLM")?;
+    validate_default_model(&ai_settings.default_voice_model_id, &model_map, "token_based", "default voice")?;
+    validate_default_model(&ai_settings.default_transcription_model_id, &model_map, "duration_based", "default transcription")?;
+    
+    // Validate task-specific models
+    for (task_name, task_config) in &ai_settings.task_specific_configs {
+        let model_id = &task_config.model;
+        
+        // Check if model exists
+        let model = model_map.get(model_id)
+            .ok_or_else(|| format!("Task '{}' references non-existent model: {}", task_name, model_id))?;
+        
+        // Validate pricing type based on task type
+        let expected_pricing_type = match task_name.as_str() {
+            "voice_transcription" => "duration_based",
+            _ => "token_based", // Most tasks use token-based pricing
+        };
+        
+        if model.pricing_type != expected_pricing_type {
+            return Err(format!(
+                "Task '{}' model '{}' has pricing type '{}' but expected '{}'",
+                task_name, model_id, model.pricing_type, expected_pricing_type
+            ));
+        }
+    }
+    
+    Ok(())
+}
+
+fn validate_default_model(
+    model_id: &str,
+    model_map: &std::collections::HashMap<String, &crate::db::repositories::model_repository::ModelWithProvider>,
+    expected_pricing_type: &str,
+    model_description: &str,
+) -> Result<(), String> {
+    let model = model_map.get(model_id)
+        .ok_or_else(|| format!("{} model '{}' does not exist in active models", model_description, model_id))?;
+    
+    if model.pricing_type != expected_pricing_type {
+        return Err(format!(
+            "{} model '{}' has pricing type '{}' but expected '{}'",
+            model_description, model_id, model.pricing_type, expected_pricing_type
+        ));
+    }
+    
+    Ok(())
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -72,27 +144,21 @@ async fn main() -> std::io::Result<()> {
     }
     log::info!("JWT keys initialized successfully");
     
-    // Database connection setup
-    let db_pool = match create_pool().await {
-        Ok(pool) => {
-            // Verify the database connection
-            if let Err(e) = verify_connection(&pool).await {
-                log::error!("Database connection verification failed: {}", e);
-                log::error!("Cannot start server without a working database connection");
-                std::process::exit(1);
-            }
-            log::info!("Database connection established successfully");
-            pool
+    // Database connection setup with dual pools
+    let db_pools = match create_dual_pools().await {
+        Ok(pools) => {
+            log::info!("Database dual pools established successfully");
+            pools
         },
         Err(e) => {
-            log::error!("Failed to create database connection pool: {}", e);
-            log::error!("Cannot start server without a working database connection");
+            log::error!("Failed to create database connection pools: {}", e);
+            log::error!("Cannot start server without working database connections");
             std::process::exit(1);
         }
     };
     
-    // Verify database is accessible and properly migrated
-    let settings_repo = SettingsRepository::new(db_pool.clone());
+    // Verify database is accessible and properly migrated using system pool
+    let settings_repo = SettingsRepository::new(db_pools.system_pool.clone());
     if let Err(e) = settings_repo.ensure_ai_settings_exist().await {
         log::error!("AI settings missing from database: {}", e);
         log::error!("Please run database migrations to populate AI settings.");
@@ -100,11 +166,19 @@ async fn main() -> std::io::Result<()> {
     }
     log::info!("Database AI settings verified - all configuration loaded dynamically from database");
     
+    // Validate AI model configurations using system pool
+    let model_repository = ModelRepository::new(std::sync::Arc::new(db_pools.system_pool.clone()));
+    if let Err(e) = validate_ai_model_configurations(&settings_repo, &model_repository).await {
+        log::error!("CRITICAL: AI model configuration validation failed: {}", e);
+        std::process::exit(1);
+    }
+    log::info!("AI model configurations validated successfully");
+    
     // Create app_settings (no AI model configuration - everything is database-driven)
     let app_settings = env_app_settings;
     
-    // Initialize Auth0 OAuth service
-    let auth0_oauth_service = Auth0OAuthService::new(&app_settings, db_pool.clone());
+    // Initialize Auth0 OAuth service with system pool (for Auth0 user lookups)
+    let auth0_oauth_service = Auth0OAuthService::new(&app_settings, db_pools.system_pool.clone());
     log::info!("Auth0 OAuth service initialized successfully");
     
     // Get server host and port from settings
@@ -136,29 +210,67 @@ async fn main() -> std::io::Result<()> {
     let auth0_state_store = Auth0StateStore::default();
     
     // Start cleanup task for polling store
-    store_utils::start_cleanup_task(polling_store.clone(), auth0_state_store.clone());
+    store_utils::start_cleanup_task(
+        polling_store.clone(),
+        auth0_state_store.clone(),
+        app_settings.auth_stores.polling_store_expiry_mins,
+        app_settings.auth_stores.auth0_state_store_expiry_mins,
+        app_settings.auth_stores.cleanup_interval_secs
+    );
     log::info!("Polling store and Auth0 state store cleanup tasks started");
     
     // Initialize reqwest HTTP client
     let http_client = reqwest::Client::new();
+    
+    // Initialize rate limiting storage (Redis or memory based on configuration)
+    let rate_limit_storage = match create_rate_limit_storage(&app_settings.rate_limit).await {
+        Ok(storage) => storage,
+        Err(e) => {
+            log::error!("Failed to initialize rate limiting storage: {}", e);
+            std::process::exit(1);
+        }
+    };
+    log::info!("Rate limiting storage initialized successfully");
+    
+    // Start rate limit memory store cleanup task if using memory storage
+    if let crate::middleware::rate_limiting::RateLimitStorage::Memory { ip_storage, user_storage } = &rate_limit_storage {
+        let ip_storage_clone = ip_storage.clone();
+        let user_storage_clone = user_storage.clone();
+        let window_duration = std::time::Duration::from_millis(app_settings.rate_limit.window_ms);
+        let cleanup_interval = app_settings.rate_limit.cleanup_interval_secs.unwrap_or(300);
 
-    HttpServer::new(move || {
+        tokio::spawn(async move {
+            start_memory_store_cleanup_task(
+                ip_storage_clone,
+                user_storage_clone,
+                window_duration,
+                cleanup_interval,
+            ).await;
+        });
+        log::info!("Rate limit memory store cleanup task started.");
+    }
+
+    let server = HttpServer::new(move || {
         // Clone the data for the factory closure
-        let db_pool = db_pool.clone();
+        let db_pools = db_pools.clone();
         let app_settings = app_settings.clone();
+        let rate_limit_storage = rate_limit_storage.clone();
         let auth0_oauth_service = web::Data::new(auth0_oauth_service.clone());
         let tera = web::Data::new(tera.clone());
         let polling_store = web::Data::new(polling_store.clone());
         let auth0_state_store = web::Data::new(auth0_state_store.clone());
         let http_client = web::Data::new(http_client.clone());
         
-        // Initialize repositories
-        let api_usage_repository = ApiUsageRepository::new(db_pool.clone());
-        let model_repository_for_proxy = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pool.clone())));
-        let settings_repository_for_proxy = std::sync::Arc::new(SettingsRepository::new(db_pool.clone()));
+        // Initialize repositories with appropriate pools
+        // User-specific operations use user pool (with RLS)
+        let api_usage_repository = ApiUsageRepository::new(db_pools.user_pool.clone());
         
-        // Initialize services
-        let billing_service = BillingService::new(db_pool.clone(), app_settings.clone());
+        // System operations use system pool
+        let model_repository_for_proxy = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
+        let settings_repository_for_proxy = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
+        
+        // Initialize services with dual pools
+        let billing_service = BillingService::new(db_pools.clone(), app_settings.clone());
         let cost_based_billing_service = billing_service.get_cost_based_billing_service().clone();
         let api_usage_repository = std::sync::Arc::new(api_usage_repository);
         let proxy_service = match ProxyService::new(
@@ -197,12 +309,17 @@ async fn main() -> std::io::Result<()> {
             .allow_any_method()
             .allow_any_header();
         
-        // Create app state for shared access to repositories
-        let user_repository = std::sync::Arc::new(UserRepository::new(db_pool.clone()));
-        let model_repository = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pool.clone())));
-        let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pool.clone()));
-        let subscription_repository = std::sync::Arc::new(SubscriptionRepository::new(db_pool.clone()));
-        let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pool.clone()));
+        // Create app state for shared access to repositories with appropriate pools
+        // User operations - use system pool for Auth0 lookups, user pool for user data
+        let user_repository = std::sync::Arc::new(UserRepository::new(db_pools.system_pool.clone())); // Auth0 lookups need system pool
+        
+        // System operations - use system pool
+        let model_repository = std::sync::Arc::new(ModelRepository::new(std::sync::Arc::new(db_pools.system_pool.clone())));
+        let settings_repository = std::sync::Arc::new(SettingsRepository::new(db_pools.system_pool.clone()));
+        let subscription_plan_repository = std::sync::Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
+        
+        // User-specific operations - use user pool  
+        let subscription_repository = std::sync::Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
         
         // Create application state
         let app_state = web::Data::new(AppState {
@@ -215,12 +332,21 @@ async fn main() -> std::io::Result<()> {
             settings_repository,
         });
         
+        // Create rate limiting middleware instances with different prefixes for independent Redis counters
+        let mut public_rate_limit_config = app_settings.rate_limit.clone();
+        public_rate_limit_config.redis_key_prefix = Some("public_routes".to_string());
+        let public_ip_rate_limiter = create_ip_rate_limiter(public_rate_limit_config, rate_limit_storage.clone());
+        
+        
+        let mut strict_rate_limit_config = app_settings.rate_limit.clone();
+        strict_rate_limit_config.redis_key_prefix = Some("strict_api".to_string());
+        let strict_rate_limiter = create_strict_rate_limiter(strict_rate_limit_config, rate_limit_storage.clone());
+        
         // Create the App with common middleware and data
         App::new()
-            .wrap(Logger::default())
+            .wrap(Logger::new("%a %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T"))
             .wrap(cors)
-            .app_data(web::Data::new(std::sync::Arc::new(std::sync::RwLock::new(app_settings.clone()))))
-            .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(db_pools.clone())) // Provide both pools
             .app_data(auth0_oauth_service)
             .app_data(web::Data::new(billing_service.clone()))
             .app_data(web::Data::new(cost_based_billing_service.as_ref().clone()))
@@ -233,31 +359,73 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(user_repository.clone()))
             .app_data(web::Data::new(app_state.model_repository.clone()))
             
-            // Register health check endpoint without auth
+            // Register health check endpoint with IP-based rate limiting
             .service(
                 web::resource("/health")
+                    .wrap(public_ip_rate_limiter.clone())
                     .route(web::get().to(handlers::health::health_check))
             )
-            // Public auth routes (no /api prefix)
+            // Test route directly on main app (not in /api scope)
+            .route("/direct-test", web::get().to(|| async { actix_web::HttpResponse::Ok().body("Direct route works!") }))
+            // Public auth routes with IP-based rate limiting (no /api prefix)
             .service(
                 web::scope("/auth")
+                    .wrap(public_ip_rate_limiter.clone())
                     .configure(configure_public_auth_routes)
             )
-            // Public config and auth0 routes (no /api prefix, no authentication)
-            .configure(configure_public_api_routes)
-            // Protected API routes with authentication (under /api)
+            // Protected API routes with strict rate limiting (IP + User) and authentication (under /api)
             .service(
                 web::scope("/api")
-                    .wrap(SecureAuthentication)
+                    .wrap(strict_rate_limiter.clone())
+                    .wrap(SecureAuthentication::new(db_pools.user_pool.clone()))
                     .configure(configure_routes)
             )
-            // Public webhook routes (no authentication)
+            // Public webhook routes with IP-based rate limiting (no authentication)
             .service(
                 web::scope("/webhooks")
+                    .wrap(public_ip_rate_limiter.clone())
                     .configure(configure_webhook_routes)
+            )
+            // Public config and auth0 routes with IP-based rate limiting (no /api prefix, no authentication)
+            // MOVED TO END to prevent intercepting other routes
+            .service(
+                web::scope("")
+                    .wrap(public_ip_rate_limiter.clone())
+                    .configure(configure_public_api_routes)
             )
     })
     .listen(listener)?
-    .run()
-    .await
+    .run();
+    
+    let server_handle = server.handle();
+    
+    // Spawn a task to listen for shutdown signals
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                log::info!("SIGINT received, initiating graceful shutdown...");
+            },
+            _ = async {
+                let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("Failed to install SIGTERM handler");
+                sigterm.recv().await;
+                log::info!("SIGTERM received, initiating graceful shutdown...");
+            } => {},
+        }
+        
+        #[cfg(not(unix))]
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                log::info!("SIGINT received, initiating graceful shutdown...");
+            },
+        }
+        server_handle.stop(true).await;
+    });
+    
+    log::info!("Server running at http://{}", server_addr);
+    log::info!("Press Ctrl+C to shutdown gracefully");
+    server.await?;
+    log::info!("Server shutdown complete.");
+    Ok(())
 }

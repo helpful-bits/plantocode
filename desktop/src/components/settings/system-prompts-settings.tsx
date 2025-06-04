@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { TaskType } from '../../types/session-types';
+import { TaskType, TaskTypeSupportingSystemPrompts } from '../../types/task-type-defs';
 import { useSystemPrompt, useDefaultSystemPrompts } from '../../hooks/use-system-prompts';
 import { Button } from '../../ui/button';
 import { Card } from '../../ui/card';
@@ -210,7 +210,7 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
 }
 
 function getTaskTypeDisplayName(taskType: TaskType): string {
-  const displayNames: Record<TaskType, string> = {
+  const displayNames: Record<TaskTypeSupportingSystemPrompts, string> = {
     'path_finder': 'Path Finder',
     'text_improvement': 'Text Improvement',
     'guidance_generation': 'Guidance Generation',
@@ -220,23 +220,10 @@ function getTaskTypeDisplayName(taskType: TaskType): string {
     'task_enhancement': 'Task Enhancement',
     'regex_pattern_generation': 'Regex Pattern Generation',
     'regex_summary_generation': 'Regex Summary Generation',
-    'generic_llm_stream': 'Generic LLM Stream',
-    'voice_transcription': 'Voice Transcription',
-    'file_finder_workflow': 'File Finder Workflow',
-    'server_proxy_transcription': 'Server Proxy Transcription',
-    'streaming': 'Streaming',
-    'directory_tree_generation': 'Directory Tree Generation',
-    'local_file_filtering': 'Local File Filtering',
-    'extended_path_finder': 'Extended Path Finder',
-    'extended_path_correction': 'Extended Path Correction',
-    'initial_path_finding': 'Initial Path Finding',
-    'extended_path_finding': 'Extended Path Finding',
-    'initial_path_correction': 'Initial Path Correction',
-    'regex_generation': 'Regex Generation',
-    'unknown': 'Unknown'
+    'generic_llm_stream': 'Generic LLM Stream'
   };
   
-  return displayNames[taskType] || taskType;
+  return displayNames[taskType as TaskTypeSupportingSystemPrompts] || taskType;
 }
 
 const TASK_CATEGORIES = {

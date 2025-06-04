@@ -45,6 +45,17 @@ impl InvoiceRepository {
 
     /// Create or update an invoice from Stripe webhook data
     pub async fn create_or_update(&self, invoice: &Invoice) -> Result<Invoice, AppError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        let result = self.create_or_update_with_executor(invoice, &mut tx).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(result)
+    }
+
+    /// Create or update an invoice from Stripe webhook data with custom executor
+    pub async fn create_or_update_with_executor(&self, invoice: &Invoice, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<Invoice, AppError>
+    {
         let updated_invoice = sqlx::query_as!(
             Invoice,
             r#"
@@ -94,7 +105,7 @@ impl InvoiceRepository {
             invoice.paid_at,
             invoice.voided_at,
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to create/update invoice: {}", e)))?;
 
@@ -206,6 +217,24 @@ impl InvoiceRepository {
         paid_at: Option<DateTime<Utc>>,
         voided_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| AppError::Database(format!("Failed to begin transaction: {}", e)))?;
+        self.update_status_with_executor(invoice_id, status, paid_at, voided_at, &mut tx).await?;
+        tx.commit().await
+            .map_err(|e| AppError::Database(format!("Failed to commit transaction: {}", e)))?;
+        Ok(())
+    }
+
+    /// Update invoice status with custom executor
+    pub async fn update_status_with_executor(
+        &self,
+        invoice_id: &str,
+        status: &str,
+        paid_at: Option<DateTime<Utc>>,
+        voided_at: Option<DateTime<Utc>>,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError>
+    {
         sqlx::query!(
             r#"
             UPDATE invoices 
@@ -217,7 +246,7 @@ impl InvoiceRepository {
             paid_at,
             voided_at
         )
-        .execute(&self.pool)
+        .execute(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to update invoice status: {}", e)))?;
 

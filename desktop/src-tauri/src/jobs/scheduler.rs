@@ -219,6 +219,11 @@ impl JobScheduler {
                             *last_db_poll_time.lock().await = current_time;
                         }
                         
+                        // Check for timed out workflows
+                        if let Err(e) = Self::check_workflow_timeouts(&app_handle).await {
+                            error!("Error checking workflow timeouts: {}", e);
+                        }
+                        
                         // Process the next job from the queue
                         match process_next_job(app_handle.clone()).await {
                             Ok(Some(_)) => {
@@ -440,6 +445,50 @@ impl JobScheduler {
             state.last_failure_time = None;
             state.in_cooldown = false;
         }
+    }
+    
+    /// Check for workflows that have exceeded their timeout and cancel them
+    async fn check_workflow_timeouts(app_handle: &AppHandle) -> AppResult<()> {
+        // Get the workflow orchestrator
+        let orchestrator = match crate::jobs::workflow_orchestrator::get_workflow_orchestrator().await {
+            Ok(orchestrator) => orchestrator,
+            Err(_) => {
+                // Orchestrator not initialized yet, skip timeout checks
+                return Ok(());
+            }
+        };
+        
+        // Get all active workflows
+        let active_workflows = orchestrator.get_active_workflows().await;
+        let current_time = Self::safe_duration_as_millis(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+        ).unwrap_or_else(|e| {
+            error!("Duration calculation overflow in timeout check: {}", e);
+            return 0; // Use 0 as fallback timestamp
+        });
+        
+        for workflow in active_workflows {
+            // Skip if workflow doesn't have a timeout configured
+            if let Some(timeout_ms) = workflow.timeout_ms {
+                let elapsed_time = current_time.saturating_sub(workflow.created_at as u64);
+                
+                if elapsed_time > timeout_ms {
+                    warn!("Workflow {} has timed out after {} ms (limit: {} ms)", 
+                          workflow.workflow_id, elapsed_time, timeout_ms);
+                    
+                    // Cancel the timed out workflow
+                    if let Err(e) = orchestrator.cancel_workflow_with_reason(&workflow.workflow_id, "Workflow timed out").await {
+                        error!("Failed to cancel timed out workflow {}: {}", workflow.workflow_id, e);
+                    } else {
+                        info!("Successfully canceled timed out workflow: {}", workflow.workflow_id);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
 }
 

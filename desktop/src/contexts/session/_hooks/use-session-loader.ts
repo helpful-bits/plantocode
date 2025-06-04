@@ -6,6 +6,7 @@ import { getSessionAction } from "@/actions";
 import { useProject } from "@/contexts/project-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { type Session } from "@/types";
+import { createComparablePathKey } from "@/utils/path-utils";
 import {
   DatabaseError,
   DatabaseErrorCategory,
@@ -159,6 +160,14 @@ export function useSessionLoader({
 
         if (!session.taskDescription && session.taskDescription !== "") {
           session.taskDescription = session.taskDescription || "";
+        }
+
+        // **Critical Fix:** Ensure paths from DB are consistently normalized
+        if (session.includedFiles) {
+          session.includedFiles = session.includedFiles.map(p => createComparablePathKey(p)).filter(Boolean);
+        }
+        if (session.forceExcludedFiles) {
+          session.forceExcludedFiles = session.forceExcludedFiles.map(p => createComparablePathKey(p)).filter(Boolean);
         }
 
         setCurrentSession(session);

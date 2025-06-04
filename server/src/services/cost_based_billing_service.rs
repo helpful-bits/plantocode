@@ -9,6 +9,7 @@ use log::{debug, error, info, warn};
 use chrono::{DateTime, Utc, Datelike, NaiveDate, Duration};
 use std::sync::Arc;
 use sqlx::PgPool;
+use crate::db::connection::DatabasePools;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -47,7 +48,7 @@ pub struct SpendingStatus {
 
 #[derive(Debug, Clone)]
 pub struct CostBasedBillingService {
-    db_pool: PgPool,
+    db_pools: DatabasePools,
     api_usage_repository: Arc<ApiUsageRepository>,
     subscription_repository: Arc<SubscriptionRepository>,
     subscription_plan_repository: Arc<SubscriptionPlanRepository>,
@@ -56,14 +57,14 @@ pub struct CostBasedBillingService {
 
 impl CostBasedBillingService {
     pub fn new(
-        db_pool: PgPool,
+        db_pools: DatabasePools,
         api_usage_repository: Arc<ApiUsageRepository>,
         subscription_repository: Arc<SubscriptionRepository>,
         subscription_plan_repository: Arc<SubscriptionPlanRepository>,
         spending_repository: Arc<SpendingRepository>,
     ) -> Self {
         Self {
-            db_pool,
+            db_pools,
             api_usage_repository,
             subscription_repository,
             subscription_plan_repository,
@@ -112,8 +113,50 @@ impl CostBasedBillingService {
             return Err(AppError::Payment("AI services blocked due to spending limit".to_string()));
         }
 
-        // Record the usage
-        let usage_entry = crate::db::repositories::api_usage_repository::ApiUsageEntryDto {
+        // Start a transaction for atomic billing operations
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        
+        let result = self._record_usage_and_update_spending_in_tx(
+            user_id,
+            service_name,
+            tokens_input,
+            tokens_output,
+            cost,
+            request_id,
+            metadata,
+            processing_ms,
+            input_duration_ms,
+            &mut tx,
+        ).await;
+
+        match result {
+            Ok(_) => {
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = tx.rollback().await; // Rollback on error
+                Err(e)
+            }
+        }
+    }
+
+    /// Internal transactional version of record_usage_and_update_spending
+    async fn _record_usage_and_update_spending_in_tx(
+        &self,
+        user_id: &Uuid,
+        service_name: &str,
+        tokens_input: i32,
+        tokens_output: i32,
+        cost: &BigDecimal,
+        request_id: Option<String>,
+        metadata: Option<serde_json::Value>,
+        processing_ms: Option<i32>,
+        input_duration_ms: Option<i64>,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        // Create entry DTO and use repository method with executor
+        let entry_dto = crate::db::repositories::api_usage_repository::ApiUsageEntryDto {
             user_id: *user_id,
             service_name: service_name.to_string(),
             tokens_input,
@@ -124,14 +167,14 @@ impl CostBasedBillingService {
             processing_ms,
             input_duration_ms,
         };
+        
+        self.api_usage_repository.record_usage_with_executor(entry_dto, executor).await?;
 
-        self.api_usage_repository.record_usage(usage_entry).await?;
+        // Update real-time spending within transaction
+        self.update_real_time_spending_in_tx(user_id, cost, executor).await?;
 
-        // Update real-time spending
-        self.update_real_time_spending(user_id, cost).await?;
-
-        // Check spending thresholds and send alerts
-        self.check_spending_thresholds(user_id).await?;
+        // Check spending thresholds and send alerts within transaction
+        self.check_spending_thresholds_in_tx(user_id, executor).await?;
 
         Ok(())
     }
@@ -155,8 +198,13 @@ impl CostBasedBillingService {
         };
 
         let usage_percentage = if spending_limit.included_allowance > safe_bigdecimal_from_str("0")? {
-            (spending_limit.current_spending.to_f64().unwrap_or(0.0) / 
-             spending_limit.included_allowance.to_f64().unwrap_or(1.0)) * 100.0
+            let current_f64 = spending_limit.current_spending.to_f64().unwrap_or(0.0);
+            let allowance_f64 = spending_limit.included_allowance.to_f64().unwrap_or(1.0);
+            if allowance_f64 > 0.0 {
+                (current_f64 / allowance_f64) * 100.0
+            } else {
+                0.0
+            }
         } else {
             0.0
         };
@@ -194,8 +242,42 @@ impl CostBasedBillingService {
         Ok(())
     }
 
+    /// Update real-time spending for user within transaction
+    async fn update_real_time_spending_in_tx(
+        &self, 
+        user_id: &Uuid, 
+        additional_cost: &BigDecimal,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<(), AppError> {
+        let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
+        
+        self.spending_repository.update_user_spending_for_period_with_executor(
+            user_id, 
+            additional_cost, 
+            &spending_limit.billing_period_start, 
+            executor
+        ).await?;
+
+        debug!("Updated spending for user {}: +${}", user_id, additional_cost);
+        Ok(())
+    }
+
     /// Get or create spending limit for current billing period
     async fn get_or_create_current_spending_limit(&self, user_id: &Uuid) -> Result<UserSpendingLimit, AppError> {
+        // Start a transaction and call the _in_tx version
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+        let result = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
+        tx.commit().await.map_err(AppError::from)?;
+        Ok(result)
+    }
+
+    /// Get or create spending limit for current billing period (transaction-aware)
+    pub async fn get_or_create_current_spending_limit_in_tx(
+        &self, 
+        user_id: &Uuid, 
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<UserSpendingLimit, AppError>
+    {
         let now = Utc::now();
         let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
             .and_hms_opt(0, 0, 0)
@@ -213,21 +295,32 @@ impl CostBasedBillingService {
             .and_utc();
 
         // Try to get existing spending limit using repository
-        if let Some(spending_limit) = self.spending_repository.get_user_spending_limit_for_period(user_id, &billing_period_start).await? {
+        if let Some(spending_limit) = self.spending_repository.get_user_spending_limit_for_period_with_executor(user_id, &billing_period_start, executor).await? {
             return Ok(spending_limit);
         }
 
         // Create new spending limit based on user's subscription
-        let subscription = self.subscription_repository.get_by_user_id(user_id).await?
+        let subscription = self.subscription_repository.get_by_user_id_with_executor(user_id, executor).await?
             .ok_or_else(|| AppError::Internal("No subscription found for user".to_string()))?;
 
-        let plan = self.subscription_plan_repository.get_plan_by_id(&subscription.plan_id).await?;
+        // Get plan using direct SQL since subscription_plan_repository doesn't have _with_executor variant
+        let plan = sqlx::query!(
+            r#"
+            SELECT id, name, base_price_monthly, included_spending_monthly, overage_rate,
+                   hard_limit_multiplier, currency, features, created_at, updated_at
+            FROM subscription_plans 
+            WHERE id = $1
+            "#,
+            subscription.plan_id
+        )
+        .fetch_one(&mut **executor)
+        .await
+        .map_err(AppError::from)?;
         
-        let included_allowance: BigDecimal = FromPrimitive::from_f64(plan.included_spending_monthly)
-            .ok_or_else(|| AppError::Internal("Invalid included_spending_monthly".to_string()))?;
-
-        let hard_limit_multiplier: BigDecimal = FromPrimitive::from_f64(plan.hard_limit_multiplier)
-            .ok_or_else(|| AppError::Internal("Invalid hard_limit_multiplier".to_string()))?;
+        let included_allowance: BigDecimal = plan.included_spending_monthly
+            .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
+        let hard_limit_multiplier: BigDecimal = plan.hard_limit_multiplier
+            .unwrap_or_else(|| safe_bigdecimal_from_str("2.0").unwrap_or_else(|_| BigDecimal::from(2)));
 
         let hard_limit: BigDecimal = &included_allowance * &hard_limit_multiplier;
 
@@ -242,12 +335,12 @@ impl CostBasedBillingService {
             current_spending: safe_bigdecimal_from_str("0")?,
             hard_limit: hard_limit.clone(),
             services_blocked: false,
-            currency: plan.currency.clone(),
+            currency: plan.currency.unwrap_or_else(|| "USD".to_string()),
             created_at: Some(Utc::now()),
             updated_at: Some(Utc::now()),
         };
 
-        let result = self.spending_repository.create_or_update_user_spending_limit(&new_limit).await?;
+        let result = self.spending_repository.create_or_update_user_spending_limit_with_executor(&new_limit, executor).await?;
 
         info!("Created new spending limit for user {}: allowance=${}, hard_limit=${}", 
               user_id, included_allowance, hard_limit);
@@ -295,6 +388,75 @@ impl CostBasedBillingService {
         Ok(())
     }
 
+    /// Check spending thresholds and send alerts within transaction
+    async fn check_spending_thresholds_in_tx(
+        &self, 
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<(), AppError> {
+        // We need to get the current spending status within the transaction context
+        // For now, use the non-transactional version since the spending status calculation
+        // involves multiple repository calls that don't all have _with_executor variants yet
+        let spending_status = self.get_current_spending_status(user_id).await?;
+        let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
+        
+        let usage_percentage = spending_status.usage_percentage;
+        let current_spending = spending_status.current_spending;
+        let billing_period_start = spending_status.billing_period_start;
+
+        // Check thresholds: 75%, 90%, 100% (limit reached), hard limit
+        let thresholds = vec![
+            (75.0, "75_percent"),
+            (90.0, "90_percent"),
+            (100.0, "limit_reached"),
+        ];
+
+        for (threshold_percent, alert_type) in thresholds {
+            if usage_percentage >= threshold_percent {
+                // Get existing alerts within transaction using direct SQL
+                let alert_results = sqlx::query!(
+                    r#"
+                    SELECT id, user_id, alert_type, threshold_amount, current_spending, 
+                           billing_period_start, alert_sent_at, acknowledged
+                    FROM spending_alerts 
+                    WHERE user_id = $1
+                    ORDER BY alert_sent_at DESC
+                    "#,
+                    user_id
+                )
+                .fetch_all(&mut **executor)
+                .await
+                .map_err(AppError::from)?;
+
+                let existing_alerts: Vec<SpendingAlert> = alert_results.into_iter().map(|row| SpendingAlert {
+                    id: row.id,
+                    user_id: row.user_id,
+                    alert_type: row.alert_type,
+                    threshold_amount: row.threshold_amount,
+                    current_spending: row.current_spending,
+                    billing_period_start: row.billing_period_start,
+                    alert_sent_at: row.alert_sent_at.unwrap_or_else(|| Utc::now()),
+                    acknowledged: row.acknowledged.unwrap_or(false),
+                }).collect();
+                let has_existing_alert = existing_alerts.iter().any(|alert| {
+                    alert.alert_type == alert_type && alert.billing_period_start == billing_period_start
+                });
+
+                if !has_existing_alert {
+                    self.send_spending_alert_in_tx(user_id, alert_type, &current_spending, &billing_period_start, &spending_limit, executor).await?;
+                }
+            }
+        }
+
+        // Check hard limit
+        if current_spending >= spending_status.hard_limit && !spending_status.services_blocked {
+            self.block_services_in_tx(user_id, executor).await?;
+            self.send_spending_alert_in_tx(user_id, "services_blocked", &current_spending, &billing_period_start, &spending_limit, executor).await?;
+        }
+
+        Ok(())
+    }
+
     /// Block AI services for user
     async fn block_services(&self, user_id: &Uuid) -> Result<(), AppError> {
         let now = Utc::now();
@@ -305,6 +467,24 @@ impl CostBasedBillingService {
 
         // Use repository instead of direct SQL
         self.spending_repository.block_services_for_period(user_id, &billing_period_start).await?;
+
+        error!("SERVICES BLOCKED for user {} due to spending limit exceeded", user_id);
+        Ok(())
+    }
+
+    /// Block AI services for user within transaction
+    async fn block_services_in_tx(
+        &self, 
+        user_id: &Uuid,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>
+    ) -> Result<(), AppError> {
+        let now = Utc::now();
+        let billing_period_start = safe_date_from_components(now.year(), now.month(), 1)?
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Internal("Failed to construct time for billing_period_start".to_string()))?
+            .and_utc();
+
+        self.spending_repository.block_services_for_period_with_executor(user_id, &billing_period_start, executor).await?;
 
         error!("SERVICES BLOCKED for user {} due to spending limit exceeded", user_id);
         Ok(())
@@ -366,7 +546,55 @@ impl CostBasedBillingService {
         warn!("Spending alert sent to user {}: {} at ${} (threshold: ${})", 
               user_id, alert_type, current_spending, threshold_amount);
 
-        // TODO: Send actual notification (email, in-app, etc.)
+        self.send_alert_notification(user_id, alert_type, current_spending, &threshold_amount).await?;
+
+        Ok(())
+    }
+
+    /// Send spending alert within transaction
+    async fn send_spending_alert_in_tx(
+        &self,
+        user_id: &Uuid,
+        alert_type: &str,
+        current_spending: &BigDecimal,
+        billing_period_start: &DateTime<Utc>,
+        user_spending_limit: &UserSpendingLimit,
+        executor: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        let threshold_amount = match alert_type {
+            "75_percent" | "90_percent" => {
+                let percent = if alert_type == "75_percent" { 0.75 } else { 0.90 };
+                let percent_decimal: BigDecimal = FromPrimitive::from_f64(percent)
+                    .ok_or_else(|| AppError::Internal("Invalid percent value".to_string()))?;
+                Ok::<BigDecimal, AppError>(&user_spending_limit.included_allowance * &percent_decimal)
+            },
+            "limit_reached" => {
+                Ok::<BigDecimal, AppError>(user_spending_limit.included_allowance.clone())
+            },
+            "services_blocked" => {
+                Ok::<BigDecimal, AppError>(user_spending_limit.hard_limit.clone())
+            },
+            _ => Ok::<BigDecimal, AppError>(safe_bigdecimal_from_str("0")?),
+        }?;
+
+        let alert = SpendingAlert {
+            id: Uuid::new_v4(),
+            user_id: *user_id,
+            alert_type: alert_type.to_string(),
+            threshold_amount: threshold_amount.clone(),
+            current_spending: current_spending.clone(),
+            billing_period_start: *billing_period_start,
+            alert_sent_at: Utc::now(),
+            acknowledged: false,
+        };
+        
+        self.spending_repository.create_spending_alert_with_executor(&alert, executor).await?;
+
+        warn!("Spending alert sent to user {}: {} at ${} (threshold: ${})", 
+              user_id, alert_type, current_spending, threshold_amount);
+
+        // Send notification outside of transaction since it doesn't affect data consistency
+        // and email notification service manages its own transaction state
         self.send_alert_notification(user_id, alert_type, current_spending, &threshold_amount).await?;
 
         Ok(())
@@ -394,14 +622,14 @@ impl CostBasedBillingService {
         threshold_amount: &BigDecimal,
     ) -> Result<(), AppError> {
         // Get user email for notification
-        let user_repo = crate::db::repositories::UserRepository::new(self.db_pool.clone());
+        let user_repo = crate::db::repositories::UserRepository::new(self.db_pools.system_pool.clone());
         let user = user_repo.get_by_id(user_id).await?;
 
         // Get spending status for usage percentage and currency
         let spending_status = self.get_current_spending_status(user_id).await?;
 
         // Use email notification service to queue the notification
-        let email_service = crate::services::email_notification_service::EmailNotificationService::new(self.db_pool.clone())?;
+        let email_service = crate::services::email_notification_service::EmailNotificationService::new(self.db_pools.user_pool.clone())?;
         
         email_service.queue_spending_alert(
             user_id,
@@ -414,11 +642,12 @@ impl CostBasedBillingService {
         ).await?;
 
         // Also log for immediate visibility
+        let spending_amount = current_spending.to_f64().unwrap_or(0.0);
         let message = match alert_type {
-            "75_percent" => format!("You've used 75% of your monthly AI allowance (${:.2})", current_spending.to_f64().unwrap_or(0.0)),
-            "90_percent" => format!("Warning: 90% of your monthly AI allowance used (${:.2})", current_spending.to_f64().unwrap_or(0.0)),
-            "limit_reached" => format!("Monthly allowance exceeded (${:.2}). Overage charges apply.", current_spending.to_f64().unwrap_or(0.0)),
-            "services_blocked" => format!("AI services blocked. Spending limit reached (${:.2}). Please upgrade or wait for next billing cycle.", current_spending.to_f64().unwrap_or(0.0)),
+            "75_percent" => format!("You've used 75% of your monthly AI allowance (${:.2})", spending_amount),
+            "90_percent" => format!("Warning: 90% of your monthly AI allowance used (${:.2})", spending_amount),
+            "limit_reached" => format!("Monthly allowance exceeded (${:.2}). Overage charges apply.", spending_amount),
+            "services_blocked" => format!("AI services blocked. Spending limit reached (${:.2}). Please upgrade or wait for next billing cycle.", spending_amount),
             _ => "Spending notification".to_string(),
         };
 
@@ -429,8 +658,82 @@ impl CostBasedBillingService {
 
     /// Reset spending for new billing period (called by billing cycle job)
     pub async fn reset_billing_period(&self, user_id: &Uuid) -> Result<(), AppError> {
-        // Archive current period and create new one
-        let _new_spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
+        // Start a database transaction
+        let mut tx = self.db_pools.user_pool.begin().await.map_err(AppError::from)?;
+
+        // Calculate the previous billing period dates
+        let now = Utc::now();
+        let previous_period_start = if now.month() == 1 {
+            safe_date_from_components(now.year() - 1, 12, 1)?
+        } else {
+            safe_date_from_components(now.year(), now.month() - 1, 1)?
+        }
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Internal("Failed to construct time for previous_period_start".to_string()))?
+            .and_utc();
+
+        // Try to fetch the UserSpendingLimit for the completed period
+        if let Some(completed_limit) = self.spending_repository
+            .get_user_spending_limit_for_period_with_executor(user_id, &previous_period_start, &mut tx)
+            .await? {
+
+            // Get usage summary for the completed period
+            let period_end = completed_limit.billing_period_end;
+            let usage_report = self.api_usage_repository
+                .get_usage_for_period(user_id, Some(previous_period_start), Some(period_end))
+                .await?;
+
+            // Calculate overage amount
+            let overage_amount = if completed_limit.current_spending > completed_limit.included_allowance {
+                &completed_limit.current_spending - &completed_limit.included_allowance
+            } else {
+                safe_bigdecimal_from_str("0")?
+            };
+
+            // Create services_used JSON from available metadata
+            let services_used = serde_json::json!({
+                "services_summary": "Historical data from user_spending_limits",
+                "period_archived_at": Utc::now()
+            });
+
+            // Create a new SpendingPeriod record for historical tracking
+            let spending_period_repo = crate::db::repositories::SpendingPeriodRepository::new(self.db_pools.user_pool.clone());
+            let historical_period = crate::db::repositories::spending_period_repository::SpendingPeriod {
+                id: Uuid::new_v4(),
+                user_id: completed_limit.user_id,
+                plan_id: completed_limit.plan_id.clone(),
+                period_start: completed_limit.billing_period_start,
+                period_end: completed_limit.billing_period_end,
+                included_allowance: completed_limit.included_allowance.clone(),
+                total_spending: completed_limit.current_spending.clone(),
+                overage_amount,
+                total_requests: 0, // Could be enhanced to count actual requests
+                total_tokens_input: usage_report.tokens_input,
+                total_tokens_output: usage_report.tokens_output,
+                services_used,
+                currency: completed_limit.currency.clone(),
+                invoice_id: None,
+                archived: false,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+
+            // Insert the spending period
+            spending_period_repo.create(&historical_period).await?;
+
+            // Delete the completed UserSpendingLimit record
+            self.spending_repository.delete_user_spending_limit_for_period(user_id, &previous_period_start).await?;
+
+            info!("Archived spending limit for user {} (period: {} to {})", 
+                  user_id, previous_period_start, period_end);
+        }
+
+        // Create new spending limit for current period
+        let _new_spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, &mut tx).await?;
+        
+        // Commit the transaction
+        tx.commit().await.map_err(AppError::from)?;
+        
         info!("Reset billing period for user {}", user_id);
         Ok(())
     }
@@ -441,7 +744,7 @@ impl CostBasedBillingService {
         user_id: &Uuid,
         months_back: i32,
     ) -> Result<SpendingAnalytics, AppError> {
-        let spending_period_repo = crate::db::repositories::SpendingPeriodRepository::new(self.db_pool.clone());
+        let spending_period_repo = crate::db::repositories::SpendingPeriodRepository::new(self.db_pools.user_pool.clone());
         
         // Get historical spending trends
         let trends = spending_period_repo.get_spending_trends(user_id, months_back).await?;
@@ -474,19 +777,23 @@ impl CostBasedBillingService {
         let days_elapsed = now.day() as f64;
         let days_remaining = days_in_month - days_elapsed;
         
+        let current_spending_f64 = current_status.current_spending.to_f64().unwrap_or(0.0);
         let daily_average = if days_elapsed > 0.0 {
-            current_status.current_spending.to_f64().unwrap_or(0.0) / days_elapsed
+            current_spending_f64 / days_elapsed
         } else {
             0.0
         };
         
-        let projected_month_end = current_status.current_spending.to_f64().unwrap_or(0.0) + 
-            (daily_average * days_remaining);
+        let projected_month_end = current_spending_f64 + (daily_average * days_remaining);
 
         // Determine spending trend (increasing, decreasing, stable)
         let spending_trend = if trends.len() >= 2 {
-            let recent_spending = trends.last().map(|t| t.total_spending.to_f64().unwrap_or(0.0)).unwrap_or(0.0);
-            let previous_spending = trends.get(trends.len() - 2).map(|t| t.total_spending.to_f64().unwrap_or(0.0)).unwrap_or(0.0);
+            let recent_spending = trends.last()
+                .and_then(|t| t.total_spending.to_f64())
+                .unwrap_or(0.0);
+            let previous_spending = trends.get(trends.len() - 2)
+                .and_then(|t| t.total_spending.to_f64())
+                .unwrap_or(0.0);
             
             if recent_spending > previous_spending * 1.1 {
                 "increasing".to_string()
@@ -500,15 +807,15 @@ impl CostBasedBillingService {
         };
 
         // Calculate cost efficiency metrics
+        let total_spending_f64 = summary.total_spending.to_f64().unwrap_or(0.0);
         let cost_per_request = if summary.total_requests > 0 {
-            summary.total_spending.to_f64().unwrap_or(0.0) / summary.total_requests as f64
+            total_spending_f64 / summary.total_requests as f64
         } else {
             0.0
         };
 
         let cost_per_token = if summary.total_tokens_input + summary.total_tokens_output > 0 {
-            summary.total_spending.to_f64().unwrap_or(0.0) / 
-            (summary.total_tokens_input + summary.total_tokens_output) as f64
+            total_spending_f64 / (summary.total_tokens_input + summary.total_tokens_output) as f64
         } else {
             0.0
         };
@@ -521,13 +828,18 @@ impl CostBasedBillingService {
             trends,
             monthly_average,
             projected_month_end_spending: FromPrimitive::from_f64(projected_month_end)
-                .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))),
+                .unwrap_or_else(|| BigDecimal::from(0)),
             spending_trend,
-            cost_per_request,
-            cost_per_token,
+            cost_per_request: format!("{:.6}", cost_per_request),
+            cost_per_token: format!("{:.6}", cost_per_token),
             days_until_limit: if daily_average > 0.0 {
-                Some(((current_status.hard_limit.to_f64().unwrap_or(0.0) - 
-                       current_status.current_spending.to_f64().unwrap_or(0.0)) / daily_average) as i32)
+                let hard_limit_f64 = current_status.hard_limit.to_f64().unwrap_or(0.0);
+                let remaining_budget = hard_limit_f64 - current_spending_f64;
+                if remaining_budget > 0.0 {
+                    Some((remaining_budget / daily_average) as i32)
+                } else {
+                    Some(0)
+                }
             } else {
                 None
             },
@@ -554,13 +866,18 @@ impl CostBasedBillingService {
             monthly_forecasts.push(MonthlyForecast {
                 month_offset: month,
                 projected_spending: FromPrimitive::from_f64(forecast_amount)
-                    .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0))),
+                    .unwrap_or_else(|| BigDecimal::from(0))
+                    .to_string(),
                 confidence_level: self.calculate_forecast_confidence(&analytics.trends),
             });
         }
 
         let total_forecast = monthly_forecasts.iter()
-            .fold(safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)), |acc, f| acc + &f.projected_spending);
+            .fold(BigDecimal::from(0), |acc, f| {
+                let forecast_amount = safe_bigdecimal_from_str(&f.projected_spending)
+                    .unwrap_or_else(|_| BigDecimal::from(0));
+                acc + forecast_amount
+            });
 
         Ok(SpendingForecast {
             user_id: *user_id,
@@ -581,7 +898,7 @@ impl CostBasedBillingService {
 
         // Calculate variance in spending to determine confidence
         let amounts: Vec<f64> = trends.iter()
-            .map(|t| t.total_spending.to_f64().unwrap_or(0.0))
+            .filter_map(|t| t.total_spending.to_f64())
             .collect();
         
         let mean = amounts.iter().sum::<f64>() / amounts.len() as f64;
@@ -611,8 +928,8 @@ pub struct SpendingAnalytics {
     pub monthly_average: BigDecimal,
     pub projected_month_end_spending: BigDecimal,
     pub spending_trend: String, // "increasing", "decreasing", "stable"
-    pub cost_per_request: f64,
-    pub cost_per_token: f64,
+    pub cost_per_request: String,
+    pub cost_per_token: String,
     pub days_until_limit: Option<i32>,
     pub generated_at: DateTime<Utc>,
 }
@@ -643,6 +960,6 @@ pub struct SpendingForecast {
 #[serde(rename_all = "camelCase")]
 pub struct MonthlyForecast {
     pub month_offset: i32,
-    pub projected_spending: BigDecimal,
+    pub projected_spending: String,
     pub confidence_level: f64,
 }
