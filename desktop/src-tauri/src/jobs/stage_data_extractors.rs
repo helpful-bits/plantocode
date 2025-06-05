@@ -334,7 +334,7 @@ impl StageDataExtractor {
         
         debug!("Extracting AI-filtered files from response (length: {} chars)", response.len());
         
-        // Parse response as JSON and extract aiFilteredFiles array
+        // Parse response as JSON and extract relevantFiles array
         let json_value = serde_json::from_str::<Value>(&response)
             .map_err(|e| AppError::JobError(format!(
                 "FileRelevanceAssessment job {} response is not valid JSON: {}", 
@@ -343,20 +343,20 @@ impl StageDataExtractor {
         
         debug!("FileRelevanceAssessment response parsed as JSON");
         
-        // Extract paths from aiFilteredFiles field
-        let ai_filtered_files = json_value.get("aiFilteredFiles")
+        // Extract paths from relevantFiles field
+        let ai_filtered_files = json_value.get("relevantFiles")
             .ok_or_else(|| AppError::JobError(format!(
-                "FileRelevanceAssessment job {} response missing 'aiFilteredFiles' field", 
+                "FileRelevanceAssessment job {} response missing 'relevantFiles' field", 
                 job_id
             )))?;
         
         let array = ai_filtered_files.as_array()
             .ok_or_else(|| AppError::JobError(format!(
-                "FileRelevanceAssessment job {} 'aiFilteredFiles' field is not an array: {:?}", 
+                "FileRelevanceAssessment job {} 'relevantFiles' field is not an array: {:?}", 
                 job_id, ai_filtered_files
             )))?;
         
-        debug!("Found aiFilteredFiles array with {} elements", array.len());
+        debug!("Found relevantFiles array with {} elements", array.len());
         
         let paths: Vec<String> = array.iter()
             .enumerate()
@@ -364,7 +364,7 @@ impl StageDataExtractor {
                 if let Some(path_str) = item.as_str() {
                     Some(path_str.to_string())
                 } else {
-                    warn!("Non-string item at index {} in aiFilteredFiles array: {:?}", index, item);
+                    warn!("Non-string item at index {} in relevantFiles array: {:?}", index, item);
                     None
                 }
             })
@@ -543,11 +543,11 @@ impl StageDataExtractor {
             }
         }
         
-        // If still no patterns found, log warning and return empty vector (graceful fallback)
+        // If no patterns found, this is an error - the regex generation stage failed
         if patterns.is_empty() {
-            warn!("No regex patterns found in job {} from either metadata or response, returning empty list as fallback", job_id);
-            DataFlowLogger::log_extraction_failure(job_id, "RegexPatternGeneration", "No patterns found - using empty fallback");
-            return Ok(vec![]); // Return empty vector instead of error to prevent workflow stall
+            error!("No regex patterns found in job {} - regex generation stage failed", job_id);
+            DataFlowLogger::log_extraction_failure(job_id, "RegexPatternGeneration", "No patterns found - regex generation failed");
+            return Err(AppError::JobError(format!("No regex patterns found in job {} - regex generation stage failed", job_id)));
         }
         
         debug!("Extracted {} raw regex patterns before validation", patterns.len());
@@ -680,6 +680,63 @@ impl StageDataExtractor {
                 if !trimmed.is_empty() {
                     patterns.push(trimmed.to_string());
                     debug!("Extracted pattern (string): {}", trimmed);
+                }
+            }
+        }
+        
+        Ok(patterns)
+    }
+
+    /// Extract only title patterns (for file path filtering)
+    pub fn extract_title_patterns_from_json(json_value: &Value) -> AppResult<Vec<String>> {
+        let mut patterns = Vec::new();
+        
+        if json_value.is_null() {
+            return Ok(vec![]);
+        }
+        
+        // Look for title-specific regex fields only
+        let title_fields = ["titleRegex", "negativeTitleRegex"];
+        
+        for field in &title_fields {
+            if let Some(pattern_value) = json_value.get(field) {
+                if let Some(pattern_str) = pattern_value.as_str() {
+                    let trimmed = pattern_str.trim();
+                    if !trimmed.is_empty() {
+                        patterns.push(trimmed.to_string());
+                        debug!("Extracted title pattern {}: {}", field, trimmed);
+                    }
+                }
+            }
+        }
+        
+        // Fail if no title patterns found
+        if patterns.is_empty() {
+            return Err(AppError::JobError("No title patterns found in regex generation output".to_string()));
+        }
+        
+        Ok(patterns)
+    }
+
+    /// Extract only content patterns (for file content filtering)
+    pub fn extract_content_patterns_from_json(json_value: &Value) -> AppResult<Vec<String>> {
+        let mut patterns = Vec::new();
+        
+        if json_value.is_null() {
+            return Ok(vec![]);
+        }
+        
+        // Look for content-specific regex fields only
+        let content_fields = ["contentRegex", "negativeContentRegex"];
+        
+        for field in &content_fields {
+            if let Some(pattern_value) = json_value.get(field) {
+                if let Some(pattern_str) = pattern_value.as_str() {
+                    let trimmed = pattern_str.trim();
+                    if !trimmed.is_empty() {
+                        patterns.push(trimmed.to_string());
+                        debug!("Extracted content pattern {}: {}", field, trimmed);
+                    }
                 }
             }
         }

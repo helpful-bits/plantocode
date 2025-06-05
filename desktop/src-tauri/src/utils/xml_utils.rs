@@ -11,6 +11,11 @@ static GENERIC_FENCE_REGEX: Lazy<Regex> = Lazy::new(|| {
         .expect("Generic fence regex pattern should be valid")
 });
 
+static ORIGINAL_CONTENT_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?s)<!-- ORIGINAL_CONTENT -->(.*?)<!-- /ORIGINAL_CONTENT -->")
+        .expect("Original content regex pattern should be valid")
+});
+
 pub fn extract_xml_from_markdown(content: &str) -> String {
     let trimmed_content = content.trim();
     
@@ -34,4 +39,21 @@ pub fn extract_xml_from_markdown(content: &str) -> String {
     }
 
     trimmed_content.to_string()
+}
+
+/// Extracts content from HTML comment tags like <!-- ORIGINAL_CONTENT -->content<!-- /ORIGINAL_CONTENT -->
+pub fn extract_original_content(content: &str) -> Option<String> {
+    let trimmed_content = content.trim();
+    
+    if trimmed_content.is_empty() {
+        return None;
+    }
+
+    if let Some(caps) = ORIGINAL_CONTENT_REGEX.captures(trimmed_content) {
+        if let Some(extracted_content) = caps.get(1) {
+            return Some(extracted_content.as_str().trim().to_string());
+        }
+    }
+
+    None
 }

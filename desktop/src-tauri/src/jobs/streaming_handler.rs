@@ -30,6 +30,7 @@ pub struct StreamedResponseHandler {
     job_id: String,
     initial_db_job_metadata: Option<String>,
     config: StreamConfig,
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl StreamedResponseHandler {
@@ -39,12 +40,14 @@ impl StreamedResponseHandler {
         job_id: String,
         initial_db_job_metadata: Option<String>,
         config: StreamConfig,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Self {
         Self {
             repo,
             job_id,
             initial_db_job_metadata,
             config,
+            app_handle,
         }
     }
 
@@ -95,6 +98,7 @@ impl StreamedResponseHandler {
                             chunk_tokens as i32,
                             accumulated_response.len() as i32,
                             self.initial_db_job_metadata.as_deref(),
+                            self.app_handle.as_ref(),
                         ).await?;
                     }
                     

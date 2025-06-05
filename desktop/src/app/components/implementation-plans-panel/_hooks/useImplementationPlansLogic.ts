@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 import { useBackgroundJobs } from "@/contexts/background-jobs/useBackgroundJobs";
 import { useProject } from "@/contexts/project-context";
@@ -24,16 +24,8 @@ export function useImplementationPlansLogic({
   // UI state
   const [copiedPlanId, setCopiedPlanId] = useState<string | undefined>(undefined);
   const [jobForModal, setJobForModal] = useState<BackgroundJob | undefined>(undefined);
-  const [planContentModal, setPlanContentModal] = useState<{
-    plan: BackgroundJob;
-    open: boolean;
-  } | undefined>(undefined);
-  const [pollingError, setPollingError] = useState<string | undefined>(undefined);
   const [jobToDelete, setJobToDelete] = useState<string | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState<Record<string, boolean>>({});
-
-  // Ref to track the polling interval for streaming updates
-  const streamingUpdateInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Filter implementation plans for the current project and optionally session
   const implementationPlans = useMemo(() => {
@@ -136,89 +128,6 @@ export function useImplementationPlansLogic({
     [deleteJob, refreshJobs]
   );
 
-  // Fetch the latest content for a specific job - define this before it's used
-  const refreshJobContent = useCallback(
-    async (jobId: string) => {
-      try {
-        await refreshJobs();
-
-        // Find the updated job in the refreshed jobs list
-        const updatedJobs = jobs;
-        const updatedJob = updatedJobs.find(
-          (job: BackgroundJob) => job.id === jobId
-        );
-
-        if (updatedJob) {
-          // Update the plan in the modal with the fresh data
-          setPlanContentModal((prev) =>
-            prev && prev.plan.id === jobId
-              ? { ...prev, plan: updatedJob }
-              : prev
-          );
-
-          // If the job is no longer active, clear the interval
-          if (
-            !JOB_STATUSES.ACTIVE.includes(updatedJob.status) &&
-            streamingUpdateInterval.current
-          ) {
-            clearInterval(streamingUpdateInterval.current);
-            streamingUpdateInterval.current = undefined;
-          }
-        }
-      } catch (error) {
-        logger.error("Error refreshing job content:", error);
-        setPollingError("Failed to refresh the plan content.");
-        throw error;
-      }
-    },
-    [jobs, refreshJobs]
-  );
-
-  // Handle opening the plan content modal
-  const handleViewPlanContent = useCallback((plan: BackgroundJob) => {
-    setPlanContentModal({ plan, open: true });
-
-    // Start polling for updates if the plan is still active
-    if (JOB_STATUSES.ACTIVE.includes(plan.status)) {
-      // Clear any existing interval
-      if (streamingUpdateInterval.current) {
-        clearInterval(streamingUpdateInterval.current);
-      }
-
-      // Set up new polling interval
-      streamingUpdateInterval.current = setInterval(() => {
-        refreshJobContent(plan.id).catch((error) => {
-          logger.error("Error polling for job updates:", error);
-          setPollingError(
-            "Failed to get the latest updates. The plan may still be generating."
-          );
-        });
-      }, 3000);
-    }
-  }, [refreshJobContent]);
-
-  // Handle closing the plan content modal
-  const handleClosePlanContentModal = useCallback(() => {
-    setPlanContentModal((prev) => (prev ? { ...prev, open: false } : undefined));
-
-    // Stop polling when modal closes
-    if (streamingUpdateInterval.current) {
-      clearInterval(streamingUpdateInterval.current);
-      streamingUpdateInterval.current = undefined;
-    }
-
-    // Clear error when closing
-    setPollingError(undefined);
-  }, []);
-
-  // Clean up polling interval on unmount
-  useEffect(() => {
-    return () => {
-      if (streamingUpdateInterval.current) {
-        clearInterval(streamingUpdateInterval.current);
-      }
-    };
-  }, []);
 
   // Handle plan details modal
   const handleViewPlanDetails = useCallback((plan: BackgroundJob) => {
@@ -235,17 +144,12 @@ export function useImplementationPlansLogic({
     isLoading,
     copiedPlanId,
     jobForModal,
-    planContentModal,
-    pollingError,
     jobToDelete,
     isDeleting,
 
     // Actions
     handleCopyToClipboard,
     handleDeletePlan,
-    handleViewPlanContent,
-    handleClosePlanContentModal,
-    refreshJobContent,
     handleViewPlanDetails,
     handleClosePlanDetails,
     setJobToDelete,

@@ -6,8 +6,9 @@
  */
 
 @theme {
-  /* App icon-inspired color system with WHITE background */
+  /* App icon-inspired color system with modern gradients */
   --color-background: oklch(1 0 0);
+  --color-background-gradient: linear-gradient(135deg, oklch(0.99 0.005 195) 0%, oklch(1 0 0) 30%, oklch(0.985 0.01 195) 100%);
   --color-foreground: oklch(0.15 0 0);
   --color-card: oklch(0.99 0 0);
   --color-card-foreground: oklch(0.18 0 0);
@@ -407,6 +408,7 @@
   :root {
     /* Legacy color variables for compatibility */
     --background: var(--color-background);
+    --background-gradient: var(--color-background-gradient);
     --foreground: var(--color-foreground);
     --card: var(--color-card);
     --card-foreground: var(--color-card-foreground);
@@ -449,6 +451,7 @@
     /* Dark mode with icon-inspired navy and teal accents */
     /* Background: Inspired by #071C2A (midnight navy) */
     --color-background: oklch(0.12 0.02 206);
+    --color-background-gradient: linear-gradient(135deg, oklch(0.08 0.02 206) 0%, oklch(0.12 0.02 206) 40%, oklch(0.14 0.03 195) 100%);
     --color-foreground: oklch(0.9 0 0);
     
     /* Cards: Slightly lighter navy */
@@ -494,6 +497,7 @@
     --color-ring: oklch(0.65 0.08 195);
     
     /* Variable mappings for dark mode */
+    --background-gradient: var(--color-background-gradient);
     --border: var(--color-border);
     --border-modal: var(--color-border-modal);
     --input: var(--color-input);
@@ -509,21 +513,24 @@
 
   
   html {
-    @apply bg-background;
+    background: var(--background-gradient);
     margin: 0;
     padding: 0;
   }
   
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    background: inherit;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
     padding: 0;
+    min-height: 100vh;
   }
   
   #root {
-    @apply bg-background min-h-screen;
+    background: inherit;
+    min-height: 100vh;
   }
 }
 

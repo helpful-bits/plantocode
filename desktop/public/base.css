@@ -1,8 +1,27 @@
 /* Base CSS file for Vibe Manager */
-/* Note: This is a fallback to ensure some basic styling is available */
+/* Modern gradient fallbacks that match the app's teal/navy theme */
 
 html {
-  background-color: hsl(var(--background, 23 26 36));
+  /* Light mode gradient fallback: subtle teal-to-white gradient */
+  background: linear-gradient(
+    135deg,
+    oklch(0.99 0.005 195) 0%,
+    oklch(1 0 0) 30%,
+    oklch(0.985 0.01 195) 100%
+  );
+}
+
+/* Dark mode detection for fallback */
+@media (prefers-color-scheme: dark) {
+  html {
+    /* Dark mode gradient fallback: navy-to-teal gradient */
+    background: linear-gradient(
+      135deg,
+      oklch(0.08 0.02 206) 0%,
+      oklch(0.12 0.02 206) 40%,
+      oklch(0.14 0.03 195) 100%
+    );
+  }
 }
 
 body {
@@ -11,8 +30,11 @@ body {
     Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: hsl(var(--background, 23 26 36));
+  /* Inherit background from html */
+  background: inherit;
   color: hsl(var(--foreground, 248 248 248));
+  /* Ensure gradient covers full viewport */
+  min-height: 100vh;
 }
 
 * {
@@ -21,5 +43,6 @@ body {
 
 #root {
   min-height: 100vh;
-  background-color: hsl(var(--background, 23 26 36));
+  /* Inherit the gradient background */
+  background: inherit;
 }

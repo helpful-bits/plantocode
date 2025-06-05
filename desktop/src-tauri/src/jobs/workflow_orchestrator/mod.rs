@@ -234,6 +234,11 @@ impl WorkflowOrchestrator {
                     error!("Failed to handle stage failure: {}", e);
                 }
             }
+            JobStatus::Canceled => {
+                if let Err(e) = self.handle_stage_cancellation(&workflow_id, job_id).await {
+                    error!("Failed to handle stage cancellation: {}", e);
+                }
+            }
             _ => {}
         }
 
@@ -346,6 +351,40 @@ impl WorkflowOrchestrator {
             job_id,
             error_message
         ).await
+    }
+
+    /// Handle stage cancellation
+    async fn handle_stage_cancellation(&self, workflow_id: &str, job_id: &str) -> AppResult<()> {
+        debug!("Handling stage cancellation for job: {}", job_id);
+
+        // Mark the workflow as canceled if it's not already in a terminal state
+        let workflow_state = {
+            let mut workflows = self.workflows.lock().await;
+            if let Some(workflow) = workflows.get_mut(workflow_id) {
+                if !matches!(workflow.status, crate::jobs::workflow_types::WorkflowStatus::Completed | 
+                            crate::jobs::workflow_types::WorkflowStatus::Failed | 
+                            crate::jobs::workflow_types::WorkflowStatus::Canceled) {
+                    workflow.status = crate::jobs::workflow_types::WorkflowStatus::Canceled;
+                    workflow.error_message = Some("Workflow canceled by user".to_string());
+                    workflow.completed_at = Some(chrono::Utc::now().timestamp_millis());
+                    workflow.updated_at = workflow.completed_at.unwrap();
+                    debug!("Marked workflow {} as canceled", workflow_id);
+                }
+                workflow.clone()
+            } else {
+                return Err(AppError::JobError(format!("Workflow {} not found for cancellation", workflow_id)));
+            }
+        };
+
+        // Emit workflow cancellation event to frontend
+        event_emitter::emit_workflow_status_event_internal(
+            &self.app_handle, 
+            &workflow_state, 
+            "Workflow canceled by user"
+        ).await;
+
+        info!("Workflow {} was canceled", workflow_id);
+        Ok(())
     }
 
     /// Create and queue a job for a specific workflow stage using abstract workflow definitions

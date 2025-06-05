@@ -350,7 +350,7 @@ pub async fn read_implementation_plan_command(
     let created_at = job.created_at;
     let job_response = job.response.clone().unwrap_or_default();
     
-    // Use the job response directly as the implementation plan content
+    // job.response now contains clean XML directly
     let implementation_plan_content = job_response;
     
     // Try to parse the title from metadata

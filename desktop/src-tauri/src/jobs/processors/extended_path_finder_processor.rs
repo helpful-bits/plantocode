@@ -55,7 +55,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Check if job has been canceled using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Generate directory tree on-demand
@@ -133,7 +133,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Check for cancellation before LLM call using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before LLM call", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Call LLM using standardized utility
@@ -181,7 +181,7 @@ impl JobProcessor for ExtendedPathFinderProcessor {
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled after LLM processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)

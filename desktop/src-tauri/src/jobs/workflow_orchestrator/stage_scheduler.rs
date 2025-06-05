@@ -20,14 +20,35 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
     let mut eligible_stages = Vec::new();
     
     for stage_def in &workflow_definition.stages {
-        // Check if this stage already has a job by matching stage name or task type
-        let stage_exists = workflow_state.stage_jobs.iter().any(|job| {
-            // Match by task type directly
-            job.task_type == stage_def.task_type
-        });
-
-        if stage_exists {
-            continue;
+        // Check if this stage already has an active or completed job
+        // If any job was cancelled or failed, the workflow should stop
+        let stage_job_status = workflow_state.stage_jobs.iter()
+            .filter(|job| job.task_type == stage_def.task_type)
+            .map(|job| &job.status)
+            .next();
+            
+        match stage_job_status {
+            Some(JobStatus::Queued) | Some(JobStatus::Running) | Some(JobStatus::AcknowledgedByWorker) |
+            Some(JobStatus::Preparing) | Some(JobStatus::PreparingInput) | Some(JobStatus::GeneratingStream) |
+            Some(JobStatus::ProcessingStream) => {
+                continue; // Stage is currently active, don't schedule again
+            }
+            Some(JobStatus::Completed) | Some(JobStatus::CompletedByTag) => {
+                continue; // Stage completed successfully, don't schedule again  
+            }
+            Some(JobStatus::Canceled) | Some(JobStatus::Failed) => {
+                // Job was cancelled or failed - stop the workflow
+                warn!("Workflow {} stopping due to {} stage with status {:?}", 
+                    workflow_state.workflow_id, stage_def.stage_name, stage_job_status);
+                return vec![]; // Return empty to stop scheduling new stages
+            }
+            Some(JobStatus::Idle) | Some(JobStatus::Created) => {
+                // Job exists but not yet active, don't schedule another
+                continue;
+            }
+            None => {
+                // No job for this stage yet, check dependencies
+            }
         }
 
         // Check if dependencies are met

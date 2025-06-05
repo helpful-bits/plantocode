@@ -287,7 +287,7 @@ impl WorkflowCancellationHandler {
         // Update job status to canceled
         self.repo.update_job_status(job_id, &JobStatus::Canceled, Some(&format!("Canceled: {}", reason))).await?;
 
-        // Emit cancellation event for frontend
+        // Emit job cancellation event for frontend
         let event_payload = serde_json::json!({
             "jobId": job_id,
             "status": "canceled",

@@ -7,7 +7,7 @@ import { Badge } from "@/ui/badge";
 import { Alert } from "@/ui/alert";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { TaskType } from "@/types/session-types";
-import { useSystemPrompt } from "@/hooks/use-system-prompts";
+import { useSystemPrompt, getTaskTypeDisplayName } from "@/hooks/use-system-prompts";
 import { extractPlaceholders } from "@/actions/system-prompts.actions";
 import { supportsSystemPrompts } from "@/types/task-type-defs";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
@@ -63,30 +63,6 @@ export function JobDetailsSystemPromptSection() {
     return "35vh";                           // Very long content (max)
   }, [templateContent]);
   
-  const getTaskTypeDisplayName = (taskType: string): string => {
-    const displayNames: Record<string, string> = {
-      'path_finder': 'Path Finder',
-      'text_improvement': 'Text Improvement',
-      'guidance_generation': 'Guidance Generation',
-      'text_correction': 'Text Correction',
-      'implementation_plan': 'Implementation Plan',
-      'path_correction': 'Path Correction',
-      'task_enhancement': 'Task Enhancement',
-      'regex_pattern_generation': 'Regex Pattern Generation',
-      'regex_summary_generation': 'Regex Summary Generation',
-      'generic_llm_stream': 'Generic LLM Stream',
-      'voice_transcription': 'Voice Transcription',
-      'file_finder_workflow': 'File Finder Workflow',
-      // Workflow stage task types
-      'local_file_filtering': 'Local File Filtering',
-      'extended_path_finder': 'Extended Path Finder',
-      'extended_path_correction': 'Extended Path Correction',
-      'streaming': 'Streaming',
-      'unknown': 'Unknown'
-    };
-    
-    return displayNames[taskType] || taskType;
-  };
 
   return (
     <Card>
@@ -129,7 +105,7 @@ export function JobDetailsSystemPromptSection() {
               <>
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">
-                    Task Type: {getTaskTypeDisplayName(job.taskType)}
+                    Task Type: {getTaskTypeDisplayName(job.taskType as TaskType)}
                   </div>
                   {job.systemPromptId && (
                     <div className="text-xs text-muted-foreground">

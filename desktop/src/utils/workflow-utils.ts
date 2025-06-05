@@ -269,9 +269,11 @@ export class WorkflowTracker {
             const state = this.mapStatusEventToState(statusEvent);
             this.notifyProgress(state);
             
-            // Check if workflow completed
+            // Check if workflow completed or failed
             if (statusEvent.status === 'Completed') {
               this.handleWorkflowCompletion();
+            } else if (statusEvent.status === 'Failed' || statusEvent.status === 'Canceled') {
+              this.handleWorkflowFailure(statusEvent);
             }
           }
         }
@@ -442,6 +444,20 @@ export class WorkflowTracker {
     } catch (error) {
       console.warn('Failed to fetch workflow results on completion:', error);
     }
+    this.stopPolling();
+  }
+
+  private handleWorkflowFailure(statusEvent: WorkflowStatusEvent): void {
+    // Create error from status event
+    const workflowError = new WorkflowError(
+      statusEvent.message || 'Workflow failed',
+      this.workflowId,
+      statusEvent.currentStage,
+      statusEvent.errorMessage,
+      statusEvent.status === 'Canceled' ? 'WORKFLOW_CANCELED' : 'WORKFLOW_FAILED'
+    );
+    
+    this.notifyError(workflowError);
     this.stopPolling();
   }
 

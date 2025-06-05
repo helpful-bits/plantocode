@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, X, AlertCircle, Loader2, Search, Undo, Redo, CheckSquare, Square, Sparkles } from "lucide-react";
+import { RefreshCw, X, AlertCircle, Loader2, Search, Undo, Redo, CheckSquare, Square, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
 import { useProject } from "@/contexts/project-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { Button } from "@/ui/button";
@@ -24,6 +24,10 @@ export function SimpleFileBrowser() {
     setSearchTerm,
     filterMode,
     setFilterMode,
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
     toggleFileSelection,
     toggleFileExclusion,
     refreshFiles,
@@ -180,43 +184,120 @@ export function SimpleFileBrowser() {
       </div>
 
 
-      {/* File list */}
-      <div className="border border-border/60 rounded-xl bg-background/80 p-4 h-[450px] overflow-auto">
-        {loading ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
-              <p>Loading files...</p>
+      {/* File table with sticky header */}
+      <div className="border border-border/60 rounded-xl bg-background/80 h-[450px] overflow-hidden flex flex-col">
+        {/* Table Header - Sticky */}
+        <div className="flex-shrink-0 px-4 py-3 border-b border-border/40 bg-muted/30">
+          <div className="flex items-center gap-2">
+            {/* Select/Exclude columns */}
+            <div className="w-16 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <span>Inc</span>
+              <span>Exc</span>
             </div>
-          </div>
-        ) : error ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center text-destructive">
-              <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-              <p>Error: {error}</p>
-              <Button variant="outline" size="sm" onClick={refreshFiles} className="mt-2">
-                Try Again
-              </Button>
+            
+            {/* File Name column */}
+            <div className="flex-1 min-w-0">
+              <button
+                className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer"
+                onClick={() => {
+                  if (sortBy === "name") {
+                    setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                  } else {
+                    setSortBy("name");
+                    setSortOrder("asc");
+                  }
+                }}
+              >
+                File Name
+                {sortBy === "name" && (
+                  sortOrder === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                )}
+              </button>
             </div>
-          </div>
-        ) : files.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center text-muted-foreground">
-              No files found
+            
+            {/* Size column */}
+            <div className="w-20 flex justify-end">
+              <button
+                className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer"
+                onClick={() => {
+                  if (sortBy === "size") {
+                    setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                  } else {
+                    setSortBy("size");
+                    setSortOrder("desc"); // Default to largest first for file sizes
+                  }
+                }}
+              >
+                Size
+                {sortBy === "size" && (
+                  sortOrder === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                )}
+              </button>
             </div>
+            
+            {/* Modified column */}
+            <div className="w-28 flex justify-end">
+              <button
+                className="flex items-center gap-1 text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer"
+                onClick={() => {
+                  if (sortBy === "modified") {
+                    setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                  } else {
+                    setSortBy("modified");
+                    setSortOrder("desc"); // Default to newest first for timestamps
+                  }
+                }}
+              >
+                Modified
+                {sortBy === "modified" && (
+                  sortOrder === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                )}
+              </button>
+            </div>
+            
+            {/* Actions column */}
+            <div className="w-10"></div>
           </div>
-        ) : (
-          <div className="space-y-1">
-            {files.map((file) => (
-              <SimpleFileItem
-                key={file.path}
-                file={file}
-                onToggleSelection={toggleFileSelection}
-                onToggleExclusion={toggleFileExclusion}
-              />
-            ))}
-          </div>
-        )}
+        </div>
+
+        {/* Table Body - Scrollable */}
+        <div className="flex-1 overflow-auto">
+          {loading ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                <p>Loading files...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center text-destructive">
+                <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+                <p>Error: {error}</p>
+                <Button variant="outline" size="sm" onClick={refreshFiles} className="mt-2">
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          ) : files.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                No files found
+              </div>
+            </div>
+          ) : (
+            <div className="p-2">
+              {files.map((file) => (
+                <SimpleFileItem
+                  key={file.path}
+                  file={file}
+                  onToggleSelection={toggleFileSelection}
+                  onToggleExclusion={toggleFileExclusion}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

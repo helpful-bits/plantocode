@@ -77,7 +77,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         // Check if job has been canceled using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Load content for locally_filtered_files using fs_context_utils
@@ -111,7 +111,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         // Check for cancellation before LLM call using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before LLM call", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute LLM task using task_runner.execute_llm_task()
@@ -154,7 +154,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         // Check for cancellation after LLM processing using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled after LLM processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { TaskType, TaskTypeSupportingSystemPrompts } from '../../types/task-type-defs';
-import { useSystemPrompt, useDefaultSystemPrompts } from '../../hooks/use-system-prompts';
+import { TaskType } from '../../types/task-type-defs';
+import { useSystemPrompt, useDefaultSystemPrompts, getTaskTypeDisplayName } from '../../hooks/use-system-prompts';
 import { Button } from '../../ui/button';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -209,22 +209,6 @@ function SystemPromptEditor({ sessionId, taskType, onSave }: SystemPromptEditorP
   );
 }
 
-function getTaskTypeDisplayName(taskType: TaskType): string {
-  const displayNames: Record<TaskTypeSupportingSystemPrompts, string> = {
-    'path_finder': 'Path Finder',
-    'text_improvement': 'Text Improvement',
-    'guidance_generation': 'Guidance Generation',
-    'text_correction': 'Text Correction',
-    'implementation_plan': 'Implementation Plan',
-    'path_correction': 'Path Correction',
-    'task_enhancement': 'Task Enhancement',
-    'regex_pattern_generation': 'Regex Pattern Generation',
-    'regex_summary_generation': 'Regex Summary Generation',
-    'generic_llm_stream': 'Generic LLM Stream'
-  };
-  
-  return displayNames[taskType as TaskTypeSupportingSystemPrompts] || taskType;
-}
 
 const TASK_CATEGORIES = {
   'Code Analysis': ['path_finder', 'path_correction', 'guidance_generation'],

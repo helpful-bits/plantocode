@@ -55,12 +55,20 @@ pub(super) async fn handle_stage_completion_internal(
     };
     // Lock is released here
 
-    // Find next stages that can be executed based on the workflow definition
-    let next_stages = super::stage_scheduler::find_next_abstract_stages_to_execute_internal(&workflow_state_for_dependency_check, &workflow_definition).await;
+    // Find next stages that can be executed based on the workflow definition (use updated state after data extraction)
+    let next_stages = super::stage_scheduler::find_next_abstract_stages_to_execute_internal(&workflow_state_for_payload_building, &workflow_definition).await;
 
     if next_stages.is_empty() {
-        // Check if all stages are completed
-        if super::workflow_utils::is_workflow_complete(&workflow_state_for_dependency_check, &workflow_definition) {
+        // Check if workflow should stop due to cancellation or failure
+        if workflow_state_for_payload_building.should_stop() {
+            if workflow_state_for_payload_building.has_cancelled() {
+                orchestrator.mark_workflow_failed(workflow_id, "Workflow stopped due to user cancellation").await?;
+                info!("Workflow {} stopped due to cancellation", workflow_id);
+            } else if workflow_state_for_payload_building.has_failed() {
+                orchestrator.mark_workflow_failed(workflow_id, "Workflow stopped due to stage failure").await?;
+                info!("Workflow {} stopped due to failure", workflow_id);
+            }
+        } else if super::workflow_utils::is_workflow_complete(&workflow_state_for_payload_building, &workflow_definition) {
             orchestrator.mark_workflow_completed(workflow_id).await?;
             info!("Workflow {} completed successfully", workflow_id);
         } else {

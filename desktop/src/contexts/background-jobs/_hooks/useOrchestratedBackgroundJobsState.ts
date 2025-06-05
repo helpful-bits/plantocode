@@ -298,11 +298,13 @@ export function useOrchestratedBackgroundJobsState({
   
   // Listen for job status change events from the Rust backend
   useEffect(() => {
-    let unlistenPromise: Promise<() => void> | null = null;
+    let unlistenStatusPromise: Promise<() => void> | null = null;
+    let unlistenResponseUpdatePromise: Promise<() => void> | null = null;
     
-    const setupListener = async () => {
+    const setupListeners = async () => {
       try {
-        unlistenPromise = listen("job_status_change", async (event) => {
+        // Listen for job status changes
+        unlistenStatusPromise = listen("job_status_change", async (event) => {
           try {
             // The payload should include the job ID and potentially other metadata
             const payload = event.payload as { jobId: string; status: string; message?: string };
@@ -352,17 +354,90 @@ export function useOrchestratedBackgroundJobsState({
             );
           }
         });
+
+        // Listen for streaming response updates
+        unlistenResponseUpdatePromise = listen("VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT", async (event) => {
+          try {
+            const payload = event.payload as { 
+              job_id: string; 
+              response_chunk: string; 
+              chars_received: number; 
+              tokens_received: number; 
+              metadata: string; 
+            };
+            
+            if (!payload.job_id) {
+              console.error(
+                "[BackgroundJobs] Received VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT without job_id",
+                event.payload
+              );
+              return;
+            }
+
+            // Update the job in state with new response chunk
+            setJobs(prevJobs => {
+              const jobIndex = prevJobs.findIndex(j => j.id === payload.job_id);
+              if (jobIndex === -1) {
+                // Job not found in current state, ignore
+                return prevJobs;
+              }
+
+              const existingJob = prevJobs[jobIndex];
+              const currentResponse = existingJob.response || "";
+              const updatedResponse = currentResponse + payload.response_chunk;
+
+              const updatedJob: BackgroundJob = {
+                ...existingJob,
+                response: updatedResponse,
+                charsReceived: payload.chars_received,
+                tokensReceived: payload.tokens_received,
+                lastUpdate: Date.now(),
+                updatedAt: Date.now(),
+                metadata: payload.metadata,
+              };
+
+              // Check if this is actually a change to avoid unnecessary re-renders
+              if (areJobsEqual(existingJob, updatedJob)) {
+                return prevJobs;
+              }
+
+              const newJobs = [...prevJobs];
+              newJobs[jobIndex] = updatedJob;
+
+              // Also update active jobs if this job is active
+              setActiveJobs(prevActiveJobs => {
+                const activeJobIndex = prevActiveJobs.findIndex(j => j.id === payload.job_id);
+                if (activeJobIndex !== -1) {
+                  const newActiveJobs = [...prevActiveJobs];
+                  newActiveJobs[activeJobIndex] = updatedJob;
+                  return newActiveJobs;
+                }
+                return prevActiveJobs;
+              });
+
+              return newJobs;
+            });
+          } catch (err) {
+            console.error(
+              "[BackgroundJobs] Error processing VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT:",
+              err
+            );
+          }
+        });
       } catch (err) {
-        console.error("[BackgroundJobs] Error setting up job status listener:", err);
+        console.error("[BackgroundJobs] Error setting up job listeners:", err);
       }
     };
 
-    void setupListener();
+    void setupListeners();
 
-    // Clean up the listener when component unmounts
+    // Clean up the listeners when component unmounts
     return () => {
-      if (unlistenPromise) {
-        void unlistenPromise.then((cleanupFn) => cleanupFn());
+      if (unlistenStatusPromise) {
+        void unlistenStatusPromise.then((cleanupFn) => cleanupFn());
+      }
+      if (unlistenResponseUpdatePromise) {
+        void unlistenResponseUpdatePromise.then((cleanupFn) => cleanupFn());
       }
     };
   }, [updateJobInState]);

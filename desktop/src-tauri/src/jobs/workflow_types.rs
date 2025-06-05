@@ -5,7 +5,6 @@ use crate::models::TaskType;
 
 /// Workflow execution status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WorkflowStatus {
     Created,
     Running,
@@ -270,6 +269,16 @@ impl WorkflowState {
     /// Check if any stage has failed
     pub fn has_failed(&self) -> bool {
         self.stage_jobs.iter().any(|job| job.status == JobStatus::Failed)
+    }
+
+    /// Check if any stage has been cancelled
+    pub fn has_cancelled(&self) -> bool {
+        self.stage_jobs.iter().any(|job| job.status == JobStatus::Canceled)
+    }
+
+    /// Check if workflow should stop (failed or cancelled)
+    pub fn should_stop(&self) -> bool {
+        self.has_failed() || self.has_cancelled()
     }
 
     /// Update stage job status

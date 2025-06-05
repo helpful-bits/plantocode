@@ -158,6 +158,7 @@ impl LlmTaskRunner {
             job_id.to_string(),
             initial_db_job.metadata.clone(),
             stream_config,
+            Some(self.app_handle.clone()),
         );
         
         // Process the stream using the handler

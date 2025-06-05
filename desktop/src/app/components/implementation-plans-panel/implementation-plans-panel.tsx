@@ -1,12 +1,13 @@
 "use client";
 
 import { RefreshCw, Loader2, FileCode, Eye, AlertTriangle, XCircle } from "lucide-react";
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { useRuntimeConfig } from "@/contexts/runtime-config-context";
+import { type BackgroundJob } from "@/types/session-types";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -56,21 +57,35 @@ export function ImplementationPlansPanel({
     isLoading,
     copiedPlanId,
     jobForModal,
-    planContentModal,
-    pollingError,
     jobToDelete,
     isDeleting,
 
     handleCopyToClipboard,
     handleDeletePlan,
-    handleViewPlanContent,
-    handleClosePlanContentModal,
-    refreshJobContent,
     handleViewPlanDetails,
     handleClosePlanDetails,
     setJobToDelete,
     refreshJobs,
   } = useImplementationPlansLogic({ sessionId });
+
+  // State for plan content modal - now only stores the jobId
+  const [openedPlanJobId, setOpenedPlanJobId] = useState<string | null>(null);
+
+  // Derive the live plan from the context using the jobId
+  const livePlanForModal = useMemo(() => {
+    if (!openedPlanJobId) return null;
+    return implementationPlans.find(plan => plan.id === openedPlanJobId) || null;
+  }, [openedPlanJobId, implementationPlans]);
+
+  // Handle opening the plan content modal
+  const handleViewPlanContent = useCallback((plan: BackgroundJob) => {
+    setOpenedPlanJobId(plan.id);
+  }, []);
+
+  // Handle closing the plan content modal
+  const handleClosePlanContentModal = useCallback(() => {
+    setOpenedPlanJobId(null);
+  }, []);
 
   const { currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
@@ -339,15 +354,14 @@ export function ImplementationPlansPanel({
       )}
 
       {/* Plan Content Modal */}
-      {planContentModal && (
+      {livePlanForModal && (
         <PlanContentModal
-          plan={planContentModal.plan}
-          open={planContentModal.open}
+          plan={livePlanForModal}
+          open={openedPlanJobId !== null}
           onOpenChange={(open: boolean) => {
             if (!open) handleClosePlanContentModal();
           }}
-          pollingError={pollingError}
-          onRefreshContent={refreshJobContent}
+          onRefreshContent={refreshJobs}
         />
       )}
 
