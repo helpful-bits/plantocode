@@ -78,6 +78,7 @@ impl JobProcessor for GenericLlmStreamProcessor {
             job.id.clone(),
             db_job.metadata.clone(),
             stream_config,
+            Some(app_handle.clone()),
         );
         
         // Process the stream using the handler

@@ -32,14 +32,14 @@ pub(super) fn update_intermediate_data_internal(
             }
         }
         WorkflowStage::FileRelevanceAssessment => {
-            if let Some(files) = stage_data.get("aiFilteredFiles").and_then(|v| v.as_array()) {
+            if let Some(files) = stage_data.get("relevantFiles").and_then(|v| v.as_array()) {
                 workflow_state.intermediate_data.ai_filtered_files = files.iter()
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect();
                 debug!("Stored {} AI filtered files in intermediate_data",
                        workflow_state.intermediate_data.ai_filtered_files.len());
             } else {
-                warn!("FileRelevanceAssessment stage_data missing or invalid 'aiFilteredFiles' field, keeping existing data");
+                warn!("FileRelevanceAssessment stage_data missing or invalid 'relevantFiles' field, keeping existing data");
             }
         }
         WorkflowStage::ExtendedPathFinder => {

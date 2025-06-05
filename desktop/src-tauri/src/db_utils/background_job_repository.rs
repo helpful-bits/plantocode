@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::str::FromStr;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool, Sqlite};
+use tauri::Emitter;
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
 use crate::utils::get_timestamp;
@@ -58,7 +59,7 @@ impl BackgroundJobRepository {
     /// * `new_tokens_received` - The number of tokens in this chunk
     /// * `current_total_response_length` - The current length of the accumulated response (characters)
     /// * `current_metadata_str` - The current metadata string from BackgroundJob.metadata
-    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>) -> AppResult<()> {
+    pub async fn update_job_stream_progress(&self, job_id: &str, chunk: &str, new_tokens_received: i32, current_total_response_length: i32, current_metadata_str: Option<&str>, app_handle: Option<&tauri::AppHandle>) -> AppResult<()> {
         // First check if the job exists and is in running status
         let job = self.get_job_by_id(job_id).await?
             .ok_or_else(|| AppError::DatabaseError(format!("Job not found: {}", job_id)))?;
@@ -179,12 +180,28 @@ impl BackgroundJobRepository {
             .bind(current_total_response_length)
             .bind(now)
             .bind(now)
-            .bind(metadata_str)
+            .bind(&metadata_str)
             .bind(job_id)
             .bind(JobStatus::Running.to_string())
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to append to job response: {}", e)))?;
+            
+        // Emit streaming response update event to frontend if AppHandle is provided
+        if let Some(handle) = app_handle {
+            let event_payload = serde_json::json!({
+                "job_id": job_id,
+                "response_chunk": chunk,
+                "chars_received": current_total_response_length,
+                "tokens_received": tokens_received,
+                "metadata": metadata_str
+            });
+            
+            if let Err(e) = handle.emit("VIBE_MANAGER_JOB_RESPONSE_UPDATE_EVENT", &event_payload) {
+                log::warn!("Failed to emit job response update event for job {}: {}", job_id, e);
+                // Don't fail the whole operation if event emission fails
+            }
+        }
             
         Ok(())
     }
@@ -571,7 +588,7 @@ impl BackgroundJobRepository {
         let now = get_timestamp();
         
         // Build the SQL dynamically based on which parameters are provided
-        let mut final_query = String::from("UPDATE background_jobs SET status = $1, response = $2, updated_at = $3, end_time = $4");
+        let mut final_query = String::from("UPDATE background_jobs SET status = $1, response = $2, updated_at = $3, end_time = $4, status_message = NULL");
         let mut param_index = 5;
         
         if metadata.is_some() {
@@ -684,7 +701,8 @@ impl BackgroundJobRepository {
                 SET status = $1, 
                     error_message = $2, 
                     updated_at = $3, 
-                    end_time = $4
+                    end_time = $4,
+                    status_message = NULL
                 WHERE id = $5
                 "#)
                 .bind(JobStatus::Failed.to_string())
@@ -710,7 +728,8 @@ impl BackgroundJobRepository {
             SET status = $1, 
                 error_message = $2, 
                 updated_at = $3, 
-                end_time = $4
+                end_time = $4,
+                status_message = NULL
             WHERE id = $5
             "#)
             .bind(JobStatus::Canceled.to_string())

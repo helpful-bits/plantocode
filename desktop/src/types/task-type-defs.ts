@@ -40,7 +40,10 @@ export type TaskTypeSupportingSystemPrompts =
   | "task_enhancement"
   | "regex_pattern_generation"
   | "regex_summary_generation"
-  | "generic_llm_stream";
+  | "generic_llm_stream"
+  | "extended_path_finder"
+  | "extended_path_correction"
+  | "file_relevance_assessment";
 
 // Runtime array of all task types
 export const ALL_TASK_TYPES: readonly TaskType[] = [
@@ -77,6 +80,9 @@ export const SYSTEM_PROMPT_TASK_TYPES: readonly TaskTypeSupportingSystemPrompts[
   "regex_pattern_generation",
   "regex_summary_generation",
   "generic_llm_stream",
+  "extended_path_finder",
+  "extended_path_correction",
+  "file_relevance_assessment",
 ] as const;
 
 // Validation functions

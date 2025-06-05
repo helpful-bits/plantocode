@@ -310,7 +310,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute streaming LLM task using the task runner
@@ -347,7 +347,7 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Check if job has been canceled after LLM call but before further processing using helper
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled after LLM call", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Extract clean XML content from the response
@@ -367,8 +367,8 @@ impl JobProcessor for ImplementationPlanProcessor {
             }
         };
         
-        // Create response content for database storage (no file saving needed)
-        let response_content = self.create_response_content(&structured_plan, &clean_xml_content);
+        // The clean XML content will be stored directly in job.response
+        // The structured plan data is stored in metadata (additional_params)
         
         // Extract the generated title from job metadata, if it exists
         let metadata: Option<serde_json::Value> = match &db_job.metadata {
@@ -397,13 +397,17 @@ impl JobProcessor for ImplementationPlanProcessor {
         // Get the job and update it with all results at once
         let mut job = repo.get_job_by_id(&payload.background_job_id).await?
             .ok_or_else(|| AppError::JobError(format!("Job not found: {}", payload.background_job_id)))?;
+        
+        // Get session name for better UI display
+        let session_name = crate::jobs::processors::utils::prompt_utils::get_session_name(&payload.session_id, &app_handle).await.unwrap_or_else(|_| Some("Untitled Session".to_string())).unwrap_or_else(|| "Untitled Session".to_string());
             
         // Construct the additional_params specific to the implementation plan
         let mut impl_plan_additional_params = json!({
             "planData": serde_json::to_value(structured_plan.clone()).unwrap_or_default(),
             "planTitle": generated_title.clone(),
             "summary": human_readable_summary.clone(),
-            "isStructured": true
+            "isStructured": true,
+            "sessionName": session_name
         });
         
         // Ensure streaming flags are cleared for completed jobs
@@ -417,19 +421,19 @@ impl JobProcessor for ImplementationPlanProcessor {
             obj.remove("streamStartTime");
         }
         
-        // Finalize job success with the response content stored in database
+        // Finalize job success with clean XML content stored in database response field
         job_processor_utils::finalize_job_success(
             &payload.background_job_id,
             &repo,
-            &response_content, // Use formatted response content for database storage
+            &clean_xml_content, // Store only clean XML content in job.response
             llm_result.usage,
             &model_used,
             &llm_result.system_prompt_id,
             Some(impl_plan_additional_params), // Pass the correctly structured additional_params
         ).await?;
         
-        // Return success result
+        // Return success result with the actual clean XML content
         let success_message = format!("Implementation plan '{}' generated successfully", generated_title);
-        Ok(JobProcessResult::success(payload.background_job_id.clone(), success_message))
+        Ok(JobProcessResult::success(payload.background_job_id.clone(), clean_xml_content))
     }
 }
