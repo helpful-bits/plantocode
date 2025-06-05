@@ -42,49 +42,35 @@ pub(super) async fn extract_and_store_stage_data_internal(
         // Extract stage-specific data using StageDataExtractor
         let stage_data = match stage_job.task_type {
             TaskType::RegexPatternGeneration => {
-                let patterns = match StageDataExtractor::extract_regex_patterns(job_id, &repo).await {
-                    Ok(patterns) => patterns,
-                    Err(e) => {
-                        warn!("Failed to extract regex patterns from job {}: {} - using empty list", job_id, e);
-                        vec![]
-                    }
-                };
+                // For regex generation, we need to store the raw JSON response for later pattern extraction
+                let raw_response = job.response.as_ref()
+                    .ok_or_else(|| AppError::JobError(format!("No response found for regex generation job {}", job_id)))?;
                 
-                debug!("Extracted {} regex patterns from job {}", patterns.len(), job_id);
-                serde_json::json!({ "regexPatterns": patterns })
+                // Parse the response as JSON to validate it's properly formatted
+                let parsed_json = serde_json::from_str::<serde_json::Value>(raw_response)
+                    .map_err(|e| AppError::JobError(format!("Invalid JSON response from regex generation job {}: {}", job_id, e)))?;
+                
+                debug!("Successfully extracted raw regex patterns JSON from job {}", job_id);
+                parsed_json
             }
             TaskType::LocalFileFiltering => {
-                let filtered_paths = match StageDataExtractor::extract_filtered_paths(job_id, &repo).await {
-                    Ok(paths) => paths,
-                    Err(e) => {
-                        warn!("Failed to extract filtered paths from job {}: {} - using empty list", job_id, e);
-                        vec![]
-                    }
-                };
+                let filtered_paths = StageDataExtractor::extract_filtered_paths(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract filtered paths from job {}: {}", job_id, e)))?;
                 
                 debug!("Extracted {} filtered paths from job {}", filtered_paths.len(), job_id);
                 serde_json::json!({ "filteredFiles": filtered_paths })
             }
             TaskType::PathFinder => {
-                let initial_paths = match StageDataExtractor::extract_initial_paths(job_id, &repo).await {
-                    Ok(paths) => paths,
-                    Err(e) => {
-                        warn!("Failed to extract initial paths from job {}: {} - using empty list", job_id, e);
-                        vec![]
-                    }
-                };
+                let initial_paths = StageDataExtractor::extract_initial_paths(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract initial paths from job {}: {}", job_id, e)))?;
                 
                 debug!("Extracted {} initial paths from job {}", initial_paths.len(), job_id);
                 
                 // For PathFinder, we need to separate verified and unverified paths
-                let job_response = job.response.unwrap_or_default();
-                let (verified_paths, unverified_paths) = match parse_path_finder_response_internal(&job_response, initial_paths) {
-                    Ok(result) => result,
-                    Err(e) => {
-                        warn!("Failed to parse PathFinder response for job {}: {} - using empty lists", job_id, e);
-                        (vec![], vec![])
-                    }
-                };
+                let job_response = job.response.as_ref()
+                    .ok_or_else(|| AppError::JobError(format!("No response found for PathFinder job {}", job_id)))?;
+                let (verified_paths, unverified_paths) = parse_path_finder_response_internal(job_response, initial_paths)
+                    .map_err(|e| AppError::JobError(format!("Failed to parse PathFinder response for job {}: {}", job_id, e)))?;
                 
                 serde_json::json!({ 
                     "verifiedPaths": verified_paths,
@@ -92,25 +78,15 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 })
             }
             TaskType::PathCorrection => {
-                let corrected_paths = match StageDataExtractor::extract_final_paths(job_id, &repo).await {
-                    Ok(paths) => paths,
-                    Err(e) => {
-                        warn!("Failed to extract corrected paths from job {}: {} - using empty list", job_id, e);
-                        vec![]
-                    }
-                };
+                let corrected_paths = StageDataExtractor::extract_final_paths(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract corrected paths from job {}: {}", job_id, e)))?;
                 
                 debug!("Extracted {} corrected paths from job {}", corrected_paths.len(), job_id);
                 serde_json::json!({ "correctedPaths": corrected_paths })
             }
             TaskType::ExtendedPathFinder => {
-                let (verified_paths, unverified_paths) = match StageDataExtractor::extract_extended_paths(job_id, &repo).await {
-                    Ok(paths_tuple) => paths_tuple,
-                    Err(e) => {
-                        warn!("Failed to extract extended paths from job {}: {} - using empty lists", job_id, e);
-                        (vec![], vec![])
-                    }
-                };
+                let (verified_paths, unverified_paths) = StageDataExtractor::extract_extended_paths(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract extended paths from job {}: {}", job_id, e)))?;
 
                 debug!("Extracted {} verified and {} unverified extended paths from job {}", verified_paths.len(), unverified_paths.len(), job_id);
 
@@ -120,27 +96,17 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 })
             }
             TaskType::ExtendedPathCorrection => {
-                let final_paths = match StageDataExtractor::extract_final_paths(job_id, &repo).await {
-                    Ok(paths) => paths,
-                    Err(e) => {
-                        warn!("Failed to extract final paths from job {}: {} - using empty list", job_id, e);
-                        vec![]
-                    }
-                };
+                let final_paths = StageDataExtractor::extract_final_paths(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract final paths from job {}: {}", job_id, e)))?;
                 
                 debug!("Extracted {} final corrected paths from job {}", final_paths.len(), job_id);
                 serde_json::json!({ "correctedPaths": final_paths })
             }
             TaskType::FileRelevanceAssessment => {
-                let ai_filtered_files = match StageDataExtractor::extract_ai_filtered_files(job_id, &repo).await {
-                    Ok(paths) => paths,
-                    Err(e) => {
-                        warn!("Failed to extract AI filtered files from job {}: {} - using empty list", job_id, e);
-                        vec![]
-                    }
-                };
+                let ai_filtered_files = StageDataExtractor::extract_ai_filtered_files(job_id, &repo).await
+                    .map_err(|e| AppError::JobError(format!("Failed to extract AI filtered files from job {}: {}", job_id, e)))?;
                 debug!("Extracted {} AI filtered files from job {}", ai_filtered_files.len(), job_id);
-                serde_json::json!({ "aiFilteredFiles": ai_filtered_files })
+                serde_json::json!({ "relevantFiles": ai_filtered_files })
             }
             _ => {
                 warn!("No stage data extraction implemented for task type {:?} in job {}", stage_job.task_type, job_id);

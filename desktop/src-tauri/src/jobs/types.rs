@@ -363,6 +363,20 @@ impl JobProcessResult {
         }
     }
     
+    // Create a new canceled result
+    pub fn canceled(job_id: String, message: String) -> Self {
+        Self {
+            job_id,
+            status: JobStatus::Canceled,
+            response: None,
+            error: Some(message),
+            tokens_sent: None,
+            tokens_received: None,
+            total_tokens: None,
+            chars_received: None,
+        }
+    }
+    
     // Set token usage information
     pub fn with_tokens(
         mut self,

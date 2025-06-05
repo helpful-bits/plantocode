@@ -134,7 +134,8 @@
       "Bash(redis-cli:*)",
       "Bash(brew services:*)",
       "Bash(/opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg -n \"get_workflow_status|get_workflow_results|get_active_workflows|get_all_workflow_states|get_workflow_state_by_id\" \"/Users/kirylkazlovich/dev/vibe-manager/desktop/src-tauri/src/jobs/workflow_orchestrator/mod.rs\")",
-      "WebFetch(domain:openrouter.ai)"
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(/opt/homebrew/bin/rg \"fn finalize_job_success\" --type rust)"
     ],
     "deny": []
   },

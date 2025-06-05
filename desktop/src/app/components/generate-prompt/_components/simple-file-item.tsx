@@ -5,10 +5,13 @@ import { FileText, Copy, Check } from "lucide-react";
 import { Button } from "@/ui/button";
 import { cn } from "@/utils/utils";
 import { humanFileSize } from "@/utils/file-size";
+import { formatTimeAgo } from "@/utils/date-utils";
 
 interface SimpleFileInfo {
   path: string;
   size?: number;
+  modifiedAt?: number;
+  createdAt?: number;
   included: boolean;
   excluded: boolean;
 }
@@ -44,12 +47,13 @@ export const SimpleFileItem = React.memo(function SimpleFileItem({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-2 text-xs py-2 rounded-lg px-3 transition-colors",
+        "flex items-center gap-2 text-xs py-2 px-2 rounded transition-colors",
         file.included && !file.excluded ? "bg-muted/60 border border-border/20 file-row-selected" : "",
         file.excluded ? "opacity-60" : "hover:bg-muted/40"
       )}
     >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+      {/* Select/Exclude columns */}
+      <div className="w-16 flex items-center gap-1">
         {/* Include checkbox */}
         <div
           onClick={() => !file.excluded && onToggleSelection(file.path)}
@@ -82,33 +86,45 @@ export const SimpleFileItem = React.memo(function SimpleFileItem({
             <Check className="h-3 w-3" />
           </div>
         </div>
-
-        {/* File info */}
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-          <span
-            className={cn(
-              "font-mono flex-1 truncate text-foreground",
-              file.excluded ? "line-through text-muted-foreground/80" : ""
-            )}
-            title={file.path}
-          >
-            {dirPath ? (
-              <>
-                <span className="opacity-60 text-xs text-muted-foreground">{dirPath}/</span>
-                <span className="font-semibold text-foreground">{fileName}</span>
-              </>
-            ) : (
-              fileName
-            )}
-          </span>
-        </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* File Name column */}
+      <div className="flex-1 min-w-0 flex items-center gap-2">
+        <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+        <span
+          className={cn(
+            "font-mono flex-1 truncate text-foreground",
+            file.excluded ? "line-through text-muted-foreground/80" : ""
+          )}
+          title={file.path}
+        >
+          {dirPath ? (
+            <>
+              <span className="opacity-60 text-xs text-muted-foreground">{dirPath}/</span>
+              <span className="font-semibold text-foreground">{fileName}</span>
+            </>
+          ) : (
+            fileName
+          )}
+        </span>
+      </div>
+
+      {/* Size column */}
+      <div className="w-20 text-right">
         <span className="text-muted-foreground text-xs font-mono">
           {humanFileSize(file.size ?? 0)}
         </span>
+      </div>
+
+      {/* Modified column */}
+      <div className="w-28 text-right">
+        <span className="text-muted-foreground text-xs">
+          {file.modifiedAt ? formatTimeAgo(file.modifiedAt) : "N/A"}
+        </span>
+      </div>
+
+      {/* Actions column */}
+      <div className="w-10 flex justify-end">
         <Button
           variant="ghost"
           size="icon-xs"

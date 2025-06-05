@@ -8,6 +8,8 @@ import { WorkflowTracker } from "@/utils/workflow-utils";
 interface SimpleFileInfo {
   path: string;
   size?: number;
+  modifiedAt?: number;
+  createdAt?: number;
   included: boolean;
   excluded: boolean;
 }
@@ -27,6 +29,8 @@ export function useSimpleFileSelection(projectDirectory?: string) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "selected">("all");
   const [findingFiles, setFindingFiles] = useState(false);
+  const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   
   // Track active workflow to handle completion
   const activeWorkflowTracker = useRef<WorkflowTracker | null>(null);
@@ -68,6 +72,8 @@ export function useSimpleFileSelection(projectDirectory?: string) {
         fileList = result.data.map(file => ({
           path: file.path,
           size: file.size,
+          modifiedAt: file.modifiedAt,
+          createdAt: file.createdAt,
           included: includedSet.has(file.path),
           excluded: excludedSet.has(file.path),
         }));
@@ -75,6 +81,8 @@ export function useSimpleFileSelection(projectDirectory?: string) {
         fileList = result.data.map(file => ({
           path: file.path,
           size: file.size,
+          modifiedAt: file.modifiedAt,
+          createdAt: file.createdAt,
           included: false,
           excluded: false,
         }));
@@ -202,16 +210,47 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     }
   }, [history, historyIndex, updateCurrentSessionFields]);
 
-  // Filter files based on search and filter mode
-  const filteredFiles = files.filter(file => {
-    // Search filter
-    const matchesSearch = file.path.toLowerCase().includes(searchTerm.toLowerCase());
+  // Sort function
+  const sortFiles = useCallback((filesToSort: SimpleFileInfo[]) => {
+    return [...filesToSort].sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case "name":
+          comparison = a.path.localeCompare(b.path);
+          break;
+        case "size":
+          const sizeA = a.size ?? 0;
+          const sizeB = b.size ?? 0;
+          comparison = sizeA - sizeB;
+          break;
+        case "modified":
+          const modA = a.modifiedAt ?? 0;
+          const modB = b.modifiedAt ?? 0;
+          comparison = modA - modB;
+          break;
+      }
+      
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+  }, [sortBy, sortOrder]);
+
+  // Filter and sort files
+  const filteredAndSortedFiles = useMemo(() => {
+    // First filter
+    const filtered = files.filter(file => {
+      // Search filter
+      const matchesSearch = file.path.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      // Filter mode filter
+      const matchesFilter = filterMode === "all" || (filterMode === "selected" && file.included && !file.excluded);
+      
+      return matchesSearch && matchesFilter;
+    });
     
-    // Filter mode filter
-    const matchesFilter = filterMode === "all" || (filterMode === "selected" && file.included && !file.excluded);
-    
-    return matchesSearch && matchesFilter;
-  });
+    // Then sort
+    return sortFiles(filtered);
+  }, [files, searchTerm, filterMode, sortFiles]);
 
   // Count from all files, not just filtered
   const includedCount = files.filter(f => f.included && !f.excluded).length;
@@ -311,7 +350,7 @@ export function useSimpleFileSelection(projectDirectory?: string) {
     saveToHistory();
     
     setFiles(prevFiles => {
-      const filteredPaths = new Set(filteredFiles.map(f => f.path));
+      const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
       
       const updatedFiles = prevFiles.map(file => {
         if (filteredPaths.has(file.path)) {
@@ -328,14 +367,14 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       
       return updatedFiles;
     });
-  }, [saveToHistory, updateCurrentSessionFields, filteredFiles]);
+  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles]);
 
   // Deselect filtered files only
   const deselectFiltered = useCallback(() => {
     saveToHistory();
     
     setFiles(prevFiles => {
-      const filteredPaths = new Set(filteredFiles.map(f => f.path));
+      const filteredPaths = new Set(filteredAndSortedFiles.map(f => f.path));
       
       const updatedFiles = prevFiles.map(file => {
         if (filteredPaths.has(file.path)) {
@@ -352,16 +391,20 @@ export function useSimpleFileSelection(projectDirectory?: string) {
       
       return updatedFiles;
     });
-  }, [saveToHistory, updateCurrentSessionFields, filteredFiles]);
+  }, [saveToHistory, updateCurrentSessionFields, filteredAndSortedFiles]);
 
   return {
-    files: filteredFiles,
+    files: filteredAndSortedFiles,
     loading,
     error,
     searchTerm,
     setSearchTerm,
     filterMode,
     setFilterMode,
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
     toggleFileSelection,
     toggleFileExclusion,
     refreshFiles,

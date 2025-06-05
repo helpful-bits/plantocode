@@ -221,7 +221,7 @@ impl JobProcessor for PathFinderProcessor {
         // Check if job has been canceled before calling the LLM
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute LLM task using the task runner
@@ -259,7 +259,7 @@ impl JobProcessor for PathFinderProcessor {
         // Check if job has been canceled after LLM processing using helper
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled after LLM processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Create standardized JSON response with verifiedPaths and unverifiedPaths structure

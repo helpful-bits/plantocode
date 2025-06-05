@@ -4,7 +4,6 @@ import { Loader2, RefreshCw } from "lucide-react";
 import React from "react";
 
 import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
-import { Alert, AlertDescription } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
@@ -17,15 +16,13 @@ interface PlanContentModalProps {
   plan?: BackgroundJob;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pollingError?: string;
-  onRefreshContent: (jobId: string) => Promise<void>;
+  onRefreshContent: () => Promise<void>;
 }
 
 const PlanContentModal: React.FC<PlanContentModalProps> = ({
   plan,
   open,
   onOpenChange,
-  pollingError,
   onRefreshContent,
 }) => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -58,15 +55,42 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   }
 
   const parsedMetadata = getParsedMetadata(plan.metadata);
-  const sessionName = (typeof parsedMetadata?.additionalParams?.sessionName === 'string' 
-    ? parsedMetadata.additionalParams.sessionName 
-    : "Untitled Session");
+  const sessionName = (() => {
+    // Priority 1: Check additionalParams.sessionName
+    if (parsedMetadata?.additionalParams?.sessionName && typeof parsedMetadata.additionalParams.sessionName === 'string') {
+      return parsedMetadata.additionalParams.sessionName;
+    }
+    
+    // Priority 2: Check nested payload data
+    if (parsedMetadata?.sessionName && typeof parsedMetadata.sessionName === 'string') {
+      return parsedMetadata.sessionName;
+    }
+    
+    // Priority 3: Check job payload for session name
+    if (parsedMetadata?.parsedJobPayload?.data?.sessionName && typeof parsedMetadata.parsedJobPayload.data.sessionName === 'string') {
+      return parsedMetadata.parsedJobPayload.data.sessionName;
+    }
+    
+    // Priority 4: Use plan title if available
+    if (parsedMetadata?.additionalParams?.planTitle && typeof parsedMetadata.additionalParams.planTitle === 'string') {
+      return parsedMetadata.additionalParams.planTitle;
+    }
+    
+    // Priority 5: Extract meaningful content from the first line of the prompt
+    if (plan.prompt && typeof plan.prompt === 'string' && plan.prompt.trim()) {
+      const firstLine = plan.prompt.trim().split('\n')[0].trim();
+      if (firstLine.length > 0) {
+        return firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
+      }
+    }
+    
+    return "Untitled Session";
+  })();
 
   const handleRefresh = async () => {
-    if (!plan) return;
     setIsRefreshing(true);
     try {
-      await onRefreshContent(plan.id);
+      await onRefreshContent();
     } finally {
       setIsRefreshing(false);
     }
@@ -74,7 +98,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[90vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle className="text-lg">
             Implementation Plan: {sessionName}
@@ -120,12 +144,6 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
           </div>
         )}
 
-        {/* Error message */}
-        {pollingError && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertDescription>{pollingError}</AlertDescription>
-          </Alert>
-        )}
 
         {/* Content */}
         <VirtualizedCodeViewer

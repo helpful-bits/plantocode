@@ -37,12 +37,9 @@ pub(super) async fn create_abstract_stage_payload(
                     serde_json::Value::Array(vec![])
                 });
 
-            // Use StageDataExtractor::extract_patterns_from_json to parse the raw JSON into Vec<String>
-            let regex_patterns = crate::jobs::stage_data_extractors::StageDataExtractor::extract_patterns_from_json(&raw_regex_patterns_value)
-                .unwrap_or_else(|e| {
-                    warn!("Failed to extract regex patterns for LocalFiltering, using empty list: {}", e);
-                    vec![]
-                });
+            // Use StageDataExtractor::extract_title_patterns_from_json to parse only title patterns for file path filtering
+            let regex_patterns = crate::jobs::stage_data_extractors::StageDataExtractor::extract_title_patterns_from_json(&raw_regex_patterns_value)
+                .map_err(|e| AppError::JobError(format!("Failed to extract title patterns for LocalFiltering: {}", e)))?;
             
             debug!("Extracted {} regex patterns for LocalFileFiltering payload", regex_patterns.len());
 

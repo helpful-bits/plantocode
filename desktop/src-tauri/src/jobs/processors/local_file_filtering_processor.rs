@@ -18,7 +18,7 @@ impl LocalFileFilteringProcessor {
         Self
     }
     
-    /// Perform local file filtering based on regex patterns and task description keywords
+    /// Perform local file filtering based on regex patterns only
     fn filter_paths_by_task(&self, directory_tree: &str, task_description: &str, project_directory: &str, regex_patterns: &[String]) -> AppResult<Vec<String>> {
         let mut filtered_paths = Vec::new();
         
@@ -28,8 +28,10 @@ impl LocalFileFilteringProcessor {
             return Ok(filtered_paths);
         }
         
-        // Extract potential keywords from task description
-        let keywords = self.extract_keywords_from_task(task_description);
+        // Check if regex patterns are provided - fail if empty
+        if regex_patterns.is_empty() {
+            return Err(AppError::JobError("No regex patterns provided for local file filtering - regex generation stage may have failed".to_string()));
+        }
         
         // Parse directory tree lines
         for line in directory_tree.lines() {
@@ -42,12 +44,11 @@ impl LocalFileFilteringProcessor {
             
             // Extract file path from tree format
             if let Some(file_path) = self.extract_file_path_from_tree_line(line) {
-                // Check if path matches any regex patterns or keywords
+                // Check if path matches regex patterns - no keyword fallback
                 let matches_regex = self.path_matches_regex_patterns(&file_path, regex_patterns);
-                let matches_keywords = self.path_matches_keywords(&file_path, &keywords);
                 
-                // Prioritize regex matching if patterns are provided, use keywords as fallback
-                if (!regex_patterns.is_empty() && matches_regex) || (regex_patterns.is_empty() && matches_keywords) {
+                // Only use regex matching - fail if no patterns provided
+                if matches_regex {
                     // Make path relative to project directory
                     let normalized_path = if Path::new(&file_path).is_absolute() {
                         match path_utils::make_relative_to(&file_path, project_directory) {
@@ -70,42 +71,6 @@ impl LocalFileFilteringProcessor {
         Ok(filtered_paths)
     }
     
-    /// Extract keywords from task description for filtering
-    fn extract_keywords_from_task(&self, task_description: &str) -> Vec<String> {
-        let mut keywords = Vec::new();
-        
-        // Common file extensions that might be mentioned
-        let file_extensions = vec![
-            ".rs", ".js", ".ts", ".tsx", ".jsx", ".py", ".java", ".cpp", ".c", ".h",
-            ".css", ".scss", ".html", ".json", ".yaml", ".yml", ".toml", ".md",
-            ".txt", ".config", ".env", ".sh", ".sql", ".go", ".php", ".rb"
-        ];
-        
-        // Check for file extensions in task description
-        for ext in file_extensions {
-            if task_description.to_lowercase().contains(ext) {
-                keywords.push(ext.to_string());
-            }
-        }
-        
-        // Extract words that look like file/directory names
-        let words: Vec<&str> = task_description.split_whitespace().collect();
-        for word in words {
-            let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.');
-            
-            // Add words that look like filenames or module names
-            if clean_word.len() > 2 && (
-                clean_word.contains('.') ||
-                clean_word.contains('_') ||
-                clean_word.contains('-') ||
-                clean_word.chars().all(|c| c.is_lowercase() || c.is_numeric() || c == '_' || c == '-')
-            ) {
-                keywords.push(clean_word.to_lowercase());
-            }
-        }
-        
-        keywords
-    }
     
     /// Extract file path from a directory tree line
     fn extract_file_path_from_tree_line(&self, line: &str) -> Option<String> {
@@ -150,31 +115,6 @@ impl LocalFileFilteringProcessor {
         false
     }
     
-    /// Check if a file path matches any of the keywords
-    fn path_matches_keywords(&self, path: &str, keywords: &[String]) -> bool {
-        let path_lower = path.to_lowercase();
-        
-        for keyword in keywords {
-            if path_lower.contains(keyword) {
-                return true;
-            }
-        }
-        
-        // Also check for common important files
-        let important_patterns = vec![
-            "main", "index", "app", "config", "settings", "setup", "init",
-            "core", "util", "helper", "service", "handler", "controller",
-            "model", "component", "api", "router", "route"
-        ];
-        
-        for pattern in important_patterns {
-            if path_lower.contains(pattern) {
-                return true;
-            }
-        }
-        
-        false
-    }
 }
 
 #[async_trait::async_trait]
@@ -203,28 +143,18 @@ impl JobProcessor for LocalFileFilteringProcessor {
         // Check if job has been canceled using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Log regex patterns information
-        if !payload.regex_patterns.is_empty() {
-            info!("Using {} regex patterns for filtering: {:?}", 
-                payload.regex_patterns.len(), payload.regex_patterns);
-        } else {
-            info!("No regex patterns provided, using keyword-based filtering");
-        }
+        info!("Using {} regex patterns for filtering: {:?}", 
+            payload.regex_patterns.len(), payload.regex_patterns);
         
-        // Generate directory tree on-demand
-        let directory_tree = match get_directory_tree_for_processor(&payload.project_directory, Some(&payload.excluded_paths)).await {
-            Ok(tree) => {
-                info!("Generated directory tree on-demand for local file filtering ({} lines)", tree.lines().count());
-                tree
-            }
-            Err(e) => {
-                warn!("Failed to generate directory tree on-demand: {}. Using empty fallback.", e);
-                "No directory structure available".to_string()
-            }
-        };
+        // Generate directory tree on-demand - fail if it fails
+        let directory_tree = get_directory_tree_for_processor(&payload.project_directory, Some(&payload.excluded_paths)).await
+            .map_err(|e| AppError::JobError(format!("Failed to generate directory tree: {}", e)))?;
+        
+        info!("Generated directory tree on-demand for local file filtering ({} lines)", directory_tree.lines().count());
         
         // Perform local file filtering
         let filtered_paths = match self.filter_paths_by_task(
@@ -251,7 +181,7 @@ impl JobProcessor for LocalFileFilteringProcessor {
         // Check if job has been canceled after filtering using standardized utility
         if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
             info!("Job {} has been canceled after filtering", payload.background_job_id);
-            return Ok(JobProcessResult::failure(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)
@@ -261,10 +191,9 @@ impl JobProcessor for LocalFileFilteringProcessor {
             "projectDirectory": payload.project_directory,
             "regexPatternsUsed": payload.regex_patterns.len(),
             "regexPatterns": payload.regex_patterns,
-            "filteringMethod": if payload.regex_patterns.is_empty() { "keyword-based" } else { "regex-based" },
-            "summary": format!("Found {} potentially relevant files using {} filtering", 
-                filtered_paths.len(),
-                if payload.regex_patterns.is_empty() { "keyword-based" } else { "regex-based" }
+            "filteringMethod": "regex-based",
+            "summary": format!("Found {} potentially relevant files using regex-based filtering", 
+                filtered_paths.len()
             )
         });
         
@@ -272,9 +201,8 @@ impl JobProcessor for LocalFileFilteringProcessor {
         let response_json_content = serde_json::json!({
             "filteredFiles": filtered_paths,
             "count": filtered_paths.len(),
-            "summary": format!("Found {} potentially relevant files using {} filtering", 
-                filtered_paths.len(), 
-                if payload.regex_patterns.is_empty() { "keyword-based" } else { "regex-based" }
+            "summary": format!("Found {} potentially relevant files using regex-based filtering", 
+                filtered_paths.len()
             )
         }).to_string();
         
