@@ -33,10 +33,7 @@ export function useGeneratePromptTaskState({
     sessionActions.setSessionModified(true);
   }, [sessionActions.setSessionModified]);
   
-  const setTaskDescription = useCallback((description: string) => {
-    sessionActions.updateCurrentSessionFields({ taskDescription: description });
-    handleInteraction();
-  }, [sessionActions.updateCurrentSessionFields, handleInteraction]);
+  // Use local task description setter to avoid immediate session updates
   
   // Initialize task description state for UI-specific concerns
   const {
@@ -44,7 +41,7 @@ export function useGeneratePromptTaskState({
     textImprovementJobId,
     handleImproveSelection,
   } = useTaskDescriptionState({
-    activeSessionId: sessionState.activeSessionId,
+    activeSessionId: sessionState.currentSession?.id || null,
     taskDescriptionRef,
     onInteraction: handleInteraction,
   });
@@ -55,7 +52,11 @@ export function useGeneratePromptTaskState({
     handleGenerateGuidance: baseHandleGenerateGuidance,
   } = useGuidanceGeneration({
     projectDirectory: projectDirectory || "",
-    onGuidanceGenerated: setTaskDescription,
+    onGuidanceGenerated: (guidance: string) => {
+      sessionActions.updateCurrentSessionFields({ taskDescription: guidance });
+      sessionActions.setSessionModified(true);
+      handleInteraction();
+    },
     onInteraction: handleInteraction,
   });
 
@@ -78,7 +79,7 @@ export function useGeneratePromptTaskState({
   // Create a memoized value to prevent unnecessary renders
   return useMemo(
     () => ({
-      // Task Description State (reference only - state is managed by coreState)
+      // Task Description State (session state only)
       taskDescriptionRef,
       isImprovingText,
       textImprovementJobId,

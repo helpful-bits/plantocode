@@ -38,9 +38,13 @@ const TaskSection = React.memo(function TaskSection({
 
   const { handleGenerateGuidance, handleImproveSelection } = taskActions;
   
-  // Streamlined task change handler
+  // Optimized session update - only update session state, no redundant processing
   const handleTaskChange = useCallback((value: string) => {
+    // Update session state and mark as modified for persistence
     sessionActions.updateCurrentSessionFields({ taskDescription: value });
+    sessionActions.setSessionModified(true);
+    
+    // Single interaction notification without additional debouncing
     coreActions.handleInteraction();
   }, [sessionActions, coreActions]);
 
