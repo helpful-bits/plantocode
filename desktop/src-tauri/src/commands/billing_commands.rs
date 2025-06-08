@@ -21,6 +21,7 @@ pub struct SubscriptionDetails {
     pub next_invoice_amount: Option<f64>,
     pub currency: Option<String>,
     pub usage: UsageInfo,
+    pub credit_balance: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,6 +57,7 @@ pub struct SpendingStatusInfo {
     pub next_billing_date: String,
     pub currency: String,
     pub alerts: Vec<SpendingAlert>,
+    pub credit_balance: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,6 +98,67 @@ pub struct InvoiceHistoryResponse {
     pub invoices: Vec<InvoiceHistoryEntry>,
     pub total_count: usize,
     pub has_more: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditBalanceResponse {
+    pub user_id: String,
+    pub balance: f64, // Proper numeric type
+    pub currency: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditTransactionEntry {
+    pub id: String,
+    pub amount: f64,
+    pub currency: String,
+    pub transaction_type: String,
+    pub description: String,
+    pub created_at: String,
+    pub balance_after: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditHistoryResponse {
+    pub transactions: Vec<CreditTransactionEntry>,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPack {
+    pub id: String,
+    pub name: String,
+    pub value_credits: f64, // Amount of credits user gets
+    pub price_amount: f64,  // Actual price to pay
+    pub currency: String,
+    pub stripe_price_id: String,
+    pub description: Option<String>,
+    pub recommended: bool,
+    pub bonus_percentage: Option<f64>,
+    pub is_popular: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditPacksResponse {
+    pub packs: Vec<CreditPack>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditStats {
+    pub user_id: String,
+    pub current_balance: f64,
+    pub total_purchased: f64,
+    pub total_consumed: f64,
+    pub total_refunded: f64,
+    pub transaction_count: i64,
+    pub currency: String,
 }
 
 async fn make_authenticated_request<T: for<'de> Deserialize<'de>>(
@@ -375,4 +438,117 @@ pub async fn get_payment_methods_command(
     
     info!("Successfully retrieved payment methods");
     Ok(payment_methods)
+}
+
+/// Purchase credits via Stripe checkout
+#[tauri::command]
+pub async fn purchase_credits_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+    stripe_price_id: String,
+) -> Result<CheckoutSessionResponse, AppError> {
+    debug!("Purchasing credits with Stripe price ID: {}", stripe_price_id);
+    
+    let request_body = serde_json::json!({
+        "stripePriceId": stripe_price_id
+    });
+    
+    let checkout_response = make_authenticated_request(
+        &token_manager,
+        "POST",
+        "/api/credits/purchase",
+        Some(request_body),
+    ).await?;
+    
+    info!("Successfully created credit purchase checkout session for price: {}", stripe_price_id);
+    Ok(checkout_response)
+}
+
+/// Get current credit balance
+#[tauri::command]
+pub async fn get_credit_balance_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<CreditBalanceResponse, AppError> {
+    debug!("Getting credit balance via Tauri command");
+    
+    let credit_balance = make_authenticated_request(
+        &token_manager,
+        "GET",
+        "/api/credits/balance",
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved credit balance");
+    Ok(credit_balance)
+}
+
+/// Get credit transaction history
+#[tauri::command]
+pub async fn get_credit_history_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+) -> Result<CreditHistoryResponse, AppError> {
+    debug!("Getting credit history via Tauri command");
+    
+    let mut query_params = Vec::new();
+    if let Some(limit) = limit {
+        query_params.push(format!("limit={}", limit));
+    }
+    if let Some(offset) = offset {
+        query_params.push(format!("offset={}", offset));
+    }
+    
+    let query_string = if query_params.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", query_params.join("&"))
+    };
+    
+    let endpoint = format!("/api/credits/transactions{}", query_string);
+    
+    let credit_history = make_authenticated_request(
+        &token_manager,
+        "GET",
+        &endpoint,
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved credit history");
+    Ok(credit_history)
+}
+
+/// Get available credit packs for purchase
+#[tauri::command]
+pub async fn get_credit_packs_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<CreditPacksResponse, AppError> {
+    debug!("Getting credit packs via Tauri command");
+    
+    let credit_packs = make_authenticated_request(
+        &token_manager,
+        "GET",
+        "/api/credits/packs",
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved credit packs");
+    Ok(credit_packs)
+}
+
+/// Get user's credit statistics
+#[tauri::command]
+pub async fn get_credit_stats_command(
+    token_manager: State<'_, Arc<TokenManager>>,
+) -> Result<CreditStats, AppError> {
+    debug!("Getting credit stats via Tauri command");
+    
+    let credit_stats = make_authenticated_request(
+        &token_manager,
+        "GET",
+        "/api/credits/stats",
+        None,
+    ).await?;
+    
+    info!("Successfully retrieved credit stats");
+    Ok(credit_stats)
 }

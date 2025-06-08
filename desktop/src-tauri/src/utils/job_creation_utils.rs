@@ -5,7 +5,8 @@ use log::{info, warn};
 use crate::models::{BackgroundJob, TaskType, JobStatus};
 use crate::error::{AppError, AppResult};
 use crate::utils::get_timestamp;
-use crate::jobs::types::{JobWorkerMetadata, JobPayload};
+use crate::jobs::types::{JobPayload, JobUIMetadata};
+use crate::utils::job_ui_metadata_builder::{JobUIMetadataBuilder, create_simple_job_ui_metadata, create_workflow_job_ui_metadata};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -45,6 +46,9 @@ pub async fn create_and_queue_background_job(
     additional_params: Option<Value>,
     app_handle: &AppHandle,
 ) -> AppResult<String> {
+    // Ensure task settings exist for this task type and session
+    ensure_task_settings_exist(session_id, project_dir, task_type_enum, app_handle).await?;
+    
     // Create a unique job ID
     let job_id = format!("job_{}", Uuid::new_v4());
     
@@ -55,32 +59,52 @@ pub async fn create_and_queue_background_job(
     // Use the typed payload directly
     let typed_job_payload = payload_with_job_id;
     
-    // Ensure job_type_for_worker is included in additional_params
-    let mut final_additional_params = additional_params.clone().unwrap_or_else(|| serde_json::json!({}));
-
-    if let Value::Object(map) = &mut final_additional_params {
-        map.insert("jobTypeForWorker".to_string(), Value::String(job_type_for_worker.to_string()));
+    // Create UI-optimized metadata using the new clean structure
+    let ui_metadata = if let (Some(workflow_id), Some(_workflow_stage)) = (workflow_id.clone(), workflow_stage.clone()) {
+        // Workflow job
+        let mut workflow_metadata = create_workflow_job_ui_metadata(
+            typed_job_payload.clone(),
+            workflow_id,
+        );
+        
+        // Add model settings to workflow job metadata if available
+        if let Some((ref model, temp, max_tokens)) = model_settings {
+            if let serde_json::Value::Object(ref mut task_data_map) = workflow_metadata.task_data {
+                task_data_map.insert("model".to_string(), serde_json::Value::String(model.clone()));
+                task_data_map.insert("temperature".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(temp as f64).unwrap_or_else(|| serde_json::Number::from(0))));
+                task_data_map.insert("max_tokens".to_string(), serde_json::Value::Number(serde_json::Number::from(max_tokens)));
+            }
+        }
+        
+        workflow_metadata
     } else {
-        // This case should ideally not happen if additional_params is always an object or null
-        warn!("additional_params was not an object, creating new map for jobTypeForWorker.");
-        let mut map = serde_json::Map::new();
-        map.insert("jobTypeForWorker".to_string(), Value::String(job_type_for_worker.to_string()));
-        final_additional_params = Value::Object(map);
-    }
-
-    // Create structured JobWorkerMetadata
-    let worker_metadata = JobWorkerMetadata {
-        task_type: task_type_enum.to_string(),
-        job_payload_for_worker: typed_job_payload.clone(),
-        job_priority_for_worker: priority,
-        workflow_id: workflow_id.clone(),
-        workflow_stage: workflow_stage.clone(),
-        additional_params: Some(final_additional_params),
+        // Simple job
+        let mut builder = JobUIMetadataBuilder::new(typed_job_payload.clone());
+        
+        // Create task data starting with model settings if available
+        let mut task_data = serde_json::json!({});
+        if let Some((ref model, temp, max_tokens)) = model_settings {
+            task_data["model"] = serde_json::Value::String(model.clone());
+            task_data["temperature"] = serde_json::Value::Number(serde_json::Number::from_f64(temp as f64).unwrap_or_else(|| serde_json::Number::from(0)));
+            task_data["max_tokens"] = serde_json::Value::Number(serde_json::Number::from(max_tokens));
+        }
+        
+        // Merge with any additional task-specific data
+        if let Some(additional_data) = additional_params {
+            if let (serde_json::Value::Object(task_map), serde_json::Value::Object(additional_map)) = (&mut task_data, &additional_data) {
+                for (key, value) in additional_map {
+                    task_map.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        
+        builder = builder.task_data(task_data);
+        builder.build()
     };
     
-    // Serialize the structured metadata to string
-    let metadata_str = serde_json::to_string(&worker_metadata)
-        .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobWorkerMetadata: {}", e)))?;
+    // Serialize the UI metadata to string for database storage
+    let metadata_str = serde_json::to_string(&ui_metadata)
+        .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e)))?;
     
     // Extract model settings (if provided) or set appropriate values for local tasks
     let (model_used, temperature, max_output_tokens) = if let Some((model, temp, max_tokens)) = model_settings {
@@ -96,29 +120,19 @@ pub async fn create_and_queue_background_job(
     let job_to_save = BackgroundJob {
         id: job_id.clone(),
         session_id: session_id.to_string(),
-        api_type: api_type_str.to_string(),
         task_type: task_type_enum.to_string(),
         status: JobStatus::Queued.to_string(),
+        prompt: prompt_text.to_string(),
+        response: None,
+        error_message: None,
+        tokens_sent: None,
+        tokens_received: None,
+        model_used,
+        metadata: Some(metadata_str),
         created_at: timestamp,
         updated_at: Some(timestamp),
         start_time: None,
         end_time: None,
-        last_update: None,
-        prompt: prompt_text.to_string(),
-        response: None,
-        project_directory: Some(project_dir.to_string()),
-        tokens_sent: None,
-        tokens_received: None,
-        total_tokens: None,
-        chars_received: None,
-        status_message: None,
-        error_message: None,
-        model_used,
-        max_output_tokens,
-        temperature,
-        include_syntax: None,
-        metadata: Some(metadata_str),
-        system_prompt_id: None, // Will be set by the processor when it gets the system prompt
     };
     
     // Get the background job repository from app state
@@ -136,11 +150,9 @@ pub async fn create_and_queue_background_job(
         id: job_id.clone(),
         job_type: task_type_enum,
         payload: typed_job_payload,
-        created_at: timestamp.to_string(),
         session_id: session_id.to_string(),
-        task_type_str: task_type_enum.to_string(),
-        project_directory: Some(project_dir.to_string()),
         process_after: None, // New jobs are ready for immediate processing
+        created_at: crate::utils::date_utils::get_timestamp(),
     };
     
     // Dispatch the job to the queue
@@ -200,25 +212,25 @@ pub async fn create_and_queue_background_job_with_delay(
 /// receive the proper job ID. Payload variants without this field are explicitly handled
 /// in the catch-all case.
 fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
+    // Note: background_job_id field has been removed from payload structures
+    // This function is kept for potential future payload modifications
     match payload {
-        // LLM-based task payloads (all have background_job_id)
-        JobPayload::PathFinder(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::ImplementationPlan(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::GuidanceGeneration(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::PathCorrection(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::TextImprovement(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::TaskEnhancement(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::TextCorrection(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::GenericLlmStream(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::RegexPatternGeneration(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::RegexSummaryGeneration(p) => p.background_job_id = job_id.to_string(),
+        JobPayload::PathFinder(_) => {},
+        JobPayload::ImplementationPlan(_) => {},
+        JobPayload::GuidanceGeneration(_) => {},
+        JobPayload::PathCorrection(_) => {},
+        JobPayload::TaskEnhancement(_) => {},
+        JobPayload::TextCorrection(_) => {},
+        JobPayload::GenericLlmStream(_) => {},
+        JobPayload::RegexPatternGeneration(_) => {},
+        JobPayload::RegexSummaryGeneration(_) => {},
         
-        // Workflow stage payloads (all have background_job_id)
-        JobPayload::LocalFileFiltering(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::ExtendedPathFinder(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::ExtendedPathCorrection(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::RegexPatternGenerationWorkflow(p) => p.background_job_id = job_id.to_string(),
-        JobPayload::FileRelevanceAssessment(p) => p.background_job_id = job_id.to_string(),
+        // Workflow stage payloads
+        JobPayload::LocalFileFiltering(_) => {},
+        JobPayload::ExtendedPathFinder(_) => {},
+        JobPayload::ExtendedPathCorrection(_) => {},
+        JobPayload::RegexPatternGenerationWorkflow(_) => {},
+        JobPayload::FileRelevanceAssessment(_) => {},
         
         // Server proxy payloads (do not have background_job_id fields)
         JobPayload::VoiceTranscription(_) | JobPayload::OpenRouterLlm(_) => {
@@ -226,4 +238,69 @@ fn inject_job_id_into_payload(payload: &mut JobPayload, job_id: &str) {
             // as they are processed by external services and don't need internal job tracking
         }
     }
+}
+
+/// Ensure task settings exist for a specific session and task type
+/// This function initializes task settings from project/global defaults if they don't exist
+async fn ensure_task_settings_exist(
+    session_id: &str, 
+    project_dir: &str, 
+    task_type: TaskType,
+    app_handle: &AppHandle
+) -> AppResult<()> {
+    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
+    let task_type_str = task_type.to_string();
+    
+    // Check if task settings already exist
+    match settings_repo.get_task_settings(session_id, &task_type_str).await {
+        Ok(Some(_)) => {
+            // Settings already exist, no need to create
+            return Ok(());
+        }
+        Ok(None) => {
+            // Settings don't exist, need to create them
+        }
+        Err(e) => {
+            warn!("Error checking existing task settings for session {} and task type {}: {}", session_id, task_type_str, e);
+            // Continue and try to create settings
+        }
+    }
+    
+    // Only create settings for tasks that require LLM configuration
+    if !task_type.requires_llm() {
+        return Ok(());
+    }
+    
+    info!("Creating task settings for session {} and task type {}", session_id, task_type_str);
+    
+    // Get model configuration from project/global settings
+    let model = crate::config::get_model_for_task_with_project(task_type, project_dir, app_handle)
+        .await
+        .map_err(|e| AppError::ConfigError(format!("Failed to get model for task type {}: {}", task_type_str, e)))?;
+    
+    let temperature = crate::config::get_temperature_for_task_with_project(task_type, project_dir, app_handle)
+        .await
+        .ok(); // Temperature is optional
+    
+    let max_tokens = crate::config::get_max_tokens_for_task_with_project(task_type, project_dir, app_handle)
+        .await
+        .unwrap_or(4000) as i32; // Use safe default if config fails
+    
+    // Create the task settings
+    let task_settings = crate::models::TaskSettings {
+        session_id: session_id.to_string(),
+        task_type: task_type_str.clone(),
+        model,
+        max_tokens,
+        temperature,
+    };
+    
+    // Save to database
+    settings_repo.set_task_settings(&task_settings).await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to save task settings for {}: {}", task_type_str, e)))?;
+    
+    info!("Created task settings for session {} and task type {}: model={}, max_tokens={}, temperature={:?}", 
+          session_id, task_type_str, task_settings.model, task_settings.max_tokens, task_settings.temperature);
+    
+    Ok(())
 }

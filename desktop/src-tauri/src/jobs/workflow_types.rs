@@ -24,8 +24,8 @@ impl Default for WorkflowStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WorkflowStage {
-    GeneratingRegex,
-    LocalFiltering,
+    RegexPatternGeneration,
+    LocalFileFiltering,
     FileRelevanceAssessment,
     ExtendedPathFinder,
     ExtendedPathCorrection,
@@ -41,8 +41,8 @@ impl WorkflowStage {
     /// Get all stages in execution order
     pub fn all_stages() -> Vec<WorkflowStage> {
         vec![
-            WorkflowStage::GeneratingRegex,
-            WorkflowStage::LocalFiltering,
+            WorkflowStage::RegexPatternGeneration,
+            WorkflowStage::LocalFileFiltering,
             WorkflowStage::FileRelevanceAssessment,
             WorkflowStage::ExtendedPathFinder,
             WorkflowStage::ExtendedPathCorrection,
@@ -52,8 +52,8 @@ impl WorkflowStage {
     /// Get the next stage in the workflow
     pub fn next_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::GeneratingRegex => Some(WorkflowStage::LocalFiltering),
-            WorkflowStage::LocalFiltering => Some(WorkflowStage::FileRelevanceAssessment),
+            WorkflowStage::RegexPatternGeneration => Some(WorkflowStage::LocalFileFiltering),
+            WorkflowStage::LocalFileFiltering => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::ExtendedPathFinder),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathCorrection),
             WorkflowStage::ExtendedPathCorrection => None,
@@ -63,9 +63,9 @@ impl WorkflowStage {
     /// Get the previous stage in the workflow
     pub fn previous_stage(&self) -> Option<WorkflowStage> {
         match self {
-            WorkflowStage::GeneratingRegex => None,
-            WorkflowStage::LocalFiltering => Some(WorkflowStage::GeneratingRegex),
-            WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::LocalFiltering),
+            WorkflowStage::RegexPatternGeneration => None,
+            WorkflowStage::LocalFileFiltering => Some(WorkflowStage::RegexPatternGeneration),
+            WorkflowStage::FileRelevanceAssessment => Some(WorkflowStage::LocalFileFiltering),
             WorkflowStage::ExtendedPathFinder => Some(WorkflowStage::FileRelevanceAssessment),
             WorkflowStage::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathFinder),
         }
@@ -74,8 +74,8 @@ impl WorkflowStage {
     /// Get stage index for progress calculation (0-based)
     pub fn stage_index(&self) -> usize {
         match self {
-            WorkflowStage::GeneratingRegex => 0,
-            WorkflowStage::LocalFiltering => 1,
+            WorkflowStage::RegexPatternGeneration => 0,
+            WorkflowStage::LocalFileFiltering => 1,
             WorkflowStage::FileRelevanceAssessment => 2,
             WorkflowStage::ExtendedPathFinder => 3,
             WorkflowStage::ExtendedPathCorrection => 4,
@@ -85,8 +85,8 @@ impl WorkflowStage {
     /// Get stage display name
     pub fn display_name(&self) -> &'static str {
         match self {
-            WorkflowStage::GeneratingRegex => "Generating Regex Patterns",
-            WorkflowStage::LocalFiltering => "Local File Filtering",
+            WorkflowStage::RegexPatternGeneration => "Generating Regex Patterns",
+            WorkflowStage::LocalFileFiltering => "Local File Filtering",
             WorkflowStage::FileRelevanceAssessment => "AI File Relevance Assessment",
             WorkflowStage::ExtendedPathFinder => "Extended Path Finding",
             WorkflowStage::ExtendedPathCorrection => "Extended Path Correction",
@@ -96,8 +96,8 @@ impl WorkflowStage {
     /// Convert from stage display name to WorkflowStage enum
     pub fn from_display_name(display_name: &str) -> Option<WorkflowStage> {
         match display_name {
-            "Generating Regex Patterns" => Some(WorkflowStage::GeneratingRegex),
-            "Local File Filtering" => Some(WorkflowStage::LocalFiltering),
+            "Generating Regex Patterns" => Some(WorkflowStage::RegexPatternGeneration),
+            "Local File Filtering" => Some(WorkflowStage::LocalFileFiltering),
             "AI File Relevance Assessment" => Some(WorkflowStage::FileRelevanceAssessment),
             "Extended Path Finding" => Some(WorkflowStage::ExtendedPathFinder),
             "Extended Path Correction" => Some(WorkflowStage::ExtendedPathCorrection),
@@ -108,8 +108,8 @@ impl WorkflowStage {
     /// Convert from TaskType to WorkflowStage enum
     pub fn from_task_type(task_type: &TaskType) -> Option<WorkflowStage> {
         match task_type {
-            TaskType::RegexPatternGeneration => Some(WorkflowStage::GeneratingRegex),
-            TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFiltering),
+            TaskType::RegexPatternGeneration => Some(WorkflowStage::RegexPatternGeneration),
+            TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFileFiltering),
             TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
             TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
             TaskType::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathCorrection),
@@ -218,12 +218,28 @@ impl WorkflowState {
     }
 
     /// Calculate overall workflow progress (0-100%)
+    /// NOTE: This method only considers created stage jobs, which may be misleading
+    /// Use calculate_progress_with_definition() for accurate progress calculation
     pub fn calculate_progress(&self) -> f32 {
         if self.stage_jobs.is_empty() {
             return 0.0;
         }
 
         let total_stages = self.stage_jobs.len() as f32;
+        let completed_stages = self.stage_jobs.iter()
+            .filter(|job| job.status == JobStatus::Completed)
+            .count() as f32;
+
+        (completed_stages / total_stages) * 100.0
+    }
+
+    /// Calculate overall workflow progress with accurate total stage count from definition
+    pub fn calculate_progress_with_definition(&self, workflow_definition: &WorkflowDefinition) -> f32 {
+        let total_stages = workflow_definition.stages.len() as f32;
+        if total_stages == 0.0 {
+            return 100.0; // Empty workflow is considered complete
+        }
+
         let completed_stages = self.stage_jobs.iter()
             .filter(|job| job.status == JobStatus::Completed)
             .count() as f32;
@@ -350,9 +366,6 @@ pub struct WorkflowIntermediateData {
     pub raw_regex_patterns: Option<serde_json::Value>,
     pub locally_filtered_files: Vec<String>,
     pub ai_filtered_files: Vec<String>,
-    pub initial_verified_paths: Vec<String>,
-    pub initial_unverified_paths: Vec<String>,
-    pub initial_corrected_paths: Vec<String>,
     pub extended_verified_paths: Vec<String>,
     pub extended_unverified_paths: Vec<String>,
     pub extended_corrected_paths: Vec<String>,
@@ -361,36 +374,18 @@ pub struct WorkflowIntermediateData {
 impl WorkflowIntermediateData {
     /// Get all final selected files from the workflow
     pub fn get_final_selected_files(&self) -> Vec<String> {
-        let mut files = Vec::new();
-        
-        // Add locally filtered files
-        files.extend(self.locally_filtered_files.clone());
-        
-        // Add AI filtered files
-        files.extend(self.ai_filtered_files.clone());
-        
-        // Add initial verified paths
-        files.extend(self.initial_verified_paths.clone());
-        
-        // Add initial corrected paths
-        files.extend(self.initial_corrected_paths.clone());
-        
-        // Add extended verified paths
-        files.extend(self.extended_verified_paths.clone());
-        
-        // Add extended corrected paths
+        // The method should combine files from the final relevant stages.
+        // For the FileFinderWorkflow, this means the extended_verified_paths 
+        // (which are the result of FileRelevanceAssessment further processed by ExtendedPathFinder)
+        // and then any extended_corrected_paths.
+        let mut files = self.extended_verified_paths.clone();
         files.extend(self.extended_corrected_paths.clone());
         
-        // Remove duplicates while preserving order
-        let mut unique_files = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        for file in files {
-            if seen.insert(file.clone()) {
-                unique_files.push(file);
-            }
-        }
+        // Remove duplicates while preserving order and sort
+        files.sort_unstable();
+        files.dedup();
         
-        unique_files
+        files
     }
 }
 
@@ -515,8 +510,8 @@ impl Default for ErrorRecoveryConfig {
         let mut strategy_map = HashMap::new();
         
         // Define default strategies for each stage
-        strategy_map.insert("GeneratingRegex".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 3000 });
-        strategy_map.insert("LocalFiltering".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 2000 });
+        strategy_map.insert("RegexPatternGeneration".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 3000 });
+        strategy_map.insert("LocalFileFiltering".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 2000 });
         strategy_map.insert("FileRelevanceAssessment".to_string(), RecoveryStrategy::RetryStage { max_attempts: 3, delay_ms: 4000 });
         strategy_map.insert("ExtendedPathFinder".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 5000 });
         strategy_map.insert("ExtendedPathCorrection".to_string(), RecoveryStrategy::RetryStage { max_attempts: 2, delay_ms: 3000 });

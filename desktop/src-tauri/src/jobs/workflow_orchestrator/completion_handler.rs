@@ -58,6 +58,11 @@ pub(super) async fn handle_stage_completion_internal(
     // Find next stages that can be executed based on the workflow definition (use updated state after data extraction)
     let next_stages = super::stage_scheduler::find_next_abstract_stages_to_execute_internal(&workflow_state_for_payload_building, &workflow_definition).await;
 
+    debug!("Found {} next stages to execute for workflow {}", next_stages.len(), workflow_id);
+    for stage in &next_stages {
+        debug!("Next stage eligible: {} (task_type: {:?})", stage.stage_name, stage.task_type);
+    }
+
     if next_stages.is_empty() {
         // Check if workflow should stop due to cancellation or failure
         if workflow_state_for_payload_building.should_stop() {

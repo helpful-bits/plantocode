@@ -16,6 +16,7 @@ import {
 import { Progress } from "@/ui/progress";
 
 import { getStreamingProgressValue, getParsedMetadata } from "../../background-jobs-sidebar/utils";
+import { getJobDisplaySessionName } from "../../background-jobs-sidebar/_utils/job-display-utils";
 
 import React from "react";
 
@@ -43,13 +44,12 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
                      ["running", "processing_stream", "generating_stream"].includes(plan.status);
   const progress = getStreamingProgressValue(
     plan.metadata,
-    plan.startTime,
-    plan.maxOutputTokens
+    plan.startTime
   );
 
   // Parse the model information from plan metadata with priority order
   const modelInfo = (() => {
-    const model = plan.modelUsed || parsedMeta?.additionalParams?.modelUsed;
+    const model = plan.modelUsed || parsedMeta?.taskData?.modelUsed;
     if (!model || typeof model !== 'string') return 'Unknown Model';
     
     // Format common model names for better display
@@ -65,7 +65,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
 
   // Calculate estimated token count if available - prefer plan fields over metadata
   let tokenCountDisplay = "N/A";
-  const totalTokens = plan.totalTokens || parsedMeta?.additionalParams?.totalTokens || parsedMeta?.additionalParams?.tokensUsed;
+  const totalTokens = parsedMeta?.taskData?.totalTokens || parsedMeta?.taskData?.tokensUsed;
   if (typeof totalTokens === 'number' && totalTokens > 0) {
     tokenCountDisplay = totalTokens.toLocaleString();
   } else if (typeof totalTokens === 'string') {
@@ -78,50 +78,8 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
     ? formatDistanceToNow(new Date(plan.updatedAt), { addSuffix: true })
     : "Unknown time";
 
-  // Extract session name with improved reliability and better fallbacks
-  const sessionName = (() => {
-    // Priority 1: Use sessionName from parsed metadata (extracted from new structure)
-    if (parsedMeta?.sessionName && typeof parsedMeta.sessionName === 'string' && parsedMeta.sessionName.trim()) {
-      return parsedMeta.sessionName.trim();
-    }
-    
-    // Priority 2: Check nested jobPayloadForWorker.data.sessionName for new structure
-    if (parsedMeta?.jobPayloadForWorker?.data?.sessionName && typeof parsedMeta.jobPayloadForWorker.data.sessionName === 'string' && parsedMeta.jobPayloadForWorker.data.sessionName.trim()) {
-      return parsedMeta.jobPayloadForWorker.data.sessionName.trim();
-    }
-    
-    // Priority 3: Check additionalParams.sessionName for new structure
-    if (parsedMeta?.additionalParams?.sessionName && typeof parsedMeta.additionalParams.sessionName === 'string' && parsedMeta.additionalParams.sessionName.trim()) {
-      return parsedMeta.additionalParams.sessionName.trim();
-    }
-    
-    // Priority 4: Use planTitle from metadata if available (specific to implementation plans)
-    if (parsedMeta?.planTitle && typeof parsedMeta.planTitle === 'string' && parsedMeta.planTitle.trim()) {
-      return parsedMeta.planTitle.trim();
-    }
-    
-    // Priority 5: Use taskDescription from metadata if available
-    if (parsedMeta?.taskDescription && typeof parsedMeta.taskDescription === 'string' && parsedMeta.taskDescription.trim()) {
-      const taskDesc = parsedMeta.taskDescription.trim();
-      return taskDesc.length > 60 ? taskDesc.substring(0, 60) + '...' : taskDesc;
-    }
-    
-    // Priority 6: Extract meaningful content from the first line of the prompt
-    if (plan.prompt && typeof plan.prompt === 'string' && plan.prompt.trim()) {
-      const firstLine = plan.prompt.trim().split('\n')[0].trim();
-      if (firstLine.length > 0) {
-        return firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
-      }
-    }
-    
-    // Priority 7: Use job ID with a descriptive prefix as last resort
-    if (plan.id) {
-      return `Implementation Plan ${plan.id.substring(0, 8)}`;
-    }
-    
-    // Final fallback
-    return "Untitled Implementation Plan";
-  })();
+  // Extract session name using centralized utility function
+  const sessionName = getJobDisplaySessionName(plan);
 
   // Determine if the job has content to display
   const hasContent = !!plan.response || isStreaming;

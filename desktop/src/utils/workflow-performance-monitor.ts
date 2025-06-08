@@ -187,8 +187,8 @@ export class WorkflowPerformanceMonitor {
     if (allMetrics.length === 0) {
       return {
         averageExecutionTime: 0,
-        slowestStage: 'GENERATING_REGEX',
-        fastestStage: 'GENERATING_REGEX',
+        slowestStage: 'REGEX_PATTERN_GENERATION',
+        fastestStage: 'REGEX_PATTERN_GENERATION',
         failureRate: 0,
         recommendations: ['No workflow data available'],
       };
@@ -217,8 +217,8 @@ export class WorkflowPerformanceMonitor {
     }));
 
     avgStagePerformance.sort((a, b) => b.avgTime - a.avgTime);
-    const slowestStage = avgStagePerformance[0]?.stage as WorkflowStage || 'GENERATING_REGEX';
-    const fastestStage = avgStagePerformance[avgStagePerformance.length - 1]?.stage as WorkflowStage || 'GENERATING_REGEX';
+    const slowestStage = avgStagePerformance[0]?.stage as WorkflowStage || 'REGEX_PATTERN_GENERATION';
+    const fastestStage = avgStagePerformance[avgStagePerformance.length - 1]?.stage as WorkflowStage || 'REGEX_PATTERN_GENERATION';
 
     // Calculate failure rate
     const failedWorkflows = Array.from(this.performanceData.values()).filter(data => {
@@ -291,8 +291,8 @@ export class WorkflowPerformanceMonitor {
       
       // Start tracking if stage is running and not yet tracked
       if ((stageJob.status === 'running' || stageJob.status === 'preparing' || 
-           stageJob.status === 'preparing_input' || stageJob.status === 'generating_stream' ||
-           stageJob.status === 'processing_stream') && !stageData) {
+           stageJob.status === 'preparingInput' || stageJob.status === 'generatingStream' ||
+           stageJob.status === 'processingStream') && !stageData) {
         // Estimate input size based on stage type
         const inputSize = this.estimateStageInputSize(stageJob.stage, workflowState);
         this.startStageTracking(workflowId, stageJob.stage, inputSize);
@@ -300,14 +300,14 @@ export class WorkflowPerformanceMonitor {
       
       // End tracking if stage completed/failed and was previously tracked
       if ((stageJob.status === 'completed' || stageJob.status === 'failed' || 
-           stageJob.status === 'completed_by_tag') && stageData && !stageData.endTime) {
+           stageJob.status === 'completedByTag') && stageData && !stageData.endTime) {
         // Estimate output size based on stage type
         const outputSize = this.estimateStageOutputSize(stageJob.stage, workflowState);
         this.endStageTracking(
           workflowId,
           stageJob.stage,
           outputSize,
-          stageJob.status === 'completed' || stageJob.status === 'completed_by_tag',
+          stageJob.status === 'completed' || stageJob.status === 'completedByTag',
           stageJob.errorMessage
         );
       }
@@ -401,9 +401,9 @@ export class WorkflowPerformanceMonitor {
   private estimateStageInputSize(stage: WorkflowStage, workflowState: WorkflowState): number {
     // Estimate input size based on stage type and available data
     switch (stage) {
-      case 'GENERATING_REGEX':
+      case 'REGEX_PATTERN_GENERATION':
         return workflowState.taskDescription.length;
-      case 'LOCAL_FILTERING':
+      case 'LOCAL_FILE_FILTERING':
         return workflowState.intermediateData.directoryTreeContent?.length || 0;
       case 'FILE_RELEVANCE_ASSESSMENT':
         return workflowState.intermediateData.locallyFilteredFiles.length;
@@ -419,9 +419,9 @@ export class WorkflowPerformanceMonitor {
   private estimateStageOutputSize(stage: WorkflowStage, workflowState: WorkflowState): number {
     // Estimate output size based on stage type and available data
     switch (stage) {
-      case 'GENERATING_REGEX':
+      case 'REGEX_PATTERN_GENERATION':
         return JSON.stringify(workflowState.intermediateData.rawRegexPatterns).length || 0;
-      case 'LOCAL_FILTERING':
+      case 'LOCAL_FILE_FILTERING':
         return workflowState.intermediateData.locallyFilteredFiles.length;
       case 'FILE_RELEVANCE_ASSESSMENT':
         return workflowState.intermediateData.aiFilteredFiles.length;

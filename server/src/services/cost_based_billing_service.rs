@@ -3,6 +3,8 @@ use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::SubscriptionRepository;
 use crate::db::repositories::subscription_plan_repository::SubscriptionPlanRepository;
 use crate::db::repositories::spending_repository::{SpendingRepository, UserSpendingLimit, SpendingAlert};
+use crate::db::repositories::user_credit_repository::UserCreditRepository;
+use crate::db::repositories::credit_transaction_repository::{CreditTransactionRepository, CreditTransaction};
 use crate::db::repositories::{UserSpendingSummary, SpendingTrend};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -38,6 +40,7 @@ pub struct SpendingStatus {
     pub hard_limit: BigDecimal,
     pub remaining_allowance: BigDecimal,
     pub overage_amount: BigDecimal,
+    pub credit_balance: BigDecimal,
     pub usage_percentage: f64,
     pub services_blocked: bool,
     pub billing_period_start: DateTime<Utc>,
@@ -53,6 +56,8 @@ pub struct CostBasedBillingService {
     subscription_repository: Arc<SubscriptionRepository>,
     subscription_plan_repository: Arc<SubscriptionPlanRepository>,
     spending_repository: Arc<SpendingRepository>,
+    user_credit_repository: Arc<UserCreditRepository>,
+    credit_transaction_repository: Arc<CreditTransactionRepository>,
 }
 
 impl CostBasedBillingService {
@@ -62,6 +67,8 @@ impl CostBasedBillingService {
         subscription_repository: Arc<SubscriptionRepository>,
         subscription_plan_repository: Arc<SubscriptionPlanRepository>,
         spending_repository: Arc<SpendingRepository>,
+        user_credit_repository: Arc<UserCreditRepository>,
+        credit_transaction_repository: Arc<CreditTransactionRepository>,
     ) -> Self {
         Self {
             db_pools,
@@ -69,6 +76,8 @@ impl CostBasedBillingService {
             subscription_repository,
             subscription_plan_repository,
             spending_repository,
+            user_credit_repository,
+            credit_transaction_repository,
         }
     }
 
@@ -83,11 +92,13 @@ impl CostBasedBillingService {
         }
 
         // Check if hard limit would be exceeded with minimal additional cost
+        // considering credit balance as a buffer
         let buffer_amount = safe_bigdecimal_from_str("0.01")?; // $0.01 buffer
         let projected_spending = &spending_status.current_spending + &buffer_amount;
+        let effective_hard_limit = &spending_status.hard_limit + &spending_status.credit_balance;
         
-        if projected_spending > spending_status.hard_limit {
-            warn!("User {} approaching hard limit, blocking services preemptively", user_id);
+        if projected_spending > effective_hard_limit {
+            warn!("User {} approaching effective hard limit (including credits), blocking services preemptively", user_id);
             self.block_services(user_id).await?;
             return Ok(false);
         }
@@ -168,13 +179,83 @@ impl CostBasedBillingService {
             input_duration_ms,
         };
         
-        self.api_usage_repository.record_usage_with_executor(entry_dto, executor).await?;
+        let api_usage_record = self.api_usage_repository.record_usage_with_executor(entry_dto, executor).await?;
 
-        // Update real-time spending within transaction
-        self.update_real_time_spending_in_tx(user_id, cost, executor).await?;
+        // Get current spending limit
+        let spending_limit = self.get_or_create_current_spending_limit_in_tx(user_id, executor).await?;
+        
+        // Calculate how much of the cost is covered by included allowance
+        let cost_covered_by_allowance = cost.clone().min(
+            (&spending_limit.included_allowance - &spending_limit.current_spending).max(safe_bigdecimal_from_str("0")?)
+        );
+        let remaining_cost_after_allowance = cost - &cost_covered_by_allowance;
+        
+        // Update spending limit with the portion covered by allowance
+        if cost_covered_by_allowance > safe_bigdecimal_from_str("0")? {
+            self.spending_repository.update_user_spending_for_period_with_executor(
+                user_id, 
+                &cost_covered_by_allowance, 
+                &spending_limit.billing_period_start, 
+                executor
+            ).await?;
+        }
+        
+        // Handle remaining cost with credits
+        if remaining_cost_after_allowance > safe_bigdecimal_from_str("0")? {
+            // Get credit balance
+            let credit_balance_option = self.user_credit_repository.get_balance_with_executor(user_id, executor).await?;
+            let credit_balance = credit_balance_option
+                .map(|uc| uc.balance)
+                .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
+            let cost_covered_by_credits = remaining_cost_after_allowance.clone().min(credit_balance);
+            
+            if cost_covered_by_credits > safe_bigdecimal_from_str("0")? {
+                // Deduct credits
+                let negative_cost = -cost_covered_by_credits.clone();
+                self.user_credit_repository.increment_balance_with_executor(user_id, &negative_cost, executor).await?;
+                
+                // Record credit consumption transaction (amount should be negative for consumption)
+                let negative_amount = -cost_covered_by_credits.clone();
+                self.credit_transaction_repository.create_consumption_transaction_with_executor(
+                    user_id,
+                    &negative_amount,
+                    &api_usage_record.id.unwrap_or_else(|| uuid::Uuid::new_v4()),
+                    Some(format!("Credit consumption for {} usage", service_name)),
+                    executor,
+                ).await?;
+                
+                // Update spending limit with credit-covered amount
+                self.spending_repository.update_user_spending_for_period_with_executor(
+                    user_id, 
+                    &cost_covered_by_credits, 
+                    &spending_limit.billing_period_start, 
+                    executor
+                ).await?;
+            }
+            
+            // Any remaining cost becomes actual overage
+            let actual_overage_cost = &remaining_cost_after_allowance - &cost_covered_by_credits;
+            if actual_overage_cost > safe_bigdecimal_from_str("0")? {
+                // Update spending limit with overage amount
+                self.spending_repository.update_user_spending_for_period_with_executor(
+                    user_id, 
+                    &actual_overage_cost, 
+                    &spending_limit.billing_period_start, 
+                    executor
+                ).await?;
+            }
+        }
 
         // Check spending thresholds and send alerts within transaction
         self.check_spending_thresholds_in_tx(user_id, executor).await?;
+
+        debug!("Processed API usage for user {}: cost=${}, covered by allowance=${}, covered by credits=${}", 
+               user_id, cost, cost_covered_by_allowance, 
+               if remaining_cost_after_allowance > safe_bigdecimal_from_str("0")? {
+                   cost - &cost_covered_by_allowance
+               } else {
+                   safe_bigdecimal_from_str("0")?
+               });
 
         Ok(())
     }
@@ -184,24 +265,33 @@ impl CostBasedBillingService {
         // Get or create current billing period spending limit
         let spending_limit = self.get_or_create_current_spending_limit(user_id).await?;
         
-        // Calculate derived values
-        let remaining_allowance = if spending_limit.current_spending <= spending_limit.included_allowance {
-            &spending_limit.included_allowance - &spending_limit.current_spending
+        // Get user's credit balance
+        let credit_balance_option = self.user_credit_repository.get_balance(user_id).await?;
+        let credit_balance = credit_balance_option
+            .map(|uc| uc.balance)
+            .unwrap_or_else(|| safe_bigdecimal_from_str("0").unwrap_or_else(|_| BigDecimal::from(0)));
+        
+        // Calculate effective allowance (included allowance + credits)
+        let effective_allowance = &spending_limit.included_allowance + &credit_balance;
+        
+        // Calculate derived values considering credits
+        let remaining_allowance = if spending_limit.current_spending <= effective_allowance {
+            &effective_allowance - &spending_limit.current_spending
         } else {
             safe_bigdecimal_from_str("0")?
         };
 
-        let overage_amount = if spending_limit.current_spending > spending_limit.included_allowance {
-            &spending_limit.current_spending - &spending_limit.included_allowance
+        let overage_amount = if spending_limit.current_spending > effective_allowance {
+            &spending_limit.current_spending - &effective_allowance
         } else {
             safe_bigdecimal_from_str("0")?
         };
 
-        let usage_percentage = if spending_limit.included_allowance > safe_bigdecimal_from_str("0")? {
+        let usage_percentage = if effective_allowance > safe_bigdecimal_from_str("0")? {
             let current_f64 = spending_limit.current_spending.to_f64().unwrap_or(0.0);
-            let allowance_f64 = spending_limit.included_allowance.to_f64().unwrap_or(1.0);
-            if allowance_f64 > 0.0 {
-                (current_f64 / allowance_f64) * 100.0
+            let effective_allowance_f64 = effective_allowance.to_f64().unwrap_or(1.0);
+            if effective_allowance_f64 > 0.0 {
+                (current_f64 / effective_allowance_f64) * 100.0
             } else {
                 0.0
             }
@@ -218,6 +308,7 @@ impl CostBasedBillingService {
             hard_limit: spending_limit.hard_limit,
             remaining_allowance,
             overage_amount,
+            credit_balance,
             usage_percentage,
             services_blocked: spending_limit.services_blocked,
             billing_period_start: spending_limit.billing_period_start,

@@ -687,61 +687,113 @@ impl StageDataExtractor {
         Ok(patterns)
     }
 
-    /// Extract only title patterns (for file path filtering)
-    pub fn extract_title_patterns_from_json(json_value: &Value) -> AppResult<Vec<String>> {
-        let mut patterns = Vec::new();
-        
-        if json_value.is_null() {
-            return Ok(vec![]);
-        }
-        
-        // Look for title-specific regex fields only
-        let title_fields = ["titleRegex", "negativeTitleRegex"];
-        
-        for field in &title_fields {
-            if let Some(pattern_value) = json_value.get(field) {
-                if let Some(pattern_str) = pattern_value.as_str() {
-                    let trimmed = pattern_str.trim();
-                    if !trimmed.is_empty() {
-                        patterns.push(trimmed.to_string());
-                        debug!("Extracted title pattern {}: {}", field, trimmed);
-                    }
-                }
-            }
-        }
-        
-        // Fail if no title patterns found
-        if patterns.is_empty() {
-            return Err(AppError::JobError("No title patterns found in regex generation output".to_string()));
-        }
-        
-        Ok(patterns)
+    /// Extract file path regex patterns specifically for LocalFileFiltering
+    /// Uses the general pattern extraction which handles all the existing formats
+    pub fn extract_filepath_regex_patterns(raw_regex_json: &Value) -> AppResult<Vec<String>> {
+        Self::extract_patterns_from_json(raw_regex_json)
     }
 
-    /// Extract only content patterns (for file content filtering)
-    pub fn extract_content_patterns_from_json(json_value: &Value) -> AppResult<Vec<String>> {
-        let mut patterns = Vec::new();
-        
+    /// Extract single path pattern (for file path filtering)
+    pub fn extract_path_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
         if json_value.is_null() {
-            return Ok(vec![]);
+            return Ok(None);
         }
         
-        // Look for content-specific regex fields only
-        let content_fields = ["contentRegex", "negativeContentRegex"];
+        // Look for pathRegex, filePathRegex, or pathPattern fields (single pattern)
+        let path_fields = ["pathRegex", "filePathRegex", "pathPattern", "titleRegex"];
         
-        for field in &content_fields {
+        for field in &path_fields {
             if let Some(pattern_value) = json_value.get(field) {
                 if let Some(pattern_str) = pattern_value.as_str() {
                     let trimmed = pattern_str.trim();
                     if !trimmed.is_empty() {
-                        patterns.push(trimmed.to_string());
-                        debug!("Extracted content pattern {}: {}", field, trimmed);
+                        debug!("Extracted path pattern from {}: {}", field, trimmed);
+                        return Ok(Some(trimmed.to_string()));
                     }
                 }
             }
         }
         
-        Ok(patterns)
+        // Also check if filePathRegexPatterns array exists and take first element
+        if let Some(file_path_patterns) = json_value.get("filePathRegexPatterns") {
+            if let Some(array) = file_path_patterns.as_array() {
+                if let Some(first_item) = array.first() {
+                    if let Some(pattern_str) = first_item.as_str() {
+                        let trimmed = pattern_str.trim();
+                        if !trimmed.is_empty() {
+                            debug!("Extracted path pattern from filePathRegexPatterns[0]: {}", trimmed);
+                            return Ok(Some(trimmed.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+
+    /// Extract single content pattern (for file content filtering)
+    pub fn extract_content_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
+        if json_value.is_null() {
+            return Ok(None);
+        }
+        
+        // Look for contentRegex field
+        if let Some(pattern_value) = json_value.get("contentRegex") {
+            if let Some(pattern_str) = pattern_value.as_str() {
+                let trimmed = pattern_str.trim();
+                if !trimmed.is_empty() {
+                    debug!("Extracted content pattern: {}", trimmed);
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+
+    /// Extract single negative path pattern (for file path exclusion)
+    pub fn extract_negative_path_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
+        if json_value.is_null() {
+            return Ok(None);
+        }
+        
+        // Look for negativePathRegex or negativeTitleRegex field
+        let negative_path_fields = ["negativePathRegex", "negativeTitleRegex"];
+        
+        for field in &negative_path_fields {
+            if let Some(pattern_value) = json_value.get(field) {
+                if let Some(pattern_str) = pattern_value.as_str() {
+                    let trimmed = pattern_str.trim();
+                    if !trimmed.is_empty() {
+                        debug!("Extracted negative path pattern from {}: {}", field, trimmed);
+                        return Ok(Some(trimmed.to_string()));
+                    }
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+
+    /// Extract single negative content pattern (for file content exclusion)
+    pub fn extract_negative_content_pattern_from_json(json_value: &Value) -> AppResult<Option<String>> {
+        if json_value.is_null() {
+            return Ok(None);
+        }
+        
+        // Look for negativeContentRegex field
+        if let Some(pattern_value) = json_value.get("negativeContentRegex") {
+            if let Some(pattern_str) = pattern_value.as_str() {
+                let trimmed = pattern_str.trim();
+                if !trimmed.is_empty() {
+                    debug!("Extracted negative content pattern: {}", trimmed);
+                    return Ok(Some(trimmed.to_string()));
+                }
+            }
+        }
+        
+        Ok(None)
     }
 
     /// Extract final paths from PathCorrection or ExtendedPathCorrection job

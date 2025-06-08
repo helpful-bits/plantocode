@@ -12,14 +12,14 @@ use crate::jobs::types::JobPayload;
 use crate::error::AppError;
 use crate::api_clients::client_factory;
 use crate::api_clients::client_trait::TranscriptionClient;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// Arguments for audio transcription request
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscribeAudioArgs {
     pub session_id: String,
-    pub audio_data: String, // Base64 encoded audio data
+    pub audio_data: Vec<u8>,
+    pub duration_ms: i64,
     pub filename: Option<String>,
     pub project_directory: Option<String>,
 }
@@ -29,7 +29,8 @@ pub struct TranscribeAudioArgs {
 #[command]
 pub async fn create_transcription_job_command(
     session_id: String,
-    audio_data: String,
+    audio_data: Vec<u8>,
+    duration_ms: i64,
     filename: Option<String>,
     project_directory: Option<String>,
     app_handle: AppHandle,
@@ -37,6 +38,7 @@ pub async fn create_transcription_job_command(
     let args = TranscribeAudioArgs {
         session_id,
         audio_data,
+        duration_ms,
         filename,
         project_directory,
     };
@@ -78,18 +80,7 @@ pub async fn create_transcription_job_command(
         }
     };
     
-    // Decode the base64 audio data
-    
-    let audio_data = BASE64.decode(&args.audio_data)
-        .map_err(|e| AppError::ValidationError(format!("Invalid base64 audio data: {}", e)))?;
-    
-    // Estimate duration from audio data size (rough approximation)
-    // For uncompressed audio at 44.1kHz, 16-bit, mono: 44100 * 2 bytes per second = 88200 bytes/sec
-    // For typical compressed audio: estimate ~8000-12000 bytes per second
-    let estimated_duration_ms = (audio_data.len() as f64 / 10000.0 * 1000.0) as i64;
-    let duration_ms = std::cmp::max(estimated_duration_ms, 1000); // Minimum 1 second
-    
-    debug!("Estimated audio duration: {}ms for {} bytes", duration_ms, audio_data.len());
+    debug!("Audio duration: {}ms for {} bytes", args.duration_ms, args.audio_data.len());
     
     // Generate filename if not provided
     let filename = args.filename.unwrap_or_else(|| "audio.mp3".to_string());
@@ -101,10 +92,10 @@ pub async fn create_transcription_job_command(
     
     // Create the VoiceTranscriptionPayload directly
     let transcription_payload = crate::jobs::types::VoiceTranscriptionPayload {
-        audio_data,
+        audio_data: args.audio_data,
         filename: filename.clone(),
         model: transcription_model.clone(),
-        duration_ms,
+        duration_ms: args.duration_ms,
     };
     
     // Use the job creation utility to create and queue the job
@@ -130,81 +121,3 @@ pub async fn create_transcription_job_command(
 }
 
 
-/// Request for direct audio transcription
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DirectTranscribeAudioArgs {
-    pub audio_data: Vec<u8>,  // Uint8Array from JS will be sent as Vec<u8>
-    pub filename: String,
-    pub model: String,
-}
-
-/// Response with transcribed text
-#[derive(Debug, Serialize)]
-pub struct DirectTranscribeAudioResponse {
-    pub text: String,
-}
-
-/// Directly transcribes audio to text without creating a background job
-/// This uses Groq transcription through the server proxy
-#[command]
-pub async fn transcribe_audio_direct_command(
-    audio_data: Vec<u8>,
-    filename: String,
-    model: String,
-    app_handle: AppHandle,
-) -> AppResult<DirectTranscribeAudioResponse> {
-    let args = DirectTranscribeAudioArgs {
-        audio_data,
-        filename,
-        model,
-    };
-    info!("Directly transcribing audio without background job using server proxy");
-    
-    // Validate required fields
-    if args.audio_data.is_empty() {
-        return Err(AppError::ValidationError("Audio data is required".to_string()));
-    }
-    
-    if args.filename.is_empty() {
-        return Err(AppError::ValidationError("Filename is required".to_string()));
-    }
-    
-    // Get transcription model from param or use default
-    let transcription_model = if args.model.is_empty() {
-        match crate::config::get_default_transcription_model_id() {
-            Ok(model) => model,
-            Err(e) => {
-                return Err(AppError::ConfigError(format!("Failed to get transcription model: {}", e)));
-            }
-        }
-    } else {
-        args.model
-    };
-    
-    // Get the transcription client from app state
-    // This is a ServerProxyClient under the TranscriptionClient trait
-    let transcription_client = client_factory::get_transcription_client(&app_handle)?;
-    debug!("Using transcription client to send request to server proxy");
-    
-    // Estimate duration from audio data size (rough approximation)
-    // For uncompressed audio at 44.1kHz, 16-bit, mono: 44100 * 2 bytes per second = 88200 bytes/sec
-    // For typical compressed audio: estimate ~8000-12000 bytes per second
-    let estimated_duration_ms = (args.audio_data.len() as f64 / 10000.0 * 1000.0) as i64;
-    let duration_ms = std::cmp::max(estimated_duration_ms, 1000); // Minimum 1 second
-    
-    debug!("Estimated audio duration: {}ms for {} bytes", duration_ms, args.audio_data.len());
-    
-    // Call the transcribe method
-    let transcribed_text = transcription_client
-        .transcribe(&args.audio_data, &args.filename, &transcription_model, duration_ms)
-        .await
-        .map_err(|e| {
-            error!("Transcription failed via server proxy: {}", e);
-            AppError::ServerProxyError(format!("Transcription failed via server proxy: {}", e))
-        })?;
-    
-    info!("Direct transcription successful via server proxy");
-    
-    Ok(DirectTranscribeAudioResponse { text: transcribed_text })
-}

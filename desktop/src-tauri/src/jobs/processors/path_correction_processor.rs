@@ -99,10 +99,13 @@ impl JobProcessor for PathCorrectionProcessor {
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
         job_processor_utils::log_job_start(&job.id, "path correction");
         debug!("Paths to correct: {}", payload.paths_to_correct);
@@ -114,31 +117,26 @@ impl JobProcessor for PathCorrectionProcessor {
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
             
-        let project_directory = job.project_directory.as_ref()
-            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
-        
-        // Handle system prompt override or use unified prompt
-        let task_description = paths.join("\n");
-        let composed_prompt = if let Some(override_prompt) = &payload.system_prompt_override {
-            crate::utils::unified_prompt_system::ComposedPrompt {
-                final_prompt: format!("{}\n\n{}", override_prompt, task_description),
-                system_prompt_id: "override".to_string(),
-                context_sections: vec![],
-                estimated_tokens: Some(crate::utils::token_estimator::estimate_tokens(override_prompt) as usize),
-            }
-        } else {
-            // Use build_unified_prompt helper
-            prompt_utils::build_unified_prompt(
-                &job,
-                &app_handle,
-                task_description,
-                payload.directory_tree.clone(),
-                None,
-                payload.directory_tree.clone(),
-                &settings_repo,
-                &model_used,
-            ).await?
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
         };
+        let project_directory = &session.project_directory;
+        
+        // Use unified prompt system exclusively
+        let task_description = paths.join("\n");
+        let composed_prompt = prompt_utils::build_unified_prompt(
+            &job,
+            &app_handle,
+            task_description,
+            None,
+            None,
+            &settings_repo,
+            &model_used,
+        ).await?;
 
         // Extract system and user prompts from the composed result
         let (system_prompt, user_prompt, system_prompt_id) = llm_api_utils::extract_prompts_from_composed(&composed_prompt);
@@ -240,7 +238,7 @@ impl JobProcessor for PathCorrectionProcessor {
                     error!("{}", error_msg);
                     
                     // Finalize job failure
-                    job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
+                    job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, None).await?;
                     
                     Ok(JobProcessResult::failure(job.id.clone(), error_msg))
                 }
@@ -251,7 +249,7 @@ impl JobProcessor for PathCorrectionProcessor {
                 error!("{}", error_msg);
                 
                 // Finalize job failure
-                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg).await?;
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, Some(&e)).await?;
                 
                 Ok(JobProcessResult::failure(job.id.clone(), error_msg))
             }

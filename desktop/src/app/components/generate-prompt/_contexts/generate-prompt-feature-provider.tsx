@@ -80,7 +80,6 @@ export function GeneratePromptFeatureProvider({
       includedFiles: [],
       forceExcludedFiles: [],
       searchSelectedFilesOnly: false,
-      codebaseStructure: "",
     });
   }, [
     formState.resetFormState, 
@@ -105,9 +104,7 @@ export function GeneratePromptFeatureProvider({
       if (result.isSuccess && result.data?.directoryTree) {
         // Update the session with the generated directory tree
         if (sessionState.activeSessionId) {
-          sessionActions.updateCurrentSessionFields({
-            codebaseStructure: result.data.directoryTree,
-          });
+          // Directory tree generated but not stored in session
         }
         showNotification({
           title: "Success",

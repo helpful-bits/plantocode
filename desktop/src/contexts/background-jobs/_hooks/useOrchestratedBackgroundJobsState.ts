@@ -46,6 +46,9 @@ export function useOrchestratedBackgroundJobsState({
   // Refs for tracking state without triggering rerenders
   const isFetchingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
+  
+  // State for triggering timestamp updates
+  const [timestampUpdateTrigger, setTimestampUpdateTrigger] = useState(0);
 
   // Fetch jobs using Tauri command
   const fetchJobs = useCallback(async () => {
@@ -361,7 +364,6 @@ export function useOrchestratedBackgroundJobsState({
             const payload = event.payload as { 
               job_id: string; 
               response_chunk: string; 
-              chars_received: number; 
               tokens_received: number; 
               metadata: string; 
             };
@@ -389,9 +391,7 @@ export function useOrchestratedBackgroundJobsState({
               const updatedJob: BackgroundJob = {
                 ...existingJob,
                 response: updatedResponse,
-                charsReceived: payload.chars_received,
                 tokensReceived: payload.tokens_received,
-                lastUpdate: Date.now(),
                 updatedAt: Date.now(),
                 metadata: payload.metadata,
               };
@@ -452,6 +452,15 @@ export function useOrchestratedBackgroundJobsState({
     void refreshJobs();
   }, [initialJobs.length, initialLoad, refreshJobs]);
 
+  // Set up timer to update timestamps every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimestampUpdateTrigger(prev => prev + 1);
+    }, 60000); // Update every 60 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Get job by ID helper
   const getJobById = useCallback(
     (jobId: string) => jobs.find((job) => job.id === jobId),
@@ -477,6 +486,7 @@ export function useOrchestratedBackgroundJobsState({
       isFetchingRef,
       consecutiveErrorsRef,
       lastFetchTime,
+      timestampUpdateTrigger,
     }),
     [
       // Core state
@@ -485,6 +495,7 @@ export function useOrchestratedBackgroundJobsState({
       isLoading,
       error,
       lastFetchTime,
+      timestampUpdateTrigger,
       
       // Action callbacks
       cancelJob,

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::fs;
 use log::{debug, info, error, warn};
 use serde_json::json;
 use tauri::AppHandle;
@@ -9,7 +10,7 @@ use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, LocalFileFilteringPayload};
 use crate::jobs::job_processor_utils;
 use crate::utils::path_utils;
-use crate::utils::directory_tree::get_directory_tree_for_processor;
+use crate::utils::git_utils;
 
 pub struct LocalFileFilteringProcessor;
 
@@ -18,103 +19,203 @@ impl LocalFileFilteringProcessor {
         Self
     }
     
-    /// Perform local file filtering based on regex patterns only
-    fn filter_paths_by_task(&self, directory_tree: &str, task_description: &str, project_directory: &str, regex_patterns: &[String]) -> AppResult<Vec<String>> {
-        let mut filtered_paths = Vec::new();
-        
-        // Handle case where directory tree is unavailable
-        if directory_tree.trim().is_empty() || directory_tree == "No directory structure available" {
-            info!("Directory tree is unavailable for filtering, returning empty path list");
-            return Ok(filtered_paths);
+    /// Perform file filtering using the BEST SOLUTION:
+    /// 1. Positive filtering: (path_pattern OR content_pattern) 
+    /// 2. Negative filtering: NOT (negative_path_pattern OR negative_content_pattern)
+    fn filter_files_with_single_patterns(
+        &self,
+        project_directory: &str,
+        excluded_paths: &[String],
+        path_pattern: Option<&str>,
+        content_pattern: Option<&str>,
+        negative_path_pattern: Option<&str>,
+        negative_content_pattern: Option<&str>
+    ) -> AppResult<Vec<String>> {
+        // Validate that at least one positive pattern is provided
+        if path_pattern.is_none() && content_pattern.is_none() {
+            return Err(AppError::JobError("At least one positive pattern (path or content) must be provided for file filtering".to_string()));
         }
         
-        // Check if regex patterns are provided - fail if empty
-        if regex_patterns.is_empty() {
-            return Err(AppError::JobError("No regex patterns provided for local file filtering - regex generation stage may have failed".to_string()));
+        // Compile regex patterns
+        let compiled_path_regex = if let Some(pattern) = path_pattern {
+            Some(self.compile_single_regex(pattern)?)
+        } else {
+            None
+        };
+        
+        let compiled_content_regex = if let Some(pattern) = content_pattern {
+            Some(self.compile_single_regex(pattern)?)
+        } else {
+            None
+        };
+        
+        let compiled_negative_path_regex = if let Some(pattern) = negative_path_pattern {
+            Some(self.compile_single_regex(pattern)?)
+        } else {
+            None
+        };
+        
+        let compiled_negative_content_regex = if let Some(pattern) = negative_content_pattern {
+            Some(self.compile_single_regex(pattern)?)
+        } else {
+            None
+        };
+        
+        let mut positive_matches = Vec::new();
+        
+        // Normalize the project directory path
+        let project_path = Path::new(project_directory);
+        let normalized_project_dir = match fs::canonicalize(project_path) {
+            Ok(path) => path,
+            Err(e) => {
+                return Err(AppError::JobError(format!("Failed to canonicalize project directory {}: {}", project_directory, e)));
+            }
+        };
+        
+        info!("Starting git-aware file discovery with title and content filtering in: {}", normalized_project_dir.display());
+        
+        // Use git-aware file discovery instead of glob traversal
+        let (git_files, is_git_repo) = git_utils::get_all_non_ignored_files(&normalized_project_dir)?;
+        
+        if !is_git_repo {
+            return Err(AppError::JobError("Project directory is not a git repository. Only git repositories are supported for file filtering.".to_string()));
         }
         
-        // Parse directory tree lines
-        for line in directory_tree.lines() {
-            let line = line.trim();
+        let total_files = git_files.len();
+        info!("Found {} git-tracked and non-ignored files", total_files);
+        
+        // STEP 1: Apply positive filtering (path_pattern OR content_pattern)
+        for relative_path_buf in git_files {
+            let relative_path = relative_path_buf.to_string_lossy().to_string();
             
-            // Skip empty lines or directory indicators
-            if line.is_empty() || line.ends_with('/') {
+            // Check if path should be excluded by exclusion patterns
+            if self.is_path_excluded(&relative_path, excluded_paths) {
                 continue;
             }
             
-            // Extract file path from tree format
-            if let Some(file_path) = self.extract_file_path_from_tree_line(line) {
-                // Check if path matches regex patterns - no keyword fallback
-                let matches_regex = self.path_matches_regex_patterns(&file_path, regex_patterns);
-                
-                // Only use regex matching - fail if no patterns provided
-                if matches_regex {
-                    // Make path relative to project directory
-                    let normalized_path = if Path::new(&file_path).is_absolute() {
-                        match path_utils::make_relative_to(&file_path, project_directory) {
-                            Ok(rel_path) => rel_path.to_string_lossy().to_string(),
-                            Err(_) => continue,
-                        }
-                    } else {
-                        file_path
-                    };
-                    
-                    filtered_paths.push(normalized_path);
+            let mut matches_positive = false;
+            
+            // Check path pattern match
+            if let Some(ref path_regex) = compiled_path_regex {
+                if path_regex.is_match(&relative_path) {
+                    debug!("File '{}' matches path pattern", relative_path);
+                    matches_positive = true;
                 }
+            }
+            
+            // Check content pattern match (if no path match yet)
+            if !matches_positive {
+                if let Some(ref content_regex) = compiled_content_regex {
+                    let full_path = normalized_project_dir.join(&relative_path);
+                    match fs::read_to_string(&full_path) {
+                        Ok(content) => {
+                            if content_regex.is_match(&content) {
+                                debug!("File '{}' matches content pattern", relative_path);
+                                matches_positive = true;
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Failed to read file {} for content filtering: {}", relative_path, e);
+                            // Skip files that can't be read
+                            continue;
+                        }
+                    }
+                }
+            }
+            
+            // If matches positive criteria, add to positive matches
+            if matches_positive {
+                positive_matches.push(relative_path);
+            }
+        }
+        
+        let positive_count = positive_matches.len();
+        info!("Positive filtering found {} files matching (path OR content) criteria", positive_count);
+        
+        // STEP 2: Apply negative filtering (NOT (negative_path_pattern OR negative_content_pattern))
+        let mut final_matches = Vec::new();
+        
+        for relative_path in positive_matches {
+            let mut matches_negative = false;
+            
+            // Check negative path pattern
+            if let Some(ref negative_path_regex) = compiled_negative_path_regex {
+                if negative_path_regex.is_match(&relative_path) {
+                    debug!("File '{}' excluded by negative path pattern", relative_path);
+                    matches_negative = true;
+                }
+            }
+            
+            // Check negative content pattern (if no path exclusion yet)
+            if !matches_negative {
+                if let Some(ref negative_content_regex) = compiled_negative_content_regex {
+                    let full_path = normalized_project_dir.join(&relative_path);
+                    match fs::read_to_string(&full_path) {
+                        Ok(content) => {
+                            if negative_content_regex.is_match(&content) {
+                                debug!("File '{}' excluded by negative content pattern", relative_path);
+                                matches_negative = true;
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Failed to read file {} for negative content filtering: {}", relative_path, e);
+                            // If we can't read the file, include it (don't exclude based on content)
+                        }
+                    }
+                }
+            }
+            
+            // Include file only if it doesn't match negative criteria
+            if !matches_negative {
+                final_matches.push(relative_path);
             }
         }
         
         // Remove duplicates and sort
-        filtered_paths.sort();
-        filtered_paths.dedup();
+        final_matches.sort();
+        final_matches.dedup();
         
-        Ok(filtered_paths)
+        info!("BEST SOLUTION filtering results: {} total files → {} positive matches → {} final matches (after negative filtering)", 
+            total_files, positive_count, final_matches.len());
+        
+        Ok(final_matches)
     }
+
     
-    
-    /// Extract file path from a directory tree line
-    fn extract_file_path_from_tree_line(&self, line: &str) -> Option<String> {
-        // Remove tree formatting characters
-        let cleaned = line
-            .replace("├── ", "")
-            .replace("└── ", "")
-            .replace("│   ", "")
-            .replace("    ", "")
-            .trim()
-            .to_string();
-        
-        if cleaned.is_empty() || cleaned.ends_with('/') {
-            None
-        } else {
-            Some(cleaned)
-        }
-    }
-    
-    /// Check if a file path matches any of the regex patterns
-    fn path_matches_regex_patterns(&self, path: &str, regex_patterns: &[String]) -> bool {
-        if regex_patterns.is_empty() {
-            return false;
-        }
-        
-        for pattern in regex_patterns {
-            match regex::Regex::new(pattern) {
-                Ok(regex) => {
-                    if regex.is_match(path) {
-                        debug!("Path '{}' matches regex pattern '{}'", path, pattern);
-                        return true;
-                    }
-                },
-                Err(e) => {
-                    error!("Invalid regex pattern '{}': {}", pattern, e);
-                    // Continue to next pattern instead of failing
-                    continue;
+    /// Check if a path should be excluded based on exclusion patterns
+    fn is_path_excluded(&self, path: &str, excluded_paths: &[String]) -> bool {
+        for exclusion_pattern in excluded_paths {
+            // Use glob pattern matching for exclusions
+            if let Ok(pattern) = glob::Pattern::new(exclusion_pattern) {
+                if pattern.matches(path) {
+                    debug!("Path '{}' excluded by pattern '{}'", path, exclusion_pattern);
+                    return true;
+                }
+            } else {
+                // Fallback to simple string matching if glob pattern is invalid
+                if path.contains(exclusion_pattern) {
+                    debug!("Path '{}' excluded by substring match '{}'", path, exclusion_pattern);
+                    return true;
                 }
             }
         }
-        
         false
     }
     
+    
+    /// Compile a single regex pattern with validation
+    fn compile_single_regex(&self, pattern: &str) -> AppResult<regex::Regex> {
+        match regex::Regex::new(pattern) {
+            Ok(regex) => {
+                debug!("Successfully compiled regex pattern: {}", pattern);
+                Ok(regex)
+            },
+            Err(e) => {
+                error!("Invalid regex pattern '{}': {}", pattern, e);
+                Err(AppError::JobError(format!("Invalid regex pattern '{}': {}", pattern, e)))
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -136,32 +237,37 @@ impl JobProcessor for LocalFileFilteringProcessor {
         
         // Setup job processing using standardized utility
         let (repo, _settings_repo, _background_job) = job_processor_utils::setup_job_processing(
-            &payload.background_job_id, 
+            &job.id, 
             &app_handle
         ).await?;
         
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        let project_directory = &session.project_directory;
+        
         // Check if job has been canceled using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Log regex patterns information
-        info!("Using {} regex patterns for filtering: {:?}", 
-            payload.regex_patterns.len(), payload.regex_patterns);
+        info!("Using patterns for filtering - path: {:?}, content: {:?}, negative_path: {:?}, negative_content: {:?}", 
+            payload.path_pattern, payload.content_pattern, payload.negative_path_pattern, payload.negative_content_pattern);
         
-        // Generate directory tree on-demand - fail if it fails
-        let directory_tree = get_directory_tree_for_processor(&payload.project_directory, Some(&payload.excluded_paths)).await
-            .map_err(|e| AppError::JobError(format!("Failed to generate directory tree: {}", e)))?;
-        
-        info!("Generated directory tree on-demand for local file filtering ({} lines)", directory_tree.lines().count());
-        
-        // Perform local file filtering
-        let filtered_paths = match self.filter_paths_by_task(
-            &directory_tree,
-            &payload.task_description,
-            &payload.project_directory,
-            &payload.regex_patterns
+        // Perform BEST SOLUTION file filtering with single patterns and proper OR logic
+        let filtered_paths = match self.filter_files_with_single_patterns(
+            &project_directory,
+            &payload.excluded_paths,
+            payload.path_pattern.as_deref(),
+            payload.content_pattern.as_deref(),
+            payload.negative_path_pattern.as_deref(),
+            payload.negative_content_pattern.as_deref()
         ) {
             Ok(paths) => paths,
             Err(e) => {
@@ -169,30 +275,32 @@ impl JobProcessor for LocalFileFilteringProcessor {
                 error!("{}", error_msg);
                 
                 // Update job to failed using standardized utility
-                job_processor_utils::finalize_job_failure(&payload.background_job_id, &repo, &error_msg).await?;
+                job_processor_utils::finalize_job_failure(&job.id, &repo, &error_msg, Some(&e)).await?;
                 
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
         info!("Filtered to {} potentially relevant files for workflow {}", 
-            filtered_paths.len(), payload.workflow_id);
+            filtered_paths.len(), job.id);
         
         // Check if job has been canceled after filtering using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled after filtering", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled after filtering", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)
         let result_metadata = json!({
-            "workflowId": payload.workflow_id,
+            "workflowId": job.id,
             "taskDescription": payload.task_description,
-            "projectDirectory": payload.project_directory,
-            "regexPatternsUsed": payload.regex_patterns.len(),
-            "regexPatterns": payload.regex_patterns,
-            "filteringMethod": "regex-based",
-            "summary": format!("Found {} potentially relevant files using regex-based filtering", 
+            "projectDirectory": project_directory,
+            "pathPattern": payload.path_pattern,
+            "contentPattern": payload.content_pattern,
+            "negativePathPattern": payload.negative_path_pattern,
+            "negativeContentPattern": payload.negative_content_pattern,
+            "filteringMethod": "best-solution-single-patterns-or-logic",
+            "summary": format!("Found {} potentially relevant files using BEST SOLUTION: (path OR content) AND NOT (negative_path OR negative_content)", 
                 filtered_paths.len()
             )
         });
@@ -201,14 +309,14 @@ impl JobProcessor for LocalFileFilteringProcessor {
         let response_json_content = serde_json::json!({
             "filteredFiles": filtered_paths,
             "count": filtered_paths.len(),
-            "summary": format!("Found {} potentially relevant files using regex-based filtering", 
+            "summary": format!("Found {} potentially relevant files using BEST SOLUTION: (path OR content) AND NOT (negative_path OR negative_content)", 
                 filtered_paths.len()
             )
         }).to_string();
         
         // Finalize job success using standardized utility
         job_processor_utils::finalize_job_success(
-            &payload.background_job_id,
+            &job.id,
             &repo,
             &response_json_content,
             None, // No LLM usage for this processor
@@ -217,13 +325,13 @@ impl JobProcessor for LocalFileFilteringProcessor {
             Some(result_metadata),
         ).await?;
         
-        debug!("Local file filtering completed for workflow {}", payload.workflow_id);
+        debug!("Local file filtering completed for workflow {}", job.id);
         
         // NOTE: No longer handling internal chaining - WorkflowOrchestrator manages transitions
         
         // Return success result
         Ok(JobProcessResult::success(
-            payload.background_job_id.clone(), 
+            job.id.clone(), 
             response_json_content
         ))
     }

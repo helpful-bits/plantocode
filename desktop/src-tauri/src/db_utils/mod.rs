@@ -46,7 +46,7 @@ pub fn get_database_instance(app_handle: &tauri::AppHandle) -> Result<sqlx::Sqli
 }
 
 /// Create all repository instances
-pub fn create_repositories(pool: std::sync::Arc<sqlx::SqlitePool>) -> Result<
+pub fn create_repositories(pool: std::sync::Arc<sqlx::SqlitePool>, app_handle: tauri::AppHandle) -> Result<
     (
         SessionRepository,
         BackgroundJobRepository,
@@ -56,7 +56,7 @@ pub fn create_repositories(pool: std::sync::Arc<sqlx::SqlitePool>) -> Result<
 > {
     let session_repo = SessionRepository::new(pool.clone());
     let background_job_repo = BackgroundJobRepository::new(pool.clone());
-    let settings_repo = SettingsRepository::new(pool);
+    let settings_repo = SettingsRepository::with_app_handle(pool, app_handle);
     
     Ok((session_repo, background_job_repo, settings_repo))
 }

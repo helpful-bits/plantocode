@@ -6,8 +6,8 @@
 // Core workflow stage definitions - aligned with backend WorkflowStage enum string representations
 // These match the SCREAMING_SNAKE_CASE enum variants from the Rust backend
 export type WorkflowStage =
-  | 'GENERATING_REGEX'
-  | 'LOCAL_FILTERING'
+  | 'REGEX_PATTERN_GENERATION'
+  | 'LOCAL_FILE_FILTERING'
   | 'FILE_RELEVANCE_ASSESSMENT'
   | 'EXTENDED_PATH_FINDER'
   | 'EXTENDED_PATH_CORRECTION';
@@ -26,13 +26,13 @@ export type JobStatus =
   | 'idle'
   | 'created'
   | 'queued'
-  | 'acknowledged_by_worker'
+  | 'acknowledgedByWorker'
   | 'preparing'
-  | 'preparing_input'
-  | 'generating_stream'
-  | 'processing_stream'
+  | 'preparingInput'
+  | 'generatingStream'
+  | 'processingStream'
   | 'running'
-  | 'completed_by_tag'
+  | 'completedByTag'
   | 'completed'
   | 'failed'
   | 'canceled';

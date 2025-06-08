@@ -32,21 +32,24 @@ impl JobProcessor for TextCorrectionProcessor {
     }
     
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        info!("Processing text correction job {}", job.id);
+        info!("Processing text correction/improvement job {}", job.id);
         
-        // Extract the payload
-        let payload = match &job.payload {
-            JobPayload::TextCorrection(p) => p,
+        // Extract the text to process
+        let (text_to_process, is_correction_task, target_field) = match &job.payload {
+            JobPayload::TextCorrection(p) => (p.text_to_correct.clone(), true, None::<String>),
             _ => return Err(AppError::JobError("Invalid payload type".to_string())),
         };
         
         // Setup repositories and mark job as running
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
         // Setup LLM task configuration
         let llm_config = LlmTaskConfigBuilder::new()
@@ -60,19 +63,24 @@ impl JobProcessor for TextCorrectionProcessor {
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), llm_config);
         
         // Create prompt context
-        // Format the text as XML for correction context
-        let task_description = format!(
-            r#"<text_to_correct>
+        // Format the text appropriately based on task type
+        let task_description = if is_correction_task {
+            // For text correction, wrap in XML tags for correction context
+            format!(
+                r#"<text_to_correct>
 {}
 </text_to_correct>"#,
-            payload.text_to_correct
-        );
+                text_to_process
+            )
+        } else {
+            // For text improvement, use the text directly as task description
+            text_to_process.clone()
+        };
         
         let prompt_context = LlmPromptContext {
             task_description,
             file_contents: None,
             directory_tree: None,
-            codebase_structure: None,
             system_prompt_override: None,
         };
         
@@ -81,22 +89,39 @@ impl JobProcessor for TextCorrectionProcessor {
         // Execute LLM task using the task runner
         let result = match task_runner.execute_llm_task(prompt_context, &settings_repo).await {
             Ok(llm_result) => {
-                info!("Text Correction LLM task completed successfully for job {}", job.id);
+                info!("Text {}/{} LLM task completed successfully for job {}", 
+                       if is_correction_task { "Correction" } else { "Improvement" }, 
+                       if is_correction_task { "Correction" } else { "Improvement" },
+                       job.id);
                 info!("System prompt ID: {}", llm_result.system_prompt_id);
                 
-                let corrected_text = llm_result.response.clone();
-                let text_len = corrected_text.len() as i32;
+                let processed_text = llm_result.response.clone();
+                let text_len = processed_text.len() as i32;
+                
+                // Create metadata based on task type
+                let metadata = if is_correction_task {
+                    serde_json::json!({
+                        "job_type": "TEXT_CORRECTION",
+                        "workflow_stage": "TextCorrection"
+                    })
+                } else {
+                    serde_json::json!({
+                        "job_type": "TEXT_IMPROVEMENT",
+                        "workflow_stage": "TextCorrection",
+                        "target_field": target_field
+                    })
+                };
                 
                 // Finalize job success using task runner
                 task_runner.finalize_success(
                     &repo,
                     &job.id,
                     &llm_result,
-                    None,
+                    Some(metadata),
                 ).await?;
                 
                 // Create and return the result
-                JobProcessResult::success(job.id.to_string(), corrected_text)
+                JobProcessResult::success(job.id.to_string(), processed_text)
                     .with_tokens(
                         llm_result.usage.as_ref().map(|u| u.prompt_tokens as i32),
                         llm_result.usage.as_ref().map(|u| u.completion_tokens as i32),
@@ -109,7 +134,7 @@ impl JobProcessor for TextCorrectionProcessor {
                 error!("{}", error_message);
                 
                 // Finalize job failure using task runner
-                task_runner.finalize_failure(&repo, &job.id, &error_message).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_message, Some(&e)).await?;
                 
                 // Return failure result
                 JobProcessResult::failure(job.id.to_string(), error_message)

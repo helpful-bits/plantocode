@@ -17,7 +17,6 @@ import { useNotification } from "@/contexts/notification-context";
 
 import SystemSettings from "./system-settings";
 import TaskModelSettings from "./task-model-settings";
-import WorkflowSettings from "./workflow-settings";
 
 
 
@@ -171,9 +170,8 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
       </div>
 
       <Tabs defaultValue="models" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="models">Model Settings</TabsTrigger>
-          <TabsTrigger value="workflows">Workflow Settings</TabsTrigger>
           <TabsTrigger value="system">System Settings</TabsTrigger>
         </TabsList>
         
@@ -197,10 +195,6 @@ export default function SettingsForm({ sessionId }: SettingsFormProps) {
               </CardHeader>
             </Card>
           )}
-        </TabsContent>
-        
-        <TabsContent value="workflows" className="space-y-4 mt-6">
-          <WorkflowSettings />
         </TabsContent>
         
         <TabsContent value="system" className="space-y-4 mt-6">

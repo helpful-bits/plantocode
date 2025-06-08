@@ -29,8 +29,6 @@ export function areJobArraysEqual(
     // Check updatedAt, which is a good indicator of changes
     if (job1.updatedAt !== job2.updatedAt) return false;
 
-    // Simple check for equality of statusMessage
-    if (job1.statusMessage !== job2.statusMessage) return false;
 
     return true;
   });

@@ -30,7 +30,6 @@ export async function resetSessionStateAction(sessionId: string) {
       contentRegex: "",
       negativeTitleRegex: "",
       negativeContentRegex: "",
-      codebaseStructure: "",
       searchTerm: "",
       isRegexActive: true,
       searchSelectedFilesOnly: false,

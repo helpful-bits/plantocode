@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use log::{info, warn};
+use log::{info, warn, debug};
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
@@ -17,15 +17,22 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
     workflow_state: &WorkflowState,
     workflow_definition: &'a WorkflowDefinition
 ) -> Vec<&'a WorkflowStageDefinition> {
+    debug!("Finding next stages for workflow {} with {} existing stage jobs", 
+           workflow_state.workflow_id, workflow_state.stage_jobs.len());
+    
     let mut eligible_stages = Vec::new();
     
     for stage_def in &workflow_definition.stages {
+        debug!("Evaluating stage: {} (task_type: {:?})", stage_def.stage_name, stage_def.task_type);
+        
         // Check if this stage already has an active or completed job
         // If any job was cancelled or failed, the workflow should stop
         let stage_job_status = workflow_state.stage_jobs.iter()
             .filter(|job| job.task_type == stage_def.task_type)
             .map(|job| &job.status)
             .next();
+            
+        debug!("Stage {} current status: {:?}", stage_def.stage_name, stage_job_status);
             
         match stage_job_status {
             Some(JobStatus::Queued) | Some(JobStatus::Running) | Some(JobStatus::AcknowledgedByWorker) |
@@ -52,7 +59,10 @@ pub(super) async fn find_next_abstract_stages_to_execute_internal<'a>(
         }
 
         // Check if dependencies are met
-        if abstract_stage_dependencies_met_internal(stage_def, workflow_state, workflow_definition) {
+        let dependencies_met = abstract_stage_dependencies_met_internal(stage_def, workflow_state, workflow_definition);
+        debug!("Stage {} dependencies met: {}", stage_def.stage_name, dependencies_met);
+        if dependencies_met {
+            debug!("Adding stage {} to eligible stages", stage_def.stage_name);
             eligible_stages.push(stage_def);
         }
     }
@@ -66,7 +76,11 @@ pub(super) fn abstract_stage_dependencies_met_internal(
     workflow_state: &WorkflowState,
     workflow_definition: &WorkflowDefinition
 ) -> bool {
+    debug!("Checking dependencies for stage: {} (has {} dependencies)", 
+           stage_def.stage_name, stage_def.dependencies.len());
+    
     if stage_def.dependencies.is_empty() {
+        debug!("Stage {} has no dependencies - can execute", stage_def.stage_name);
         return true; // No dependencies, can execute
     }
 
@@ -147,8 +161,8 @@ pub(super) async fn count_running_jobs_in_workflow_internal(
 /// Convert workflow stage to task type
 pub(super) fn stage_to_task_type_internal(stage: &WorkflowStage) -> TaskType {
     match stage {
-        WorkflowStage::GeneratingRegex => TaskType::RegexPatternGeneration,
-        WorkflowStage::LocalFiltering => TaskType::LocalFileFiltering,
+        WorkflowStage::RegexPatternGeneration => TaskType::RegexPatternGeneration,
+        WorkflowStage::LocalFileFiltering => TaskType::LocalFileFiltering,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,

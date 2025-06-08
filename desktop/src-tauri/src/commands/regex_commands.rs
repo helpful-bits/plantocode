@@ -84,10 +84,7 @@ pub async fn generate_regex_patterns_command(
     
     // Create the payload for the RegexPatternGenerationProcessor
     let processor_payload = RegexPatternGenerationPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
         task_description: args.task_description.clone(),
-        project_directory: args.project_directory.clone(),
         directory_tree: args.directory_tree.clone(),
     };
     

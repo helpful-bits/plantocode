@@ -30,8 +30,8 @@ pub async fn create_abstract_stage_job_with_lock_internal(
     
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
-        TaskType::RegexPatternGeneration => WorkflowStage::GeneratingRegex,
-        TaskType::LocalFileFiltering => WorkflowStage::LocalFiltering,
+        TaskType::RegexPatternGeneration => WorkflowStage::RegexPatternGeneration,
+        TaskType::LocalFileFiltering => WorkflowStage::LocalFileFiltering,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::ExtendedPathCorrection => WorkflowStage::ExtendedPathCorrection,
@@ -68,7 +68,7 @@ pub async fn create_abstract_stage_job_with_lock_internal(
         Some(stage_definition.stage_name.clone()), // workflow_stage
         Some(serde_json::json!({
             "workflowId": workflow_state.workflow_id,
-            "workflowStage": task_type.to_string(),
+            "workflowStage": serde_json::to_value(&stage).unwrap().as_str().unwrap(),
             "stageName": stage_definition.stage_name
         })),
         app_handle,

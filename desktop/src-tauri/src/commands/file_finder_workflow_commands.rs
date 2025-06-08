@@ -1,5 +1,5 @@
 use tauri::{command, AppHandle, Manager};
-use log::info;
+use log::{info, debug};
 use serde::Serialize;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -130,7 +130,24 @@ pub async fn get_file_finder_workflow_status(
     workflow_id: String,
     app_handle: AppHandle
 ) -> Result<WorkflowStatusResponse, String> {
-    info!("Getting workflow status for: {}", workflow_id);
+    // Rate limit status requests to prevent infinite polling
+    static LAST_REQUEST_TIME: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+    static LAST_WORKFLOW_ID: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+    
+    let current_time = chrono::Utc::now().timestamp_millis();
+    let last_time = LAST_REQUEST_TIME.load(std::sync::atomic::Ordering::Relaxed);
+    
+    {
+        let mut last_id = LAST_WORKFLOW_ID.lock().unwrap();
+        if *last_id == workflow_id && current_time - last_time < 100 { // 100ms rate limit for same workflow
+            return Err("Rate limited: too many status requests".to_string());
+        }
+        *last_id = workflow_id.clone();
+    }
+    
+    LAST_REQUEST_TIME.store(current_time, std::sync::atomic::Ordering::Relaxed);
+    
+    debug!("Getting workflow status for: {}", workflow_id);
     
     // Get the workflow orchestrator
     let orchestrator = get_workflow_orchestrator().await
@@ -334,6 +351,18 @@ pub async fn get_file_finder_workflow_results(
                 "files": workflow_result.intermediate_data.locally_filtered_files,
                 "count": workflow_result.intermediate_data.locally_filtered_files.len(),
                 "type": "filtered_files"
+            })
+        );
+    }
+    
+    // Extract AI filtered files from FileRelevanceAssessment stage
+    if !workflow_result.intermediate_data.ai_filtered_files.is_empty() {
+        stage_results.insert(
+            "FileRelevanceAssessment".to_string(),
+            serde_json::json!({
+                "files": workflow_result.intermediate_data.ai_filtered_files,
+                "count": workflow_result.intermediate_data.ai_filtered_files.len(),
+                "type": "ai_filtered_files"
             })
         );
     }
@@ -596,10 +625,10 @@ pub async fn get_workflow_details_command(
                     job_id: Some(job.job_id.clone()), // Correctly populated from WorkflowStageJob.job_id
                     status: job.status.to_string(),
                     progress_percentage: progress,
-                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp(t, 0).unwrap_or_default().to_rfc3339()),
-                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp(t, 0).unwrap_or_default().to_rfc3339()),
+                    started_at: job.started_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
+                    completed_at: job.completed_at.map(|t| DateTime::<Utc>::from_timestamp_millis(t).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
                     depends_on: job.depends_on.clone(),
-                    created_at: Some(DateTime::<Utc>::from_timestamp(job.created_at, 0).unwrap_or_default().to_rfc3339()),
+                    created_at: Some(DateTime::<Utc>::from_timestamp_millis(job.created_at).map(|dt| dt.to_rfc3339()).unwrap_or_default()),
                     error_message: job.error_message.clone(),
                     execution_time_ms: job.completed_at.and_then(|completed| 
                         job.started_at.map(|started| (completed - started))

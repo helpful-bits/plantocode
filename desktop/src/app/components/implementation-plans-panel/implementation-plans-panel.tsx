@@ -374,7 +374,7 @@ export function ImplementationPlansPanel({
         combinedPrompt={promptCopyModal.promptData?.combinedPrompt}
         isLoading={promptCopyModal.isLoading}
         error={promptCopyModal.error}
-        sessionName={currentSession?.name || "Implementation Plan"}
+        sessionName={currentSession?.name || ""}
       />
 
       {/* Delete Confirmation Dialog */}

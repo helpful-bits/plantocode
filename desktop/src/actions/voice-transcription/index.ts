@@ -8,9 +8,5 @@
 export {
   createTranscriptionJobFromBlobAction,
   transcribeAudioBlob,
-} from "./transcribe-blob";
-export {
-  transcribeAudioAction,
-  transcribeBase64Audio,
-} from "./transcribe-base64";
+} from "./transcribe";
 export { createTextCorrectionJobAction } from "./correct-text";

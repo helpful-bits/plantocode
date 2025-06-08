@@ -7,12 +7,16 @@ import {
   useRuntimeConfig,
 } from "../contexts/runtime-config-context";
 
+// Global state to prevent concurrent config loads
+let isConfigLoading = false;
+
 export interface RuntimeConfigLoaderResult {
   isLoading: boolean;
   error: string | null;
   loadConfig: () => Promise<RuntimeAIConfig | null>;
   clearError: () => void;
 }
+
 
 export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
   const [isLoading, setIsLoading] = useState(false);
@@ -28,9 +32,10 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
   }
 
   const loadConfig = useCallback(async (): Promise<RuntimeAIConfig | null> => {
-    if (isLoading) return null;
+    if (isLoading || isConfigLoading) return null;
 
     try {
+      isConfigLoading = true;
       setIsLoading(true);
       setError(null);
 
@@ -58,9 +63,10 @@ export function useRuntimeConfigLoader(): RuntimeConfigLoaderResult {
       setError(errorMessage);
       return null;
     } finally {
+      isConfigLoading = false;
       setIsLoading(false);
     }
-  }, [updateConfigFn]);
+  }, []);
 
   const clearError = useCallback(() => {
     if (error) setError(null);

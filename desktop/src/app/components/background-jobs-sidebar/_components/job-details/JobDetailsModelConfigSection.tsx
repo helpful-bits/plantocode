@@ -3,9 +3,14 @@ import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { TaskTypeDetails, type TaskType } from "@/types/task-type-defs";
 
 export function JobDetailsModelConfigSection() {
-  const { job } = useJobDetailsContext();
-  // Don't render for filesystem/local jobs
-  if (job.apiType === "filesystem" || (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false)) {
+  const { job, parsedMetadata } = useJobDetailsContext();
+  
+  // Extract model settings from task data
+  const taskData = parsedMetadata?.taskData || {};
+  const temperature = taskData.temperature;
+  const maxTokens = taskData.max_tokens;
+  
+  if (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false) {
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -42,7 +47,7 @@ export function JobDetailsModelConfigSection() {
           <div>
             <div className="text-xs text-muted-foreground mb-1">Temperature</div>
             <div className="text-sm font-medium">
-              {job.temperature !== undefined ? job.temperature : "Default"}
+              {temperature !== undefined ? Number(temperature).toFixed(2) : "Default"}
             </div>
           </div>
           <div>
@@ -50,9 +55,7 @@ export function JobDetailsModelConfigSection() {
               Max Output Tokens
             </div>
             <div className="text-sm font-medium">
-              {job.maxOutputTokens
-                ? job.maxOutputTokens.toLocaleString()
-                : "Default"}
+              {maxTokens !== undefined ? maxTokens : "Default"}
             </div>
           </div>
         </div>
