@@ -47,20 +47,16 @@ export function useVoiceRecording({
   onCorrectionComplete,
   projectDirectory = null,
 }: UseVoiceRecordingProps = {}): UseVoiceRecordingResult {
-  // Top-level state
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Create ref for onStateChange to maintain stable callback
   const onStateChangeRef = useRef(onStateChange);
 
-  // Update the ref when onStateChange changes
   useEffect(() => {
     onStateChangeRef.current = onStateChange;
   }, [onStateChange]);
 
-  // Create refs to hold the latest values of state variables
   const isRecordingRef = useRef(isRecording);
   const isProcessingRef = useRef(isProcessing);
   const errorRef = useRef(error);
@@ -69,10 +65,8 @@ export function useVoiceRecording({
   useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
   useEffect(() => { errorRef.current = error; }, [error]);
 
-  // Updates the state and calls the onStateChange callback
   const updateState = useCallback(
     (newStateUpdates: Partial<{ isRecording: boolean; isProcessing: boolean; error: string | null }>) => {
-      // Store which states are being updated in this specific call
       const stateKeysUpdatedInThisCall: (keyof typeof newStateUpdates)[] = [];
 
       if (newStateUpdates.isRecording !== undefined) {
@@ -83,16 +77,11 @@ export function useVoiceRecording({
         setIsProcessing(newStateUpdates.isProcessing);
         stateKeysUpdatedInThisCall.push('isProcessing');
       }
-      // Use Object.prototype.hasOwnProperty.call to correctly check if 'error' key is present,
-      // even if its value is null.
       if (Object.prototype.hasOwnProperty.call(newStateUpdates, 'error')) {
-        setError(newStateUpdates.error!); // Assert non-null as we checked presence
+        setError(newStateUpdates.error!);
         stateKeysUpdatedInThisCall.push('error');
       }
       
-      // Construct the state for the onStateChangeRef callback.
-      // For fields updated in this call, use their new values.
-      // For fields not updated in this call, use the latest values from refs.
       const callbackState = {
         isRecording: stateKeysUpdatedInThisCall.includes('isRecording') ? newStateUpdates.isRecording! : isRecordingRef.current,
         isProcessing: stateKeysUpdatedInThisCall.includes('isProcessing') ? newStateUpdates.isProcessing! : isProcessingRef.current,
@@ -100,10 +89,9 @@ export function useVoiceRecording({
       };
       onStateChangeRef.current?.(callbackState);
     },
-    [onStateChangeRef] // Depends only on the stable ref now. Setters are stable.
+    [onStateChangeRef]
   );
 
-  // Use the specialized hooks
   const {
     availableAudioInputs,
     selectedAudioInputId,
@@ -112,13 +100,11 @@ export function useVoiceRecording({
     requestPermissionAndRefreshDevices,
   } = useAudioInputDevices();
 
-  // Create a stable error handler to avoid circular dependencies
   const updateStateRef = useRef(updateState);
   useEffect(() => {
     updateStateRef.current = updateState;
   }, [updateState]);
 
-  // Ensure error propagation to main hook
   const handleError = useCallback(
     (errorMessage: string) => {
       updateStateRef.current({ error: errorMessage, isProcessing: false });
@@ -128,7 +114,7 @@ export function useVoiceRecording({
 
   const {
     activeAudioInputLabel,
-    lastAudioBlobRef,
+    lastRecordingRef,
     startMediaRecording,
     stopMediaRecording,
     resetMediaState,
@@ -141,7 +127,7 @@ export function useVoiceRecording({
     rawText,
     correctedText,
     textStatus,
-    processTranscription,
+    startTranscriptionStream,
     retryTranscription,
     resetTranscriptionState,
   } = useVoiceTranscriptionProcessing({
@@ -154,30 +140,45 @@ export function useVoiceRecording({
     setIsProcessing: (value) => updateState({ isProcessing: value }),
   });
 
-  // Start recording
+  const recordingStartTimeRef = useRef<number | null>(null);
+  
+  const writableStreamRef = useRef<WritableStream<Uint8Array> | null>(null);
+  const resultPromiseRef = useRef<Promise<void> | null>(null);
+
   const startRecording = useCallback(async () => {
     try {
-      // Reset error state
       updateState({ error: null });
 
-      // Reset previous recording data
       resetTranscriptionState();
 
-      // Start media recording
-      const media = await startMediaRecording();
+      const { writableStream, resultPromise } = startTranscriptionStream();
+      writableStreamRef.current = writableStream;
+      resultPromiseRef.current = resultPromise;
+      
+      const writer = writableStream.getWriter();
+      
+      recordingStartTimeRef.current = Date.now();
+      const media = await startMediaRecording(async (chunk: Blob) => {
+        try {
+          const arrayBuffer = await chunk.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          await writer.write(uint8Array);
+        } catch (error) {
+          console.error("[VoiceRecording] Error streaming chunk:", error);
+        }
+      });
 
       if (media) {
         updateState({ isRecording: true });
 
-        // After successful media setup, refresh device list to ensure labels are populated
         await refreshDeviceList();
       } else {
-        // If startMediaRecording returns null, ensure recording state is false
-        // Error should already be handled by handleError callback from startMediaRecording
+        await writer.close();
+        writableStreamRef.current = null;
+        resultPromiseRef.current = null;
         updateState({ isRecording: false });
       }
     } catch (error) {
-      // Catch any unhandled errors in startRecording
       console.error("[VoiceRecording] Unexpected error in startRecording:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       updateState({ 
@@ -190,26 +191,28 @@ export function useVoiceRecording({
     startMediaRecording,
     resetTranscriptionState,
     refreshDeviceList,
+    startTranscriptionStream,
   ]);
 
-  // Stop recording and process audio
   const stopRecording = useCallback(async () => {
     try {
       updateState({ isRecording: false, isProcessing: true });
 
-      // Stop media recording and get the audio blob
-      const audioBlob = await stopMediaRecording();
-
-      if (audioBlob) {
-        // Process the transcription - errors here are handled by processTranscription
-        await processTranscription(audioBlob);
-      } else {
-        // If no audio blob was captured, end processing
-        // Error should already be handled by handleError callback from stopMediaRecording
-        updateState({ isProcessing: false });
+      await stopMediaRecording();
+      
+      if (writableStreamRef.current) {
+        const writer = writableStreamRef.current.getWriter();
+        await writer.close();
+        writableStreamRef.current = null;
       }
+      
+      if (resultPromiseRef.current) {
+        await resultPromiseRef.current;
+        resultPromiseRef.current = null;
+      }
+      
+      updateState({ isProcessing: false });
     } catch (error) {
-      // Catch any unhandled errors in stopRecording or processTranscription
       console.error("[VoiceRecording] Unexpected error in stopRecording:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       updateState({ 
@@ -217,27 +220,21 @@ export function useVoiceRecording({
         isProcessing: false 
       });
     }
-  }, [updateState, stopMediaRecording, processTranscription]);
+  }, [updateState, stopMediaRecording]);
 
-  // Reset the recording state
   const reset = useCallback(() => {
-    // Clean up any existing media
     resetMediaState();
 
-    // Clear all transcription state
     resetTranscriptionState();
 
-    // Reset top-level state
     setIsRecording(false);
     setIsProcessing(false);
     setError(null);
   }, [resetMediaState, resetTranscriptionState]);
 
-  // Function to retry the last recording
   const retryLastRecording = useCallback(async () => {
     try {
-      // Check if we have a stored audio blob
-      if (!lastAudioBlobRef.current) {
+      if (!lastRecordingRef.current) {
         console.error(
           "[VoiceRecording] No previous recording available to retry"
         );
@@ -245,13 +242,24 @@ export function useVoiceRecording({
         return;
       }
 
-      // Set processing state
       updateState({ isProcessing: true, error: null });
 
-      // Retry transcription with the saved blob - errors handled by retryTranscription
-      await retryTranscription(lastAudioBlobRef.current);
+      const { writableStream, resultPromise } = await retryTranscription();
+      writableStreamRef.current = writableStream;
+      resultPromiseRef.current = resultPromise;
+      
+      const writer = writableStream.getWriter();
+      const arrayBuffer = await lastRecordingRef.current.blob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      await writer.write(uint8Array);
+      await writer.close();
+      
+      await resultPromise;
+      
+      writableStreamRef.current = null;
+      resultPromiseRef.current = null;
+      updateState({ isProcessing: false });
     } catch (error) {
-      // Catch any unhandled errors in retryLastRecording
       console.error("[VoiceRecording] Unexpected error in retryLastRecording:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       updateState({ 
@@ -261,10 +269,8 @@ export function useVoiceRecording({
     }
   }, [updateState, retryTranscription]);
 
-  // Function to select audio input that prevents changes during active recording
   const handleSelectAudioInput = useCallback(
     (deviceId: string) => {
-      // Don't allow changing device while recording or processing
       if (isRecording || isProcessing) {
         console.warn(
           "[VoiceRecording] Cannot change audio input while recording or processing"

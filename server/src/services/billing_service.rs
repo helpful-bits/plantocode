@@ -3,9 +3,11 @@ use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::db::repositories::subscription_repository::{SubscriptionRepository, Subscription};
 use crate::db::repositories::subscription_plan_repository::{SubscriptionPlanRepository, SubscriptionPlan};
 use crate::db::repositories::spending_repository::SpendingRepository;
+use crate::db::repositories::user_credit_repository::UserCreditRepository;
+use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::utils::error_handling::{retry_with_backoff, RetryConfig, validate_amount, validate_currency};
-use crate::utils::stripe_currency_utils::generate_idempotency_key;
+use crate::utils::stripe_currency_utils::{generate_idempotency_key, validate_stripe_amount_matches};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use log::{debug, error, info, warn};
@@ -16,24 +18,24 @@ use sqlx::PgPool;
 use crate::db::connection::DatabasePools;
 use bigdecimal::{BigDecimal, ToPrimitive, FromPrimitive};
 
-// Import Stripe crate if available
-#[cfg(feature = "stripe")]
+// Import Stripe crate
 use stripe::{
-    Customer, CustomerCreateParams,
-    Subscription, SubscriptionCreateParams,
+    Customer, CreateCustomer,
+    Subscription as StripeSubscription, CreateSubscription,
     SubscriptionStatus, CheckoutSession,
-    CheckoutSessionCreateParams, Price, 
-    PaymentLink, Client as StripeClient
+    CreateCheckoutSession, Price, 
+    PaymentLink, Client as StripeClient,
+    BillingPortalSession, CreateBillingPortalSession
 };
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BillingService {
+    db_pools: DatabasePools,
     subscription_repository: Arc<SubscriptionRepository>,
     subscription_plan_repository: Arc<SubscriptionPlanRepository>,
     api_usage_repository: Arc<ApiUsageRepository>,
     cost_based_billing_service: Arc<CostBasedBillingService>,
-    #[cfg(feature = "stripe")]
     stripe_client: Option<StripeClient>,
     default_trial_days: i64,
     app_settings: crate::config::settings::AppSettings,
@@ -49,25 +51,28 @@ impl BillingService {
         let subscription_repository = Arc::new(SubscriptionRepository::new(db_pools.user_pool.clone()));
         let api_usage_repository = Arc::new(ApiUsageRepository::new(db_pools.user_pool.clone()));
         let spending_repository = Arc::new(SpendingRepository::new(db_pools.user_pool.clone()));
+        let credit_transaction_repository = Arc::new(CreditTransactionRepository::new(db_pools.user_pool.clone()));
         
-        // System operations use system pool
+        // System operations use system pool (including credit balance checks for billing)
         let subscription_plan_repository = Arc::new(SubscriptionPlanRepository::new(db_pools.system_pool.clone()));
+        let user_credit_repository = Arc::new(UserCreditRepository::new(db_pools.system_pool.clone()));
         
         // Create cost-based billing service with dual pools
         let cost_based_billing_service = Arc::new(CostBasedBillingService::new(
-            db_pools,
+            db_pools.clone(),
             api_usage_repository.clone(),
             subscription_repository.clone(),
             subscription_plan_repository.clone(),
             spending_repository,
+            user_credit_repository,
+            credit_transaction_repository,
         ));
         
         // Get default trial days from app settings
         let default_trial_days = app_settings.subscription.default_trial_days as i64;
         
         // Initialize Stripe client if feature is enabled
-        #[cfg(feature = "stripe")]
-        let stripe_client = match env::var("STRIPE_SECRET_KEY") {
+            let stripe_client = match env::var("STRIPE_SECRET_KEY") {
             Ok(key) => {
                 info!("Initializing Stripe client");
                 Some(StripeClient::new(key))
@@ -79,12 +84,12 @@ impl BillingService {
         };
         
         Self {
+            db_pools: db_pools.clone(),
             subscription_repository,
             subscription_plan_repository,
             api_usage_repository,
             cost_based_billing_service,
-            #[cfg(feature = "stripe")]
-            stripe_client,
+                    stripe_client,
             default_trial_days,
             app_settings,
         }
@@ -218,13 +223,17 @@ impl BillingService {
         self.subscription_repository.get_pool().clone()
     }
     
+    // Get the system database pool for operations requiring vibe_manager_app role
+    pub fn get_system_db_pool(&self) -> PgPool {
+        self.db_pools.system_pool.clone()
+    }
+    
     // Get plan by ID from database
     async fn get_plan_by_id(&self, plan_id: &str) -> Result<SubscriptionPlan, AppError> {
         self.subscription_plan_repository.get_plan_by_id(plan_id).await
     }
     
     // Generate a checkout session URL for upgrading
-    #[cfg(feature = "stripe")]
     pub async fn create_checkout_session(
         &self,
         user_id: &Uuid,
@@ -258,29 +267,25 @@ impl BillingService {
         metadata.insert("user_id".to_string(), user_id.to_string());
         
         // Generate idempotency key for this checkout session
-        let idempotency_key = generate_idempotency_key("checkout", &format!("{}_{}", user_id, plan_id));
+        let idempotency_key = generate_idempotency_key("checkout", &format!("{}_{}", user_id, plan_id))?;
         
         // Create checkout session
-        let mut session_params = CheckoutSessionCreateParams {
+        let mut session_params = CreateCheckoutSession {
             line_items: Some(vec![
-                CheckoutSessionCreateParams::LineItems {
+                stripe::CreateCheckoutSessionLineItems {
                     price: Some(price_id),
                     quantity: Some(1),
                     ..Default::default()
                 },
             ]),
             mode: Some(stripe::CheckoutSessionMode::Subscription),
-            success_url: Some(stripe_urls.success_url),
-            cancel_url: Some(stripe_urls.cancel_url),
-            customer: Some(customer_id),
+            success_url: Some(&stripe_urls.success_url),
+            cancel_url: Some(&stripe_urls.cancel_url),
+            customer: Some(customer_id.parse().unwrap()),
             metadata: Some(metadata),
             ..Default::default()
         };
         
-        // Set idempotency key if supported by the Stripe client
-        if let Ok(mut request_options) = stripe::RequestOptions::default().try_into() {
-            request_options.idempotency_key = Some(idempotency_key);
-        }
         
         // Create the session
         let session = CheckoutSession::create(stripe, session_params).await
@@ -291,14 +296,13 @@ impl BillingService {
     }
     
     // Get or create a Stripe customer for a user
-    #[cfg(feature = "stripe")]
     async fn get_or_create_stripe_customer(&self, user_id: &Uuid) -> Result<String, AppError> {
         // Check if user already has a subscription with a Stripe customer ID
         let subscription = self.subscription_repository.get_by_user_id(user_id).await?;
         
-        if let Some(sub) = subscription {
-            if let Some(customer_id) = sub.stripe_customer_id {
-                return Ok(customer_id);
+        if let Some(ref sub) = subscription {
+            if let Some(ref customer_id) = sub.stripe_customer_id {
+                return Ok(customer_id.clone());
             }
         }
         
@@ -310,11 +314,11 @@ impl BillingService {
         
         // Get user details from database
         let user = crate::db::repositories::user_repository::UserRepository::new(
-            self.subscription_repository.get_pool()
+            self.db_pools.system_pool.clone()
         ).get_by_id(user_id).await?;
         
         // Create a new Stripe customer
-        let customer_params = CustomerCreateParams {
+        let customer_params = CreateCustomer {
             email: Some(&user.email),
             name: user.full_name.as_deref(),
             metadata: Some(std::collections::HashMap::from_iter(vec![
@@ -336,7 +340,6 @@ impl BillingService {
     }
     
     // Create billing portal session
-    #[cfg(feature = "stripe")]
     pub async fn create_billing_portal_session(
         &self,
         user_id: &Uuid,
@@ -357,13 +360,9 @@ impl BillingService {
         let stripe_urls = config_repo.get_stripe_urls().await?;
 
         // Create portal session
-        let session = stripe::billingportal::Session::create(
+        let session = stripe::BillingPortalSession::create(
             stripe,
-            stripe::billingportal::SessionCreateParams {
-                customer: customer_id,
-                return_url: Some(stripe_urls.portal_return_url),
-                ..Default::default()
-            },
+            stripe::CreateBillingPortalSession::new(customer_id.parse().unwrap())
         ).await.map_err(|e| AppError::External(format!("Failed to create billing portal session: {}", e)))?;
         
         Ok(session.url)
@@ -406,6 +405,7 @@ impl BillingService {
             "currentPeriodEndsAt": subscription.current_period_ends_at,
             "monthlySpendingAllowance": spending_status.included_allowance.to_f64().unwrap_or(0.0),
             "hardSpendingLimit": spending_status.hard_limit.to_f64().unwrap_or(0.0),
+            "creditBalance": spending_status.credit_balance.to_f64().unwrap_or(0.0),
             "isTrialing": subscription.status == "trialing",
             "hasCancelled": subscription.status == "canceled",
             "nextInvoiceAmount": self.calculate_next_invoice_amount(user_id, &spending_status).await?,
@@ -463,5 +463,69 @@ impl BillingService {
     /// Get access to the cost-based billing service
     pub fn get_cost_based_billing_service(&self) -> &Arc<CostBasedBillingService> {
         &self.cost_based_billing_service
+    }
+
+    /// Create a checkout session for purchasing credits
+    pub async fn create_credit_purchase_checkout_session(
+        &self,
+        user_id: &Uuid,
+        stripe_price_id: &str,
+    ) -> Result<String, AppError> {
+        // Ensure Stripe is configured
+        let stripe = match &self.stripe_client {
+            Some(client) => client,
+            None => return Err(AppError::Configuration("Stripe not configured".to_string())),
+        };
+
+        // Get credit pack details using CreditPackRepository
+        let credit_pack_repo = crate::db::repositories::CreditPackRepository::new(
+            self.db_pools.system_pool.clone() // Use system pool
+        );
+        let selected_pack = credit_pack_repo.get_pack_by_stripe_price_id(stripe_price_id).await?
+            .ok_or_else(|| AppError::InvalidArgument(format!("Invalid credit pack price ID: {}", stripe_price_id)))?;
+
+        // Get or create Stripe customer
+        let customer_id = self.get_or_create_stripe_customer(user_id).await?;
+
+        // Get URLs from configuration
+        let config_repo = crate::db::repositories::BillingConfigurationRepository::new(
+            self.db_pools.system_pool.clone()
+        );
+        let stripe_urls = config_repo.get_stripe_urls().await?;
+
+        // Add metadata to track credit purchase details
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("type".to_string(), "credit_purchase".to_string());
+        metadata.insert("user_id".to_string(), user_id.to_string());
+        metadata.insert("credit_value".to_string(), selected_pack.value_credits.to_string());
+        metadata.insert("currency".to_string(), selected_pack.currency.clone());
+        metadata.insert("stripe_price_id_internal".to_string(), stripe_price_id.to_string());
+
+        // Generate idempotency key for this checkout session
+        let idempotency_key = generate_idempotency_key("credit_checkout", &format!("{}_{}", user_id, stripe_price_id))?;
+
+        // Create checkout session for one-time payment
+        let session_params = CreateCheckoutSession {
+            line_items: Some(vec![
+                stripe::CreateCheckoutSessionLineItems {
+                    price: Some(stripe_price_id.to_string()),
+                    quantity: Some(1),
+                    ..Default::default()
+                },
+            ]),
+            mode: Some(stripe::CheckoutSessionMode::Payment),
+            success_url: Some(&stripe_urls.success_url),
+            cancel_url: Some(&stripe_urls.cancel_url),
+            customer: Some(customer_id.parse().unwrap()),
+            metadata: Some(metadata),
+            ..Default::default()
+        };
+
+        // Create the session
+        let session = CheckoutSession::create(stripe, session_params).await
+            .map_err(|e| AppError::External(format!("Failed to create credit checkout session: {}", e)))?;
+
+        // Return the URL
+        session.url.ok_or_else(|| AppError::Internal("No URL returned from Stripe".to_string()))
     }
 }

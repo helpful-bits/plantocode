@@ -7,9 +7,8 @@ import {
   useRef,
   useImperativeHandle,
   forwardRef,
-  useMemo,
 } from "react";
-import type { SyntheticEvent, ChangeEvent } from "react";
+import type { ChangeEvent } from "react";
 
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionActionsContext } from "@/contexts/session";
@@ -22,6 +21,7 @@ export interface TaskDescriptionHandle {
   insertTextAtCursorPosition: (text: string) => void;
   appendText: (text: string) => void;
   replaceSelection: (newText: string) => void;
+  replaceText: (oldText: string, newText: string) => void;
   // Add properties that use-task-description-state.ts expects
   value: string;
   selectionStart: number;
@@ -110,112 +110,69 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       // Removed the duplicate monitor for background job updates
       // This logic is now handled entirely in useTaskDescriptionState.ts
 
-      // Expose methods via ref with simpler implementation that leverages state updates
+      // Simplified ref implementation
       useImperativeHandle(ref, () => ({
         insertTextAtCursorPosition: (text: string) => {
-          const currentSelectionStart =
-            internalTextareaRef.current?.selectionStart ?? value.length;
-          const currentSelectionEnd =
-            internalTextareaRef.current?.selectionEnd ?? value.length;
-          insertTextAtCursor(text, currentSelectionStart, currentSelectionEnd);
+          const textarea = internalTextareaRef.current;
+          if (!textarea) return;
+          insertTextAtCursor(text, textarea.selectionStart, textarea.selectionEnd);
         },
         appendText: (text: string) => {
-          // Append text at the end with 2 new lines in between
-          const separator = value.trim().length > 0 ? "\n\n" : "";
+          const separator = value.trim() ? "\n\n" : "";
           insertTextAtCursor(separator + text, value.length, value.length);
         },
         replaceSelection: (newText: string) => {
-          const currentSelectionStart =
-            internalTextareaRef.current?.selectionStart ?? 0;
-          const currentSelectionEnd =
-            internalTextareaRef.current?.selectionEnd ?? 0;
-
-          if (currentSelectionStart === currentSelectionEnd) {
-            return;
+          const textarea = internalTextareaRef.current;
+          if (!textarea || textarea.selectionStart === textarea.selectionEnd) return;
+          insertTextAtCursor(newText, textarea.selectionStart, textarea.selectionEnd);
+        },
+        replaceText: (oldText: string, newText: string) => {
+          const updatedText = value.replace(oldText, newText);
+          if (updatedText !== value) {
+            onChange(updatedText);
+            onInteraction();
           }
+        },
+        get value() { return value; },
+        get selectionStart() { return internalTextareaRef.current?.selectionStart ?? 0; },
+        get selectionEnd() { return internalTextareaRef.current?.selectionEnd ?? 0; },
+        focus: () => internalTextareaRef.current?.focus(),
+      }), [insertTextAtCursor, value, onChange, onInteraction]);
 
-          insertTextAtCursor(
-            newText,
-            currentSelectionStart,
-            currentSelectionEnd
-          );
-        },
-        // Expose the properties needed by use-task-description-state.ts
-        get value() {
-          return value;
-        },
-        get selectionStart() {
-          return internalTextareaRef.current?.selectionStart ?? 0;
-        },
-        get selectionEnd() {
-          return internalTextareaRef.current?.selectionEnd ?? 0;
-        },
-        focus: () => {
-          internalTextareaRef.current?.focus();
-        },
-      }), [insertTextAtCursor, value]);
-
-      // Track selection in state to properly update the button's disabled status
-      const handleSelect = (_e: SyntheticEvent<HTMLTextAreaElement>) => {
-        if (internalTextareaRef.current) {
-          const { selectionStart, selectionEnd } = internalTextareaRef.current;
-          setHasActiveSelection(selectionStart !== selectionEnd);
-        } else {
-          setHasActiveSelection(false);
-        }
+      // Simplified selection tracking
+      const handleSelect = () => {
+        const textarea = internalTextareaRef.current;
+        setHasActiveSelection(textarea ? textarea.selectionStart !== textarea.selectionEnd : false);
       };
 
-      // Handler function to improve selected text - simplified to only use external handler
+      // Simplified improvement handler
       const handleImproveSelection = async () => {
-        // Get the current selection
-        const currentSelectionStart =
-          internalTextareaRef.current?.selectionStart ?? 0;
-        const currentSelectionEnd =
-          internalTextareaRef.current?.selectionEnd ?? 0;
+        const textarea = internalTextareaRef.current;
+        if (!textarea) return;
 
-        // Make sure there's actually a selection
-        if (currentSelectionStart === currentSelectionEnd) {
-          showNotification({
-            title: "No text selected",
-            message: "Please select some text to improve",
-            type: "warning",
-          });
+        const { selectionStart, selectionEnd } = textarea;
+        if (selectionStart === selectionEnd) {
+          showNotification({ title: "No text selected", message: "Please select some text to improve", type: "warning" });
           return;
         }
 
-        // Get the selected text
-        const selectedText =
-          value?.slice(currentSelectionStart, currentSelectionEnd) || "";
-        if (!selectedText.trim()) {
-          showNotification({
-            title: "No text selected",
-            message: "Please select some non-empty text to improve",
-            type: "warning",
-          });
+        const selectedText = value.slice(selectionStart, selectionEnd).trim();
+        if (!selectedText) {
+          showNotification({ title: "No text selected", message: "Please select some non-empty text to improve", type: "warning" });
           return;
         }
 
         try {
-          // Call the parent-provided improvement function with selection positions
-          await onImproveSelection(
-            selectedText,
-            currentSelectionStart,
-            currentSelectionEnd
-          );
-        } catch (_e) {
-          showNotification({
-            title: "Error improving text",
-            message: "An unexpected error occurred while improving text",
-            type: "error",
-          });
+          await onImproveSelection(selectedText, selectionStart, selectionEnd);
+        } catch {
+          showNotification({ title: "Error improving text", message: "An unexpected error occurred while improving text", type: "error" });
         }
       };
 
       // The hasSelection const has been replaced by the hasActiveSelection state
 
-      // Simplified change handler without localStorage logic
+      // Simplified change handler
       const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
-        // Call original onChange handler
         onChange(e.target.value);
         onInteraction();
       }, [onChange, onInteraction]);
@@ -227,10 +184,8 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
         extraHeight: 50,
       });
 
-      // Determine if task description is empty - memoized to prevent re-renders
-      const effectiveIsEmpty = useMemo(() => {
-        return !value || value.trim() === "";
-      }, [value]);
+      // Simple empty check
+      const effectiveIsEmpty = !value?.trim();
 
       return (
         <div className="flex flex-col gap-2">

@@ -23,6 +23,7 @@ export interface CostUsageData {
   currency?: string;
   trialDaysRemaining?: number | null;
   planName?: string;
+  creditBalance: number;
 }
 
 interface UseCostUsageOptions {
@@ -55,6 +56,7 @@ export function useCostUsage(options: UseCostUsageOptions = {}) {
       usagePercentage: spendingStatus.usagePercentage,
       servicesBlocked: spendingStatus.servicesBlocked,
       currency: spendingStatus.currency,
+      creditBalance: spendingStatus.creditBalance,
       // Additional fields that may not be in SpendingStatusInfo
       cycleStartDate: undefined,
       cycleEndDate: spendingStatus.nextBillingDate,

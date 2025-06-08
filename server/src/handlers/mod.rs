@@ -8,3 +8,5 @@ pub mod model_handlers;
 pub mod usage_handlers;
 pub mod auth0_handlers;
 pub mod spending_handlers;
+pub mod system_prompts_handlers;
+pub mod credit_handlers;

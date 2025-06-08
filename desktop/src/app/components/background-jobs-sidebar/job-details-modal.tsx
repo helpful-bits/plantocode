@@ -50,10 +50,7 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
   // Get workflow state if this is a workflow job
   const { workflowState, error, refreshState } = useExistingWorkflowTracker(
     workflowId || '',
-    job.sessionId || '',
-    {
-      pollInterval: 2000, // Poll every 2 seconds for live updates
-    }
+    job.sessionId || ''
   );
 
   const handleRetryStage = async (stageJobId: string) => {
@@ -101,13 +98,9 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
   }
 
   if (error) {
-    return (
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-        <div className="text-sm text-red-800 dark:text-red-200">
-          Failed to load workflow details: {error.message}
-        </div>
-      </div>
-    );
+    // Don't show error UI when workflow is cleaned up after completion
+    // This is normal behavior - just hide the workflow details section
+    return null;
   }
 
   if (!workflowState) {
@@ -140,13 +133,13 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full ${
-                      stageJob.status === 'completed' || stageJob.status === 'completed_by_tag'
+                      stageJob.status === 'completed' || stageJob.status === 'completedByTag'
                         ? 'bg-green-500'
                         : stageJob.status === 'failed'
                         ? 'bg-red-500'
                         : stageJob.status === 'canceled'
                         ? 'bg-orange-500'
-                        : ['running', 'preparing', 'processing_stream', 'acknowledged_by_worker', 'preparing_input', 'generating_stream'].includes(stageJob.status)
+                        : ['running', 'preparing', 'processingStream', 'acknowledgedByWorker', 'preparingInput', 'generatingStream'].includes(stageJob.status)
                         ? 'bg-blue-500 animate-pulse'
                         : ['idle', 'queued', 'created'].includes(stageJob.status)
                         ? 'bg-gray-400'
@@ -169,13 +162,13 @@ function WorkflowStages({ job }: WorkflowStagesProps) {
                       </span>
                     )}
                     <span className={`text-xs px-2 py-1 rounded-full ${
-                      stageJob.status === 'completed' || stageJob.status === 'completed_by_tag'
+                      stageJob.status === 'completed' || stageJob.status === 'completedByTag'
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200'
                         : stageJob.status === 'failed'
                         ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-200'
                         : stageJob.status === 'canceled'
                         ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-200'
-                        : ['running', 'preparing', 'processing_stream', 'acknowledged_by_worker', 'preparing_input', 'generating_stream'].includes(stageJob.status)
+                        : ['running', 'preparing', 'processingStream', 'acknowledgedByWorker', 'preparingInput', 'generatingStream'].includes(stageJob.status)
                         ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200'
                         : ['idle', 'queued', 'created'].includes(stageJob.status)
                         ? 'bg-gray-100 text-gray-600 dark:bg-gray-700/20 dark:text-gray-300'
@@ -242,10 +235,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         return typeof metadata === "string" ? metadata : "Invalid metadata";
       }
 
-      // Filter out additionalParams fields that are already shown in the UI
-      // Start with additionalParams since most custom metadata is there now
-      const additionalParams = parsedMetadata.additionalParams || {};
-      const filteredAdditionalParams = { ...additionalParams };
+      const taskData = parsedMetadata.taskData || {};
+      const filteredTaskData = { ...taskData };
       
       const keysToRemove = [
         "modelUsed",
@@ -281,19 +272,18 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       ];
 
       keysToRemove.forEach((key) => {
-        if (key in filteredAdditionalParams) {
-          delete filteredAdditionalParams[key];
+        if (key in filteredTaskData) {
+          delete filteredTaskData[key];
         }
       });
 
-      // Create final filtered metadata object with core fields and filtered additionalParams
       const filteredMetadata = {
         // Include top-level fields that aren't already shown elsewhere
-        ...(parsedMetadata.jobTypeForWorker && { jobTypeForWorker: parsedMetadata.jobTypeForWorker }),
-        ...(parsedMetadata.workflowId && { workflowId: parsedMetadata.workflowId }),
-        ...(parsedMetadata.workflowStage && { workflowStage: parsedMetadata.workflowStage }),
-        // Include filtered additionalParams
-        ...filteredAdditionalParams,
+        ...(parsedMetadata.jobTypeForWorker && typeof parsedMetadata.jobTypeForWorker === 'string' ? { jobTypeForWorker: parsedMetadata.jobTypeForWorker } : {}),
+        ...(parsedMetadata.workflowId && typeof parsedMetadata.workflowId === 'string' ? { workflowId: parsedMetadata.workflowId } : {}),
+        ...(parsedMetadata.workflowStage && typeof parsedMetadata.workflowStage === 'string' ? { workflowStage: parsedMetadata.workflowStage } : {}),
+        // Include filtered taskData
+        ...filteredTaskData,
       };
 
       // Format the object for display
@@ -425,7 +415,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       // For implementation_plan with showPureContent === true (raw XML content for copying)
       if (
         job.taskType === "implementation_plan" &&
-        parsedMeta?.additionalParams?.showPureContent === true
+        parsedMeta?.taskData?.showPureContent === true
       ) {
         return job.response || "No content available yet.";
       }
@@ -433,7 +423,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
       // For implementation_plan streaming
       if (
         job.taskType === "implementation_plan" &&
-        (job.status === "running" || job.status === "processing_stream")
+        (job.status === "running" || job.status === "processingStream")
       ) {
         return job.response || "Waiting for implementation plan content to stream...";
       }
@@ -477,7 +467,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         }
 
         // For streaming jobs, add streaming indicator
-        if ((job.status === "running" || job.status === "processing_stream") && parsedMeta?.additionalParams?.isStreaming === true) {
+        if ((job.status === "running" || job.status === "processingStream") && parsedMeta?.taskData?.isStreaming === true) {
           return `${job.response}\n\n[Streaming in progress...]`;
         }
 
@@ -494,10 +484,10 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
         );
       } else if (job.status === "canceled") {
         return job.errorMessage || "Job was canceled by the user.";
-      } else if (job.status === "running" || job.status === "processing_stream") {
-        return job.statusMessage || "Job is currently processing...";
-      } else if (["preparing", "queued", "created", "acknowledged_by_worker", "preparing_input", "generating_stream"].includes(job.status)) {
-        return job.statusMessage || "Job is preparing to run...";
+      } else if (job.status === "running" || job.status === "processingStream") {
+        return "Job is currently processing...";
+      } else if (["preparing", "queued", "created", "acknowledgedByWorker", "preparingInput", "generatingStream"].includes(job.status)) {
+        return "Job is preparing to run...";
       } else if (job.status === "idle") {
         return "Job is waiting to start...";
       } else {
@@ -510,8 +500,8 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
     // Calculate derived values for context
     const parsedMetadata = getParsedMetadata(job.metadata);
-    const isStreaming = (job.status === "running" || job.status === "processing_stream") && parsedMetadata?.additionalParams?.isStreaming === true;
-    const progress = isStreaming && parsedMetadata?.additionalParams?.streamProgress ? parsedMetadata.additionalParams.streamProgress : undefined;
+    const isStreaming = (job.status === "running" || job.status === "processingStream") && parsedMetadata?.taskData?.isStreaming === true;
+    const progress = isStreaming && parsedMetadata?.taskData?.streamProgress ? parsedMetadata.taskData.streamProgress : undefined;
 
     return {
       job,
@@ -530,7 +520,7 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
   return (
     <Dialog open={!!job} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="max-w-6xl max-h-[90vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
+      <DialogContent className="max-w-6xl h-[95vh] !flex !flex-col !gap-0 text-foreground !bg-card rounded-xl shadow-lg !backdrop-blur-none">
         <DialogHeader>
           <DialogTitle
             className={`${job.taskType === "implementation_plan" ? "text-xl" : ""} text-foreground`}
@@ -540,13 +530,18 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
               // Show workflow context prominently in title
               if (parsedMeta?.workflowId) {
+                // Use WorkflowUtils to get proper human-readable stage name
+                const formattedStageName = typeof parsedMeta.workflowStage === 'string' 
+                  ? WorkflowUtils.getStageName(parsedMeta.workflowStage)
+                  : 'Unknown Stage';
+                
                 return (
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 bg-primary rounded-full"></div>
-                      <span>Workflow: {parsedMeta.workflowId}</span>
+                      <span>File Finder: {formattedStageName}</span>
                     </div>
-                    {(job.status === "running" || job.status === "processing_stream") && (
+                    {(job.status === "running" || job.status === "processingStream") && (
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     )}
                   </div>
@@ -555,21 +550,21 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
               if (
                 job.taskType === "implementation_plan" &&
-                parsedMeta?.additionalParams?.showPureContent === true
+                parsedMeta?.taskData?.showPureContent === true
               ) {
                 return (
                   <div className="flex items-center gap-2">
                     <span>Implementation Plan Content</span>
-                    {(job.status === "running" || job.status === "processing_stream") && parsedMeta?.additionalParams?.isStreaming && (
+                    {(job.status === "running" || job.status === "processingStream") && parsedMeta?.taskData?.isStreaming && (
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     )}
                   </div>
                 );
               } else if (
                 job.taskType === "implementation_plan" &&
-                parsedMeta?.additionalParams?.sessionName
+                parsedMeta?.taskData?.sessionName
               ) {
-                return <>Implementation Plan: {parsedMeta.additionalParams.sessionName}</>;
+                return <>Implementation Plan: {parsedMeta.taskData.sessionName}</>;
               } else {
                 return <>Job Details</>;
               }
@@ -579,26 +574,19 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
             {(() => {
               const parsedMeta = contextValue.parsedMetadata;
 
-              // Show workflow stage in description
-              if (parsedMeta?.workflowId && parsedMeta?.workflowStage) {
-                // Format stage name to be more human-readable (e.g., "DirectoryTreeGeneration" -> "Directory Tree Generation")
-                const formattedStageName = parsedMeta.workflowStage
-                  .replace(/([A-Z])/g, ' $1')
-                  .trim()
-                  .replace(/^./, str => str.toUpperCase());
-                
+              // Show concise workflow info in description
+              if (parsedMeta?.workflowId) {
                 return (
                   <div className="flex items-center gap-2">
-                    <span>Stage: {formattedStageName}</span>
                     <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                      Job ID: {job.id}
+                      {job.id}
                     </span>
                   </div>
                 );
               }
 
-              if (parsedMeta?.additionalParams?.showPureContent === true) {
-                if ((job.status === "running" || job.status === "processing_stream") && parsedMeta?.additionalParams?.isStreaming) {
+              if (parsedMeta?.taskData?.showPureContent === true) {
+                if ((job.status === "running" || job.status === "processingStream") && parsedMeta?.taskData?.isStreaming) {
                   return <>Live updates in progress</>;
                 } else {
                   return <>Content View</>;

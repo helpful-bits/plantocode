@@ -48,7 +48,6 @@ pub struct Session {
     pub negative_content_regex_description: Option<String>,
     pub regex_summary_explanation: Option<String>,
     pub is_regex_active: bool,
-    pub codebase_structure: Option<String>,
     pub search_selected_files_only: bool,
     pub model_used: Option<String>,
     pub created_at: i64,
@@ -76,7 +75,6 @@ pub struct CreateSessionRequest {
     pub negative_title_regex_description: Option<String>,
     pub negative_content_regex_description: Option<String>,
     pub is_regex_active: Option<bool>,
-    pub codebase_structure: Option<String>,
     pub search_selected_files_only: Option<bool>,
     pub model_used: Option<String>,
     pub created_at: Option<i64>,
@@ -109,13 +107,13 @@ impl ToString for JobStatus {
             JobStatus::Idle => "idle".to_string(),
             JobStatus::Created => "created".to_string(),
             JobStatus::Queued => "queued".to_string(),
-            JobStatus::AcknowledgedByWorker => "acknowledged_by_worker".to_string(),
+            JobStatus::AcknowledgedByWorker => "acknowledgedByWorker".to_string(),
             JobStatus::Preparing => "preparing".to_string(),
-            JobStatus::PreparingInput => "preparing_input".to_string(),
-            JobStatus::GeneratingStream => "generating_stream".to_string(),
-            JobStatus::ProcessingStream => "processing_stream".to_string(),
+            JobStatus::PreparingInput => "preparingInput".to_string(),
+            JobStatus::GeneratingStream => "generatingStream".to_string(),
+            JobStatus::ProcessingStream => "processingStream".to_string(),
             JobStatus::Running => "running".to_string(),
-            JobStatus::CompletedByTag => "completed_by_tag".to_string(),
+            JobStatus::CompletedByTag => "completedByTag".to_string(),
             JobStatus::Completed => "completed".to_string(),
             JobStatus::Failed => "failed".to_string(),
             JobStatus::Canceled => "canceled".to_string(),
@@ -148,17 +146,17 @@ impl FromStr for JobStatus {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        match s {
             "idle" => Ok(JobStatus::Idle),
             "created" => Ok(JobStatus::Created),
             "queued" => Ok(JobStatus::Queued),
-            "acknowledged_by_worker" => Ok(JobStatus::AcknowledgedByWorker),
+            "acknowledgedByWorker" | "acknowledged_by_worker" => Ok(JobStatus::AcknowledgedByWorker),
             "preparing" => Ok(JobStatus::Preparing),
-            "preparing_input" => Ok(JobStatus::PreparingInput),
-            "generating_stream" => Ok(JobStatus::GeneratingStream),
-            "processing_stream" => Ok(JobStatus::ProcessingStream),
+            "preparingInput" | "preparing_input" => Ok(JobStatus::PreparingInput),
+            "generatingStream" | "generating_stream" => Ok(JobStatus::GeneratingStream),
+            "processingStream" | "processing_stream" => Ok(JobStatus::ProcessingStream),
             "running" => Ok(JobStatus::Running),
-            "completed_by_tag" => Ok(JobStatus::CompletedByTag),
+            "completedByTag" | "completed_by_tag" => Ok(JobStatus::CompletedByTag),
             "completed" => Ok(JobStatus::Completed),
             "failed" => Ok(JobStatus::Failed),
             "canceled" | "cancelled" => Ok(JobStatus::Canceled),
@@ -185,12 +183,11 @@ impl ToString for ApiType {
 }
 
 // Task type enum
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
     ImplementationPlan,
     PathFinder,
-    TextImprovement,
     VoiceTranscription,
     TextCorrection,
     PathCorrection,
@@ -214,7 +211,6 @@ impl ToString for TaskType {
         match self {
             TaskType::ImplementationPlan => "implementation_plan".to_string(),
             TaskType::PathFinder => "path_finder".to_string(),
-            TaskType::TextImprovement => "text_improvement".to_string(),
             TaskType::VoiceTranscription => "voice_transcription".to_string(),
             TaskType::TextCorrection => "text_correction".to_string(),
             TaskType::PathCorrection => "path_correction".to_string(),
@@ -241,7 +237,6 @@ impl std::str::FromStr for TaskType {
         match s {
             "implementation_plan" => Ok(TaskType::ImplementationPlan),
             "path_finder" => Ok(TaskType::PathFinder),
-            "text_improvement" => Ok(TaskType::TextImprovement),
             "voice_transcription" => Ok(TaskType::VoiceTranscription),
             "text_correction" => Ok(TaskType::TextCorrection),
             "path_correction" => Ok(TaskType::PathCorrection),
@@ -274,7 +269,6 @@ impl TaskType {
             | TaskType::ExtendedPathCorrection
             | TaskType::ImplementationPlan
             | TaskType::PathFinder
-            | TaskType::TextImprovement
             | TaskType::VoiceTranscription
             | TaskType::TextCorrection
             | TaskType::PathCorrection
@@ -305,35 +299,24 @@ impl TaskType {
     }
 }
 
-// Background job model that matches the TypeScript BackgroundJob interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundJob {
     pub id: String,
     pub session_id: String,
-    pub api_type: String, // Will be "openrouter" for LLM tasks
     pub task_type: String,
     pub status: String,
+    pub prompt: String,
+    pub response: Option<String>,
+    pub error_message: Option<String>,
+    pub tokens_sent: Option<i32>,
+    pub tokens_received: Option<i32>,
+    pub model_used: Option<String>,
+    pub metadata: Option<String>,
     pub created_at: i64,
     pub updated_at: Option<i64>,
     pub start_time: Option<i64>,
     pub end_time: Option<i64>,
-    pub last_update: Option<i64>,
-    pub prompt: String,
-    pub response: Option<String>,
-    pub project_directory: Option<String>,
-    pub tokens_sent: Option<i32>,
-    pub tokens_received: Option<i32>,
-    pub total_tokens: Option<i32>,
-    pub chars_received: Option<i32>,
-    pub status_message: Option<String>,
-    pub error_message: Option<String>,
-    pub model_used: Option<String>,
-    pub max_output_tokens: Option<i32>,
-    pub temperature: Option<f32>,
-    pub include_syntax: Option<bool>,
-    pub metadata: Option<String>,
-    pub system_prompt_id: Option<String>, // Track which system prompt was used for this job
 }
 
 // Task settings model (DB struct - no camelCase conversion)

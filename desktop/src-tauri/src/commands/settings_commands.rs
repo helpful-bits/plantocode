@@ -187,7 +187,12 @@ fn snake_to_camel_case(snake_str: &str) -> AppResult<String> {
         "task_enhancement" => Ok("taskEnhancement".to_string()),
         "generic_llm_stream" => Ok("genericLlmStream".to_string()),
         "regex_summary_generation" => Ok("regexSummaryGeneration".to_string()),
-        "regex_pattern_generation" => Ok("regexGeneration".to_string()),
+        "regex_pattern_generation" => Ok("regexPatternGeneration".to_string()),
+        "file_finder_workflow" => Ok("fileFinderWorkflow".to_string()),
+        "local_file_filtering" => Ok("localFileFiltering".to_string()),
+        "file_relevance_assessment" => Ok("fileRelevanceAssessment".to_string()),
+        "extended_path_finder" => Ok("extendedPathFinder".to_string()),
+        "extended_path_correction" => Ok("extendedPathCorrection".to_string()),
         "streaming" => Ok("streaming".to_string()),
         "unknown" => Ok("unknown".to_string()),
         _ => {
@@ -201,7 +206,7 @@ fn get_required_frontend_task_types() -> Vec<&'static str> {
     vec![
         "pathFinder",
         "voiceTranscription",
-        "regexGeneration",
+        "regexPatternGeneration",
         "regexSummaryGeneration", 
         "pathCorrection",
         "textImprovement",
@@ -210,6 +215,11 @@ fn get_required_frontend_task_types() -> Vec<&'static str> {
         "guidanceGeneration",
         "implementationPlan",
         "genericLlmStream",
+        "fileFinderWorkflow",
+        "localFileFiltering",
+        "fileRelevanceAssessment",
+        "extendedPathFinder",
+        "extendedPathCorrection",
         "streaming",
         "unknown",
     ]
@@ -286,32 +296,31 @@ pub async fn get_all_task_model_settings_for_project_command(app_handle: AppHand
             }
         };
         
-        // Skip non-LLM tasks from frontend config
-        if !task_type.requires_llm() {
-            log::debug!("Skipping local task {} from frontend config", snake_case_key);
-            continue;
-        }
-        
-        let frontend_config = FrontendReadyTaskModelConfig {
-            model: task_config.model.clone().unwrap_or_else(|| {
-                log::warn!("Task {} missing model, using empty string", snake_case_key);
-                String::new()
-            }),
-            max_tokens: task_config.max_tokens.unwrap_or_else(|| {
-                log::warn!("Task {} missing max_tokens, using 0", snake_case_key);
-                0
-            }),
-            temperature: task_config.temperature.unwrap_or_else(|| {
-                log::warn!("Task {} missing temperature, using 0.0", snake_case_key);
-                0.0
-            }),
-        };
-        
-        server_frontend_map.insert(
-            camel_case_key,
+        let value_to_insert = if task_type.requires_llm() {
+            log::debug!("Including LLM task {} with full config for frontend", snake_case_key);
+            let frontend_config = FrontendReadyTaskModelConfig {
+                model: task_config.model.clone().unwrap_or_else(|| {
+                    log::warn!("Task {} missing model, using empty string", snake_case_key);
+                    String::new()
+                }),
+                max_tokens: task_config.max_tokens.unwrap_or_else(|| {
+                    log::warn!("Task {} missing max_tokens, using 0", snake_case_key);
+                    0
+                }),
+                temperature: task_config.temperature.unwrap_or_else(|| {
+                    log::warn!("Task {} missing temperature, using 0.0", snake_case_key);
+                    0.0
+                }),
+            };
             serde_json::to_value(frontend_config)
                 .map_err(|e| AppError::SerializationError(format!("Failed to serialize task config for {}: {}", snake_case_key, e)))?
-        );
+        } else {
+            // For non-LLM tasks, insert an empty object. The frontend will handle rendering.
+            log::debug!("Including non-LLM task {} with empty config for frontend", snake_case_key);
+            serde_json::json!({})
+        };
+        
+        server_frontend_map.insert(camel_case_key, value_to_insert);
     }
     
     if let Some(settings_json) = project_settings {
@@ -357,7 +366,7 @@ mod tests {
         {
             "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "voiceTranscription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "regexGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "regexPatternGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "regexSummaryGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "pathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "textImprovement": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
@@ -366,6 +375,11 @@ mod tests {
             "guidanceGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "implementationPlan": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "genericLlmStream": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "fileFinderWorkflow": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "localFileFiltering": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "fileRelevanceAssessment": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "extendedPathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "extendedPathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "streaming": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "unknown": {"model": "test", "maxTokens": 1000, "temperature": 0.5}
         }
@@ -375,12 +389,12 @@ mod tests {
     }
     
     #[test]
-    fn test_validate_project_settings_missing_text_correction() {
+    fn test_validate_project_settings_missing_extended_path_correction() {
         let incomplete_settings = r#"
         {
             "pathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "voiceTranscription": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
-            "regexGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "regexPatternGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "regexSummaryGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "pathCorrection": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "textImprovement": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
@@ -388,6 +402,10 @@ mod tests {
             "guidanceGeneration": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "implementationPlan": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "genericLlmStream": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "fileFinderWorkflow": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "localFileFiltering": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "fileRelevanceAssessment": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
+            "extendedPathFinder": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "streaming": {"model": "test", "maxTokens": 1000, "temperature": 0.5},
             "unknown": {"model": "test", "maxTokens": 1000, "temperature": 0.5}
         }

@@ -11,6 +11,7 @@ use crate::jobs::types::{Job, JobPayload, JobProcessResult};
 use crate::jobs::processors::path_finder_types::PathFinderOptions;
 use crate::utils::path_utils;
 use crate::utils::fs_utils;
+use crate::utils::git_utils;
 use crate::utils::token_estimator::{estimate_tokens, estimate_structured_data_tokens, estimate_code_tokens};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processors::utils::{fs_context_utils, response_parser_utils};
@@ -23,29 +24,6 @@ impl PathFinderProcessor {
         Self {}
     }
     
-    /// Validate paths against the file system
-    async fn validate_paths_against_filesystem(&self, paths: &[String], project_directory: &str) -> (Vec<String>, Vec<String>) {
-        let mut validated_paths = Vec::new();
-        let mut invalid_paths = Vec::new();
-        
-        for relative_path in paths {
-            // Construct absolute path
-            let absolute_path = Path::new(project_directory).join(relative_path);
-            
-            // Check if file exists and is a file
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    validated_paths.push(relative_path.clone());
-                },
-                _ => {
-                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
-                    invalid_paths.push(relative_path.clone());
-                }
-            }
-        }
-        
-        (validated_paths, invalid_paths)
-    }
 }
 
 #[async_trait::async_trait]
@@ -66,20 +44,28 @@ impl JobProcessor for PathFinderProcessor {
         };
         
         // Setup job processing
-        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&payload.background_job_id, &app_handle).await?;
+        let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
-        job_processor_utils::log_job_start(&payload.background_job_id, "path finding");
+        job_processor_utils::log_job_start(&job.id, "path finding");
 
-        // Check if directory tree is provided, otherwise generate it
-        let project_directory = job.project_directory.as_ref()
-            .ok_or_else(|| AppError::JobError("Project directory not found in job".to_string()))?;
-        let project_dir_path = Path::new(project_directory);
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        let project_directory = &session.project_directory;
         
+        // Check if directory tree is provided, otherwise generate it
         let directory_tree = if let Some(tree) = &payload.directory_tree {
             if !tree.is_empty() {
                 info!("Using provided directory tree for PathFinder");
@@ -113,7 +99,7 @@ impl JobProcessor for PathFinderProcessor {
                 
                 for file_path in included_files {
                     // Validate the path before processing
-                    let validated_path = match path_utils::validate_llm_path(file_path, project_dir_path) {
+                    let validated_path = match path_utils::validate_llm_path(file_path, Path::new(project_directory)) {
                         Ok(path) => path,
                         Err(e) => {
                             warn!("Skipping invalid file path from options: {}: {}", file_path, e);
@@ -124,11 +110,11 @@ impl JobProcessor for PathFinderProcessor {
                     let abs_path = if validated_path.is_absolute() {
                         validated_path
                     } else {
-                        project_dir_path.join(validated_path)
+                        Path::new(project_directory).join(validated_path)
                     };
                     
                     // Ensure the final path is still within project bounds
-                    if let Err(e) = fs_utils::ensure_path_within_project(project_dir_path, &abs_path) {
+                    if let Err(e) = fs_utils::ensure_path_within_project(Path::new(project_directory), &abs_path) {
                         warn!("File path outside project bounds: {}: {}", abs_path.display(), e);
                         continue;
                     }
@@ -157,12 +143,38 @@ impl JobProcessor for PathFinderProcessor {
                     info!("Processing priority file types for content extraction");
                     let remaining_slots = max_files_with_content - relevant_file_contents.len();
                     
-                    // Find files matching the priority types using safe project-scoped discovery
-                    let matching_files = path_utils::find_project_files_by_extension(
-                        project_dir_path,
-                        priority_file_types,
-                        remaining_slots * 2 // Get more files to sort by modification time
-                    ).await?;
+                    // Find files matching the priority types using git-aware discovery
+                    let (git_files, is_git_repo) = git_utils::get_all_non_ignored_files(Path::new(project_directory))?;
+                    if !is_git_repo {
+                        return Err(AppError::JobError("Project directory is not a git repository. Only git repositories are supported.".to_string()));
+                    }
+                    
+                    // Filter for files with matching extensions and get file metadata for sorting
+                    let mut matching_files_with_metadata = Vec::new();
+                    for relative_path in git_files {
+                        let file_path = path_utils::join_paths(Path::new(project_directory), &relative_path);
+                        
+                        // Check if file matches any priority file type
+                        if let Some(extension) = relative_path.extension() {
+                            let ext_str = extension.to_string_lossy().to_lowercase();
+                            if priority_file_types.iter().any(|pft| pft.to_lowercase() == ext_str) {
+                                // Get file metadata for sorting by modification time
+                                if let Ok(metadata) = std::fs::metadata(&file_path) {
+                                    if let Ok(modified) = metadata.modified() {
+                                        matching_files_with_metadata.push((file_path, modified));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Sort by modification time (most recent first) and take the requested amount
+                    matching_files_with_metadata.sort_by(|a, b| b.1.cmp(&a.1));
+                    let matching_files: Vec<_> = matching_files_with_metadata
+                        .into_iter()
+                        .take(remaining_slots * 2)
+                        .map(|(path, _)| path)
+                        .collect();
                     
                     // Take only the most recently modified files up to the limit (already sorted by the function)
                     for file_path in matching_files.into_iter().take(remaining_slots) {
@@ -214,14 +226,13 @@ impl JobProcessor for PathFinderProcessor {
             task_description: final_task_description,
             file_contents: if final_file_contents.is_empty() { None } else { Some(final_file_contents) },
             directory_tree: Some(final_directory_tree),
-            codebase_structure: None,
             system_prompt_override: None,
         };
         
         // Check if job has been canceled before calling the LLM
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute LLM task using the task runner
@@ -231,8 +242,8 @@ impl JobProcessor for PathFinderProcessor {
             Err(e) => {
                 error!("LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
@@ -245,21 +256,21 @@ impl JobProcessor for PathFinderProcessor {
             Err(e) => {
                 error!("Failed to parse paths from response: {}", e);
                 let error_msg = format!("Failed to parse paths from response: {}", e);
-                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
 
-        // Validate paths against the file system using helper method
+        // Validate paths against the file system using centralized utility
         info!("Validating {} parsed paths against filesystem...", raw_paths.len());
-        let (validated_paths, unverified_paths_raw) = self.validate_paths_against_filesystem(&raw_paths, project_directory).await;
+        let (validated_paths, unverified_paths_raw) = fs_context_utils::validate_paths_against_filesystem(&raw_paths, project_directory).await;
 
         info!("Path validation: {} valid, {} invalid paths", validated_paths.len(), unverified_paths_raw.len());
 
         // Check if job has been canceled after LLM processing using helper
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled after LLM processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled after LLM processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Create standardized JSON response with verifiedPaths and unverifiedPaths structure
@@ -277,12 +288,12 @@ impl JobProcessor for PathFinderProcessor {
         // Finalize job success using task runner with structured response
         task_runner.finalize_success(
             &repo,
-            &payload.background_job_id,
+            &job.id,
             &modified_llm_result,
             Some(response_json_content.clone()),
         ).await?;
         
         // Return success result with JSON response
-        Ok(JobProcessResult::success(payload.background_job_id.clone(), response_json_content.to_string()))
+        Ok(JobProcessResult::success(job.id.clone(), response_json_content.to_string()))
     }
 }

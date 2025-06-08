@@ -1,58 +1,27 @@
-use log::{debug, error, warn};
-
 use crate::error::{AppError, AppResult};
-use crate::jobs::types::{JobPayload, JobWorkerMetadata};
+use crate::jobs::types::{JobPayload, JobUIMetadata, Job};
+use crate::models::{TaskType, BackgroundJob};
+use std::str::FromStr;
 
-/// Deserialize job payload from metadata based on the task type
-pub fn deserialize_job_payload(task_type: &str, metadata_str: Option<&str>) -> AppResult<JobPayload> {
-    let metadata_str = metadata_str.ok_or_else(|| 
-        AppError::JobError("Missing metadata for job payload deserialization".to_string())
-    )?;
-
-    match serde_json::from_str::<JobWorkerMetadata>(metadata_str) {
-        Ok(worker_metadata) => {
-            debug!("Successfully parsed JobWorkerMetadata for task_type: {}", task_type);
-            // Validate that the task_type in the deserialized metadata matches the job's task_type.
-            // This is a significant inconsistency that could indicate data corruption or version mismatch.
-            if worker_metadata.task_type != task_type {
-                warn!(
-                    "Critical inconsistency: task_type in metadata ('{}') does not match job task_type ('{}'). \
-                     This may indicate data corruption or version mismatch. Using payload from metadata as it reflects the actual stored job data.",
-                    worker_metadata.task_type, task_type
-                );
-                // Continue processing using the payload from metadata as it's what was actually stored
-                // The task_type parameter is used for context/logging but the payload structure is what matters
-            }
-            Ok(worker_metadata.job_payload_for_worker)
-        }
-        Err(e) => {
-            // Log the beginning of the metadata string for easier debugging
-            let metadata_snippet = metadata_str.chars().take(200).collect::<String>();
-            error!(
-                "Failed to parse metadata string as JobWorkerMetadata for task_type '{}'. Error: {}. Metadata snippet: '{}'",
-                task_type, e, metadata_snippet
-            );
-            Err(AppError::JobError(format!(
-                "Invalid job metadata structure for task_type '{}'. Failed to deserialize JobWorkerMetadata: {}",
-                task_type, e
-            )))
-        }
-    }
-}
-
-/// Create a default JobPayload for a given task type with minimal default fields
-/// This is used when metadata parsing fails and we need to create fallback metadata
-pub fn create_default_payload_for_task_type(
-    task_type_str: &str, 
-    job_id: &str, 
-    _session_id: &str, 
-    _project_directory: Option<&str>
-) -> AppResult<JobPayload> {
-    Err(AppError::JobError(format!(
-        "Cannot create fallback payload for task type '{}' - job metadata is corrupted for job {}. \
-        This indicates a serious issue with job data integrity that requires manual intervention.",
-        task_type_str, job_id
-    )))
+/// Convert BackgroundJob from database to Job for retries
+pub fn convert_db_job_to_job(db_job: &BackgroundJob) -> AppResult<Job> {
+    let metadata_str = db_job.metadata.as_ref()
+        .ok_or_else(|| AppError::JobError("Job metadata is missing".to_string()))?;
+    
+    let ui_metadata: JobUIMetadata = serde_json::from_str(metadata_str)
+        .map_err(|e| AppError::JobError(format!("Failed to parse JobUIMetadata: {}", e)))?;
+    
+    let task_type = TaskType::from_str(&db_job.task_type)
+        .map_err(|e| AppError::JobError(format!("Failed to parse task type '{}': {}", db_job.task_type, e)))?;
+    
+    Ok(Job {
+        id: db_job.id.clone(),
+        job_type: task_type,
+        payload: ui_metadata.job_payload_for_worker,
+        session_id: db_job.session_id.clone(),
+        process_after: None,
+        created_at: db_job.created_at,
+    })
 }
 
 /// Convert a JSON value to the appropriate JobPayload variant based on TaskType
@@ -63,7 +32,7 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
         JobPayload, RegexPatternGenerationWorkflowPayload, 
         LocalFileFilteringPayload, PathFinderPayload, PathCorrectionPayload, 
         ExtendedPathFinderPayload, ExtendedPathCorrectionPayload, ImplementationPlanPayload,
-        GuidanceGenerationPayload, TextImprovementPayload, TaskEnhancementPayload,
+        GuidanceGenerationPayload, TaskEnhancementPayload,
         TextCorrectionPayload, GenericLlmStreamPayload, RegexPatternGenerationPayload,
         OpenRouterLlmPayload, VoiceTranscriptionPayload, FileRelevanceAssessmentPayload
     };
@@ -116,11 +85,6 @@ pub fn deserialize_value_to_job_payload(json_value: &serde_json::Value, task_typ
             let payload: GuidanceGenerationPayload = serde_json::from_value(json_value.clone())
                 .map_err(|e| AppError::JobError(format!("Failed to deserialize GuidanceGenerationPayload: {}", e)))?;
             Ok(JobPayload::GuidanceGeneration(payload))
-        }
-        TaskType::TextImprovement => {
-            let payload: TextImprovementPayload = serde_json::from_value(json_value.clone())
-                .map_err(|e| AppError::JobError(format!("Failed to deserialize TextImprovementPayload: {}", e)))?;
-            Ok(JobPayload::TextImprovement(payload))
         }
         TaskType::TaskEnhancement => {
             let payload: TaskEnhancementPayload = serde_json::from_value(json_value.clone())

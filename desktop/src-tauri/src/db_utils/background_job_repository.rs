@@ -18,7 +18,11 @@ impl BackgroundJobRepository {
         Self { pool }
     }
     
-    /// Cancel a specific job by ID
+    pub fn get_pool(&self) -> Arc<SqlitePool> {
+        self.pool.clone()
+    }
+    
+    /// Cancel a specific job by ID\n    /// \n    /// This is the canonical method for cancelling individual jobs. For workflow jobs,\n    /// consider using WorkflowOrchestrator::update_job_status() to allow proper \n    /// workflow state management and cancellation handling.
     pub async fn cancel_job(&self, job_id: &str) -> AppResult<()> {
         // Fetch the job to check its current status
         let job = self.get_job_by_id(job_id).await?
@@ -46,7 +50,7 @@ impl BackgroundJobRepository {
             }
         }
         
-        // Use the new consolidated method
+        // Check if this is a workflow job and log a warning\n        if let Some(metadata_str) = &job.metadata {\n            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {\n                if metadata_json.get(\"workflowId\").is_some() {\n                    warn!(\"Job {} belonging to a workflow is being cancelled directly - workflow state may not be properly updated\", job_id);\n                }\n            }\n        }\n        \n        // Use the new consolidated method
         self.mark_job_canceled(job_id, "Canceled by user").await
     }
     
@@ -78,88 +82,58 @@ impl BackgroundJobRepository {
         
         // Calculate token counts
         let tokens_received = job.tokens_received.unwrap_or(0) + new_tokens_received;
-        let total_tokens = job.total_tokens.unwrap_or(0) + new_tokens_received;
         
-        // Parse current metadata into JobWorkerMetadata structure
-        let mut worker_metadata: crate::jobs::types::JobWorkerMetadata = match current_metadata_str {
+        // Parse current metadata into JobUIMetadata structure
+        let metadata_str = match current_metadata_str {
             Some(metadata_str) => {
-                serde_json::from_str(metadata_str).map_err(|e| {
-                    AppError::DatabaseError(format!(
-                        "Corrupted job metadata for job {} during streaming update. Cannot continue with invalid metadata: {}", 
-                        job_id, e
-                    ))
-                })?
+                if let Ok(mut ui_metadata) = serde_json::from_str::<crate::jobs::types::JobUIMetadata>(metadata_str) {
+                    // Update streaming info in task_data
+                    let streaming_info = serde_json::json!({
+                        "is_streaming": true,
+                        "last_stream_update_time": now,
+                        "response_length": current_total_response_length,
+                        "tokens_received": tokens_received
+                    });
+                    
+                    if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
+                        task_map.insert("streaming_info".to_string(), streaming_info);
+                        
+                        // Note: Streaming progress calculation removed since max_output_tokens is no longer available
+                        
+                        // Add start time if not present
+                        if !task_map.contains_key("stream_start_time") {
+                            task_map.insert("stream_start_time".to_string(), serde_json::json!(now));
+                        }
+                    } else {
+                        ui_metadata.task_data = streaming_info;
+                    }
+                    
+                    serde_json::to_string(&ui_metadata)
+                        .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata: {}", e)))?
+                } else {
+                    // Cannot parse as JobUIMetadata - create minimal streaming metadata
+                    serde_json::to_string(&serde_json::json!({
+                        "streaming_info": {
+                            "is_streaming": true,
+                            "last_stream_update_time": now,
+                            "response_length": current_total_response_length,
+                            "tokens_received": tokens_received
+                        }
+                    })).unwrap()
+                }
             },
             None => {
-                return Err(AppError::DatabaseError(format!(
-                    "No metadata found for job {} during streaming update. Cannot continue without job metadata.", 
-                    job_id
-                )));
+                // No metadata - create minimal streaming metadata
+                serde_json::to_string(&serde_json::json!({
+                    "streaming_info": {
+                        "is_streaming": true,
+                        "last_stream_update_time": now,
+                        "response_length": current_total_response_length,
+                        "tokens_received": tokens_received
+                    }
+                })).unwrap()
             }
         };
-
-        // Update additional_params with streaming fields using JobMetadataBuilder
-        let builder = crate::utils::job_metadata_builder::JobMetadataBuilder::from_existing_additional_params(
-            worker_metadata.additional_params.take()
-        );
-        
-        let mut updated_builder = builder
-            .is_streaming(true)
-            .last_stream_update_time(now as u64)
-            .response_length(current_total_response_length as usize)
-            .custom_field("totalTokens", serde_json::json!(total_tokens))
-            .custom_field("tokensReceived", serde_json::json!(tokens_received));
-
-        // Calculate streaming progress if max tokens is available
-        if let Some(max_tokens) = job.max_output_tokens {
-            // Calculate progress as a percentage (0-100)
-            let progress = if max_tokens > 0 {
-                (tokens_received as f32 / max_tokens as f32) * 100.0
-            } else {
-                0.0
-            };
-            
-            // Cap progress at 100%
-            let capped_progress = progress.min(100.0);
-            updated_builder = updated_builder.stream_progress(capped_progress as f64);
-            
-            // Add estimated time remaining if we have enough data
-            if progress > 5.0 {
-                // Get start time from existing additional_params
-                let start_time = worker_metadata.additional_params
-                    .as_ref()
-                    .and_then(|params| params.get("streamStartTime"))
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(now);
-                
-                let elapsed_ms = now - start_time;
-                
-                if elapsed_ms > 0 && progress > 0.0 {
-                    // Estimate time remaining based on progress so far
-                    let total_estimated_ms = (elapsed_ms as f32 / progress) * 100.0;
-                    let remaining_ms = total_estimated_ms - (elapsed_ms as f32);
-                    
-                    updated_builder = updated_builder.custom_field("estimatedRemainingMs", serde_json::json!(remaining_ms as i64));
-                }
-            }
-        }
-        
-        // Add initial streamStartTime if not present
-        let needs_start_time = worker_metadata.additional_params
-            .as_ref()
-            .map(|params| !params.as_object().unwrap_or(&serde_json::Map::new()).contains_key("streamStartTime"))
-            .unwrap_or(true);
-            
-        if needs_start_time {
-            updated_builder = updated_builder.stream_start_time(now as u64);
-        }
-        
-        // Update worker_metadata with new additional_params
-        worker_metadata.additional_params = Some(updated_builder.build_value());
-        
-        // Serialize the complete JobWorkerMetadata back to string
-        let metadata_str = serde_json::to_string(&worker_metadata)
-            .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobWorkerMetadata: {}", e)))?;
         
         // Update the job in the database
         sqlx::query(
@@ -167,18 +141,12 @@ impl BackgroundJobRepository {
             UPDATE background_jobs SET
                 response = $1, 
                 tokens_received = $2,
-                total_tokens = $3,
-                chars_received = $4,
-                updated_at = $5,
-                last_update = $6,
-                metadata = $7
-            WHERE id = $8 AND status = $9
+                updated_at = $3,
+                metadata = $4
+            WHERE id = $5 AND status = $6
             "#)
             .bind(new_response)
             .bind(tokens_received)
-            .bind(total_tokens)
-            .bind(current_total_response_length)
-            .bind(now)
             .bind(now)
             .bind(&metadata_str)
             .bind(job_id)
@@ -379,39 +347,26 @@ impl BackgroundJobRepository {
         sqlx::query(
             r#"
             INSERT INTO background_jobs (
-                id, session_id, api_type, task_type, status, 
-                created_at, updated_at, start_time, end_time, last_update,
-                prompt, response, project_directory, tokens_sent, tokens_received,
-                total_tokens, chars_received, status_message, error_message,
-                model_used, max_output_tokens, temperature, include_syntax,
-                metadata, system_prompt_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                id, session_id, task_type, status, prompt, response, error_message,
+                tokens_sent, tokens_received, model_used, metadata, 
+                created_at, updated_at, start_time, end_time
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             "#)
             .bind(&job.id)
             .bind(&job.session_id)
-            .bind(&job.api_type)
             .bind(&job.task_type)
             .bind(&job.status)
+            .bind(&job.prompt)
+            .bind(&job.response)
+            .bind(&job.error_message)
+            .bind(job.tokens_sent.map(|v| v as i64))
+            .bind(job.tokens_received.map(|v| v as i64))
+            .bind(&job.model_used)
+            .bind(&job.metadata)
             .bind(job.created_at)
             .bind(job.updated_at)
             .bind(job.start_time)
             .bind(job.end_time)
-            .bind(job.last_update)
-            .bind(&job.prompt)
-            .bind(&job.response)
-            .bind(&job.project_directory)
-            .bind(job.tokens_sent.map(|v| v as i64))
-            .bind(job.tokens_received.map(|v| v as i64))
-            .bind(job.total_tokens.map(|v| v as i64))
-            .bind(job.chars_received.map(|v| v as i64))
-            .bind(&job.status_message)
-            .bind(&job.error_message)
-            .bind(&job.model_used)
-            .bind(job.max_output_tokens.map(|v| v as i64))
-            .bind(job.temperature.map(|v| v as f64))
-            .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
-            .bind(&job.metadata)
-            .bind(&job.system_prompt_id)
             .execute(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to insert job: {}", e)))?;
@@ -425,53 +380,33 @@ impl BackgroundJobRepository {
             r#"
             UPDATE background_jobs SET
                 session_id = $1,
-                api_type = $2,
-                task_type = $3,
-                status = $4,
-                updated_at = $5,
-                start_time = $6,
-                end_time = $7,
-                last_update = $8,
-                prompt = $9,
-                response = $10,
-                project_directory = $11,
-                tokens_sent = $12,
-                tokens_received = $13,
-                total_tokens = $14,
-                chars_received = $15,
-                status_message = $16,
-                error_message = $17,
-                model_used = $18,
-                max_output_tokens = $19,
-                temperature = $20,
-                include_syntax = $21,
-                metadata = $22,
-                system_prompt_id = $23
-            WHERE id = $24
+                task_type = $2,
+                status = $3,
+                updated_at = $4,
+                start_time = $5,
+                end_time = $6,
+                prompt = $7,
+                response = $8,
+                error_message = $9,
+                tokens_sent = $10,
+                tokens_received = $11,
+                model_used = $12,
+                metadata = $13
+            WHERE id = $14
             "#)
             .bind(&job.session_id)
-            .bind(&job.api_type)
             .bind(&job.task_type)
             .bind(&job.status)
             .bind(job.updated_at)
             .bind(job.start_time)
             .bind(job.end_time)
-            .bind(job.last_update)
             .bind(&job.prompt)
             .bind(&job.response)
-            .bind(&job.project_directory)
+            .bind(&job.error_message)
             .bind(job.tokens_sent.map(|v| v as i64))
             .bind(job.tokens_received.map(|v| v as i64))
-            .bind(job.total_tokens.map(|v| v as i64))
-            .bind(job.chars_received.map(|v| v as i64))
-            .bind(&job.status_message)
-            .bind(&job.error_message)
             .bind(&job.model_used)
-            .bind(job.max_output_tokens.map(|v| v as i64))
-            .bind(job.temperature.map(|v| v as f64))
-            .bind(job.include_syntax.map(|v| if v { 1i64 } else { 0i64 }))
             .bind(&job.metadata)
-            .bind(&job.system_prompt_id)
             .bind(&job.id)
             .execute(&*self.pool)
             .await
@@ -484,22 +419,12 @@ impl BackgroundJobRepository {
     pub async fn update_job_status(&self, job_id: &str, status: &JobStatus, message: Option<&str>) -> AppResult<()> {
         let now = get_timestamp();
         
-        let result = if let Some(msg) = message {
-            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, status_message = $3 WHERE id = $4")
-                .bind(status.to_string())
-                .bind(now)
-                .bind(msg)
-                .bind(job_id)
-                .execute(&*self.pool)
-                .await
-        } else {
-            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, status_message = NULL WHERE id = $3")
-                .bind(status.to_string())
-                .bind(now)
-                .bind(job_id)
-                .execute(&*self.pool)
-                .await
-        };
+        let result = sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2 WHERE id = $3")
+            .bind(status.to_string())
+            .bind(now)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await;
         
         result.map_err(|e| AppError::DatabaseError(format!("Failed to update job status: {}", e)))?;
             
@@ -517,58 +442,33 @@ impl BackgroundJobRepository {
     ) -> AppResult<()> {
         let now = get_timestamp();
         
-        let result = if let Some(msg) = message {
-            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, status_message = $3, metadata = $4 WHERE id = $5")
-                .bind(status.to_string())
-                .bind(now)
-                .bind(msg)
-                .bind(metadata_json)
-                .bind(job_id)
-                .execute(&*self.pool)
-                .await
-        } else {
-            sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, metadata = $3 WHERE id = $4")
-                .bind(status.to_string())
-                .bind(now)
-                .bind(metadata_json)
-                .bind(job_id)
-                .execute(&*self.pool)
-                .await
-        };
+        let result = sqlx::query("UPDATE background_jobs SET status = $1, updated_at = $2, metadata = $3 WHERE id = $4")
+            .bind(status.to_string())
+            .bind(now)
+            .bind(metadata_json)
+            .bind(job_id)
+            .execute(&*self.pool)
+            .await;
         
         result.map_err(|e| AppError::DatabaseError(format!("Failed to update job status with metadata: {}", e)))?;
             
         Ok(())
     }
     
-    /// Mark a job as running with optional status message
-    pub async fn mark_job_running(&self, job_id: &str, status_message: Option<&str>) -> AppResult<()> {
+    /// Mark a job as running
+    pub async fn mark_job_running(&self, job_id: &str) -> AppResult<()> {
         let now = get_timestamp();
         
-        if let Some(msg) = status_message {
-            sqlx::query(
-                "UPDATE background_jobs SET status = $1, updated_at = $2, start_time = $3, status_message = $4 WHERE id = $5"
-            )
-            .bind(JobStatus::Running.to_string())
-            .bind(now)
-            .bind(now)
-            .bind(msg)
-            .bind(job_id)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as running: {}", e)))?;
-        } else {
-            sqlx::query(
-                "UPDATE background_jobs SET status = $1, updated_at = $2, start_time = $3 WHERE id = $4"
-            )
-            .bind(JobStatus::Running.to_string())
-            .bind(now)
-            .bind(now)
-            .bind(job_id)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as running: {}", e)))?;
-        }
+        sqlx::query(
+            "UPDATE background_jobs SET status = $1, updated_at = $2, start_time = $3 WHERE id = $4"
+        )
+        .bind(JobStatus::Running.to_string())
+        .bind(now)
+        .bind(now)
+        .bind(job_id)
+        .execute(&*self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to mark job as running: {}", e)))?;
         
         Ok(())
     }
@@ -581,14 +481,12 @@ impl BackgroundJobRepository {
         metadata: Option<&str>,
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
-        total_tokens: Option<i32>,
         model_used: Option<&str>,
-        system_prompt_id: Option<&str>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
         // Build the SQL dynamically based on which parameters are provided
-        let mut final_query = String::from("UPDATE background_jobs SET status = $1, response = $2, updated_at = $3, end_time = $4, status_message = NULL");
+        let mut final_query = String::from("UPDATE background_jobs SET status = $1, response = $2, updated_at = $3, end_time = $4");
         let mut param_index = 5;
         
         if metadata.is_some() {
@@ -606,18 +504,8 @@ impl BackgroundJobRepository {
             param_index += 1;
         }
         
-        if total_tokens.is_some() {
-            final_query.push_str(&format!(", total_tokens = ${}", param_index));
-            param_index += 1;
-        }
-        
         if model_used.is_some() {
             final_query.push_str(&format!(", model_used = ${}", param_index));
-            param_index += 1;
-        }
-        
-        if system_prompt_id.is_some() {
-            final_query.push_str(&format!(", system_prompt_id = ${}", param_index));
             param_index += 1;
         }
         
@@ -646,16 +534,8 @@ impl BackgroundJobRepository {
             query_obj = query_obj.bind(tr as i64);
         }
         
-        if let Some(tt) = total_tokens {
-            query_obj = query_obj.bind(tt as i64);
-        }
-        
         if let Some(model) = model_used {
             query_obj = query_obj.bind(model);
-        }
-        
-        if let Some(sp_id) = system_prompt_id {
-            query_obj = query_obj.bind(sp_id);
         }
         
         // Bind job_id last
@@ -701,8 +581,7 @@ impl BackgroundJobRepository {
                 SET status = $1, 
                     error_message = $2, 
                     updated_at = $3, 
-                    end_time = $4,
-                    status_message = NULL
+                    end_time = $4
                 WHERE id = $5
                 "#)
                 .bind(JobStatus::Failed.to_string())
@@ -728,8 +607,7 @@ impl BackgroundJobRepository {
             SET status = $1, 
                 error_message = $2, 
                 updated_at = $3, 
-                end_time = $4,
-                status_message = NULL
+                end_time = $4
             WHERE id = $5
             "#)
             .bind(JobStatus::Canceled.to_string())
@@ -768,7 +646,6 @@ impl BackgroundJobRepository {
         metadata: Option<&str>,
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
-        total_tokens: Option<i32>,
         chars_received: Option<i32>,
     ) -> AppResult<()> {
         self.update_job_response_with_system_prompt(
@@ -778,9 +655,7 @@ impl BackgroundJobRepository {
             metadata,
             tokens_sent,
             tokens_received,
-            total_tokens,
             chars_received,
-            None, // No system_prompt_id for backward compatibility
         ).await
     }
 
@@ -793,9 +668,7 @@ impl BackgroundJobRepository {
         metadata: Option<&str>,
         tokens_sent: Option<i32>,
         tokens_received: Option<i32>,
-        total_tokens: Option<i32>,
         chars_received: Option<i32>,
-        system_prompt_id: Option<&str>,
     ) -> AppResult<()> {
         let now = get_timestamp();
         
@@ -830,20 +703,6 @@ impl BackgroundJobRepository {
             param_index += 1;
         }
         
-        if total_tokens.is_some() {
-            final_query.push_str(&format!(", total_tokens = ${}", param_index));
-            param_index += 1;
-        }
-        
-        if chars_received.is_some() {
-            final_query.push_str(&format!(", chars_received = ${}", param_index));
-            param_index += 1;
-        }
-        
-        if system_prompt_id.is_some() {
-            final_query.push_str(&format!(", system_prompt_id = ${}", param_index));
-            param_index += 1;
-        }
         
         // Add the WHERE clause
         final_query.push_str(&format!(" WHERE id = ${}", param_index));
@@ -875,17 +734,6 @@ impl BackgroundJobRepository {
             query_obj = query_obj.bind(tr as i64);
         }
         
-        if let Some(tt) = total_tokens {
-            query_obj = query_obj.bind(tt as i64);
-        }
-        
-        if let Some(cr) = chars_received {
-            query_obj = query_obj.bind(cr as i64);
-        }
-        
-        if let Some(sp_id) = system_prompt_id {
-            query_obj = query_obj.bind(sp_id);
-        }
         
         // Bind job_id last
         query_obj = query_obj.bind(job_id);
@@ -916,59 +764,37 @@ impl BackgroundJobRepository {
     fn row_to_job(&self, row: &SqliteRow) -> AppResult<BackgroundJob> {
         let id: String = row.try_get::<'_, String, _>("id")?;
         let session_id: String = row.try_get::<'_, String, _>("session_id")?;
-        let api_type: String = row.try_get::<'_, String, _>("api_type")?;
         let task_type: String = row.try_get::<'_, String, _>("task_type")?;
         let status: String = row.try_get::<'_, String, _>("status")?;
+        let prompt: String = row.try_get::<'_, String, _>("prompt")?;
         let created_at: i64 = row.try_get::<'_, i64, _>("created_at")?;
         
+        let response: Option<String> = row.try_get::<'_, Option<String>, _>("response").unwrap_or(None);
+        let error_message: Option<String> = row.try_get::<'_, Option<String>, _>("error_message").unwrap_or(None);
+        let tokens_sent: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_sent").map(|v| v.map(|val| val as i32)).unwrap_or(None);
+        let tokens_received: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_received").map(|v| v.map(|val| val as i32)).unwrap_or(None);
+        let model_used: Option<String> = row.try_get::<'_, Option<String>, _>("model_used").unwrap_or(None);
+        let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
         let updated_at: Option<i64> = row.try_get::<'_, Option<i64>, _>("updated_at").unwrap_or(None);
         let start_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("start_time").unwrap_or(None);
         let end_time: Option<i64> = row.try_get::<'_, Option<i64>, _>("end_time").unwrap_or(None);
-        let last_update: Option<i64> = row.try_get::<'_, Option<i64>, _>("last_update").unwrap_or(None);
-        
-        let prompt: String = row.try_get::<'_, String, _>("prompt")?;
-        
-        let response: Option<String> = row.try_get::<'_, Option<String>, _>("response").unwrap_or(None);
-        let project_directory: Option<String> = row.try_get::<'_, Option<String>, _>("project_directory").unwrap_or(None);
-        let tokens_sent: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_sent").map(|v| v.map(|val| val as i32)).unwrap_or(None);
-        let tokens_received: Option<i32> = row.try_get::<'_, Option<i64>, _>("tokens_received").map(|v| v.map(|val| val as i32)).unwrap_or(None);
-        let total_tokens: Option<i32> = row.try_get::<'_, Option<i64>, _>("total_tokens").map(|v| v.map(|val| val as i32)).unwrap_or(None);
-        let chars_received: Option<i32> = row.try_get::<'_, Option<i64>, _>("chars_received").map(|v| v.map(|val| val as i32)).unwrap_or(None);
-        let status_message: Option<String> = row.try_get::<'_, Option<String>, _>("status_message").unwrap_or(None);
-        let error_message: Option<String> = row.try_get::<'_, Option<String>, _>("error_message").unwrap_or(None);
-        let model_used: Option<String> = row.try_get::<'_, Option<String>, _>("model_used").unwrap_or(None);
-        let max_output_tokens: Option<i32> = row.try_get::<'_, Option<i64>, _>("max_output_tokens").map(|v| v.map(|val| val as i32)).unwrap_or(None);
-        let temperature: Option<f32> = row.try_get::<'_, Option<f64>, _>("temperature").map(|v| v.map(|val| val as f32)).unwrap_or(None);
-        let include_syntax: Option<bool> = row.try_get::<'_, Option<i64>, _>("include_syntax").map(|v| v.map(|val| val == 1)).unwrap_or(None);
-        let metadata: Option<String> = row.try_get::<'_, Option<String>, _>("metadata").unwrap_or(None);
-        let system_prompt_id: Option<String> = row.try_get::<'_, Option<String>, _>("system_prompt_id").unwrap_or(None);
         
         Ok(BackgroundJob {
             id,
             session_id,
-            api_type,
             task_type,
             status,
+            prompt,
+            response,
+            error_message,
+            tokens_sent,
+            tokens_received,
+            model_used,
+            metadata,
             created_at,
             updated_at,
             start_time,
             end_time,
-            last_update,
-            prompt,
-            response,
-            project_directory,
-            tokens_sent,
-            tokens_received,
-            total_tokens,
-            chars_received,
-            status_message,
-            error_message,
-            model_used,
-            max_output_tokens,
-            temperature,
-            include_syntax,
-            metadata,
-            system_prompt_id,
         })
     }
     
@@ -1103,14 +929,12 @@ impl BackgroundJobRepository {
             SET status = $1, 
                 error_message = 'Canceled due to session action', 
                 updated_at = $2, 
-                end_time = $3,
-                last_update = $4
-            WHERE session_id = $5
-            AND status IN ($6, $7, $8, $9, $10, $11)
-            AND task_type <> $12
+                end_time = $3
+            WHERE session_id = $4
+            AND status IN ($5, $6, $7, $8, $9, $10)
+            AND task_type <> $11
             "#)
             .bind(JobStatus::Canceled.to_string())
-            .bind(current_ts)
             .bind(current_ts)
             .bind(current_ts)
             .bind(session_id)
@@ -1173,6 +997,39 @@ impl BackgroundJobRepository {
             .fetch_all(&*self.pool)
             .await
             .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs by metadata field: {}", e)))?;
+            
+        let mut jobs = Vec::new();
+        
+        for row in rows {
+            let job = self.row_to_job(&row)?;
+            jobs.push(job);
+        }
+        
+        Ok(jobs)
+    }
+
+    /// Get jobs by status
+    pub async fn get_jobs_by_status(&self, statuses: &[JobStatus]) -> AppResult<Vec<BackgroundJob>> {
+        if statuses.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        // Build query with IN clause for multiple statuses
+        let placeholders: Vec<String> = (1..=statuses.len()).map(|i| format!("${}", i)).collect();
+        let query = format!(
+            "SELECT * FROM background_jobs WHERE status IN ({}) ORDER BY created_at DESC",
+            placeholders.join(", ")
+        );
+        
+        let mut query_builder = sqlx::query(&query);
+        for status in statuses {
+            query_builder = query_builder.bind(status.to_string());
+        }
+        
+        let rows = query_builder
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch jobs by status: {}", e)))?;
             
         let mut jobs = Vec::new();
         

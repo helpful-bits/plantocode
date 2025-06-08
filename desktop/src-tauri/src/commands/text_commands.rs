@@ -7,43 +7,6 @@ use crate::error::AppError;
 use crate::jobs::types::JobPayload;
 
 
-/// Request payload for the improve text command
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImproveTextArgs {
-    pub session_id: String,
-    pub text: String,
-    pub project_directory: Option<String>,
-    pub model_override: Option<String>,
-    pub temperature_override: Option<f32>,
-    pub max_tokens_override: Option<u32>,
-    pub target_field: Option<String>,
-}
-
-/// Improves text for clarity and grammar
-#[command]
-pub async fn improve_text_command(
-    session_id: String,
-    text: String,
-    project_directory: Option<String>,
-    model_override: Option<String>,
-    temperature_override: Option<f32>,
-    max_tokens_override: Option<u32>,
-    target_field: Option<String>,
-    app_handle: AppHandle,
-) -> AppResult<JobCommandResponse> {
-    let args = ImproveTextArgs {
-        session_id,
-        text,
-        project_directory,
-        model_override,
-        temperature_override,
-        max_tokens_override,
-        target_field,
-    };
-    crate::services::text_improvement_service::create_text_improvement_job_service(&app_handle, args)
-        .await
-}
 
 
 // Request arguments for text correction command
@@ -91,9 +54,6 @@ pub async fn correct_text_command(
     
     // Create the job payload
     let payload = crate::jobs::types::TextCorrectionPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
-        project_directory: args.project_directory.clone(),
         text_to_correct: args.text_to_correct.clone(),
         language: args.language.clone(),
         original_transcription_job_id: args.original_transcription_job_id.clone(),

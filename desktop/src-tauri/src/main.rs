@@ -147,6 +147,13 @@ fn main() {
             commands::billing_commands::get_spending_forecast_command,
             commands::billing_commands::get_payment_methods_command,
             
+            // Credit system commands
+            commands::billing_commands::purchase_credits_command,
+            commands::billing_commands::get_credit_balance_command,
+            commands::billing_commands::get_credit_history_command,
+            commands::billing_commands::get_credit_packs_command,
+            commands::billing_commands::get_credit_stats_command,
+            
             // Config commands
             commands::config_commands::get_available_ai_models,
             commands::config_commands::get_default_task_configurations,
@@ -183,7 +190,6 @@ fn main() {
             commands::file_finder_workflow_commands::cancel_workflow_stage_command,
             
             // Text commands
-            commands::text_commands::improve_text_command,
             commands::text_commands::correct_text_command,
             commands::text_commands::generate_simple_text_command,
             
@@ -212,7 +218,6 @@ fn main() {
             
             // Voice commands
             commands::voice_commands::create_transcription_job_command,
-            commands::voice_commands::transcribe_audio_direct_command,
             
             // Generic task commands
             commands::generic_task_commands::generic_llm_stream_command,
@@ -250,6 +255,10 @@ fn main() {
             commands::system_prompt_commands::get_default_system_prompts_command,
             commands::system_prompt_commands::get_default_system_prompt_command,
             commands::system_prompt_commands::has_custom_system_prompt_command,
+            commands::system_prompt_commands::update_default_system_prompt_command,
+            commands::system_prompt_commands::fetch_default_system_prompts_from_server,
+            commands::system_prompt_commands::fetch_default_system_prompt_from_server,
+            commands::system_prompt_commands::initialize_system_prompts_from_server,
             
             // Session commands
             commands::session_commands::create_session_command,
@@ -276,6 +285,15 @@ fn main() {
             commands::server_config_commands::get_cached_config_value_command,
             commands::server_config_commands::get_all_cached_config_values_command,
             commands::server_config_commands::refresh_server_config_cache_command,
+            
+            // Backup commands
+            commands::backup_commands::get_backup_stats_command,
+            commands::backup_commands::list_backups_command,
+            commands::backup_commands::restore_from_backup_command,
+            commands::backup_commands::auto_restore_latest_backup_command,
+            commands::backup_commands::create_manual_backup_command,
+            commands::backup_commands::verify_backup_command,
+            commands::backup_commands::delete_backup_command,
         ])
         // Use the context we created earlier
         .run(tauri_context)

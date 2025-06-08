@@ -94,6 +94,118 @@ impl ServerProxyClient {
         Ok(config)
     }
     
+    /// Get all default system prompts from the server
+    pub async fn get_default_system_prompts(&self) -> AppResult<Vec<serde_json::Value>> {
+        info!("Fetching all default system prompts from server");
+        
+        // Create the prompts endpoint URL - this is a public endpoint, no auth required
+        let prompts_url = format!("{}/system-prompts/defaults", self.server_url);
+        
+        let response = self.http_client
+            .get(&prompts_url)
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(format!("Failed to fetch default system prompts: {}", e)))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server default system prompts API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        // Parse the response
+        let prompts: Vec<serde_json::Value> = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse default system prompts response: {}", e)))?;
+            
+        info!("Successfully fetched {} default system prompts from server", prompts.len());
+        
+        Ok(prompts)
+    }
+    
+    /// Get a specific default system prompt by task type from the server
+    pub async fn get_default_system_prompt(&self, task_type: &str) -> AppResult<Option<serde_json::Value>> {
+        info!("Fetching default system prompt for task type '{}' from server", task_type);
+        
+        // Create the specific prompt endpoint URL - this is a public endpoint, no auth required
+        let prompt_url = format!("{}/system-prompts/defaults/{}", self.server_url, task_type);
+        
+        let response = self.http_client
+            .get(&prompt_url)
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(format!("Failed to fetch default system prompt: {}", e)))?;
+            
+        if response.status() == 404 {
+            info!("No default system prompt found for task type '{}'", task_type);
+            return Ok(None);
+        }
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Server default system prompt API error: {} - {}", status, error_text);
+            return Err(map_server_proxy_error(status.as_u16(), &error_text));
+        }
+        
+        // Parse the response
+        let prompt: serde_json::Value = response.json().await
+            .map_err(|e| AppError::ServerProxyError(format!("Failed to parse default system prompt response: {}", e)))?;
+            
+        info!("Successfully fetched default system prompt for task type '{}'", task_type);
+        
+        Ok(Some(prompt))
+    }
+    
+    /// Populate local default system prompts cache from server
+    /// This method fetches all default system prompts from the server and stores them locally
+    pub async fn populate_default_system_prompts_cache(&self, settings_repo: &crate::db_utils::SettingsRepository) -> AppResult<()> {
+        info!("Populating default system prompts cache from server");
+        
+        match self.get_default_system_prompts().await {
+            Ok(server_prompts) => {
+                let mut populated_count = 0;
+                
+                for prompt_value in server_prompts {
+                    // Parse the server response into our DefaultSystemPrompt structure
+                    if let Some(task_type) = prompt_value.get("task_type").and_then(|v| v.as_str()) {
+                        if let Some(system_prompt) = prompt_value.get("system_prompt").and_then(|v| v.as_str()) {
+                            let description = prompt_value.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                            let version = prompt_value.get("version").and_then(|v| v.as_str()).unwrap_or("1.0");
+                            
+                            // Store in local database cache
+                            match settings_repo.update_default_system_prompt(task_type, system_prompt, description.as_deref()).await {
+                                Ok(_) => {
+                                    debug!("Cached default system prompt for task type: {}", task_type);
+                                    populated_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!("Failed to cache system prompt for task type {}: {}", task_type, e);
+                                }
+                            }
+                        } else {
+                            warn!("System prompt missing system_prompt field for prompt: {:?}", prompt_value);
+                        }
+                    } else {
+                        warn!("System prompt missing task_type field for prompt: {:?}", prompt_value);
+                    }
+                }
+                
+                info!("Successfully populated {} default system prompts from server", populated_count);
+                Ok(())
+            }
+            Err(e) => {
+                warn!("Failed to fetch default system prompts from server: {}. Using local fallbacks if available.", e);
+                // Don't treat this as a fatal error - the app can still function with local prompts
+                Err(e)
+            }
+        }
+    }
+    
     /// Helper method to invoke AI requests via the server proxy
     pub async fn invoke_ai_request<T: serde::Serialize, R: serde::de::DeserializeOwned>(
         &self, 
@@ -463,6 +575,162 @@ impl ApiClient for ServerProxyClient {
                 Err(e) => {
                     error!("HTTP error in streaming response: {}", e);
                     futures::stream::iter(vec![Err(AppError::NetworkError(format!("Stream network error: {}", e)))])
+                }
+            }
+        }).flatten();
+        
+        Ok(Box::pin(stream))
+    }
+    
+    /// Send a streaming completion request with messages and get a stream of chunks
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        options: ApiClientOptions,
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>> {
+        info!("Sending streaming chat completion request to server proxy with model: {}", options.model);
+        debug!("Proxy options: {:?}", options);
+        
+        // Get auth token
+        let auth_token = self.get_auth_token().await?;
+        
+        // Ensure streaming is enabled
+        let mut options = options;
+        options.stream = true;
+        
+        // Create request with the provided messages
+        let request = OpenRouterRequest {
+            model: options.model.clone(),
+            messages,
+            stream: options.stream,
+            max_tokens: Some(options.max_tokens),
+            temperature: Some(options.temperature),
+        };
+        
+        // Create the server proxy endpoint URL for streaming OpenRouter chat
+        let proxy_url = format!("{}/api/proxy/openrouter/chat/completions", self.server_url);
+        
+        let response = self.http_client
+            .post(&proxy_url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Failed to get error text".to_string());
+            
+            // Use enhanced auth error handling
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+        
+        // Get the stream and process it with enhanced SSE parsing
+        let mut buffer = String::new();
+        let stream = response.bytes_stream().map(move |result| {
+            match result {
+                Ok(bytes) => {
+                    // Convert bytes to string with enhanced UTF-8 handling
+                    match String::from_utf8(bytes.to_vec()) {
+                        Ok(new_text) => {
+                            buffer.push_str(&new_text);
+                        },
+                        Err(_) => {
+                            // Handle potential UTF-8 issues in streamed data
+                            let new_text = String::from_utf8_lossy(&bytes);
+                            buffer.push_str(&new_text);
+                            debug!("UTF-8 conversion issue in stream, using lossy conversion");
+                        }
+                    }
+                    
+                    let mut chunks = Vec::new();
+                    let mut lines_to_keep = String::new();
+                    
+                    // Split by double newlines to handle complete SSE events
+                    // Handle both \n\n and \r\n\r\n patterns
+                    let events: Vec<&str> = if buffer.contains("\r\n\r\n") {
+                        buffer.split("\r\n\r\n").collect()
+                    } else {
+                        buffer.split("\n\n").collect()
+                    };
+                    
+                    // Process all complete events (all but the last)
+                    for (i, event) in events.iter().enumerate() {
+                        if i == events.len() - 1 {
+                            // Keep the last (potentially incomplete) event in buffer
+                            lines_to_keep = event.to_string();
+                            continue;
+                        }
+                        
+                        // Process each line in the event
+                        for line in event.lines() {
+                            let line = line.trim();
+                            
+                            // Skip empty lines
+                            if line.is_empty() {
+                                continue;
+                            }
+                            
+                            // Handle different SSE line types
+                            if line.starts_with("data: ") {
+                                let data = &line[6..]; // Remove "data: " prefix
+                                
+                                // Check for [DONE] message
+                                if data.trim() == "[DONE]" {
+                                    debug!("Received [DONE] signal, ending stream");
+                                    continue;
+                                }
+                                
+                                // Skip empty data lines
+                                if data.trim().is_empty() {
+                                    continue;
+                                }
+                                
+                                // Parse as JSON with enhanced error handling
+                                match serde_json::from_str::<OpenRouterStreamChunk>(data) {
+                                    Ok(chunk) => {
+                                        trace!("Successfully parsed stream chunk");
+                                        chunks.push(Ok(chunk));
+                                    },
+                                    Err(e) => {
+                                        // Log the parsing error but continue processing other chunks
+                                        debug!("Failed to parse streaming chunk: {} - Data: '{}'", e, data);
+                                        // Only push error for non-trivial parsing failures
+                                        if !data.trim().is_empty() && data.len() > 2 {
+                                            chunks.push(Err(AppError::InvalidResponse(format!("Invalid streaming JSON: {}", e))));
+                                        }
+                                    }
+                                }
+                            } else if line.starts_with("event: ") {
+                                // Handle SSE event types
+                                debug!("SSE event type: {}", &line[7..]);
+                            } else if line.starts_with("id: ") {
+                                // Handle SSE message IDs
+                                debug!("SSE message ID: {}", &line[4..]);
+                            } else {
+                                // Log unexpected line formats for debugging
+                                debug!("Unexpected SSE line format: '{}'", line);
+                            }
+                        }
+                    }
+                    
+                    // Update buffer with remaining incomplete event
+                    buffer = lines_to_keep;
+                    
+                    // Return the processed chunks
+                    if chunks.is_empty() {
+                        futures::stream::iter(vec![]).left_stream()
+                    } else {
+                        futures::stream::iter(chunks).right_stream()
+                    }
+                },
+                Err(e) => {
+                    error!("HTTP error in streaming response: {}", e);
+                    futures::stream::iter(vec![Err(AppError::NetworkError(format!("Stream network error: {}", e)))]).left_stream()
                 }
             }
         }).flatten();

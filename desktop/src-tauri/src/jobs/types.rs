@@ -6,21 +6,15 @@ use std::collections::HashMap;
 use crate::error::{AppError, AppResult};
 use crate::models::{BackgroundJob, JobStatus, TaskType};
 
-// Structured metadata for jobs processed by workers (dispatcher/scheduler)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JobWorkerMetadata {
-    pub task_type: String,
+pub struct JobUIMetadata {
     pub job_payload_for_worker: JobPayload,
-    pub job_priority_for_worker: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workflow_stage: Option<String>,
-    // Additional metadata fields that don't fit the structured format
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
+    pub task_data: serde_json::Value,
 }
+
 
 
 // Event emitted when a job status changes
@@ -41,8 +35,6 @@ pub struct JobResponseUpdateEvent {
     pub complete: bool,
 }
 
-// Payload for OpenRouter LLM job
-// Note: This payload does NOT include background_job_id as it's processed by external services
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenRouterLlmPayload {
@@ -53,41 +45,30 @@ pub struct OpenRouterLlmPayload {
     pub stream: bool,
 }
 
-// Payload for voice audio transcription job
-// Note: This payload does NOT include background_job_id as it's processed by external services
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceTranscriptionPayload {
     pub audio_data: Vec<u8>,
     pub filename: String,
-    pub model: String, // Model identifier to use (e.g., "openai/whisper-large-v3")
-    pub duration_ms: i64, // Duration of audio in milliseconds
+    pub model: String,
+    pub duration_ms: i64,
 }
 
-// Input payload for Path Finder job (used for deserialization from frontend)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputPathFinderPayload {
-    pub background_job_id: String,
     pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
     pub model_override: Option<String>,
     pub temperature_override: Option<f32>,
     pub max_tokens_override: Option<u32>,
     pub options: crate::jobs::processors::path_finder_types::PathFinderOptions,
-    pub directory_tree: Option<String>,
 }
 
-// Payload for Path Finder job with additional fields needed by the processor
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathFinderPayload {
-    pub session_id: String,
     pub task_description: String,
-    pub background_job_id: String,
-    pub project_directory: String,
     pub system_prompt: String,
     pub directory_tree: Option<String>,
     pub relevant_file_contents: std::collections::HashMap<String, String>,
@@ -95,180 +76,94 @@ pub struct PathFinderPayload {
     pub options: crate::jobs::processors::path_finder_types::PathFinderOptions,
 }
 
-// The InputPathFinderPayload defined in commands/path_finding_commands.rs is used for initial input
-// and is converted to PathFinderPayload in the job_payload_utils.rs
-
-// Payload for Implementation Plan job
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImplementationPlanPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_structure: Option<String>, // Renamed from codebase_structure
-    pub relevant_files: Vec<String>,     // New field
-    pub project_directory: String,
+    pub relevant_files: Vec<String>,
 }
 
 
-// Payload for Guidance Generation job
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GuidanceGenerationPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
     pub paths: Option<Vec<String>>,
     pub file_contents_summary: Option<String>,
-    pub system_prompt_override: Option<String>,
-    pub project_directory: String,
 }
 
-// Payload for Path Correction job
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathCorrectionPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub paths_to_correct: String,
-    pub context_description: String,
-    pub directory_tree: Option<String>,
-    pub system_prompt_override: Option<String>,
 }
 
-// Payload for Text Improvement job
-// Includes background_job_id for internal job tracking and UI updates
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TextImprovementPayload {
-    pub background_job_id: String, // Comes from Job.db_job.id
-    pub session_id: String,        // Comes from Job.db_job.session_id
-    pub text_to_improve: String,
-    pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
-    pub project_directory: Option<String>,
-}
 
-// Payload for Task Enhancement job
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEnhancementPayload {
-    pub background_job_id: String, // Comes from Job.db_job.id
-    pub session_id: String,        // Comes from Job.db_job.session_id
     pub task_description: String,
-    pub project_context: Option<String>, // e.g., codebase structure, relevant files
-    pub target_field: Option<String>, // For UI updates, stored in BackgroundJob.metadata
-    pub project_directory: String,
 }
 
-// Payload for Text Correction job (consolidates voice correction and post-transcription correction)
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextCorrectionPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub text_to_correct: String,
     pub language: String,
     pub original_transcription_job_id: Option<String>,
-    pub project_directory: Option<String>,
 }
 
-// Payload for Generic LLM Stream job
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenericLlmStreamPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub prompt_text: String,
     pub system_prompt: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    pub project_directory: Option<String>,
 }
 
-// Payload for Regex Pattern Generation job
-// Includes background_job_id for internal job tracking and UI updates
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexPatternGenerationPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_directory: String, // For model/temp config
-    pub directory_tree: Option<String>, // For context
+    pub directory_tree: Option<String>,
 }
 
-// FileFinderWorkflowPayload removed - workflows now use WorkflowOrchestrator with individual stage payloads
-
-// Individual workflow stage payloads for separate background jobs
-
-// Payload for Local File Filtering stage
-// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalFileFilteringPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
     pub excluded_paths: Vec<String>,
-    pub regex_patterns: Vec<String>, // Regex patterns from RegexPatternGeneration stage
-    pub workflow_id: String,
+    pub path_pattern: Option<String>,
+    pub content_pattern: Option<String>,
+    pub negative_path_pattern: Option<String>,
+    pub negative_content_pattern: Option<String>,
 }
 
-// Payload for Extended Path Finder stage
-// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedPathFinderPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
-    pub initial_paths: Vec<String>, // From LocalFileFiltering stage
-    pub workflow_id: String,
+    pub initial_paths: Vec<String>,
 }
 
-// Payload for Extended Path Correction stage
-// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedPathCorrectionPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
-    pub extended_paths: Vec<String>, // From ExtendedPathFinder stage
-    pub workflow_id: String,
+    pub extended_paths: Vec<String>,
 }
 
-// Payload for Regex Pattern Generation workflow stage
-// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegexPatternGenerationWorkflowPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
-    pub workflow_id: String,
 }
 
-// Payload for File Relevance Assessment stage
-// Includes background_job_id for internal job tracking and workflow coordination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileRelevanceAssessmentPayload {
-    pub background_job_id: String,
-    pub session_id: String,
     pub task_description: String,
-    pub project_directory: String,
-    pub locally_filtered_files: Vec<String>, // Input from LocalFileFiltering
-    pub workflow_id: String,
+    pub locally_filtered_files: Vec<String>,
 }
 
 
@@ -281,7 +176,6 @@ pub enum JobPayload {
     ImplementationPlan(ImplementationPlanPayload),
     GuidanceGeneration(GuidanceGenerationPayload),
     PathCorrection(PathCorrectionPayload),
-    TextImprovement(TextImprovementPayload),
     TaskEnhancement(TaskEnhancementPayload),
     TextCorrection(TextCorrectionPayload),
     GenericLlmStream(GenericLlmStreamPayload),
@@ -312,6 +206,8 @@ pub struct StructuredImplementationPlanStep {
     pub title: String,
     pub description: String,
     pub file_operations: Option<Vec<StructuredImplementationPlanStepOperation>>,
+    pub bash_commands: Option<String>,
+    pub exploration_commands: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,31 +289,25 @@ impl JobProcessResult {
     }
 }
 
-// A job to be processed
 #[derive(Debug, Clone)]
 pub struct Job {
     pub id: String,
     pub job_type: TaskType,
     pub payload: JobPayload,
-    pub created_at: String, // Timestamp string
     pub session_id: String,
-    pub task_type_str: String,
-    pub project_directory: Option<String>,
-    pub process_after: Option<i64>, // Unix timestamp in milliseconds when job should become eligible for processing
+    pub process_after: Option<i64>,
+    pub created_at: i64,
 }
 
 impl Job {
-    // Get the job ID
     pub fn id(&self) -> &str {
         &self.id
     }
     
-    // Get the job type as string
     pub fn task_type_str(&self) -> String {
         self.job_type.to_string()
     }
     
-    // Get the session ID 
     pub fn session_id(&self) -> &str {
         &self.session_id
     }

@@ -39,43 +39,49 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         
         // Setup job processing using standardized utility
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
-            &payload.background_job_id,
+            &job.id,
             &app_handle,
         ).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
-        job_processor_utils::log_job_start(&payload.background_job_id, "Extended Path Correction");
-        info!("Starting extended path correction for workflow {} with {} paths", 
-            payload.workflow_id, payload.extended_paths.len());
+        // Get project directory using session-based utility
+        let project_directory = crate::utils::get_project_directory_from_session(&job.session_id, &app_handle).await?;
+
+        job_processor_utils::log_job_start(&job.id, "Extended Path Correction");
+        info!("Starting extended path correction for {} paths", 
+            payload.extended_paths.len());
         
         // Check if job has been canceled using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // First, validate existing paths against filesystem
         let (valid_paths, invalid_paths) = fs_context_utils::validate_paths_against_filesystem(
             &payload.extended_paths, 
-            &payload.project_directory
+            &project_directory
         ).await;
         
         info!("Path validation: {} valid, {} invalid paths", valid_paths.len(), invalid_paths.len());
         
         // If we have invalid paths, use AI to correct them
         let corrected_paths = if !invalid_paths.is_empty() {
-            // Generate directory tree on-demand
-            let directory_tree = match get_directory_tree_with_defaults(&payload.project_directory).await {
+            // Generate directory tree using session-based utility
+            let directory_tree = match crate::utils::get_directory_tree_from_session(&job.session_id, &app_handle).await {
                 Ok(tree) => {
-                    info!("Generated directory tree on-demand for path correction ({} lines)", tree.lines().count());
+                    info!("Generated directory tree using session-based utility for path correction ({} lines)", tree.lines().count());
                     tree
                 }
                 Err(e) => {
-                    warn!("Failed to generate directory tree on-demand: {}. Using empty fallback.", e);
+                    warn!("Failed to generate directory tree using session-based utility: {}. Using empty fallback.", e);
                     "No directory structure available".to_string()
                 }
             };
@@ -85,7 +91,6 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
                 &job,
                 &app_handle,
                 payload.task_description.clone(),
-                Some(directory_tree.clone()),
                 None,
                 Some(directory_tree.clone()),
                 &settings_repo,
@@ -127,9 +132,9 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             )?;
             
             // Check for cancellation before LLM call using standardized utility
-            if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-                info!("Job {} has been canceled before LLM call", payload.background_job_id);
-                return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+            if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+                info!("Job {} has been canceled before LLM call", job.id);
+                return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
             }
             
             // Call LLM using standardized utility
@@ -140,7 +145,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             let response_content = llm_response.choices[0].message.content.clone();
             
             // Parse corrected paths from the LLM response using standardized utility
-            match response_parser_utils::parse_paths_from_text_response(&response_content, &payload.project_directory) {
+            match response_parser_utils::parse_paths_from_text_response(&response_content, &project_directory) {
                 Ok(paths) => {
                     // Store LLM usage info separately since we're not finalizing yet
                     paths
@@ -162,7 +167,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         if !corrected_paths.is_empty() {
             let (valid_corrected, _invalid_corrected) = fs_context_utils::validate_paths_against_filesystem(
                 &corrected_paths, 
-                &payload.project_directory
+                &project_directory
             ).await;
             
             for path in valid_corrected {
@@ -172,13 +177,13 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             }
         }
         
-        info!("Path correction completed for workflow {}: {} final paths", 
-            payload.workflow_id, final_paths.len());
+        info!("Path correction completed: {} final paths", 
+            final_paths.len());
         
         // Check for cancellation after processing using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled after processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled after processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)
@@ -187,9 +192,8 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             "validPaths": valid_paths,
             "invalidPaths": invalid_paths,
             "correctedPaths": corrected_paths,
-            "workflowId": payload.workflow_id,
             "taskDescription": payload.task_description,
-            "projectDirectory": payload.project_directory,
+            "projectDirectory": project_directory,
             "summary": format!("Path correction: {} original → {} valid + {} corrected = {} final", 
                 payload.extended_paths.len(),
                 valid_paths.len(),
@@ -212,7 +216,7 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
         };
         
         job_processor_utils::finalize_job_success(
-            &payload.background_job_id,
+            &job.id,
             &repo,
             &response_json_content,
             None, // No direct LLM usage since it's conditional
@@ -221,11 +225,11 @@ impl JobProcessor for ExtendedPathCorrectionProcessor {
             Some(result_metadata),
         ).await?;
         
-        debug!("Extended path correction completed for workflow {}", payload.workflow_id);
+        debug!("Extended path correction completed");
         
         // Return success result
         Ok(JobProcessResult::success(
-            payload.background_job_id.clone(), 
+            job.id.clone(), 
             response_json_content
         ))
     }

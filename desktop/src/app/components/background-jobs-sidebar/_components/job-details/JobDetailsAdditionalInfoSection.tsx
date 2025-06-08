@@ -4,11 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 
 export function JobDetailsAdditionalInfoSection() {
-  const { job, parsedMetadata } = useJobDetailsContext();
+  const { parsedMetadata } = useJobDetailsContext();
   const parsedMeta = parsedMetadata;
-  const outputPathFromMeta = typeof parsedMeta?.additionalParams?.outputPath === 'string' ? parsedMeta.additionalParams.outputPath : null;
+  const outputPathFromMeta = typeof parsedMeta?.taskData?.outputPath === 'string' ? parsedMeta.taskData.outputPath : null;
   
-  if (!outputPathFromMeta && !job.statusMessage) {
+  if (!outputPathFromMeta) {
     return null;
   }
 
@@ -36,16 +36,6 @@ export function JobDetailsAdditionalInfoSection() {
           </div>
         )}
 
-        {job.statusMessage && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">
-              Status Message
-            </div>
-            <div className="text-sm font-medium text-balance max-h-[100px] overflow-auto text-foreground">
-              {job.statusMessage}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

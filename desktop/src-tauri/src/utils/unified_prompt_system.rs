@@ -32,7 +32,6 @@ pub struct UnifiedPromptContext {
     pub project_structure: Option<String>,
     pub file_contents: Option<HashMap<String, String>>,
     pub relevant_files: Option<Vec<String>>,
-    pub codebase_structure: Option<String>,
     pub directory_tree: Option<String>,
     
     // Advanced features
@@ -73,7 +72,10 @@ impl UnifiedPromptProcessor {
                 &placeholders,
             )
             .await?
-            .ok_or_else(|| AppError::ConfigError("No system prompt found".to_string()))?;
+            .ok_or_else(|| AppError::ConfigError(format!(
+                "No system prompt found for task type '{}'. System prompts may not be initialized. Please ensure you are authenticated and the application has loaded properly.",
+                context.task_type.to_string()
+            )))?;
 
         // Process the template with enhanced features (from enhanced_prompt_template.rs)
         let processed_system = self.process_template(&system_template, context)?;
@@ -212,7 +214,6 @@ impl UnifiedPromptProcessor {
             ("{{CUSTOM_INSTRUCTIONS}}", context.custom_instructions.as_ref().map_or(true, |ci| ci.trim().is_empty())),
             ("{{MODEL_NAME}}", context.model_name.as_ref().map_or(true, |mn| mn.trim().is_empty())),
             ("{{SESSION_NAME}}", context.session_name.as_ref().map_or(true, |sn| sn.trim().is_empty())),
-            ("{{CODEBASE_STRUCTURE}}", context.codebase_structure.as_ref().map_or(true, |cs| cs.trim().is_empty())),
         ];
         
         // Remove lines containing only empty placeholders and clean up remaining placeholder text
@@ -256,10 +257,6 @@ impl UnifiedPromptProcessor {
             }
         }
         
-        if let Some(ref structure) = context.codebase_structure {
-            user_prompt.push_str(&format!("\n\nCodebase structure:\n{}", structure));
-        }
-        
         Ok(user_prompt)
     }
 
@@ -301,6 +298,7 @@ impl UnifiedPromptProcessor {
         
         sections
     }
+
 }
 
 /// Builder for UnifiedPromptContext (replaces CompositionContextBuilder)
@@ -322,7 +320,6 @@ impl UnifiedPromptContextBuilder {
                 project_structure: None,
                 file_contents: None,
                 relevant_files: None,
-                codebase_structure: None,
                 directory_tree: None,
                 metadata: None,
                 language: None,
@@ -357,11 +354,6 @@ impl UnifiedPromptContextBuilder {
 
     pub fn relevant_files(mut self, relevant_files: Option<Vec<String>>) -> Self {
         self.context.relevant_files = relevant_files;
-        self
-    }
-
-    pub fn codebase_structure(mut self, codebase_structure: Option<String>) -> Self {
-        self.context.codebase_structure = codebase_structure;
         self
     }
 

@@ -18,6 +18,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/proxy")
             .route("/openrouter/chat/completions", web::post().to(handlers::proxy_handlers::openrouter_chat_completions_proxy))
             .route("/audio/transcriptions", web::post().to(handlers::proxy_handlers::audio_transcriptions_proxy))
+            .route("/audio/transcriptions/stream", web::post().to(handlers::proxy_handlers::audio_transcriptions_stream_proxy))
     );
     
     // Billing routes (/api/billing/*)
@@ -30,6 +31,23 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(handlers::billing_handlers::get_usage_summary)
             .service(handlers::billing_handlers::get_invoice_history)
             .service(handlers::billing_handlers::get_payment_methods)
+            .service(handlers::billing_handlers::get_credit_balance)
+            .service(handlers::billing_handlers::get_credit_packs)
+            .service(handlers::billing_handlers::create_credit_checkout_session)
+            .route("/credits/history", web::get().to(handlers::billing_handlers::get_credit_history))
+    );
+    
+    // Credit routes (/api/credits/*)
+    cfg.service(
+        web::scope("/credits")
+            .route("/balance", web::get().to(handlers::credit_handlers::get_credit_balance))
+            .route("/transactions", web::get().to(handlers::credit_handlers::get_credit_transaction_history))
+            .route("/packs", web::get().to(handlers::credit_handlers::get_credit_packs))
+            .route("/packs/{pack_id}", web::get().to(handlers::credit_handlers::get_credit_pack_by_id))
+            .route("/purchase", web::post().to(handlers::credit_handlers::create_credit_purchase_checkout))
+            .route("/stats", web::get().to(handlers::credit_handlers::get_credit_stats))
+            .route("/admin/adjust", web::post().to(handlers::credit_handlers::admin_adjust_credits))
+            .route("/webhook/stripe", web::post().to(handlers::credit_handlers::handle_stripe_webhook))
     );
     
     // Spending routes (/api/spending/*)
@@ -122,12 +140,18 @@ pub fn configure_public_api_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/config") // Base path: /config
             .route("/desktop-runtime-config", web::get().to(handlers::config_handlers::get_desktop_runtime_ai_config))
     );
+    cfg.service(
+        web::scope("/system-prompts") // Base path: /system-prompts
+            .route("/defaults", web::get().to(handlers::system_prompts_handlers::get_default_system_prompts))
+            .route("/defaults/{task_type}", web::get().to(handlers::system_prompts_handlers::get_default_system_prompt_by_task_type))
+    );
 }
 
 /// Configures webhook routes that DO NOT require JWT authentication.
 /// Mounted under the "/webhooks" scope in main.rs.
 pub fn configure_webhook_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(handlers::billing_handlers::stripe_webhook);
+    cfg.route("/stripe/credits", web::post().to(handlers::credit_handlers::handle_stripe_webhook));
 }
 
 // Make sure all modules are properly compiled

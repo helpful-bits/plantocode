@@ -100,10 +100,7 @@ pub async fn create_path_finder_job_service(
     
     // Create path finder payload (the format expected by the processor)
     let payload = PathFinderPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
         task_description: args.task_description.clone(),
-        project_directory: project_directory.clone(),
         system_prompt: String::new(), // Will be populated by the processor
         directory_tree: None, // Will be populated by the processor
         relevant_file_contents: std::collections::HashMap::new(), // Will be populated by the processor

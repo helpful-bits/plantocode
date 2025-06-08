@@ -105,9 +105,6 @@ pub async fn generic_llm_stream_command(
     // Use the job creation utility to create and queue the job
     let payload = if let Some((model, temperature, max_tokens)) = &model_settings {
         crate::jobs::types::GenericLlmStreamPayload {
-            background_job_id: String::new(), // Will be set by create_and_queue_background_job
-            session_id: args.session_id.clone(),
-            project_directory: Some(project_dir.clone()),
             prompt_text: args.prompt_text.clone(),
             system_prompt: args.system_prompt.clone(),
             metadata: args.metadata.clone(),
@@ -237,12 +234,7 @@ pub async fn enhance_task_description_command(
     
     // Create TaskEnhancementPayload
     let task_enhancement_payload = crate::jobs::types::TaskEnhancementPayload {
-        background_job_id: String::new(), // Will be set by job creation utility
-        session_id: args.session_id.clone(),
-        project_directory: project_directory.clone(),
         task_description: args.task_description.clone(),
-        project_context: args.project_context.clone(),
-        target_field: args.target_field.clone(),
     };
     
     // Additional metadata for job

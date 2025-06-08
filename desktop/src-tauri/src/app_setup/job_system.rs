@@ -16,11 +16,11 @@ pub async fn initialize_job_system(app_handle: &AppHandle) -> Result<(), AppErro
     
     info!("Job processors registered");
     
-    // Start job scheduler
-    jobs::start_job_scheduler(app_handle.clone()).await
-        .map_err(|e| AppError::JobError(format!("Failed to start job scheduler: {}", e)))?;
+    // Start job system (workflow orchestrator only) 
+    jobs::start_job_system(app_handle.clone()).await
+        .map_err(|e| AppError::JobError(format!("Failed to start job system: {}", e)))?;
     
-    info!("Job scheduler started");
+    info!("Job system started");
     
     Ok(())
 }

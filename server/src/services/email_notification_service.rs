@@ -371,6 +371,7 @@ impl EmailNotificationService {
             "services_blocked" => self.create_spending_alert_html(template_data, "Services Blocked"),
             "invoice_created" => self.create_invoice_html(template_data),
             "payment_failed" => self.create_payment_failed_html(template_data),
+            "credit_purchase_success" => self.create_credit_purchase_html(template_data),
             _ => return Err(AppError::InvalidArgument(format!("Unknown template: {}", template_name))),
         };
 
@@ -499,6 +500,51 @@ impl EmailNotificationService {
         "#, invoice_id, currency_symbol, amount, update_payment_url)
     }
 
+    fn create_credit_purchase_html(&self, data: &JsonValue) -> String {
+        let credit_amount = data.get("credit_amount").and_then(|v| v.as_str()).unwrap_or("0");
+        let currency_symbol = data.get("currency_symbol").and_then(|v| v.as_str()).unwrap_or("$");
+        let account_url = data.get("account_url").and_then(|v| v.as_str()).unwrap_or("#");
+        let support_url = data.get("support_url").and_then(|v| v.as_str()).unwrap_or("#");
+
+        format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credits Added to Your Account</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .success {{ background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; border-radius: 5px; }}
+        .btn {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px; }}
+        .credit-info {{ background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: center; }}
+        .credit-amount {{ font-size: 24px; font-weight: bold; color: #28a745; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Credits Successfully Added!</h1>
+        <div class="success">
+            <p>Great news! Your credit purchase has been processed successfully.</p>
+        </div>
+        <div class="credit-info">
+            <p>Credits Added to Your Account:</p>
+            <div class="credit-amount">{}{}</div>
+        </div>
+        <p>Your credits are now available and ready to use for AI services. You can view your current balance and usage in your account dashboard.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{}" class="btn">View Account Dashboard</a>
+            <a href="{}" class="btn" style="background: #6c757d;">Contact Support</a>
+        </div>
+        <p><strong>Thank you for your purchase!</strong></p>
+        <p><small>This is an automated notification from Vibe Manager. If you have any questions, please contact our support team.</small></p>
+    </div>
+</body>
+</html>
+        "#, currency_symbol, credit_amount, account_url, support_url)
+    }
+
     /// Get application base URL for links in emails
     async fn get_app_base_url(&self) -> Result<String, AppError> {
         let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
@@ -526,6 +572,53 @@ impl EmailNotificationService {
     /// Get notification statistics
     pub async fn get_stats(&self) -> Result<crate::db::repositories::EmailNotificationStats, AppError> {
         self.email_repository.get_stats().await
+    }
+
+    /// Queue credit purchase success notification
+    pub async fn queue_credit_purchase_notification(
+        &self,
+        user_id: &Uuid,
+        email_address: &str,
+        credit_amount: &BigDecimal,
+        currency: &str,
+    ) -> Result<(), AppError> {
+        debug!("Queuing credit purchase notification for user: {} - {} {}", user_id, credit_amount, currency);
+
+        let templates = self.config_repository.get_email_templates().await?;
+        let app_base_url = self.get_app_base_url().await?;
+        
+        let template_data = json!({
+            "user_id": user_id,
+            "credit_amount": credit_amount.to_string(),
+            "currency": currency,
+            "currency_symbol": if currency == "USD" { "$" } else { currency },
+            "account_url": format!("{}/account", app_base_url),
+            "support_url": format!("{}/support", app_base_url)
+        });
+
+        let notification = EmailNotification {
+            id: Uuid::new_v4(),
+            user_id: *user_id,
+            email_address: email_address.to_string(),
+            notification_type: "credit_purchase_success".to_string(),
+            subject: templates.credit_purchase_success.subject.clone(),
+            template_name: templates.credit_purchase_success.template.clone(),
+            template_data,
+            status: "pending".to_string(),
+            attempts: 0,
+            max_attempts: 3,
+            last_attempt_at: None,
+            sent_at: None,
+            error_message: None,
+            priority: 2, // Medium priority
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        self.email_repository.create(&notification).await?;
+        info!("Credit purchase notification queued for user: {}", user_id);
+
+        Ok(())
     }
 
     /// Get access to the email repository for advanced operations

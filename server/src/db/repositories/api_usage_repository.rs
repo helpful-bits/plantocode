@@ -15,6 +15,21 @@ pub struct ApiUsageReport {
 }
 
 #[derive(Debug)]
+pub struct ApiUsageRecord {
+    pub id: Option<Uuid>,
+    pub user_id: Uuid,
+    pub service_name: String,
+    pub tokens_input: i32,
+    pub tokens_output: i32,
+    pub cost: BigDecimal,
+    pub request_id: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub processing_ms: Option<i32>,
+    pub input_duration_ms: Option<i64>,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug)]
 pub struct ApiUsageEntryDto {
     pub user_id: Uuid,
     pub service_name: String,
@@ -41,16 +56,17 @@ impl ApiUsageRepository {
     // They are no longer needed as pricing is obtained directly from model repository
 
     /// Records API usage for billing purposes with executor
-    pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), AppError> {
+    pub async fn record_usage_with_executor(&self, entry: ApiUsageEntryDto, executor: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<ApiUsageRecord, AppError> {
         let metadata_to_store = match entry.metadata {
             Some(serde_json::Value::Object(ref map)) if map.is_empty() => None,
             other => other,
         };
 
-        query!(
+        let result = query!(
             r#"
             INSERT INTO api_usage (user_id, service_name, tokens_input, tokens_output, cost, request_id, metadata, processing_ms, input_duration_ms)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, user_id, service_name, tokens_input, tokens_output, cost, request_id, metadata, processing_ms, input_duration_ms, timestamp
             "#,
             entry.user_id,
             entry.service_name,
@@ -62,19 +78,31 @@ impl ApiUsageRepository {
             entry.processing_ms,
             entry.input_duration_ms
         )
-        .execute(&mut **executor)
+        .fetch_one(&mut **executor)
         .await
         .map_err(|e| AppError::Database(format!("Failed to record API usage: {}", e)))?;
 
-        Ok(())
+        Ok(ApiUsageRecord {
+            id: Some(result.id),
+            user_id: result.user_id,
+            service_name: result.service_name,
+            tokens_input: result.tokens_input,
+            tokens_output: result.tokens_output,
+            cost: result.cost,
+            request_id: result.request_id,
+            metadata: result.metadata,
+            processing_ms: result.processing_ms,
+            input_duration_ms: result.input_duration_ms,
+            timestamp: result.timestamp,
+        })
     }
 
     /// Records API usage for billing purposes
-    pub async fn record_usage(&self, entry: ApiUsageEntryDto) -> Result<(), AppError> {
+    pub async fn record_usage(&self, entry: ApiUsageEntryDto) -> Result<ApiUsageRecord, AppError> {
         let mut tx = self.db_pool.begin().await.map_err(AppError::from)?;
-        self.record_usage_with_executor(entry, &mut tx).await?;
+        let record = self.record_usage_with_executor(entry, &mut tx).await?;
         tx.commit().await.map_err(AppError::from)?;
-        Ok(())
+        Ok(record)
     }
 
     /// Gets total usage for a user within a time period

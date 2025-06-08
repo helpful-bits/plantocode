@@ -4,29 +4,65 @@ import { type ActionState } from "@/types";
 import { WHISPER_MAX_FILE_SIZE_MB } from "@/utils/constants";
 import { extractErrorInfo, createUserFriendlyErrorMessage, getErrorMessage, logError } from "@/utils/error-handling";
 
-// For debug logging
-const DEBUG_LOGS = import.meta.env.DEV || import.meta.env.VITE_DEBUG === "true";
-
-/**
- * Transcribes an audio blob directly (non-background job)
- * Converts the blob to base64 and invokes the direct Tauri command
- */
-export async function transcribeAudioBlob(
-  audioBlob: Blob
+export async function transcribeAudioStream(
+  audioStream: ReadableStream<Uint8Array>,
+  filename: string,
+  durationMs: number,
+  model: string
 ): Promise<{ text: string }> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
+    if (!audioStream) {
+      const errorMsg = "No audio stream was provided";
+      await logError(new Error(errorMsg), "Voice Transcription - Missing Audio Stream");
+      throw new Error(errorMsg);
     }
 
+    const [serverUrl, jwt] = await Promise.all([
+      invoke<string>("get_server_url"),
+      invoke<string>("get_app_jwt"),
+    ]);
+
+    if (!jwt) {
+      throw new Error("Authentication required. Please log in.");
+    }
+
+    const response = await fetch(`${serverUrl}/api/proxy/audio/transcriptions/stream`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        "Content-Type": "audio/webm",
+        "X-Filename": filename,
+        "X-Duration-MS": String(durationMs),
+        "X-Model-Id": model,
+      },
+      body: audioStream,
+      duplex: "half",
+    } as RequestInit);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(errorData.message || `Server responded with status ${response.status}`);
+    }
+
+    const result = await response.json();
+    return { text: result.text };
+  } catch (error) {
+    await logError(error, "transcribeAudioStream", { filename, durationMs, model });
+    throw new Error(getErrorMessage(error, 'transcription'));
+  }
+}
+
+export async function transcribeAudioBlob(
+  audioBlob: Blob,
+  durationMs?: number
+): Promise<{ text: string }> {
+  try {
     if (!audioBlob) {
       const errorMsg = "No audio data was provided";
       await logError(new Error(errorMsg), "Voice Transcription - Missing Audio Blob");
       throw new Error(errorMsg);
     }
 
-    // Check if audio file is too large
     const fileSizeMB = audioBlob.size / (1024 * 1024);
     if (fileSizeMB > WHISPER_MAX_FILE_SIZE_MB) {
       throw new Error(
@@ -34,45 +70,48 @@ export async function transcribeAudioBlob(
       );
     }
 
-    // Convert Blob to base64
-    const arrayBuffer = await audioBlob.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
+    const [serverUrl, jwt] = await Promise.all([
+      invoke<string>("get_server_url"),
+      invoke<string>("get_app_jwt"),
+    ]);
 
-    // Generate filename
-    const filename = `recording_${Date.now()}.wav`;
+    if (!jwt) {
+      throw new Error("Authentication required. Please log in.");
+    }
 
-    // Use the direct transcription Tauri command
-    const response = await invoke<{ text: string }>(
-      "transcribe_audio_direct_command",
-      {
-        audio_data: Array.from(uint8Array),
-        filename: filename,
-        model: "", // Empty string will use the default model
-      }
-    );
+    const formData = new FormData();
+    formData.append("file", audioBlob, `recording_${Date.now()}.webm`);
+    formData.append("model", "groq/whisper-large-v3-turbo");
+    formData.append("duration_ms", String(durationMs && durationMs > 0 ? durationMs : Math.max(Math.round(audioBlob.size / 10), 1000)));
 
-    return response;
+    const response = await fetch(`${serverUrl}/api/proxy/audio/transcriptions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(errorData.message || `Server responded with status ${response.status}`);
+    }
+
+    const result = await response.json();
+    return { text: result.text };
   } catch (error) {
     await logError(error, "transcribeAudioBlob", { audioSize: audioBlob?.size });
     throw new Error(getErrorMessage(error, 'transcription'));
   }
 }
 
-/**
- * Creates a job to transcribe a voice recording from a Blob
- * by converting it to base64 and invoking the Tauri command directly
- */
 export async function createTranscriptionJobFromBlobAction(
   audioBlob: Blob,
   sessionId: string,
-  projectDirectory?: string
+  projectDirectory?: string,
+  durationMs?: number
 ): Promise<ActionState<{ jobId: string }>> {
   try {
-    if (DEBUG_LOGS) {
-      // Using if condition to satisfy ESLint no-console rule
-      // Kept for debugging purposes
-    }
-
     if (!audioBlob) {
       const errorMsg = "No audio data was provided";
       await logError(new Error(errorMsg), "Voice Transcription Job - Missing Audio Blob");
@@ -82,7 +121,6 @@ export async function createTranscriptionJobFromBlobAction(
       };
     }
 
-    // Check if audio file is too large
     const fileSizeMB = audioBlob.size / (1024 * 1024);
     if (fileSizeMB > WHISPER_MAX_FILE_SIZE_MB) {
       return {
@@ -91,7 +129,6 @@ export async function createTranscriptionJobFromBlobAction(
       };
     }
 
-    // Validate session ID
     if (!sessionId) {
       return {
         isSuccess: false,
@@ -99,27 +136,18 @@ export async function createTranscriptionJobFromBlobAction(
       };
     }
 
-    // Convert Blob to base64
     const arrayBuffer = await audioBlob.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
-    let binaryString = "";
-    for (let i = 0; i < uint8Array.length; i++) {
-      binaryString += String.fromCharCode(uint8Array[i]);
-    }
-    const base64Audio = btoa(binaryString);
-
-    // Generate filename
     const filename = `recording_${Date.now()}.wav`;
 
-    // Call the Tauri command directly
-    // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
     const result = await invoke<{ jobId: string }>(
       "create_transcription_job_command",
       {
         sessionId: sessionId,
-        audioData: base64Audio,
+        audioData: uint8Array,
         filename,
         projectDirectory: projectDirectory ?? null,
+        durationMs: durationMs && durationMs > 0 ? durationMs : Math.max(Math.round(uint8Array.length / 10), 1000),
       }
     );
 

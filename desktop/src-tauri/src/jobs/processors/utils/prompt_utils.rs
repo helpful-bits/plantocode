@@ -34,12 +34,14 @@ pub async fn build_unified_prompt(
     job: &Job,
     app_handle: &AppHandle,
     task_description: String,
-    codebase_structure: Option<String>,
     file_contents: Option<std::collections::HashMap<String, String>>,
     directory_tree: Option<String>,
     settings_repo: &SettingsRepository,
     model_name: &str,
 ) -> AppResult<ComposedPrompt> {
+    // Check if cache service is available and refresh if needed
+    refresh_system_prompts_if_needed(app_handle).await;
+    
     // Get session name
     let session_name = get_session_name(&job.session_id, app_handle).await?;
     
@@ -48,8 +50,7 @@ pub async fn build_unified_prompt(
         job.job_type,
         task_description,
     )
-    .project_directory(job.project_directory.clone())
-    .codebase_structure(codebase_structure)
+    .project_directory(None)
     .file_contents(file_contents)
     .directory_tree(directory_tree)
     .session_name(session_name)
@@ -58,4 +59,19 @@ pub async fn build_unified_prompt(
 
     let prompt_processor = UnifiedPromptProcessor::new();
     prompt_processor.compose_prompt(&context, settings_repo).await
+}
+
+/// Refresh system prompts using cache service if available and needed
+async fn refresh_system_prompts_if_needed(app_handle: &AppHandle) {
+    use tauri::Manager;
+    
+    // Try to get the cache service from app state
+    if let Some(cache_service) = app_handle.try_state::<Arc<crate::services::SystemPromptCacheService>>() {
+        // Perform cache refresh check in background - don't block prompt generation
+        if let Err(e) = cache_service.refresh_if_expired().await {
+            log::debug!("Background system prompt cache refresh failed: {}", e);
+        }
+    } else {
+        log::debug!("System prompt cache service not available - using direct database access");
+    }
 }

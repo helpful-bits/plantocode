@@ -39,13 +39,13 @@ function mapJobStatus(status: string): JobStatus {
     case 'idle': return 'idle';
     case 'created': return 'created';
     case 'queued': return 'queued';
-    case 'acknowledged_by_worker': return 'acknowledged_by_worker';
+    case 'acknowledgedByWorker': return 'acknowledgedByWorker';
     case 'preparing': return 'preparing';
-    case 'preparing_input': return 'preparing_input';
-    case 'generating_stream': return 'generating_stream';
-    case 'processing_stream': return 'processing_stream';
+    case 'preparingInput': return 'preparingInput';
+    case 'generatingStream': return 'generatingStream';
+    case 'processingStream': return 'processingStream';
     case 'running': return 'running';
-    case 'completed_by_tag': return 'completed_by_tag';
+    case 'completedByTag': return 'completedByTag';
     case 'completed': return 'completed';
     case 'failed': return 'failed';
     case 'canceled': return 'canceled';
@@ -73,15 +73,15 @@ function mapWorkflowStage(stageName: string): WorkflowStage {
   }
   
   // Ultimate fallback with warning - log more details for debugging
-  console.warn(`Unknown workflow stage: "${stageName}" (normalized: "${normalizedStage}"), defaulting to GENERATING_REGEX`);
-  return 'GENERATING_REGEX';
+  console.warn(`Unknown workflow stage: "${stageName}" (normalized: "${normalizedStage}"), defaulting to REGEX_PATTERN_GENERATION`);
+  return 'REGEX_PATTERN_GENERATION';
 }
 
 // Helper function to get all workflow stages in order
 function getAllWorkflowStages(): WorkflowStage[] {
   return [
-    'GENERATING_REGEX',
-    'LOCAL_FILTERING',
+    'REGEX_PATTERN_GENERATION',
+    'LOCAL_FILE_FILTERING',
     'FILE_RELEVANCE_ASSESSMENT',
     'EXTENDED_PATH_FINDER',
     'EXTENDED_PATH_CORRECTION'
@@ -352,10 +352,10 @@ function StageJobCard({
   const isFailed = stageJob.status === 'failed';
   const isRunning = stageJob.status === 'running' || 
                     stageJob.status === 'preparing' || 
-                    stageJob.status === 'preparing_input' ||
-                    stageJob.status === 'generating_stream' ||
-                    stageJob.status === 'processing_stream' ||
-                    stageJob.status === 'acknowledged_by_worker';
+                    stageJob.status === 'preparingInput' ||
+                    stageJob.status === 'generatingStream' ||
+                    stageJob.status === 'processingStream' ||
+                    stageJob.status === 'acknowledgedByWorker';
   
   const isRetrying = retryingStage === stageJob.jobId;
   const isCanceling = cancelingStage === stageJob.jobId;
@@ -557,7 +557,7 @@ function WorkflowStatusIcon({ status }: { status: string }) {
 function JobStatusIcon({ status }: { status: string }) {
   switch (status) {
     case 'completed':
-    case 'completed_by_tag':
+    case 'completedByTag':
       return <CheckCircle className="w-4 h-4 text-green-500" />;
     case 'failed':
       return <XCircle className="w-4 h-4 text-red-500" />;
@@ -565,10 +565,10 @@ function JobStatusIcon({ status }: { status: string }) {
       return <Pause className="w-4 h-4 text-yellow-500" />;
     case 'running':
     case 'preparing':
-    case 'preparing_input':
-    case 'generating_stream':
-    case 'processing_stream':
-    case 'acknowledged_by_worker':
+    case 'preparingInput':
+    case 'generatingStream':
+    case 'processingStream':
+    case 'acknowledgedByWorker':
       return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
     case 'queued':
     case 'created':
@@ -597,16 +597,16 @@ function getStatusBadgeVariant(status: string): "default" | "secondary" | "destr
 function getJobStatusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case 'completed':
-    case 'completed_by_tag':
+    case 'completedByTag':
       return 'default';
     case 'failed':
       return 'destructive';
     case 'running':
     case 'preparing':
-    case 'preparing_input':
-    case 'generating_stream':
-    case 'processing_stream':
-    case 'acknowledged_by_worker':
+    case 'preparingInput':
+    case 'generatingStream':
+    case 'processingStream':
+    case 'acknowledgedByWorker':
       return 'outline';
     case 'queued':
     case 'created':
@@ -689,14 +689,14 @@ export function WorkflowTimeline({
         {stages.map((stage, index) => {
           const stageJob = workflowState.stageJobs.find(job => job.stage === stage);
           const isCurrent = workflowState.currentStage === stage;
-          const isCompleted = stageJob?.status === 'completed' || stageJob?.status === 'completed_by_tag';
+          const isCompleted = stageJob?.status === 'completed' || stageJob?.status === 'completedByTag';
           const isFailed = stageJob?.status === 'failed';
           const isActive = stageJob?.status === 'running' || 
                           stageJob?.status === 'preparing' || 
-                          stageJob?.status === 'preparing_input' ||
-                          stageJob?.status === 'generating_stream' ||
-                          stageJob?.status === 'processing_stream' ||
-                          stageJob?.status === 'acknowledged_by_worker';
+                          stageJob?.status === 'preparingInput' ||
+                          stageJob?.status === 'generatingStream' ||
+                          stageJob?.status === 'processingStream' ||
+                          stageJob?.status === 'acknowledgedByWorker';
           
           return (
             <div key={stage} className="flex items-center gap-3">

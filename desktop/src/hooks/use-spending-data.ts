@@ -14,6 +14,7 @@ export interface ServiceAccessResponse {
 export interface UseSpendingDataReturn {
   spendingStatus: SpendingStatusInfo | null;
   serviceAccess: ServiceAccessResponse | null;
+  creditBalance: number | null;
   isLoading: boolean;
   error: string | null;
   refreshSpendingData: () => Promise<void>;
@@ -126,6 +127,7 @@ export function useSpendingData(): UseSpendingDataReturn {
   return {
     spendingStatus,
     serviceAccess,
+    creditBalance: spendingStatus?.creditBalance ?? null,
     isLoading,
     error,
     refreshSpendingData,

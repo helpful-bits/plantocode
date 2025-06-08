@@ -39,12 +39,12 @@ export function JobDetailsTimingSection() {
             {job.status === "running" && job.startTime && (
               <div className="mt-2">
                 <Progress
-                  value={getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens) || 5}
+                  value={getStreamingProgressValue(job.metadata, job.startTime) || 5}
                   className="h-1 w-full animate-pulse"
                 />
                 <div className="text-xs text-muted-foreground mt-1">Running...</div>
                 {(() => {
-                  const progressValue = getStreamingProgressValue(job.metadata, job.startTime, job.maxOutputTokens);
+                  const progressValue = getStreamingProgressValue(job.metadata, job.startTime);
                   return progressValue !== undefined ? (
                     <div className="text-[10px] text-muted-foreground mt-0.5 text-right">
                       {Math.floor(progressValue)}%

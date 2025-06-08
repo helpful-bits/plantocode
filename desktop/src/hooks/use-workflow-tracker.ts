@@ -15,7 +15,6 @@ import type {
 
 export interface UseWorkflowTrackerOptions {
   autoStart?: boolean;
-  pollInterval?: number;
   onComplete?: (results: WorkflowResultsResponse) => void;
   onError?: (error: Error) => void;
   onProgress?: (state: WorkflowState) => void;
@@ -374,7 +373,7 @@ export function useExistingWorkflowTracker(
         
         // Import createWorkflowTracker function
         const { createWorkflowTracker } = await import('@/utils/workflow-utils');
-        const tracker = await createWorkflowTracker(workflowId, sessionId, options.pollInterval);
+        const tracker = await createWorkflowTracker(workflowId, sessionId);
 
         trackerRef.current = tracker;
 
@@ -465,8 +464,7 @@ export function useExistingWorkflowTracker(
  * Hook for monitoring multiple workflows
  */
 export function useMultipleWorkflowTracker(
-  workflows: Array<{ workflowId: string; sessionId: string }>,
-  options: Omit<UseWorkflowTrackerOptions, 'autoStart'> = {}
+  workflows: Array<{ workflowId: string; sessionId: string }>
 ): {
   workflowStates: Record<string, WorkflowState | null>;
   errors: Record<string, Error | null>;
@@ -522,7 +520,7 @@ export function useMultipleWorkflowTracker(
       for (const { workflowId, sessionId } of workflows) {
         try {
           const { createWorkflowTracker } = await import('@/utils/workflow-utils');
-          const tracker = await createWorkflowTracker(workflowId, sessionId, options.pollInterval);
+          const tracker = await createWorkflowTracker(workflowId, sessionId);
 
           trackersRef.current[workflowId] = tracker;
 
@@ -564,7 +562,7 @@ export function useMultipleWorkflowTracker(
       Object.values(trackersRef.current).forEach(tracker => tracker.destroy());
       trackersRef.current = {};
     };
-  }, [workflows, options.pollInterval]);
+  }, [workflows]);
 
   return {
     workflowStates,

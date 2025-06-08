@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
-import { improveSelectedTextAction } from "@/actions/ai/text-improvement.actions";
+import { createTextCorrectionJobAction } from "@/actions/voice-transcription/correct-text";
 import { useBackgroundJob } from "@/contexts/_hooks/use-background-job";
 import { useNotification } from "@/contexts/notification-context";
 import { useProject } from "@/contexts/project-context";
@@ -30,8 +30,11 @@ export function useTaskDescriptionState({
   const sessionActions = useSessionActionsContext();
   const sessionState = useSessionStateContext();
   
-  // Get taskDescription from session context
-  const taskDescription = sessionState.currentSession?.taskDescription || "";
+  // Local state for task description to avoid expensive global state updates on every keystroke
+  const [localTaskDescription, setLocalTaskDescription] = useState("");
+  
+  // Get taskDescription from session context for reference
+  const sessionTaskDescription = sessionState.currentSession?.taskDescription || "";
 
   // State for UI feedback and improvement features
   const [taskCopySuccess, setTaskCopySuccess] = useState(false);
@@ -44,11 +47,25 @@ export function useTaskDescriptionState({
   const { showNotification } = useNotification();
   // Fetch the background job using typed hook
   const textImprovementJob = useBackgroundJob(textImprovementJobId ?? null);
+
+  // Initialize and sync local state with session context
+  useEffect(() => {
+    setLocalTaskDescription(sessionTaskDescription);
+  }, [activeSessionId, sessionTaskDescription]);
+
+  // Simplified debounced update
+  useEffect(() => {
+    if (localTaskDescription === sessionTaskDescription) return;
+
+    const timeoutId = setTimeout(() => {
+      sessionActions.updateCurrentSessionFields({ taskDescription: localTaskDescription });
+      sessionActions.setSessionModified(true);
+      onInteraction?.();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [localTaskDescription, sessionTaskDescription, sessionActions, onInteraction]);
   
-  // Type guard to check if a job object has a specific property
-  const hasProperty = <T extends object, K extends string>(obj: T, prop: K): obj is T & Record<K, unknown> => {
-    return Object.prototype.hasOwnProperty.call(obj, prop);
-  };
 
 
   // Reset function clears UI-related state
@@ -66,104 +83,31 @@ export function useTaskDescriptionState({
     originalTaskDescription: string;
   } | null>(null);
 
-  // Monitor background job for text improvement
+  // Simplified job monitoring
   useEffect(() => {
-    // Skip job processing during session switching
-    if (
-      isSwitchingSession ||
-      !textImprovementJobId ||
-      !textImprovementJob.job
-    ) {
-      return;
-    }
+    if (isSwitchingSession || !textImprovementJobId || !textImprovementJob.job) return;
 
     const job = textImprovementJob.job;
-    if (!job || typeof job !== 'object') {
-      return;
-    }
+    if (!job?.status) return;
 
-    if (hasProperty(job, 'status') && hasProperty(job, 'response') && job.status === "completed" && job.response) {
-      // Job completed successfully
-      setIsImprovingText(false);
-
-      try {
-        // Check if the job belongs to the current active session
-        if (
-          hasProperty(job, 'sessionId') && 
-          job.sessionId === activeSessionId &&
-          selectionRangeRef.current
-        ) {
-          // Parse the response - backend should return a clean string
-          let improvedText = (typeof job.response === "string") ? job.response : "";
-
-          // Apply the improved text at the selection range
-          if (improvedText && improvedText.trim()) {
-            const { start, end, originalTaskDescription } = selectionRangeRef.current;
-            const newValue =
-              originalTaskDescription.substring(0, start) +
-              improvedText +
-              originalTaskDescription.substring(end);
-
-            // Update session
-            sessionActions.updateCurrentSessionFields({
-              taskDescription: newValue,
-            });
-
-            // Notify parent components
-            if (onInteraction) {
-              onInteraction();
-            }
-
-            showNotification({
-              title: "Text improved",
-              message: "The selected text has been improved.",
-              type: "success",
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Error processing text improvement response:", error);
-        showNotification({
-          title: "Error processing improvement",
-          message: "Failed to process the improved text response.",
-          type: "error",
-        });
+    if (job.status === "completed" && job.response && job.sessionId === activeSessionId && selectionRangeRef.current) {
+      const improvedText = String(job.response).trim();
+      if (improvedText) {
+        const { start, end, originalTaskDescription } = selectionRangeRef.current;
+        setLocalTaskDescription(originalTaskDescription.substring(0, start) + improvedText + originalTaskDescription.substring(end));
+        onInteraction?.();
+        showNotification({ title: "Text improved", message: "Selected text improved.", type: "success" });
       }
-
-      // Always reset state after processing
-      setTextImprovementJobId(undefined);
-      selectionRangeRef.current = null;
-    } else if (
-      hasProperty(job, 'status') && 
-      (job.status === "failed" || job.status === "canceled")
-    ) {
-      // Job failed or was canceled
       setIsImprovingText(false);
       setTextImprovementJobId(undefined);
       selectionRangeRef.current = null;
-
-      // Only show notification for current session
-      if (hasProperty(job, 'sessionId') && job.sessionId === activeSessionId) {
-        const errorMsg = hasProperty(job, 'errorMessage') && typeof job.errorMessage === 'string' 
-          ? job.errorMessage 
-          : "Failed to improve text.";
-          
-        showNotification({
-          title: "Text improvement failed",
-          message: errorMsg,
-          type: "error",
-        });
-      }
+    } else if ((job.status === "failed" || job.status === "canceled") && job.sessionId === activeSessionId) {
+      setIsImprovingText(false);
+      setTextImprovementJobId(undefined);
+      selectionRangeRef.current = null;
+      showNotification({ title: "Text improvement failed", message: job.errorMessage || "Failed to improve text.", type: "error" });
     }
-  }, [
-    textImprovementJob,
-    textImprovementJobId,
-    isSwitchingSession,
-    activeSessionId,
-    onInteraction,
-    sessionActions,
-    showNotification,
-  ]);
+  }, [textImprovementJob.job?.status, textImprovementJobId, isSwitchingSession, activeSessionId, onInteraction, showNotification]);
 
   // Handle text improvement
   const handleImproveSelection = useCallback(
@@ -207,23 +151,23 @@ export function useTaskDescriptionState({
           start: selectionStart,
           end: selectionEnd,
           text: selectedText,
-          originalTaskDescription: taskDescription,
+          originalTaskDescription: localTaskDescription,
         };
       } else if (taskDescriptionRef.current) {
         const start = taskDescriptionRef.current.selectionStart;
         const end = taskDescriptionRef.current.selectionEnd;
 
         if (typeof start === "number" && typeof end === "number") {
-          selectionRangeRef.current = { start, end, text: selectedText, originalTaskDescription: taskDescription };
+          selectionRangeRef.current = { start, end, text: selectedText, originalTaskDescription: localTaskDescription };
         } else {
           // Fallback: find text in description
-          const index = taskDescription.indexOf(selectedText);
+          const index = localTaskDescription.indexOf(selectedText);
           if (index >= 0) {
             selectionRangeRef.current = {
               start: index,
               end: index + selectedText.length,
               text: selectedText,
-              originalTaskDescription: taskDescription,
+              originalTaskDescription: localTaskDescription,
             };
           } else {
             selectionRangeRef.current = null;
@@ -232,13 +176,14 @@ export function useTaskDescriptionState({
       }
 
       try {
-        // Call the Tauri command via action
-        const result = await improveSelectedTextAction({
-          text: selectedText,
-          sessionId: activeSessionId,
+        // Call the unified text correction action
+        const result = await createTextCorrectionJobAction(
+          selectedText,
+          activeSessionId,
+          null, // originalJobId
           projectDirectory,
-          targetField: "taskDescription",
-        });
+          "en" // language
+        );
 
         if (result.isSuccess && result.data?.jobId) {
           // Store job ID to track progress
@@ -271,14 +216,14 @@ export function useTaskDescriptionState({
       activeSessionId,
       taskDescriptionRef,
       projectDirectory,
-      taskDescription,
+      localTaskDescription,
     ]
   );
 
   // Function to copy task description to clipboard
   const copyTaskDescription = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(taskDescription);
+      await navigator.clipboard.writeText(localTaskDescription);
       setTaskCopySuccess(true);
       setTimeout(() => setTaskCopySuccess(false), 2000);
       return true;
@@ -286,7 +231,7 @@ export function useTaskDescriptionState({
       console.error("Error copying task description:", error);
       return false;
     }
-  }, [taskDescription]);
+  }, [localTaskDescription]);
 
   return useMemo(
     () => ({
@@ -294,6 +239,8 @@ export function useTaskDescriptionState({
       textImprovementJobId,
       taskCopySuccess,
       taskDescriptionRef,
+      taskDescription: localTaskDescription,
+      setTaskDescription: setLocalTaskDescription,
 
       // Actions
       handleImproveSelection,
@@ -305,6 +252,7 @@ export function useTaskDescriptionState({
       textImprovementJobId,
       taskCopySuccess,
       taskDescriptionRef,
+      localTaskDescription,
       handleImproveSelection,
       copyTaskDescription,
       reset,

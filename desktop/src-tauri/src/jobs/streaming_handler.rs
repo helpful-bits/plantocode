@@ -148,6 +148,23 @@ impl StreamedResponseHandler {
         // Process the stream
         self.process_stream(stream).await
     }
+    
+    /// Enhanced method to process a stream from an API client using structured messages
+    /// This provides better context preservation and LLM provider compliance
+    pub async fn process_stream_from_client_with_messages(
+        &self,
+        llm_client: &Arc<dyn ApiClient>,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        api_options: crate::api_clients::client_trait::ApiClientOptions,
+    ) -> AppResult<StreamResult> {
+        debug!("Starting streaming call with structured messages for job {}", self.job_id);
+        
+        // Execute streaming call with structured messages
+        let stream = llm_client.chat_completion_stream(messages, api_options).await?;
+        
+        // Process the stream
+        self.process_stream(stream).await
+    }
 }
 
 /// Helper function to estimate prompt tokens from system and user prompts

@@ -10,7 +10,9 @@ import {
   Zap,
   AlertCircle,
   CheckCircle,
-  XCircle
+  XCircle,
+  CreditCard,
+  Plus
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader } from "@/ui/card";
@@ -25,12 +27,14 @@ interface CostBasedSpendingOverviewProps {
   spendingData?: SpendingStatusInfo | null;
   onUpgrade?: () => void;
   onManageSpending?: () => void;
+  onBuyCredits?: () => void;
 }
 
 export function CostBasedSpendingOverview({ 
   spendingData,
   onUpgrade,
-  onManageSpending 
+  onManageSpending,
+  onBuyCredits
 }: CostBasedSpendingOverviewProps) {
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   
@@ -155,8 +159,14 @@ export function CostBasedSpendingOverview({
           <AlertDescription className="text-red-700 mt-2">
             <p>Your AI services have been automatically blocked because you've reached your spending limit of {formatCurrency(spendingStatus.hardLimit)}.</p>
             <div className="mt-3 flex gap-2">
+              {onBuyCredits && (
+                <Button size="sm" onClick={onBuyCredits}>
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Buy Credits
+                </Button>
+              )}
               {onUpgrade && (
-                <Button size="sm" onClick={onUpgrade}>
+                <Button size="sm" variant="outline" onClick={onUpgrade}>
                   Upgrade Plan
                 </Button>
               )}
@@ -169,7 +179,7 @@ export function CostBasedSpendingOverview({
       )}
 
       {/* Spending Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Current Spending */}
         <Card className="border border-border/50 bg-card/80 backdrop-blur-sm">
           <CardContent className="pt-6">
@@ -224,6 +234,39 @@ export function CostBasedSpendingOverview({
                 </p>
               </div>
               <Clock className="h-8 w-8 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Credit Balance */}
+        <Card className="border border-border/50 bg-card/80 backdrop-blur-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Credit Balance</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {formatCurrency(spendingStatus.creditBalance || 0)}
+                </p>
+                {spendingStatus.creditBalance > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Available for overage
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <CreditCard className="h-8 w-8 text-muted-foreground" />
+                {onBuyCredits && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-6 text-xs"
+                    onClick={onBuyCredits}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Buy
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -331,8 +374,19 @@ export function CostBasedSpendingOverview({
                 <li>Use less expensive models for simple tasks</li>
                 <li>Reduce output length for content generation</li>
                 <li>Batch similar requests to improve efficiency</li>
+                {spendingStatus.creditBalance === 0 && (
+                  <li>Purchase extra credits to extend your usage beyond the allowance</li>
+                )}
                 <li>Consider upgrading to a higher tier for better value</li>
               </ul>
+              {spendingStatus.creditBalance > 0 && (
+                <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-sm text-blue-700">
+                    <strong>Good news:</strong> You have {formatCurrency(spendingStatus.creditBalance)} in credit balance 
+                    that will be used automatically when your allowance is exhausted.
+                  </p>
+                </div>
+              )}
             </div>
           </AlertDescription>
         </Alert>

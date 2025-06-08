@@ -23,7 +23,6 @@ export interface SessionData {
   contentRegex?: string;
   includedFiles?: string[];
   forceExcludedFiles?: string[];
-  codebaseStructure?: string;
   projectDirectory?: string;
   negativeTitleRegex?: string;
   negativeContentRegex?: string;
@@ -388,14 +387,6 @@ export function validateSessionData(sessionData: SessionData): string | undefine
     ) {
       return "Force excluded files must be an array of strings";
     }
-  }
-
-  // Check codebaseStructure if provided
-  if (
-    sessionData.codebaseStructure !== undefined &&
-    typeof sessionData.codebaseStructure !== "string"
-  ) {
-    return "Codebase structure must be a string";
   }
 
   // Check projectDirectory if provided

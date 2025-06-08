@@ -4,6 +4,7 @@ use crate::error::AppError;
 use crate::services::proxy_service::ProxyService;
 use crate::services::cost_based_billing_service::CostBasedBillingService;
 use crate::middleware::secure_auth::UserId;
+use crate::utils::multipart_utils::process_transcription_multipart;
 use futures_util::StreamExt;
 use actix_multipart::Multipart;
 use tracing::{debug, error, info, instrument};
@@ -103,96 +104,99 @@ pub async fn audio_transcriptions_proxy(
         })));
     }
     
-    // Process the multipart form data to extract the audio file, model, and duration
-    let mut audio_data = Vec::new();
-    let mut filename = String::from("audio.webm");  // Default filename
-    let mut model = String::from("groq/whisper-large-v3");  // Default model
-    let mut input_duration_ms: i64 = 0;
-    
-    // Define a helper function to process the multipart payload
-    let mut multipart = payload;
-    
-    // Process each field in the multipart form
-    while let Some(item) = multipart.next().await {
-        let mut field = item?;
-        let content_disposition = field.content_disposition().ok_or_else(|| {
-            AppError::InvalidArgument("Content-Disposition header missing".to_string())
-        })?;
-        
-        let field_name = content_disposition.get_name().ok_or_else(|| {
-            AppError::InvalidArgument("Field name missing".to_string())
-        })?;
-        
-        match field_name {
-            "file" => {
-                // Extract filename if provided
-                if let Some(fname) = content_disposition.get_filename() {
-                    filename = fname.to_string();
-                }
-                
-                // Extract audio data
-                while let Some(chunk) = field.next().await {
-                    let data = chunk?;
-                    audio_data.extend_from_slice(&data);
-                }
-            },
-            "model" => {
-                // Extract model name
-                let mut model_data = Vec::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk?;
-                    model_data.extend_from_slice(&data);
-                }
-                
-                model = String::from_utf8(model_data)
-                    .map_err(|_| AppError::InvalidArgument("Invalid model name encoding".to_string()))?;
-            },
-            "duration_ms" => {
-                let mut duration_data = Vec::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk?;
-                    duration_data.extend_from_slice(&data);
-                }
-                input_duration_ms = String::from_utf8(duration_data)
-                    .map_err(|_| AppError::InvalidArgument("Invalid duration_ms encoding".to_string()))?
-                    .parse::<i64>()
-                    .map_err(|_| AppError::InvalidArgument("Invalid duration_ms value".to_string()))?;
-            },
-            _ => {
-                // Skip other fields
-                while let Some(_) = field.next().await {}
-            }
-        }
-    }
-    
-    // Ensure we got audio data
-    if audio_data.is_empty() {
-        return Err(AppError::InvalidArgument("No audio data provided".to_string()));
-    }
-    
-    // Ensure we got audio duration
-    if input_duration_ms == 0 {
-        return Err(AppError::InvalidArgument("Missing or invalid audio duration_ms".to_string()));
-    }
+    // Process the multipart form data using the utility
+    let multipart_data = process_transcription_multipart(payload).await?;
     
     // Forward the transcription request to the proxy service
-    let model_from_payload = if model == "groq/whisper-large-v3" { 
+    let model_from_payload = if multipart_data.model.is_empty() || multipart_data.model == "groq/whisper-large-v3" { 
         None // Use default from app_settings
     } else { 
-        Some(model) 
+        Some(multipart_data.model) 
     };
     
     let result = proxy_service.forward_transcription_request(
         &user_id.0, 
-        &audio_data, 
-        &filename, 
+        &multipart_data.audio_data, 
+        &multipart_data.filename, 
         model_from_payload,
-        input_duration_ms
+        multipart_data.duration_ms
     ).await?;
     
     // Log request duration
     let duration = start.elapsed();
     info!("Audio transcription request completed in {:?}", duration);
+    
+    // Return the response
+    Ok(HttpResponse::Ok().json(result))
+}
+
+/// Audio Transcription Streaming API proxy (Groq)
+pub async fn audio_transcriptions_stream_proxy(
+    user_id: UserId,
+    req: HttpRequest,
+    proxy_service: web::Data<ProxyService>,
+    cost_billing_service: web::Data<CostBasedBillingService>,
+    mut payload: web::Payload,
+) -> Result<HttpResponse, AppError> {
+    let start = Instant::now();
+    
+    debug!("Audio transcription streaming request from user: {}", user_id.0);
+    
+    // Check spending limits BEFORE processing request
+    let has_access = cost_billing_service.check_service_access(&user_id.0).await?;
+    if !has_access {
+        return Ok(HttpResponse::PaymentRequired().json(serde_json::json!({
+            "error": {
+                "type": "spending_limit_exceeded",
+                "message": "AI services blocked due to spending limit. Please upgrade your plan or wait for your billing cycle to reset."
+            }
+        })));
+    }
+    
+    // Extract metadata from request headers
+    let filename = req.headers()
+        .get("X-Filename")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("audio.webm")
+        .to_string();
+    
+    let duration_ms = req.headers()
+        .get("X-Duration-MS")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<i64>().ok());
+    
+    let model = req.headers()
+        .get("X-Model-Id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    
+    // Read the streaming payload into a buffer
+    let mut buffer = web::BytesMut::new();
+    while let Some(chunk) = payload.next().await {
+        let chunk = chunk.map_err(|e| AppError::BadRequest(format!("Failed to read payload chunk: {}", e)))?;
+        buffer.extend_from_slice(&chunk);
+    }
+    
+    let audio_data = buffer.to_vec();
+    
+    // Forward the transcription request to the proxy service
+    let model_from_payload = if model.is_none() || model.as_ref() == Some(&"groq/whisper-large-v3".to_string()) {
+        None // Use default from app_settings
+    } else {
+        model
+    };
+    
+    let result = proxy_service.forward_transcription_request(
+        &user_id.0,
+        &audio_data,
+        &filename,
+        model_from_payload,
+        duration_ms.unwrap_or(0)
+    ).await?;
+    
+    // Log request duration
+    let duration = start.elapsed();
+    info!("Audio transcription streaming request completed in {:?}", duration);
     
     // Return the response
     Ok(HttpResponse::Ok().json(result))

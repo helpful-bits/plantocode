@@ -9,6 +9,8 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use crate::constants::{SERVER_API_URL, HEADER_CLIENT_ID};
 use crate::api_clients::{ApiClient, TranscriptionClient, server_proxy_client::ServerProxyClient};
 use crate::auth::TokenManager;
+use crate::services::{BackupService, BackupConfig, initialize_cache_service};
+use sqlx::SqlitePool;
 
 pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
    
@@ -88,6 +90,74 @@ pub async fn initialize_api_clients(app_handle: &AppHandle) -> AppResult<()> {
     
     info!("API clients initialized and registered in app state.");
     
+    Ok(())
+}
+
+/// Initialize default system prompts from server with 5-minute cache TTL
+/// This function sets up the cache service and populates the local cache
+/// It should be called after authentication is complete
+pub async fn initialize_system_prompts(app_handle: &AppHandle) -> AppResult<()> {
+    info!("Initializing default system prompts with 5-minute cache TTL...");
+    
+    // Initialize the 5-minute cache service first
+    initialize_cache_service(app_handle).await?;
+    
+    // Get the cache service for initial population
+    let cache_service = app_handle.state::<Arc<crate::services::SystemPromptCacheService>>().inner().clone();
+    
+    // Perform initial cache refresh
+    match cache_service.force_refresh().await {
+        Ok(_) => {
+            info!("System prompts cache initialized successfully with 5-minute TTL");
+            Ok(())
+        }
+        Err(e) => {
+            // Log the error but don't fail initialization completely
+            // The app can still function with local prompts or user-defined ones
+            warn!("System prompts cache initialization failed: {}. App will continue with local fallbacks.", e);
+            Ok(()) // Return Ok to allow app to continue
+        }
+    }
+}
+
+/// Initialize the backup service with automatic scheduling
+pub async fn initialize_backup_service(app_handle: &AppHandle) -> AppResult<()> {
+    info!("Initializing backup service...");
+    
+    // Get app data directory
+    let app_data_dir = app_handle.path().app_local_data_dir()
+        .map_err(|e| AppError::InitializationError(format!("Failed to get app local data dir: {}", e)))?;
+    
+    // Get database pool from app state
+    let db_pool = app_handle.state::<SqlitePool>().inner().clone();
+    
+    // Load backup configuration from database or use default
+    let settings_repo = app_handle.state::<Arc<crate::db_utils::SettingsRepository>>();
+    let backup_config = settings_repo.get_backup_config().await
+        .unwrap_or_else(|e| {
+            warn!("Failed to load backup config from database: {}, using defaults", e);
+            BackupConfig::default()
+        });
+    
+    // Create backup service
+    let backup_service = Arc::new(BackupService::new(app_data_dir, db_pool, backup_config.clone()));
+    
+    // Initialize the service (create directories, initial backup if needed)
+    backup_service.initialize().await?;
+    
+    // Store backup service in app state
+    app_handle.manage(backup_service.clone());
+    
+    // Start the automatic backup scheduler in the background
+    if backup_config.enabled {
+        let scheduler_service = backup_service.clone();
+        tokio::spawn(async move {
+            info!("Starting backup scheduler...");
+            scheduler_service.start_scheduler().await;
+        });
+    }
+    
+    info!("Backup service initialized and scheduler started");
     Ok(())
 }
 

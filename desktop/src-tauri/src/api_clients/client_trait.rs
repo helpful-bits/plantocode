@@ -36,6 +36,13 @@ pub trait ApiClient: Send + Sync {
         prompt: &str,
         options: ApiClientOptions,
     ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>>;
+    
+    /// Send a streaming completion request with messages and get a stream of chunks
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<crate::models::OpenRouterRequestMessage>,
+        options: ApiClientOptions,
+    ) -> AppResult<Pin<Box<dyn Stream<Item = AppResult<OpenRouterStreamChunk>> + Send>>>;
 }
 
 // Transcription service trait

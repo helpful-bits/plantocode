@@ -112,10 +112,85 @@ pub async fn cancel_session_jobs_command(session_id: String, app_handle: AppHand
         }
     }
 
-    // Cancel jobs in the database
-    let updated_count = repo.cancel_session_jobs(&session_id)
+    // Get all active jobs for the session to handle workflow-aware cancellation
+    let active_jobs = repo.get_jobs_by_session_id(&session_id)
         .await
-        .map_err(|e| AppError::JobError(format!("Failed to cancel session jobs in database: {}", e)))?;
+        .map_err(|e| AppError::JobError(format!("Failed to get jobs by session ID: {}", e)))?;
 
-    Ok(updated_count)
+    // Filter for active jobs and exclude implementation plans
+    let active_statuses = vec![
+        crate::models::JobStatus::Created.to_string(),
+        crate::models::JobStatus::Running.to_string(),
+        crate::models::JobStatus::Queued.to_string(),
+        crate::models::JobStatus::AcknowledgedByWorker.to_string(),
+        crate::models::JobStatus::Idle.to_string(),
+        crate::models::JobStatus::Preparing.to_string(),
+    ];
+
+    let mut cancelled_count = 0;
+    
+    for job in active_jobs {
+        // Skip if not in active status
+        if !active_statuses.contains(&job.status) {
+            continue;
+        }
+        
+        // Skip implementation plans
+        if job.task_type == crate::models::TaskType::ImplementationPlan.to_string() {
+            continue;
+        }
+        
+        // Check if this job is part of a workflow
+        let is_workflow_job = if let Some(metadata_str) = &job.metadata {
+            if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                metadata_json.get("workflowId").is_some()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        if is_workflow_job {
+            // For workflow jobs, use the orchestrator to handle cancellation properly
+            match crate::jobs::workflow_orchestrator::get_workflow_orchestrator().await {
+                Ok(orchestrator) => {
+                    if let Err(e) = orchestrator.update_job_status(
+                        &job.id, 
+                        crate::models::JobStatus::Canceled, 
+                        Some("Canceled by session action".to_string())
+                    ).await {
+                        log::warn!("Failed to cancel workflow job {} via orchestrator: {}. Falling back to direct cancellation.", job.id, e);
+                        // Fallback to direct cancellation
+                        if let Err(e2) = repo.cancel_job(&job.id).await {
+                            log::warn!("Failed to cancel job {} directly: {}", job.id, e2);
+                        } else {
+                            cancelled_count += 1;
+                        }
+                    } else {
+                        cancelled_count += 1;
+                        log::warn!("Job {} belonging to a workflow was cancelled by cancel_session_jobs", job.id);
+                    }
+                },
+                Err(e) => {
+                    log::warn!("Could not get workflow orchestrator to cancel workflow job {}: {}. Using direct cancellation.", job.id, e);
+                    // Fallback to direct cancellation
+                    if let Err(e2) = repo.cancel_job(&job.id).await {
+                        log::warn!("Failed to cancel job {} directly: {}", job.id, e2);
+                    } else {
+                        cancelled_count += 1;
+                    }
+                }
+            }
+        } else {
+            // For non-workflow jobs, use direct cancellation via repository
+            if let Err(e) = repo.cancel_job(&job.id).await {
+                log::warn!("Failed to cancel job {}: {}", job.id, e);
+            } else {
+                cancelled_count += 1;
+            }
+        }
+    }
+
+    Ok(cancelled_count)
 }

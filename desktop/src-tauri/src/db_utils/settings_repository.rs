@@ -3,15 +3,22 @@ use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use crate::error::{AppError, AppResult};
 use crate::models::{TaskSettings, Settings, SystemPrompt, DefaultSystemPrompt};
 use crate::utils::{get_timestamp, PromptPlaceholders, substitute_placeholders};
+use crate::services::{BackupConfig, SystemPromptCacheService};
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug)]
 pub struct SettingsRepository {
     pool: Arc<SqlitePool>,
+    app_handle: Option<AppHandle>,
 }
 
 impl SettingsRepository {
     pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self { pool }
+        Self { pool, app_handle: None }
+    }
+    
+    pub fn with_app_handle(pool: Arc<SqlitePool>, app_handle: AppHandle) -> Self {
+        Self { pool, app_handle: Some(app_handle) }
     }
     
     /// Get a value from the key_value_store table
@@ -212,6 +219,25 @@ impl SettingsRepository {
             .map_err(|e| AppError::SerializationError(format!("Failed to serialize global settings: {}", e)))?;
         self.set_value("global_settings", &json_str).await
     }
+
+    /// Get backup configuration
+    pub async fn get_backup_config(&self) -> AppResult<BackupConfig> {
+        match self.get_value("backup_config").await? {
+            Some(json_str) => {
+                let config: BackupConfig = serde_json::from_str(&json_str)
+                    .map_err(|e| AppError::SerializationError(format!("Failed to deserialize backup config: {}", e)))?;
+                Ok(config)
+            }
+            None => Ok(BackupConfig::default()),
+        }
+    }
+
+    /// Save backup configuration
+    pub async fn save_backup_config(&self, config: &BackupConfig) -> AppResult<()> {
+        let json_str = serde_json::to_string(config)
+            .map_err(|e| AppError::SerializationError(format!("Failed to serialize backup config: {}", e)))?;
+        self.set_value("backup_config", &json_str).await
+    }
     
     /// Get system prompt for a specific session and task type
     pub async fn get_system_prompt(&self, session_id: &str, task_type: &str) -> AppResult<Option<SystemPrompt>> {
@@ -285,36 +311,17 @@ impl SettingsRepository {
         Ok(())
     }
     
-    /// Get default system prompt for a task type
+    /// Get default system prompt for a task type from in-memory cache
     pub async fn get_default_system_prompt(&self, task_type: &str) -> AppResult<Option<DefaultSystemPrompt>> {
-        let row = sqlx::query("SELECT * FROM default_system_prompts WHERE task_type = $1")
-            .bind(task_type)
-            .fetch_optional(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch default system prompt: {}", e)))?;
-            
-        match row {
-            Some(row) => {
-                let id: String = row.try_get("id")?;
-                let task_type: String = row.try_get("task_type")?;
-                let system_prompt: String = row.try_get("system_prompt")?;
-                let description: Option<String> = row.try_get("description")?;
-                let version: String = row.try_get("version")?;
-                let created_at: i64 = row.try_get("created_at")?;
-                let updated_at: i64 = row.try_get("updated_at")?;
-                
-                Ok(Some(DefaultSystemPrompt {
-                    id,
-                    task_type,
-                    system_prompt,
-                    description,
-                    version,
-                    created_at,
-                    updated_at,
-                }))
-            },
-            None => Ok(None)
+        if let Some(app_handle) = &self.app_handle {
+            if let Some(cache_service) = app_handle.try_state::<Arc<SystemPromptCacheService>>() {
+                return cache_service.get_fresh_system_prompt(task_type).await;
+            }
         }
+        
+        // Fallback: return None if cache service is not available
+        log::warn!("SystemPromptCacheService not available, returning None for task_type: {}", task_type);
+        Ok(None)
     }
     
     /// Get effective system prompt for a task type (custom first, then default)
@@ -324,7 +331,7 @@ impl SettingsRepository {
             return Ok(Some(custom_prompt.system_prompt));
         }
         
-        // Fall back to default system prompt
+        // Fall back to default system prompt from in-memory cache
         if let Some(default_prompt) = self.get_default_system_prompt(task_type).await? {
             return Ok(Some(default_prompt.system_prompt));
         }
@@ -332,35 +339,22 @@ impl SettingsRepository {
         Ok(None)
     }
     
-    /// Get all default system prompts
+    /// Get all default system prompts from in-memory cache
     pub async fn get_all_default_system_prompts(&self) -> AppResult<Vec<DefaultSystemPrompt>> {
-        let rows = sqlx::query("SELECT * FROM default_system_prompts ORDER BY task_type")
-            .fetch_all(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch default system prompts: {}", e)))?;
-            
-        let mut prompts = Vec::new();
-        for row in rows {
-            let id: String = row.try_get("id")?;
-            let task_type: String = row.try_get("task_type")?;
-            let system_prompt: String = row.try_get("system_prompt")?;
-            let description: Option<String> = row.try_get("description")?;
-            let version: String = row.try_get("version")?;
-            let created_at: i64 = row.try_get("created_at")?;
-            let updated_at: i64 = row.try_get("updated_at")?;
-            
-            prompts.push(DefaultSystemPrompt {
-                id,
-                task_type,
-                system_prompt,
-                description,
-                version,
-                created_at,
-                updated_at,
-            });
+        if let Some(app_handle) = &self.app_handle {
+            if let Some(cache_service) = app_handle.try_state::<Arc<SystemPromptCacheService>>() {
+                // Access the cache directly to get all prompts
+                let cache = cache_service.cache.read().await;
+                let prompts: Vec<DefaultSystemPrompt> = cache.values()
+                    .map(|entry| entry.prompt.clone())
+                    .collect();
+                return Ok(prompts);
+            }
         }
         
-        Ok(prompts)
+        // Fallback: return empty Vec if cache service is not available
+        log::warn!("SystemPromptCacheService not available, returning empty Vec for all default system prompts");
+        Ok(Vec::new())
     }
     
     /// Reset system prompt to default for a session and task type
@@ -377,7 +371,7 @@ impl SettingsRepository {
         task_type: &str,
         placeholders: &PromptPlaceholders
     ) -> AppResult<Option<(String, String)>> {
-        // Get the prompt record (custom first, then default) and its ID
+        // Get the prompt record (custom first, then default from in-memory cache) and its ID
         let (template, system_prompt_id) = if let Some(custom_prompt) = self.get_system_prompt(session_id, task_type).await? {
             (custom_prompt.system_prompt, custom_prompt.id)
         } else if let Some(default_prompt) = self.get_default_system_prompt(task_type).await? {
@@ -398,7 +392,7 @@ impl SettingsRepository {
         session_id: &str, 
         task_type: &str
     ) -> AppResult<Option<String>> {
-        // Get the template (custom first, then default)
+        // Get the template (custom first, then default from in-memory cache)
         if let Some(custom_prompt) = self.get_system_prompt(session_id, task_type).await? {
             Ok(Some(crate::utils::prompt_template_utils::get_template_for_display(&custom_prompt.system_prompt)))
         } else if let Some(default_prompt) = self.get_default_system_prompt(task_type).await? {
@@ -449,49 +443,16 @@ impl SettingsRepository {
         Ok(settings)
     }
     
-    /// Update a default system prompt, incrementing its version and setting updated_at
+    /// Update a default system prompt - NOT SUPPORTED (server is source of truth)
+    /// Default system prompts should only be updated on the server
     pub async fn update_default_system_prompt(
         &self, 
-        task_type: &str, 
-        new_prompt_content: &str, 
-        new_description: Option<&str>
+        _task_type: &str, 
+        _new_prompt_content: &str, 
+        _new_description: Option<&str>
     ) -> AppResult<()> {
-        let now = get_timestamp();
-        
-        // First, get the current prompt to increment the version
-        let current_prompt = self.get_default_system_prompt(task_type).await?;
-        
-        let new_version = if let Some(current) = current_prompt {
-            // Parse current version and increment
-            let current_version_num: u32 = current.version.parse()
-                .unwrap_or(1); // Default to 1 if parsing fails
-            (current_version_num + 1).to_string()
-        } else {
-            // If no current prompt exists, start with version 1
-            "1".to_string()
-        };
-        
-        sqlx::query(
-            r#"
-            INSERT INTO default_system_prompts (id, task_type, system_prompt, description, version, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (task_type) DO UPDATE SET
-                system_prompt = excluded.system_prompt,
-                description = excluded.description,
-                version = excluded.version,
-                updated_at = excluded.updated_at
-            "#)
-            .bind(format!("default_{}", task_type))
-            .bind(task_type)
-            .bind(new_prompt_content)
-            .bind(new_description)
-            .bind(&new_version)
-            .bind(now)
-            .bind(now)
-            .execute(&*self.pool)
-            .await
-            .map_err(|e| AppError::DatabaseError(format!("Failed to update default system prompt: {}", e)))?;
-            
-        Ok(())
+        Err(AppError::ConfigError(
+            "Default system prompts cannot be updated from desktop app. Server is the source of truth.".to_string()
+        ))
     }
 }

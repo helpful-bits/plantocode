@@ -128,10 +128,7 @@ pub async fn find_relevant_files_command(
     
     // Create PathFinderPayload directly for the processor
     let path_finder_payload = crate::jobs::types::PathFinderPayload {
-        session_id: args.session_id.clone(),
         task_description: args.task_description.clone(),
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        project_directory: project_directory.clone(),
         system_prompt: String::new(), // Will be populated by the processor
         directory_tree: args.directory_tree.clone(),
         relevant_file_contents: std::collections::HashMap::new(), // Will be populated by the processor
@@ -246,12 +243,7 @@ pub async fn create_path_correction_job_command(
     
     // Create payload for PathCorrectionProcessor
     let payload = crate::jobs::types::PathCorrectionPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
         paths_to_correct: args.paths_to_correct.clone(),
-        context_description: args.context_description.unwrap_or_else(|| "No additional context provided".to_string()),
-        directory_tree: args.directory_tree,
-        system_prompt_override: None,
     };
     
     // Queue the job using typed JobPayload

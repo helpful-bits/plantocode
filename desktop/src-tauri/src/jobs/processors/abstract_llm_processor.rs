@@ -45,7 +45,6 @@ pub struct LlmPromptContext {
     pub task_description: String,
     pub file_contents: Option<std::collections::HashMap<String, String>>,
     pub directory_tree: Option<String>,
-    pub codebase_structure: Option<String>,
     pub system_prompt_override: Option<String>,
 }
 
@@ -146,8 +145,8 @@ impl LlmTaskRunner {
         // Get API client
         let llm_client = llm_api_utils::get_api_client(&self.app_handle)?;
         
-        // For streaming, we need to combine the messages into a single prompt
-        let combined_prompt = format!("{}{}", system_prompt, user_prompt);
+        // Create messages for structured streaming (preferred approach)
+        let messages = llm_api_utils::create_openrouter_messages(&system_prompt, &user_prompt);
         
         // Create streaming handler configuration
         let stream_config = crate::jobs::streaming_handler::create_stream_config(&system_prompt, &user_prompt);
@@ -161,9 +160,9 @@ impl LlmTaskRunner {
             Some(self.app_handle.clone()),
         );
         
-        // Process the stream using the handler
+        // Process the stream using structured messages (preferred for LLM provider compliance)
         let stream_result = streaming_handler
-            .process_stream_from_client(&llm_client, &combined_prompt, api_options)
+            .process_stream_from_client_with_messages(&llm_client, messages, api_options)
             .await?;
         
         Ok(LlmTaskResult {
@@ -207,7 +206,6 @@ impl LlmTaskRunner {
             &self.job,
             &self.app_handle,
             context.task_description,
-            context.codebase_structure,
             context.file_contents,
             context.directory_tree,
             settings_repo,
@@ -243,8 +241,9 @@ impl LlmTaskRunner {
         repo: &Arc<BackgroundJobRepository>,
         job_id: &str,
         error_message: &str,
+        app_error_opt: Option<&AppError>,
     ) -> AppResult<()> {
-        job_processor_utils::finalize_job_failure(job_id, repo, error_message).await
+        job_processor_utils::finalize_job_failure(job_id, repo, error_message, app_error_opt).await
     }
 }
 

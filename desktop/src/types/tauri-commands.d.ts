@@ -331,16 +331,18 @@ export interface GenerateSimpleTextCommandArgs {
 // Commands from voice_commands
 export interface CreateTranscriptionJobCommandArgs {
   sessionId: string;
-  audioData: string;
+  audioData: Uint8Array;
   filename?: string | null;
   projectDirectory?: string | null;
+  durationMs: number;
 }
 
 
 export interface TranscribeAudioDirectCommandArgs {
-  audioData: Array<number>;
+  audioData: Uint8Array;
   filename: string;
   model: string;
+  durationMs: number;
 }
 
 // Commands from config_commands / key-value store
@@ -385,6 +387,9 @@ export interface SetProjectTaskModelSettingsCommandArgs {
 export interface FetchRuntimeAiConfigArgs {
 }
 
+export interface GetServerUrlArgs {
+}
+
 // Commands from database_maintenance_commands
 export interface CheckDatabaseHealthCommandArgs {
 }
@@ -420,6 +425,12 @@ export interface GetDefaultSystemPromptCommandArgs {
 export interface HasCustomSystemPromptCommandArgs {
   sessionId: string;
   taskType: string;
+}
+
+export interface UpdateDefaultSystemPromptCommandArgs {
+  taskType: string;
+  newPromptContent: string;
+  newDescription?: string;
 }
 
 
@@ -551,7 +562,7 @@ export type TauriInvoke = {
   "correct_text_command": (args: CorrectTextCommandArgs) => Promise<JobResult>;
   "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<string>;
   "create_transcription_job_command": (args: CreateTranscriptionJobCommandArgs) => Promise<JobResult>;
-  "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<string>;
+  "transcribe_audio_direct_command": (args: TranscribeAudioDirectCommandArgs) => Promise<{ text: string }>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;
   "get_workflow_setting_command": (args: GetWorkflowSettingCommandArgs) => Promise<string | null>;
@@ -561,6 +572,7 @@ export type TauriInvoke = {
   "get_all_task_model_settings_for_project_command": (args: GetAllTaskModelSettingsForProjectCommandArgs) => Promise<import("@/types").TaskSettings>;
   "set_project_task_model_settings_command": (args: SetProjectTaskModelSettingsCommandArgs) => Promise<void>;
   "fetch_runtime_ai_config": (args: FetchRuntimeAiConfigArgs) => Promise<import("@/types/config-types").RuntimeAIConfig>;
+  "get_server_url": (args: GetServerUrlArgs) => Promise<string>;
   "check_database_health_command": (args: CheckDatabaseHealthCommandArgs) => Promise<DatabaseHealthResult>;
   "repair_database_command": (args: RepairDatabaseCommandArgs) => Promise<DatabaseRepairResult>;
   "reset_database_command": (args: ResetDatabaseCommandArgs) => Promise<DatabaseResetResult>;
@@ -570,6 +582,10 @@ export type TauriInvoke = {
   "get_default_system_prompts_command": () => Promise<import("@/types").DefaultSystemPrompt[]>;
   "get_default_system_prompt_command": (args: GetDefaultSystemPromptCommandArgs) => Promise<import("@/types").DefaultSystemPrompt | null>;
   "has_custom_system_prompt_command": (args: HasCustomSystemPromptCommandArgs) => Promise<boolean>;
+  "update_default_system_prompt_command": (args: UpdateDefaultSystemPromptCommandArgs) => Promise<void>;
+  "fetch_default_system_prompts_from_server": () => Promise<any[]>;
+  "fetch_default_system_prompt_from_server": (args: { taskType: string }) => Promise<any | null>;
+  "initialize_system_prompts_from_server": () => Promise<void>;
   
   // Billing commands
   "get_subscription_details_command": () => Promise<SubscriptionDetails>;
@@ -581,6 +597,13 @@ export type TauriInvoke = {
   "get_invoice_history_command": () => Promise<InvoiceHistoryResponse>;
   "get_spending_history_command": () => Promise<SpendingHistoryResponse>;
   "check_service_access_command": () => Promise<ServiceAccessResponse>;
+  
+  // Credit system commands
+  "get_credit_balance_command": () => Promise<CreditBalanceResponse>;
+  "get_credit_history_command": (args: { limit?: number; offset?: number }) => Promise<CreditHistoryResponse>;
+  "get_credit_packs_command": () => Promise<CreditPacksResponse>;
+  "get_credit_stats_command": () => Promise<CreditStats>;
+  "purchase_credits_command": (args: { stripePriceId: string }) => Promise<CheckoutSessionResponse>;
   
   // File Finder Workflow commands
   "start_file_finder_workflow": (args: StartFileFinderWorkflowCommandArgs) => Promise<import("@/types/workflow-types").WorkflowCommandResponse>;
@@ -609,6 +632,7 @@ export interface SubscriptionDetails {
   nextInvoiceAmount?: number;
   currency?: string;
   usage: UsageInfo;
+  creditBalance: number;
 }
 
 export interface UsageInfo {
@@ -638,6 +662,7 @@ export interface SpendingStatusInfo {
   nextBillingDate: string;
   currency: string;
   alerts: SpendingAlert[];
+  creditBalance: number;
 }
 
 export interface SpendingAlert {
@@ -715,6 +740,56 @@ export interface ServiceAccessResponse {
   hasAccess: boolean;
   reason?: string;
   blockedServices?: string[];
+}
+
+// Credit system types
+export interface CreditBalanceResponse {
+  userId: string;
+  balance: number; // Proper numeric type
+  currency: string;
+}
+
+export interface CreditTransactionEntry {
+  id: string;
+  amount: number;
+  currency: string;
+  transactionType: string;
+  description: string;
+  createdAt: string;
+  balanceAfter: number;
+}
+
+export interface CreditHistoryResponse {
+  transactions: CreditTransactionEntry[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export interface CreditPack {
+  id: string;
+  name: string;
+  valueCredits: number; // Amount of credits user gets
+  priceAmount: number;  // Actual price to pay
+  currency: string;
+  stripePriceId: string;
+  description?: string;
+  recommended: boolean;
+  bonusPercentage?: number;
+  isPopular?: boolean;
+}
+
+export interface CreditPacksResponse {
+  packs: CreditPack[];
+}
+
+export interface CreditStats {
+  userId: string;
+  currentBalance: number;
+  totalPurchased: number;
+  totalConsumed: number;
+  totalRefunded: number;
+  transactionCount: number;
+  currency: string;
 }
 
 // Strongly typed invoke function

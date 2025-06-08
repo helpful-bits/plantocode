@@ -35,21 +35,18 @@ export function JobDetailsSystemPromptSection() {
 
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   
-  // Get the system prompt template from the database using job.systemPromptId if available
   const { prompt, loading, error, isCustom } = useSystemPrompt({
     sessionId: job.sessionId,
     taskType: job.taskType as TaskType,
-    systemPromptId: job.systemPromptId, // Use the specific system prompt ID from the job
-    autoLoad: isPromptOpen // Only load when opened
+    systemPromptId: undefined,
+    autoLoad: isPromptOpen
   });
   
-  // Use the template from the database if available, otherwise fall back to the job prompt
   const templateContent = prompt?.systemPrompt || job.prompt;
     
   const placeholders = extractPlaceholders(templateContent);
   const isTemplate = placeholders.length > 0;
   
-  // Calculate intelligent height based on content size with modal constraints
   const editorHeight = useMemo(() => {
     if (!templateContent) return "25vh";
     
@@ -107,11 +104,6 @@ export function JobDetailsSystemPromptSection() {
                   <div className="text-sm font-medium">
                     Task Type: {getTaskTypeDisplayName(job.taskType as TaskType)}
                   </div>
-                  {job.systemPromptId && (
-                    <div className="text-xs text-muted-foreground">
-                      ID: {job.systemPromptId.substring(0, 8)}...
-                    </div>
-                  )}
                 </div>
                 
                 {placeholders.length > 0 && (

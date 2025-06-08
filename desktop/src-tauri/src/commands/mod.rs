@@ -23,6 +23,7 @@ pub mod setup_commands;
 pub mod database_maintenance_commands;
 pub mod server_config_commands;
 pub mod system_prompt_commands;
+pub mod backup_commands;
 
 // Re-export all command functions for easier imports
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
@@ -55,7 +56,6 @@ pub use app_commands::{
 
 // Re-exports from text commands module
 pub use text_commands::{
-    improve_text_command,
     correct_text_command,
     generate_simple_text_command,
 };
@@ -92,7 +92,6 @@ pub use file_finder_workflow_commands::{
 // Re-exports from voice commands module
 pub use voice_commands::{
     create_transcription_job_command,
-    transcribe_audio_direct_command,
 };
 
 // Re-exports from generic task commands module
@@ -204,6 +203,17 @@ pub use billing_commands::{
     get_invoice_history_command,
     get_spending_history_command,
     check_service_access_command,
+};
+
+// Re-exports from backup commands module
+pub use backup_commands::{
+    get_backup_stats_command,
+    list_backups_command,
+    restore_from_backup_command,
+    auto_restore_latest_backup_command,
+    create_manual_backup_command,
+    verify_backup_command,
+    delete_backup_command,
 };
 
 // All command functions will return AppResult<T> directly

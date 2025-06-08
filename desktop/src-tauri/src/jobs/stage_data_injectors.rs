@@ -57,17 +57,20 @@ impl StageDataInjector {
     /// Note: directory_tree is now generated on-demand by the processor
     pub async fn create_local_filtering_payload(
         settings_repo: &Arc<SettingsRepository>,
-        workflow_id: String,
-        session_id: String,
+        _workflow_id: String,
+        _session_id: String,
         task_description: String,
-        project_directory: String,
-        regex_patterns: Vec<String>,
+        _project_directory: String,
+        path_pattern: Option<String>,
+        content_pattern: Option<String>,
+        negative_path_pattern: Option<String>,
+        negative_content_pattern: Option<String>,
         excluded_paths_from_workflow: Vec<String>
     ) -> LocalFileFilteringPayload {
         info!("Creating LocalFileFiltering payload from specific data fields");
         
-        debug!("workflow_id: {}, patterns_count: {}", 
-               workflow_id, regex_patterns.len());
+        debug!("workflow_id: {}, path_pattern: {:?}, content_pattern: {:?}, negative_path_pattern: {:?}, negative_content_pattern: {:?}", 
+               _workflow_id, path_pattern, content_pattern, negative_path_pattern, negative_content_pattern);
         
         // Get excluded paths from workflow settings
         let excluded_paths_setting = Self::get_workflow_setting(
@@ -86,13 +89,12 @@ impl StageDataInjector {
         );
         
         LocalFileFilteringPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id,
             task_description,
-            project_directory,
             excluded_paths: merged_excluded_paths,
-            regex_patterns,
-            workflow_id,
+            path_pattern,
+            content_pattern,
+            negative_path_pattern,
+            negative_content_pattern,
         }
     }
 
@@ -101,10 +103,10 @@ impl StageDataInjector {
     /// Note: directory_tree is now generated on-demand by the processor
     pub async fn create_extended_finder_payload(
         settings_repo: &Arc<SettingsRepository>,
-        workflow_id: String,
-        session_id: String,
+        _workflow_id: String,
+        _session_id: String,
         task_description: String,
-        project_directory: String,
+        _project_directory: String,
         initial_paths: Vec<String>
     ) -> ExtendedPathFinderPayload {
         info!("Creating ExtendedPathFinder payload from specific data fields");
@@ -124,12 +126,8 @@ impl StageDataInjector {
         let _max_files_with_content = Self::parse_max_files(&max_files_setting, 50);
         
         ExtendedPathFinderPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id,
             task_description,
-            project_directory,
             initial_paths, // AI-filtered files from FileRelevanceAssessment stage
-            workflow_id,
         }
     }
 
@@ -138,10 +136,10 @@ impl StageDataInjector {
     /// Data sourced from WorkflowState.intermediate_data
     /// Note: directory_tree is now generated on-demand by the processor
     pub fn create_path_correction_payload(
-        workflow_id: String,
-        session_id: String,
+        _workflow_id: String,
+        _session_id: String,
         task_description: String,
-        project_directory: String,
+        _project_directory: String,
         paths_to_correct: Vec<String>
     ) -> ExtendedPathCorrectionPayload {
         info!("Creating ExtendedPathCorrection payload from specific data fields");
@@ -149,16 +147,12 @@ impl StageDataInjector {
         debug!("Paths to correct count: {}", paths_to_correct.len());
         
         ExtendedPathCorrectionPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id,
             task_description,
-            project_directory,
             extended_paths: if paths_to_correct.is_empty() {
                 vec!["No paths available for correction".to_string()]
             } else {
                 paths_to_correct
             }, // paths_to_correct are the unverified paths from the previous finder stage
-            workflow_id,
         }
     }
 
@@ -167,42 +161,34 @@ impl StageDataInjector {
     /// Data sourced from WorkflowState.intermediate_data
     /// Note: directory_tree is now generated on-demand by the processor
     pub fn create_regex_generation_payload(
-        workflow_id: String,
-        session_id: String,
+        _workflow_id: String,
+        _session_id: String,
         task_description: String,
-        project_directory: String
+        _project_directory: String
     ) -> RegexPatternGenerationWorkflowPayload {
         info!("Creating RegexPatternGeneration payload from specific data fields");
         
-        debug!("workflow_id: {}", workflow_id);
+        debug!("workflow_id: {}", _workflow_id);
         
         RegexPatternGenerationWorkflowPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id,
             task_description,
-            project_directory,
-            workflow_id,
         }
     }
 
     /// Create FileRelevanceAssessmentPayload from specific data fields
     /// Data sourced from WorkflowState.intermediate_data
     pub fn create_file_relevance_assessment_payload(
-        workflow_id: String,
-        session_id: String,
+        _workflow_id: String,
+        _session_id: String,
         task_description: String,
-        project_directory: String,
+        _project_directory: String,
         locally_filtered_files: Vec<String>
     ) -> FileRelevanceAssessmentPayload {
         info!("Creating FileRelevanceAssessment payload with {} locally filtered files", locally_filtered_files.len());
         
         FileRelevanceAssessmentPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id,
             task_description,
-            project_directory,
             locally_filtered_files,
-            workflow_id,
         }
     }
 
@@ -212,13 +198,12 @@ impl StageDataInjector {
         original: &LocalFileFilteringPayload
     ) -> LocalFileFilteringPayload {
         LocalFileFilteringPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id: original.session_id.clone(),
             task_description: original.task_description.clone(),
-            project_directory: original.project_directory.clone(),
             excluded_paths: original.excluded_paths.clone(),
-            regex_patterns: original.regex_patterns.clone(),
-            workflow_id: original.workflow_id.clone(),
+            path_pattern: original.path_pattern.clone(),
+            content_pattern: original.content_pattern.clone(),
+            negative_path_pattern: original.negative_path_pattern.clone(),
+            negative_content_pattern: original.negative_content_pattern.clone(),
         }
     }
 
@@ -227,12 +212,8 @@ impl StageDataInjector {
         original: &ExtendedPathFinderPayload
     ) -> ExtendedPathFinderPayload {
         ExtendedPathFinderPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id: original.session_id.clone(),
             task_description: original.task_description.clone(),
-            project_directory: original.project_directory.clone(),
             initial_paths: original.initial_paths.clone(),
-            workflow_id: original.workflow_id.clone(),
         }
     }
 
@@ -241,12 +222,8 @@ impl StageDataInjector {
         original: &ExtendedPathCorrectionPayload
     ) -> ExtendedPathCorrectionPayload {
         ExtendedPathCorrectionPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id: original.session_id.clone(),
             task_description: original.task_description.clone(),
-            project_directory: original.project_directory.clone(),
             extended_paths: original.extended_paths.clone(),
-            workflow_id: original.workflow_id.clone(),
         }
     }
 
@@ -269,26 +246,22 @@ impl StageDataInjector {
 
 
     /// Validate filtering payload
-    /// Now allows empty directory_tree for graceful degradation
+    /// Validates that at least one positive pattern (path or content) is provided
     pub fn validate_filtering_payload(
         payload: &LocalFileFilteringPayload
     ) -> Result<(), String> {
-        if payload.session_id.trim().is_empty() {
-            return Err("Session ID cannot be empty".to_string());
+        // At least one positive pattern must be provided
+        if payload.path_pattern.is_none() && payload.content_pattern.is_none() {
+            return Err("At least one positive pattern (path_pattern or content_pattern) must be provided for LocalFileFilteringPayload".to_string());
         }
         
-        // Allow empty directory_tree - payload creation handles this gracefully
-        // if payload.directory_tree.trim().is_empty() {
-        //     return Err("Directory tree cannot be empty".to_string());
-        // }
-        
-        if payload.workflow_id.trim().is_empty() {
-            return Err("Workflow ID cannot be empty".to_string());
+        // Negative patterns are optional
+        if payload.negative_path_pattern.is_some() {
+            debug!("Negative path pattern provided for exclusion filtering");
         }
         
-        
-        if payload.regex_patterns.is_empty() {
-            warn!("Regex patterns list is empty for LocalFileFilteringPayload");
+        if payload.negative_content_pattern.is_some() {
+            debug!("Negative content pattern provided for exclusion filtering");
         }
         
         Ok(())
@@ -297,22 +270,8 @@ impl StageDataInjector {
     /// Validate finder payload
     /// Now allows empty directory_tree for graceful degradation
     pub fn validate_finder_payload(
-        payload: &ExtendedPathFinderPayload
+        _payload: &ExtendedPathFinderPayload
     ) -> Result<(), String> {
-        if payload.session_id.trim().is_empty() {
-            return Err("Session ID cannot be empty".to_string());
-        }
-        
-        // Allow empty directory_tree - payload creation handles this gracefully
-        // if payload.directory_tree.trim().is_empty() {
-        //     return Err("Directory tree cannot be empty".to_string());
-        // }
-        
-        if payload.workflow_id.trim().is_empty() {
-            return Err("Workflow ID cannot be empty".to_string());
-        }
-        
-        
         // Note: initial_paths can be empty for some finder scenarios
         Ok(())
     }
@@ -320,22 +279,8 @@ impl StageDataInjector {
     /// Validate correction payload
     /// Now allows empty data for graceful degradation
     pub fn validate_correction_payload(
-        payload: &ExtendedPathCorrectionPayload
+        _payload: &ExtendedPathCorrectionPayload
     ) -> Result<(), String> {
-        if payload.session_id.trim().is_empty() {
-            return Err("Session ID cannot be empty".to_string());
-        }
-        
-        // Allow empty directory_tree - payload creation handles this gracefully
-        // if payload.directory_tree.trim().is_empty() {
-        //     return Err("Directory tree cannot be empty".to_string());
-        // }
-        
-        if payload.workflow_id.trim().is_empty() {
-            return Err("Workflow ID cannot be empty".to_string());
-        }
-        
-        
         // Allow empty extended_paths - payload creation provides fallback
         // if payload.extended_paths.is_empty() {
         //     return Err("Extended paths cannot be empty for correction".to_string());
@@ -345,72 +290,40 @@ impl StageDataInjector {
     }
 
 
-    /// Extract workflow info from filtering payload
-    pub fn extract_filtering_workflow_info(
+    /// Extract task description from filtering payload
+    pub fn extract_filtering_task_description(
         payload: &LocalFileFilteringPayload
-    ) -> (String, String, String, String) {
-        (
-            payload.workflow_id.clone(),
-            payload.session_id.clone(),
-            payload.task_description.clone(),
-            payload.project_directory.clone()
-        )
+    ) -> String {
+        payload.task_description.clone()
     }
 
-    /// Extract workflow info from finder payload
-    pub fn extract_finder_workflow_info(
+    /// Extract task description from finder payload
+    pub fn extract_finder_task_description(
         payload: &ExtendedPathFinderPayload
-    ) -> (String, String, String, String) {
-        (
-            payload.workflow_id.clone(),
-            payload.session_id.clone(),
-            payload.task_description.clone(),
-            payload.project_directory.clone()
-        )
+    ) -> String {
+        payload.task_description.clone()
     }
 
-    /// Extract workflow info from correction payload
-    pub fn extract_correction_workflow_info(
+    /// Extract task description from correction payload
+    pub fn extract_correction_task_description(
         payload: &ExtendedPathCorrectionPayload
-    ) -> (String, String, String, String) {
-        (
-            payload.workflow_id.clone(),
-            payload.session_id.clone(),
-            payload.task_description.clone(),
-            payload.project_directory.clone()
-        )
+    ) -> String {
+        payload.task_description.clone()
     }
 
-    /// Extract workflow info from regex generation payload
-    pub fn extract_regex_workflow_info(
+    /// Extract task description from regex generation payload
+    pub fn extract_regex_task_description(
         payload: &RegexPatternGenerationWorkflowPayload
-    ) -> (String, String, String, String) {
-        (
-            payload.workflow_id.clone(),
-            payload.session_id.clone(),
-            payload.task_description.clone(),
-            payload.project_directory.clone()
-        )
+    ) -> String {
+        payload.task_description.clone()
     }
 
     /// Validate regex generation payload
     pub fn validate_regex_generation_payload(
         payload: &RegexPatternGenerationWorkflowPayload
     ) -> Result<(), String> {
-        if payload.session_id.trim().is_empty() {
-            return Err("Session ID cannot be empty".to_string());
-        }
-        
         if payload.task_description.trim().is_empty() {
             return Err("Task description cannot be empty".to_string());
-        }
-        
-        if payload.project_directory.trim().is_empty() {
-            return Err("Project directory cannot be empty".to_string());
-        }
-        
-        if payload.workflow_id.trim().is_empty() {
-            return Err("Workflow ID cannot be empty".to_string());
         }
         
         Ok(())
@@ -421,11 +334,7 @@ impl StageDataInjector {
         original: &RegexPatternGenerationWorkflowPayload
     ) -> RegexPatternGenerationWorkflowPayload {
         RegexPatternGenerationWorkflowPayload {
-            background_job_id: uuid::Uuid::new_v4().to_string(),
-            session_id: original.session_id.clone(),
             task_description: original.task_description.clone(),
-            project_directory: original.project_directory.clone(),
-            workflow_id: original.workflow_id.clone(),
         }
     }
 
@@ -433,7 +342,7 @@ impl StageDataInjector {
 
     /// Add metadata to regex payload (stored as JSON in the background job)
     pub fn add_metadata_to_regex_payload(
-        mut payload: RegexPatternGenerationWorkflowPayload,
+        payload: RegexPatternGenerationWorkflowPayload,
         metadata_key: &str,
         metadata_value: serde_json::Value
     ) -> (RegexPatternGenerationWorkflowPayload, serde_json::Value) {

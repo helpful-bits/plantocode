@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import LoginPage from "@/app/components/auth/login-page";
 import { useRuntimeConfigLoader } from "@/auth/use-runtime-config-loader";
+import { useSystemPromptsLoader } from "@/auth/use-system-prompts-loader";
 import { useAuth } from "@/contexts/auth-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { EmptyState, LoadingScreen } from "@/ui";
@@ -37,6 +38,13 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       loadConfig,
       clearError,
     } = useRuntimeConfigLoader();
+
+    const {
+      isLoading: systemPromptsLoading,
+      error: systemPromptsError,
+      loadSystemPrompts,
+      clearError: clearSystemPromptsError,
+    } = useSystemPromptsLoader();
 
     const { setAppInitializing } = useUILayout();
 
@@ -131,48 +139,61 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
     };
 
 
-    // Load runtime configuration after successful login
+    // Load runtime configuration and system prompts after successful login
     useEffect(() => {
-      // Only load config if we have a user
+      // Only load config and system prompts if we have a user
       if (user) {
-        const initializeConfig = async () => {
+        const initializeAfterAuth = async () => {
           try {
-            // Load runtime configuration with timeout protection
-            await Promise.race([
-              loadConfig(),
-              new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error('Configuration load timeout')), 30000)
-              )
+            // Load both runtime configuration and system prompts in parallel
+            const [, systemPromptsResult] = await Promise.all([
+              Promise.race([
+                loadConfig(),
+                new Promise<never>((_, reject) => 
+                  setTimeout(() => reject(new Error('Configuration load timeout')), 30000)
+                )
+              ]),
+              Promise.race([
+                loadSystemPrompts(),
+                new Promise<never>((_, reject) => 
+                  setTimeout(() => reject(new Error('System prompts load timeout')), 30000)
+                )
+              ])
             ]);
+
+            if (!systemPromptsResult) {
+              throw new Error('System prompts initialization failed');
+            }
           } catch (err) {
             const errorInfo = extractErrorInfo(err);
-            const userMessage = createUserFriendlyErrorMessage(errorInfo, "configuration");
+            const userMessage = createUserFriendlyErrorMessage(errorInfo, "initialization");
             
-            await logError(err, "AuthFlowManager.initializeConfig", { userId: user?.id });
+            await logError(err, "AuthFlowManager.initializeAfterAuth", { userId: user?.id });
             showNotification({
-              title: "Configuration Error",
+              title: "Initialization Error",
               message: userMessage,
               type: "error"
             });
-            // We don't handle the error here because the loadConfig function
-            // already updates the error state in the runtime config loader hook
+            // The individual loader hooks already update their error states
           }
         };
 
-        void initializeConfig();
+        void initializeAfterAuth();
       }
-    }, [user, loadConfig]);
+    }, [user, loadConfig, loadSystemPrompts]);
 
     // Set app initializing to false when all conditions for rendering main app are met
     useEffect(() => {
       const onboardingDone = !isOnboardingNeeded;
       const authResolved = !loading;
       const configResolved = !configLoading;
+      const systemPromptsResolved = !systemPromptsLoading;
       const hasValidUser = !!user;
       const noConfigError = !configError;
+      const noSystemPromptsError = !systemPromptsError;
 
       // Only mark initialization as complete when ALL conditions are satisfied
-      if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError) {
+      if (onboardingDone && authResolved && configResolved && systemPromptsResolved && hasValidUser && noConfigError && noSystemPromptsError) {
         // All critical async operations before rendering main app are done
         setAppInitializing(false);
       } else {
@@ -184,8 +205,10 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       isOnboardingNeeded,
       loading,
       configLoading,
+      systemPromptsLoading,
       user,
       configError,
+      systemPromptsError,
       setAppInitializing
     ]);
 
@@ -209,6 +232,11 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       return <LoadingScreen loadingType="configuration" />;
     }
 
+    // Show loading screen while fetching system prompts
+    if (systemPromptsLoading) {
+      return <LoadingScreen loadingType="initializing" />;
+    }
+
     // Show error screen if configuration failed
     if (configError) {
       return (
@@ -222,6 +250,26 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
               onAction={() => {
                 clearError();
                 void loadConfig();
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // Show error screen if system prompts failed
+    if (systemPromptsError) {
+      return (
+        <div className="fixed inset-0 flex items-center justify-center bg-background">
+          <div className="max-w-md w-full p-8">
+            <EmptyState
+              variant="error"
+              title="System Prompts Error"
+              description={systemPromptsError}
+              actionText="Retry"
+              onAction={() => {
+                clearSystemPromptsError();
+                void loadSystemPrompts();
               }}
             />
           </div>

@@ -21,6 +21,7 @@ export interface TaskSettings {
   unknown: TaskModelSettings;
   // New individual workflow stage types
   localFileFiltering: TaskModelSettings;
+  fileRelevanceAssessment: TaskModelSettings;
   extendedPathFinder: TaskModelSettings;
   extendedPathCorrection: TaskModelSettings;
 }

@@ -6,6 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::{SystemPrompt, DefaultSystemPrompt};
 use crate::db_utils::SettingsRepository;
 use crate::utils::get_timestamp;
+use crate::api_clients::ServerProxyClient;
 
 /// Request for getting system prompt
 #[derive(Debug, Deserialize)]
@@ -191,4 +192,40 @@ pub async fn update_default_system_prompt_command(
     settings_repo.update_default_system_prompt(&task_type, &new_prompt_content, new_description.as_deref()).await?;
     
     Ok(())
+}
+
+/// Get all default system prompts from server
+#[command]
+pub async fn fetch_default_system_prompts_from_server(
+    app_handle: AppHandle,
+) -> AppResult<Vec<serde_json::Value>> {
+    info!("Fetching all default system prompts from server");
+    
+    let server_proxy_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    
+    server_proxy_client.get_default_system_prompts().await
+}
+
+/// Get default system prompt for a specific task type from server
+#[command]
+pub async fn fetch_default_system_prompt_from_server(
+    task_type: String,
+    app_handle: AppHandle,
+) -> AppResult<Option<serde_json::Value>> {
+    info!("Fetching default system prompt for task type '{}' from server", task_type);
+    
+    let server_proxy_client = app_handle.state::<Arc<ServerProxyClient>>().inner().clone();
+    
+    server_proxy_client.get_default_system_prompt(&task_type).await
+}
+
+/// Initialize system prompts from server (populate local cache)
+/// This command should be called after user authentication is complete
+#[command]
+pub async fn initialize_system_prompts_from_server(
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    info!("Initializing system prompts from server via command");
+    
+    crate::app_setup::initialize_system_prompts(&app_handle).await
 }

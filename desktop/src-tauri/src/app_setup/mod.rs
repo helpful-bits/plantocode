@@ -8,6 +8,9 @@ pub mod config;
 pub mod job_system;
 pub mod file_management;
 
+// Re-export important functions for easy access
+pub use services::initialize_system_prompts;
+
 /// Run asynchronous initialization steps for the application
 /// 
 /// This function initializes various subsystems in the following order:
@@ -36,6 +39,11 @@ pub async fn run_async_initialization(app_handle: &AppHandle) -> Result<(), AppE
         return Err(e);
     }
     
+    // Initialize backup service
+    if let Err(e) = services::initialize_backup_service(app_handle).await {
+        error!("Backup service initialization failed: {}", e);
+        return Err(e);
+    }
 
     // Initialize file lock manager
     if let Err(e) = file_management::initialize_file_lock_manager(app_handle).await {

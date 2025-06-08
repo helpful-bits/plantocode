@@ -293,6 +293,7 @@ const taskSettingsKeyToTaskType: Record<keyof TaskSettings, TaskType> = {
   localFileFiltering: "local_file_filtering",
   extendedPathFinder: "extended_path_finder",
   extendedPathCorrection: "extended_path_correction",
+  fileRelevanceAssessment: "file_relevance_assessment",
   taskEnhancement: "task_enhancement",
   genericLlmStream: "generic_llm_stream",
   regexPatternGeneration: "regex_pattern_generation",
@@ -318,11 +319,19 @@ export default function TaskModelSettings({
       return {}; // Return empty settings for non-LLM tasks
     }
 
-    if (!settings) {
-      throw new Error(`CONFIGURATION ERROR: No settings found for task type: ${camelCaseKey}. Available keys: ${Object.keys(taskSettings).join(', ')}. This indicates incomplete configuration loading - check server connection and database integrity.`);
+    // If settings for this key exist, return them.
+    // An empty object `{}` is a valid setting for non-LLM tasks.
+    if (settings) {
+      return settings;
     }
+    
+    // If settings are missing, it's a configuration issue, but we should not crash the UI.
+    // Log an error and return a default empty object to prevent a crash.
+    // The backend should always provide a complete object, so this is a safeguard.
+    console.error(`Configuration integrity issue: No settings found for task type: '${camelCaseKey}'. The backend should have provided a value for this key. Falling back to an empty object to prevent a UI crash.`);
 
-    return settings;
+    // Return an empty object. The rest of the component logic will use default values.
+    return {}; 
   };
 
   const handleModelChange = (camelCaseKey: keyof TaskSettings, model: string) => {
@@ -401,39 +410,55 @@ export default function TaskModelSettings({
     return availableModels.filter(model => model.provider === apiType);
   };
 
+  // Create filtered and sorted task entries once to avoid duplication
+  const visibleTaskEntries = Object.entries(taskSettingsKeyToTaskType)
+    .filter(([, taskType]) => {
+      const taskDetails = TaskTypeDetails[taskType];
+      return !taskDetails?.hidden;
+    })
+    .sort(([, taskTypeA], [, taskTypeB]) => {
+      const categoryA = TaskTypeDetails[taskTypeA]?.category || "General";
+      const categoryB = TaskTypeDetails[taskTypeB]?.category || "General";
+      // Sort by category, then by display name
+      if (categoryA !== categoryB) {
+        return categoryA.localeCompare(categoryB);
+      }
+      return (TaskTypeDetails[taskTypeA]?.displayName || "").localeCompare(
+        TaskTypeDetails[taskTypeB]?.displayName || ""
+      );
+    });
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-lg">AI Model Settings</CardTitle>
         <CardDescription className="text-balance">
-          Configure model settings for each task type in this project. These
+          Configure model settings for each task type in this project, including individual workflow stages. These
           settings will be used when running AI tasks like path finding, code
-          generation, and text improvement.
+          generation, text improvement, and workflow operations.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-6">
         <Tabs defaultValue="pathFinder">
           <TabsList className="mb-4 flex flex-wrap gap-1 h-auto p-1">
-            {Object.entries(taskSettingsKeyToTaskType).map(
-              ([camelCaseKey, taskType]) => {
-                const taskDetails = TaskTypeDetails[taskType];
-                return !taskDetails?.hidden && (
-                  <TabsTrigger
-                    key={camelCaseKey}
-                    value={camelCaseKey}
-                    className="text-xs px-3 h-8"
-                  >
-                    {taskDetails?.displayName || camelCaseKey}
-                  </TabsTrigger>
-                );
-              }
-            )}
+            {visibleTaskEntries.map(([camelCaseKey, taskType]) => {
+              const taskDetails = TaskTypeDetails[taskType];
+              return (
+                <TabsTrigger
+                  key={camelCaseKey}
+                  value={camelCaseKey}
+                  className="text-xs px-3 h-8"
+                >
+                  {taskDetails?.displayName || camelCaseKey}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
 
-          {Object.entries(taskSettingsKeyToTaskType).map(([camelCaseKey, taskType]) => {
+          {visibleTaskEntries
+            .map(([camelCaseKey, taskType]) => {
             const taskSettingsKey = camelCaseKey as keyof TaskSettings;
             const taskDetails = TaskTypeDetails[taskType];
-            if (taskDetails?.hidden) return null;
 
             const settings = getTaskSettings(taskSettingsKey);
             const models = getModelsForTask(taskSettingsKey);
@@ -538,7 +563,7 @@ export default function TaskModelSettings({
                         </div>
                         <Input
                           type="number"
-                          value={settings.maxTokens}
+                          value={settings.maxTokens ?? ''}
                           onChange={(
                             e: React.ChangeEvent<HTMLInputElement>
                           ) => {
@@ -595,7 +620,7 @@ export default function TaskModelSettings({
                           </div>
                           <Input
                             type="number"
-                            value={Number(settings.temperature).toFixed(2)}
+                            value={settings.temperature !== undefined ? Number(settings.temperature).toFixed(2) : ''}
                             onChange={(
                               e: React.ChangeEvent<HTMLInputElement>
                             ) => {

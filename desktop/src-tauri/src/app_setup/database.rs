@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Manager};
 use crate::error::AppError;
-use log::{info, error};
+use log::{info, error, warn};
 use std::sync::Arc;
 use sqlx::{SqlitePool, migrate::MigrateDatabase, sqlite::SqlitePoolOptions, Executor};
 use std::fs;
@@ -37,7 +37,7 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
         .connect(&db_url).await
         .map_err(|e| AppError::DatabaseError(format!("Failed to connect to database: {}", e)))?;
     
-    // Check if we need to run migrations (just created the database)
+    // Check if we need to run migrations or attempt recovery
     if !db_exists_before_connect {
         info!("Running database migrations...");
         // Get migration file path relative to the executable
@@ -69,8 +69,21 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
         
         info!("Database migrations applied successfully");
     } else {
-        // For existing databases, enhanced system prompts are now part of consolidated schema
-        info!("Database ready - enhanced system prompts included in consolidated schema");
+        // Check if existing database is healthy, attempt recovery if needed
+        match check_database_health(&db).await {
+            Ok(true) => {
+                info!("Database ready - health check passed");
+            }
+            Ok(false) => {
+                warn!("Database health check failed, attempting automatic recovery");
+                attempt_automatic_recovery(app_handle, &app_data_dir).await?;
+            }
+            Err(e) => {
+                error!("Database health check error: {}", e);
+                warn!("Attempting automatic recovery due to health check error");
+                attempt_automatic_recovery(app_handle, &app_data_dir).await?;
+            }
+        }
     }
 
     // Manage the pool as state
@@ -86,7 +99,7 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
     }
     
     // Create repository instances
-    let (session_repo, background_job_repo, settings_repo) = create_repositories(pool_arc)
+    let (session_repo, background_job_repo, settings_repo) = create_repositories(pool_arc, app_handle.clone())
         .map_err(|e| AppError::InitializationError(format!("Failed to create repositories: {}", e)))?;
     
     // Wrap repositories in Arc
@@ -102,4 +115,50 @@ pub async fn initialize_database(app_handle: &AppHandle) -> Result<(), AppError>
     info!("Repository instances created and managed by Tauri");
     
     Ok(())
+}
+
+/// Check if database is healthy
+async fn check_database_health(db: &SqlitePool) -> Result<bool, AppError> {
+    // Try to run a simple integrity check
+    match sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+        .fetch_one(db)
+        .await
+    {
+        Ok(result) => Ok(result == "ok"),
+        Err(_) => Ok(false), // Any error means unhealthy
+    }
+}
+
+/// Attempt automatic recovery from backups
+async fn attempt_automatic_recovery(app_handle: &AppHandle, app_data_dir: &std::path::Path) -> Result<(), AppError> {
+    use crate::services::BackupService;
+    use std::sync::Arc;
+    
+    info!("Attempting automatic database recovery from backups");
+    
+    // Check if backup service is available in app state
+    // Since we're in database initialization, backup service might not be ready yet
+    // So we'll create a temporary backup service instance
+    let db_pool = app_handle.state::<SqlitePool>().inner().clone();
+    let backup_config = crate::services::BackupConfig::default();
+    let backup_service = BackupService::new(app_data_dir.to_path_buf(), db_pool, backup_config);
+    
+    match backup_service.auto_restore_latest_backup().await {
+        Ok(Some(restored_backup)) => {
+            info!("Successfully restored database from backup: {}", restored_backup);
+            Ok(())
+        }
+        Ok(None) => {
+            warn!("No valid backups found for automatic recovery");
+            Err(AppError::DatabaseError(
+                "Database is corrupted and no valid backups are available for recovery".to_string()
+            ))
+        }
+        Err(e) => {
+            error!("Automatic recovery failed: {}", e);
+            Err(AppError::DatabaseError(
+                format!("Database is corrupted and automatic recovery failed: {}", e)
+            ))
+        }
+    }
 }

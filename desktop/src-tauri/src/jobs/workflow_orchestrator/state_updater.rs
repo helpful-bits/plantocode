@@ -14,13 +14,13 @@ pub(super) fn update_intermediate_data_internal(
     stage_data: serde_json::Value,
 ) -> AppResult<()> {
     match stage {
-        WorkflowStage::GeneratingRegex => {
+        WorkflowStage::RegexPatternGeneration => {
             // Store the entire stage_data as raw JSON for later pattern extraction
             // This ensures we preserve all data regardless of its structure
             workflow_state.intermediate_data.raw_regex_patterns = Some(stage_data);
             debug!("Stored raw regex patterns data in intermediate_data");
         }
-        WorkflowStage::LocalFiltering => {
+        WorkflowStage::LocalFileFiltering => {
             if let Some(files) = stage_data.get("filteredFiles").and_then(|v| v.as_array()) {
                 workflow_state.intermediate_data.locally_filtered_files = files.iter()
                     .filter_map(|v| v.as_str().map(String::from))
@@ -145,6 +145,7 @@ pub(super) async fn update_job_status_internal(
         }
     }
     
+    warn!("Job {} not found in any workflow's stage_jobs list", job_id);
     Err(AppError::JobError(format!("Job {} not found in any workflow", job_id)))
 }
 

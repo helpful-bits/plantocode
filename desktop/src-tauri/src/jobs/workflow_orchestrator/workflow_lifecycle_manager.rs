@@ -45,6 +45,9 @@ pub async fn start_workflow_internal(
             .ok_or_else(|| AppError::JobError(format!("Workflow definition not found: {}", workflow_definition_name)))?
     };
 
+    // Initialize task settings for all task types in this workflow
+    initialize_workflow_task_settings(app_handle, &session_id, &project_directory, &workflow_definition).await?;
+
     // Create initial workflow state
     let mut workflow_state = WorkflowState::new(
         workflow_id.clone(),
@@ -226,8 +229,8 @@ async fn create_abstract_stage_job_with_lock(
     
     // Convert to WorkflowStage for model configuration
     let stage = match task_type {
-        TaskType::RegexPatternGeneration => WorkflowStage::GeneratingRegex,
-        TaskType::LocalFileFiltering => WorkflowStage::LocalFiltering,
+        TaskType::RegexPatternGeneration => WorkflowStage::RegexPatternGeneration,
+        TaskType::LocalFileFiltering => WorkflowStage::LocalFileFiltering,
         TaskType::FileRelevanceAssessment => WorkflowStage::FileRelevanceAssessment,
         TaskType::ExtendedPathFinder => WorkflowStage::ExtendedPathFinder,
         TaskType::ExtendedPathCorrection => WorkflowStage::ExtendedPathCorrection,
@@ -283,6 +286,15 @@ async fn create_abstract_stage_job_with_lock(
         };
         
         workflow.add_stage_job(stage_definition.stage_name.clone(), task_type, job_id.clone(), depends_on);
+        
+        // Verify the job was added successfully
+        if workflow.stage_jobs.iter().any(|job| job.job_id == job_id) {
+            info!("Successfully registered job {} in workflow {} stage_jobs", job_id, workflow_state.workflow_id);
+        } else {
+            error!("Failed to register job {} in workflow {} stage_jobs", job_id, workflow_state.workflow_id);
+        }
+    } else {
+        error!("Workflow {} not found when trying to add stage job {}", workflow_state.workflow_id, job_id);
     }
 
     info!("Created abstract stage job {} for stage '{}'", job_id, stage_definition.stage_name);
@@ -390,4 +402,100 @@ async fn get_stage_model_config_for_definition(
 /// Emit workflow status event to frontend (helper function)
 async fn emit_workflow_status_event_internal(app_handle: &AppHandle, workflow_state: &WorkflowState, message: &str) {
     event_emitter::emit_workflow_status_event_internal(app_handle, workflow_state, message).await;
+}
+
+/// Initialize task settings for all task types in a workflow
+/// This ensures that processors can find the necessary TaskSettings when they run
+async fn initialize_workflow_task_settings(
+    app_handle: &AppHandle, 
+    session_id: &str, 
+    project_directory: &str, 
+    workflow_definition: &WorkflowDefinition
+) -> AppResult<()> {
+    info!("Initializing task settings for workflow session: {}", session_id);
+    
+    let settings_repo = app_handle.state::<Arc<crate::db_utils::settings_repository::SettingsRepository>>().inner().clone();
+    
+    // Collect all unique task types from the workflow definition
+    let mut task_types = std::collections::HashSet::new();
+    for stage_def in &workflow_definition.stages {
+        task_types.insert(stage_def.task_type);
+    }
+    
+    // Initialize task settings for each task type
+    for task_type in task_types {
+        let task_type_str = task_type.to_string();
+        
+        // Check if task settings already exist for this session and task type
+        match settings_repo.get_task_settings(session_id, &task_type_str).await {
+            Ok(Some(_)) => {
+                // Settings already exist, skip
+                debug!("Task settings already exist for session {} and task type {}", session_id, task_type_str);
+                continue;
+            }
+            Ok(None) => {
+                // Settings don't exist, need to create them
+                debug!("Creating task settings for session {} and task type {}", session_id, task_type_str);
+            }
+            Err(e) => {
+                warn!("Error checking existing task settings for session {} and task type {}: {}", session_id, task_type_str, e);
+                // Continue and try to create settings
+            }
+        }
+        
+        // Only create settings for tasks that require LLM configuration
+        if !task_type.requires_llm() {
+            debug!("Skipping task settings creation for local task type: {}", task_type_str);
+            continue;
+        }
+        
+        // Get model configuration from project/global settings
+        let model = match crate::config::get_model_for_task_with_project(task_type, project_directory, app_handle).await {
+            Ok(model) => model,
+            Err(e) => {
+                error!("Failed to get model for task type {} in project {}: {}", task_type_str, project_directory, e);
+                continue;
+            }
+        };
+        
+        let temperature = match crate::config::get_temperature_for_task_with_project(task_type, project_directory, app_handle).await {
+            Ok(temp) => Some(temp),
+            Err(e) => {
+                warn!("Failed to get temperature for task type {} in project {}: {}", task_type_str, project_directory, e);
+                None
+            }
+        };
+        
+        let max_tokens = match crate::config::get_max_tokens_for_task_with_project(task_type, project_directory, app_handle).await {
+            Ok(tokens) => tokens as i32,
+            Err(e) => {
+                warn!("Failed to get max_tokens for task type {} in project {}: {}", task_type_str, project_directory, e);
+                4000 // Safe default
+            }
+        };
+        
+        // Create the task settings
+        let task_settings = crate::models::TaskSettings {
+            session_id: session_id.to_string(),
+            task_type: task_type_str.clone(),
+            model,
+            max_tokens,
+            temperature,
+        };
+        
+        // Save to database
+        match settings_repo.set_task_settings(&task_settings).await {
+            Ok(()) => {
+                info!("Created task settings for session {} and task type {}: model={}, max_tokens={}, temperature={:?}", 
+                      session_id, task_type_str, task_settings.model, task_settings.max_tokens, task_settings.temperature);
+            }
+            Err(e) => {
+                error!("Failed to save task settings for session {} and task type {}: {}", session_id, task_type_str, e);
+                return Err(AppError::DatabaseError(format!("Failed to initialize task settings for {}: {}", task_type_str, e)));
+            }
+        }
+    }
+    
+    info!("Successfully initialized task settings for workflow session: {}", session_id);
+    Ok(())
 }

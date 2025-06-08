@@ -247,7 +247,6 @@ export function SessionProvider({ children }: SessionProviderProps) {
         negativeContentRegexDescription: "",
         regexSummaryExplanation: "",
         isRegexActive: true,
-        codebaseStructure: "",
         searchSelectedFilesOnly: false,
         modelUsed: undefined,
         createdAt: Date.now(),

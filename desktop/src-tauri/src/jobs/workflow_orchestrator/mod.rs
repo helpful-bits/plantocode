@@ -196,6 +196,11 @@ impl WorkflowOrchestrator {
 
     /// Get workflow status and progress
     pub async fn get_workflow_status(&self, workflow_id: &str) -> AppResult<WorkflowState> {
+        // First, check if this workflow needs recovery (lazy recovery)
+        if let Err(e) = self.recover_workflow_if_needed(workflow_id).await {
+            error!("Failed to recover workflow {} if needed: {}", workflow_id, e);
+        }
+        
         query_service::get_workflow_status_internal(&self.workflows, workflow_id).await
     }
 
@@ -254,9 +259,192 @@ impl WorkflowOrchestrator {
         state_updater::store_stage_data_internal(&self.workflows, job_id, stage_data).await
     }
 
+    /// Add a stage job to an existing workflow (for orphaned jobs)
+    pub async fn add_stage_job_to_workflow(
+        &self,
+        workflow_id: &str,
+        stage_name: String,
+        task_type: crate::models::TaskType,
+        job_id: String,
+        depends_on: Option<String>,
+    ) -> AppResult<()> {
+        let mut workflows_guard = self.workflows.lock().await;
+        
+        if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
+            workflow_state.add_stage_job(stage_name, task_type, job_id, depends_on);
+            info!("Added stage job to workflow {}", workflow_id);
+            Ok(())
+        } else {
+            Err(crate::error::AppError::JobError(format!("Workflow {} not found", workflow_id)))
+        }
+    }
+
     /// Get all active workflows
     pub async fn get_active_workflows(&self) -> Vec<WorkflowState> {
         query_service::get_active_workflows_internal(&self.workflows).await
+    }
+
+    /// Recover orphaned workflow jobs from the database
+    /// This should be called during orchestrator initialization
+    pub async fn recover_orphaned_jobs(&self) -> AppResult<()> {
+        use crate::db_utils::BackgroundJobRepository;
+        use std::sync::Arc;
+        
+        let background_job_repo = self.app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+        
+        // Get all jobs that have workflow metadata but are not in completed/failed/canceled status
+        let active_jobs = background_job_repo.get_jobs_by_status(&[
+            crate::models::JobStatus::Running,
+            crate::models::JobStatus::Queued,
+            crate::models::JobStatus::Completed,
+        ]).await?;
+        
+        let mut recovered_count = 0;
+        
+        for job in active_jobs {
+            // Check if job has workflow metadata
+            if let Some(metadata_str) = &job.metadata {
+                if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+                    if let Some(workflow_id) = metadata.get("workflowId").and_then(|v| v.as_str()) {
+                        // Check if this job is already registered in the workflow
+                        let mut workflows_guard = self.workflows.lock().await;
+                        if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
+                            // Check if job is already registered
+                            if !workflow_state.stage_jobs.iter().any(|stage_job| stage_job.job_id == job.id) {
+                                // This is an orphaned job - add it to the workflow
+                                if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
+                                    let stage_name = match task_type {
+                                        crate::models::TaskType::RegexPatternGeneration => "RegexPatternGeneration",
+                                        crate::models::TaskType::LocalFileFiltering => "LocalFileFiltering",
+                                        crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
+                                        crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
+                                        crate::models::TaskType::ExtendedPathCorrection => "ExtendedPathCorrection",
+                                        _ => continue,
+                                    };
+                                    
+                                    workflow_state.add_stage_job(stage_name.to_string(), task_type, job.id.clone(), None);
+                                    recovered_count += 1;
+                                    info!("Recovered orphaned job {} for workflow {}", job.id, workflow_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if recovered_count > 0 {
+            info!("Recovered {} orphaned workflow jobs", recovered_count);
+            
+            // After recovery, check if any workflows can progress
+            let workflows_to_check: Vec<(String, Vec<String>)> = {
+                let workflows_guard = self.workflows.lock().await;
+                workflows_guard.iter()
+                    .filter(|(_, workflow_state)| workflow_state.status == crate::jobs::workflow_types::WorkflowStatus::Running)
+                    .map(|(workflow_id, workflow_state)| {
+                        let completed_jobs: Vec<String> = workflow_state.stage_jobs.iter()
+                            .filter(|stage_job| stage_job.status == crate::models::JobStatus::Completed)
+                            .map(|stage_job| stage_job.job_id.clone())
+                            .collect();
+                        (workflow_id.clone(), completed_jobs)
+                    })
+                    .collect()
+            };
+            
+            // Now trigger completion handlers without holding the lock
+            for (workflow_id, completed_job_ids) in workflows_to_check {
+                for job_id in completed_job_ids {
+                    if let Err(e) = self.handle_stage_completion(&workflow_id, &job_id).await {
+                        error!("Failed to handle stage completion during recovery for job {}: {}", job_id, e);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Recover a specific workflow if it has orphaned jobs
+    async fn recover_workflow_if_needed(&self, workflow_id: &str) -> AppResult<()> {
+        use crate::db_utils::BackgroundJobRepository;
+        use std::sync::Arc;
+        
+        let background_job_repo = self.app_handle.state::<Arc<BackgroundJobRepository>>().inner().clone();
+        
+        // Get all jobs that have this specific workflow ID in their metadata
+        let workflow_jobs = background_job_repo.get_jobs_by_metadata_field("workflowId", workflow_id).await?;
+        
+        let mut recovered_count = 0;
+        let mut workflows_guard = self.workflows.lock().await;
+        
+        if let Some(workflow_state) = workflows_guard.get_mut(workflow_id) {
+            for job in workflow_jobs {
+                // Check if job is already registered in the workflow
+                if !workflow_state.stage_jobs.iter().any(|stage_job| stage_job.job_id == job.id) {
+                    // This is an orphaned job - add it to the workflow
+                    if let Ok(task_type) = crate::models::TaskType::from_str(&job.task_type) {
+                        let stage_name = match task_type {
+                            crate::models::TaskType::RegexPatternGeneration => "RegexPatternGeneration",
+                            crate::models::TaskType::LocalFileFiltering => "LocalFileFiltering",
+                            crate::models::TaskType::FileRelevanceAssessment => "FileRelevanceAssessment",
+                            crate::models::TaskType::ExtendedPathFinder => "ExtendedPathFinder",
+                            crate::models::TaskType::ExtendedPathCorrection => "ExtendedPathCorrection",
+                            _ => continue,
+                        };
+                        
+                        // Parse job status from database
+                        let job_status = match job.status.as_str() {
+                            "completed" => crate::models::JobStatus::Completed,
+                            "running" => crate::models::JobStatus::Running,
+                            "failed" => crate::models::JobStatus::Failed,
+                            "queued" => crate::models::JobStatus::Queued,
+                            _ => continue,
+                        };
+                        
+                        // Create a proper WorkflowStageJob with correct status
+                        let mut stage_job = crate::jobs::workflow_types::WorkflowStageJob::new(
+                            stage_name.to_string(), 
+                            task_type, 
+                            job.id.clone(), 
+                            None
+                        );
+                        stage_job.status = job_status;
+                        stage_job.created_at = job.created_at;
+                        stage_job.started_at = job.start_time;
+                        stage_job.completed_at = job.end_time;
+                        
+                        workflow_state.stage_jobs.push(stage_job);
+                        recovered_count += 1;
+                        info!("Lazy recovery: added job {} to workflow {}", job.id, workflow_id);
+                    }
+                }
+            }
+        }
+        
+        drop(workflows_guard);
+        
+        if recovered_count > 0 {
+            info!("Lazy recovered {} jobs for workflow {}", recovered_count, workflow_id);
+            
+            // Trigger progression check for any completed jobs
+            let workflows_guard = self.workflows.lock().await;
+            if let Some(workflow_state) = workflows_guard.get(workflow_id) {
+                let completed_jobs: Vec<String> = workflow_state.stage_jobs.iter()
+                    .filter(|stage_job| stage_job.status == crate::models::JobStatus::Completed)
+                    .map(|stage_job| stage_job.job_id.clone())
+                    .collect();
+                
+                drop(workflows_guard);
+                
+                for job_id in completed_jobs {
+                    if let Err(e) = self.handle_stage_completion(workflow_id, &job_id).await {
+                        error!("Failed to handle stage completion during lazy recovery for job {}: {}", job_id, e);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     /// Get all workflow states (active and recent)
@@ -697,6 +885,11 @@ pub async fn init_workflow_orchestrator(app_handle: AppHandle) -> AppResult<Arc<
     
     if let Err(_) = WORKFLOW_ORCHESTRATOR.set(orchestrator.clone()) {
         return Err(AppError::JobError("Failed to initialize workflow orchestrator".to_string()));
+    }
+    
+    // Recover any orphaned jobs from previous sessions
+    if let Err(e) = orchestrator.recover_orphaned_jobs().await {
+        error!("Failed to recover orphaned workflow jobs: {}", e);
     }
     
     info!("Workflow orchestrator initialized with cleanup, cancellation, and error handlers");

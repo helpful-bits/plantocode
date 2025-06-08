@@ -185,8 +185,8 @@ export const TaskTypeDetails: Record<TaskType, {
   regex_pattern_generation: { 
     requiresLlm: true, 
     displayName: "Regex Pattern Generation", 
-    category: "Pattern Matching",
-    hidden: true,
+    category: "Workflow Stage",
+    description: "Generate regex patterns to filter relevant files",
     defaultProvider: "anthropic"
   },
   file_finder_workflow: { 
@@ -218,24 +218,21 @@ export const TaskTypeDetails: Record<TaskType, {
     requiresLlm: true, 
     displayName: "AI File Relevance Assessment", 
     category: "Workflow Stage",
-    description: "Uses AI to assess relevance of filtered files",
-    hidden: true,
+    description: "Uses AI to assess relevance of filtered files before extended path finding",
     defaultProvider: "google"
   },
   extended_path_finder: { 
     requiresLlm: true, 
     displayName: "Extended Path Finder", 
     category: "Workflow Stage",
-    description: "Extended path finding capabilities",
-    hidden: true,
+    description: "Comprehensive file discovery with deeper analysis",
     defaultProvider: "google"
   },
   extended_path_correction: { 
     requiresLlm: true, 
     displayName: "Extended Path Correction", 
     category: "Workflow Stage",
-    description: "Extended path correction capabilities",
-    hidden: true,
+    description: "Final validation and correction of discovered files",
     defaultProvider: "google"
   },
   server_proxy_transcription: { 
@@ -278,52 +275,52 @@ export const getTaskTypeValidationError = (
 // Job status constants (from session-types.ts)
 export type JobStatus =
   | "idle"
-  | "preparing"
-  | "running"
-  | "completed"
-  | "failed"
-  | "canceled"
   | "created"
   | "queued"
-  | "acknowledged_by_worker"
-  | "preparing_input"
-  | "generating_stream"
-  | "processing_stream"
-  | "completed_by_tag";
+  | "acknowledgedByWorker"
+  | "preparing"
+  | "preparingInput"
+  | "generatingStream"
+  | "processingStream"
+  | "running"
+  | "completedByTag"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 export const JOB_STATUSES = {
   ACTIVE: [
     "idle",
-    "preparing",
-    "running",
-    "queued",
     "created",
-    "acknowledged_by_worker",
-    "preparing_input",
-    "generating_stream",
-    "processing_stream",
+    "queued",
+    "acknowledgedByWorker",
+    "preparing",
+    "preparingInput",
+    "generatingStream",
+    "processingStream",
+    "running",
   ] as JobStatus[],
   TERMINAL: [
     "completed",
     "failed",
     "canceled",
-    "completed_by_tag",
+    "completedByTag",
   ] as JobStatus[],
-  COMPLETED: ["completed", "completed_by_tag"] as JobStatus[],
+  COMPLETED: ["completed", "completedByTag"] as JobStatus[],
   FAILED: ["failed", "canceled"] as JobStatus[],
   ALL: [
     "idle",
-    "preparing",
-    "running",
-    "queued",
     "created",
+    "queued",
+    "acknowledgedByWorker",
+    "preparing",
+    "preparingInput",
+    "generatingStream",
+    "processingStream",
+    "running",
+    "completedByTag",
     "completed",
     "failed",
     "canceled",
-    "acknowledged_by_worker",
-    "preparing_input",
-    "generating_stream",
-    "processing_stream",
-    "completed_by_tag",
   ] as JobStatus[],
 };

@@ -57,12 +57,33 @@ const VoiceTranscription = function VoiceTranscription({
 
   const handleCorrectionComplete = useCallback(
     (raw: string, corrected: string) => {
-      // Only show revert if correction actually changed the text
+      // Check if raw and corrected text are different
       if (raw !== corrected) {
+        // Replace the raw text with corrected text if textarea ref is available
+        if (textareaRef?.current && textareaRef.current.replaceText) {
+          try {
+            textareaRef.current.replaceText(raw, corrected);
+            
+            // Provide feedback that the text was replaced
+            showNotification({
+              title: "Text Corrected",
+              message: "Raw transcription has been replaced with the improved version.",
+              type: "success",
+            });
+          } catch (error) {
+            console.warn("[VoiceTranscription] Error replacing raw text with corrected text:", error);
+            showNotification({
+              title: "Correction Error",
+              message: "Could not replace raw text with corrected version.",
+              type: "warning",
+            });
+          }
+        }
+        
         setShowRevertOption(true);
       }
     },
-    []
+    [textareaRef, showNotification]
   );
 
   // Create a wrapper for onTranscribed that inserts at cursor position if ref is available

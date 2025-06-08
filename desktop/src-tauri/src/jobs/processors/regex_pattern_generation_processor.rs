@@ -26,40 +26,40 @@ impl JobProcessor for RegexPatternGenerationProcessor {
     }
     
     fn can_handle(&self, job: &Job) -> bool {
-        matches!(job.payload, JobPayload::RegexPatternGeneration(_) | JobPayload::RegexPatternGenerationWorkflow(_))
+        matches!(job.payload, JobPayload::RegexPatternGenerationWorkflow(_))
     }
     
     async fn process(&self, job: Job, app_handle: AppHandle) -> AppResult<JobProcessResult> {
-        // Extract task description, session_id, and project_directory from either payload type
-        let (task_description_for_prompt, session_id_for_prompt, project_dir_for_prompt) = match &job.payload {
-            JobPayload::RegexPatternGeneration(p) => {
-                (p.task_description.clone(), p.session_id.clone(), p.project_directory.clone())
-            }
-            JobPayload::RegexPatternGenerationWorkflow(p_wf) => {
-                (p_wf.task_description.clone(), p_wf.session_id.clone(), p_wf.project_directory.clone())
+        // Extract task description from workflow payload
+        let task_description_for_prompt = match &job.payload {
+            JobPayload::RegexPatternGenerationWorkflow(p) => {
+                p.task_description.clone()
             }
             _ => return Err(AppError::JobError("Invalid payload type for RegexPatternGenerationProcessor".to_string())),
-        };
-        
-        // Generate directory tree on-demand
-        let directory_tree_for_prompt = match get_directory_tree_with_defaults(&project_dir_for_prompt).await {
-            Ok(tree) => {
-                info!("Generated directory tree on-demand for regex pattern generation ({})", tree.lines().count());
-                Some(tree)
-            }
-            Err(e) => {
-                warn!("Failed to generate directory tree on-demand: {}. Continuing without directory context.", e);
-                None
-            }
         };
         
         // Setup job processing
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(&job.id, &app_handle).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Generate directory tree using session-based utility (avoids duplicate session lookup)
+        let directory_tree_for_prompt = match crate::utils::get_directory_tree_from_session(&job.session_id, &app_handle).await {
+            Ok(tree) => {
+                info!("Generated directory tree using session-based utility for regex pattern generation ({} lines)", tree.lines().count());
+                Some(tree)
+            }
+            Err(e) => {
+                warn!("Failed to generate directory tree using session-based utility: {}. Continuing without directory context.", e);
+                None
+            }
+        };
+        
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
         
         job_processor_utils::log_job_start(&job.id, "regex pattern generation");
         
@@ -68,9 +68,8 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             &job,
             &app_handle,
             task_description_for_prompt.clone(),
+            None,
             directory_tree_for_prompt.clone(),
-            None,
-            None,
             &settings_repo,
             &model_used,
         ).await?;
@@ -98,7 +97,6 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             task_description: task_description_for_prompt.clone(),
             file_contents: None,
             directory_tree: directory_tree_for_prompt.clone(), // This is now correctly an Option<String>
-            codebase_structure: None, // RegexPatternGeneration typically doesn't need codebase_structure
             system_prompt_override: None,
         };
         
@@ -111,7 +109,7 @@ impl JobProcessor for RegexPatternGenerationProcessor {
             Err(e) => {
                 error!("Regex Pattern Generation LLM task execution failed: {}", e);
                 let error_msg = format!("LLM task execution failed: {}", e);
-                task_runner.finalize_failure(&repo, &job.id, &error_msg).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };

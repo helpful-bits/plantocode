@@ -249,8 +249,8 @@ fn find_subsequent_stages_in_definition(
 /// Convert WorkflowStage to TaskType for stage definition lookup
 fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
     match stage {
-        WorkflowStage::GeneratingRegex => TaskType::RegexPatternGeneration,
-        WorkflowStage::LocalFiltering => TaskType::LocalFileFiltering,
+        WorkflowStage::RegexPatternGeneration => TaskType::RegexPatternGeneration,
+        WorkflowStage::LocalFileFiltering => TaskType::LocalFileFiltering,
         WorkflowStage::FileRelevanceAssessment => TaskType::FileRelevanceAssessment,
         WorkflowStage::ExtendedPathFinder => TaskType::ExtendedPathFinder,
         WorkflowStage::ExtendedPathCorrection => TaskType::ExtendedPathCorrection,
@@ -260,8 +260,8 @@ fn stage_to_task_type_for_retry(stage: &WorkflowStage) -> TaskType {
 /// Convert TaskType back to WorkflowStage for job matching
 fn task_type_to_workflow_stage(task_type: TaskType) -> Option<WorkflowStage> {
     match task_type {
-        TaskType::RegexPatternGeneration => Some(WorkflowStage::GeneratingRegex),
-        TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFiltering),
+        TaskType::RegexPatternGeneration => Some(WorkflowStage::RegexPatternGeneration),
+        TaskType::LocalFileFiltering => Some(WorkflowStage::LocalFileFiltering),
         TaskType::FileRelevanceAssessment => Some(WorkflowStage::FileRelevanceAssessment),
         TaskType::ExtendedPathFinder => Some(WorkflowStage::ExtendedPathFinder),
         TaskType::ExtendedPathCorrection => Some(WorkflowStage::ExtendedPathCorrection),

@@ -17,29 +17,6 @@ impl FileRelevanceAssessmentProcessor {
         Self
     }
     
-    /// Validate paths against the file system (similar to ExtendedPathFinderProcessor)
-    async fn validate_paths_against_filesystem(&self, paths: &[String], project_directory: &str) -> (Vec<String>, Vec<String>) {
-        let mut validated_paths = Vec::new();
-        let mut invalid_paths = Vec::new();
-        
-        for relative_path in paths {
-            // Construct absolute path
-            let absolute_path = std::path::Path::new(project_directory).join(relative_path);
-            
-            // Check if file exists and is a file
-            match tokio::fs::metadata(&absolute_path).await {
-                Ok(metadata) if metadata.is_file() => {
-                    validated_paths.push(relative_path.clone());
-                },
-                _ => {
-                    debug!("Path doesn't exist or isn't a regular file: {}", absolute_path.display());
-                    invalid_paths.push(relative_path.clone());
-                }
-            }
-        }
-        
-        (validated_paths, invalid_paths)
-    }
 }
 
 #[async_trait::async_trait]
@@ -61,40 +38,50 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         
         // Setup job processing using standardized utility
         let (repo, settings_repo, db_job) = job_processor_utils::setup_job_processing(
-            &payload.background_job_id,
+            &job.id,
             &app_handle,
         ).await?;
         
-        // Extract model settings from BackgroundJob
-        let model_used = db_job.model_used.clone().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-        let temperature = db_job.temperature.unwrap_or(0.7);
-        let max_output_tokens = db_job.max_output_tokens.unwrap_or(4000) as u32;
+        // Get project directory from session
+        let session = {
+            use crate::db_utils::SessionRepository;
+            let session_repo = SessionRepository::new(repo.get_pool());
+            session_repo.get_session_by_id(&job.session_id).await?
+                .ok_or_else(|| AppError::JobError(format!("Session {} not found", job.session_id)))?
+        };
+        let project_directory = &session.project_directory;
         
-        job_processor_utils::log_job_start(&payload.background_job_id, "File Relevance Assessment");
-        info!("Starting file relevance assessment for workflow {} with {} files to analyze", 
-            payload.workflow_id, payload.locally_filtered_files.len());
+        // Get task settings from database
+        let task_settings = settings_repo.get_task_settings(&job.session_id, &job.job_type.to_string()).await?
+            .ok_or_else(|| AppError::JobError(format!("No task settings found for session {} and task type {}", job.session_id, job.job_type.to_string())))?;
+        let model_used = task_settings.model;
+        let temperature = task_settings.temperature
+            .ok_or_else(|| AppError::JobError("Temperature not set in task settings".to_string()))?;
+        let max_output_tokens = task_settings.max_tokens as u32;
+        
+        job_processor_utils::log_job_start(&job.id, "File Relevance Assessment");
+        info!("Starting file relevance assessment with {} files to analyze", 
+            payload.locally_filtered_files.len());
         
         // Check if job has been canceled using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Load content for locally_filtered_files using fs_context_utils
         let file_contents = fs_context_utils::load_file_contents(
             &payload.locally_filtered_files,
-            &payload.project_directory,
+            project_directory,
         ).await;
         
         info!("Loaded content for {} files for relevance analysis", file_contents.len());
         
-        // Prepare LlmPromptContext with minimal context - demonstrates robustness
-        // The LlmTaskRunner and UnifiedPromptProcessor handle None/empty values gracefully
+        // Use unified prompt system exclusively - no hardcoded prompts
         let prompt_context = LlmPromptContext {
-            task_description: format!("Analyze the following files and determine which ones are most relevant for this task: {}\n\nReturn a JSON list of file paths that are highly relevant to completing this task. Only include files that would actually be needed to understand, modify, or implement the requested functionality.", payload.task_description),
-            file_contents: Some(file_contents), // Could be empty HashMap if no files loaded
-            directory_tree: None, // Intentionally omitted - system will handle gracefully
-            codebase_structure: None, // Intentionally omitted - system will handle gracefully  
+            task_description: payload.task_description.clone(),
+            file_contents: Some(file_contents),
+            directory_tree: None,
             system_prompt_override: None,
         };
         
@@ -109,9 +96,9 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), task_config);
         
         // Check for cancellation before LLM call using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled before LLM call", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled before LLM call", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Execute LLM task using task_runner.execute_llm_task()
@@ -122,39 +109,39 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 error!("{}", error_msg);
                 
                 // Finalize job failure using standardized utility
-                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
                 
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
         // Parse the LLM response (expected to be a list of file paths) using response_parser_utils
-        let relevant_paths = match response_parser_utils::parse_paths_from_text_response(&llm_result.response, &payload.project_directory) {
+        let relevant_paths = match response_parser_utils::parse_paths_from_text_response(&llm_result.response, project_directory) {
             Ok(paths) => paths,
             Err(e) => {
                 let error_msg = format!("Failed to parse relevant file paths from LLM response: {}", e);
                 error!("{}", error_msg);
                 
                 // Finalize job failure using standardized utility
-                task_runner.finalize_failure(&repo, &payload.background_job_id, &error_msg).await?;
+                task_runner.finalize_failure(&repo, &job.id, &error_msg, Some(&e)).await?;
                 
-                return Ok(JobProcessResult::failure(payload.background_job_id.clone(), error_msg));
+                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
         
-        // Validate the parsed paths against the filesystem (similar to ExtendedPathFinderProcessor::validate_paths_against_filesystem)
-        let (validated_relevant_paths, invalid_relevant_paths) = self.validate_paths_against_filesystem(
+        // Validate the parsed paths against the filesystem using centralized utility
+        let (validated_relevant_paths, invalid_relevant_paths) = fs_context_utils::validate_paths_against_filesystem(
             &relevant_paths, 
-            &payload.project_directory
+            project_directory
         ).await;
         
         info!("File relevance assessment validation: {} valid, {} invalid paths", 
             validated_relevant_paths.len(), invalid_relevant_paths.len());
         
         // Check for cancellation after LLM processing using standardized utility
-        if job_processor_utils::check_job_canceled(&repo, &payload.background_job_id).await? {
-            info!("Job {} has been canceled after LLM processing", payload.background_job_id);
-            return Ok(JobProcessResult::canceled(payload.background_job_id.clone(), "Job was canceled by user".to_string()));
+        if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
+            info!("Job {} has been canceled after LLM processing", job.id);
+            return Ok(JobProcessResult::canceled(job.id.clone(), "Job was canceled by user".to_string()));
         }
         
         // Store results in job metadata (supplementary info only)
@@ -168,9 +155,8 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             "validatedRelevantPaths": validated_relevant_paths,
             "invalidRelevantPaths": invalid_relevant_paths,
             "llmResponse": llm_result.response,
-            "workflowId": payload.workflow_id,
             "taskDescription": payload.task_description,
-            "projectDirectory": payload.project_directory,
+            "projectDirectory": project_directory,
             "modelUsed": model_used,
             "summary": format!("File relevance assessment: {} initial files → {} validated relevant files", 
                 payload.locally_filtered_files.len(), 
@@ -189,16 +175,16 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         // Call task_runner.finalize_success() with the JSON response, LLM usage, model name, and system prompt ID
         task_runner.finalize_success(
             &repo,
-            &payload.background_job_id,
+            &job.id,
             &llm_result,
             Some(result_metadata),
         ).await?;
         
-        debug!("File relevance assessment completed for workflow {}", payload.workflow_id);
+        debug!("File relevance assessment completed for job {}", job.id);
         
         // Return JobProcessResult::success() with the JSON response string
         Ok(JobProcessResult::success(
-            payload.background_job_id.clone(), 
+            job.id.clone(), 
             response_json_content
         ))
     }

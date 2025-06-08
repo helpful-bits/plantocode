@@ -23,7 +23,7 @@ use crate::models::{TaskType, JobStatus, OpenRouterUsage};
 use crate::db_utils::{BackgroundJobRepository, SettingsRepository};
 use crate::models::BackgroundJob;
 use crate::api_clients::client_factory;
-use crate::jobs::types::JobWorkerMetadata;
+use crate::jobs::types::JobUIMetadata;
 use crate::utils::job_metadata_builder::JobMetadataBuilder;
 
 /// Setup repositories from app state and fetch the job, marking it as running
@@ -48,7 +48,7 @@ pub async fn setup_job_processing(
         .ok_or_else(|| AppError::JobError(format!("Background job {} not found", job_id)))?;
     
     // Update job status to running
-    repo.mark_job_running(job_id, Some("Processing...")).await?;
+    repo.mark_job_running(job_id).await?;
     
     Ok((repo, settings_repo, background_job))
 }
@@ -110,63 +110,59 @@ pub async fn finalize_job_success(
     
     let db_job = repo.get_job_by_id(job_id).await?.ok_or_else(|| AppError::NotFoundError(format!("Job {} not found for finalization", job_id)))?;
     
-    let final_metadata_str_for_repo: Option<String>;
-    
-    match db_job.metadata.as_deref().and_then(|s| serde_json::from_str::<crate::jobs::types::JobWorkerMetadata>(s).ok()) {
-        Some(mut worker_meta) => {
-            // Successfully parsed existing metadata
-            let mut builder = JobMetadataBuilder::from_existing_additional_params(worker_meta.additional_params.take());
-            
-            if let Some(new_additional_data_value) = metadata { // metadata is the Option<Value> argument
-                if let Value::Object(map) = new_additional_data_value {
-                    for (k, v_val) in map { // Renamed v to v_val to avoid conflict
-                        builder = builder.custom_field(k, v_val.clone());
+    // Simple approach: Always try to parse as JobUIMetadata, create new if fails
+    let final_metadata_str_for_repo = if let Some(metadata_str) = db_job.metadata.as_deref() {
+        // Try to parse existing metadata as JobUIMetadata
+        if let Ok(mut ui_meta) = serde_json::from_str::<JobUIMetadata>(metadata_str) {
+            // Update existing JobUIMetadata with new data
+            if let Some(new_data) = metadata {
+                if let Value::Object(new_map) = new_data {
+                    if let Value::Object(ref mut task_map) = ui_meta.task_data {
+                        for (k, v) in new_map {
+                            task_map.insert(k, v);
+                        }
+                    } else {
+                        ui_meta.task_data = Value::Object(new_map);
                     }
-                } else {
-                    warn!("finalize_job_success metadata argument for job {} was Some but not an Object. Ignored.", job_id);
                 }
             }
             
-            // Update the additional_params field in the parsed JobWorkerMetadata
-            worker_meta.additional_params = Some(builder.build_value());
+            Some(serde_json::to_string(&ui_meta)
+                .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata for job {}: {}", job_id, e)))?)
+        } else {
+            // Existing metadata isn't JobUIMetadata - create new JobUIMetadata
+            info!("Job {} has legacy metadata format, creating new JobUIMetadata", job_id);
             
-            final_metadata_str_for_repo = Some(serde_json::to_string(&worker_meta).map_err(|e| AppError::SerializationError(format!("Failed to serialize updated JobWorkerMetadata for job {}: {}", job_id, e)))?);
-        }
-        None => {
-            // Existing metadata was None or failed to parse as JobWorkerMetadata
-            warn!("Job {} metadata was None or unparseable during finalization. Creating new JobWorkerMetadata.", job_id);
-            
-            // Create a new JobWorkerMetadata instance
-            let task_type = db_job.task_type.clone();
-            
-            // Placeholder payload - actual payload is lost if metadata was corrupt
-            let job_payload_for_worker = crate::jobs::types::JobPayload::GenericLlmStream(
+            let default_payload = crate::jobs::types::JobPayload::GenericLlmStream(
                 crate::jobs::types::GenericLlmStreamPayload {
-                    background_job_id: job_id.to_string(),
-                    session_id: db_job.session_id.clone(),
-                    prompt_text: "Finalization with recovered metadata".to_string(),
+                    prompt_text: "Legacy job finalization".to_string(),
                     system_prompt: None,
-                    metadata: None, // This metadata field within GenericLlmStreamPayload is different
-                    project_directory: db_job.project_directory.clone(),
+                    metadata: None,
                 }
             );
+            let new_ui_meta = crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
+                .task_data(metadata.unwrap_or_else(|| serde_json::json!({})))
+                .build();
             
-            // Attempt to extract workflow_id and workflow_stage if metadata string exists, even if not full JobWorkerMetadata
-            let workflow_id = db_job.metadata.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok().and_then(|v| v.get("workflowId").and_then(|wid| wid.as_str().map(String::from))));
-            let workflow_stage = db_job.metadata.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok().and_then(|v| v.get("workflowStage").and_then(|ws| ws.as_str().map(String::from))));
-            
-            let new_worker_meta = crate::jobs::types::JobWorkerMetadata {
-                task_type,
-                job_payload_for_worker,
-                job_priority_for_worker: 0, // Default priority
-                workflow_id,
-                workflow_stage,
-                additional_params: metadata, // Use the metadata argument as the new additional_params
-            };
-            
-            final_metadata_str_for_repo = Some(serde_json::to_string(&new_worker_meta).map_err(|e| AppError::SerializationError(format!("Failed to serialize new JobWorkerMetadata for job {}: {}", job_id, e)))?);
+            Some(serde_json::to_string(&new_ui_meta)
+                .map_err(|e| AppError::SerializationError(format!("Failed to serialize new JobUIMetadata for job {}: {}", job_id, e)))?)
         }
-    }
+    } else {
+        // No existing metadata - create new JobUIMetadata
+        let default_payload = crate::jobs::types::JobPayload::GenericLlmStream(
+            crate::jobs::types::GenericLlmStreamPayload {
+                prompt_text: "New job finalization".to_string(),
+                system_prompt: None,
+                metadata: None,
+            }
+        );
+        let new_ui_meta = crate::utils::job_ui_metadata_builder::JobUIMetadataBuilder::new(default_payload)
+            .task_data(metadata.unwrap_or_else(|| serde_json::json!({})))
+            .build();
+        
+        Some(serde_json::to_string(&new_ui_meta)
+            .map_err(|e| AppError::SerializationError(format!("Failed to serialize new JobUIMetadata for job {}: {}", job_id, e)))?)
+    };
     
     repo.mark_job_completed(
         job_id,
@@ -174,22 +170,61 @@ pub async fn finalize_job_success(
         final_metadata_str_for_repo.as_deref(),
         tokens_sent,
         tokens_received,
-        total_tokens,
-        Some(model_used),
-        Some(system_prompt_id)
+        Some(model_used)
     ).await?;
     
     info!("Job {} completed successfully", job_id);
     Ok(())
 }
 
-/// Finalizes job failure with error message
+/// Finalizes job failure with error message and optional structured error information
 pub async fn finalize_job_failure(
     job_id: &str,
     repo: &BackgroundJobRepository,
     error_message: &str,
+    app_error_opt: Option<&AppError>,
 ) -> AppResult<()> {
-    repo.mark_job_failed(job_id, error_message, None).await?;
+    // Fetch the current job to get its metadata
+    let current_job = match repo.get_job_by_id(job_id).await? {
+        Some(job) => job,
+        None => {
+            error!("Job {} not found during failure finalization", job_id);
+            repo.mark_job_failed(job_id, error_message, None).await?;
+            return Ok(());
+        }
+    };
+
+    // Try to parse existing metadata as JobUIMetadata, create new if fails
+    let updated_metadata_str = if let Some(metadata_str) = current_job.metadata.as_deref() {
+        if let Ok(mut ui_meta) = serde_json::from_str::<JobUIMetadata>(metadata_str) {
+            // Add error information to task_data
+            let error_info = serde_json::json!({
+                "error_message": error_message,
+                "error_type": app_error_opt.map(|e| format!("{:?}", e)).unwrap_or_else(|| "UnknownError".to_string()),
+                "failed_at": chrono::Utc::now().to_rfc3339()
+            });
+            
+            if let serde_json::Value::Object(ref mut task_map) = ui_meta.task_data {
+                task_map.insert("failure_info".to_string(), error_info);
+            } else {
+                ui_meta.task_data = serde_json::json!({
+                    "failure_info": error_info
+                });
+            }
+            
+            Some(serde_json::to_string(&ui_meta)
+                .map_err(|e| AppError::SerializationError(format!("Failed to serialize JobUIMetadata for failed job {}: {}", job_id, e)))?)
+        } else {
+            // Can't parse existing metadata - just use simple failure without structured metadata
+            None
+        }
+    } else {
+        // No existing metadata - just use simple failure
+        None
+    };
+
+    // Mark the job as failed
+    repo.mark_job_failed(job_id, error_message, updated_metadata_str.as_deref()).await?;
     error!("Job {} failed: {}", job_id, error_message);
     Ok(())
 }

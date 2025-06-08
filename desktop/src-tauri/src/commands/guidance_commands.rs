@@ -80,13 +80,9 @@ pub async fn generate_guidance_command(
     
     // Create the payload for the GuidanceGenerationProcessor
     let processor_payload = GuidanceGenerationPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
-        project_directory: args.project_directory.clone(),
         task_description: args.task_description.clone(),
         paths: args.paths.clone(),
         file_contents_summary: args.file_contents_summary.clone(),
-        system_prompt_override: args.system_prompt_override.clone(),
     };
     
     // Create additional params for the job

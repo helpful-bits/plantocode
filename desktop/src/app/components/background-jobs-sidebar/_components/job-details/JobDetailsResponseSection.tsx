@@ -1,23 +1,26 @@
 import { useState } from "react";
-import { Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import { useNotification } from "@/contexts/notification-context";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
-import { parsePlanResponseContent } from "../../../implementation-plans-panel/_utils/plan-content-parser";
+import { parsePlanResponseContent, extractStepsFromPlan, createPlanWithOnlyStep } from "../../../implementation-plans-panel/_utils/plan-content-parser";
+import { Button } from "@/ui/button";
 
 import { getStreamingProgressValue } from "../../utils";
 
 export function JobDetailsResponseSection() {
   const { job, responseContent, parsedMetadata } = useJobDetailsContext();
   const [isResponseOpen, setIsResponseOpen] = useState(false);
+  const { showNotification } = useNotification();
 
   let displayContentForViewer = responseContent || "";
   let viewerLanguage = "markdown"; // Default for most jobs
 
-  const isJobStreaming = (job.status === "running" || job.status === "processing_stream") && Boolean(parsedMetadata?.additionalParams?.isStreaming);
+  const isJobStreaming = (job.status === "running" || job.status === "processingStream") && Boolean(parsedMetadata?.taskData?.isStreaming);
 
   if (job.taskType === "implementation_plan") {
     viewerLanguage = "xml"; // Implementation plans are expected to be XML
@@ -26,6 +29,30 @@ export function JobDetailsResponseSection() {
     }
     // For streaming or other states of implementation_plan, responseContent (raw job.response) is used directly.
   }
+
+  // Extract steps for implementation plans
+  const steps = job.taskType === "implementation_plan" ? extractStepsFromPlan(responseContent) : [];
+
+  const handleCopyPlanWithOnlyStep = async (stepNumber: string, stepTitle: string) => {
+    try {
+      const planWithOnlyStep = createPlanWithOnlyStep(displayContentForViewer, stepNumber);
+      await navigator.clipboard.writeText(planWithOnlyStep);
+      showNotification({
+        title: "Copied to clipboard",
+        message: `Plan copied with only "${stepTitle}" + context`,
+        type: "success",
+        duration: 2000,
+      });
+    } catch (err) {
+      console.error("Failed to copy plan:", err);
+      showNotification({
+        title: "Copy failed",
+        message: "Failed to copy plan to clipboard",
+        type: "error",
+        duration: 3000,
+      });
+    }
+  };
 
   return (
     <Card>
@@ -62,17 +89,14 @@ export function JobDetailsResponseSection() {
 
         <CollapsibleContent>
           <CardContent className="pt-0">
-            {/* Show progress bar for streaming jobs */}
-            {(job.status === "running" || job.status === "processing_stream") && parsedMetadata?.additionalParams?.isStreaming ? (
+            {(job.status === "running" || job.status === "processingStream") && parsedMetadata?.taskData?.isStreaming ? (
               <div className="mb-3">
                 <Progress
                   value={
-                    // Use unified streaming progress calculation for all job types
                     getStreamingProgressValue(
                       job.metadata,
-                      job.startTime,
-                      job.maxOutputTokens
-                    ) || 10 // Fallback to 10% if no progress can be calculated
+                      job.startTime
+                    ) || 10
                   }
                   className="h-1 mb-2"
                 />
@@ -84,23 +108,44 @@ export function JobDetailsResponseSection() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {parsedMetadata?.additionalParams?.responseLength ? (
+                    {parsedMetadata?.taskData?.responseLength ? (
                       <span>
-                        {Math.floor(Number(parsedMetadata.additionalParams.responseLength) / 1024)} KB received
+                        {Math.floor(Number(parsedMetadata.taskData.responseLength) / 1024)} KB received
                       </span>
                     ) : null}
-                    {typeof parsedMetadata?.additionalParams?.streamProgress === "number" && (
-                      <span>{Math.floor(parsedMetadata.additionalParams.streamProgress)}% complete</span>
+                    {typeof parsedMetadata?.taskData?.streamProgress === "number" && (
+                      <span>{Math.floor(parsedMetadata.taskData.streamProgress)}% complete</span>
                     )}
                   </div>
                 </div>
               </div>
             ) : null}
 
+            {job.taskType === "implementation_plan" && steps.length > 0 && !isJobStreaming && (
+              <div className="mb-3">
+                <div className="text-xs text-muted-foreground mb-2">Copy plan with only specific step:</div>
+                <div className="flex flex-wrap gap-2">
+                  {steps.map((step) => (
+                    <Button
+                      key={step.number}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCopyPlanWithOnlyStep(step.number, step.title)}
+                      className="text-xs h-7"
+                      title={`Copy plan with only: ${step.title}`}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      Step {step.number}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <VirtualizedCodeViewer
               content={displayContentForViewer}
               language={viewerLanguage}
-              height="60vh"
+              height="70vh"
               showCopy={true}
               copyText={job.taskType === "implementation_plan" ? "Copy content" : "Copy response"}
               showContentSize={true}

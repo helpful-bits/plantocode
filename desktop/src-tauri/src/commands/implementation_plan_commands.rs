@@ -79,11 +79,7 @@ pub async fn create_implementation_plan_command(
     
     // Use the job creation utility to create and queue the job
     let payload = crate::jobs::types::ImplementationPlanPayload {
-        background_job_id: String::new(), // Will be set by create_and_queue_background_job
-        session_id: args.session_id.clone(),
         task_description: args.task_description.clone(),
-        project_directory: args.project_directory.clone(),
-        project_structure: args.project_structure,
         relevant_files: args.relevant_files,
     };
     

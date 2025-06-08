@@ -3,6 +3,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use bigdecimal::BigDecimal;
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +198,7 @@ impl BillingConfigurationRepository {
 
         Ok(configs)
     }
+
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -224,6 +226,7 @@ pub struct EmailTemplates {
     pub services_blocked: EmailTemplate,
     pub invoice_created: EmailTemplate,
     pub payment_failed: EmailTemplate,
+    pub credit_purchase_success: EmailTemplate,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,3 +234,4 @@ pub struct EmailTemplate {
     pub subject: String,
     pub template: String,
 }
+
